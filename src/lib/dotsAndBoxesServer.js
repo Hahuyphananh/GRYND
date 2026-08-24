@@ -13,6 +13,11 @@ import {
 } from "./dotsAndBoxesEngine";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
+export const DOTS_AND_BOXES_AI_ID = "AI_BOT";
+
+export function isDotsAndBoxesAiGame(game) {
+  return Boolean(game?.isAiGame) && game?.guestClerkId === DOTS_AND_BOXES_AI_ID;
+}
 
 export function getGameMoveSeconds(game) {
   const configured = Number(game?.timerSeconds);
@@ -47,6 +52,21 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
     if (locked.payout !== null && locked.payout !== undefined) return;
 
     const bet = Number(locked.betAmount);
+
+    if (locked.isAiGame) {
+      await tx
+        .update(dotsAndBoxesGames)
+        .set({
+          status: "finished",
+          result,
+          winnerClerkId: winnerClerkId || null,
+          payout: "0",
+          endedAt: new Date(),
+          moveDeadlineAt: null,
+        })
+        .where(eq(dotsAndBoxesGames.id, gameId));
+      return;
+    }
 
     if (result === "draw") {
       // Refund both players' wagers
@@ -85,13 +105,15 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
       .set({ balance: sql`${users.balance} + ${payout}` })
       .where(eq(users.clerkId, winnerClerkId));
 
-    await applyLeaderboardCounters({
-      clerkId: winnerClerkId,
-      game: "dots-and-boxes",
-      betAmount: bet,
-      payout,
-      isPvpWin: true,
-    });
+    if (!locked.isAiGame) {
+      await applyLeaderboardCounters({
+        clerkId: winnerClerkId,
+        game: "dots-and-boxes",
+        betAmount: bet,
+        payout,
+        isPvpWin: true,
+      });
+    }
 
     await tx
       .update(dotsAndBoxesGames)

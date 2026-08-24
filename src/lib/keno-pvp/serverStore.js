@@ -36,6 +36,7 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import {
   ACTIVE_STATES,
   BALL_COUNT,
+  KENO_AI_PLAYER_ID,
   KENO_PVP_LOCK_NAMESPACE,
   MATCH_STATUS,
   MATCH_TIME_LIMIT_MS,
@@ -51,6 +52,7 @@ import {
   ROUND_STATES,
   ROUND_TIMER_SECONDS,
   computePayout,
+  isFreeAiMatch,
   round2,
 } from "./constants";
 import {
@@ -60,6 +62,7 @@ import {
   decideRoundWinner,
   generateDraw,
   gradeCatch,
+  chooseAiCatchPlan,
 } from "./engine";
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -199,6 +202,120 @@ function hashStakeToInt(stake) {
     h = Math.imul(h, 16777619);
   }
   return (h | 0) & 0x7fffffff;
+}
+
+// ── Create a free human-vs-AI match ───────────────────────────────────
+//
+// The bot occupies player2. No stake is escrowed; it catches balls from
+// the same server-generated stream and is graded by the same clock/window
+// rules as a human catch.
+export async function createAiMatch({ userId }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+
+  const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .insert(kenoPvpMatches)
+      .values({
+        player1Id: userId,
+        player2Id: KENO_AI_PLAYER_ID,
+        stakeAmount: "0.00",
+        status: MATCH_STATUS.READY,
+        isAi: true,
+        currentRound: 1,
+        roundsWonPlayer1: 0,
+        roundsWonPlayer2: 0,
+        p1Score: 0,
+        p2Score: 0,
+        currentDraw: null,
+        p1Catches: null,
+        p2Catches: null,
+        roundTimerSeconds: ROUND_TIMER_SECONDS,
+        roundDeadline: readyDeadline,
+        houseFee: "0.00",
+        prizePaid: "0.00",
+        startedAt: new Date(),
+      })
+      .returning();
+    return { match, joined: true };
+  });
+}
+
+// Append every AI catch through the same server-clock schedule and
+// quality validation used by catchBall. A plan entry that is too early
+// or too late is simply a bot miss; it is never written as a fake catch.
+async function playAiTurnInTransaction(tx, match) {
+  if (!match || !isFreeAiMatch(match) || match.player2Id !== KENO_AI_PLAYER_ID) {
+    return { match, actions: 0, alreadyPlayed: true };
+  }
+  if (!ROUND_STATES.has(match.status) || !match.roundDeadline) {
+    return { match, actions: 0, alreadyPlayed: true };
+  }
+
+  const schedule = ballSchedule(
+    new Date(match.roundDeadline).getTime(),
+    Array.isArray(match.currentDraw) ? match.currentDraw : [],
+  );
+  const plan = chooseAiCatchPlan({
+    draw: match.currentDraw,
+    roundNumber: match.currentRound,
+    seed: `${match.id}:${match.currentRound}`,
+  });
+  let current = match;
+  let actions = 0;
+  const now = Date.now();
+  const caught = new Set(
+    (Array.isArray(current.p2Catches) ? current.p2Catches : [])
+      .map((entry) => Number(entry?.number))
+      .filter((number) => Number.isInteger(number)),
+  );
+
+  for (const planned of plan) {
+    if (caught.has(planned.number)) continue;
+    const ball = schedule.find((entry) => entry.number === planned.number);
+    if (!ball || now < ball.releaseMs + planned.reactionMs || now > ball.acceptedUntilMs) {
+      continue;
+    }
+
+    const quality = gradeCatch(now, ball);
+    if (!quality) continue;
+    const catchEntry = {
+      number: planned.number,
+      quality,
+      caughtAt: new Date(now).toISOString(),
+    };
+    const nextCatches = [
+      ...(Array.isArray(current.p2Catches) ? current.p2Catches : []),
+      catchEntry,
+    ];
+    const [updated] = await tx
+      .update(kenoPvpMatches)
+      .set({ p2Catches: nextCatches })
+      .where(
+        and(
+          eq(kenoPvpMatches.id, current.id),
+          eq(kenoPvpMatches.status, current.status),
+        ),
+      )
+      .returning();
+    if (!updated) break;
+    current = updated;
+    caught.add(planned.number);
+    actions += 1;
+  }
+
+  return { match: current, actions, alreadyPlayed: false };
+}
+
+export async function playAiTurn({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+      return { error: "Forbidden", status: 403 };
+    }
+    return await playAiTurnInTransaction(tx, match);
+  });
 }
 
 // ── Create / Join matchmaking ─────────────────────────────────────────
@@ -535,17 +652,20 @@ async function enterOvertime(tx, match) {
 async function settleMatch(tx, match, options = {}) {
   const overtime = Boolean(options && options.overtime);
   const result = decideMatchResult(match);
-  const payout = computePayout({
-    stakeAmount: match.stakeAmount,
-    result,
-    drawFeePct: overtime && result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
-  });
+  const isAi = isFreeAiMatch(match);
+  const payout = isAi
+    ? { winnerNet: 0, houseFee: 0, prizePaid: 0, refundEach: 0 }
+    : computePayout({
+        stakeAmount: match.stakeAmount,
+        result,
+        drawFeePct: overtime && result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
+      });
 
   let winnerId = null;
   if (result === RESULT.PLAYER1) winnerId = match.player1Id;
   else if (result === RESULT.PLAYER2) winnerId = match.player2Id;
 
-  if (result === RESULT.DRAW) {
+  if (!isAi && result === RESULT.DRAW) {
     // Refund both players — full stake for a normal draw, 95% (5%
     // rake per side) for an overtime tie, per computePayout.
     await tx
@@ -556,7 +676,7 @@ async function settleMatch(tx, match, options = {}) {
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
       .where(eq(users.clerkId, match.player2Id));
-  } else {
+  } else if (!isAi) {
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
@@ -586,7 +706,9 @@ async function settleMatch(tx, match, options = {}) {
 
   const finalRow = updated || match;
 
-  await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
+  if (!isAi) {
+    await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
+  }
 
   return finalRow;
 }
@@ -748,7 +870,20 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       current = await startRound(tx, current, 1);
     }
 
-    // 2) Round deadline elapsed → resolve (and possibly settle).
+    // 2) Free AI catch recovery: process any planned balls whose
+    // server-clock reaction window is currently reachable. The helper
+    // writes only through the same catch shape as a human submission.
+    if (
+      isFreeAiMatch(current) &&
+      ROUND_STATES.has(current.status) &&
+      current.roundDeadline &&
+      new Date(current.roundDeadline).getTime() > Date.now()
+    ) {
+      const aiResult = await playAiTurnInTransaction(tx, current);
+      current = aiResult.match || current;
+    }
+
+    // 3) Round deadline elapsed → resolve (and possibly settle).
     if (
       ROUND_STATES.has(current.status) &&
       current.roundDeadline &&
@@ -757,7 +892,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       current = await resolveRound(tx, current);
     }
 
-    // 3) Overtime countdown elapsed → settle by most tiles (an
+    // 4) Overtime countdown elapsed → settle by most tiles (an
     //    overtime tie is a DRAW refunding 95% per player).
     if (
       current.status === MATCH_STATUS.OVERTIME &&
@@ -853,15 +988,20 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       p2Score: loserIsP1 ? POINTS_TO_WIN : 0,
     };
     const result = decideMatchResult(tallies);
-    const payout = computePayout({
-      stakeAmount: match.stakeAmount,
-      result,
-    });
+    const isAi = isFreeAiMatch(match);
+    const payout = isAi
+      ? { winnerNet: 0, houseFee: 0, prizePaid: 0 }
+      : computePayout({
+          stakeAmount: match.stakeAmount,
+          result,
+        });
 
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerUserId));
+    if (!isAi) {
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
+        .where(eq(users.clerkId, winnerUserId));
+    }
 
     const settlement = {
       winnerId: winnerUserId,
@@ -889,7 +1029,9 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
 
     // Record AFTER the row update so the stat side-effect sees the
     // freshly stamped prizePaid (mirrors settleMatch).
-    await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});
+    if (!isAi) {
+      await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});
+    }
 
     return { match: finalRow, forfeited: true };
   });

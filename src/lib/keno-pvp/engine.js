@@ -168,7 +168,49 @@ export function decideMatchResult({ roundsWonPlayer1, roundsWonPlayer2, p1Score,
   return RESULT.DRAW;
 }
 
+// ── Server AI catch plan ──────────────────────────────────────────────
+// The AI reacts to the same timed stream as a human. The plan is
+// deterministic per match/round, but the server still checks the real
+// clock before writing each catch. This gives the bot realistic misses
+// and reaction time without trusting client timestamps or inventing
+// catches outside the normal catch window.
+const AI_CATCH_RATES = [0.48, 0.44, 0.4, 0.36, 0.32];
+
+function aiHash(value) {
+  const text = String(value ?? "");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Return the balls the AI will attempt to catch in a round and its
+ * reaction delay for each attempt. The server decides whether a plan
+ * entry is actually catchable when the endpoint/poll runs.
+ */
+export function chooseAiCatchPlan({ draw, roundNumber = 1, seed = "" } = {}) {
+  const numbers = Array.isArray(draw)
+    ? [...new Set(draw)].filter(
+        (number) => Number.isInteger(Number(number)) && Number(number) >= 1 && Number(number) <= KENO_POOL_SIZE,
+      ).slice(0, BALL_COUNT)
+    : [];
+  const round = Math.max(1, Math.min(AI_CATCH_RATES.length, Number(roundNumber) || 1));
+  const catchRate = AI_CATCH_RATES[round - 1];
+
+  return numbers.flatMap((number, index) => {
+    const base = aiHash(`${seed}:${round}:${number}:${index}`);
+    if (base % 1000 >= catchRate * 1000) return [];
+    return [{
+      number: Number(number),
+      reactionMs: 150 + (aiHash(`${seed}:${round}:${number}:reaction`) % 251),
+    }];
+  });
+}
+
 // Re-export the multiplier table lookup so routes/tests use the same
-// source of truth as the solo-kneo scoring.
+// source of truth as the solo-keno scoring.
 export { getKenoMultiplier };
 export { MAX_ROUNDS, POINTS_TO_WIN };

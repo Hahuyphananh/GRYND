@@ -101,6 +101,7 @@ type MatchData = {
   id: number;
   player1Id: string | null;
   player2Id: string | null;
+  isAi?: boolean;
   stakeAmount: number;
   status: string;
   phase: string | null;
@@ -351,6 +352,7 @@ export default function MemoryGridMatchPage({
   // Local clock: drives the phase countdown AND hides the pattern
   // at the server's absolute deadline (never wait for the poll).
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const aiTriggerRef = useRef("");
 
   const lastRoundRef = useRef("");
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -571,6 +573,22 @@ export default function MemoryGridMatchPage({
     [matchId, posthog, submitting, fetchStatus],
   );
 
+  // Trigger the server AI after the human's reconstruction starts.
+  // The server remains authoritative and the endpoint is idempotent;
+  // polling is still the recovery path if this request fails.
+  useEffect(() => {
+    if (!match?.isAi || !playing || !isReconstruct || viewerSubmitted) return;
+    const key = `${match.id}:${match.roundNumber}`;
+    if (aiTriggerRef.current === key) return;
+    aiTriggerRef.current = key;
+    fetch(`/api/memory-grid/match/${match.id}/ai-turn`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }).then(() => fetchStatus()).catch(() => {});
+  }, [fetchStatus, isReconstruct, match?.id, match?.isAi, match?.roundNumber, playing, viewerSubmitted]);
+
   // ── Tile interaction ──────────────────────────────────────────────
   // The viewer can tap only while reconstructing AND hasn't already
   // submitted (their seat locks the moment they submit — grid frozen,
@@ -625,7 +643,9 @@ export default function MemoryGridMatchPage({
   // Also null-safe for the same first-render reason as the scores
   // above.
   const oppHead = match ? (viewerIsPlayer1 ? match.players?.p2 : match.players?.p1) : null;
-  const oppName = oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
+  const oppName = match?.isAi
+    ? "GRYND AI"
+    : oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
   const oppAvatar = oppHead?.profileImageUrl || null;
 
   // Waiting state: the creator can cancel their own open lobby, and
@@ -1008,6 +1028,8 @@ export default function MemoryGridMatchPage({
                   ? "You win!"
                   : viewerLost
                     ? "You lose"
+                    : match?.isAi
+                    ? "Draw. Free match"
                     : "Draw. 95% refund"}
               </span>
             )}
@@ -1240,11 +1262,17 @@ export default function MemoryGridMatchPage({
               )}
               {isDraw && (
                 <p className="text-white/70">
-                  Tiebreak tied. Both players refunded{" "}
-                  <span className="font-bold text-yellow-300">
-                    {(match.refundEach ?? 0).toLocaleString()}
-                  </span>{" "}
-                  (95%, 5% house fee each).
+                  {match.isAi ? (
+                    "Free AI match draw. No tokens were wagered."
+                  ) : (
+                    <>
+                      Tiebreak tied. Both players refunded{" "}
+                      <span className="font-bold text-yellow-300">
+                        {(match.refundEach ?? 0).toLocaleString()}
+                      </span>{" "}
+                      (95%, 5% house fee each).
+                    </>
+                  )}
                 </p>
               )}
               <p className="flex items-center justify-between text-xs text-white/40">
@@ -1268,7 +1296,7 @@ export default function MemoryGridMatchPage({
           a draw: both players get their stake back minus the 5%
           per-side house fee. Overlays the finished screen (both
           players see the identical refund amount). */}
-      {isFinished && isDraw && match && (
+      {isFinished && isDraw && match && !match.isAi && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

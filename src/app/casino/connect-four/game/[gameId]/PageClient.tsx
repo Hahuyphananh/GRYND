@@ -175,6 +175,25 @@ export default function ConnectFourGamePage() {
     setStatusText(myTurn ? "Your move" : "Opponent's move");
   };
 
+  const aiMoveKeyRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!game?.isAiGame || game.status !== "in_progress" || game.currentTurn !== "guest") return;
+    const key = Number(game.guestDiscsUsed || 0) + Number(game.hostDiscsUsed || 0);
+    if (aiMoveKeyRef.current === key) return;
+    const timer = window.setTimeout(async () => {
+      aiMoveKeyRef.current = key;
+      const res = await fetch("/api/connect-four/ai-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ gameId: Number(gameId) }),
+      });
+      if (!res.ok) aiMoveKeyRef.current = null;
+      await fetchState();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [game?.isAiGame, game?.status, game?.currentTurn, game?.guestDiscsUsed, game?.hostDiscsUsed, gameId]);
+
   useEffect(() => {
     fetchState();
     const interval = setInterval(fetchState, 1000);

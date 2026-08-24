@@ -235,6 +235,14 @@ export const HOUSE_RATIO = 0.10;
 // P=0x50.
 export const KENO_PVP_LOCK_NAMESPACE = 0x4b505650 & 0x7fffffff;
 
+// Stable internal seat identity for free human-vs-AI matches. This is
+// never a Clerk user and must never be used for balance/stat updates.
+export const KENO_AI_PLAYER_ID = "keno_ai_bot";
+
+export function isFreeAiMatch(match) {
+  return Boolean(match?.isAi);
+}
+
 // Result vocabulary — matches the `keno_pvp_rounds.round_winner`
 // varchar(10) and `keno_pvp_matches.result` varchar(20) columns.
 export const RESULT = Object.freeze({

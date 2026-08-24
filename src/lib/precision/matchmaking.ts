@@ -27,11 +27,13 @@ export function makeInitialMatch(
   players: PrecisionPlayer[],
   phase: PrecisionState["phase"] = "ready_up",
   currentTurn: PrecisionState["turn"] = 1,
+  isAiGame = false,
 ): PrecisionState {
   return {
     matchId,
     phase,
     wager,
+    isAiGame,
     players,
     turn: currentTurn,
     // Best-of-5 server-authoritative score — see recordRoundStop.

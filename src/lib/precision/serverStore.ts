@@ -61,6 +61,8 @@ const globalForPrecision = globalThis as typeof globalThis & {
    *  flips to "finished" by `recordRoundStop` (matchwon branch) or
    *  by the resign route handler. NEVER sent to clients. */
   __precisionMatchFinishedAt?: Map<string, number>;
+  /** Server-only AI stop timers, keyed by match id. */
+  __precisionAiTimers?: Map<string, NodeJS.Timeout>;
   __precisionSweepInstalled?: boolean;
 };
 
@@ -82,6 +84,9 @@ if (!globalForPrecision.__precisionRoundTargets) {
 if (!globalForPrecision.__precisionMatchFinishedAt) {
   globalForPrecision.__precisionMatchFinishedAt = new Map();
 }
+if (!globalForPrecision.__precisionAiTimers) {
+  globalForPrecision.__precisionAiTimers = new Map();
+}
 
 export const precisionLobbyStore = globalForPrecision.__precisionStableLobbies;
 export const precisionMatchStore = globalForPrecision.__precisionStableMatches;
@@ -93,6 +98,13 @@ export const precisionRoundTargets =
   globalForPrecision.__precisionRoundTargets;
 export const precisionMatchFinishedAt =
   globalForPrecision.__precisionMatchFinishedAt;
+export const precisionAiTimers = globalForPrecision.__precisionAiTimers;
+
+export const PRECISION_AI_USER_ID = "AI_BOT";
+
+export function isPrecisionAiMatch(match: PrecisionState | null | undefined): boolean {
+  return Boolean(match?.isAiGame) && match.players.some((p) => p.seat === 2 && p.userId === PRECISION_AI_USER_ID);
+}
 
 /** Clears the pending-stops map for a match — called by `recordRoundStop`
  *  after both seats have submitted for a round (round decided or match
@@ -117,6 +129,11 @@ export function cancelArming(matchId: string): void {
   // Clear the timer if one was scheduled — bail if not, but STILL drop
   // any orphan target slot so an explicit teardown from resign /
   // disconnect / resetGame works even when the timer already fired.
+  const aiTimer = precisionAiTimers.get(matchId);
+  if (aiTimer) {
+    clearTimeout(aiTimer);
+    precisionAiTimers.delete(matchId);
+  }
   const timer = precisionArmingTimers.get(matchId);
   if (timer) {
     clearTimeout(timer);
@@ -312,6 +329,7 @@ export function armMatchRound(matchId: string): boolean {
     // match-finish via `cancelArming` and the dedicated `matchFinished`
     // branch below.
     m.version += 1;
+    schedulePrecisionAiStop(m);
   }, delay);
   precisionArmingTimers.set(matchId, timer);
   // Don't hold the Node process alive during graceful shutdown.
@@ -469,8 +487,27 @@ export interface RecordRoundStopResult {
   error?: string;
 }
 
+function schedulePrecisionAiStop(match: PrecisionState): void {
+  if (!isPrecisionAiMatch(match) || match.phase !== "active") return;
+  if (precisionAiTimers.has(match.matchId)) return;
+  const target = Number(match.targetMs);
+  if (!Number.isFinite(target)) return;
+  // The bot aims near the server-revealed target with a small natural
+  // error. The STOP itself is still stamped by recordRoundStop; this
+  // delay only schedules when the bot sends its signal.
+  const reactionError = 80 + Math.floor(Math.random() * 241);
+  const timer = setTimeout(() => {
+    precisionAiTimers.delete(match.matchId);
+    const live = precisionMatchStore.get(match.matchId);
+    if (!live || live.phase !== "active" || live.roundId === null || live.roundNonce === null) return;
+    recordRoundStop(live.matchId, PRECISION_AI_USER_ID, live.roundId, live.roundNonce);
+  }, Math.max(100, target + reactionError));
+  timer.unref?.();
+  precisionAiTimers.set(match.matchId, timer);
+}
+
 /**
- * Atomically records a single player's STOP signal and captures the
+ *  Atomically records a single player's STOP signal and captures the
  * SERVER-side timestamp at receive time. The elapsed time is computed
  * authoritatively as `stopInstant - match.roundGoInstant` — clients
  * never participate in scoring (no stopMs is accepted from them). When
@@ -982,6 +1019,7 @@ export function recordRoundStop(
   }
 
   match.version += 1;
+  if (match.phase === "active") schedulePrecisionAiStop(match);
   return {
     match,
     alreadySubmitted,

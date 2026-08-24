@@ -255,6 +255,21 @@ export async function processMatchFinishedPayout(
     };
   }
 
+  // Free AI matches still pass through the finished-match endpoint so
+  // the result UI has one canonical path, but they never touch balances,
+  // wagered stats, leaderboards, or payout records.
+  if (match.isAiGame) {
+    precisionPaidOutMatches.add(matchId);
+    return {
+      success: true,
+      alreadyProcessed: false,
+      payout: 0,
+      newBalance: 0,
+      finalScore: match.score ?? null,
+      winnerUserId: winnerPlayer.userId,
+    };
+  }
+
   const payout = Number(
     (resolvedWager * PRECISION_PAYOUT_MULTIPLIER).toFixed(2),
   );

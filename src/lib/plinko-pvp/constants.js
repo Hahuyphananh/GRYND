@@ -114,6 +114,40 @@ export const MATCH_STATUS = Object.freeze({
   CANCELLED: "cancelled",
 });
 
+// Stable internal identity for free human-vs-AI matches. This is not a
+// Clerk user and must never be charged, credited, or included in PvP stats.
+export const PLINKO_AI_PLAYER_ID = "plinko_ai_bot";
+
+export function isFreeAiMatch(match) {
+  return Boolean(match?.isAi) && match?.player2Id === PLINKO_AI_PLAYER_ID;
+}
+
+// Deterministic bot launch policy. It intentionally varies the three
+// launch inputs by match and ball instead of submitting a fixed perfect
+// shot, while staying inside the same validated ranges as a human player.
+export function chooseAiLaunchInputs({ matchId, ballNumber } = {}) {
+  const key = `plinko-ai:${matchId ?? 0}:${ballNumber ?? 1}`;
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  let state = hash >>> 0;
+  const random = () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  return {
+    startX: Math.round(120 + random() * 260),
+    power: Math.round(35 + random() * 40),
+    angleDeg: Math.round(-24 + random() * 48),
+  };
+}
+
 // States where the match is still in progress (not yet terminal).
 // `READY` is in this set so /status polls include it, but launches
 // are NOT accepted during the brief 3-second "Get ready" banner

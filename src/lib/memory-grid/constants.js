@@ -49,14 +49,12 @@
 //     A tiebreak round that ALSO ties → DRAW — each player refunded
 //     95% of their stake (5% rake per side; never an invented
 //     winner).
-//   * Round scoring (max 100 per round, accuracy-dominant):
-//         Final Score = Accuracy Score × Speed Multiplier, clamped to
-//         [0, 100]. Accuracy Score = % of grid cells reconstructed
-//         correctly. Speed tiers (fraction of the reconstruct window
-//         elapsed): very fast ≤25% ×1.20 · fast ≤50% ×1.15 · average
-//         ≤75% ×1.10 · slow <100% ×1.05 · very slow ≥100% ×1.00.
-//         Every round uses the SAME 0..100 scale — there are no
-//         round-number multipliers or growing maximums.
+//   * Round scoring (max 100 per round, exact accuracy):
+//         Final Score = % of grid cells reconstructed correctly,
+//         rounded to one decimal place. Speed tiers are recorded for
+//         feedback only and never change the points. Every round uses
+//         the SAME 0..100 scale — there are no round-number multipliers
+//         or growing maximums.
 //   * The active-tile pattern is server-authoritative and hidden
 //     from every client except during its own memorize phase (and
 //     from both clients once the match finishes, for the reveal).
@@ -433,15 +431,13 @@ export function activeSet(pattern) {
 //     incorrect,        // FP + FN — cells differing from the pattern
 //     accuracy,         // correct / total (0..1)
 //     accuracyPct,      // accuracy as a percentage (1dp) — this IS
-//                       // the round's Accuracy Score (0..100) before
-//                       // the speed multiplier is applied
+//                       // the round's final score (0..100)
 //   }
 //
 // Duplicate picks, out-of-range indices and malformed entries are
-// ignored (never throw). The FINAL round score (accuracy × speed,
-// clamped to 0..100) is computed separately by computeFinalRoundScore
-// — it needs the reconstruction's completion time, which this pure
-// pattern-vs-picks comparison does not have.
+// ignored (never throw). The final round score is the exact accuracy
+// percentage and is computed separately by computeFinalRoundScore so
+// the empty-reconstruction guard can be applied.
 export function assessReconstruction(picks, pattern) {
   const empty = {
     total: 0,
@@ -490,25 +486,13 @@ export function assessReconstruction(picks, pattern) {
   };
 }
 
-// ── Round scoring (accuracy-dominant, max 100 per round) ─────────────
+// ── Round scoring (exact accuracy, max 100 per round) ────────────────
 //
-// Final Score = Accuracy Score × Speed Multiplier, clamped to [0, 100].
-//   * Accuracy Score  = percentage of grid cells reconstructed
-//     correctly (correct / total × 100, from assessReconstruction).
-//     Accuracy is the DOMINANT factor: the speed multiplier can only
-//     ever add up to +20% on top, so a player with significantly
-//     worse accuracy can never beat a player who remembered more —
-//     even at maximum speed.
-//   * Speed Multiplier = a tier derived from how quickly the player
-//     completed their reconstruction relative to the round's
-//     reconstruct window:
-//         very fast  ≤ 25% of the window   → ×1.20 (+20%)
-//         fast       ≤ 50%                 → ×1.15 (+15%)
-//         average    ≤ 75%                 → ×1.10 (+10%)
-//         slow       < 100%                → ×1.05 (+5%)
-//         very slow  ≥ 100% (deadline/AFK) → ×1.00 (+0%)
-//   * Every round uses the SAME 0..100 scale — there are NO round-
-//     number multipliers and the maximum never grows for later rounds.
+// Final Score = exact full-grid accuracy percentage, rounded to one
+// decimal place and clamped to [0, 100]. Speed is recorded for display
+// and analytics but never changes the score: 64% accuracy means 64
+// points, and 100% accuracy means 100 points. Every round uses the
+// same 0..100 scale.
 
 export const SPEED_TIER_MULTIPLIERS = Object.freeze({
   very_fast: 1.2,
@@ -545,31 +529,19 @@ export function speedMultiplierFromCompletion(completionTimeMs, windowMs) {
   return { tier: "very_slow", multiplier: SPEED_TIER_MULTIPLIERS.very_slow };
 }
 
-// The round's FINAL score — an integer in [0, 100] (persisted to
-// p1_round_score / p2_round_score and used for the round-winner
-// comparison):
-//   accuracy (0..1) → accuracy score (0..100)
-//   × speed multiplier (1.0..1.2)
-//   → rounded + clamped to [0, 100]
-//
-// `pickedCount` (optional) is the number of tiles the player selected:
-// an EMPTY reconstruction (0 picks — e.g. an AFK auto-lock) scores 0.
-// Leaving the grid blank must not earn points even though the
-// accuracy formula would count the true negatives; this keeps
-// "do nothing" from being a viable farming strategy.
+// The round's FINAL score is the exact accuracy percentage (0..100),
+// rounded to one decimal place. `pickedCount` is retained as an
+// explicit AFK guard: an empty reconstruction scores 0 rather than
+// receiving true-negative points for doing nothing.
 export function computeFinalRoundScore({
   accuracy,
-  completionTimeMs,
-  windowMs,
   pickedCount,
 }) {
   if (Number(pickedCount) === 0) return 0;
   const acc = Number(accuracy);
   const accuracyScore =
     (Number.isFinite(acc) ? Math.min(1, Math.max(0, acc)) : 0) * 100;
-  const { multiplier } = speedMultiplierFromCompletion(completionTimeMs, windowMs);
-  const raw = accuracyScore * multiplier;
-  return Math.min(100, Math.max(0, Math.round(raw)));
+  return Math.min(100, Math.max(0, Number(accuracyScore.toFixed(1))));
 }
 
 // ── Payout calculator ───────────────────────────────────────────────
@@ -635,6 +607,89 @@ export function computePayout({ stakeAmount, result, drawFeePct = 0 }) {
     prizePaid: round2(stake + winnerPrize),
     refundEach: null,
   };
+}
+
+// ── Free AI match helpers ────────────────────────────────────────────
+// Stable internal seat identity for free human-vs-AI matches. This is
+// never a Clerk user and must never be used for balance/stat updates.
+export const MEMORY_GRID_AI_PLAYER_ID = "memory_grid_ai_bot";
+
+export function isFreeAiMatch(match) {
+  return Boolean(match?.isAi);
+}
+
+// Small deterministic PRNG used only to make the bot's mistakes vary by
+// match and round without relying on Math.random inside the state machine.
+function aiSeedValue(value) {
+  const text = String(value ?? "");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function aiRandom(seed) {
+  let state = aiSeedValue(seed);
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffledAiCopy(values, rand) {
+  const copy = [...values];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+// Balanced memory policy: the bot remembers well in the opening rounds,
+// then makes more misses and occasional false-positive picks as the
+// grids become denser. The returned picks go through the same
+// assessReconstruction + computeFinalRoundScore pipeline as a human.
+export function chooseAiReconstruction({ pattern, roundNumber = 1, seed = 0 } = {}) {
+  const size = Number(pattern?.size);
+  const total = Number.isInteger(size) && size > 0 ? size * size : 0;
+  const active = [...new Set(pattern?.active ?? [])].filter(
+    (cell) => Number.isInteger(cell) && cell >= 0 && cell < total,
+  );
+  if (total === 0 || active.length === 0) return [];
+
+  const round = Math.max(1, Math.min(6, Number(roundNumber) || 1));
+  const recallByRound = [0.94, 0.88, 0.84, 0.79, 0.75, 0.7];
+  const recall = recallByRound[round - 1];
+  const rand = aiRandom(`${seed}:${round}:picks`);
+  const shuffledActive = shuffledAiCopy(active, rand);
+  const hits = Math.max(1, Math.round(active.length * recall));
+  const picks = shuffledActive.slice(0, Math.min(active.length, hits));
+
+  const activeSetForAi = new Set(active);
+  const inactive = [];
+  for (let cell = 0; cell < total; cell += 1) {
+    if (!activeSetForAi.has(cell)) inactive.push(cell);
+  }
+  // False positives make the bot's reconstruction feel human rather
+  // than giving it a perfect answer with a few misses only.
+  const falsePositiveCount = round >= 4 ? 2 : round >= 2 ? 1 : 0;
+  picks.push(...shuffledAiCopy(inactive, rand).slice(0, falsePositiveCount));
+  return [...new Set(picks)].sort((a, b) => a - b);
+}
+
+// The bot submits partway through the 15-second reconstruction window.
+// Later/dense rounds take longer, with deterministic per-match jitter so
+// AI games do not all resolve at the exact same timestamp.
+export function aiSubmissionDelayMs({ roundNumber = 1, matchId = 0 } = {}) {
+  const round = Math.max(1, Math.min(6, Number(roundNumber) || 1));
+  const baseByRound = [4200, 5000, 5800, 6600, 7400, 8200];
+  const jitter = (aiSeedValue(`${matchId}:${round}:delay`) % 1201) - 600;
+  return Math.max(2500, Math.min(10000, baseByRound[round - 1] + jitter));
 }
 
 // ── Format helpers ──────────────────────────────────────────────────

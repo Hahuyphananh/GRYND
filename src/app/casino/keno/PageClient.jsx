@@ -59,6 +59,7 @@ export default function KenoLobbyPage() {
   const [joiningId, setJoiningId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
   const [error, setError] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const fetchAvailable = useCallback(async () => {
     try {
@@ -216,9 +217,40 @@ export default function KenoLobbyPage() {
     [fetchAvailable, posthog, socket],
   );
 
+  const playVsAi = useCallback(async () => {
+    setAiBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/keno-pvp/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Unable to start free AI match");
+        return;
+      }
+      const matchId = data?.data?.match?.id;
+      if (matchId) {
+        posthog?.capture("keno_pvp_ai_match_created", { match_id: matchId });
+        socket?.emit("room_event", {
+          roomId: kenoPvpMatchRoom(matchId),
+          event: KENO_PVP_MATCH_UPDATED,
+        });
+        router.push(`/casino/keno-pvp/${matchId}`);
+      }
+    } catch {
+      setError("Unable to start free AI match");
+    } finally {
+      setAiBusy(false);
+    }
+  }, [posthog, router, socket]);
+
   const myOpenMatchId = myOpenMatch?.id ?? null;
   const stakeValid = stake > 0 && (balance === null || balance >= stake);
-  const canCreate = isSignedIn && !busy && stakeValid && myOpenMatchId === null;
+  const canCreate = isSignedIn && !busy && !aiBusy && stakeValid && myOpenMatchId === null;
 
   return (
     <PvpLobbyPage
@@ -284,6 +316,13 @@ export default function KenoLobbyPage() {
         createOrJoin(stake);
       }}
       canPlay={canCreate}
+      vsAi={{
+        label: "Play Free vs AI",
+        badge: "No tokens",
+        onClick: playVsAi,
+        disabled: !isSignedIn || busy || aiBusy,
+        busy: aiBusy,
+      }}
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

@@ -238,19 +238,18 @@ export function bankedScoreOf(match, seat) {
   return last;
 }
 
-// Whether the seat has busted (picked a bad tile or thrown a wrong
-// flag) — their climb is over and unbanked points are lost.
+// Whether the seat has busted at least once. Busts clear only the
+// current unbanked run; they do not end the match or lock the player out.
 export function hasBusted(match, seat) {
   const actions = Array.isArray(match?.actions) ? match.actions : [];
   return actions.some((a) => a && a.seat === seat && a.safe === false);
 }
 
-// Whether the seat's climb is over: busted, or completed the tower.
-// Banking does NOT end a climb.
-export function climbEnded(match, seat) {
-  if (!match) return false;
-  const lane = Number(seat === "player1" ? match.p1Lane : match.p2Lane) || 0;
-  return lane >= MAX_LANES || hasBusted(match, seat);
+// Simultaneous play has no terminal climb state. A bust clears the
+// current run and the player may immediately try the same lane again;
+// reaching the top of the tower wraps back to lane 0.
+export function climbEnded() {
+  return false;
 }
 
 // Both climbs are over.
@@ -258,30 +257,30 @@ export function bothEnded(match) {
   return climbEnded(match, "player1") && climbEnded(match, "player2");
 }
 
-// What a player KEEPS when the match settles:
-//   • Busted → their last banked total (0 if never banked) — the
-//     insurance banking buys; unbanked points are lost.
-//   • Completed → their full accumulated score.
-//   • Banked but still active when the other side ends it → their
-//     banked total (only banked points are safe).
-//   • Active with no bank when the opponent busts → their
-//     accumulated score (they survived; the opponent lost all).
+// Score at settlement is the player's current run. Banked totals are
+// retained separately for the race and for the post-match summary.
 export function finalScoreOf(match, seat) {
-  if (hasBusted(match, seat)) return bankedScoreOf(match, seat);
-  const accumulated = scoreFromActions(match.actions, seat);
-  if (climbEnded(match, seat)) return accumulated; // completed
-  return hasBanked(match, seat) ? bankedScoreOf(match, seat) : accumulated;
+  return scoreFromActions(match?.actions, seat);
 }
 
-// Total points from an action history for a seat. Counts every SAFE
-// action — safe picks AND correct flags both carry `safe: true` +
-// points (a correct flag claims the row exactly like a safe pick).
-// Holds, busts, and wrong flags never carry points.
+// Current unbanked run from an action history. A bust is a hard reset
+// for that seat: all points earned after its previous bust disappear,
+// while hold actions preserve the locked total separately.
 export function scoreFromActions(actions, seat) {
   if (!Array.isArray(actions)) return 0;
   let total = 0;
+  let lastBanked = 0;
   for (const a of actions) {
-    if (a && a.safe === true && a.seat === seat) {
+    if (!a || a.seat !== seat) continue;
+    if (a.action === "hold" && a.bankedTotal != null) {
+      lastBanked = Number(a.bankedTotal) || 0;
+      continue;
+    }
+    if (a.safe === false) {
+      total = lastBanked;
+      continue;
+    }
+    if (a.safe === true) {
       total += Number(a.points) || 0;
     }
   }
@@ -305,6 +304,7 @@ export function isBotMatch(match) {
   return Boolean(match && isBotUser(match.player2Id));
 }
 
+
 // Multiplier at a given lane step for a difficulty (kept for
 // backwards-compat with tests and the fair-reveal copy; the UI now
 // scores by POINTS, not multipliers).
@@ -320,6 +320,7 @@ export function laneMultiplier(lane, difficulty = "easy") {
 export const MATCH_STATUS = Object.freeze({
   WAITING: "waiting",
   READY: "ready",
+  ACTIVE: "active",
   P1_TURN: "p1_turn",
   P2_TURN: "p2_turn",
   FINISHED: "finished",
@@ -329,6 +330,7 @@ export const MATCH_STATUS = Object.freeze({
 // States where the match is still in progress (not yet terminal).
 export const ACTIVE_STATES = new Set([
   MATCH_STATUS.READY,
+  MATCH_STATUS.ACTIVE,
   MATCH_STATUS.P1_TURN,
   MATCH_STATUS.P2_TURN,
 ]);
@@ -336,6 +338,7 @@ export const ACTIVE_STATES = new Set([
 // States where a pick/hold action is accepted. `READY` is excluded
 // (the brief auto-transition window after both players join).
 export const PICKABLE_STATES = new Set([
+  MATCH_STATUS.ACTIVE,
   MATCH_STATUS.P1_TURN,
   MATCH_STATUS.P2_TURN,
 ]);
@@ -356,6 +359,7 @@ export const FINISHED_GRACE_MS = 5000;
 // ── Per-turn window ───────────────────────────────────────────────
 export const ROUND_TIMER_SECONDS = 20;
 export const ROUND_PICK_DEADLINE_MS = ROUND_TIMER_SECONDS * 1000;
+export const BOT_ACTION_INTERVAL_MS = 1500;
 
 // ── Stake matchmaking constants ───────────────────────────────────
 export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
@@ -540,8 +544,7 @@ export function computePayout({ stakeAmount, result }) {
 // Returns { action: "hold" } | { action: "pick", path, tileIndex }.
 export function decideBotAction(match, { random = Math.random } = {}) {
   if (!match) return null;
-  if (match.currentTurnUserId !== BOT_USER_ID) return null;
-  if (climbEnded(match, "player2")) return null; // busted/completed
+  if (!isBotMatch(match) && match.currentTurnUserId !== BOT_USER_ID) return null;
 
   const difficulty = match.difficulty || "easy";
   const botBanked = hasBanked(match, "player2");

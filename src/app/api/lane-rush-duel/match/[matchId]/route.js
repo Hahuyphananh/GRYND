@@ -111,11 +111,10 @@ function normaliseMatchForViewer(match, viewerUserId) {
         ? match.p1Tower
         : match.p2Tower
       : null,
-    oppTower: finished
-      ? opponentSeat === "player1"
-        ? match.p1Tower
-        : match.p2Tower
-      : null,
+    // The opponent's tower is never part of the viewer payload. In
+    // simultaneous play it has no interactive purpose and must not
+    // expose hidden board state.
+    oppTower: null,
     p1Points: Number(match.p1Points) || 0,
     p2Points: Number(match.p2Points) || 0,
     serverSeed: finished ? match.serverSeed : null,

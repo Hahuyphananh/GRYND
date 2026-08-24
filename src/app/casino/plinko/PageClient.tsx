@@ -193,11 +193,6 @@ export default function PlinkoPvpLobbyPage() {
           setError(data?.error || "Unable to start match");
           return;
         }
-        // Best-effort fan-out to the per-match room so the opponent
-        // (if they're already sitting on the match view) sees the
-        // status flip without waiting for the next poll. The
-        // realtime-server's generic room_event handler routes the
-        // payload identically to MINES_PVP / BLACKJACK_PVP.
         socket?.emit("room_event", {
           roomId: plinkoPvpMatchRoom(data.data.match.id),
           event: PLINKO_PVP_MATCH_UPDATED,
@@ -214,6 +209,37 @@ export default function PlinkoPvpLobbyPage() {
     },
     [posthog, router, socket],
   );
+
+  const playVsAi = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/plinko-pvp/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Unable to start free AI match");
+        return;
+      }
+      const matchId = data?.data?.match?.id;
+      if (!matchId) {
+        setError("AI match did not return a match id");
+        return;
+      }
+      posthog?.capture("plinko_pvp_ai_match_started", { match_id: matchId });
+      socket?.emit("room_event", {
+        roomId: plinkoPvpMatchRoom(matchId),
+        event: PLINKO_PVP_MATCH_UPDATED,
+      });
+      router.push(`/casino/plinko/${matchId}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [posthog, router, socket]);
 
   // Join a specific lobby from the open-lobbies list. The stake is
   // read from the list payload so the joiner sees what they're
@@ -302,6 +328,7 @@ export default function PlinkoPvpLobbyPage() {
   const stakeValid = stake > 0 && (balance === null || balance >= stake);
   const canCreate =
     isSignedIn && !busy && stakeValid && myOpenMatchId === null;
+  const canPlayAi = isSignedIn && !busy;
 
   return (
     <PvpLobbyPage
@@ -367,6 +394,11 @@ export default function PlinkoPvpLobbyPage() {
         createOrJoin(stake);
       }}
       canPlay={canCreate}
+      vsAi={{
+        label: "Play Free vs AI",
+        onClick: playVsAi,
+        disabled: !canPlayAi,
+      }}
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

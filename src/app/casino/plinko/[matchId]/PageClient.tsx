@@ -90,6 +90,7 @@ type NormalisedMatch = {
   id: number;
   player1Id: string;
   player2Id: string | null;
+  isAi: boolean;
   stakeAmount: number;
   status: string;
   currentBall: number;
@@ -1334,6 +1335,69 @@ export default function PlinkoPvpMatchPage({
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
+  // ── AI launch recovery ───────────────────────────────────────────
+  // The human remains fully interactive while the bot submits through
+  // the same /launch transaction. A retry counter handles transient
+  // network/server failures without making the AI client-authoritative.
+  const [aiRetry, setAiRetry] = useState(0);
+  const aiTurnKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const launchable =
+      match?.status === MATCH_STATUS.BALL_1 ||
+      match?.status === MATCH_STATUS.BALL_2 ||
+      match?.status === MATCH_STATUS.BALL_3 ||
+      match?.status === MATCH_STATUS.BALL_4;
+    if (!match?.isAi || !matchId || !launchable || match.p2CurrentInputs) {
+      if (!launchable || match?.status === MATCH_STATUS.FINISHED || match?.status === MATCH_STATUS.CANCELLED) {
+        aiTurnKeyRef.current = null;
+      }
+      return;
+    }
+
+    const key = `${matchId}:${match.currentBall}`;
+    if (aiTurnKeyRef.current === key) return;
+    const timer = setTimeout(async () => {
+      if (aiTurnKeyRef.current === key) return;
+      aiTurnKeyRef.current = key;
+      try {
+        const response = await fetch(`/api/plinko-pvp/match/${matchId}/ai-turn`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({}),
+        });
+        const json = await response.json().catch(() => ({}));
+        if (response.ok && json?.success) {
+          socket?.emit("room_event", {
+            roomId: plinkoPvpMatchRoom(matchId),
+            event: PLINKO_PVP_MATCH_UPDATED,
+          });
+          await fetchStatus();
+        } else if (response.status >= 500 || response.status === 0) {
+          aiTurnKeyRef.current = null;
+          setAiRetry((value) => value + 1);
+        } else {
+          // A 409/400 normally means the human or another request moved
+          // the locked row; polling reconciles the authoritative state.
+          await fetchStatus();
+        }
+      } catch {
+        aiTurnKeyRef.current = null;
+        setAiRetry((value) => value + 1);
+      }
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [
+    aiRetry,
+    fetchStatus,
+    match?.currentBall,
+    match?.isAi,
+    match?.p2CurrentInputs,
+    match?.status,
+    matchId,
+    socket,
+  ]);
+
   // ── Socket subscription ──────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
@@ -2115,7 +2179,9 @@ export default function PlinkoPvpMatchPage({
     return id.length <= 7 ? id : id.slice(0, 6) + "…";
   }
   const p1Name = match.players?.p1?.displayName ?? shortId(match.player1Id);
-  const p2Name = match.players?.p2?.displayName ?? shortId(match.player2Id);
+  const p2Name = match.isAi
+    ? "Plinko AI"
+    : match.players?.p2?.displayName ?? shortId(match.player2Id);
   const p1Avatar = match.players?.p1?.profileImageUrl ?? null;
   const p2Avatar = match.players?.p2?.profileImageUrl ?? null;
   // Report target: the opponent is whoever occupies the seat we don't
@@ -2355,15 +2421,19 @@ export default function PlinkoPvpMatchPage({
           </div>
 
           {/* Prize info */}
-          {!isDraw && (
+          {match.isAi ? (
+            <p className="text-center text-xs text-cyan-200/70 mt-4">
+              Free practice match — no tokens were wagered or paid out.
+            </p>
+          ) : !isDraw ? (
             <p className="text-center text-xs text-white/60 mt-4">
               Prize paid:{" "}
               <span className="text-white font-bold">
                 ${(match.prizePaid || 0).toFixed(2)}
               </span>
             </p>
-          )}
-          {isDraw && (
+          ) : null}
+          {isDraw && !match.isAi && (
             <p className="text-center text-xs text-white/60 mt-4">
               {match.houseFee > 0
                 ? `Each player refunded $${(Number(match.stakeAmount) * 0.95).toFixed(2)} (5% house fee)`
@@ -2398,7 +2468,7 @@ export default function PlinkoPvpMatchPage({
             </h1>
           </div>
           <div className="text-[11px] sm:text-xs text-white/60 flex items-center gap-3">
-            <span className="font-mono">${stake.toFixed(2)} stake</span>
+            <span className="font-mono">{match.isAi ? "Free AI practice" : `$${stake.toFixed(2)} stake`}</span>
             <span className="font-mono">Best-score-of-3</span>
             <span className="font-mono">{viewerSeat === "player1" ? "P1" : "P2"} seat</span>
             {opponentClerkId && (

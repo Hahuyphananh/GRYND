@@ -61,6 +61,7 @@ function normaliseMatch(match, viewerUserId) {
     id: match.id,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
+    isAi: Boolean(match.isAi),
     stakeAmount: Number(match.stakeAmount),
     status: match.status,
     currentRound: match.currentRound ?? 1,

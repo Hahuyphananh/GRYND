@@ -363,10 +363,11 @@ test("selecting every tile can never score high — false positives dominate acc
   assert.equal(a1.correct, 3);
   assert.equal(a1.incorrect, 6);
   assert.equal(a1.accuracyPct, 33.3);
-  // Even at MAXIMUM speed (×1.2) the final score stays low (40/100).
+  // The final score is the exact accuracy percentage; speed does not
+  // increase it.
   assert.equal(
     computeFinalRoundScore({ accuracy: a1.accuracy, completionTimeMs: 0, windowMs: 15000, pickedCount: 9 }),
-    40,
+    33.3,
   );
 
   // Round 5 (5×5, 14 active): picking all 25 tiles = 14 TP + 0 TN →
@@ -376,13 +377,13 @@ test("selecting every tile can never score high — false positives dominate acc
   assert.equal(a5.correct, 14);
   assert.equal(a5.incorrect, 11);
   assert.equal(a5.accuracyPct, 56);
-  const spamBest = computeFinalRoundScore({
+  const spamScore = computeFinalRoundScore({
     accuracy: a5.accuracy,
     completionTimeMs: 0,
     windowMs: 15000,
     pickedCount: 25,
   });
-  assert.ok(spamBest < 70, "all-tiles spam can never approach 100");
+  assert.equal(spamScore, 56, "all-tiles spam scores its exact accuracy");
 });
 
 test("empty reconstruction → true-negative accuracy, but final score 0 (no free points)", () => {
@@ -392,16 +393,17 @@ test("empty reconstruction → true-negative accuracy, but final score 0 (no fre
   assert.equal(a.incorrect, 3); // 3 FN
   assert.ok(Math.abs(a.accuracy - 6 / 9) < 1e-9);
   assert.equal(a.accuracyPct, 66.7);
-  // The pure formula would award 66.7 × speed — but an EMPTY
-  // submission (AFK auto-lock) is guarded to 0 via pickedCount.
+  // An EMPTY submission (AFK auto-lock) is guarded to 0 via
+  // pickedCount rather than receiving true-negative points.
   assert.equal(
     computeFinalRoundScore({ accuracy: a.accuracy, completionTimeMs: 1000, windowMs: 15000, pickedCount: 0 }),
     0,
   );
-  // A real submission with the same accuracy gets the formula.
+  // A real submission with the same accuracy gets exactly 66.7 points,
+  // regardless of how quickly it was submitted.
   assert.equal(
     computeFinalRoundScore({ accuracy: a.accuracy, completionTimeMs: 1000, windowMs: 15000, pickedCount: 3 }),
-    80,
+    66.7,
   );
 });
 
@@ -474,7 +476,7 @@ test("speed tiers map completion-time fractions to the spec'd multipliers", () =
   assert.equal(speedMultiplierFromCompletion(Number.NaN, W).multiplier, 1);
 });
 
-test("final score = accuracy × speed, clamped to [0, 100] for every round", () => {
+test("final score equals exact accuracy, clamped to [0, 100] for every round", () => {
   const W = 15000;
   const score = (accuracy, ms, picked) =>
     computeFinalRoundScore({ accuracy, completionTimeMs: ms, windowMs: W, pickedCount: picked });
@@ -482,27 +484,24 @@ test("final score = accuracy × speed, clamped to [0, 100] for every round", () 
   // Perfect accuracy caps at 100 regardless of speed.
   assert.equal(score(1, 0, 6), 100);
   assert.equal(score(1, W, 6), 100);
-  // 90% accuracy: very fast ×1.2 = 108 → clamped 100; slow ×1.0 = 90.
-  assert.equal(score(0.9, 0, 6), 100);
+  // Speed no longer changes the score: 90% is always 90, and 80% is
+  // always 80.
+  assert.equal(score(0.9, 0, 6), 90);
   assert.equal(score(0.9, W, 6), 90);
-  // 80% accuracy × 1.2 = 96 — even max speed can't reach 100.
-  assert.equal(score(0.8, 0, 6), 96);
+  assert.equal(score(0.8, 0, 6), 80);
   // 0 accuracy → 0 no matter how fast.
   assert.equal(score(0, 0, 6), 0);
   // The function has NO round parameter — same 0..100 scale everywhere.
 });
 
-test("accuracy dominates speed — worse accuracy can't win on speed alone", () => {
+test("speed never changes the exact accuracy score", () => {
   const W = 15000;
   const fast75 = computeFinalRoundScore({ accuracy: 0.75, completionTimeMs: 0, windowMs: W, pickedCount: 6 });
-  const slow100 = computeFinalRoundScore({ accuracy: 1, completionTimeMs: W, windowMs: W, pickedCount: 6 });
-  assert.equal(fast75, 90); // 75% × 1.2
-  assert.equal(slow100, 100); // 100% × 1.0
-  assert.ok(fast75 < slow100, "accuracy must dominate speed");
-  // 85% accuracy at max speed can at most TIE a perfect player.
+  const slow75 = computeFinalRoundScore({ accuracy: 0.75, completionTimeMs: W, windowMs: W, pickedCount: 6 });
+  assert.equal(fast75, 75);
+  assert.equal(slow75, 75);
   const fast85 = computeFinalRoundScore({ accuracy: 0.85, completionTimeMs: 0, windowMs: W, pickedCount: 6 });
-  assert.equal(fast85, 100);
-  assert.ok(fast85 <= slow100);
+  assert.equal(fast85, 85);
 });
 
 // ═══════════════════════════════════════════════════════════════════

@@ -68,6 +68,7 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import { randomHex } from "../laneRunner";
 import {
   ACTIVE_STATES,
+  BOT_ACTION_INTERVAL_MS,
   BOT_USER_ID,
   DIFFICULTIES,
   LANE_RUSH_DUEL_LOCK_NAMESPACE,
@@ -343,7 +344,7 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
       // Both seats share the host's client seed + tower (one layout).
       p2ClientSeed: match.p1ClientSeed,
       p2Tower: match.p1Tower,
-      status: MATCH_STATUS.READY,
+      status: MATCH_STATUS.ACTIVE,
       firstPlayerId,
       currentTurnUserId: null,
       roundDeadline: readyDeadline,
@@ -392,14 +393,14 @@ async function createBotMatch(tx, userId, difficulty) {
       stakeAmount: "0.00",
       difficulty: diff,
       tilesPerLane: config.width,
-      status: MATCH_STATUS.READY,
+      status: MATCH_STATUS.ACTIVE,
       serverSeed,
       serverSeedHash,
       p1ClientSeed: clientSeed,
       p2ClientSeed: clientSeed,
       firstPlayerId: Math.random() < 0.5 ? userId : BOT_USER_ID,
       currentTurnUserId: null,
-      roundDeadline: new Date(Date.now() + READY_WINDOW_MS),
+      roundDeadline: null,
       roundTimerSeconds: 20,
       startedAt: new Date(),
     })
@@ -421,59 +422,57 @@ async function createBotMatch(tx, userId, difficulty) {
   return { match: withTowers || match, joined: true };
 }
 
-// ── Bot turn executor ────────────────────────────────────────────────
-// Triggered by the client (mirrors dice-duel's /ai-turn pattern) when
-// it's the bot's turn. Runs `decideBotAction` and applies the move
-// through the exact same advance/resolve paths as a human, so the
-// bot busts / completes / draws exactly like a real player would.
-export async function botAct({ matchId }) {
+// ── Bot executor ─────────────────────────────────────────────────────
+// The bot is just another simultaneous player. The client periodically
+// wakes this endpoint, while the transaction below remains authoritative
+// for cooldowns, tower checks, busts, banks, and the 1,000-point finish.
+export async function botAct({ matchId, requesterId }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
 
     if (!match) return { error: "Match not found", status: 404 };
+    if (!isBotMatch(match) || match.player2Id !== BOT_USER_ID) {
+      return { error: "Not a bot match", status: 403 };
+    }
+    if (!requesterId || requesterId !== match.player1Id) {
+      return { error: "Forbidden", status: 403 };
+    }
     if (!PICKABLE_STATES.has(match.status)) {
-      return { error: "Match is not awaiting an action", status: 400 };
+      return { error: "Match is not active", status: 400 };
     }
-    if (match.currentTurnUserId !== BOT_USER_ID) {
-      return { error: "Not the bot's turn", status: 409 };
-    }
+
+    const actions = Array.isArray(match.actions) ? match.actions : [];
+    const lastBotAction = [...actions]
+      .reverse()
+      .find((action) => action?.userId === BOT_USER_ID);
     if (
-      match.roundDeadline &&
-      new Date(match.roundDeadline).getTime() <= Date.now()
+      lastBotAction?.at &&
+      Date.now() - new Date(lastBotAction.at).getTime() < BOT_ACTION_INTERVAL_MS
     ) {
-      // Deadline already elapsed — let the AFK auto-pick path in
-      // fetchMatchWithAutoResolve handle it (random tile, may bust).
-      return { error: "Action window has expired", status: 409 };
+      return match;
     }
 
     const decision = decideBotAction(match);
-    if (!decision) {
-      return { error: "Bot cannot act", status: 409 };
-    }
+    if (!decision) return { error: "Bot cannot act", status: 409 };
 
     const lane = Number(match.p2Lane) || 0;
     const entry = {
       userId: BOT_USER_ID,
       seat: "player2",
-      action: "pick",
+      action: decision.action,
       tile: null,
       safe: null,
       lane,
       round: lane,
       points: 0,
       autoPicked: false,
-      pending: true,
+      pending: false,
       at: new Date().toISOString(),
     };
 
     if (decision.action === "hold") {
-      entry.action = "hold";
-      // Bank: lock the bot's accumulated points (soft bank — the bot
-      // keeps climbing at a reduced rate afterwards).
       entry.bankedTotal = scoreFromActions(match.actions, "player2");
     } else {
-      // pick — with the bot's chosen risk path (blind tile, same bust
-      // odds as a human), paying the bot's current bank rate.
       const pathKey = decision.path && isValidPath(decision.path)
         ? decision.path
         : "balanced";
@@ -489,25 +488,7 @@ export async function botAct({ matchId }) {
         : 0;
     }
 
-    // Deferred reveal, exactly like a human's act(): if the human
-    // already locked in a pick for this row, resolve the pair
-    // together; if the human is done (banked/completed), resolve
-    // immediately; otherwise park the bot's action and pass the turn.
-    const pending = lastPendingAction(match);
-    const pairComplete =
-      pending !== null &&
-      pending.seat !== "player2" &&
-      Number(pending.round) === lane;
-    const humanEnded = climbEnded(match, "player1");
-
-    if (pairComplete) {
-      return await resolveRound(tx, match, entry);
-    }
-    if (humanEnded) {
-      entry.pending = false;
-      return await applyEntryImmediately(tx, match, entry, "player2");
-    }
-    return await parkPendingAction(tx, match, entry, "player2");
+    return await applyEntryImmediately(tx, match, entry, "player2");
   });
 }
 
@@ -605,27 +586,11 @@ export async function act({ userId, matchId, action, path, tileIndex }) {
       return { error: "Forbidden", status: 403 };
     }
     if (!PICKABLE_STATES.has(match.status)) {
-      return { error: "Match is not awaiting an action", status: 400 };
-    }
-    if (
-      match.roundDeadline &&
-      new Date(match.roundDeadline).getTime() <= Date.now()
-    ) {
-      return { error: "Action window has expired", status: 400 };
-    }
-    if (match.currentTurnUserId !== userId) {
-      return { error: "It is not your turn", status: 403 };
+      return { error: "Match is not active", status: 400 };
     }
 
     const seat = seatForUser(match, userId);
     const lane = Number(seat === "player1" ? match.p1Lane : match.p2Lane) || 0;
-
-    // A player whose climb is over (busted or completed) can never
-    // act again. Banking does NOT end the climb — banked players
-    // keep playing at a reduced rate.
-    if (climbEnded(match, seat)) {
-      return { error: "Your climb is over", status: 400 };
-    }
 
     // Flag budget: each player gets MAX_FLAGS calls per match. The
     // limit is checked BEFORE the flag is recorded so a parked flag
@@ -650,7 +615,7 @@ export async function act({ userId, matchId, action, path, tileIndex }) {
       action: actAction,
       lane,
       round: lane,
-      pending: true,
+      pending: false,
       autoPicked: false,
       at: new Date().toISOString(),
     };
@@ -724,27 +689,9 @@ export async function act({ userId, matchId, action, path, tileIndex }) {
       return updated || { ...match, actions };
     }
 
-    const oppSeat = seat === "player1" ? "player2" : "player1";
-    const oppEnded = climbEnded(match, oppSeat);
-
-    // Deferred reveal: does the opponent already have a pending action
-    // for this row? If so, resolve the pair together.
-    const pending = lastPendingAction(match);
-    const pairComplete =
-      pending !== null &&
-      pending.seat !== seat &&
-      Number(pending.round) === lane;
-
-    if (pairComplete) {
-      return await resolveRound(tx, match, entry);
-    }
-    if (oppEnded) {
-      // Opponent's climb is over (busted/completed) — no one to
-      // reveal with.
-      entry.pending = false;
-      return await applyEntryImmediately(tx, match, entry, seat);
-    }
-    return await parkPendingAction(tx, match, entry, seat);
+    // Simultaneous play resolves this action immediately. The opponent
+    // has an independent lane and can submit their own action at any time.
+    return await applyEntryImmediately(tx, match, entry, seat);
   });
 }
 
@@ -796,37 +743,40 @@ async function parkPendingAction(tx, match, entry, seat) {
 // done (banked/completed) and the climber keeps climbing alone, so
 // there is nothing to defer.
 async function applyEntryImmediately(tx, match, entry, seat) {
+  const laneField = seat === "player1" ? "p1Lane" : "p2Lane";
+  const heldField = seat === "player1" ? "p1Held" : "p2Held";
+  const currentLane = Number(match[laneField]) || 0;
+  let nextLane = currentLane;
+  let nextHeld = Boolean(match[heldField]);
   if (entry.action === "hold") {
-    // Banking moves you past the row you banked on (capped at the
-    // top — a hold never completes the tower), keeping both players
-    // on the same row for the deferred pairing.
-    const laneField = seat === "player1" ? "p1Lane" : "p2Lane";
-    const next = {
-      ...match,
-      [seat === "player1" ? "p1Held" : "p2Held"]: true,
-      [laneField]: Math.max(
-        Number(match[laneField]) || 0,
-        Math.min(Number(entry.round) + 1, MAX_LANES - 1),
-      ),
-    };
-    return await afterRound(tx, next, entry, seat);
+    nextHeld = true;
+    // Banking locks the current run and keeps the player moving.
+    nextLane = (currentLane + 1) % MAX_LANES;
+  } else if (entry.safe === false) {
+    // Bust only resets the unbanked run. The player remains at the
+    // current lane and can immediately try again independently.
+    nextLane = currentLane;
+  } else {
+    nextLane = (currentLane + 1) % MAX_LANES;
   }
 
-  // pick + flag share the same resolution: safe (or a correct flag)
-  // advances; a bad pick or a wrong flag busts.
-  if (entry.safe === false) {
-    // Bust — the climb ends; unbanked points are lost. afterRound
-    // decides whether the match settles (banked insurance vs the
-    // opponent's position) or the opponent climbs on alone.
-    return await afterRound(tx, match, entry, seat);
+  const actions = [
+    ...(Array.isArray(match.actions) ? match.actions : []),
+    entry,
+  ];
+  const next = { ...match, [laneField]: nextLane, [heldField]: nextHeld, actions };
+
+  // A completed lane cycle is not a match result; only a banked score
+  // reaching the target ends the race.
+  if (entry.action === "hold" && Number(entry.bankedTotal) >= WIN_BANKED_SCORE) {
+    return await resolveMatch(tx, next, {
+      loserId: seat === "player1" ? match.player2Id : match.player1Id,
+      reason: "banked_target",
+      action: entry,
+    });
   }
 
-  const newLane = Number(entry.round) + 1;
-  const next = {
-    ...match,
-    [seat === "player1" ? "p1Lane" : "p2Lane"]: newLane,
-  };
-  return await afterRound(tx, next, entry, seat);
+  return await persistSimultaneousState(tx, next);
 }
 
 // Resolve a full row: both players acted (or were force-picked) on the
@@ -835,6 +785,30 @@ async function applyEntryImmediately(tx, match, entry, seat) {
 // Apply both in chronological order, then either settle the match
 // (bust / completion / both done) or hand the next row to the first
 // actor of the pair.
+async function persistSimultaneousState(tx, next) {
+  const [updated] = await tx
+    .update(laneRushDuelMatches)
+    .set({
+      p1Lane: next.p1Lane,
+      p2Lane: next.p2Lane,
+      p1Held: next.p1Held,
+      p2Held: next.p2Held,
+      status: MATCH_STATUS.ACTIVE,
+      currentTurnUserId: null,
+      roundDeadline: null,
+      actions: next.actions,
+    })
+    .where(
+      and(
+        eq(laneRushDuelMatches.id, next.id),
+        eq(laneRushDuelMatches.status, next.status),
+      ),
+    )
+    .returning();
+
+  return updated || next;
+}
+
 async function resolveRound(tx, match, entry) {
   const actions = Array.isArray(match.actions)
     ? [...match.actions, entry]
@@ -1062,11 +1036,10 @@ async function settle(tx, match, { result, action, reason }) {
         ? match.player2Id
         : null;
 
-  const actions = Array.isArray(match.actions)
-    ? [...match.actions, action].filter(Boolean)
-    : action
-      ? [action]
-      : [];
+  const existingActions = Array.isArray(match.actions) ? match.actions : [];
+  const actions = action && existingActions.includes(action)
+    ? existingActions
+    : [...existingActions, action].filter(Boolean);
 
   if (result === RESULT.DRAW) {
     // Full refund both — no house fee.
@@ -1162,6 +1135,30 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { error: "Forbidden", status: 403 };
     }
 
+    // Upgrade matches created by the old turn-based implementation.
+    // They become simultaneous as soon as either participant polls them.
+    if (
+      (match.status === MATCH_STATUS.P1_TURN ||
+        match.status === MATCH_STATUS.P2_TURN) &&
+      match.player2Id
+    ) {
+      const [upgraded] = await tx
+        .update(laneRushDuelMatches)
+        .set({
+          status: MATCH_STATUS.ACTIVE,
+          currentTurnUserId: null,
+          roundDeadline: null,
+        })
+        .where(
+          and(
+            eq(laneRushDuelMatches.id, match.id),
+            eq(laneRushDuelMatches.status, match.status),
+          ),
+        )
+        .returning();
+      return { match: upgraded || match };
+    }
+
     if (
       match.status === MATCH_STATUS.READY &&
       match.roundDeadline &&
@@ -1190,14 +1187,12 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
 }
 
 async function advanceFromReady(tx, match) {
-  const firstUserId = match.firstPlayerId || match.player1Id;
-  const seat = firstUserId === match.player1Id ? "player1" : "player2";
   const [updated] = await tx
     .update(laneRushDuelMatches)
     .set({
-      status: seat === "player1" ? MATCH_STATUS.P1_TURN : MATCH_STATUS.P2_TURN,
-      currentTurnUserId: firstUserId,
-      roundDeadline: new Date(Date.now() + roundDeadlineMs(match)),
+      status: MATCH_STATUS.ACTIVE,
+      currentTurnUserId: null,
+      roundDeadline: null,
     })
     .where(
       and(
