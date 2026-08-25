@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { CRASH_MAX_BUYIN } from "../../lib/games/crash/constants";
 
 /**
  * BuyInModal — modal to select buy-in amount before joining a table.
@@ -10,15 +11,34 @@ import { motion } from "framer-motion";
  *   onBuyIn    — (amount: number) => void
  *   onClose    — () => void
  *   maxBalance — player's total balance (optional cap)
+ *
+ * The buy-in is always capped at CRASH_MAX_BUYIN (10,000,000 tokens) so a
+ * player can never put their entire balance in on a single buy-in.
  */
 export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
   const { wager, minBuyIn } = table;
-  const maxBuyIn = table.maxBuyIn || minBuyIn * 10;
-  const [amount, setAmount] = useState(minBuyIn);
+  // Effective upper bound: the table max (if any) × the global hard cap,
+  // further limited by the player's own balance (if provided).
+  const hardCap = CRASH_MAX_BUYIN;
+  const tableMax = table.maxBuyIn ? Math.min(table.maxBuyIn, hardCap) : hardCap;
+  const effectiveMax = Math.min(tableMax, maxBalance ?? tableMax);
+  const [amount, setAmount] = useState(() => Math.min(minBuyIn, effectiveMax));
 
-  const presets = [minBuyIn, minBuyIn * 2, minBuyIn * 5, maxBuyIn].filter(
-    (v) => v <= (maxBalance ?? Infinity),
-  );
+  const presets = [
+    minBuyIn,
+    minBuyIn * 2,
+    minBuyIn * 5,
+    Math.min(effectiveMax, hardCap),
+  ].filter((v) => v >= minBuyIn && v <= effectiveMax);
+
+  const updateAmount = (raw) => {
+    let val = parseFloat(raw);
+    if (!Number.isFinite(val) || val < minBuyIn) {
+      setAmount(minBuyIn);
+      return;
+    }
+    setAmount(Math.min(Math.floor(val), effectiveMax, hardCap));
+  };
 
   return (
     <motion.div
@@ -52,9 +72,10 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
             <input
               type="number"
               value={amount}
-              onChange={(e) => setAmount(Math.max(minBuyIn, parseInt(e.target.value) || minBuyIn))}
+              onChange={(e) => updateAmount(e.target.value)}
               min={minBuyIn}
-              max={maxBuyIn}
+              max={effectiveMax}
+              step="1"
               className="flex-1 bg-transparent px-2 py-3 text-white text-lg font-bold outline-none text-center"
             />
           </div>
@@ -86,8 +107,13 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
             Cancel
           </button>
           <button
-            onClick={() => onBuyIn(amount)}
-            className="flex-1 py-3 rounded-xl font-bold text-sm bg-amber-500 text-black border-b-4 border-amber-700 shadow-[0_0_20px_rgba(251,191,36,0.5)] hover:shadow-[0_0_35px_rgba(251,191,36,0.7)] hover:scale-105 transition-all duration-300"
+            onClick={() => {
+              if (amount >= minBuyIn && amount <= hardCap && amount <= (maxBalance ?? hardCap)) {
+                onBuyIn(amount);
+              }
+            }}
+            disabled={amount < minBuyIn || amount > hardCap || (maxBalance != null && amount > maxBalance)}
+            className="flex-1 py-3 rounded-xl font-bold text-sm bg-amber-500 text-black border-b-4 border-amber-700 shadow-[0_0_20px_rgba(251,191,36,0.5)] hover:shadow-[0_0_35px_rgba(251,191,36,0.7)] hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:hover:scale-100"
           >
             Buy In • ${amount.toLocaleString()}
           </button>

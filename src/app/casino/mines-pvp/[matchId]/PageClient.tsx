@@ -432,7 +432,13 @@ export default function MinesPvpMatchPage({
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 1500);
+    // Poll slower than the socket fast-path. The per-match room broadcast
+    // (MINES_PVP_MATCH_UPDATED above) drives live updates; this HTTP poll
+    // is a reconnect/consistency safety net only. Turn pacing comes from
+    // the server's round_deadline timestamp + a local 250ms tick, never
+    // from poll frequency, so 5s is safe and keeps match-time DB reads
+    // minimal.
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 

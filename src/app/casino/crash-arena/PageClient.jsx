@@ -23,7 +23,11 @@ export default function CrashArenaPage() {
 
   const fetchTables = useCallback(async () => {
     try {
-      const res = await fetch("/api/crash-arena/tables", { cache: "no-store" });
+      // mode=lobby returns a lighter payload (no per-table round/entries
+      // N+1, no wait-lists/clerk ids) — the lobby grid only needs the
+      // basic table info + round status. Socket pushes (lobby:updated)
+      // still refresh instantly on join/create/settle.
+      const res = await fetch("/api/crash-arena/tables?mode=lobby", { cache: "no-store" });
       const data = await res.json();
       if (data?.success) setTables(data.data || []);
     } catch {
@@ -79,10 +83,13 @@ export default function CrashArenaPage() {
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchTables(), fetchBalance()]).finally(() => setLoading(false));
+    // Live socket pushes refresh the grid on table updates, so this HTTP
+    // poll is a reconcile/safety net — 10s is plenty and halves the
+    // previous 5s loneliness traffic for the lobby + balance.
     const interval = setInterval(() => {
       fetchTables();
       fetchBalance();
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [fetchTables, fetchBalance]);
 

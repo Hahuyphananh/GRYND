@@ -6,6 +6,8 @@ import { chatMessages, specialTitles, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import { sanitizeString } from "../../../../lib/security/validation";
+import { cacheOrFetch } from "../../../../lib/redis/cache";
+import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
 const ALLOWED_ROOM_TYPES = new Set(["global", "game"]);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -46,11 +48,28 @@ export async function GET(req) {
       return NextResponse.json({ error: room.error }, { status: 400 });
     }
 
-    const specialTitleRows = await db
-      .select({ key: specialTitles.key, name: specialTitles.name })
-      .from(specialTitles);
+    // Cache the tiny special-title map (key → name). It only changes when
+    // an admin edits titles, so reading the full table on every chat GET is
+    // wasteful. Returns a plain object so it survives the JSON cache;
+    // converted back to a Map below. No-op → straight DB read when Redis is
+    // unavailable.
+    const specialTitleNameByObject = await cacheOrFetch(
+      CacheKeys.specialTitles(),
+      CacheTTL.specialTitles,
+      async () => {
+        const specialTitleRows = await db
+          .select({ key: specialTitles.key, name: specialTitles.name })
+          .from(specialTitles);
+        return Object.fromEntries(
+          specialTitleRows.map((row) => [row.key, row.name]),
+        );
+      },
+    );
     const specialTitleNameByKey = new Map(
-      specialTitleRows.map((row) => [row.key, row.name]),
+      Object.entries(specialTitleNameByObject || {}).map(([key, name]) => [
+        key,
+        name,
+      ]),
     );
 
     const rows = await db

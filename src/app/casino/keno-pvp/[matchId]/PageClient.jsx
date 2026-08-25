@@ -245,7 +245,11 @@ export default function KenoPvpMatchPage({ params }) {
   useEffect(() => {
     if (!matchId) return;
     fetchStatus();
-    const interval = setInterval(fetchStatus, 800);
+    // Socket room (KENO_PVP_MATCH_UPDATED) already pushes opponent updates
+    // instantly; this HTTP poll is a reconnect safety net. Held at 5s to
+    // keep match-time DB reads minimal — turn pacing comes from server
+    // deadlines + the local 100ms clock, never from the poll rate.
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [matchId, fetchStatus]);
 

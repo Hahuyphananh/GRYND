@@ -1,4 +1,5 @@
 import { cacheDelete, cacheDeletePattern } from "./cache";
+import { withRedis } from "./client";
 import { CacheKeys } from "./keys";
 
 /**
@@ -13,17 +14,52 @@ import { CacheKeys } from "./keys";
  */
 
 /**
- * Invalidate ALL leaderboard caches.
+ * Round-trip per-instance lock window for debounced leaderboard invalidation.
  *
- * Call this whenever ANY game is settled and leaderboard stats change:
- * - after leaderboardCounters (game settlement)
- * - after weekly reset
- * - after bet settlement
+ * When many games settle back-to-back (high-traffic burst), each one used to
+ * wipe the ENTIRE leaderboard cache, forcing the next few leaderboard reads
+ * to recompute the full-table sort again and again (a stampede). Debouncing
+ * collapses all settlements within a window into at most one purge. The
+ * leaderboard *reads* carry a per-key TTL (5 min), so a 60s debounce keeps
+ * the public ranking fresh enough while avoiding the stampede.
+ */
+export const LEADERBOARD_DEBOUNCE_SECONDS = 60;
+
+/**
+ * Invalidate ALL leaderboard caches immediately.
+ *
+ * Used by flows that MUST be instantly fresh (the weekly reset and admin
+ * cache-flush), where a stale ranking would be user-visible and misleading.
  *
  * We invalidate ALL leaderboard keys (all-time + weekly + wins + streaks)
  * because a single game can affect every leaderboard category.
  */
 export async function invalidateAllLeaderboards(): Promise<void> {
+  await cacheDeletePattern(CacheKeys.leaderboard.all);
+}
+
+/**
+ * Debounced leaderboard invalidation for high-frequency game settlements.
+ *
+ * Uses an atomic SET NX EX lock in Redis: the first settlement in a window
+ * wins the lock and performs the purge; any later settlement within the
+ * window NX-fails and skips (staleness is masked by the 5-min read TTL).
+ * When Redis/KV is unavailable the lock acquisition no-ops (withRedis returns
+ * null) and we purge immediately, preserving today's behavior exactly.
+ */
+export async function debouncedInvalidateLeaderboards(): Promise<void> {
+  const won = await withRedis(async (redis) => {
+    const res = await redis.set(CacheKeys.leaderboard.debounce, "1", {
+      ex: LEADERBOARD_DEBOUNCE_SECONDS,
+      nx: true,
+    });
+    return res === "OK";
+  });
+
+  // won === null (Redis unavailable) OR won === true (we hold the lock):
+  // purge now. won === false (another settlement already purged within the
+  // window): skip.
+  if (won === false) return;
   await cacheDeletePattern(CacheKeys.leaderboard.all);
 }
 
@@ -66,7 +102,12 @@ export async function invalidateOnGameSettlement(
   // Fire all invalidations in parallel (don't await individually,
   // but we await the whole block so the caller knows when done)
   await Promise.allSettled([
-    invalidateAllLeaderboards(),
+    // Leaderboards are debounced: game settlements are too frequent to
+    // wipe the whole ranking cache on every single one. Recent-games and
+    // the caller's own stats stay eagerly keyed per-user (cheap, no
+    // stampede). The weekly reset / admin flush still invalidate
+    // leaderboards immediately via invalidateAllLeaderboards.
+    debouncedInvalidateLeaderboards(),
     invalidateRecentGames(),
     clerkId ? invalidateUserStats(clerkId) : Promise.resolve(),
   ]);

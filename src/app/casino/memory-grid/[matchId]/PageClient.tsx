@@ -390,7 +390,12 @@ export default function MemoryGridMatchPage({
       return;
     }
     fetchStatus();
-    const interval = setInterval(fetchStatus, 1500);
+    // Socket room (MEMORY_GRID_MATCH_UPDATED) pushes opponent updates
+    // instantly; this HTTP poll is a reconnect/consistency safety net.
+    // Phase pacing comes from server timelines + the local 100ms clock,
+    // never from the poll rate, so 5s is safe and keeps match-time DB
+    // reads minimal.
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [matchId, fetchStatus]);
 

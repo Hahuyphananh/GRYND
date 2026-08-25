@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
+import { cacheGet, cacheSet } from "../../../../lib/redis/cache";
+import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
 function parseCurrentGameId(currentGameId) {
   if (!currentGameId) return { gameKey: null, gameId: null };
@@ -21,6 +23,19 @@ export async function GET() {
         JSON.stringify({ success: false, error: "Unauthorized" }),
         { status: 401 },
       );
+    }
+
+    // Short per-user cache: the home + casino tabs each poll this endpoint
+    // (now every 60s), and a user can have several tabs open. Caching the
+    // serialized feed for a few seconds collapses those overlapping reads
+    // into one DB join. No-op (straight DB path) when Redis is unavailable.
+    const cacheKey = CacheKeys.friendPresence(userId);
+    const cached = await cacheGet(cacheKey);
+    if (cached) {
+      return new Response(JSON.stringify(cached), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const meRes = await sql`
@@ -46,7 +61,7 @@ export async function GET() {
         p.current_game_id,
         CASE
           WHEN p.last_seen IS NULL THEN 'offline'::text
-          WHEN p.last_seen < NOW() - INTERVAL '120 seconds' THEN 'offline'::text
+          WHEN p.last_seen < NOW() - INTERVAL '6 minutes' THEN 'offline'::text
           ELSE p.status::text
         END AS computed_status
       FROM friend_relations fr
@@ -56,7 +71,7 @@ export async function GET() {
       ORDER BY
         CASE
           WHEN p.last_seen IS NULL THEN 0
-          WHEN p.last_seen < NOW() - INTERVAL '120 seconds' THEN 0
+          WHEN p.last_seen < NOW() - INTERVAL '6 minutes' THEN 0
           ELSE 1
         END DESC,
         p.last_seen DESC NULLS LAST,
@@ -90,13 +105,19 @@ export async function GET() {
       };
     }
 
+    const payload = {
+      success: true,
+      data: rows,
+      byGame,
+      byFriend,
+    };
+
+    // Cache the built feed (fire-and-forget; never block the response) so
+    // overlapping tab polls share one DB join.
+    await cacheSet(cacheKey, payload, CacheTTL.friendPresence).catch(() => {});
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        data: rows,
-        byGame,
-        byFriend,
-      }),
+      JSON.stringify(payload),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {

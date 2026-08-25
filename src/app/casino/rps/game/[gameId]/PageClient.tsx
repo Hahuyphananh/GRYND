@@ -26,7 +26,11 @@ import {
 } from "@tabler/icons-react";
 
 const PVP_CHOICES = ["rock", "paper", "scissors"] as const;
-const POLL_MS = 1500;
+// This match page has no socket fast-path, so polling is the only sync
+// channel. 1500ms -> 2000ms is a safe cut: players have a 10s pick window
+// and the server enforces the pick deadline, so a 2s poll never drops a
+// legitimate submission (it only defers the opp move/status render by ~0.5s).
+const POLL_MS = 2000;
 const CHOICE_SECONDS = 10;
 
 type Choice = (typeof PVP_CHOICES)[number];

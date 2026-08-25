@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { CRASH_WAGERS, CRASH_MIN_WAGER, CRASH_MIN_BUYIN_MULTIPLIER } from "../../lib/games/crash/constants";
+import { CRASH_WAGERS, CRASH_MIN_WAGER, CRASH_MAX_WAGER, CRASH_MIN_BUYIN_MULTIPLIER } from "../../lib/games/crash/constants";
 
 /**
  * WagerSection — Create Table card with custom wager input.
@@ -26,7 +26,10 @@ export default function WagerSection({
 }) {
   const wagerNum = Number(wager) || 0;
   const minBuyIn = wagerNum * CRASH_MIN_BUYIN_MULTIPLIER;
-  const isValid = wagerNum >= CRASH_MIN_WAGER && (userBalance == null || wagerNum <= userBalance);
+  const isValid =
+    wagerNum >= CRASH_MIN_WAGER &&
+    wagerNum <= CRASH_MAX_WAGER &&
+    (userBalance == null || wagerNum <= userBalance);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-amber-700/60 bg-black/40 transition-all duration-300 hover:border-amber-500/60 hover:shadow-[0_0_30px_rgba(251,191,36,0.2)]">
@@ -63,10 +66,16 @@ export default function WagerSection({
                 if (val === "" || val === "0") {
                   setWager(val);
                 } else {
-                  setWager(Math.max(CRASH_MIN_WAGER, parseFloat(val) || CRASH_MIN_WAGER));
+                  setWager(
+                    Math.min(
+                      CRASH_MAX_WAGER,
+                      Math.max(CRASH_MIN_WAGER, parseFloat(val) || CRASH_MIN_WAGER),
+                    ),
+                  );
                 }
               }}
               min={CRASH_MIN_WAGER}
+              max={CRASH_MAX_WAGER}
               step="0.01"
               className="flex-1 bg-transparent px-2 py-3 text-white text-lg font-bold outline-none text-center"
               placeholder={`${CRASH_MIN_WAGER}`}
@@ -122,11 +131,20 @@ export default function WagerSection({
             Sign in to create a table.
           </p>
         )}
-        {isSignedIn && wagerNum > 0 && userBalance != null && wagerNum > userBalance && (
+        {isSignedIn && wagerNum > CRASH_MAX_WAGER && (
           <p className="text-[11px] text-red-400/80 text-center">
-            Insufficient balance for a ${wagerNum} wager
+            Maximum wager is ${CRASH_MAX_WAGER.toLocaleString()}
           </p>
         )}
+        {isSignedIn &&
+          wagerNum > 0 &&
+          wagerNum <= CRASH_MAX_WAGER &&
+          userBalance != null &&
+          wagerNum > userBalance && (
+            <p className="text-[11px] text-red-400/80 text-center">
+              Insufficient balance for a ${wagerNum} wager
+            </p>
+          )}
       </div>
     </div>
   );

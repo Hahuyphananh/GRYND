@@ -2,6 +2,8 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
 import { eq } from "drizzle-orm";
+import { cacheDelete } from "../../../lib/redis/cache";
+import { CacheKeys } from "../../../lib/redis/keys";
 
 export async function POST(req) {
   const { userId } = await auth();
@@ -34,6 +36,10 @@ export async function POST(req) {
   try {
     // Update age in DB
     await db.update(users).set({ age }).where(eq(users.clerkId, userId));
+
+    // Invalidate the middleware age-gate cache so the next navigation
+    // reflects the new age instead of the cached value.
+    await cacheDelete(CacheKeys.userAge(userId)).catch(() => {});
 
     // Persist the actual birth date to Clerk public metadata — the privacy
     // policy promises DOB is stored for age verification, and

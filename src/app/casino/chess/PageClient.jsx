@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   IconChess,
@@ -12,8 +12,6 @@ import {
   IconClock,
   IconBook,
 } from "@tabler/icons-react";
-const TABLES = [1, 5, 10, 20, 50, 100];
-
 const AI_DIFFICULTY_LEVELS = [
   { level: 1, label: "Beginner", desc: "Easy opponent" },
   { level: 2, label: "Casual", desc: "Relaxed play" },
@@ -42,8 +40,12 @@ export default function ChessLobby() {
   const [isLoadingAvailableGames, setIsLoadingAvailableGames] = useState(false);
   const [joiningGameId, setJoiningGameId] = useState(null);
   const [creatingGame, setCreatingGame] = useState(false);
-  const [selectedTable, setSelectedTable] = useState(null);
+  const [stakeInput, setStakeInput] = useState("");
+  const [userBalance, setUserBalance] = useState(null);
   const [selectedTimer, setSelectedTimer] = useState("");
+  const timerTrackRef = useRef(null);
+  const [draggingTimer, setDraggingTimer] = useState(false);
+  const [timerDrag, setTimerDrag] = useState(null); // float index while dragging
   const [error, setError] = useState(null);
   const [aiGameLoading, setAiGameLoading] = useState(false);
   const [showRules, setShowRules] = useState(false);
@@ -58,6 +60,78 @@ export default function ChessLobby() {
     const t = setTimeout(() => setError(null), 5000);
     return () => clearTimeout(t);
   }, [error]);
+
+  // Wallet balance — powers the 1/4, 1/2 and All In stake quick-buttons.
+  useEffect(() => {
+    fetch("/api/get-user-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.success) setUserBalance(Number(data.data.balance));
+      })
+      .catch(() => {});
+  }, []);
+
+  const stakeNum = Number(stakeInput) || 0;
+  const quarterBet =
+    userBalance != null ? Math.max(1, Math.floor((userBalance / 4) * 100) / 100) : null;
+  const halfBet =
+    userBalance != null ? Math.max(1, Math.floor((userBalance / 2) * 100) / 100) : null;
+  const allInBet =
+    userBalance != null ? Math.max(1, Math.floor(userBalance * 100) / 100) : null;
+
+  // ── Timeline toggle (snaps to the nearest of the 6 preset times) ─────
+  const timerIndexFromEvent = (clientX) => {
+    const el = timerTrackRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return ratio * (TIMER_OPTIONS.length - 1);
+  };
+
+  const onTimerPointerDown = (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setDraggingTimer(true);
+    setTimerDrag(timerIndexFromEvent(e.clientX));
+  };
+
+  const onTimerPointerMove = (e) => {
+    if (!draggingTimer) return;
+    setTimerDrag(timerIndexFromEvent(e.clientX));
+  };
+
+  const onTimerPointerUp = (e) => {
+    if (!draggingTimer) return;
+    // Lock onto the nearest of the 6 preset times on release.
+    const idx = Math.round(timerIndexFromEvent(e.clientX));
+    const snapped = Math.min(TIMER_OPTIONS.length - 1, Math.max(0, idx));
+    setSelectedTimer(TIMER_OPTIONS[snapped].id);
+    setTimerDrag(null);
+    setDraggingTimer(false);
+  };
+
+  const onTimerKeyDown = (e) => {
+    const idx = displayIndexRounded;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setSelectedTimer(TIMER_OPTIONS[Math.max(0, idx - 1)].id);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setSelectedTimer(TIMER_OPTIONS[Math.min(TIMER_OPTIONS.length - 1, idx + 1)].id);
+    }
+  };
+
+  const displayIndex =
+    timerDrag ??
+    Math.max(0, TIMER_OPTIONS.findIndex((t) => t.id === selectedTimer));
+  const displayIndexRounded = Math.min(
+    TIMER_OPTIONS.length - 1,
+    Math.max(0, Math.round(displayIndex)),
+  );
 
   useEffect(() => {
     fetchAvailableGames();
@@ -100,7 +174,7 @@ export default function ChessLobby() {
   const selectedTimerObj = TIMER_OPTIONS.find((t) => t.id === selectedTimer);
 
   async function createGame() {
-    if (!selectedTable || !selectedTimer || creatingGame) return;
+    if (!stakeNum || !selectedTimer || creatingGame) return;
 
     setError(null);
     setCreatingGame(true);
@@ -109,8 +183,9 @@ export default function ChessLobby() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tableAmount: selectedTable,
-          timerMode: selectedTimer,            timeLimit: selectedTimerObj?.time, // IMPORTANT FIX
+          tableAmount: stakeNum,
+          timerMode: selectedTimer,
+          timeLimit: selectedTimerObj?.time,
         }),
       });
       const data = await res.json();
@@ -140,7 +215,7 @@ export default function ChessLobby() {
         event: "lobby:updated",
       });
       router.push(
-        `/casino/chess/${selectedTable}?gameId=${data.gameId}&color=${data.color}&timer=${selectedTimer}`,
+        `/casino/chess/${stakeNum}?gameId=${data.gameId}&color=${data.color}&timer=${selectedTimer}`,
       );
     } catch (error) {
       console.error("Failed to create chess game", error);
@@ -273,45 +348,179 @@ export default function ChessLobby() {
           Select a stake and timer, then create your game. Winner gets the pot minus 10% house fee.
         </p>
 
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-left mb-3">
-            1) Choose Stake
-          </h3>
-          <div className="flex flex-wrap justify-center gap-4">
-            {TABLES.map((amount) => (
-              <button
-                key={amount}
-                onClick={() => setSelectedTable(amount)}
-                className={`px-6 py-4 rounded-lg text-xl font-semibold border-2 ${
-                  selectedTable === amount
-                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"
-                    : "bg-[#08142f] text-[#a8f4ff] border-[#00e5ff]/40 hover:bg-[#0d335f]"
-                }`}
-              >
-                ${amount} Stake
-              </button>
-            ))}
-          </div>
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {/* Stake card (crash-style) */}
+          <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-[#00e5ff]/30 bg-[#08142f]/70 overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-70" />
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-widest text-cyan-100/60">
+                  Stake
+                </span>
+                <div className="text-sm font-bold text-white/90 mt-0.5">
+                  Set your stake
+                </div>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold border border-cyan-500/40 bg-cyan-500/15 text-cyan-300">
+                Custom
+              </span>
+            </div>
+            <div className="flex flex-col items-center gap-3">
+            {/* Custom stake input (crash-style): type your exact stake */}
+            <div className="w-full max-w-xs">
+              <div className="flex items-center bg-[#020617] border border-[#00e5ff]/40 rounded-xl overflow-hidden focus-within:border-[#00e5ff] focus-within:shadow-[0_0_15px_rgba(0,229,255,0.3)] transition-all">
+                <span className="pl-4 text-[#00e5ff] font-bold text-lg">$</span>
+                <input
+                  type="number"
+                  value={stakeInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || val === "0") {
+                      setStakeInput(val);
+                    } else {
+                      const parsed = parseFloat(val);
+                      if (Number.isFinite(parsed)) {
+                        setStakeInput(
+                          Math.min(
+                            1000000,
+                            Math.max(1, Math.floor(parsed * 100) / 100),
+                          ).toString(),
+                        );
+                      }
+                    }
+                  }}
+                  min={1}
+                  max={1000000}
+                  step="0.01"
+                  placeholder="1"
+                  className="flex-1 bg-transparent px-2 py-3 text-white text-lg font-bold outline-none text-center"
+                />
+              </div>
+            </div>
 
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-left mb-3">
-            2) Choose Timer
-          </h3>
-          <div className="flex flex-wrap justify-center gap-4">
-            {TIMER_OPTIONS.map((timer) => (
-              <button
-                key={timer.id}
-                onClick={() => setSelectedTimer(timer.id)}
-                className={`px-6 py-4 rounded-lg text-xl font-semibold border-2 min-w-[190px] ${
-                  selectedTimer === timer.id
-                    ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"
-                    : "bg-[#08142f] text-[#a8f4ff] border-[#00e5ff]/40 hover:bg-[#0d335f]"
-                }`}
-              >
-                <div>{timer.label}</div>
-              </button>
-            ))}
+            {/* Quick stake buttons: 1/4, 1/2, All In, 100$ */}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {[
+                { label: "1/4", value: quarterBet },
+                { label: "1/2", value: halfBet },
+                { label: "All In", value: allInBet },
+                { label: "100$", value: 100 },
+              ].map((btn) => (
+                <button
+                  key={btn.label}
+                  onClick={() => setStakeInput(String(btn.value))}
+                  disabled={btn.value == null || btn.value < 1}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+                    stakeNum === btn.value
+                      ? "bg-[#00e5ff] text-[#001933] border-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.5)]"
+                      : "bg-[#08142f] text-[#a8f4ff] border-[#00e5ff]/30 hover:bg-[#0d335f] hover:border-[#00e5ff]/60"
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+
+            {userBalance != null && (
+              <p className="text-xs text-white/50">
+                Balance: $
+                {userBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </p>
+            )}
+            {userBalance != null && stakeNum > userBalance && (
+              <p className="text-[11px] text-red-400/80 text-center">
+                Insufficient balance for a ${stakeNum} stake
+              </p>
+            )}
+
+            {/* Pot preview */}
+            {stakeNum > 0 && selectedTimer && (
+              <div className="mt-1 w-full bg-emerald-900/20 border border-emerald-400/30 text-emerald-300 p-2 rounded text-sm text-center">
+                Pot: ${(stakeNum * 2).toLocaleString()} · Winner gets ~${(stakeNum * 2 * 0.9).toLocaleString(undefined, { maximumFractionDigits: 2 })} (after 10% house fee)
+              </div>
+            )}
+            </div>
+          </div>
+
+          {/* Timer card (crash-style) */}
+          <div className="relative p-5 flex flex-col gap-3 rounded-2xl border border-[#00e5ff]/30 bg-[#08142f]/70 overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#FFD700] to-transparent opacity-70" />
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-widest text-cyan-100/60">
+                  Timer
+                </span>
+                <div className="text-sm font-bold text-white/90 mt-0.5">
+                  Pick your pace
+                </div>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold border border-[#FFD700]/40 bg-[#FFD700]/10 text-[#FFD700]">
+                6 modes
+              </span>
+            </div>
+            <div className="flex flex-col gap-3">
+            {/* Current selection badge */}
+            <div className="mb-4 text-center">
+              <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-[#FFD700]/50 bg-[#FFD700]/10 text-[#FFD700] font-bold">
+                <IconClock size={15} /> {TIMER_OPTIONS[displayIndexRounded].label}
+              </span>
+            </div>
+
+            {/* Timeline toggle — click & slide; locks to nearest preset on release */}
+            <div
+              ref={timerTrackRef}
+              role="slider"
+              aria-label="Move timer"
+              aria-valuemin={0}
+              aria-valuemax={TIMER_OPTIONS.length - 1}
+              aria-valuenow={displayIndexRounded}
+              aria-valuetext={TIMER_OPTIONS[displayIndexRounded].label}
+              tabIndex={0}
+              onPointerDown={onTimerPointerDown}
+              onPointerMove={onTimerPointerMove}
+              onPointerUp={onTimerPointerUp}
+              onPointerCancel={onTimerPointerUp}
+              onKeyDown={onTimerKeyDown}
+              className="relative h-10 select-none touch-none cursor-grab active:cursor-grabbing outline-none"
+            >
+              {/* Track line */}
+              <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 rounded-full bg-[#0a1a3a] border border-[#00e5ff]/20" />
+              {/* Filled portion */}
+              <div
+                className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-gradient-to-r from-[#00e5ff] to-[#FFD700]"
+                style={{ width: `${(displayIndex / (TIMER_OPTIONS.length - 1)) * 100}%` }}
+              />
+              {/* Tick stops */}
+              {TIMER_OPTIONS.map((t, i) => (
+                <div
+                  key={t.id}
+                  className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 transition-colors ${
+                    i <= displayIndexRounded
+                      ? "bg-[#FFD700] border-[#FFD700]"
+                      : "bg-[#0a1a3a] border-[#00e5ff]/40"
+                  }`}
+                  style={{ left: `${(i / (TIMER_OPTIONS.length - 1)) * 100}%` }}
+                />
+              ))}
+              {/* Draggable handle */}
+              <div
+                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gradient-to-br from-[#00e5ff] to-[#FFD700] border-2 border-white/40 shadow-[0_0_12px_rgba(0,229,255,0.6)]"
+                style={{ left: `${(displayIndex / (TIMER_OPTIONS.length - 1)) * 100}%` }}
+              />
+            </div>
+
+              {/* Preset labels */}
+              <div className="flex justify-between mt-2 text-[10px] text-white/40 px-0">
+                {TIMER_OPTIONS.map((t) => (
+                  <span
+                    key={t.id}
+                    className={selectedTimer === t.id ? "text-[#FFD700] font-bold" : ""}
+                  >
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -320,33 +529,23 @@ export default function ChessLobby() {
             {error}
           </div>
         )}
+      </div>
 
-        {selectedTable && selectedTimer && (
-          <div className="mb-4 bg-emerald-900/20 border border-emerald-400/30 text-emerald-300 p-2 rounded text-sm text-center">
-            Pot: ${selectedTable * 2} · Winner gets ~${(selectedTable * 2 * 0.9).toFixed(2)} (after 10% house fee)
-          </div>
-        )}
-
-        <button
-          onClick={createGame}
-          disabled={!selectedTable || !selectedTimer || creatingGame}
-          className="bg-[#FFD700] text-[#030817] px-8 py-3 rounded-lg text-lg font-bold hover:bg-[#ffe14f] shadow-[0_0_16px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6] disabled:cursor-not-allowed"
-        >
-          {creatingGame ? "Creating..." : "Create Game"}
-        </button>
-
-        <div className="mt-6 pt-6 border-t border-[#00e5ff]/20">
-          <h2 className="text-2xl font-bold text-[#FFD700] mb-3">
-            Play vs AI
-          </h2>
-          <p className="text-white/80 mb-4">
-            Challenge the computer for free. Choose your difficulty.
-          </p>
+      {/* Sticky action bar — Create Game + Play vs AI, sticks on scroll */}
+      <div className="sticky bottom-0 z-30 mt-4 px-3">
+        <div className="mx-auto max-w-4xl flex flex-col sm:flex-row gap-3 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/95 backdrop-blur-md px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.5)]">
+          <button
+            onClick={createGame}
+            disabled={!stakeNum || !selectedTimer || creatingGame}
+            className="flex-1 bg-[#FFD700] text-[#030817] px-6 py-3 rounded-lg text-lg font-bold hover:bg-[#ffe14f] shadow-[0_0_16px_rgba(255,215,0,0.45)] disabled:bg-[#7f8520] disabled:text-[#c6c6c6] disabled:cursor-not-allowed"
+          >
+            {creatingGame ? "Creating..." : "Create Game"}
+          </button>
           <button
             onClick={() => setShowBetPopup(true)}
-            className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-3 rounded-lg text-lg font-bold hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_16px_rgba(139,92,246,0.45)] transition-colors"
+            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-lg text-lg font-bold hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_16px_rgba(139,92,246,0.45)] transition-colors"
           >
-            <span className="inline-flex items-center gap-2"><IconRobot size={18} /> Play vs AI</span>
+            <span className="inline-flex items-center justify-center gap-2"><IconRobot size={18} /> Play vs AI</span>
           </button>
         </div>
       </div>

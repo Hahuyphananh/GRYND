@@ -11,10 +11,16 @@ export default function PresenceHeartbeat() {
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
+    // The global heartbeat is a keep-alive that drives presence/online
+    // status. It used to fire every 45s, which turned into a Neon UPSERT
+    // storm at scale (one write per signed-in tab every 45s). The offline
+    // windows in the consumers (stats/live = 5 min, friends = 6 min) are
+    // keyed to this cadence, so a 5-minute beat keeps online-detection
+    // correct while cutting writes ~6.7x.
     const getIntervalMs = () => {
-      if (typeof document !== "undefined" && document.hidden) return 120000;
-      if (typeof navigator !== "undefined" && !navigator.onLine) return 180000;
-      return 45000;
+      if (typeof document !== "undefined" && document.hidden) return 600000;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return 600000;
+      return 300000;
     };
 
     const ping = () => {

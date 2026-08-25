@@ -28,6 +28,8 @@
 // roundId/nonce, duplicate stop, etc.).
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { verifyToken } from "@clerk/backend";
 import { recordRoundStop } from "../../../../lib/precision/serverStore";
 
 export const dynamic = "force-dynamic";
@@ -36,19 +38,50 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const matchId = String(body?.matchId ?? "");
-    const userId = String(body?.userId ?? "");
     const roundId = String(body?.roundId ?? "");
     const nonce = String(body?.nonce ?? "");
+
+    // ── Caller identity is NEVER taken from the body ────────────────────
+    // IDOR hardening: the realtime server (no Clerk session) sends the
+    // player's raw Clerk session token, which we verify to recover the
+    // authoritative userId; direct callers authenticate via their session
+    // cookie. A spoofed body.userId is ignored — a malicious client can
+    // no longer submit a STOP (or a Ready) on another player's behalf.
+    const token = typeof body?.token === "string" ? body.token : "";
+    let userId = "";
+    if (token) {
+      const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY;
+      if (!CLERK_SECRET_KEY) {
+        return NextResponse.json(
+          { success: false, error: "Server authentication is not configured" },
+          { status: 500 },
+        );
+      }
+      try {
+        const verified = await verifyToken(token, {
+          secretKey: CLERK_SECRET_KEY,
+        });
+        userId = verified.sub ?? "";
+      } catch {
+        return NextResponse.json(
+          { success: false, error: "Invalid token" },
+          { status: 401 },
+        );
+      }
+    } else {
+      const { userId: sessionUserId } = await auth();
+      userId = sessionUserId ?? "";
+    }
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
 
     if (!matchId) {
       return NextResponse.json(
         { success: false, error: "Missing matchId." },
-        { status: 400 },
-      );
-    }
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "Missing userId." },
         { status: 400 },
       );
     }

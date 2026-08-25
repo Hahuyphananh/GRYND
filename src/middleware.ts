@@ -13,6 +13,8 @@ import { ADMIN_MFA_COOKIE, verifyAdminMfaToken } from "./lib/auth/adminMfa";
 import { db } from "./db";
 import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
+import { cacheGet, cacheSet } from "./lib/redis/cache";
+import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -359,19 +361,27 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     pathname.startsWith("/admin");
 
   if (!skipsAgeGate) {
-    // Prefer the session claim when a JWT template provides one, but fall
-    // back to the DB `users.age` value — that is what /api/update-birthdate
-    // actually writes, and no code path populates `sessionClaims.age`.
-    // Without the fallback the gate can never pass, so every user is stuck
-    // bouncing to /complete-profile.
+    // Prefer the session claim when a JWT template provides one. When it
+    // does, the age gate costs zero DB work per request.
     let age = sessionClaims?.age;
 
     if (age === undefined || age === null) {
-      const user = await db.query.users.findFirst({
-        where: eq(users.clerkId, userId),
-        columns: { age: true },
-      });
-      age = user?.age ?? null;
+      // Fall back to a cached `users.age` lookup so a protected page load
+      // doesn't hit Neon on every navigation. Age only changes on a
+      // birthdate edit (rare), so a short TTL is plenty. When Redis/KV is
+      // not configured, cacheGet/cacheSet no-op and we do the DB read once
+      // per request, exactly as before.
+      age = await cacheGet<number | null>(CacheKeys.userAge(userId));
+      if (age === null || age === undefined) {
+        const user = await db.query.users.findFirst({
+          where: eq(users.clerkId, userId),
+          columns: { age: true },
+        });
+        age = user?.age ?? null;
+        if (age !== null && age !== undefined) {
+          await cacheSet(CacheKeys.userAge(userId), age, CacheTTL.userAge).catch(() => {});
+        }
+      }
     }
 
     if (!age) {

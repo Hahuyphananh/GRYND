@@ -13,25 +13,46 @@
 //      to the active placeholder without waiting for the 1.5s poll.
 
 import { NextRequest, NextResponse } from "next/server";
-import { markPlayerReady } from "../../../../lib/precision/serverStore";
+import { auth } from "@clerk/nextjs/server";
+import {
+  markPlayerReady,
+  precisionMatchStore,
+} from "../../../../lib/precision/serverStore";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // ── IDOR hardening: identity comes from the Clerk session, never
+    // from the request body. A malicious client can no longer mark
+    // the OPPONENT ready (body.userId was previously trusted).
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
     const body = await req.json().catch(() => ({}));
     const matchId = String(body?.matchId ?? "");
-    const userId = String(body?.userId ?? "");
     if (!matchId) {
       return NextResponse.json(
         { success: false, error: "Missing matchId." },
         { status: 400 },
       );
     }
-    if (!userId) {
+    // Only participants may ready up — a clean 403 beats a silent no-op.
+    const match = precisionMatchStore.get(matchId);
+    if (!match) {
       return NextResponse.json(
-        { success: false, error: "Missing userId." },
-        { status: 400 },
+        { success: false, error: "Match not found." },
+        { status: 404 },
+      );
+    }
+    if (!match.players.some((p) => p.userId === userId)) {
+      return NextResponse.json(
+        { success: false, error: "Caller is not a participant in this match." },
+        { status: 403 },
       );
     }
     const result = markPlayerReady(matchId, userId);

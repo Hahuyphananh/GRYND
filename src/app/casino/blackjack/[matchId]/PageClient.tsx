@@ -413,7 +413,11 @@ export default function BlackjackPvpMatchPage({
       lastSeenMatchIdRef.current = matchId;
     }
     fetchStatus({ silent: true });
-    const interval = setInterval(() => fetchStatus({ silent: true }), 1500);
+    // Socket fanout below (BLACKJACK_PVP_MATCH_UPDATED) re-fetches on the
+    // opponent's every action, so this HTTP poll is a reconnect/consistency
+    // safety net. Held at 5s to minimize match-time DB reads; turn timing
+    // comes from the server deadline + local clock, never from poll rate.
+    const interval = setInterval(() => fetchStatus({ silent: true }), 5000);
     return () => clearInterval(interval);
   }, [isSignedIn, isValidMatchId, matchId, router, fetchStatus]);
 

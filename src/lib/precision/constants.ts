@@ -25,7 +25,12 @@ export const SEAT_COUNT = 2;
 // used by Pool / Hex Duel implementations.
 export const LOBBY_POLL_INTERVAL_MS = 1200;
 export const LOBBY_LIST_POLL_INTERVAL_MS = 3000;
-export const MATCH_POLL_INTERVAL_MS = 1500;
+// The realtime server pushes round-arm/round-result/match-finished
+// events to the match room, so this HTTP poll is a reconcile/safety net
+// rather than the primary sync path. Held at 2s (kept tighter than other
+// games because precision's STOP timing is sensitive) to cut match-time
+// status reads ~25% vs. the old 1500ms.
+export const MATCH_POLL_INTERVAL_MS = 2000;
 
 // Lobby TTL — after this a lobby is auto-pruned (server-side). Mirrors the
 // 5 minute TTL used for Pool lobbies.

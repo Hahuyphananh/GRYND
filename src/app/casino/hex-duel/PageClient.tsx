@@ -2155,9 +2155,12 @@ export default function HexDuelPage() {
       }
     };
 
-    // Poll every 1.5 seconds (faster catch-up for missed socket events)
+    // Poll every 5 seconds as a catch-up safety net for missed socket
+    // events (the hexDuel:action socket mirror is the live path). The
+    // tradeoff is slightly slower catch-up after a dropped socket event,
+    // which the forced-sync request on turn start already covers.
     pollActions();
-    const interval = setInterval(pollActions, 1500);
+    const interval = setInterval(pollActions, 5000);
 
     return () => {
       cancelled = true;

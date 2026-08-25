@@ -9,6 +9,7 @@ import { eq, and, or, isNull, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
   CRASH_MIN_WAGER,
+  CRASH_MAX_WAGER,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
 import {
@@ -46,6 +47,12 @@ export async function POST(req: Request) {
     if (!Number.isFinite(wagerNum) || wagerNum < CRASH_MIN_WAGER) {
       return NextResponse.json(
         { success: false, error: `Minimum wager is $${CRASH_MIN_WAGER}` },
+        { status: 400 },
+      );
+    }
+    if (wagerNum > CRASH_MAX_WAGER) {
+      return NextResponse.json(
+        { success: false, error: `Maximum wager is $${CRASH_MAX_WAGER.toLocaleString()}` },
         { status: 400 },
       );
     }
