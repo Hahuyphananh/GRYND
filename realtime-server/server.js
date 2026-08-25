@@ -57,6 +57,23 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// H4: rate-limited logger for hot realtime paths. Logging every socket
+// event (pool shot, hex action, participant join/leave, relay) floods
+// stdout and burns CPU on the single realtime instance. `logThrottled`
+// emits at most one line per key per LOG_WINDOW_MS while still logging the
+// first event in each window (keeps live-connection visibility). Set
+// REALTIME_DEBUG=1 to log everything. Pure logging — no gameplay effect.
+const LOG_WINDOW_MS = 30000;
+const _logThrottle = new Map();
+function logThrottled(key, ...args) {
+  const now = Date.now();
+  const last = _logThrottle.get(key) || 0;
+  if (process.env.REALTIME_DEBUG === "1" || now - last >= LOG_WINDOW_MS) {
+    _logThrottle.set(key, now);
+    console.log(...args);
+  }
+}
+
 const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
@@ -290,6 +307,30 @@ async function runCrashArenaStaleSweep() {
   try {
     const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
 
+    // C6 gate: if no crash-arena match room has ANY live socket, there is
+    // nothing to sweep, so skip the Next.js list/release round-trip entirely
+    // (this was a fixed DB round-trip every 30s regardless of activity).
+    // Live presence derives from THIS instance's sockets (the same
+    // single-server assumption the sweep already makes), so an empty
+    // adapter scan is the correct all-clear signal.
+    let hasLiveCrashArenaSockets = false;
+    const adapterRooms = io.sockets.adapter.rooms;
+    if (adapterRooms && typeof adapterRooms.entries === "function") {
+      for (const [roomId] of adapterRooms.entries()) {
+        if (
+          typeof roomId === "string" &&
+          roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)
+        ) {
+          hasLiveCrashArenaSockets = true;
+          break;
+        }
+      }
+    }
+    if (!hasLiveCrashArenaSockets) {
+      crashArenaSweepAbsence.clear();
+      return;
+    }
+
     // 1. Candidate rows currently seated / waiting (tableId + clerkId).
     const listRes = await fetch(`${baseUrl}/api/crash-arena/sweep-stale`, {
       method: "POST",
@@ -519,7 +560,7 @@ io.on("connection", (socket) => {
     // A (re)joining socket means the player is present again — cancel
     // any pending disconnect forfeit timer for this match.
     cancelDisconnectGraceTimer(`plinko:${matchId}:${userId}`);
-    console.log("[plinko-pvp] participant joined: matchId=", matchId, "userId=", userId);
+    logThrottled("plinko:join", "[plinko-pvp] participant joined: matchId=", matchId, "userId=", userId);
   }
   function trackPlinkoLeave(roomId, userId) {
     if (typeof roomId !== "string" || !roomId.startsWith(PLINKO_MATCH_ROOM_PREFIX)) {
@@ -531,7 +572,7 @@ io.on("connection", (socket) => {
     if (!set) return;
     set.delete(userId);
     if (set.size === 0) plinkoRoomParticipants.delete(matchId);
-    console.log("[plinko-pvp] participant left: matchId=", matchId, "userId=", userId);
+    logThrottled("plinko:leave", "[plinko-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
 
   // ── Keno PvP room-participant tracking ──────────────────────────
@@ -557,7 +598,7 @@ io.on("connection", (socket) => {
     // A (re)joining socket means the player is present again — cancel
     // any pending disconnect forfeit timer for this match.
     cancelDisconnectGraceTimer(`keno:${matchId}:${userId}`);
-    console.log("[keno-pvp] participant joined: matchId=", matchId, "userId=", userId);
+    logThrottled("keno:join", "[keno-pvp] participant joined: matchId=", matchId, "userId=", userId);
   }
   function trackKenoPvpLeave(roomId, userId) {
     if (typeof roomId !== "string" || !roomId.startsWith(KENO_PVP_MATCH_ROOM_PREFIX)) {
@@ -569,7 +610,7 @@ io.on("connection", (socket) => {
     if (!set) return;
     set.delete(userId);
     if (set.size === 0) kenoPvpRoomParticipants.delete(matchId);
-    console.log("[keno-pvp] participant left: matchId=", matchId, "userId=", userId);
+    logThrottled("keno:leave", "[keno-pvp] participant left: matchId=", matchId, "userId=", userId);
   }
 
   // ── Memory Grid room-participant tracking ──────────────────────
@@ -595,7 +636,7 @@ io.on("connection", (socket) => {
     // A (re)joining socket means the player is present again — cancel
     // any pending disconnect forfeit timer for this match.
     cancelDisconnectGraceTimer(`memory-grid:${matchId}:${userId}`);
-    console.log("[memory-grid] participant joined: matchId=", matchId, "userId=", userId);
+    logThrottled("memory-grid:join", "[memory-grid] participant joined: matchId=", matchId, "userId=", userId);
   }
   function trackMemoryGridLeave(roomId, userId) {
     if (typeof roomId !== "string" || !roomId.startsWith(MEMORY_GRID_MATCH_ROOM_PREFIX)) {
@@ -607,7 +648,7 @@ io.on("connection", (socket) => {
     if (!set) return;
     set.delete(userId);
     if (set.size === 0) memoryGridRoomParticipants.delete(matchId);
-    console.log("[memory-grid] participant left: matchId=", matchId, "userId=", userId);
+    logThrottled("memory-grid:leave", "[memory-grid] participant left: matchId=", matchId, "userId=", userId);
   }
 
   // ── Crash Arena room-participant tracking ───────────────────────
@@ -632,7 +673,7 @@ io.on("connection", (socket) => {
     // A (re)joining socket means the player is present again — cancel
     // any pending disconnect cleanup so refreshes keep the seat.
     cancelCrashArenaDisconnectTimer(userId, tableId);
-    console.log("[crash-arena] participant joined: tableId=", tableId, "userId=", userId);
+    logThrottled("crash:join", "[crash-arena] participant joined: tableId=", tableId, "userId=", userId);
   }
   function trackCrashArenaLeave(roomId, userId) {
     if (typeof roomId !== "string" || !roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)) {
@@ -644,7 +685,7 @@ io.on("connection", (socket) => {
     if (!set) return;
     set.delete(userId);
     if (set.size === 0) crashArenaRoomParticipants.delete(tableId);
-    console.log("[crash-arena] participant left: tableId=", tableId, "userId=", userId);
+    logThrottled("crash:leave", "[crash-arena] participant left: tableId=", tableId, "userId=", userId);
   }
   socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
@@ -802,20 +843,7 @@ io.on("connection", (socket) => {
 
     // Relay action to the other player. Audit trail helps debug cases
     // where the receiver reports actions never arrived.
-    console.log(
-      "[hex-duel] relay:",
-      roomId,
-      "from=",
-      userId,
-      "type=",
-      action.type,
-      "player=",
-      action.player,
-      "seq=",
-      thisSeq,
-      "roomSize=",
-      roomSize,
-    );
+    logThrottled("hex-duel:relay", "[hex-duel] relay:", roomId, "from=", userId, "type=", action.type, "player=", action.player, "seq=", thisSeq, "roomSize=", roomSize);
     socket.to(roomId).emit("hexDuel:action", {
       gameId: roomId,
       action,
@@ -964,7 +992,11 @@ io.on("connection", (socket) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             matchId: matchIdStr,
-            userId: socket.data.userId,
+            // The route now verifies identity server-side: it accepts the
+            // player's raw Clerk session token (which has no HTTP-only
+            // session on this machine) and derives userId from it, so a
+            // forged body.userId is impossible.
+            token: socket.data.clerkToken,
             roundId: roundIdStr,
             nonce: nonceStr,
           }),
@@ -1073,9 +1105,7 @@ io.on("connection", (socket) => {
     const roomId = `${PLINKO_MATCH_ROOM_PREFIX}${matchIdStr}`;
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
     const roomSize = socketsInRoom?.size ?? 0;
-    console.log(
-      "[plinko-pvp] relay ready: matchId=",
-      matchIdStr,
+    logThrottled("plinko:relayReady", "[plinko-pvp] relay ready: matchId=", matchIdStr,
       "from=",
       socket.data.userId,
       "roomSize=",
@@ -1122,8 +1152,7 @@ io.on("connection", (socket) => {
     }
     const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${tableIdStr}`;
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-    console.log(
-      "[crash-arena] relay update: tableId=",
+    logThrottled("crash-arena:relayUpdate", "[crash-arena] relay update: tableId=",
       tableIdStr,
       "from=",
       socket.data.userId,
@@ -1544,7 +1573,7 @@ function registerPoolSocketHandlers(socket) {
         shot: sanitized,
         shotId: effectiveShotId,
       });
-      console.log("[pool] shot", matchId, userId, effectiveShotId);
+      logThrottled("pool:shot", "[pool] shot", matchId, userId, effectiveShotId);
     },
   );
 
@@ -1571,7 +1600,7 @@ function registerPoolSocketHandlers(socket) {
         turnUserId: m.turnUserId,
         turnSeconds: 45,
       });
-      console.log("[pool] turn switched", matchId, m.turnUserId);
+      logThrottled("pool:turn", "[pool] turn switched", matchId, m.turnUserId);
     },
   );
 }

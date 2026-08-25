@@ -367,8 +367,11 @@ export default function ProfilePage() {
     // send immediately
     sendHeartbeat();
 
-    // then repeat every 25 seconds
-    interval = setInterval(sendHeartbeat, 25000);
+    // The global PresenceHeartbeat already beats every 5 min; this
+    // page used to fire an extra heartbeat every 25s, doubling writes
+    // on the profile page. Align to the same 5-min cadence so the
+    // duplicate writer doesn't amplify Neon presence writes.
+    interval = setInterval(sendHeartbeat, 300000);
 
     return () => clearInterval(interval);
   }, [isSignedIn]);

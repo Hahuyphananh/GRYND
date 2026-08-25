@@ -40,11 +40,39 @@ export const CacheKeys = {
 
     /** Wildcard pattern for eviction */
     all: `${PREFIX}:lb:*`,
+
+    /**
+     * Debounce lock for eager leaderboard invalidation from game
+     * settlements. Kept separately from the cached keys so the wipe can be
+     * throttled to ~once per DEBOUNCE window regardless of settlement
+     * volume (avoiding a cache stampede of full-table sorts).
+     */
+    debounce: `${PREFIX}:lb:debounce`,
   },
 
   // ── User Stats ───────────────────────────────────────────────
   userStats: (clerkId: string) => `${PREFIX}:user:stats:${clerkId}`,
   userStatsAll: `${PREFIX}:user:stats:*`,
+
+  // ── Age-gate lookup (middleware) ───────────────────────────
+  // Caches the `users.age` value resolved for the middleware age gate so a
+  // protected page load doesn't hit Neon on every navigation. Age only
+  // changes on a birthdate edit, so a short TTL is plenty.
+  userAge: (clerkId: string) => `${PREFIX}:user:age:${clerkId}`,
+  userAgeAll: `${PREFIX}:user:age:*`,
+
+  // ── Friend presence ────────────────────────────────────────
+  // Short-lived per-user cache for the friends game-presence feed so
+  // multiple tabs/screens don't each run a friend_relations join on every
+  // poll tick. Online status can tolerate a few seconds of staleness.
+  friendPresence: (clerkId: string) => `${PREFIX}:friend-presence:${clerkId}`,
+  friendPresenceAll: `${PREFIX}:friend-presence:*`,
+
+  // ── Special titles map (chat / anywhere a title-by-key lookup is made) ─
+  // The map of special-title key → name is tiny and only changes when an
+  // admin edits titles, so it can be cached to avoid a full-table read on
+  // every chat GET.
+  specialTitles: () => `${PREFIX}:special-titles`,
 
   // ── Recent Games ─────────────────────────────────────────────
   recentGames: (page: number, limit: number) =>
@@ -81,11 +109,22 @@ export const CacheTTL = {
   /** Individual user stats: 3 min backup TTL */
   userStats: 3 * 60,
 
+  /** Age-gate value: 15 min — birthdate changes are rare and the
+      update-birthdate flow could invalidate the cache directly. */
+  userAge: 15 * 60,
+
+  /** Friend presence: 10s — online status tolerates a few seconds of
+      staleness and the client polls every 60s anyway. */
+  friendPresence: 10,
+
   /** Recent games feed: 60s backup TTL */
   recentGames: 60,
 
   /** Big wins feed: 60s backup TTL */
   bigWins: 60,
+
+  /** Special titles map: 5 min — titles rarely change. */
+  specialTitles: 5 * 60,
 
   /**
    * Hex Duel AI session token. 15 min is plenty for a full AI match

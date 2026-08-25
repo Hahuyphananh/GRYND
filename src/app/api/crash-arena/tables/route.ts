@@ -59,11 +59,21 @@ async function ensureDefaultTables() {
  *   - whether the signed-in user is already seated (amISeated / myBalance)
  * Auto-seeds default tables if none exist.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
     // Public lobby listing — signed-out visitors can browse the table grid.
     // auth() is used only to flag the caller's own seats (false when signed out).
     const { userId } = await auth();
+
+    // ?mode=lobby requests a lighter payload for the public table grid: it
+    // skips the per-table latest-round/entries N+1 and trims fields the
+    // lobby never reads (latestRound, waitingPlayers, clerkId, myBalance).
+    // The table-room client calls without the param and gets the full
+    // detail it needs for round reconciliation. Signed-out API responses
+    // are CDN-cacheable, but this endpoint is per-request so we rely on the
+    // reduced work rather than edge caching.
+    const isLobbyMode =
+      new URL(req.url).searchParams.get("mode") === "lobby";
 
     // Internal user id for the caller (if any) — used to match their seats.
     let internalUserId = null;
@@ -139,42 +149,56 @@ export async function GET() {
           (p) => p.tableId === table.id && p.status === "waiting",
         );
 
-        // Latest round
-        const latestRound = await db
-          .select()
-          .from(crashArenaRounds)
-          .where(eq(crashArenaRounds.tableId, table.id))
-          .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
-          .limit(1);
-
-        // Latest round details — lets table-room clients reconcile the
-        // live round (crash point, seed commitment, per-player entry
-        // results) so every player sees the same running/settled state
-        // even when they weren't the one who started it.
+        // Latest round. In lobby mode we only need the status string (for
+        // the LIVE badge); the lobby never reads the full round, so we do a
+        // lightweight status-only select and skip the entries N+1. The
+        // table-room client gets the full round + entries for reconciliation.
+        let roundStatusValue: string | null = null;
         let latestRoundInfo = null;
-        if (latestRound[0]) {
-          const roundEntries = await db
+        if (isLobbyMode) {
+          const [last] = await db
+            .select({ status: crashArenaRounds.status })
+            .from(crashArenaRounds)
+            .where(eq(crashArenaRounds.tableId, table.id))
+            .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
+            .limit(1);
+          roundStatusValue = last?.status ?? null;
+        } else {
+          const latestRound = await db
             .select()
-            .from(crashArenaEntries)
-            .where(eq(crashArenaEntries.roundId, latestRound[0].id));
-          latestRoundInfo = {
-            id: latestRound[0].id,
-            status: latestRound[0].status,
-            crashPoint:
-              latestRound[0].crashPoint != null
-                ? Number(latestRound[0].crashPoint)
-                : null,
-            seedHash: latestRound[0].seedHash ?? null,
-            createdAt: latestRound[0].createdAt,
-            entries: roundEntries.map((e) => ({
-              userId: e.userId,
-              result: e.result,
-              cashoutMultiplier:
-                e.cashoutMultiplier != null
-                  ? Number(e.cashoutMultiplier)
+            .from(crashArenaRounds)
+            .where(eq(crashArenaRounds.tableId, table.id))
+            .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
+            .limit(1);
+          roundStatusValue = latestRound[0]?.status ?? null;
+          // Latest round details — lets table-room clients reconcile the
+          // live round (crash point, seed commitment, per-player entry
+          // results) so every player sees the same running/settled state
+          // even when they weren't the one who started it.
+          if (latestRound[0]) {
+            const roundEntries = await db
+              .select()
+              .from(crashArenaEntries)
+              .where(eq(crashArenaEntries.roundId, latestRound[0].id));
+            latestRoundInfo = {
+              id: latestRound[0].id,
+              status: latestRound[0].status,
+              crashPoint:
+                latestRound[0].crashPoint != null
+                  ? Number(latestRound[0].crashPoint)
                   : null,
-            })),
-          };
+              seedHash: latestRound[0].seedHash ?? null,
+              createdAt: latestRound[0].createdAt,
+              entries: roundEntries.map((e) => ({
+                userId: e.userId,
+                result: e.result,
+                cashoutMultiplier:
+                  e.cashoutMultiplier != null
+                    ? Number(e.cashoutMultiplier)
+                    : null,
+              })),
+            };
+          }
         }
 
         // Sum of player balances at table
@@ -205,31 +229,42 @@ export async function GET() {
             userId: p.userId,
             // clerkId lets clients (e.g. the report modal) address the
             // player by their Clerk identity — the userId field above is
-            // the internal users.id, which is not a public identity.
-            clerkId: userClerkIdById.get(p.userId) ?? null,
+            // the internal users.id, which is not a public identity. Only
+            // the table-room client needs it; the lobby trims it.
+            ...(isLobbyMode
+              ? {}
+              : { clerkId: userClerkIdById.get(p.userId) ?? null }),
             name: userNameById.get(p.userId) || `Player ${p.userId}`,
             balance: Number(p.balance),
             status: p.status,
             isYou: internalUserId != null && p.userId === internalUserId,
             isBot: aiBotId != null && p.userId === aiBotId,
           })),
-          waitingPlayers: waiting.map((p) => ({
-            userId: p.userId,
-            clerkId: userClerkIdById.get(p.userId) ?? null,
-            name: userNameById.get(p.userId) || `Player ${p.userId}`,
-            balance: Number(p.balance),
-            status: p.status,
-            isYou: internalUserId != null && p.userId === internalUserId,
-            isBot: aiBotId != null && p.userId === aiBotId,
-          })),
+          ...(isLobbyMode
+            ? {}
+            : {
+                waitingPlayers: waiting.map((p) => ({
+                  userId: p.userId,
+                  clerkId: userClerkIdById.get(p.userId) ?? null,
+                  name: userNameById.get(p.userId) || `Player ${p.userId}`,
+                  balance: Number(p.balance),
+                  status: p.status,
+                  isYou: internalUserId != null && p.userId === internalUserId,
+                  isBot: aiBotId != null && p.userId === aiBotId,
+                })),
+              }),
           playerCount: players.length,
           waitingCount: waiting.length,
           pot,
-          roundStatus: latestRound[0]?.status ?? null,
-          latestRound: latestRoundInfo,
-          amISeated: Boolean(mySeat),
-          amIWaiting: Boolean(myWait),
-          myBalance: mySeat ? Number(mySeat.balance) : null,
+          roundStatus: roundStatusValue,
+          ...(isLobbyMode
+            ? {}
+            : {
+                latestRound: latestRoundInfo,
+                amISeated: Boolean(mySeat),
+                amIWaiting: Boolean(myWait),
+                myBalance: mySeat ? Number(mySeat.balance) : null,
+              }),
         };
       }),
     );

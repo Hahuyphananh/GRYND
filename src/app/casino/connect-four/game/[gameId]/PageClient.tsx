@@ -197,7 +197,11 @@ export default function ConnectFourGamePage() {
 
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 1000);
+    // Socket room ("match:updated") pushes opponent moves instantly; this
+    // HTTP poll is a reconnect/consistency safety net. Turn pacing comes
+    // from server deadlines + the clock tick, never from the poll rate, so
+    // 5s is safe and keeps match-time DB reads minimal.
+    const interval = setInterval(fetchState, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);

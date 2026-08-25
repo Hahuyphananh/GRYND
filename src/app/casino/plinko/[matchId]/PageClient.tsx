@@ -1328,10 +1328,13 @@ export default function PlinkoPvpMatchPage({
 
   useEffect(() => {
     fetchStatus();
-    // Faster polling cadence (800 ms instead of 1500 ms) so users
-    // see opponent commits / round resolutions / match-end almost
-    // in real time. Was previously flagged as "buggy sync".
-    const interval = setInterval(fetchStatus, 800);
+    // The per-match socket room (PLINKO_PVP_MATCH_UPDATED) pushes
+    // opponent commits / round resolutions / match-end instantly, so
+    // this HTTP poll is now a reconnect/consistency safety net, not the
+    // primary sync path. Held at 5s (was 800ms before the socket path)
+    // to keep match-time DB reads minimal — the launch window is driven
+    // by the server's round deadline + local clock, not the poll rate.
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 

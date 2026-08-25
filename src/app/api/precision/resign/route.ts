@@ -6,6 +6,7 @@
 // /api/pool/resign and /api/uno/multiplayer/resign.
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import {
   cancelArming,
   precisionMatchStore,
@@ -19,6 +20,16 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // ── IDOR hardening: only a participant may resign their own match.
+    // Previously ANY caller could force-finish any match by ID, which
+    // also tripped the payout flow on the clients' next poll.
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
     const body = await req.json().catch(() => ({}));
     const matchId = String(body?.matchId ?? "");
     const match = precisionMatchStore.get(matchId);
@@ -26,6 +37,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Match not found." },
         { status: 404 },
+      );
+    }
+    if (!match.players.some((p) => p.userId === userId)) {
+      return NextResponse.json(
+        { success: false, error: "Caller is not a participant in this match." },
+        { status: 403 },
       );
     }
     match.phase = "finished";

@@ -24,7 +24,11 @@ export default function useGamePresence({ gameKey, gameId, enabled = true }) {
     };
 
     setInGame();
-    const id = setInterval(setInGame, 15000);
+    // Refresh the "in game" marker on a minute cadence. The friends
+    // presence feed only needs current_game_id to be fresh enough to label
+    // a friend as playing; 60s is ample and cuts these writes 4x vs.
+    // the old 15s poll (a Neon UPSERT per in-game client every 15s).
+    const id = setInterval(setInGame, 60000);
 
     return () => {
       clearInterval(id);

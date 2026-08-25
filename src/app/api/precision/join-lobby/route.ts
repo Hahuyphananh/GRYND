@@ -6,6 +6,7 @@
 // matchId so the client can route to /casino/precision/game/[matchId].
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import {
   precisionLobbyStore,
   precisionMatchStore,
@@ -17,6 +18,16 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // ── IDOR hardening: the joining player's identity comes from the
+    // Clerk session, never from the body — a client could previously
+    // join a lobby as ANY user by sending a spoofed body.userId.
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
     const body = await req.json().catch(() => ({}));
     const lobbyId = String(body?.lobbyId ?? "");
     const lobby = precisionLobbyStore.get(lobbyId);
@@ -39,7 +50,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    lobby.opponentUserId = body?.userId ?? "opponent";
+    lobby.opponentUserId = userId;
     lobby.status = "active";
 
     const matchId = lobby.id;

@@ -47,7 +47,8 @@ export default function ArenaLobby({
   const [aiWagerInput, setAiWagerInput] = useState(1);
 
   const [creating, setCreating] = useState(false);
-  const [joinTarget, setJoinTarget] = useState(null); // table awaiting buy-in
+  const [joinTarget, setJoinTarget] = useState(null); // table awaiting buy-in (join)
+  const [createTarget, setCreateTarget] = useState(null); // freshly created table awaiting buy-in
   const [busyTableId, setBusyTableId] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [showRules, setShowRules] = useState(false);
@@ -115,13 +116,19 @@ export default function ArenaLobby({
         throw new Error(data.error || "Unable to create table");
       }
       emitLobbyUpdate({ created: true, wager: wagerAmount });
-      router.push(`/casino/crash-arena/table/${data.data.tableId}`);
+      // Don't navigate yet — open the buy-in modal so the creator places
+      // their buy-in (poker-style) before entering the table.
+      setCreateTarget({
+        id: data.data.tableId,
+        wager: data.data.wager,
+        minBuyIn: data.data.minBuyIn,
+      });
     } catch (err) {
       fail(err.message || "Unable to create table");
     } finally {
       setCreating(false);
     }
-  }, [isSignedIn, router, fail, emitLobbyUpdate]);
+  }, [isSignedIn, fail, emitLobbyUpdate]);
 
   // ── Open the buy-in modal for a table ───────────────────────────────
   const handleJoin = useCallback((table) => {
@@ -133,9 +140,14 @@ export default function ArenaLobby({
     setJoinTarget(table);
   }, [isSignedIn]);
 
-  // ── Complete the join with the chosen buy-in amount ──────────────────
+  // ── Complete the buy-in with the chosen amount ──────────────────────
+  // Works for both paths: joining an existing table (joinTarget) and
+  // buying in to a freshly created table (createTarget). Both seat the
+  // player via /api/crash-arena/join.
   const handleBuyIn = useCallback(async (amount) => {
-    const table = joinTarget;
+    const table = createTarget || joinTarget;
+    const fromCreate = Boolean(createTarget);
+    setCreateTarget(null);
     setJoinTarget(null);
     if (!table) return;
 
@@ -152,13 +164,17 @@ export default function ArenaLobby({
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Unable to join table");
       }
-      emitLobbyUpdate({ joined: true, tableId: table.id });
+      if (fromCreate) {
+        emitLobbyUpdate({ created: true, tableId: table.id });
+      } else {
+        emitLobbyUpdate({ joined: true, tableId: table.id });
+      }
       router.push(`/casino/crash-arena/table/${table.id}`);
     } catch (err) {
       setBusyTableId(null);
       fail(err.message || "Unable to join table");
     }
-  }, [joinTarget, router, fail, emitLobbyUpdate]);
+  }, [createTarget, joinTarget, router, fail, emitLobbyUpdate]);
 
   return (
     <div className="relative w-full">
@@ -324,6 +340,17 @@ export default function ArenaLobby({
           isSignedIn={isSignedIn}
           busyTableId={busyTableId}
           onJoin={handleJoin}
+        />
+      )}
+
+      {/* Buy-in modal for a freshly created table (creator places their
+          buy-in before entering the table) */}
+      {createTarget && (
+        <BuyInModal
+          table={{ wager: createTarget.wager, minBuyIn: createTarget.minBuyIn }}
+          maxBalance={userBalance}
+          onBuyIn={handleBuyIn}
+          onClose={() => setCreateTarget(null)}
         />
       )}
 

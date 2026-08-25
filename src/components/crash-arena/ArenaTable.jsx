@@ -52,6 +52,7 @@ const READY_VOTES_NEEDED = 2;
  *   onBuyChips        — (amount) => void
  *   onReportPlayer    — (player) => void — opens the report modal for an opponent
  *   playerName        — "You"
+ *   maxBalance        — player's wallet balance (caps buy-in amount)
  *   busy              — whether an API call is in flight
  *   children          — CrashEngine
  */
@@ -69,6 +70,7 @@ export default function ArenaTable({
   onBuyChips,
   onReportPlayer,
   playerName = "You",
+  maxBalance = null,
   busy = false,
   children,
 }) {
@@ -525,6 +527,7 @@ export default function ArenaTable({
       {showBuyInModal && (
         <BuyInModal
           table={{ wager, minBuyIn, maxBuyIn }}
+          maxBalance={maxBalance}
           onBuyIn={(amount) => {
             if (isSeated) {
               onBuyChips?.(amount);

@@ -3,8 +3,6 @@ import React, { useEffect, useState } from "react";
 import { useUser, useAuth, SignOutButton } from "@clerk/nextjs";
 import { motion, useReducedMotion } from "framer-motion";
 import AddFundsModal from "./AddFundsModal";
-import LogoSmiley from "../images/smalllogo.png";
-import Image from "next/image";
 import Link from "next/link";
 import { useLanguage } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
@@ -15,6 +13,17 @@ import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconStar, IconX } from "@tabler/icons-react";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
+
+// M1: sessionStorage TTL for the nav's level + equipped-title meta. Level
+// and titles are slow-changing (and the server-side /api/user-stats is
+// already Redis-cached for 3 min), so short-circuiting these lookups for a
+// few minutes after each successful fetch cuts the heaviest nav invocation
+// (/api/user-stats scans every game-history table) without changing any
+// displayed value — the same pattern the is-admin cache already uses.
+const NAV_META_TTL_MS = 5 * 60 * 1000;
+
+
+
 
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
@@ -140,25 +149,83 @@ function NavigationBar({ currentPath }) {
             streakTitle: data.data.streakTitle || null,
           }));
         if (includeMeta) {
+          // Cache level + equipped title in sessionStorage (short TTL) so a
+          // hard reload does not re-fire the two heaviest nav meta calls
+          // (/api/user-stats scans every game-history table for the level,
+          // /api/titles reads the equipped title). These values are
+          // slow-changing; the same few-minutes staleness already applies to
+          // the Redis-cached user-stats (3 min) and the is-admin cache held
+          // in sessionStorage. On a stale/missing cache we fetch fresh and
+          // re-store.
+          const metaKey = `navmeta:${user?.id ?? ""}`;
+          let cachedAt = 0;
           try {
-            const statsRes = await fetch("/api/user-stats");
-            const statsData = await statsRes.json();
-            if (statsData.success) setLevel(statsData.stats.currentLevel);
+            cachedAt = Number(sessionStorage.getItem(`${metaKey}:t`) || 0);
           } catch {}
+          const freshEnough = Date.now() - cachedAt < NAV_META_TTL_MS;
+          if (freshEnough) {
+            try {
+              const cached = sessionStorage.getItem(metaKey);
+              if (cached) {
+                const meta = JSON.parse(cached);
+                if (meta && typeof meta.level === "number")
+                  setLevel(meta.level);
+                if (meta && typeof meta.selectedTitle === "string")
+                  setProfile((prev) => ({
+                    ...prev,
+                    selectedTitle: meta.selectedTitle,
+                    streakTitle: meta.streakTitle || prev.streakTitle,
+                  }));
+              }
+            } catch {}
+          } else {
+            let nextLevel = null;
+            let nextTitle = "";
+            let nextStreak = null;
+            try {
+              const statsRes = await fetch("/api/user-stats");
+              const statsData = await statsRes.json();
+              if (statsData.success) nextLevel = statsData.stats.currentLevel;
+            } catch {}
 
-          try {
-            const titlesRes = await fetch("/api/titles", {
-              credentials: "include",
-            });
-            const titlesData = await titlesRes.json();
-            if (titlesData.success) {
-              setProfile((prev) => ({
-                ...prev,
-                selectedTitle: titlesData.selectedSpecialTitle || titlesData.selectedTitle || "",
-                streakTitle: titlesData.streakTitle || prev.streakTitle || null,
-              }));
-            }
-          } catch {}
+            try {
+              const titlesRes = await fetch("/api/titles", {
+                credentials: "include",
+              });
+              const titlesData = await titlesRes.json();
+              if (titlesData.success) {
+                nextTitle =
+                  titlesData.selectedSpecialTitle ||
+                  titlesData.selectedTitle ||
+                  "";
+                nextStreak = titlesData.streakTitle || null;
+              }
+            } catch {}
+
+            if (nextLevel !== null) setLevel(nextLevel);
+            setProfile((prev) => ({
+              ...prev,
+              selectedTitle: nextTitle || prev.selectedTitle,
+              streakTitle: nextStreak || prev.streakTitle,
+            }));
+
+            // Store the cache regardless of partial failures; next reload
+            // before TTL expiry will skip the network.
+            try {
+              sessionStorage.setItem(
+                `${metaKey}:t`,
+                String(Date.now()),
+              );
+              sessionStorage.setItem(
+                metaKey,
+                JSON.stringify({
+                  level: nextLevel,
+                  selectedTitle: nextTitle,
+                  streakTitle: nextStreak,
+                }),
+              );
+            } catch {}
+          }
         }
       } else if (data.shouldInitialize) {
         const initResponse = await fetch("/api/tokens/initialize", {
@@ -253,11 +320,19 @@ function NavigationBar({ currentPath }) {
         <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
           <div className="flex h-24 items-center justify-between gap-2">
             <Link href="/" className="flex items-center space-x-2">
-              <Image
-                src={LogoSmiley}
+              {/* Plain <img> with the public URL (not the webpack import).
+                  An imported .png resolves to a structured object at runtime,
+                  which a plain <img> cannot render (src becomes "[object
+                  Object]" and the browser shows only the alt text). The
+                  public path is a plain string served from /public, so it
+                  always loads on first paint — same file InteractiveCasinoBg
+                  and the favicon use. */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- static asset, avoids next/image first-paint blanking */}
+              <img
+                src="/images/smalllogo.png"
                 alt="GRYND Logo"
-                width={612}
-                height={408}
+                width={140}
+                height={93}
                 className="h-auto w-[100px] sm:w-[140px] object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)]"
               />
             </Link>

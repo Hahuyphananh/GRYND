@@ -720,7 +720,11 @@ export default function LaneRushDuelMatchPage({ params }) {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 1500);
+    // Socket room (LANE_RUSH_DUEL_MATCH_UPDATED) pushes opponent updates
+    // instantly; this HTTP poll is a reconcile/safety net. Round pacing
+    // comes from server state + the local 250ms clock, never from the poll
+    // rate, so 5s is safe and keeps match-time DB reads minimal.
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 

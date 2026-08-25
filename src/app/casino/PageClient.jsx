@@ -301,7 +301,9 @@ function MainComponent() {
   useEffect(() => {
     if (!user) return;
     fetchFriendPresence();
-    const id = setInterval(fetchFriendPresence, 30000);
+    // Friend presence is social chrome, not game state. Throttled from 30s
+    // to 60s (and the endpoint now caches per user) to cut idle read load.
+    const id = setInterval(fetchFriendPresence, 60000);
     return () => clearInterval(id);
   }, [user]);
 

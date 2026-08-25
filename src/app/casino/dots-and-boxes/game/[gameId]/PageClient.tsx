@@ -29,8 +29,12 @@ const EMPTY_BOX_OWNERS: Record<string, "host" | "guest"> = {};
 const EMPTY_SCORES = { host: 0, guest: 0 };
 
 // ─── Active poll interval — slower when finished so we let the user
-//      read the result without burning CPU/DB on stale polls. ────────
-const ACTIVE_POLL_MS = 1500;
+//      read the result without burning CPU/DB on stale polls. The
+//      socket room ("match:updated") pushes opponent moves instantly
+//      (and aborts the in-flight poll), so the active poll is a
+//      reconnect/consistency safety net — 5s keeps match-time DB reads
+//      minimal without affecting turn pacing (server deadlines). ─────
+const ACTIVE_POLL_MS = 5000;
 const IDLE_POLL_MS = 5000;
 
 export default function DotsAndBoxesGamePage() {

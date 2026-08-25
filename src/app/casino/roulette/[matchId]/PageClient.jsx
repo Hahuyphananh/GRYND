@@ -80,7 +80,13 @@ import {
 import { IconFlag } from "@tabler/icons-react";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 
-const POLL_INTERVAL_MS = 1500;
+// The socket room (ROULETTE_PVP_MATCH_UPDATED = "lobby:updated") pushes
+// opponent actions/round resolutions instantly, so this HTTP poll is a
+// reconnect/consistency safety net on top of the server-driven
+// round_deadline (auto-advance is deadline-timestamped, not poll-bound).
+// Round timing is unaffected by the poll rate; 5s keeps match-time
+// status reads minimal.
+const POLL_INTERVAL_MS = 5000;
 
 // ── Next.js 16 dynamic-route params arrived async (Promise). ──────────
 // In Next.js 15+/16 the `params` prop on a dynamic-route page is a

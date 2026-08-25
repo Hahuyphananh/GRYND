@@ -6,6 +6,7 @@ import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
 import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
 import useCrashArenaRound from "../../../../../components/crash-arena/useCrashArenaRound";
 import { useSocket } from "../../../../../context/SocketProvider";
+import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { IconPlug } from "@tabler/icons-react";
 import Link from "next/link";
@@ -20,6 +21,7 @@ import Link from "next/link";
 export default function TableRoomPage() {
   const params = useParams();
   const router = useRouter();
+  const { isSignedIn: isUserSignedIn } = useUser();
   const rawId = typeof params.tableId === "string" ? Number(params.tableId) : NaN;
   const tableId = Number.isFinite(rawId) ? rawId : null;
   const playerName = "You";
@@ -53,6 +55,24 @@ export default function TableRoomPage() {
   // ── Fetch table metadata from API ─────────────────────────────────────
   const [table, setTable] = useState(null);
   const [tableLoading, setTableLoading] = useState(true);
+
+  // ── User's wallet balance (used to cap the buy-in modal to the 10M
+  //    hard limit when joining/buying chips at this table) ───────────────
+  const [userBalance, setUserBalance] = useState(null);
+
+  useEffect(() => {
+    if (!isUserSignedIn) return;
+    fetch("/api/get-user-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.success) setUserBalance(Number(data.data.balance));
+      })
+      .catch(() => {});
+  }, [isUserSignedIn]);
 
   useEffect(() => {
     if (!tableId) return;
@@ -175,9 +195,13 @@ export default function TableRoomPage() {
   // Keep the roster fresh so players who join/leave/wait show up.
   // Skips syncing while a join/leave API call is in flight to avoid a
   // flicker from mid-transaction server state.
+  // The per-table socket room (useCrashArenaRound) pushes round starts,
+  // cashouts, ready votes and joined/left/settled updates instantly, so
+  // this HTTP poll is a reconcile/safety net — 10s is plenty and halves
+  // the previous 5s fan-out of the (wide) /tables response.
   useEffect(() => {
     if (!tableId) return;
-    const interval = setInterval(refetchTables, 5000);
+    const interval = setInterval(refetchTables, 10000);
     return () => clearInterval(interval);
   }, [tableId, refetchTables]);
 
@@ -286,6 +310,7 @@ export default function TableRoomPage() {
           onLeave={handleLeave}
           onExitToLobby={handleExitToLobby}
           onBuyChips={handleBuyChips}
+          maxBalance={userBalance}
           busy={busy}
           onReportPlayer={handleReportPlayer}
         >

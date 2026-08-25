@@ -13,6 +13,7 @@ import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
 } from "../../../../lib/crash-arena/rooms";
+import { CRASH_MAX_BUYIN } from "../../../../lib/games/crash/constants";
 
 /**
  * POST /api/crash-arena/join
@@ -77,6 +78,26 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: false,
         error: `Minimum buy-in is ${table.minimumBuyin}`,
+      }, { status: 400 });
+    }
+
+    if (buyInAmount > CRASH_MAX_BUYIN) {
+      return NextResponse.json({
+        success: false,
+        error: `Maximum buy-in is ${CRASH_MAX_BUYIN.toLocaleString()} tokens`,
+      }, { status: 400 });
+    }
+
+    // ── Wallet check (server-enforced) ────────────────────────────────────
+    // Reuse the `balance` already loaded with the user row so this adds no
+    // extra query. This is a cleaner, earlier error than the atomic guard
+    // below (which re-checks balance >= buy-in at deduction time), and
+    // guarantees the client-side modal cap (wallet balance) is also enforced
+    // server-side for anyone crafting requests directly.
+    if (Number(user.balance) < buyInAmount) {
+      return NextResponse.json({
+        success: false,
+        error: "Insufficient balance",
       }, { status: 400 });
     }
 
