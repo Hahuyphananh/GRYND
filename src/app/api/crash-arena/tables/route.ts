@@ -17,6 +17,7 @@ import {
   isMissingCrashArenaColumn,
   CRASH_ARENA_SCHEMA_HINT,
 } from "../../../../lib/crash-arena/errors";
+import { resolveCrashArenaAiBotId } from "../../../../lib/crash-arena/aiBot";
 
 /** Default tables to seed if none exist. Min buy-in = 5× wager. */
 const DEFAULT_TABLES = CRASH_WAGERS.map((wager) => ({
@@ -27,11 +28,13 @@ const DEFAULT_TABLES = CRASH_WAGERS.map((wager) => ({
 }));
 
 async function ensureDefaultTables() {
-  // Re-seed when no *open* tables remain (stale cleanup may have closed them).
+  // Re-seed when no *open real* tables remain (stale cleanup may have
+  // closed them). AI practice tables don't count — they're private rooms
+  // hidden from the public grid.
   const existing = await db
     .select({ id: crashArenaTables.id })
     .from(crashArenaTables)
-    .where(ne(crashArenaTables.status, "closed"))
+    .where(and(ne(crashArenaTables.status, "closed"), eq(crashArenaTables.isAi, false)))
     .limit(1);
   if (existing.length > 0) return;
 
@@ -98,6 +101,11 @@ export async function GET() {
           ),
         );
     }
+
+    // ── Internal id of the reserved AI bot (null until a practice table
+    //    has ever been created) — used to flag bot seats so the UI never
+    //    offers to report them.
+    const aiBotId = await resolveCrashArenaAiBotId();
 
     // ── Bulk-fetch display names for players AND hosts ─────────────────────
     const hostIds = tables
@@ -186,6 +194,8 @@ export async function GET() {
           minBuyIn: Number(table.minimumBuyin),
           maxPlayers: table.maxPlayers,
           status: table.status,
+          isAi: table.isAi,
+          aiDifficulty: table.aiDifficulty ?? "medium",
           hostId: table.hostId,
           hostName:
             table.hostId != null
@@ -201,6 +211,7 @@ export async function GET() {
             balance: Number(p.balance),
             status: p.status,
             isYou: internalUserId != null && p.userId === internalUserId,
+            isBot: aiBotId != null && p.userId === aiBotId,
           })),
           waitingPlayers: waiting.map((p) => ({
             userId: p.userId,
@@ -209,6 +220,7 @@ export async function GET() {
             balance: Number(p.balance),
             status: p.status,
             isYou: internalUserId != null && p.userId === internalUserId,
+            isBot: aiBotId != null && p.userId === aiBotId,
           })),
           playerCount: players.length,
           waitingCount: waiting.length,

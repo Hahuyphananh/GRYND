@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
+import MatchWaiting from "./MatchWaiting";
 import {
   IconTrophy,
   IconRefresh,
@@ -283,6 +284,17 @@ export function PvpLobby({
 
   return (
     <>
+      {/* Unified full-screen "Searching for a match…" takeover — shown
+          whenever a Play / Join / vs-AI action is in flight. Every game
+          that renders this shared lobby gets the identical waiting
+          screen (GRYND logo + radar sweep) for free. */}
+      {(busy || vsAi?.busy || joinBusyId !== null) && (
+        <MatchWaiting
+          state="searching"
+          gameName={typeof title === "string" ? title : undefined}
+        />
+      )}
+
       {title && (
         <motion.div
           initial={{ opacity: 0, y: -12 }}

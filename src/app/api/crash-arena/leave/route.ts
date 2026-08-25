@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import {
   users,
+  crashArenaTables,
   crashArenaPlayers,
   crashArenaTransactions,
 } from "../../../../db/schema";
@@ -11,6 +12,7 @@ import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
 } from "../../../../lib/crash-arena/rooms";
+import { closeAiCrashArenaTable } from "../../../../lib/crash-arena/aiBot";
 
 /**
  * POST /api/crash-arena/leave
@@ -66,6 +68,31 @@ export async function POST(req: Request) {
     }
     const player = playerData[0];
     const returnAmount = Number(player.balance);
+
+    // ── AI practice tables: leaving ends the practice session ─────────────
+    // Balances on these tables are virtual (never deducted from the wallet),
+    // so they must NEVER be refunded. Close the whole practice table — a
+    // table with only the bot left has no reason to exist.
+    const tableData = await db
+      .select({ id: crashArenaTables.id, isAi: crashArenaTables.isAi })
+      .from(crashArenaTables)
+      .where(eq(crashArenaTables.id, tableId))
+      .limit(1);
+
+    if (tableData[0]?.isAi) {
+      await closeAiCrashArenaTable(tableId);
+      broadcastTableUpdate(tableId, { left: true, userId: user.id });
+      broadcastLobbyUpdate({ left: true, tableId });
+      return NextResponse.json({
+        success: true,
+        data: {
+          returned: 0,
+          status: "left",
+          tableId,
+          isAi: true,
+        },
+      });
+    }
 
     if (!permanent) {
       // ── "Leave" → step off the table onto the wait list (keep balance) ──

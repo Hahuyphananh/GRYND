@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   KENO_PVP_MATCH_UPDATED,
@@ -531,7 +532,31 @@ export default function KenoPvpMatchPage({ params }) {
   const oppName = me === "player1" ? p2Name : p1Name;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <>
+      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
+      {(isWaiting || isReady) && (
+        <MatchWaiting
+          state={isReady ? "ready" : "waiting"}
+          gameName="Keno PvP"
+          subtitle={
+            isReady
+              ? `${p1Name} vs ${p2Name} — Round 1 starts in a moment.`
+              : `Your ${Number(match.stakeAmount).toLocaleString()} stake is escrowed. Someone with the same stake will join shortly.`
+          }
+          seats={
+            isWaiting
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  { label: "Opponent", occupied: false },
+                ]
+              : []
+          }
+          onCancel={isWaiting && match.viewerCanCancel ? cancelMatch : null}
+          cancelLabel="Cancel Lobby"
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto mt-4 max-w-5xl">
@@ -633,36 +658,6 @@ export default function KenoPvpMatchPage({ params }) {
         {error && (
           <div className="mb-3 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
             {error}
-          </div>
-        )}
-
-        {/* ── WAITING ─────────────────────────────────────────────── */}
-        {isWaiting && (
-          <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center">
-            <p className="mb-3 animate-pulse"><PoolBallIcon size={40} className="text-[#00e5ff]" /></p>
-            <h2 className="text-xl font-bold mb-2">Waiting for an opponent…</h2>
-            <p className="text-sm text-white/60 mb-6">
-              Your {match.stakeAmount.toLocaleString()} <IconCoins size={12} className="inline" /> stake is escrowed. Someone with the same
-              stake will join shortly, or you can cancel.
-            </p>
-            {match.viewerCanCancel && (
-              <button
-                onClick={cancelMatch}
-                className="px-5 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-200 text-sm font-bold hover:bg-red-500/30"
-              >
-                Cancel Lobby
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── READY ───────────────────────────────────────────────── */}
-        {isReady && (
-          <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center">
-            <h2 className="mb-2 flex items-center justify-center gap-2 text-2xl font-bold">Match found! <IconHeartHandshake size={24} /></h2>
-            <p className="text-sm text-white/60">
-              {p1Name} vs {p2Name}. Round 1 starts in a moment. Tap each tile while it glows!
-            </p>
           </div>
         )}
 
@@ -940,6 +935,7 @@ export default function KenoPvpMatchPage({ params }) {
         <Footer />
       </div>
     </div>
+    </>
   );
 }
 

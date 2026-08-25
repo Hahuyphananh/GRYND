@@ -829,6 +829,12 @@ export const crashArenaTables = pgTable(
       onDelete: "set null",
     }),
     status: crashArenaStatusEnum("status").notNull().default("waiting"),
+    // Free practice tables (human vs GRYND AI) — no real money moves.
+    isAi: boolean("is_ai").notNull().default(false),
+    // Practice difficulty chosen in the lobby (easy/medium/hard). NULL on
+    // real tables; defaults to "medium" for AI tables created before the
+    // column existed.
+    aiDifficulty: varchar("ai_difficulty", { length: 20 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({

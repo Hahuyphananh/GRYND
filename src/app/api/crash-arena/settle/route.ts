@@ -140,24 +140,28 @@ export async function POST(req: Request) {
           ),
         );
 
-      // ── WIN transaction ─────────────────────────────────────────────────
-      await db.insert(crashArenaTransactions).values({
-        userId: winner.userId,
-        tableId,
-        amount: winnerPayout.toFixed(2),
-        type: "WIN",
-        reason: `Won round #${round.id} at ${Number(winner.cashoutMultiplier).toFixed(2)}x`,
-      });
-
-      // ── RAKE transaction ────────────────────────────────────────────────
-      if (rake > 0) {
+      // ── WIN/RAKE transactions (real tables only) ────────────────────────
+      // AI practice rounds move only virtual chips — no ledger rows.
+      if (!table.isAi) {
+        // ── WIN transaction ─────────────────────────────────────────────
         await db.insert(crashArenaTransactions).values({
-          userId: winner.userId, // attributed to the table; using winner's userId as proxy
+          userId: winner.userId,
           tableId,
-          amount: rake.toFixed(2),
-          type: "RAKE",
-          reason: `Platform fee (5%), round #${round.id}`,
+          amount: winnerPayout.toFixed(2),
+          type: "WIN",
+          reason: `Won round #${round.id} at ${Number(winner.cashoutMultiplier).toFixed(2)}x`,
         });
+
+        // ── RAKE transaction ────────────────────────────────────────────
+        if (rake > 0) {
+          await db.insert(crashArenaTransactions).values({
+            userId: winner.userId, // attributed to the table; using winner's userId as proxy
+            tableId,
+            amount: rake.toFixed(2),
+            type: "RAKE",
+            reason: `Platform fee (5%), round #${round.id}`,
+          });
+        }
       }
     }
 

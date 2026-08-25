@@ -66,6 +66,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Table is closed" }, { status: 400 });
     }
 
+    if (table.isAi) {
+      return NextResponse.json({
+        success: false,
+        error: "AI practice tables are private — start one from the lobby instead",
+      }, { status: 400 });
+    }
+
     if (buyInAmount < Number(table.minimumBuyin)) {
       return NextResponse.json({
         success: false,

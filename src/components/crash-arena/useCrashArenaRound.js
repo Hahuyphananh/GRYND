@@ -14,6 +14,9 @@ import {
   CRASH_ARENA_TABLE_UPDATED,
   CRASH_ARENA_READY,
 } from "../../lib/crash-arena/rooms";
+import { getCrashBotCashoutTarget } from "../../lib/crash-arena/botStrategy";
+
+const DEFAULT_AI_DIFFICULTY = "medium";
 
 /**
  * Apply server-side round entries onto the local roster. Used when
@@ -95,10 +98,17 @@ export default function useCrashArenaRound({
   wager = 10,
   roundNumber = 1,
   onRoomUpdate,
+  isAi = false,
+  aiDifficulty = DEFAULT_AI_DIFFICULTY,
 }) {
   const { socket } = useSocket();
   const crashEngineRef = useRef(null);
   const currentRoundIdRef = useRef(null);
+  // AI practice: the bot's per-round committed cashout target, its
+  // internal user id, and whether its cashout already fired this round.
+  const botTargetRef = useRef(null);
+  const botUserIdRef = useRef(null);
+  const botCashedOutRef = useRef(false);
   // Id + status of the most recent round reconciled from the server
   // (poll or socket) — guards against re-applying the same round on
   // every refetch while still allowing a status flip (running → settled)
@@ -131,7 +141,8 @@ export default function useCrashArenaRound({
       case "CASHOUT":
         return playerCashout(state, action.playerName, action.multiplier);
       case "REMOTE_CASHOUT": {
-        // Cashout broadcast from another player at the table.
+        // Cashout broadcast from another player at the table (or the AI
+        // bot resolving its committed multiplier through ai-cashout).
         if (state.phase !== "running") return state;
         const { userId, multiplier } = action;
         if (userId == null || !Number.isFinite(Number(multiplier))) return state;
@@ -140,6 +151,21 @@ export default function useCrashArenaRound({
           players: state.players.map((p) =>
             p.userId === userId && p.cashoutMultiplier === null && !p.busted
               ? { ...p, cashoutMultiplier: Number(multiplier) }
+              : p,
+          ),
+        };
+      }
+      case "BOT_BUST": {
+        // The bot committed past the crash point — resolved as a loss by
+        // the server, so show it busted locally to match the settle result.
+        if (state.phase !== "running") return state;
+        const { userId } = action;
+        if (userId == null) return state;
+        return {
+          ...state,
+          players: state.players.map((p) =>
+            p.userId === userId && p.cashoutMultiplier === null && !p.busted
+              ? { ...p, busted: true }
               : p,
           ),
         };
@@ -222,6 +248,7 @@ export default function useCrashArenaRound({
               ...lp,
               isYou: lp.isYou || Boolean(sp.isYou),
               userId: lp.userId ?? sp.userId ?? null,
+              isBot: Boolean(sp.isBot) || lp.isBot === true,
               balance: lp.isYou ? lp.balance : Number(sp.balance),
             });
           } else {
@@ -232,6 +259,7 @@ export default function useCrashArenaRound({
               userId: sp.userId ?? null,
               balance: Number(sp.balance),
               isYou: Boolean(sp.isYou),
+              isBot: Boolean(sp.isBot),
               isSittingOut: false,
               isPlaying: !inLiveRound,
               cashoutMultiplier: null,
@@ -339,9 +367,70 @@ export default function useCrashArenaRound({
     }
   }, [tableId, socket]);
 
-  const handleMultiplierUpdate = useCallback(() => {
-    // CrashEngine handles display internally
-  }, []);
+  /**
+   * AI practice: when the running multiplier reaches the bot's committed
+   * target, cash the bot out through the server (which validates against
+   * the real crash point exactly like a human cashout). The commit fires
+   * once per round; a greedy target past the crash point never triggers
+   * and simply resolves as a bust at settle.
+   */
+  const handleMultiplierUpdate = useCallback((multiplier, crashed) => {
+    if (!isAi) return;
+    if (crashed) return;
+    const target = botTargetRef.current;
+    const botId = botUserIdRef.current;
+    if (target == null || botId == null || botCashedOutRef.current) return;
+    if (Number(multiplier) < target) return;
+
+    botCashedOutRef.current = true; // commit — fire once
+    const roundId = currentRoundIdRef.current;
+    if (!roundId) return;
+
+    fetch("/api/crash-arena/ai-cashout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ roundId, cashoutMultiplier: target }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data?.success) return;
+        if (data.data?.survived) {
+          dispatch({
+            type: "REMOTE_CASHOUT",
+            userId: botId,
+            multiplier: Number(data.data.cashoutMultiplier),
+          });
+        } else {
+          // Committed past the crash point — the server resolved it as a
+          // loss; mirror the bust locally so the standings match settle.
+          dispatch({ type: "BOT_BUST", userId: botId });
+        }
+      })
+      .catch(() => {
+        // Transient failure — allow a retry on the next frame tick.
+        botCashedOutRef.current = false;
+      });
+  }, [isAi, dispatch]);
+
+  /**
+   * Arm the bot for a new round: pick its committed cashout target and
+   * remember its user id from the synced roster. Called whenever a round
+   * goes running (client-started or reconciled from the server).
+   */
+  const armBotForRound = useCallback((crashPoint) => {
+    if (!isAi) return;
+    botCashedOutRef.current = false;
+    botTargetRef.current = null;
+    const cp = Number(crashPoint);
+    if (!Number.isFinite(cp) || cp < 1) return;
+    const bot = (roundStateRef.current?.players || []).find((p) => p.isBot);
+    botUserIdRef.current = bot?.userId ?? null;
+    if (botUserIdRef.current == null) return;
+    // The bot's aggressiveness follows the difficulty picked in the lobby
+    // (mirrors the poker table AIs' easy/medium/hard seats).
+    botTargetRef.current = getCrashBotCashoutTarget(cp, aiDifficulty);
+  }, [isAi, aiDifficulty]);
 
   // ── Round control ────────────────────────────────────────────────────
 
@@ -372,6 +461,7 @@ export default function useCrashArenaRound({
       lastSyncedRef.current = { id: String(roundId), status: "running" };
       setReadyVotes([]);
       dispatch({ type: "START_ROUND", crashPoint, seedHash });
+      if (isAi) armBotForRound(crashPoint);
       // Broadcast so the other players' CrashEngines start in sync.
       if (socket) {
         socket.emit(CRASH_ARENA_READY, {
@@ -387,12 +477,16 @@ export default function useCrashArenaRound({
     } finally {
       setBusy(false);
     }
-  }, [tableId, socket]);
+  }, [tableId, socket, isAi, armBotForRound]);
 
   const goToNextRound = useCallback(() => {
     dispatch({ type: "NEXT_ROUND" });
     currentRoundIdRef.current = null;
     setReadyVotes([]);
+    // Clear the bot's per-round state so the next round re-arms fresh.
+    botTargetRef.current = null;
+    botUserIdRef.current = null;
+    botCashedOutRef.current = false;
   }, []);
 
   // ── Round reconciliation (from poll or socket) ──────────────────────
@@ -427,9 +521,12 @@ export default function useCrashArenaRound({
 
     lastSyncedRef.current = { id: roundId, status: roundStatus };
     // A running round is the one cashouts / settle must target.
-    if (isActive) currentRoundIdRef.current = roundId;
+    if (isActive) {
+      currentRoundIdRef.current = roundId;
+      if (isAi) armBotForRound(Number(roundInfo.crashPoint));
+    }
     dispatch({ type: "SYNC_ROUND", round: roundInfo, wager });
-  }, [wager]);
+  }, [wager, isAi, armBotForRound]);
 
   /**
    * Apply a cashout broadcast from another player at the table.

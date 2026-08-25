@@ -78,6 +78,7 @@ import {
   AlertIcon,
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -1574,7 +1575,48 @@ export default function RoulettePvpGamePage({ params }) {
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
+    <>
+      {/* Unified full-screen waiting takeover — matchmaking and the
+          pre-round countdown look the same in every game. The table
+          stays hidden until the match is actually playable. */}
+      {(match?.status === MATCH_STATUS.WAITING ||
+        match?.status === MATCH_STATUS.READY) && (
+        <MatchWaiting
+          state={match.status === MATCH_STATUS.READY ? "ready" : "waiting"}
+          gameName={match.isAi ? "Roulette vs AI" : "Roulette PvP"}
+          subtitle={
+            match.status === MATCH_STATUS.READY
+              ? "Round 1 begins in a moment…"
+              : match.isAi
+                ? "Free practice against the GRYND AI — the wheel starts in a moment."
+                : `Your ${stake.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} stake is escrowed. Someone with the same stake will join shortly.`
+          }
+          seats={
+            match.status === MATCH_STATUS.WAITING
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  {
+                    label: match.isAi ? "GRYND AI" : "Opponent",
+                    occupied: false,
+                  },
+                ]
+              : []
+          }
+          countdown={match.status === MATCH_STATUS.READY ? timeLeft : null}
+          onCancel={
+            match.status === MATCH_STATUS.WAITING && isPlayer1
+              ? cancelWaiting
+              : null
+          }
+          cancelLabel="Cancel & refund"
+          cancelling={cancelling}
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
@@ -2453,7 +2495,8 @@ export default function RoulettePvpGamePage({ params }) {
         reportedPlayerName="Opponent"
         gameType="Roulette PvP"
       />
-    </div>
+      </div>
+    </>
   );
 }
 

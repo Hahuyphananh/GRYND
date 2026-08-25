@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { users, crashArenaPlayers } from "../../../../db/schema";
-import { inArray } from "drizzle-orm";
+import {
+  users,
+  crashArenaTables,
+  crashArenaPlayers,
+} from "../../../../db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { releaseCrashArenaSeat } from "../../../../lib/crash-arena/cleanup";
 
 export const dynamic = "force-dynamic";
@@ -50,8 +54,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const action = body?.action;
 
-    // ── List candidate rows (seated or waiting, any table) ──────────────
+    // ── List candidate rows (seated or waiting, any real table) ─────────
+    // AI practice tables are excluded entirely: their seats are released
+    // by the per-socket disconnect timer (which closes the whole practice
+    // session) and the bot never has a socket to begin with.
     if (action === "list") {
+      const aiTableRows = await db
+        .select({ id: crashArenaTables.id })
+        .from(crashArenaTables)
+        .where(eq(crashArenaTables.isAi, true));
+      const aiTableIds = new Set(aiTableRows.map((r) => r.id));
+
       const rows = await db
         .select({
           tableId: crashArenaPlayers.tableId,
@@ -74,6 +87,7 @@ export async function POST(req: NextRequest) {
       const clerkById = new Map(userRows.map((u) => [u.id, u.clerkId]));
 
       const data = rows
+        .filter((r) => !aiTableIds.has(r.tableId))
         .map((r) => ({ tableId: r.tableId, userId: clerkById.get(r.userId) ?? null }))
         .filter((r) => r.userId != null);
 

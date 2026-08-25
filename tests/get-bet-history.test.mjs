@@ -168,6 +168,7 @@ const DIRECT_TABLES = [
   "pokerGames",
   "laneRushDuelMatches",
   "memoryGridMatches",
+  "crashArenaEntries",
 ];
 
 for (const table of DIRECT_TABLES) {
@@ -184,6 +185,14 @@ for (const table of DIRECT_TABLES) {
 test("queries diceFlush via players → rooms join", () => {
   assert.match(source, /from\(diceFlushPlayers\)/, "must use diceFlushPlayers in from()");
   assert.match(source, /innerJoin\(diceFlushRooms/, "must join diceFlushRooms");
+});
+
+// Crash Arena queried via entries → rounds → tables join (so AI practice
+// rounds can be labeled "Crash Arena vs AI").
+test("queries crashArena via entries → rounds → tables join", () => {
+  assert.match(source, /from\(crashArenaEntries\)/, "must use crashArenaEntries in from()");
+  assert.match(source, /innerJoin\(crashArenaRounds/, "must join crashArenaRounds");
+  assert.match(source, /innerJoin\(crashArenaTables/, "must join crashArenaTables");
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -258,6 +267,11 @@ test("poker formatter exists and is included in allBets", () => {
 test("diceFlush formatter exists and is included in allBets", () => {
   assert.match(source, /diceFlushFormatted/, "must have diceFlush formatter");
   assert.match(source, /\.\.\.diceFlushFormatted/, "must spread into allBets");
+});
+
+test("crashArena formatter exists and is included in allBets", () => {
+  assert.match(source, /crashArenaFormatted/, "must have crashArena formatter");
+  assert.match(source, /\.\.\.crashArenaFormatted/, "must spread into allBets");
 });
 
 // ═══════════════════════════════════════════════════════════════

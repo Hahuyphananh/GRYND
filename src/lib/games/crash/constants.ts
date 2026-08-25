@@ -15,8 +15,11 @@ export const CRASH_MAX = 9.2;
 /** Range = MAX − MIN (used for scaling). */
 export const CRASH_RANGE = CRASH_MAX - CRASH_MIN; // 8.0
 
-/** Standard Crash Arena table wagers (lobby stake sections). */
+/** Standard Crash Arena table wagers (lobby quick-pick presets). */
 export const CRASH_WAGERS = [1, 5, 10, 25, 50, 100];
+
+/** Minimum wager allowed when creating a table. */
+export const CRASH_MIN_WAGER = 1;
 
 /** Minimum buy-in is always 5× the round wager. */
 export const CRASH_MIN_BUYIN_MULTIPLIER = 5;

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
 import { usePostHog } from "posthog-js/react";
@@ -681,6 +682,23 @@ export default function ChessGamePage() {
 
   return (
     <>
+      {/* Unified full-screen waiting takeover — no opponent seated yet */}
+      {gameData && !gameData.blackPlayerId && (
+        <MatchWaiting
+          state="waiting"
+          gameName="Chess Arena"
+          subtitle={`Game #${gameId} · Waiting for an opponent to join…`}
+          seats={[
+            {
+              label: "You",
+              name: color === "white" ? "White" : "Black",
+              occupied: true,
+            },
+            { label: "Opponent", occupied: false },
+          ]}
+        />
+      )}
+
       {/* Turn Banner */}
       <AnimatePresence>
         {turnBanner && (

@@ -24,7 +24,7 @@
 // note → Open Lobbies list) is the shared PvpLobby component in the
 // blackjack layout / farkle color scheme.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -36,6 +36,7 @@ import {
   roulettePvpMatchRoom,
 } from "../../../lib/roulette-pvp/rooms";
 import { RouletteWheelIcon } from "../../../components/roulette-pvp/RouletteIcons";
+import MatchWaiting from "../../../components/lobby/MatchWaiting";
 
 const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -44,6 +45,17 @@ export default function RoulettePvpLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
+
+  // Minimum time the full-screen "Searching for a match…" takeover stays
+  // visible. Create-or-join usually resolves in one fast round-trip, so
+  // without this floor the screen would flash for a frame (or not paint at
+  // all) and the unified waiting UX would be invisible.
+  const MIN_SEARCHING_MS = 800;
+  const searchStartedAtRef = useRef(0);
+  const ensureMinSearching = async () => {
+    const remaining = MIN_SEARCHING_MS - (Date.now() - searchStartedAtRef.current);
+    if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
+  };
 
   const [stake, setStake] = useState(50);
   const [availableMatches, setAvailableMatches] = useState([]);
@@ -102,6 +114,7 @@ export default function RoulettePvpLobbyPage() {
 
   const createOrJoin = async (stakeAmount) => {
     setBusy(true);
+    searchStartedAtRef.current = Date.now();
     setError(null);
     try {
       const res = await fetch("/api/roulette-pvp/create-or-join", {
@@ -113,6 +126,7 @@ export default function RoulettePvpLobbyPage() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data?.error || "Unable to start match");
+        setBusy(false);
         return;
       }
       socket?.emit("room_event", {
@@ -137,15 +151,24 @@ export default function RoulettePvpLobbyPage() {
         joined: Boolean(data?.data?.joined),
         match_id: data?.data?.match?.id,
       });
-      // Newly created/joined match lives at the dynamic sibling route.
+      // Hold the searching screen long enough to be perceived, then
+      // navigate to the match room (which shows its own waiting/ready
+      // takeover if an opponent isn't ready yet).
+      await ensureMinSearching();
       router.push(`/casino/roulette/${data.data.match.id}`);
-    } finally {
+      // Intentionally NOT resetting `busy` on success: the component
+      // unmounts as we navigate away, and resetting here would flash
+      // the lobby behind the overlay for a frame.
+    } catch (err) {
+      console.error("[roulette] create-or-join failed", err);
+      setError("Network error while starting match");
       setBusy(false);
     }
   };
 
   const playVsAi = async () => {
     setAiBusy(true);
+    searchStartedAtRef.current = Date.now();
     setError(null);
     try {
       const res = await fetch("/api/roulette-pvp/create-ai", {
@@ -157,11 +180,13 @@ export default function RoulettePvpLobbyPage() {
       const data = await res.json();
       if (!res.ok || !data?.success) {
         setError(data?.error || "Unable to start free AI match");
+        setAiBusy(false);
         return;
       }
       const matchId = data?.data?.match?.id;
       if (!matchId) {
         setError("AI match did not return a match id");
+        setAiBusy(false);
         return;
       }
       socket?.emit("room_event", {
@@ -169,10 +194,12 @@ export default function RoulettePvpLobbyPage() {
         event: ROULETTE_PVP_MATCH_UPDATED,
       });
       posthog?.capture("roulette_pvp_ai_started", { match_id: matchId });
+      // Hold the searching screen long enough to be perceived.
+      await ensureMinSearching();
       router.push(`/casino/roulette/${matchId}`);
+      // Not resetting `aiBusy` on success — see createOrJoin.
     } catch {
       setError("Network error while starting free AI match");
-    } finally {
       setAiBusy(false);
     }
   };
@@ -216,7 +243,17 @@ export default function RoulettePvpLobbyPage() {
   };
 
   return (
-    <PvpLobbyPage
+    <>
+      {/* Unified full-screen waiting takeover — shown while the
+          create-or-join request is in flight. */}
+      {(busy || aiBusy) && (
+        <MatchWaiting
+          state="searching"
+          gameName="Roulette"
+          subtitle="Pairing you with a player on the same stake…"
+        />
+      )}
+      <PvpLobbyPage
       title="Roulette PvP Lobby"
       subtitle={
         <>
@@ -341,6 +378,7 @@ export default function RoulettePvpLobbyPage() {
       onJoin={(l) => joinSpecific(l.id)}
       joinBusyId={joiningId}
       onRefresh={fetchAvailable}
-    />
+      />
+    </>
   );
 }

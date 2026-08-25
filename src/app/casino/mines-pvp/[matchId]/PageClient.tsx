@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
@@ -1248,7 +1249,41 @@ export default function MinesPvpMatchPage({
     !cancelling;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <>
+      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
+      {(match.status === MATCH_STATUS.WAITING ||
+        match.status === MATCH_STATUS.READY) && (
+        <MatchWaiting
+          state={
+            match.status === MATCH_STATUS.READY ? "ready" : "waiting"
+          }
+          gameName={isAi ? "Mines Duel vs AI" : "Mines Duel"}
+          subtitle={
+            match.status === MATCH_STATUS.READY
+              ? "Both players joined. Starting in a few seconds…"
+              : isAi
+                ? "Free practice against the GRYND AI — the board starts in a moment."
+                : `Your ${stake.toLocaleString()} stake is escrowed. Someone with the same stake will join shortly.`
+          }
+          seats={
+            match.status === MATCH_STATUS.WAITING
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  { label: isAi ? "GRYND AI" : "Opponent", occupied: false },
+                ]
+              : []
+          }
+          onCancel={
+            match.status === MATCH_STATUS.WAITING && canCancel
+              ? handleCancel
+              : null
+          }
+          cancelLabel="Cancel lobby (refund stake)"
+          cancelling={cancelling}
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
       <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
@@ -1462,6 +1497,7 @@ export default function MinesPvpMatchPage({
         reportedPlayerName="Opponent"
         gameType="Mines Duel"
       />
-    </div>
+      </div>
+    </>
   );
 }

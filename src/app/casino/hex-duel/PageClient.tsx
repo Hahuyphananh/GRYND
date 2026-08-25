@@ -14,6 +14,7 @@ import HexParticles from "../../../components/HexParticles";
 import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
 import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
+import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
@@ -2734,6 +2735,25 @@ export default function HexDuelPage() {
     return (
       <>
         <style>{GLOBAL_KEYFRAMES}</style>
+        {/* Unified full-screen waiting takeover (except when the
+            opponent disconnected — that keeps its own red screen). */}
+        {connectionStatus !== "opponent_disconnected" && (
+          <MatchWaiting
+            state="waiting"
+            gameName="Hex Duel"
+            subtitle={`Game #${multiplayerGameId} · Another player needs to join before the match starts…`}
+            seats={[
+              {
+                label: "You",
+                name: isPlayer1 ? "Player 1 (Host)" : "Player 2",
+                occupied: true,
+              },
+              { label: "Opponent", occupied: false },
+            ]}
+            onCancel={handleRestart}
+            cancelLabel="Cancel & Return to Lobby"
+          />
+        )}
         <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
           <NavigationBar currentPath="/casino" />
 

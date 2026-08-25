@@ -1,7 +1,7 @@
 //get-bet-history/route.ts
 import { NextResponse } from "next/server";
 import { db } from "../../../db";
-import { eq, or, and, sql } from "drizzle-orm";
+import { eq, or, and, inArray, sql } from "drizzle-orm";
 import {
   users,
   rouletteGames,
@@ -26,6 +26,9 @@ import {
   diceFlushPlayers,
   minesPvpMatches,
   laneRushDuelMatches,
+  crashArenaTables,
+  crashArenaRounds,
+  crashArenaEntries,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -76,6 +79,7 @@ export async function GET() {
       diceFlushRows,
       minesPvpRows,
       laneRushDuelRows,
+      crashArenaRows,
     ] = await Promise.all([
       // Column projection + per-table LIMIT. The formatters below only
       // read a handful of fields per row; full-row selects shipped every
@@ -421,7 +425,46 @@ export async function GET() {
           ),
         )
         .limit(HISTORY_LIMIT),
+      //  Crash Arena — one entry per player per round (PvP tables AND
+      //  free AI practice tables). Projection joins entries → rounds →
+      //  tables so we can label AI practice rounds and compute the pot
+      //  from the table wager.
+      db
+        .select({
+          entryId: crashArenaEntries.id,
+          result: crashArenaEntries.result,
+          roundId: crashArenaEntries.roundId,
+          roundStatus: crashArenaRounds.status,
+          roundCreatedAt: crashArenaRounds.createdAt,
+          tableIsAi: crashArenaTables.isAi,
+          tableWager: crashArenaTables.wagerAmount,
+        })
+        .from(crashArenaEntries)
+        .innerJoin(crashArenaRounds, eq(crashArenaEntries.roundId, crashArenaRounds.id))
+        .innerJoin(crashArenaTables, eq(crashArenaRounds.tableId, crashArenaTables.id))
+        .where(eq(crashArenaEntries.userId, uid))
+        .limit(HISTORY_LIMIT),
     ]);
+
+    // ── Crash Arena: how many entries each of the user's rounds had ───────
+    // Pot = players × wager; the winner takes pot minus the 5% rake.
+    const crashRoundIds = [
+      ...new Set(crashArenaRows.map((r) => r.roundId).filter((id) => id != null)),
+    ];
+    let crashRoundPlayerCounts = new Map();
+    if (crashRoundIds.length > 0) {
+      const counts = await db
+        .select({
+          roundId: crashArenaEntries.roundId,
+          count: sql<number>`count(*)`,
+        })
+        .from(crashArenaEntries)
+        .where(inArray(crashArenaEntries.roundId, crashRoundIds))
+        .groupBy(crashArenaEntries.roundId);
+      crashRoundPlayerCounts = new Map(
+        counts.map((c) => [c.roundId, Number(c.count ?? 0)]),
+      );
+    }
 
     const formatBet = (type, bet) => {
       let result = "pending";
@@ -738,6 +781,28 @@ export async function GET() {
       })
       .filter(Boolean);
 
+    // Crash Arena — settled rounds only. AI practice rounds are labeled
+    // "Crash Arena vs AI" (their amounts are virtual practice chips).
+    const crashArenaFormatted = crashArenaRows
+      .map((g) => {
+        if (g.roundStatus !== "settled") return null;
+        const amount = Number(g.tableWager ?? 0);
+        const players = crashRoundPlayerCounts.get(g.roundId) ?? 0;
+        const pot = players * amount;
+        const rake = Math.floor(pot * 0.05);
+        const won = g.result === "won";
+        const payout = won ? pot - rake : 0;
+        return {
+          type: g.tableIsAi ? "Crash Arena vs AI" : "Crash Arena",
+          date: g.roundCreatedAt || new Date().toISOString(),
+          amount,
+          payout,
+          result: won ? "won" : "lost",
+          tokenDiff: won ? payout - amount : -amount,
+        };
+      })
+      .filter(Boolean);
+
     // Keno Duel PvP matches — winner's payout is `stake * 1.9` and a
     // loser's is 0; a draw refunds both stakes (payout = stake,
     // tokenDiff = 0). Mirrors the minesPvpFormatted shape.
@@ -791,6 +856,7 @@ export async function GET() {
       ...diceFlushFormatted,
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,
+      ...crashArenaFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     //  Cumulative stats (totalWagered, weeklyWagered, currentStreak, etc.)

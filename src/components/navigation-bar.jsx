@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useUser, useAuth, SignOutButton } from "@clerk/nextjs";
 import { motion, useReducedMotion } from "framer-motion";
 import AddFundsModal from "./AddFundsModal";
-import LogoSmiley from "../images/logo1.png";
+import LogoSmiley from "../images/smalllogo.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useLanguage } from "../context/LanguageContext";
@@ -251,14 +251,14 @@ function NavigationBar({ currentPath }) {
         className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
       >
         <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
-          <div className="flex h-16 items-center justify-between gap-2">
+          <div className="flex h-24 items-center justify-between gap-2">
             <Link href="/" className="flex items-center space-x-2">
               <Image
                 src={LogoSmiley}
                 alt="GRYND Logo"
-                width={150}
-                height={60}
-                className="h-auto w-[120px] rounded-lg object-contain drop-shadow-[0_0_10px_rgba(245,255,59,0.45)] sm:w-[150px]"
+                width={612}
+                height={408}
+                className="h-auto w-[100px] sm:w-[140px] object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)]"
               />
             </Link>
 
@@ -295,7 +295,9 @@ function NavigationBar({ currentPath }) {
                   href="/contact"
                   className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/contact" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
-                  <IconMail size={15} className="mb-0.5 mr-1 inline" /> Contact
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconMail size={15} className="shrink-0" /> Contact
+                  </span>
                 </Link>
               </motion.div>
               <motion.div
@@ -309,7 +311,9 @@ function NavigationBar({ currentPath }) {
                   href="/reviews"
                   className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/reviews" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
-                  <IconStar size={15} className="mb-0.5 mr-1 inline" /> Reviews
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconStar size={15} className="shrink-0" /> Reviews
+                  </span>
                 </Link>
               </motion.div>
               <motion.div
@@ -323,7 +327,9 @@ function NavigationBar({ currentPath }) {
                   href="/faq"
                   className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/faq" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
-                  <IconHelp size={15} className="mb-0.5 mr-1 inline" /> FAQ
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconHelp size={15} className="shrink-0" /> FAQ
+                  </span>
                 </Link>
               </motion.div>
               {isAdmin && isSignedIn && (
@@ -338,7 +344,9 @@ function NavigationBar({ currentPath }) {
                     href="/admin"
                     className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8c42] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/admin" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#ff8c42] hover:text-[#ffb347]"}`}
                   >
-                    <IconSettings size={15} className="mb-0.5 mr-1 inline" /> Admin
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconSettings size={15} className="shrink-0" /> Admin
+                    </span>
                   </Link>
                 </motion.div>
               )}
@@ -561,21 +569,27 @@ function NavigationBar({ currentPath }) {
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    <IconMail size={15} className="mb-0.5 mr-1 inline" /> Contact
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconMail size={15} className="shrink-0" /> Contact
+                    </span>
                   </Link>
                   <Link
                     href="/reviews"
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    <IconStar size={15} className="mb-0.5 mr-1 inline" /> Reviews
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconStar size={15} className="shrink-0" /> Reviews
+                    </span>
                   </Link>
                   <Link
                     href="/faq"
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
-                    <IconHelp size={15} className="mb-0.5 mr-1 inline" /> FAQ
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconHelp size={15} className="shrink-0" /> FAQ
+                    </span>
                   </Link>
                 {isAdmin && isSignedIn && (
                 <Link
@@ -583,7 +597,9 @@ function NavigationBar({ currentPath }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className="block rounded-lg bg-[#091737] px-3 py-2 text-[#ff8c42]"
                 >
-                  <IconSettings size={15} className="mb-0.5 mr-1 inline" /> Admin
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconSettings size={15} className="shrink-0" /> Admin
+                  </span>
                 </Link>
               )}
             </div>

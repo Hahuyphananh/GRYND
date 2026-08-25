@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
 import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/physics";
@@ -1231,7 +1232,21 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     .map((b) => b.n);
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
+    <>
+      {/* Unified full-screen waiting takeover */}
+      {!started && (
+        <MatchWaiting
+          state="waiting"
+          gameName={aiMode ? "Pool vs AI" : "Pool Masters"}
+          subtitle="Waiting for the match to start…"
+          seats={[
+            { label: "You", name: "You", occupied: true },
+            { label: aiMode ? "AI" : "Opponent", occupied: false },
+          ]}
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
       <NavigationBar currentPath="/casino" />
 
       {/* ── Shot notification toasts ── */}
@@ -1634,6 +1649,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
         reportedPlayerName={oppName}
         gameType="Pool Masters"
       />
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
 import ArenaLobby from "../../../components/crash-arena/ArenaLobby";
 import Link from "next/link";
@@ -13,9 +14,12 @@ import { useUser } from "@clerk/nextjs";
  */
 export default function CrashArenaPage() {
   const { isSignedIn } = useUser();
+  const router = useRouter();
   const [tables, setTables] = useState([]);
   const [userBalance, setUserBalance] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiWager, setAiWager] = useState(null);
+  const [aiError, setAiError] = useState(null);
 
   const fetchTables = useCallback(async () => {
     try {
@@ -41,6 +45,36 @@ export default function CrashArenaPage() {
       // silent
     }
   }, [isSignedIn]);
+
+  // Start a free practice table against the GRYND AI bot for this wager
+  // at the chosen difficulty (easy/medium/hard, like the poker AI seats).
+  // Free play — no wallet deduction; the human gets a virtual stack.
+  const playAI = useCallback(
+    async (wager, difficulty) => {
+      if (!isSignedIn) return;
+      setAiWager(wager);
+      setAiError(null);
+      try {
+        const res = await fetch("/api/crash-arena/create-ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ wager, difficulty }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setAiError(data?.error || "Unable to start AI practice");
+          return;
+        }
+        router.push(`/casino/crash-arena/table/${data.data.tableId}`);
+      } catch {
+        setAiError("Unable to start AI practice");
+      } finally {
+        setAiWager(null);
+      }
+    },
+    [isSignedIn, router],
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -71,6 +105,9 @@ export default function CrashArenaPage() {
           loading={loading}
           isSignedIn={isSignedIn}
           onRefresh={fetchTables}
+          onPlayAI={playAI}
+          aiWager={aiWager}
+          aiError={aiError}
         />
       </div>
     </div>

@@ -7,6 +7,7 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import ReportModal from "../../../../../components/ReportModal";
+import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
@@ -487,12 +488,28 @@ const prefersReducedMotion = useReducedMotion();
   // ─── Render ─────────────────────────────────────────────────────────
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
-    >
+    <>
+      {/* Unified full-screen waiting takeover */}
+      {game?.status === "waiting" && (
+        <MatchWaiting
+          state="waiting"
+          gameName="Dots & Boxes"
+          subtitle={t("games.dots_and_boxes.status_waiting")}
+          seats={[
+            { label: "You", name: "You", occupied: true },
+            { label: "Opponent", occupied: false },
+          ]}
+          onCancel={game?.role === "host" ? cancelGame : null}
+          cancelLabel={t("games.dots_and_boxes.cancel_game_button")}
+        />
+      )}
+
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8"
+      >
       <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -1017,7 +1034,8 @@ const prefersReducedMotion = useReducedMotion();
         reportedPlayerName={opponentName}
         gameType="Dots & Boxes"
       />
-    </motion.div>
+      </motion.div>
+    </>
   );
 }
 

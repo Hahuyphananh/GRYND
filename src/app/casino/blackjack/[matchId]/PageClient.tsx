@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
@@ -789,7 +790,50 @@ export default function BlackjackPvpMatchPage({
 
   // ── Main render ───────────────────────────────────────────────────
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
+    <>
+      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
+      {(match?.status === "waiting" || match?.status === "ready") && (
+        <MatchWaiting
+          state={match.status === "ready" ? "ready" : "waiting"}
+          gameName={match?.isAi ? "Blackjack vs AI" : "Blackjack PvP"}
+          subtitle={
+            match.status === "ready"
+              ? "Round 1 starts in a moment…"
+              : match?.isAi
+                ? "Free practice against the GRYND AI — the hand starts in a moment."
+                : "Your stake is escrowed. Someone with the same stake will join shortly."
+          }
+          seats={
+            match.status === "waiting"
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  {
+                    label: match?.isAi ? "GRYND AI" : "Opponent",
+                    occupied: false,
+                  },
+                ]
+              : []
+          }
+          onCancel={
+            match.status === "waiting" && match?.player1Id === user?.id
+              ? async () => {
+                  await fetch(
+                    `/api/blackjack-pvp/match/${matchId}/cancel`,
+                    { method: "POST", credentials: "include" },
+                  );
+                  socket?.emit("room_event", {
+                    roomId: "lobby:blackjack-pvp",
+                    event: "lobby:updated",
+                  });
+                  router.push("/casino/blackjack");
+                }
+              : null
+          }
+          cancelLabel="Cancel lobby"
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
         {/* Header */}
@@ -1252,7 +1296,8 @@ export default function BlackjackPvpMatchPage({
         reportedPlayerName="Opponent"
         gameType="Blackjack PvP"
       />
-    </div>
+      </div>
+    </>
   );
 }
 
