@@ -8,7 +8,7 @@ import {
 import { eq, and, or, isNull, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
-  CRASH_WAGERS,
+  CRASH_MIN_WAGER,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
 import {
@@ -43,14 +43,16 @@ export async function POST(req: Request) {
     const { wager } = await req.json();
     const wagerNum = Number(wager);
 
-    if (!CRASH_WAGERS.includes(wagerNum)) {
+    if (!Number.isFinite(wagerNum) || wagerNum < CRASH_MIN_WAGER) {
       return NextResponse.json(
-        { success: false, error: "Invalid wager amount" },
+        { success: false, error: `Minimum wager is $${CRASH_MIN_WAGER}` },
         { status: 400 },
       );
     }
+    // Round wager to 2 decimal places
+    const roundedWager = Math.round(wagerNum * 100) / 100;
 
-    const minBuyIn = wagerNum * CRASH_MIN_BUYIN_MULTIPLIER;
+    const minBuyIn = roundedWager * CRASH_MIN_BUYIN_MULTIPLIER;
 
     // ── Get the creator's internal user id ──────────────────────────────────
     const [userRow] = await db
@@ -103,8 +105,8 @@ export async function POST(req: Request) {
     const [created] = await db
       .insert(crashArenaTables)
       .values({
-        name: `$${wagerNum} Crash Arena`,
-        wagerAmount: wagerNum.toFixed(2),
+        name: `$${roundedWager} Crash Arena`,
+        wagerAmount: roundedWager.toFixed(2),
         minimumBuyin: minBuyIn.toFixed(2),
         maxPlayers: 6,
         hostId,
@@ -115,7 +117,7 @@ export async function POST(req: Request) {
     // Best-effort live fanout so lobby clients refresh their grid
     // instantly. Silently no-ops when the realtime server runs in a
     // separate process (the 5 s lobby poll covers it).
-    broadcastLobbyUpdate({ created: true, tableId: created.id, wager: wagerNum });
+    broadcastLobbyUpdate({ created: true, tableId: created.id, wager: roundedWager });
     broadcastTableUpdate(created.id, { created: true });
 
     return NextResponse.json({
@@ -123,7 +125,7 @@ export async function POST(req: Request) {
       data: {
         tableId: created.id,
         name: created.name,
-        wager: wagerNum,
+        wager: roundedWager,
         minBuyIn,
       },
     });

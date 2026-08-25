@@ -8,6 +8,7 @@ import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import NavigationBar from "../../../components/navigation-bar";
+import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
@@ -733,7 +734,32 @@ export default function DiceFlushPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
+    <>
+      {/* Unified full-screen waiting takeover — opponent hasn't joined yet */}
+      {waitingForOpponent && (
+        <MatchWaiting
+          state="waiting"
+          gameName={opponent?.isAI ? "Dice Flush vs AI" : "Dice Flush"}
+          subtitle={
+            opponent?.isAI
+              ? "Free practice against the GRYND AI — the game starts in a moment."
+              : "Waiting for an opponent to join. You cannot roll yet."
+          }
+          seats={
+            waitingForOpponent
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  {
+                    label: opponent?.isAI ? "GRYND AI" : "Opponent",
+                    occupied: false,
+                  },
+                ]
+              : []
+          }
+        />
+      )}
+
+      <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
     <div className="mx-auto mt-4 max-w-5xl">
       {/* ────── TITLE ────── */}
       <motion.div
@@ -1422,6 +1448,7 @@ export default function DiceFlushPage() {
         gameType="Dice Flush"
       />
       <Footer />
-    </div>
+      </div>
+    </>
   );
 }

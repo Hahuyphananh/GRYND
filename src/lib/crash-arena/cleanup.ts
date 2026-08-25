@@ -19,6 +19,7 @@
 import { db } from "../../db/client";
 import {
   users,
+  crashArenaTables,
   crashArenaPlayers,
   crashArenaRounds,
   crashArenaEntries,
@@ -29,6 +30,7 @@ import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
 } from "./rooms";
+import { closeAiCrashArenaTable } from "./aiBot";
 
 export interface ReleaseCrashArenaSeatResult {
   cleaned: boolean;
@@ -83,6 +85,24 @@ export async function releaseCrashArenaSeat(
     return { cleaned: false, deferred: false, returned: 0 };
   }
   const player = playerData[0];
+
+  // ── AI practice tables: chips are virtual ─────────────────────────────
+  // Never refund to the wallet and never write a LEAVE transaction — just
+  // close the whole practice session (a table with only the bot left has
+  // no reason to exist). No deferral needed: there are no real winnings
+  // to strand, and the close path locks pending entries as losses.
+  const tableData = await db
+    .select({ id: crashArenaTables.id, isAi: crashArenaTables.isAi })
+    .from(crashArenaTables)
+    .where(eq(crashArenaTables.id, tableId))
+    .limit(1);
+
+  if (tableData[0]?.isAi) {
+    await closeAiCrashArenaTable(tableId);
+    broadcastTableUpdate(tableId, { left: true, userId: user.id, disconnected: true });
+    broadcastLobbyUpdate({ left: true, tableId, disconnected: true });
+    return { cleaned: true, deferred: false, returned: 0 };
+  }
 
   // ── Is a round mid-flight at this table? ──────────────────────────────
   // A running round older than 5 minutes is treated as abandoned

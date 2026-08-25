@@ -7,6 +7,7 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import { getDropRow } from "../../../../../lib/connectFour";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
+import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
   IconTarget,
@@ -437,6 +438,20 @@ export default function ConnectFourGamePage() {
 
   return (
     <>
+      {/* Unified full-screen waiting takeover */}
+      {game?.status === "waiting" && (
+        <MatchWaiting
+          state="waiting"
+          gameName="Connect Four"
+          subtitle="Waiting for an opponent to join…"
+          seats={[
+            { label: "You", name: "You", occupied: true },
+            { label: "Opponent", occupied: false },
+          ]}
+          onLeave={() => router.push("/casino/connect-four")}
+        />
+      )}
+
       {/* Turn Banner */}
       <AnimatePresence>
         {turnBanner && (

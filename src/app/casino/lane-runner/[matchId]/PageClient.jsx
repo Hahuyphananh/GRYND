@@ -42,6 +42,7 @@ import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -1073,7 +1074,41 @@ export default function LaneRushDuelMatchPage({ params }) {
   ) : null;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)] pb-24 pt-20 text-white md:pb-8">
+    <>
+      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
+      {(match?.status === "waiting" || match?.status === "ready") && (
+        <MatchWaiting
+          state={match.status === "ready" ? "ready" : "waiting"}
+          gameName={isBotMatch ? "Lane Rush vs Bot" : "Lane Rush Duel"}
+          subtitle={
+            match.status === "ready"
+              ? "You both climb the SAME tower — get ready!"
+              : "Your stake is escrowed. Share the invite link to play a player of the same stake, or wait for matchmaking."
+          }
+          seats={
+            match.status === "waiting"
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  { label: isBotMatch ? "Bot" : "Opponent", occupied: false },
+                ]
+              : []
+          }
+          onCancel={
+            match.status === "waiting" && match?.player1Id === user?.id
+              ? cancelLobby
+              : null
+          }
+          cancelLabel="Cancel lobby"
+          cancelling={cancelling}
+          onCopy={
+            isBotMatch
+              ? null
+              : () => navigator.clipboard?.writeText(window.location.href)
+          }
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)] pb-24 pt-20 text-white md:pb-8">
       {matchEndPopup}
       <NavigationBar currentPath="/casino/lane-runner" />
 
@@ -1310,6 +1345,7 @@ export default function LaneRushDuelMatchPage({ params }) {
 
         <Footer />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

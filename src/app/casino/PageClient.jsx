@@ -326,7 +326,7 @@ function MainComponent() {
           <svg className="ml-2 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </div>
       </Link>
-      <div className="mt-2">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <Link
           href={`/classement?game=${game.leaderboardKey}`}
           className="text-xs text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24] rounded"

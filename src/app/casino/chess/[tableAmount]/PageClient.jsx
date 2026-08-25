@@ -1,6 +1,7 @@
 "use client";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 
 const TIMER_OPTIONS = [
   { id: "1min", label: "1 Min", time: 60 },
@@ -209,7 +210,28 @@ export default function MatchmakingPage() {
     statusText === "Waiting for opponent..." && gameId && color === "white";
 
   return (
-    <div className="min-h-screen bg-[#030817] text-white flex items-center justify-center">
+    <>
+      {/* Unified full-screen waiting takeover */}
+      {statusText === "Waiting for opponent..." && (
+        <MatchWaiting
+          state="waiting"
+          gameName="Chess"
+          subtitle={`Stake: $${tableAmount} · ${timerMode}`}
+          seats={[
+            {
+              label: "You",
+              name: color === "white" ? "White" : "Black",
+              occupied: true,
+            },
+            { label: "Opponent", occupied: false },
+          ]}
+          onCancel={showCancel ? cancelWaitingGame : null}
+          cancelLabel="Cancel & Return to Lobby"
+          cancelling={isCanceling}
+        />
+      )}
+
+      <div className="min-h-screen bg-[#030817] text-white flex items-center justify-center">
       <div className="text-center">
         <h2 className="text-3xl font-bold text-[#FFD700] mb-4">{statusText}</h2>
         <p className="mb-2">Stake: ${tableAmount}</p>
@@ -230,6 +252,7 @@ export default function MatchmakingPage() {
           </button>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

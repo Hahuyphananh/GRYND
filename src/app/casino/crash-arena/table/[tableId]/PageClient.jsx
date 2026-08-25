@@ -96,6 +96,12 @@ export default function TableRoomPage() {
     tableId,
     wager: table?.wager || 10,
     roundNumber: 1,
+    // Free practice tables (human vs the GRYND AI bot) drive the bot's
+    // cashout from the client — the hook watches the multiplier and
+    // resolves the bot through /api/crash-arena/ai-cashout. The bot's
+    // aggressiveness follows the difficulty picked in the lobby.
+    isAi: table?.isAi || false,
+    aiDifficulty: table?.aiDifficulty || "medium",
     // Socket-triggered table updates re-fetch the roster + latest round
     // so round state stays in sync across all players at the table.
     onRoomUpdate: () => refetchTablesRef.current?.(),
@@ -114,6 +120,8 @@ export default function TableRoomPage() {
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,
+        // The reserved GRYND AI bot — never reportable.
+        isBot: Boolean(p.isBot),
       })),
     [playerName],
   );
@@ -127,6 +135,7 @@ export default function TableRoomPage() {
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,
+        isBot: Boolean(p.isBot),
       })),
     [playerName],
   );
@@ -180,7 +189,8 @@ export default function TableRoomPage() {
   // simply can't be reported.
   const [reportTarget, setReportTarget] = useState(null);
   const handleReportPlayer = useCallback((player) => {
-    if (!player?.clerkId || player.isYou) return;
+    // The GRYND AI bot has no Clerk account — nothing to report.
+    if (!player?.clerkId || player.isYou || player.isBot) return;
     setReportTarget({ userId: player.clerkId, name: player.name || "Player" });
   }, []);
 

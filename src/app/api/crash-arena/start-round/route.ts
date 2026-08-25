@@ -58,6 +58,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Table is closed" }, { status: 400 });
     }
 
+    // ── AI practice tables: only the host (the human who created the
+    //    practice session) may start rounds — prevents a stranger from
+    //    burning the host's virtual chips.
+    if (table.isAi) {
+      const [hostRow] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.clerkId, callerId))
+        .limit(1);
+      if (!hostRow || hostRow.id !== table.hostId) {
+        return NextResponse.json({
+          success: false,
+          error: "Only the practice-table host can start rounds",
+        }, { status: 403 });
+      }
+    }
+
     // ── Get seated players ────────────────────────────────────────────────
     const seatedPlayers = await db
       .select()

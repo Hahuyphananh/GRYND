@@ -53,6 +53,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
+import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
 // The casino's existing logo asset (GRYND smiley) — reused as the
@@ -831,7 +832,36 @@ export default function MemoryGridMatchPage({
       : null;
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+    <>
+      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
+      {(match?.status === MATCH_STATUS.WAITING ||
+        match?.status === MATCH_STATUS.READY) && (
+        <MatchWaiting
+          state={
+            match.status === MATCH_STATUS.READY ? "ready" : "waiting"
+          }
+          gameName="Memory Grid"
+          subtitle={
+            match.status === MATCH_STATUS.READY
+              ? "Get ready — memorize the pattern!"
+              : "Your stake is escrowed. Share the invite link to play a friend of the same stake, or wait for matchmaking."
+          }
+          seats={
+            match.status === MATCH_STATUS.WAITING
+              ? [
+                  { label: "You", name: "You", occupied: true },
+                  { label: "Opponent", occupied: false },
+                ]
+              : []
+          }
+          onCancel={viewerCanCancel ? cancelLobby : null}
+          cancelLabel="Cancel lobby"
+          cancelling={cancelling}
+          onCopy={copyInvite}
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
         {/* Header — game title (same amber gradient treatment as the
@@ -1352,6 +1382,7 @@ export default function MemoryGridMatchPage({
         </motion.div>
       )}
       <Footer />
-    </div>
+      </div>
+    </>
   );
 }

@@ -26,7 +26,7 @@ import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
 import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
-import PrecisionWaitingRoom from "../../../../../components/precision/PrecisionWaitingRoom";
+import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import PrecisionReadyRoom from "../../../../../components/precision/PrecisionReadyRoom";
 import PrecisionScoreboard from "../../../../../components/precision/PrecisionScoreboard";
 import PrecisionResultPopup from "../../../../../components/precision/PrecisionResultPopup";
@@ -1054,21 +1054,33 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
             (fadeUp: 12px y + opacity), compositor-friendly, and the
             page remains idle between region changes.
         */}
+        {/* Unified full-screen waiting takeover — replaces the legacy
+            PrecisionWaitingRoom panel (seats + invite code + actions). */}
+        {showWaiting && (
+          <MatchWaiting
+            state="waiting"
+            gameName="Precision"
+            subtitle={`Hosted by ${hostName} · ${(state?.wager ?? 0).toLocaleString()} stake`}
+            seats={[
+              {
+                label: "Alpha",
+                name: players.find((p) => p.seat === 1)?.name,
+                occupied: Boolean(players.find((p) => p.seat === 1)),
+              },
+              {
+                label: "Bravo",
+                name: players.find((p) => p.seat === 2)?.name,
+                occupied: Boolean(players.find((p) => p.seat === 2)),
+              },
+            ]}
+            onCancel={isHost ? handleLeave : null}
+            cancelLabel={t("games.precision.cancel_lobby")}
+            onLeave={handleLeave}
+            copyCode={matchId}
+          />
+        )}
+
         <AnimatePresence mode="wait" initial={false}>
-          {showWaiting && (
-            <motion.div key="phase-waiting" {...fadeUp}>
-              <PrecisionWaitingRoom
-                matchId={matchId}
-                hostName={hostName}
-                players={players}
-                wager={state?.wager ?? 0}
-                onLeave={handleLeave}
-                onCancel={isHost ? handleLeave : undefined}
-                isHost={isHost}
-                copyCode={matchId}
-              />
-            </motion.div>
-          )}
 
           {showReadyRoom && (
             <motion.div key="phase-ready" {...fadeUp}>

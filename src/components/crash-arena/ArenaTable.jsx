@@ -79,6 +79,8 @@ export default function ArenaTable({
     maxBuyIn,
     maxPlayers = 6,
   } = table;
+  // Free practice table (human vs the GRYND AI bot). Chips are virtual.
+  const isAi = Boolean(table?.isAi);
 
   const {
     phase = "waiting",
@@ -101,6 +103,9 @@ export default function ArenaTable({
   const isFull = players.length >= maxPlayers;
   const youCashedOut = you?.cashoutMultiplier != null;
   const youBusted = you?.busted || false;
+  // The practice stack is virtual — once it drops below the wager the
+  // round can't start; the player should head back to the lobby.
+  const practiceStackEmpty = isAi && isSeated && playerChips < (wager || 0);
 
   const isRunning = phase === "running";
   const isCrashed = phase === "crashed" || phase === "settling";
@@ -113,9 +118,14 @@ export default function ArenaTable({
   const seatedCount = players.length;
   const readyCount = readyVotes.length;
   const youReady = you?.userId != null && readyVotes.includes(you.userId);
-  // Countdown runs once 2+ players are seated and (first round) 2+ are ready.
+  // Countdown runs once 2+ players are seated and (first round) 2+ are
+  // ready. AI practice tables skip the ready-vote gate entirely — the
+  // bot never votes, so the human + bot pair just count down.
   const countdownActive =
-    isWaiting && seatedCount >= 2 && (!isFirstRound || readyCount >= READY_VOTES_NEEDED);
+    isWaiting &&
+    !practiceStackEmpty &&
+    seatedCount >= 2 &&
+    (!isFirstRound || isAi || readyCount >= READY_VOTES_NEEDED);
 
   // ── Local UI state ──────────────────────────────────────────────────
 
@@ -171,11 +181,13 @@ export default function ArenaTable({
         )}
         {isWaiting && !countdownActive && (
           <div className="px-3 py-1.5 rounded-lg bg-[#9dd8ff]/5 border border-[#9dd8ff]/15 text-xs font-bold text-[#9dd8ff]">
-            {seatedCount < 2
-              ? "Waiting for another player…"
-              : isFirstRound
-                ? `${readyCount}/${READY_VOTES_NEEDED} ready. Press Start Round`
-                : "Waiting…"}
+            {practiceStackEmpty
+              ? "Practice stack empty — leave and start a new practice session"
+              : seatedCount < 2
+                ? "Waiting for another player…"
+                : isFirstRound
+                  ? `${readyCount}/${READY_VOTES_NEEDED} ready. Press Start Round`
+                  : "Waiting…"}
           </div>
         )}
         {isRunning && (
@@ -238,7 +250,21 @@ export default function ArenaTable({
       <div className="flex flex-wrap items-center justify-between gap-3 px-4">
         <div>
           <span className="text-xs text-[#9dd8ff]/60 uppercase tracking-wider">Table</span>
-          <div className="text-lg font-black text-[#FFD700]">{name}</div>
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-black text-[#FFD700]">{name}</span>
+            {isAi && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-[#00e5ff]/40 bg-[#00e5ff]/15 text-[#00e5ff]">
+                AI Practice{/* Difficulty picked in the lobby (defaults to
+                    medium for pre-difficulty practice tables). */}
+                {table?.aiDifficulty ? ` · ${table.aiDifficulty}` : " · medium"}
+              </span>
+            )}
+          </div>
+          {isAi && (
+            <p className="text-[11px] text-[#00e5ff]/80 mt-0.5">
+              Free practice vs the GRYND AI bot — no real tokens wagered.
+            </p>
+          )}
           <div className="flex gap-4 mt-1">
             <span className="text-xs text-[#9dd8ff]/60">
               Wager: <span className="text-[#d8fbff] font-bold">${wager}</span>
@@ -273,7 +299,15 @@ export default function ArenaTable({
           )}
 
           {/* Not seated */}
-          {!isSeated && !isWaitingPlayer && !isFull && (
+          {!isSeated && !isWaitingPlayer && isAi && (
+            <button
+              onClick={onExitToLobby}
+              className="px-4 py-2 rounded-xl text-sm font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+            >
+              Back to Lobby
+            </button>
+          )}
+          {!isSeated && !isWaitingPlayer && !isAi && !isFull && (
             <button
               onClick={() => setShowBuyInModal(true)}
               className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_14px_rgba(0,229,255,0.4)] hover:shadow-[0_0_24px_rgba(0,229,255,0.7)] hover:scale-105 transition-all duration-300"
@@ -281,7 +315,7 @@ export default function ArenaTable({
               Join Table
             </button>
           )}
-          {!isSeated && !isWaitingPlayer && isFull && (
+          {!isSeated && !isWaitingPlayer && !isAi && isFull && (
             <span className="px-3 py-1.5 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400">
               Table Full
             </span>
@@ -290,8 +324,9 @@ export default function ArenaTable({
           {/* Seated */}
           {isSeated && (
             <>
-              {/* Buy chips (only in waiting) */}
-              {isWaiting && (
+              {/* Buy chips (only in waiting, real tables only) — practice
+                  stacks are virtual and can't be topped up. */}
+              {isWaiting && !isAi && (
                 <button
                   onClick={() => setShowBuyInModal(true)}
                   className="px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/30 bg-[#00ffa6]/10 text-[#00ffa6] hover:bg-[#00ffa6]/20 transition-all"
@@ -301,8 +336,9 @@ export default function ArenaTable({
               )}
 
               {/* First round: Start Round = ready vote. Starts the countdown
-                  only — never the rocket directly. */}
-              {isFirstRound && isWaiting && (
+                  only — never the rocket directly. Skipped on AI practice
+                  tables, where the human + bot pair auto-counts down. */}
+              {isFirstRound && isWaiting && !isAi && (
                 youReady ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
                     <IconCircleCheck size={14} /> Ready ({readyCount}/{READY_VOTES_NEEDED})
@@ -341,13 +377,25 @@ export default function ArenaTable({
               {/* Leave → steps off onto the wait list (balance kept). The
                   wait-list state then exposes the real "Back to Lobby"
                   (permanent leave + refund) — the ONLY in-page way out that
-                  releases the seat server-side. */}
-              {isWaiting && (
+                  releases the seat server-side. Hidden on AI practice
+                  tables, where "Back to Lobby" ends the session. */}
+              {isWaiting && !isAi && (
                 <button
                   onClick={onLeave}
                   className="px-3 py-2 rounded-lg text-xs font-bold border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-all"
                 >
                   Leave
+                </button>
+              )}
+
+              {/* AI practice tables: "Back to Lobby" ends the session
+                  (virtual chips are never refunded). */}
+              {isWaiting && isAi && (
+                <button
+                  onClick={onExitToLobby}
+                  className="px-3 py-2 rounded-lg text-xs font-bold border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+                >
+                  <IconHome size={14} className="mr-1.5" /> Back to Lobby
                 </button>
               )}
             </>
