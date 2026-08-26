@@ -6,7 +6,7 @@ dashboard actions) or are **should-fix** polish.
 
 ## ✅ Done (code-side)
 
-- **Domain** — all fallbacks point at `grynd.mywire.org`; runtime uses
+- **Domain** — all fallbacks point at `www.grynd.mywire.org`; runtime uses
   `NEXT_PUBLIC_BASE_URL` (single source of truth in `.env.local` / Vercel)
 - **Health check** — `/api/health` (Postgres + Redis) + realtime server
   `/health`
@@ -32,11 +32,11 @@ dashboard actions) or are **should-fix** polish.
    the deploy pipeline today.
 
 2. **Set env vars on the real hosts** (Vercel project + Render service):
-   - Vercel: `NEXT_PUBLIC_BASE_URL=https://grynd.mywire.org`,
+   - Vercel: `NEXT_PUBLIC_BASE_URL=https://www.grynd.mywire.org`,
      `NEXT_PUBLIC_SOCKET_URL=<render-host>` (check current value),
      `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, etc.
    - Render (realtime server): `CLIENT_URL` must include
-     `https://grynd.mywire.org` **or realtime connections from the new
+     `https://www.grynd.mywire.org` **or realtime connections from the new
      domain will be CORS-rejected**, and `CLERK_SECRET_KEY`.
 
 3. **Run the socket load test** against the deployed realtime server with a
@@ -50,7 +50,7 @@ dashboard actions) or are **should-fix** polish.
 4. **Run the restore drill once** (see `docs/neon-backup-restore-runbook.md`)
    and schedule a `pg_dump` off-site backup if you want one.
 
-5. **Point an uptime monitor** at `https://grynd.mywire.org/api/health`
+5. **Point an uptime monitor** at `https://www.grynd.mywire.org/api/health`
    (UptimeRobot/Pingdom/StatusCake) and the realtime `/health`.
 
 6. **Verify the Vercel cron** (`/api/jobs/weekly-reset`, Mondays 00:00 UTC)
