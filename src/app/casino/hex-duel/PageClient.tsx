@@ -324,6 +324,7 @@ function WagerModal({
             <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Wager Amount</label>
             <input
               type="number" value={wager} min={1} max={balance}
+              aria-label="Wager amount"
               onChange={(e) => setWager(Number(e.target.value) || 0)}
               className="w-full rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm
                 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition mb-3"
@@ -3005,6 +3006,7 @@ export default function HexDuelPage() {
                         min={1}
                         max={maxSendTroops}
                         value={pendingTroopCount}
+                        aria-label="Troops to send"
                         onChange={(e) => {
                           const val = Number(e.target.value);
                           setPendingTroopCount(Math.max(1, Math.min(val, maxSendTroops)));

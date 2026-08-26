@@ -15,6 +15,7 @@ import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../
 import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
+import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
   IconFlag,
   IconTrophy,
@@ -286,12 +287,34 @@ export default function Page() {
   useEffect(() => {
     if (winner && !showWinLossPopup) {
       // Fire confetti if local player won
-      if (winner === ownerRef.current) celebrateWin();
+      if (winner === ownerRef.current) {
+        celebrateWin();
+        playVictory();
+      } else {
+        playDefeat();
+      }
       // Small delay so the final ball positions render before the popup
       const timer = setTimeout(() => setShowWinLossPopup(true), 600);
       return () => clearTimeout(timer);
     }
   }, [winner, showWinLossPopup]);
+
+  // ── Audio: shot sounds ───────────────────────────────────────────
+  // Cue-hit click on every resolved shot (local, remote, or polled),
+  // plus a buzz for fouls. `shotHistory` grows once per resolved shot
+  // across all three paths.
+  const lastShotCountRef = useRef(0);
+  useEffect(() => {
+    if (shotHistory.length === lastShotCountRef.current) return;
+    lastShotCountRef.current = shotHistory.length;
+    if (shotHistory.length === 0) return;
+    const lastShot = shotHistory[shotHistory.length - 1];
+    if (lastShot.foul) {
+      playBuzz();
+    } else {
+      playCardPlace();
+    }
+  }, [shotHistory]);
 
   // Keep name refs in sync so websocket/event handlers never capture stale names
   // Must be after myName/oppName state declarations

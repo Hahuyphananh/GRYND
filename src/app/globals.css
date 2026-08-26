@@ -364,8 +364,11 @@ a.hover\:bg-\[\#003366\]:not([aria-disabled="true"]):hover {
   color: #031026 !important;
 }
 
-button[class*="bg-[#f5ff3b]"],
-a[class*="bg-[#f5ff3b]"] {
+/* Only force dark text on SOLID yellow buttons. Translucent variants like
+   `bg-[#f5ff3b]/10` keep their own (usually light) text color — forcing
+   #031026 onto a 10%-opacity background produced 1.17:1 contrast. */
+button[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]),
+a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   color: #031026 !important;
 }
 

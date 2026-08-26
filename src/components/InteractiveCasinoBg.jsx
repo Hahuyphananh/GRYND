@@ -517,6 +517,10 @@ export default function InteractiveCasinoBg({
       }
       whileHover={reduceMotion ? undefined : cfg.chip.hover}
       whileTap={reduceMotion ? undefined : cfg.chip.tap}
+      // Decorative: sits inside an aria-hidden background — framer-motion
+      // would otherwise give these chips tabindex="0" and put focusable
+      // content inside hidden content (axe: aria-hidden-focus).
+      tabIndex={-1}
     >
       <ChipSvg accent={chip.accent} rim={chip.rim} id={`chip-${chip.id}`} />
     </motion.div>

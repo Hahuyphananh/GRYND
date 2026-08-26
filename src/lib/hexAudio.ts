@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { isAudioMuted } from "./audioSettings";
 
 // ── Singleton AudioContext (created lazily; one per page) ──────────────
 
 let _ctx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
+  // Global mute gate — overrides the per-page enabled toggle.
+  if (isAudioMuted()) return null;
   if (!_ctx) {
     try {
       _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();

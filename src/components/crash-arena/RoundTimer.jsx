@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { playTick } from "../../lib/gameAudio";
 
 /**
  * RoundTimer — countdown to the next round start.
@@ -19,6 +20,10 @@ export default function RoundTimer({ seconds = 30, isRunning = false, onExpire, 
 
   useEffect(() => {
     if (!isRunning || remaining <= 0) return;
+    // Countdown tick every second so the pending round is audible.
+    // (The effect re-runs each second as `remaining` changes, so the
+    // tick lives in the interval callback — not the effect body —
+    // to avoid double-firing.)
     const timer = setInterval(() => {
       setRemaining((prev) => {
         if (prev <= 1) {
@@ -26,6 +31,7 @@ export default function RoundTimer({ seconds = 30, isRunning = false, onExpire, 
           onExpire?.();
           return 0;
         }
+        playTick();
         return prev - 1;
       });
     }, 1000);

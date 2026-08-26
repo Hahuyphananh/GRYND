@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef } from "react";
 
 // ── Singleton AudioContext (lazy, shared across the page) ──────────────
 
+import { isAudioMuted } from "../../lib/audioSettings";
+
 let _ctx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
+  // Global mute gate — silences every game's sounds at once.
+  if (isAudioMuted()) return null;
   if (!_ctx) {
     try {
       _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();

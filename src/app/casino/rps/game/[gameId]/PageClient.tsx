@@ -6,8 +6,9 @@
 // opponent won), and shows the rounds history in the left sidebar —
 // each resolved round lists the exact throw each player made.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../../lib/gameAudio";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
@@ -74,6 +75,39 @@ export default function RPSPvpGamePage() {
     player1Id !== null && player1Id === user?.id;
   const myWins = viewerIsPlayer1 ? roundsWon1 : roundsWon2;
   const oppWins = viewerIsPlayer1 ? roundsWon2 : roundsWon1;
+
+  // ── Audio ──────────────────────────────────────────────────────────
+  // Round reveal — a new history entry means a round just resolved:
+  // chime on a round win, buzz on a round loss, tick on a tie.
+  const lastHistoryLenRef = useRef(0);
+  useEffect(() => {
+    if (history.length === lastHistoryLenRef.current) return;
+    const grew = history.length > lastHistoryLenRef.current;
+    lastHistoryLenRef.current = history.length;
+    if (!grew || history.length === 0) return;
+    const lastRound = history[history.length - 1];
+    if (lastRound.winner === "tie") {
+      playTick();
+    } else if (viewerIsPlayer1 ? lastRound.winner === "player1" : lastRound.winner === "player2") {
+      playGoodReveal();
+    } else {
+      playBuzz();
+    }
+  }, [history, viewerIsPlayer1]);
+
+  // Match-end — plays once when the poll first observes `finished`.
+  const matchEndSoundRef = useRef(false);
+  useEffect(() => {
+    if (status !== "finished") {
+      matchEndSoundRef.current = false;
+      return;
+    }
+    if (matchEndSoundRef.current) return;
+    matchEndSoundRef.current = true;
+    if (winner === "you") playVictory();
+    else if (winner === "opponent") playDefeat();
+    else if (winner === "tie") playTick();
+  }, [status, winner]);
 
   useEffect(() => {
     if (!gameId || !Number.isFinite(gameId)) {

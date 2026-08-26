@@ -38,6 +38,7 @@ import {
   MINES_PVP_MATCH_UPDATED,
   minesPvpMatchRoom,
 } from "../../../../lib/mines-pvp/rooms";
+import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import {
   IconBomb,
   IconSparkles,
@@ -530,6 +531,39 @@ export default function MinesPvpMatchPage({
     }
     return null;
   }, [match, myUserId]);
+
+  // ── Audio: match-just-resolved ─────────────────────────────────
+  // Same resolvedFiredRef guard as the posthog capture below, so the
+  // fanfare/defeat plays exactly once per match.
+  useEffect(() => {
+    if (!match || match.status !== MATCH_STATUS.FINISHED) return;
+    if (resolvedFiredRef.current) return;
+    const iWon = Boolean(
+      match.winnerId && myUserId && match.winnerId === myUserId,
+    );
+    if (!match.winnerId) playTick();
+    else if (iWon) playVictory();
+    else playDefeat();
+  }, [match, myUserId, resolvedFiredRef]);
+
+  // ── Audio: my pick reveal (safe chime / mine buzz) ─────────────
+  const lastPickIdxRef = useRef(-1);
+  useEffect(() => {
+    if (!myLastPick) return;
+    const idx = (match.picks ?? []).indexOf(myLastPick);
+    if (idx === lastPickIdxRef.current || idx < 0) return;
+    lastPickIdxRef.current = idx;
+    if (myLastPick.flag) {
+      // A flag call — correct flag plays the good chime, a wrong one
+      // the buzz (both show as the reveal below).
+      if (myLastPick.isMine) playGoodReveal();
+      else playBuzz();
+    } else if (myLastPick.isMine) {
+      playBuzz();
+    } else {
+      playGoodReveal();
+    }
+  }, [myLastPick, match?.picks]);
 
   // ── Posthog: match-just-resolved ───────────────────────────────
   // Capture `mines_pvp_match_resolved` on the first poll that

@@ -2492,6 +2492,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 <input
                   type="number"
                   value={aiStackInput}
+                  aria-label="AI stack"
                   onChange={(e) => setAiStackInput(Number(e.target.value))}
                   className="w-full p-2 rounded text-black mb-3"
                 />
@@ -2549,6 +2550,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 <input
                   type="number"
                   value={buyInAmount}
+                  aria-label="Buy-in amount"
                   onChange={(e) => setBuyInAmount(parseInt(e.target.value) || 0)}
                   onBlur={() => { if (!buyInAmount || buyInAmount < 10) setBuyInAmount(10); }}
                   onKeyDown={(e) => { if (e.key === "Enter") confirmBuyIn(); if (e.key === "Escape") cancelBuyIn(); }}
@@ -2710,6 +2712,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 <input
                   type="number"
                   value={raiseInputValue}
+                  aria-label="Raise amount"
                   onChange={(e) => setRaiseInputValue(Math.max(0, Number(e.target.value) || 0))}
                   onKeyDown={(e) => { if (e.key === "Enter") confirmRaise(); if (e.key === "Escape") cancelRaise(); }}
                   min={0}

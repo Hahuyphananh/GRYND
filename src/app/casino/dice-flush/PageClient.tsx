@@ -13,6 +13,7 @@ import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
+import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
 import {
   IconNotebook,
   IconDice,
@@ -476,6 +477,7 @@ export default function DiceFlushPage() {
 
     if (myTotal >= opTotal) {
       setGameOverType("win");
+      playVictory();
       posthog?.capture("dice_flush_game_ended", { result: "win", bet_amount: game?.players?.[0]?.isAI ? (game as any)?.wager || wager : (game as any)?.wager || wager, mode: opponent?.isAI ? "ai" : "pvp", my_score: myTotal, opponent_score: opTotal });
       // Fire confetti cannon multiple times
       const fire = () => {
@@ -501,6 +503,7 @@ export default function DiceFlushPage() {
       }, 1800);
     } else {
       setGameOverType("lose");
+      playDefeat();
     }
   }, [game, you, opponent]);
 
@@ -511,6 +514,7 @@ export default function DiceFlushPage() {
     if (prevTurnRef.current && prevTurnRef.current !== turn) {
       const isMe = turn === user?.id;
       setTurnBanner(isMe ? "YOUR TURN" : `${opponent?.name || "Opponent"}'s TURN`);
+      playTurnSwitch(isMe);
       setTimeout(() => setTurnBanner(null), 1800);
     }
     prevTurnRef.current = turn;
@@ -679,7 +683,7 @@ export default function DiceFlushPage() {
     if (!socket || !roomId) return;
     socket.emit("room_event", { roomId, event: "game_state_update" });
   };
-  const playAction = async (url: string, payload: Record<string, unknown>) => { if (!roomId || !isYourTurn) return; const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, ...payload }) }); const d = await res.json(); if (!res.ok || !d.success) {
+  const playAction = async (url: string, payload: Record<string, unknown>) => { if (!roomId || !isYourTurn) return; if (url.endsWith("/roll")) { playTick(); setTimeout(() => playTick(), 90); setTimeout(() => playTick(), 180); } const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, ...payload }) }); const d = await res.json(); if (!res.ok || !d.success) {
     // A rejected move (e.g. the shot clock expired mid-click) usually comes
     // with the resolved state — refresh the board instead of leaving it stale.
     if (d?.state) { setGame(normalizeState(d.state as GameState)); emitRoomEvent(); }

@@ -29,7 +29,12 @@ export default function SplashScreen() {
               is being loaded (home, casino, a game, profile, …) so
               the splash doubles as a contextual loading state. Scrollable so
               short viewports (mobile) can see the full page shape. */}
-          <div className="absolute inset-0 z-10 overflow-y-auto overscroll-contain">
+          <div
+            className="absolute inset-0 z-10 overflow-y-auto overscroll-contain"
+            tabIndex={0}
+            role="region"
+            aria-label="Loading preview"
+          >
             <PageSkeleton />
           </div>
         </motion.div>

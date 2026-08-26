@@ -31,7 +31,22 @@ const faqSections = [
       },
       {
         q: "Can I withdraw or buy tokens?",
-        a: "No. Tokens are a virtual, play-only currency — they cannot be bought with real money and cannot be withdrawn or exchanged for cash or anything of real-world value.",
+        a: "No. Tokens are a virtual, play-only currency — they cannot be withdrawn or exchanged for cash or anything of real-world value. Token purchases are not currently available; if a purchase option is ever added, it will be processed by a trusted third-party payment provider and remain non-refundable virtual credits.",
+      },
+      {
+        q: "What data does GRYND collect about me?",
+        a: (
+          <>
+            We collect only what is needed to run the platform: your account details (name, email, date of
+            birth for age verification), gameplay data (balances, games played, stats), content you submit
+            (chat messages, reviews, contact messages), and — with your consent — analytics and error
+            reporting. We never sell your data. The full list is in our{" "}
+            <Link href="/privacy-policy" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
+              Privacy Policy
+            </Link>
+            .
+          </>
+        ),
       },
     ],
   },

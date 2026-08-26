@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NavigationBar from "../../../../components/navigation-bar";
 import { CHIP_VALUES } from "../../../../lib/rouletteConfig";
+import { useHexAudio } from "../../../../lib/hexAudio";
 import { IconEye } from "@tabler/icons-react";
 
 export default function HexDuelMultiplayerPage() {
@@ -18,6 +19,8 @@ export default function HexDuelMultiplayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const router = useRouter();
+  // Audio matches the main Hex Duel game page (same `useHexAudio` lib).
+  const audio = useHexAudio();
 
   const fetchBalance = useCallback(async () => {
     if (!isSignedIn) return;
@@ -68,14 +71,17 @@ export default function HexDuelMultiplayerPage() {
   const handleCreate = async () => {
     if (wager <= 0) {
       setError("Please enter a valid wager amount.");
+      audio.playPush();
       return;
     }
     if (!isSignedIn) {
       setError("Please sign in to create a game.");
+      audio.playPush();
       return;
     }
     if (wager > balance) {
       setError(`Insufficient balance. You need ${wager.toLocaleString()} tokens.`);
+      audio.playPush();
       return;
     }
     setActionLoading(true);
@@ -90,11 +96,14 @@ export default function HexDuelMultiplayerPage() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data.error || "Failed to create game");
+        audio.playPush();
         return;
       }
+      audio.playCapture();
       if (data?.gameId) router.push(`/casino/hex-duel?gameId=${data.gameId}&host=1`);
     } catch {
       setError("Network error. Please try again");
+      audio.playPush();
     } finally {
       setActionLoading(false);
     }
@@ -103,6 +112,7 @@ export default function HexDuelMultiplayerPage() {
   const handleJoin = async (gameId: number) => {
     if (!isSignedIn) {
       setError("Please sign in to join a game.");
+      audio.playPush();
       return;
     }
     setActionLoading(true);
@@ -117,12 +127,15 @@ export default function HexDuelMultiplayerPage() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data.error || "Unable to join game");
+        audio.playPush();
         await load();
         return;
       }
+      audio.playCapture();
       if (data?.gameId) router.push(`/casino/hex-duel?gameId=${data.gameId}&host=0`);
     } catch {
       setError("Network error. Please try again");
+      audio.playPush();
     } finally {
       setActionLoading(false);
     }
@@ -177,6 +190,7 @@ export default function HexDuelMultiplayerPage() {
               type="number"
               value={wager}
               min={0}
+              aria-label="Wager amount"
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === "") { setWager(0); return; }
@@ -193,7 +207,10 @@ export default function HexDuelMultiplayerPage() {
             {CHIP_VALUES.map((val) => (
               <button
                 key={val}
-                onClick={() => setWager(val)}
+                onClick={() => {
+                  setWager(val);
+                  audio.playSelect();
+                }}
                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all ${
                   wager === val
                     ? "bg-[#FFFF33] text-black border-[#FFFF33]"
@@ -208,19 +225,28 @@ export default function HexDuelMultiplayerPage() {
           {/* Bet action buttons */}
           <div className="flex gap-1">
             <button
-              onClick={() => setWager(Math.max(1, Math.floor(balance / 2)))}
+              onClick={() => {
+                setWager(Math.max(1, Math.floor(balance / 2)));
+                audio.playSelect();
+              }}
               className="px-2 py-1 rounded text-[10px] font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
             >
               ½
             </button>
             <button
-              onClick={() => setWager(Math.max(1, balance))}
+              onClick={() => {
+                setWager(Math.max(1, balance));
+                audio.playSelect();
+              }}
               className="px-2 py-1 rounded text-[10px] font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
             >
               ALL
             </button>
             <button
-              onClick={() => setWager((prev) => Math.min(prev * 2, balance))}
+              onClick={() => {
+                setWager((prev) => Math.min(prev * 2, balance));
+                audio.playSelect();
+              }}
               className="px-2 py-1 rounded text-[10px] font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
             >
               2×

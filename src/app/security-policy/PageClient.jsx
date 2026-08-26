@@ -7,44 +7,52 @@ import Link from "next/link";
 
 const sections = [
   {
-    title: "Data Encryption",
-    content:
-      "GRYND employs industry-standard TLS 1.3 encryption for all data transmitted between your device and our servers. All sensitive user data, including financial transactions and personal information, is encrypted at rest using AES-256 encryption. We regularly audit our encryption practices to ensure compliance with the latest security standards.",
+    title: "Encryption in Transit & At Rest",
+    content: [
+      "All traffic between your device and our servers is encrypted in transit using TLS. Your personal data is stored on databases that encrypt data at rest (managed by our hosting providers). We also serve strict security headers (including HSTS in production) and a restrictive Content Security Policy.",
+    ],
   },
   {
     title: "Account Security",
-    content:
-      "We implement multi-layered account security including secure session management via Clerk authentication, CSRF protection on all state-changing requests, and rate limiting on API endpoints to prevent brute-force attacks. Users are encouraged to enable strong passwords and never share their account credentials. Session tokens are signed using HMAC-SHA256 and automatically expire after periods of inactivity.",
+    content: [
+      "Sign-in and session management are handled by Clerk, a dedicated authentication provider. We protect state-changing requests with same-origin CSRF checks and rate limiting on all API endpoints, and administrative surfaces additionally require a recent second-factor verification (via an HMAC-signed, 24-hour security cookie issued only after an email code, authenticator app, or passphrase check). Session tokens and security cookies are signed with HMAC-SHA256, and our logout flow revokes the session and clears authentication cookies and device storage.",
+    ],
   },
   {
-    title: "Payment Security",
-    content:
-      "All virtual token transactions on GRYND are processed through secure, audited systems. We do not store raw payment instrument details on our servers. Financial data handled through integrated payment processors is governed by their respective security policies, all of which meet PCI DSS compliance standards.",
+    title: "Payment & Token Integrity",
+    content: [
+      "Token balances are authoritative server-side. Purchased tokens (if enabled) enter a balance only through a signature-verified payment webhook: each event is authenticated with an HMAC signature and a replay-window timestamp, and idempotency keys ensure a retry can never double-credit. We do not store card numbers or other payment instrument details — payment processing is handled by third-party processors that are PCI DSS compliant, and direct client-driven balance changes are disabled.",
+    ],
   },
   {
     title: "Infrastructure Security",
-    content:
-      "Our platform is hosted on secure cloud infrastructure with network-level isolation, intrusion detection systems, and automated DDoS protection. We maintain strict access controls to production systems with multi-factor authentication required for all administrative access. Regular security patches and updates are applied automatically.",
+    content: [
+      "Our platform runs on managed cloud infrastructure (Vercel) with a serverless Postgres database (Neon/Vercel Postgres) and a managed cache (Upstash Redis). We rely on our providers' network security, including DDoS protection, and we apply database row-level security and parameterized queries to prevent injection. Access to production systems is limited, and administrative actions are recorded in an audit log.",
+    ],
   },
   {
     title: "Vulnerability Management",
-    content:
-      "We conduct regular security assessments, including automated vulnerability scanning and manual penetration testing of our applications and infrastructure. Security findings are prioritized based on severity and remediated according to industry best practices. We also maintain a responsible disclosure program for security researchers.",
+    content: [
+      "We take a defense-in-depth approach: automated security tests run as part of our CI (input validation, media sanitization, authorization checks, CSRF and rate-limit tests, and webhook signature verification), dependencies are pinned and kept updated, and security fixes are applied promptly. We regularly review our code and follow security best practices in the frameworks we use.",
+    ],
   },
   {
     title: "Data Privacy & Retention",
-    content:
-      "We collect only the minimum data necessary to provide our services. User data is retained only as long as necessary to fulfill the purposes described in our Privacy Policy. When data is no longer required, it is securely deleted or anonymized. We perform regular audits of data access logs to detect and prevent unauthorized access.",
+    content: [
+      "We collect only the minimum data necessary to provide our services, retain it only as long as needed, and delete or anonymize it when it is no longer required (including a routine retention sweep of finished match records and full erasure on account deletion). See our Privacy Policy for details. We log security events to detect unauthorized access, and we purge or anonymize personal data from those logs where required.",
+    ],
   },
   {
     title: "Incident Response",
-    content:
-      "GRYND maintains a comprehensive incident response plan to quickly detect, respond to, and recover from security incidents. Our security team is on-call 24/7 to respond to potential threats. In the event of a data breach, affected users will be notified in accordance with applicable laws and regulations.",
+    content: [
+      "We monitor our services for errors and anomalies (including Sentry and health checks) and respond to security incidents as they are identified. In the event of a data breach affecting your personal information, we will notify you and the relevant authorities as required by applicable law.",
+    ],
   },
   {
     title: "Third-Party Security",
-    content:
-      "We carefully vet all third-party service providers and ensure they meet our security standards. Third-party integrations are subject to periodic security reviews. We minimize the amount of data shared with third parties and require contractual guarantees regarding data protection.",
+    content: [
+      "We carefully vet the third-party services we rely on (authentication, hosting, database, caching, analytics, error monitoring, email, and support chat) and limit the data we share with them to what is necessary to provide our services. Our third-party agreements require appropriate data-protection safeguards.",
+    ],
   },
 ];
 
@@ -63,15 +71,15 @@ export default function SecurityPolicyPage() {
             Security Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: May 24, 2026
+            Last updated: August 25, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
             <p className="leading-relaxed text-[#c9f7ff]">
               At GRYND, the security of your data and the integrity of our
-              platform are our highest priorities. This Security Policy outlines
-              the measures we take to protect your information and maintain a
-              secure gaming environment.
+              platform are our highest priorities. This Security Policy
+              describes the measures we actually take to protect your
+              information and maintain a secure gaming environment.
             </p>
           </div>
         </motion.div>
@@ -88,9 +96,22 @@ export default function SecurityPolicyPage() {
               <h2 className="mb-3 text-xl font-bold text-[#00e5ff]">
                 {section.title}
               </h2>
-              <p className="leading-relaxed text-[#c9f7ff]/90">
-                {section.content}
-              </p>
+              {Array.isArray(section.content) ? (
+                <div className="space-y-2">
+                  {section.content.map((paragraph, i) => (
+                    <p
+                      key={i}
+                      className="leading-relaxed text-[#c9f7ff]/90"
+                    >
+                      {paragraph}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="leading-relaxed text-[#c9f7ff]/90">
+                  {section.content}
+                </p>
+              )}
             </motion.div>
           ))}
         </div>

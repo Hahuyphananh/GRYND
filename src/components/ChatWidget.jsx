@@ -400,6 +400,9 @@ export default function ChatWidget() {
             <>
               <div
                 ref={messagesContainerRef}
+                role="region"
+                aria-label="Chat messages"
+                tabIndex={0}
                 className="mb-2 h-[45vh] max-h-72 overflow-y-auto rounded border border-cyan-400/20 bg-black/60 p-2 shadow-inner shadow-cyan-500/10"
               >
                 {messages.length === 0 ? (
@@ -497,6 +500,9 @@ export default function ChatWidget() {
           ) : activeTab === "bigwins" ? (
             <>
               <div
+                role="region"
+                aria-label="Big wins feed"
+                tabIndex={0}
                 className="mb-2 h-[45vh] max-h-72 overflow-y-auto rounded border border-yellow-400/20 bg-black/60 p-2 shadow-inner shadow-yellow-500/10"
               >
                 {isLoadingBigWins ? (

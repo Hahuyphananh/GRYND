@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   IconBomb,
   IconBook,
@@ -22,6 +22,7 @@ import BuyInModal from "./BuyInModal";
 import RoundResultModal from "./RoundResultModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import CashoutButton from "../games/crash-engine/CashoutButton";
+import { playCrash, playVictory, playDefeat } from "../../lib/gameAudio";
 
 const ROUND_START_COUNTDOWN = 12; // seconds between rounds / after ready votes
 const READY_VOTES_NEEDED = 2;
@@ -163,6 +164,29 @@ export default function ArenaTable({
   }, [players, isRunning]);
 
   const showResultModal = phase === "settling" && results && !resultDismissed && !!you;
+
+  // ── Round audio ────────────────────────────────────────────────────
+  // One shot per round settle: crash sweep, then victory if the local
+  // player won the pot, defeat if they were still in and busted.
+  const resultSoundPlayedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "settling") {
+      resultSoundPlayedRef.current = false;
+      return;
+    }
+    if (resultSoundPlayedRef.current) return;
+    if (!results) return;
+    resultSoundPlayedRef.current = true;
+    playCrash();
+    if (results.winner === playerName) {
+      // Won the pot — victory after the crash sweep settles.
+      setTimeout(() => playVictory(), 350);
+    } else if (you && you.busted) {
+      // Still in the round when it crashed → lost the wager.
+      setTimeout(() => playDefeat(), 350);
+    }
+    // Cashout-but-lost-the-pot and spectators just hear the crash.
+  }, [phase, results, you, playerName]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">

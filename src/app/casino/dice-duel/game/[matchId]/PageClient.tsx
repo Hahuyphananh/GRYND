@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../../../lib/gameAudio";
 import ReportModal from "../../../../../components/ReportModal";
 import {
   IconFlag,
@@ -106,13 +107,38 @@ export default function DiceDuelMatchPage() {
     }, 900);
   };
 
+  // ── Audio ──────────────────────────────────────────────────────────
+  const endSoundRef = useRef(false);
+  const lastTurnRef = useRef<boolean | null>(null);
+
   useEffect(() => {
     if (!match || !viewerId) return;
 
     if (match.status === "finished") {
       setEndPopup(match.winnerId === viewerId ? "win" : "loss");
+      // The status poll re-fires this effect every 1.5s — guard so the
+      // fanfare/defeat plays exactly once per match.
+      if (!endSoundRef.current) {
+        endSoundRef.current = true;
+        if (match.winnerId === viewerId) playVictory();
+        else playDefeat();
+      }
+    } else {
+      endSoundRef.current = false;
     }
   }, [match, viewerId]);
+
+  // Turn-switch chime — a higher note when it becomes our turn.
+  useEffect(() => {
+    if (!match || !viewerId) return;
+    const isMine = Boolean(
+      match.turnUserId && viewerId && match.turnUserId === viewerId,
+    );
+    if (lastTurnRef.current !== null && lastTurnRef.current !== isMine) {
+      playTurnSwitch(isMine);
+    }
+    lastTurnRef.current = isMine;
+  }, [match?.turnUserId, viewerId, match]);
 
   const load = async () => {
     const res = await fetch(`/api/dice-duel/get-match?matchId=${matchId}`, {
@@ -167,6 +193,9 @@ export default function DiceDuelMatchPage() {
 
       setDice1(r1);
       setDice2(count === 2 ? r2 : 0);
+
+      // Dice rattle — a tick every other shake frame.
+      if (i % 2 === 0) playTick();
 
       await new Promise((r) => setTimeout(r, 55));
     }

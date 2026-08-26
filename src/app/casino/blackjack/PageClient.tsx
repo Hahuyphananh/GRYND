@@ -45,6 +45,7 @@ import {
   blackjackPvpMatchRoom,
 } from "../../../lib/blackjack-pvp/rooms";
 import { STAKE_PRESETS } from "../../../lib/blackjack-pvp/constants";
+import { playCardDraw, playCardPlace, playBuzz } from "../../../lib/gameAudio";
 
 // ── Inline SVG icons (avoid importing poker/roulette icon set) ──────
 // Kept in-file so this lobby doesn't pull in card-game-specific deps.
@@ -289,8 +290,11 @@ export default function BlackjackPvpLobbyPage() {
         const data = await res.json();
         if (!res.ok || !data.success) {
           setError(data?.error || t("blackjackPvp.lobby.errorStart", "Unable to start match"));
+          playBuzz();
           return;
         }
+        // Match found/created — the deal is about to start.
+        playCardDraw();
         socket?.emit("room_event", {
           roomId: BLACKJACK_PVP_LOBBY_ROOM,
           event: "lobby:updated",
@@ -327,6 +331,7 @@ export default function BlackjackPvpLobbyPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        playBuzz();
         setError(
           data?.error ||
             t("blackjackPvp.lobby.errorStartAi", "Unable to start free AI match"),
@@ -335,6 +340,7 @@ export default function BlackjackPvpLobbyPage() {
       }
       const matchId = data?.data?.match?.id;
       if (matchId) {
+        playCardDraw();
         socket?.emit("room_event", {
           roomId: blackjackPvpMatchRoom(matchId),
           event: BLACKJACK_PVP_MATCH_UPDATED,
@@ -576,7 +582,10 @@ export default function BlackjackPvpLobbyPage() {
                 {STAKE_PRESETS.map((v) => (
                   <button
                     key={v}
-                    onClick={() => setStake(v)}
+                    onClick={() => {
+                      setStake(v);
+                      playCardPlace(); // chip-on-table click
+                    }}
                     className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
                       stake === v
                         ? "bg-yellow-300 text-black border-yellow-300 shadow-[0_0_10px_rgba(255,255,51,0.7)]"
@@ -593,6 +602,7 @@ export default function BlackjackPvpLobbyPage() {
                   min={1}
                   max={balance ?? undefined}
                   value={stake}
+                  aria-label="Stake amount"
                   onChange={(e) =>
                     setStake(Math.max(1, Number(e.target.value) || 0))
                   }
