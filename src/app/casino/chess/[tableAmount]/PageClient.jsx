@@ -34,7 +34,7 @@ export default function MatchmakingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const precreatedGameId = Number(searchParams.get("gameId"));
+  const precreatedGameId = (searchParams.get("gameId") || "").trim();
   const presetColor = searchParams.get("color") || "white";
   const rawTimer = searchParams.get("timer") || "5min";
   const resolvedTimer = resolveTimerMode(rawTimer);
@@ -42,11 +42,7 @@ export default function MatchmakingPage() {
   const timerSeconds = resolvedTimer.seconds;
 
   const [statusText, setStatusText] = useState("Creating game...");
-  const [gameId, setGameId] = useState(
-    Number.isFinite(precreatedGameId) && precreatedGameId > 0
-      ? precreatedGameId
-      : null,
-  );
+  const [gameId, setGameId] = useState(precreatedGameId || null);
   const [color, setColor] = useState(presetColor);
   const [isCanceling, setIsCanceling] = useState(false);
   const pollFailuresRef = useRef(0);

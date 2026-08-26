@@ -429,7 +429,7 @@ export default function ChessAIPageInner() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          gameId: gameId ? Number(gameId) : undefined,
+          gameId: gameId || undefined,
           result,
         }),
       });
@@ -443,7 +443,7 @@ export default function ChessAIPageInner() {
     const handleLeave = () => {
       if (endGameCalled.current) return;
       const payload = JSON.stringify({
-        gameId: gameId ? Number(gameId) : undefined,
+        gameId: gameId || undefined,
         result: "loss",
       });
       navigator.sendBeacon(

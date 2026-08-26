@@ -132,7 +132,7 @@ export default function ChessGamePage() {
 
   useGamePresence({
     gameKey: "chess",
-    gameId: Number(gameId),
+    gameId: gameId,
     enabled: !isSpectator && Boolean(gameId),
   });
 
@@ -300,7 +300,7 @@ export default function ChessGamePage() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            gameId: Number(gameId),
+            gameId: gameId,
             from: pm.from,
             to: pm.to,
             promotion: pm.promotion || "q",
@@ -371,7 +371,7 @@ export default function ChessGamePage() {
 
       const resultType = text.includes("won") ? "win" : text.includes("Draw") ? "draw" : "lose";
       posthog?.capture("chess_pvp_game_ended", {
-        game_id: Number(gameId),
+        game_id: gameId,
         result: resultType,
         game_result: game.result,
         bet_amount: Number(game.betAmount),
@@ -392,7 +392,7 @@ export default function ChessGamePage() {
     setStatus("Game active");
     if (!firstFetchDoneRef.current) {
       posthog?.capture("chess_pvp_game_started", {
-        game_id: Number(gameId),
+        game_id: gameId,
         color,
         bet_amount: Number(game.betAmount),
         opponent: game.whitePlayerId && game.blackPlayerId ? "matched" : "waiting",
@@ -497,7 +497,7 @@ export default function ChessGamePage() {
       },
       credentials: "include",
       body: JSON.stringify({
-        gameId: Number(gameId),
+        gameId: gameId,
         from: sourceSquare,
         to: targetSquare,
         promotion: "q",
@@ -564,7 +564,7 @@ export default function ChessGamePage() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        gameId: Number(gameId),
+        gameId: gameId,
         from: sourceSquare,
         to: targetSquare,
         promotion: promo,
@@ -608,7 +608,7 @@ export default function ChessGamePage() {
         },
         credentials: "include",
         body: JSON.stringify({
-          gameId: Number(gameId),
+          gameId: gameId,
           result: "loss",
         }),
       });
@@ -643,7 +643,7 @@ export default function ChessGamePage() {
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        gameId: Number(gameId),
+        gameId: gameId,
         result: "draw",
       }),
     }).then(() => {

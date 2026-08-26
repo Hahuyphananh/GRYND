@@ -82,6 +82,50 @@ Copies all public tables in FK order (9,973 rows for this migration),
 fixes sequences, prints per-table row-count verification, and exits
 non-zero on mismatches.
 
+### 2b. Post-migration sequence sync (REQUIRED — discovered after the fact)
+
+> The first attempt at this migration left **47 of 60 id sequences out of
+> sync**: `fixSequences()` in `scripts/migrate-data.mjs` relied on
+> `pg_get_serial_sequence()`, which returns NULL after the schema
+> dump/restore (the sequence→column dependency is missing), so it silently
+> fixed nothing. Every game route that creates/joins a match or records a
+> game then 500'd with `duplicate key value violates unique constraint` on
+> the very first INSERT.
+>
+> The resilient fix (matches columns by their `nextval()` default, which
+> does not depend on the broken dependency) ships as:
+>
+> ```bash
+> DATABASE_URL="postgresql://..." node scripts/fix-sequences.mjs
+> # or, as a re-runnable migration:
+> npm run db:migrate   # applies 0094_fix_id_sequences.sql
+> ```
+>
+> Both are idempotent and forward-only — safe to run any number of times.
+> `fixSequences()` in `scripts/migrate-data.mjs` was fixed so future data
+> migrations don't repeat this.
+
+### 2c. Lost column defaults + chess UUID drift (discovered in the 500 audit)
+
+> A follow-up audit found the dump/restore also dropped DEFAULT clauses from
+> a few NOT NULL columns, and that chess had been converted to UUID ids in
+> the DB without the app code following. All fixed in migration **0095**:
+>
+> - `big_wins.id`, `pool_lobbies.id`, `pool_matches.id`, `pool_shots.id` →
+>   `DEFAULT gen_random_uuid()` (big-wins recording 500'd without it; pool
+>   routes only worked because they pass ids explicitly).
+> - `pool_lobbies.status` → `DEFAULT 'waiting'`.
+> - `chess_moves.game_id_int` → `DROP NOT NULL` (dead serial-era leftover
+>   from `UUID_MIGRATION.sql` that made every chess move insert fail).
+>
+> The chess UUID drift itself (`chess_games.id` / `chess_moves.game_id` are
+> uuid in the DB) is fixed in code: `schema.ts` now declares uuid ids and
+> every chess route + frontend stops `Number(gameId)`-ing them. Apply with:
+>
+> ```bash
+> npm run db:migrate   # applies 0095_restore_lost_column_defaults.sql
+> ```
+
 ### 3. Mark migrations as applied (so future `npm run db:migrate` is incremental)
 
 ```bash
