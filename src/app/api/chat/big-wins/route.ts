@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../../db/neon";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
@@ -11,7 +11,7 @@ export async function GET() {
       CacheKeys.bigWins(),
       CacheTTL.bigWins,
       async () => {
-        const sql = neon(process.env.DATABASE_URL!);
+        const sql = getNeonSql();
 
         const result = await sql`
           SELECT 

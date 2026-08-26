@@ -1,6 +1,6 @@
 //iniitialize-poker-game/route.js
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../db/sql";
 
 function generateShuffledDeck() {
   const suits = ["hearts", "diamonds", "clubs", "spades"];

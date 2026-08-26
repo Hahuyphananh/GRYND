@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../../lib/security/idempotency";
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../../db/sql";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 

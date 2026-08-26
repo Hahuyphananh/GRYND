@@ -1,4 +1,4 @@
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../db/sql";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 

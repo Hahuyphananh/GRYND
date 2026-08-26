@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../db/sql";
 import { deleteUserLocalData } from "../../../lib/security/deleteUserData";
 
 export async function POST(request) {

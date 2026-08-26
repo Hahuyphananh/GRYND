@@ -1,5 +1,5 @@
 // app/lib/aiLogic.js
-import { sql } from "@vercel/postgres";
+import { sql } from "../../db/sql";
 
 export async function performAiAction(gameId) {
   const { rows: games } = await sql`

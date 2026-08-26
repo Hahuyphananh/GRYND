@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../db/sql";
 import { parseAndValidateJson } from "../../../lib/security/validation";
 
 export async function POST(request) {

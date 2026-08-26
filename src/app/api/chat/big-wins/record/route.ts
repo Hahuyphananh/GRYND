@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../../../db/neon";
 import { invalidateBigWins } from "../../../../../lib/redis/invalidation";
 
 const MINIMUM_BIG_WIN_AMOUNT = 1000000; // 1 million tokens
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sql = neon(process.env.DATABASE_URL!);
+    const sql = getNeonSql();
 
     const result = await sql`
       INSERT INTO big_wins (user_id, username, game, bet_amount, win_amount, multiplier)

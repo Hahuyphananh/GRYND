@@ -71,12 +71,12 @@ ALTER TABLE "poker_player_positions" DROP CONSTRAINT "poker_player_positions_gam
 ALTER TABLE "chess_games" ALTER COLUMN "player_white_id" SET DATA TYPE varchar(255);--> statement-breakpoint
 ALTER TABLE "chess_games" ALTER COLUMN "player_black_id" SET DATA TYPE varchar(255);--> statement-breakpoint
 ALTER TABLE "chess_games" ALTER COLUMN "winner_id" SET DATA TYPE varchar(255);--> statement-breakpoint
-ALTER TABLE "plinko_games" ALTER COLUMN "user_id" SET DATA TYPE varchar(255);--> statement-breakpoint
-ALTER TABLE "plinko_games" ALTER COLUMN "result_multiplier" SET DATA TYPE varchar(255);--> statement-breakpoint
+ALTER TABLE "plinko_games" ALTER COLUMN "user_id" SET DATA TYPE varchar(255) USING "user_id"::varchar(255);--> statement-breakpoint
+ALTER TABLE "plinko_games" ALTER COLUMN "result_multiplier" SET DATA TYPE varchar(255) USING "result_multiplier"::varchar(255);--> statement-breakpoint
 ALTER TABLE "poker_games" ALTER COLUMN "status" SET DATA TYPE text;--> statement-breakpoint
 ALTER TABLE "poker_games" ALTER COLUMN "status" SET DEFAULT 'waiting';--> statement-breakpoint
 ALTER TABLE "poker_games" ALTER COLUMN "status" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "poker_games" ALTER COLUMN "pot" SET DATA TYPE text;--> statement-breakpoint
+ALTER TABLE "poker_games" ALTER COLUMN "pot" SET DATA TYPE text USING "pot"::text;--> statement-breakpoint
 ALTER TABLE "poker_games" ALTER COLUMN "pot" DROP DEFAULT;--> statement-breakpoint
 ALTER TABLE "poker_games" ALTER COLUMN "pot" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "poker_games" ALTER COLUMN "player_hand" DROP NOT NULL;--> statement-breakpoint
@@ -88,7 +88,9 @@ ALTER TABLE "poker_games" ALTER COLUMN "dealer_position" DROP NOT NULL;--> state
 ALTER TABLE "poker_player_positions" ALTER COLUMN "player_id" SET DEFAULT null;--> statement-breakpoint
 ALTER TABLE "poker_player_positions" ALTER COLUMN "stack" SET DATA TYPE integer;--> statement-breakpoint
 ALTER TABLE "poker_player_positions" ALTER COLUMN "current_bet" SET DATA TYPE integer;--> statement-breakpoint
-ALTER TABLE "poker_player_positions" ALTER COLUMN "has_folded" SET DATA TYPE boolean;--> statement-breakpoint
+ALTER TABLE "poker_player_positions" ALTER COLUMN "has_folded" DROP DEFAULT;--> statement-breakpoint
+ALTER TABLE "poker_player_positions" ALTER COLUMN "has_folded" SET DATA TYPE boolean USING "has_folded"::boolean;--> statement-breakpoint
+ALTER TABLE "poker_player_positions" ALTER COLUMN "has_folded" SET DEFAULT false;--> statement-breakpoint
 ALTER TABLE "chess_games" ADD COLUMN "is_ai_game" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "coin_flip_games" ADD COLUMN "result" varchar(10) DEFAULT 'pending' NOT NULL;--> statement-breakpoint
 ALTER TABLE "coin_flip_games" ADD COLUMN "status" varchar(20) DEFAULT 'active' NOT NULL;--> statement-breakpoint

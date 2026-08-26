@@ -21,7 +21,7 @@
  * ```
  */
 
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../db/neon";
 import { invalidateBigWins } from "./redis/invalidation";
 
 const MINIMUM_BIG_WIN_AMOUNT = 1000000; // 1 million tokens
@@ -47,7 +47,7 @@ export async function recordBigWinIfNeeded(record: BigWinRecord): Promise<boolea
   }
 
   try {
-    const sql = neon(process.env.DATABASE_URL!);
+    const sql = getNeonSql();
 
     await sql`
       INSERT INTO big_wins (user_id, username, game, bet_amount, win_amount, multiplier)

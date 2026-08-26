@@ -1,4 +1,4 @@
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../../db/sql";
 
 export async function GET() {
   const result = await sql`

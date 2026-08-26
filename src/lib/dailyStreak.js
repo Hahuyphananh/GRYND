@@ -1,5 +1,4 @@
 // src/lib/dailyStreak.js
-import { neon } from "@neondatabase/serverless";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, userStats } from "../db/schema";

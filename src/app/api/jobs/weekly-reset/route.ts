@@ -1,4 +1,4 @@
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../../db/sql";
 import { invalidateAllLeaderboards } from "../../../../lib/redis/invalidation";
 
 export async function GET() {

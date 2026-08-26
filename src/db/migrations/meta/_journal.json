@@ -5,99 +5,694 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1746237608653,
+      "when": 1787743126353,
       "tag": "0000_thin_silverclaw",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1751403158195,
+      "when": 1787743126354,
       "tag": "0001_glossy_smiling_tiger",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1763323277982,
+      "when": 1787743126355,
       "tag": "0002_silly_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787743126356,
+      "tag": "0003_chess_moves_multiplayer",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787743126357,
+      "tag": "0003_dice_duel_arena",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787743126358,
+      "tag": "0004_coin_flip_player2_choice",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787743126359,
+      "tag": "0005_coin_flip_choice_deadline",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787743126360,
+      "tag": "0006_uno_multiplayer_support",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787743126361,
+      "tag": "0007_rps_pvp_games",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787743126362,
+      "tag": "0008_chat_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787743126363,
+      "tag": "0009_chess_waiting_constraint_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787743126364,
+      "tag": "0010_profile_referral_vip",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787743126365,
+      "tag": "0011_chess_timers",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787743126366,
+      "tag": "0012_friends_presence_profile_picture",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787743126367,
+      "tag": "0012_yahtzee_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787743126368,
+      "tag": "0013_friend_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787743126369,
+      "tag": "0013_yahtzee_room_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787743126370,
+      "tag": "0014_lane_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787743126371,
+      "tag": "0015_chat_message_ttl_and_avatar",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787743126372,
+      "tag": "0016_user_titles",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787743126373,
+      "tag": "0017_secret_titles_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787743126374,
+      "tag": "0018_expand_user_balance_precision",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787743126375,
+      "tag": "0019_email_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787743126376,
+      "tag": "0020_leaderboard_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787743126377,
+      "tag": "0021_standardize_user_stats_leaderboards",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787743126378,
+      "tag": "0022_pool_masters",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787743126379,
+      "tag": "0022_daily_streak_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1787743126380,
+      "tag": "0023_weekly_game_streak",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1787743126381,
+      "tag": "0024_hex_duel_games",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787743126382,
+      "tag": "0024_weekly_streak_reset_safety",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1787743126383,
+      "tag": "0025_sports_bets_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787743126384,
+      "tag": "0025_clicker_games",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787743126385,
+      "tag": "0026_terms_accepted",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787743126386,
+      "tag": "0027_farkle_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787743126387,
+      "tag": "0028_add_is_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1787743126388,
+      "tag": "0029_add_admin_audit_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787743126389,
+      "tag": "0030_add_player_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787743126390,
+      "tag": "0031_odds_games",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787743126391,
+      "tag": "0032_rename_yahtzee_to_dice_flush",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787743126392,
+      "tag": "0033_add_mines_count",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787743126393,
+      "tag": "0034_slot_jackpots",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1787743126394,
+      "tag": "0035_precision_matches_rounds",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1787743126395,
+      "tag": "0036_coin_flip_best_of_three",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1787743126396,
+      "tag": "0037_dots_and_boxes",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1787743126397,
+      "tag": "0038_dots_and_boxes_timer",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1787743126398,
+      "tag": "0039_roulette_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1787743126399,
+      "tag": "0040_roulette_pvp_persistent_points",
       "breakpoints": true
     },
     {
       "idx": 47,
       "version": "7",
-      "when": 1783252140000,
-      "tag": "0048_plinko_pvp",
+      "when": 1787743126400,
+      "tag": "0041_dots_and_boxes_timer_20s",
       "breakpoints": true
     },
     {
       "idx": 48,
       "version": "7",
-      "when": 1785000000000,
+      "when": 1787743126401,
+      "tag": "0042_blackjack_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1787743126402,
+      "tag": "0043_blackjack_pvp_swap_hold",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1787743126403,
+      "tag": "0044_blackjack_pvp_between_rounds",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1787743126404,
+      "tag": "0045_blackjack_pvp_schema_refactor",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1787743126405,
+      "tag": "0046_blackjack_pvp_round_timer_seconds",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1787743126406,
+      "tag": "0047_mines_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1787743126407,
+      "tag": "0048_plinko_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1787743126408,
+      "tag": "0049_roulette_pvp_bets_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1787743126409,
+      "tag": "0050_mines_pvp_odds_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1787743126410,
+      "tag": "0051_blackjack_pvp_peek",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1787743126411,
+      "tag": "0052_plinko_pvp_ready_and_collision",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1787743126412,
+      "tag": "0053_plinko_pvp_schema_safety_net",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1787743126413,
       "tag": "0054_hex_duel_actions_and_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1787743126414,
+      "tag": "0055_plinko_pvp_ball_4",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1787743126415,
+      "tag": "0056_crash_arena",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1787743126416,
+      "tag": "0057_crash_arena_host",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1787743126417,
+      "tag": "0058_add_player_reports_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1787743126418,
+      "tag": "0059_slots_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1787743126419,
+      "tag": "0060_drop_solo_slots",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1787743126420,
+      "tag": "0061_keno_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787743126421,
+      "tag": "0062_drop_coin_flip",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1787743126422,
+      "tag": "0063_drop_slots_pvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1787743126423,
+      "tag": "0064_keno_pvp_overtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787743126424,
+      "tag": "0065_lane_rush_duel",
       "breakpoints": true
     },
     {
       "idx": 72,
       "version": "7",
-      "when": 1786118400000,
-      "tag": "0072_memory_grid_cumulative",
+      "when": 1787743126425,
+      "tag": "0066_lane_rush_duel_points",
       "breakpoints": true
     },
     {
       "idx": 73,
       "version": "7",
-      "when": 1787000000000,
-      "tag": "0073_memory_grid_status_active",
+      "when": 1787743126426,
+      "tag": "0067_drop_clicker",
       "breakpoints": true
     },
     {
       "idx": 74,
       "version": "7",
-      "when": 1787600000000,
-      "tag": "0074_rps_pvp_best_of_seven",
+      "when": 1787743126427,
+      "tag": "0068_roulette_pvp_skill",
       "breakpoints": true
     },
     {
       "idx": 75,
       "version": "7",
-      "when": 1788200000000,
-      "tag": "0075_blackjack_pvp_tiebreak",
+      "when": 1787743126428,
+      "tag": "0069_remove_farkle_tables",
       "breakpoints": true
     },
     {
       "idx": 76,
       "version": "7",
-      "when": 1787412000000,
-      "tag": "0076_users_clerk_id_unique",
+      "when": 1787743126429,
+      "tag": "0070_drop_sports_tables",
       "breakpoints": true
     },
     {
       "idx": 77,
       "version": "7",
-      "when": 1788000000000,
-      "tag": "0077_rebrand_titles",
+      "when": 1787743126430,
+      "tag": "0071_memory_grid",
       "breakpoints": true
     },
     {
       "idx": 78,
       "version": "7",
-      "when": 1788200000000,
-      "tag": "0082_roulette_pvp_ai",
+      "when": 1787743126431,
+      "tag": "0072_memory_grid_cumulative",
       "breakpoints": true
     },
     {
       "idx": 79,
       "version": "7",
-      "when": 1788300000000,
-      "tag": "0083_blackjack_pvp_ai",
+      "when": 1787743126432,
+      "tag": "0073_memory_grid_status_active",
       "breakpoints": true
     },
     {
       "idx": 80,
       "version": "7",
-      "when": 1788400000000,
+      "when": 1787743126433,
+      "tag": "0074_rps_pvp_best_of_seven",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1787743126434,
+      "tag": "0075_blackjack_pvp_tiebreak",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1787743126435,
+      "tag": "0076_users_clerk_id_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1787743126436,
+      "tag": "0077_rebrand_titles",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1787743126437,
+      "tag": "0078_add_contact_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1787743126438,
+      "tag": "0079_add_contact_message_replies",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1787743126439,
+      "tag": "0080_add_app_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1787743126440,
+      "tag": "0081_add_product_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1787743126441,
+      "tag": "0082_roulette_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1787743126442,
+      "tag": "0083_blackjack_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1787743126443,
       "tag": "0084_mines_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1787743126444,
+      "tag": "0085_memory_grid_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1787743126445,
+      "tag": "0086_keno_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1787743126446,
+      "tag": "0087_lane_rush_simultaneous",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1787743126447,
+      "tag": "0088_dots_and_boxes_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1787743126448,
+      "tag": "0089_plinko_pvp_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1787743126449,
+      "tag": "0090_crash_arena_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1787743126450,
+      "tag": "0091_crash_arena_ai_difficulty",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1787743196410,
+      "tag": "0092_missing_tables_from_push",
       "breakpoints": true
     }
   ]
