@@ -161,8 +161,7 @@ const QUICK_LINKS = [
 
 export default function NotFound() {
   return (
-    <main
-      id="main-content"
+    <div
       className="relative flex min-h-[calc(100vh-68px)] items-center justify-center overflow-hidden bg-[#030817] px-4 py-14 sm:min-h-[calc(100vh-4rem)]"
     >
       {/* Backdrop: neon glows + subtle grid */}
@@ -314,6 +313,6 @@ export default function NotFound() {
           .
         </p>
       </section>
-    </main>
+    </div>
   );
 }

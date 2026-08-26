@@ -554,6 +554,7 @@ export default function MinesPvpLobbyPage() {
               min={MIN_MINES}
               max={MAX_MINES}
               value={minesCount}
+              aria-label="Number of mines"
               onChange={(e) =>
                 setMinesCount(
                   Math.max(

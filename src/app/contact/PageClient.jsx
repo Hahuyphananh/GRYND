@@ -84,7 +84,7 @@ export default function ContactPage() {
   }, [errorMsg]);
 
   return (
-    <main className="relative min-h-screen bg-[#0a0f1e] text-white">
+    <div className="relative min-h-screen bg-[#0a0f1e] text-white">
       <InteractiveCasinoBg
         variant="subtle"
         wheelPosition="bottom"
@@ -138,9 +138,9 @@ export default function ContactPage() {
             className="lg:col-span-2 space-y-6"
           >
             <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
+              <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Reach Us
-              </h3>
+              </h2>
               <ul className="space-y-4 text-sm text-[#c9f7ff]/80">
                 <li className="flex items-start gap-3">
                   <IconClock size={18} className="text-[#f5ff3b] mt-0.5" />
@@ -162,9 +162,9 @@ export default function ContactPage() {
             </div>
 
             <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
+              <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
                 Quick Links
-              </h3>
+              </h2>
               <ul className="space-y-2 text-sm">
                 <li>
                   <Link
@@ -349,6 +349,6 @@ export default function ContactPage() {
       <div className="max-w-4xl mx-auto px-4 pb-16">
         <ContactMessageHistory />
       </div>
-    </main>
+    </div>
   );
 }

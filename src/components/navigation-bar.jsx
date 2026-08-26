@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { useUser, useAuth, SignOutButton } from "@clerk/nextjs";
+import { useUser, useAuth } from "@clerk/nextjs";
+import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
 import AddFundsModal from "./AddFundsModal";
 import Link from "next/link";
@@ -11,6 +12,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
+import SoundToggle from "./SoundToggle";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconStar, IconX } from "@tabler/icons-react";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
 
@@ -436,6 +438,7 @@ function NavigationBar({ currentPath }) {
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
               )}
+              <SoundToggle />
               <div className="relative">
                 <button
                   onClick={() => (langOpen ? closeLang() : setLangOpen(true))}

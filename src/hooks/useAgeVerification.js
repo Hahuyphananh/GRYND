@@ -3,6 +3,7 @@
 import { useUser, useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 
 export function useAgeVerification() {
   const { user, isLoaded } = useUser();
@@ -25,6 +26,7 @@ export function useAgeVerification() {
     );
 
     if (age < 18) {
+      clearSessionArtifacts();
       signOut();
       router.push("/access-denied");
     }

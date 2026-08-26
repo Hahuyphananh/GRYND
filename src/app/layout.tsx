@@ -75,7 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <CsrfFetchGuard />
           <DisableInspect />
           <TawkProvider />
-          <div className="pt-[68px] sm:pt-16">{children}</div>
+          <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>
           <ClerkSafeChatWidget />
           <CookieConsentBanner />
         </Providers>

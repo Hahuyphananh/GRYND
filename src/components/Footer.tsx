@@ -50,9 +50,9 @@ export default function Footer() {
 
           {/* NAVIGATION */}
           <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
               Navigation
-            </h3>
+            </h2>
 
             <div className="space-y-2 text-sm">
               <Link href="/" className={linkClass}>
@@ -83,9 +83,9 @@ export default function Footer() {
 
           {/* GAMES */}
           <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
               Popular Games
-            </h3>
+            </h2>
 
             <div className="space-y-2 text-sm">
               <Link href="/games/poker/multi" className={linkClass}>
@@ -123,9 +123,9 @@ export default function Footer() {
 
           {/* LEGAL */}
           <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#f5ff3b]">
               Legal
-            </h3>
+            </h2>
 
             <div className="space-y-2 text-sm">
               <Link href="/security-policy" className={linkClass}>

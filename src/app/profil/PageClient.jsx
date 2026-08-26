@@ -10,6 +10,7 @@ import {
   MAX_IMAGE_BYTES,
   isSafeProfilePictureUrl,
 } from "../../lib/security/media";
+import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 
 const statsCards = [
   { key: "totalBets", label: "Total Bets" },
@@ -872,6 +873,11 @@ export default function ProfilePage() {
       }
 
       setDeleteStatus("Account deleted. Signing out...");
+      // Sweep device session artifacts (admin_mfa cookie, per-user caches,
+      // game-session tokens) before revoking. The keepalive server call
+      // survives both branches below, including the hard redirect when
+      // signOut fails.
+      clearSessionArtifacts();
       try {
         await signOut({ redirectUrl: "/" });
       } catch (signOutErr) {

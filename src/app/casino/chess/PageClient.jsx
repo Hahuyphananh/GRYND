@@ -12,6 +12,7 @@ import {
   IconClock,
   IconBook,
 } from "@tabler/icons-react";
+import { playCardDraw, playTick, playBuzz } from "../../../lib/gameAudio";
 const AI_DIFFICULTY_LEVELS = [
   { level: 1, label: "Beginner", desc: "Easy opponent" },
   { level: 2, label: "Casual", desc: "Relaxed play" },
@@ -192,8 +193,12 @@ export default function ChessLobby() {
 
       if (!res.ok) {
         setError(data.error || "Unable to create game");
+        playBuzz();
         return;
       }
+
+      // Game created/matched — the first move is imminent.
+      playCardDraw();
 
       const timerObj = TIMER_OPTIONS.find(
         (t) => t.id === (data.timerMode || selectedTimer),
@@ -238,10 +243,12 @@ export default function ChessLobby() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data.error || "Unable to join game");
+        playBuzz();
         fetchAvailableGames();
         return;
       }
 
+      playCardDraw();
       socket?.emit("room_event", {
         roomId: "lobby:chess",
         event: "lobby:updated",
@@ -276,6 +283,9 @@ export default function ChessLobby() {
       });
 
       if (!res.ok) throw new Error("Failed to create AI game");
+
+      // AI match starting — piece-move cue.
+      playCardDraw();
 
       const data = await res.json();
       const timerObj = TIMER_OPTIONS.find((t) => t.id === aiTimer);
@@ -373,6 +383,7 @@ export default function ChessLobby() {
                 <input
                   type="number"
                   value={stakeInput}
+                  aria-label="Stake amount"
                   onChange={(e) => {
                     const val = e.target.value;
                     if (val === "" || val === "0") {
@@ -408,7 +419,10 @@ export default function ChessLobby() {
               ].map((btn) => (
                 <button
                   key={btn.label}
-                  onClick={() => setStakeInput(String(btn.value))}
+                  onClick={() => {
+                    setStakeInput(String(btn.value));
+                    playTick();
+                  }}
                   disabled={btn.value == null || btn.value < 1}
                   className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                     stakeNum === btn.value
@@ -623,7 +637,10 @@ export default function ChessLobby() {
               ].map((opt) => (
                 <button
                   key={opt.key}
-                  onClick={() => setAiColor(opt.key)}
+                  onClick={() => {
+                    setAiColor(opt.key);
+                    playTick();
+                  }}
                   className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border transition-all text-center ${
                     aiColor === opt.key
                       ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
@@ -642,7 +659,10 @@ export default function ChessLobby() {
               {TIMER_OPTIONS.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => setAiTimer(t.id)}
+                  onClick={() => {
+                    setAiTimer(t.id);
+                    playTick();
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                     aiTimer === t.id
                       ? "bg-[#FFD700] text-[#030817] border-[#FFD700]"
@@ -659,7 +679,10 @@ export default function ChessLobby() {
               {AI_DIFFICULTY_LEVELS.map((diff) => (
                 <button
                   key={diff.level}
-                  onClick={() => setAiDifficulty(diff.level)}
+                  onClick={() => {
+                    setAiDifficulty(diff.level);
+                    playTick();
+                  }}
                   className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
                     aiDifficulty === diff.level
                       ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"

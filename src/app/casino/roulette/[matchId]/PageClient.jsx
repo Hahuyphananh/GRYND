@@ -79,6 +79,7 @@ import {
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import { playVictory, playDefeat, playTick, playCardPlace } from "../../../../lib/gameAudio";
 
 // The socket room (ROULETTE_PVP_MATCH_UPDATED = "lobby:updated") pushes
 // opponent actions/round resolutions instantly, so this HTTP poll is a
@@ -508,6 +509,12 @@ export default function RoulettePvpGamePage({ params }) {
         endKind = meWon ? "you" : "opponent";
       }
       setMatchEndedBanner(endKind);
+      // Match-end audio (the matchEndedBannerRef guard above ensures
+      // this fires once — the block is only entered when the banner
+      // hasn't been set yet for this finished match).
+      if (endKind === "you") playVictory();
+      else if (endKind === "opponent") playDefeat();
+      else playTick();
       posthog?.capture("roulette_pvp_match_finished", {
         match_id: matchId,
         winner: isDraw ? "draw" : endKind,
@@ -882,6 +889,11 @@ export default function RoulettePvpGamePage({ params }) {
         // at the same moment the player sees the final ball pocket.
         if (!cancelled && pendingBannerRef.current) {
           setRoundResultBanner(pendingBannerRef.current);
+          // Round-result audio — lands with the banner as the wheel
+          // settles so the fanfare matches the revealed pocket.
+          if (pendingBannerRef.current.winner === "you") playVictory();
+          else if (pendingBannerRef.current.winner === "opponent") playDefeat();
+          else playTick();
           if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
           bannerTimerRef.current = setTimeout(
             () => setRoundResultBanner(null),
@@ -1211,6 +1223,7 @@ export default function RoulettePvpGamePage({ params }) {
 
   const placeBet = (target) => {
     if (myBetsAreLocked) return;
+    playCardPlace(); // chip-on-table click
     const amount = betAmount < 1 ? 1 : betAmount;
     if (betAmount < 1) setBetAmount(1);
     setBets((prev) => {
@@ -1866,6 +1879,7 @@ export default function RoulettePvpGamePage({ params }) {
                   type="number"
                   min="0"
                   value={betAmount}
+                  aria-label="Bet amount"
                   onChange={(e) => setBetAmount(parseInt(e.target.value) || 0)}
                   onBlur={() => {
                     if (!betAmount || betAmount < 1) setBetAmount(1);

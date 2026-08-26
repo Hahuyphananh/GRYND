@@ -1402,6 +1402,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <input
               id="odds-pvp-wager"
               type="number"
+              aria-label="Wager amount"
               className="mt-2 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
               value={wager}
               onChange={(e) => setWager(Number(e.target.value))}

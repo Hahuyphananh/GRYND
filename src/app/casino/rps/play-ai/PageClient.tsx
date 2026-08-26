@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
@@ -100,6 +101,11 @@ export default function RPSPlayAiPage() {
     setAiChoice(ai);
     setLastResult(result);
 
+    // Round audio — fires with the reveal.
+    if (result === "win") playGoodReveal();
+    else if (result === "lose") playBuzz();
+    else playTick();
+
     if (result === "win") setMyWins((w) => w + 1);
     else if (result === "lose") setAiWins((w) => w + 1);
 
@@ -114,6 +120,9 @@ export default function RPSPlayAiPage() {
   const nextRound = () => {
     if (myWins >= ROUNDS_TO_WIN || aiWins >= ROUNDS_TO_WIN) {
       setPhase("matchOver");
+      // Match-over audio — fanfare on a win, defeat otherwise.
+      if (myWins >= ROUNDS_TO_WIN) playVictory();
+      else playDefeat();
       return;
     }
     setRoundNumber((r) => r + 1);

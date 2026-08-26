@@ -9,43 +9,57 @@ import Link from "next/link";
 const sections = [
   {
     title: "Our Commitment",
-    content:
-      "GRYND is committed to providing an inclusive and accessible experience for all users, including those with disabilities. We strive to meet WCAG 2.1 Level AA standards across our platform and continuously work to improve accessibility through regular audits, user feedback, and design iterations.",
+    content: [
+      "GRYND is committed to providing an inclusive and accessible experience for all users, including those with disabilities. We design and build our platform with the Web Content Accessibility Guidelines (WCAG) 2.1 Level AA in mind, and we continuously work to improve accessibility through user feedback and design iterations. Accessibility is an ongoing effort — we are honest that not every page and game is fully conformant today, and we treat reported barriers as priority issues.",
+    ],
   },
   {
     title: "Keyboard Navigation",
-    content:
+    content: [
       "All interactive elements on GRYND are operable via keyboard alone. You can navigate using Tab and Shift+Tab to move between focusable elements, Enter or Space to activate buttons and links, Escape to close modals and overlays, and arrow keys to navigate within game interfaces. A \"Skip to main content\" link is available on every page for quick access to primary content.",
+    ],
   },
   {
     title: "Screen Reader Support",
-    content:
-      "We use semantic HTML, ARIA landmarks, and descriptive labels throughout the platform to ensure compatibility with popular screen readers including NVDA, JAWS, and VoiceOver. All images include alt text, form inputs have associated labels, and dynamic content changes are announced via live regions where appropriate.",
+    content: [
+      "We use semantic HTML, ARIA landmarks, and descriptive labels throughout the platform to support compatibility with popular screen readers including NVDA, JAWS, and VoiceOver. Images include alt text, form inputs have associated labels, and dynamic content changes are announced via live regions where appropriate.",
+    ],
   },
   {
     title: "Color & Contrast",
-    content:
-      "Our cyberpunk-inspired dark theme is designed with sufficient color contrast ratios meeting WCAG AA requirements. All text elements maintain a minimum contrast ratio of 4.5:1 against their backgrounds, and interactive elements have visible focus indicators. We never rely solely on color to convey information. Additional visual cues such as icons, patterns, and text labels are used throughout.",
+    content: [
+      "Our dark theme is designed with sufficient color contrast between text and backgrounds, and interactive elements have visible focus indicators. We never rely solely on color to convey information — additional visual cues such as icons, patterns, and text labels are used throughout.",
+    ],
   },
   {
     title: "Focus Indicators",
-    content:
-      "All interactive elements on GRYND feature clearly visible focus indicators using a high-contrast neon cyan ring. When navigating by keyboard, you will always see which element is currently focused. Focus order follows a logical sequence matching the visual layout of each page.",
+    content: [
+      "All interactive elements on GRYND feature clearly visible focus indicators. When navigating by keyboard, you will always see which element is currently focused. Focus order follows a logical sequence matching the visual layout of each page.",
+    ],
   },
   {
     title: "Text Sizing & Zoom",
-    content:
-      "Our platform supports browser zoom up to 200% without loss of content or functionality. Text scales appropriately using relative units, and layouts reflow to accommodate larger text sizes. You can adjust your browser's default font size and zoom level without breaking the interface.",
+    content: [
+      "Our platform supports browser zoom up to 200% without loss of content or functionality. Text scales using relative units where practical, and layouts reflow to accommodate larger text sizes. You can adjust your browser's default font size and zoom level without breaking the interface.",
+    ],
   },
   {
     title: "Reduced Motion",
-    content:
-      "We respect your system-level motion preferences. If you have enabled \"Reduce motion\" in your operating system or browser settings, GRYND will automatically disable non-essential animations, transitions, and parallax effects to create a more comfortable experience. All critical animations related to gameplay feedback remain functional but are shortened and simplified.",
+    content: [
+      "We respect your system-level motion preferences. If you have enabled \"Reduce motion\" in your operating system or browser settings, GRYND automatically disables non-essential animations, transitions, and parallax effects. Critical feedback related to gameplay remains functional but is shortened and simplified.",
+    ],
+  },
+  {
+    title: "Real-Time & Skill Games",
+    content: [
+      "Some of our games are real-time and require fast reactions or rapid input (for example, Precision timing challenges). These games may be difficult or impossible for users with certain motor or cognitive disabilities. Where a game offers one, the free practice (fun/AI) mode can be used without wagering, and no penalty applies for choosing not to play a game that does not suit your abilities. We are working to increase accessibility options across our games.",
+    ],
   },
   {
     title: "Feedback & Contact",
-    content:
-      "We welcome feedback on accessibility. If you encounter any barriers while using GRYND, or have suggestions for improvement, please contact us through our contact page. We aim to respond to accessibility inquiries within 5 business days and will work with you to find a solution.",
+    content: [
+      "We welcome feedback on accessibility. If you encounter any barriers while using GRYND, or have suggestions for improvement, please contact us through our contact page. We aim to respond to accessibility inquiries within 5 business days and will work with you to find a solution or an alternative format.",
+    ],
   },
 ];
 
@@ -66,7 +80,7 @@ export default function AccessibilityPage() {
             Accessibility Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: June 24, 2026
+            Last updated: August 25, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
@@ -74,8 +88,8 @@ export default function AccessibilityPage() {
               Accessibility is a core design principle at GRYND. We believe
               everyone should be able to enjoy skill-based gaming, regardless
               of ability. This policy outlines the measures we have taken and
-              the standards we uphold to ensure our platform is usable by the
-              widest possible audience.
+              the standards we work toward to ensure our platform is usable by
+              the widest possible audience.
             </p>
           </div>
         </motion.div>
@@ -92,9 +106,22 @@ export default function AccessibilityPage() {
               <h2 className="mb-3 text-xl font-bold text-[#00e5ff]">
                 {section.title}
               </h2>
-              <p className="leading-relaxed text-[#c9f7ff]/90">
-                {section.content}
-              </p>
+              {Array.isArray(section.content) ? (
+                <div className="space-y-2">
+                  {section.content.map((paragraph, i) => (
+                    <p
+                      key={i}
+                      className="leading-relaxed text-[#c9f7ff]/90"
+                    >
+                      {paragraph}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="leading-relaxed text-[#c9f7ff]/90">
+                  {section.content}
+                </p>
+              )}
             </motion.div>
           ))}
         </div>

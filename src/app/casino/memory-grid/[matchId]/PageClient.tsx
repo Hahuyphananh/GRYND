@@ -67,6 +67,12 @@ import {
 } from "../../../../lib/memory-grid/rooms";
 import { MATCH_STATUS } from "../../../../lib/memory-grid/constants";
 import {
+  playVictory,
+  playDefeat,
+  playTick,
+  playGoodReveal,
+} from "../../../../lib/gameAudio";
+import {
   IconRefresh,
   IconTrophy,
   IconAlertTriangle,
@@ -504,6 +510,37 @@ export default function MemoryGridMatchPage({
   const viewerLost =
     isFinished && !!match?.winnerId && match.winnerId !== user?.id;
   const isDraw = isFinished && !match?.winnerId;
+
+  // ── Audio ─────────────────────────────────────────────────────────
+  // Match-result fanfare/defeat plays once when the finished screen
+  // first surfaces from the status poll.
+  const finishSoundRef = useRef(false);
+  useEffect(() => {
+    if (!isFinished) {
+      finishSoundRef.current = false;
+      return;
+    }
+    if (finishSoundRef.current) return;
+    finishSoundRef.current = true;
+    if (viewerWon) playVictory();
+    else if (viewerLost) playDefeat();
+    else if (isDraw) playTick();
+  }, [isFinished, viewerWon, viewerLost, isDraw]);
+
+  // Phase cue — soft chime when the pattern hides and reconstruct
+  // begins (fires once per transition as `phase` flips).
+  const lastPhaseRef = useRef(null);
+  useEffect(() => {
+    if (phase === lastPhaseRef.current) return;
+    const prev = lastPhaseRef.current;
+    lastPhaseRef.current = phase;
+    if (prev === PHASE.MEMORIZE && phase === PHASE.RECONSTRUCT) {
+      playGoodReveal();
+    } else if (prev === PHASE.RESULT && phase === PHASE.MEMORIZE) {
+      // New round's memorize phase — a subtle tick.
+      playTick();
+    }
+  }, [phase]);
 
   // ── Round / state-change reset ────────────────────────────────────
   // When the server advances to a new round (or the match finishes),

@@ -1,13 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { IconCircleX } from "@tabler/icons-react";
-
-const SignOutButton = dynamic(
-  () => import("@clerk/nextjs").then((mod) => mod.SignOutButton),
-  { ssr: false },
-);
+import { SignOutButton } from "../../components/SignOutButton";
 
 export default function AccessDeniedPage() {
   return (

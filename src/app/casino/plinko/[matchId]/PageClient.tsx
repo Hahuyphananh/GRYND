@@ -40,6 +40,7 @@ import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import { IconLock, IconFlag } from "@tabler/icons-react";
 import { useSocket } from "../../../../context/SocketProvider";
+import { playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import {
   PLINKO_PVP_LOBBY_ROOM,
   PLINKO_PVP_MATCH_UPDATED,
@@ -1491,6 +1492,14 @@ export default function PlinkoPvpMatchPage({
     }
     if (match.status === MATCH_STATUS.FINISHED && phaseRef.current !== "finished") {
       setPhase("finished");
+      // Match result — one shot on the finished transition.
+      const isDraw = match.result === RESULT.TIE;
+      const iWon = Boolean(
+        match.winnerId && user?.id && match.winnerId === user.id,
+      );
+      if (isDraw) playTick();
+      else if (iWon) playVictory();
+      else playDefeat();
     }
     if (match.status === MATCH_STATUS.CANCELLED && phaseRef.current !== "cancelled") {
       setPhase("cancelled");
@@ -1545,6 +1554,10 @@ export default function PlinkoPvpMatchPage({
       target.player2Result,
       target.ballNumber,
     );
+    // Ball-drop tick sequence — three quick ticks as the balls drop.
+    playTick();
+    setTimeout(() => playTick(), 130);
+    setTimeout(() => playTick(), 260);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds]);
 

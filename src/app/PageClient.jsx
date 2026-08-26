@@ -9,6 +9,7 @@ import ReviewWall from "../components/reviews/ReviewWall";
 import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
+import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.webp";
@@ -215,6 +216,7 @@ function MainComponent() {
   const handleRejectTerms = async () => {
     // Sign the user out if they reject the terms
     if (signOut) {
+      clearSessionArtifacts();
       await signOut();
     }
     router.push("/");
@@ -520,17 +522,17 @@ function MainComponent() {
       <div className="mx-auto max-w-7xl px-4 py-6 reveal">          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#00e5ff]/35 hover:shadow-[0_0_20px_rgba(0,229,255,0.1)]">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 00-4 4c0 1.5.8 2.8 2 3.5V9a2 2 0 012-2h4a2 2 0 012 2v.5c1.2-.7 2-2 2-3.5a4 4 0 00-4-4z"/><path d="M9 22h6M12 18v4"/><circle cx="12" cy="12" r="3"/></svg>
-            <h3 className="text-lg font-bold text-[#00e5ff] mb-1">{t("home.value_props.skill_based_title")}</h3>
+            <h2 className="text-lg font-bold text-[#00e5ff] mb-1">{t("home.value_props.skill_based_title")}</h2>
             <p className="text-sm text-[#7dd3fc]">{t("home.value_props.skill_based_desc")}</p>
           </div>
           <div className="rounded-xl border border-[#f5ff3b]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#f5ff3b]/35 hover:shadow-[0_0_20px_rgba(245,255,59,0.1)]">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-            <h3 className="text-lg font-bold text-[#f5ff3b] mb-1">{t("home.value_props.free_tokens_title")}</h3>
+            <h2 className="text-lg font-bold text-[#f5ff3b] mb-1">{t("home.value_props.free_tokens_title")}</h2>
             <p className="text-sm text-[#7dd3fc]">{t("home.value_props.free_tokens_desc")}</p>
           </div>
           <div className="rounded-xl border border-[#ff4fd8]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#ff4fd8]/35 hover:shadow-[0_0_20px_rgba(255,79,216,0.1)]">
             <svg className="w-10 h-10 mx-auto mb-3 text-[#ff4fd8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            <h3 className="text-lg font-bold text-[#ff4fd8] mb-1">{t("home.value_props.multiplayer_title")}</h3>
+            <h2 className="text-lg font-bold text-[#ff4fd8] mb-1">{t("home.value_props.multiplayer_title")}</h2>
             <p className="text-sm text-[#7dd3fc]">{t("home.value_props.multiplayer_desc")}</p>
           </div>
         </div>
@@ -579,7 +581,7 @@ function MainComponent() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-8" id="main-content">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <section className="mb-16 reveal">
           <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">

@@ -139,7 +139,12 @@ export function RulesModal({ title = "How to Play", sections = [], onClose }) {
           </button>
         </div>
 
-        <div className="relative max-h-[calc(88vh-140px)] space-y-4 overflow-y-auto px-6 py-5">
+        <div
+          role="region"
+          aria-label="Open games"
+          tabIndex={0}
+          className="relative max-h-[calc(88vh-140px)] space-y-4 overflow-y-auto px-6 py-5"
+        >
           {sections.map((s, i) => (
             <motion.div
               key={i}
@@ -411,6 +416,7 @@ export function PvpLobby({
               min={stakeMin}
               max={stakeInputMax}
               value={stake}
+              aria-label="Wager amount"
               onChange={(e) =>
                 onStakeChange?.(Math.max(stakeMin, Number(e.target.value) || 0))
               }

@@ -63,6 +63,13 @@ import {
   survivalOdds,
 } from "../../../../lib/lane-rush-duel/constants";
 import {
+  playVictory,
+  playDefeat,
+  playTick,
+  playGoodReveal,
+  playBuzz,
+} from "../../../../lib/gameAudio";
+import {
   IconTrophy,
   IconLock,
   IconClock,
@@ -1047,6 +1054,33 @@ export default function LaneRushDuelMatchPage({ params }) {
   const wonMatch = finished && match.winnerId === user?.id;
   const lostMatch = finished && match.winnerId && match.winnerId !== user?.id;
   const drawMatch = finished && match.result === "draw";
+
+  // ── Audio ─────────────────────────────────────────────────────────
+  // Match result plays once when the finished state first surfaces
+  // from the status poll (the poll re-renders repeatedly at finished).
+  const finishSoundRef = useRef(false);
+  useEffect(() => {
+    if (!finished) {
+      finishSoundRef.current = false;
+      return;
+    }
+    if (finishSoundRef.current) return;
+    finishSoundRef.current = true;
+    if (wonMatch) playVictory();
+    else if (lostMatch) playDefeat();
+    else if (drawMatch) playTick();
+  }, [finished, wonMatch, lostMatch, drawMatch]);
+
+  // Peek reveal — a chime for a safe tile, a buzz for a bad tile.
+  // Fires when the poll first surfaces a new peek result for us.
+  const lastPeekRef = useRef(null);
+  useEffect(() => {
+    if (!lastPeek) return;
+    if (lastPeekRef.current && lastPeekRef.current.tile === lastPeek.tile) return;
+    lastPeekRef.current = lastPeek;
+    if (lastPeek.result === "bad") playBuzz();
+    else playGoodReveal();
+  }, [lastPeek]);
 
   const matchEndPopup = finished ? (
     <AnimatePresence>

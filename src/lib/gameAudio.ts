@@ -2,9 +2,13 @@
 
 // ── Singleton AudioContext (lazy, shared across page) ──────────────────
 
+import { isAudioMuted } from "./audioSettings";
+
 let _ctx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
+  // Global mute gate — silences every game's sounds at once.
+  if (isAudioMuted()) return null;
   if (!_ctx) {
     try {
       _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -87,6 +91,25 @@ export function playTick() {
 /** Play a countdown final */
 export function playCountdownGo() {
   playTone(1048, 0.15, "square", 0.1);
+}
+
+/** Play a crash / explosion sweep (descending rumble) */
+export function playCrash() {
+  playTone(220, 0.5, "sawtooth", 0.08);
+  setTimeout(() => playTone(110, 0.6, "sawtooth", 0.08), 60);
+  setTimeout(() => playTone(55, 0.7, "square", 0.06), 160);
+}
+
+/** Play a short low "bad reveal" buzz (mine hit, bad peek) */
+export function playBuzz() {
+  playTone(180, 0.18, "square", 0.06);
+  setTimeout(() => playTone(140, 0.22, "square", 0.06), 90);
+}
+
+/** Play a soft positive "good reveal" chime (safe pick, good peek) */
+export function playGoodReveal() {
+  playTone(660, 0.09, "sine", 0.07);
+  setTimeout(() => playTone(880, 0.12, "sine", 0.07), 70);
 }
 
 // Resume audio context on first user interaction
