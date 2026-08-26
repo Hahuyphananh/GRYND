@@ -35,19 +35,25 @@ function Pill({ className = "" }: { className?: string }) {
 }
 
 /* ── Shared chrome ─────────────────────────────────────────────────────────
-   Mirrors the fixed NavigationBar (h-[68px], matching layout.tsx's pt-16)
-   and the Footer, so the skeleton reads as the real page shell. */
+   Mirrors the fixed NavigationBar (h-24, same as navigation-bar.jsx) and
+   the Footer, so the skeleton reads as the real page shell. */
 
 function NavSkeleton() {
   return (
     <div
       aria-hidden
-      className="flex h-[68px] items-center justify-between border-b border-[#00e5ff]/10 bg-[#040d24]/70 px-4 sm:px-6"
+      className="flex h-24 items-center justify-between border-b border-[#00e5ff]/40 bg-[#050b1e]/75 px-4 sm:px-6"
     >
-      <div className="flex items-center gap-3">
-        <Block className="h-9 w-9 rounded-lg" />
-        <Block className="hidden h-4 w-28 sm:block" />
-      </div>
+      {/* Render the REAL navbar logo here — the splash covers the page on
+          entry (up to ~2.2s), so without it the logo slot was a tiny gray
+          block and the logo appeared to be missing. Same crop + sizing as
+          navigation-bar.jsx so the brand mark is visible from first paint. */}
+      <img
+        src="/images/navbar-logo.png"
+        alt=""
+        draggable={false}
+        className="h-[72px] w-auto object-contain sm:h-[84px]"
+      />
       <div className="hidden items-center gap-5 md:flex">
         {Array.from({ length: 4 }, (_, i) => (
           <Block key={i} className="h-3.5 w-14" />

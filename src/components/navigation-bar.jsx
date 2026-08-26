@@ -321,21 +321,27 @@ function NavigationBar({ currentPath }) {
       >
         <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
           <div className="flex h-24 items-center justify-between gap-2">
-            <Link href="/" className="flex items-center space-x-2">
+            <Link href="/" className="flex items-center">
               {/* Plain <img> with the public URL (not the webpack import).
                   An imported .png resolves to a structured object at runtime,
                   which a plain <img> cannot render (src becomes "[object
                   Object]" and the browser shows only the alt text). The
                   public path is a plain string served from /public, so it
-                  always loads on first paint — same file InteractiveCasinoBg
-                  and the favicon use. */}
+                  always loads on first paint.
+
+                  Uses /images/navbar-logo.png — a copy of smalllogo.png
+                  cropped to its visible glyph. The source file has ~35%
+                  transparent padding on each side, so the old logo box was
+                  140px wide while the actual mark rendered at ~42px. The
+                  cropped asset is ~1:1, so the same box now shows the logo
+                  at full size. */}
               {/* eslint-disable-next-line @next/next/no-img-element -- static asset, avoids next/image first-paint blanking */}
               <img
-                src="/images/smalllogo.png"
+                src="/images/navbar-logo.png"
                 alt="GRYND Logo"
-                width={140}
-                height={93}
-                className="h-auto w-[100px] sm:w-[140px] object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)]"
+                width={84}
+                height={87}
+                className="h-[72px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[84px]"
               />
             </Link>
 
