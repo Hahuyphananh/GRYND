@@ -36,7 +36,6 @@ import {
   roulettePvpMatchRoom,
 } from "../../../lib/roulette-pvp/rooms";
 import { RouletteWheelIcon } from "../../../components/roulette-pvp/RouletteIcons";
-import MatchWaiting from "../../../components/lobby/MatchWaiting";
 
 const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -47,10 +46,12 @@ export default function RoulettePvpLobbyPage() {
   const { socket } = useSocket();
 
   // Minimum time the full-screen "Searching for a match…" takeover stays
-  // visible. Create-or-join usually resolves in one fast round-trip, so
-  // without this floor the screen would flash for a frame (or not paint at
-  // all) and the unified waiting UX would be invisible.
-  const MIN_SEARCHING_MS = 800;
+  // visible — enforced on EVERY play action (create, join, vs-AI).
+  // Create-or-join usually resolves in one fast round-trip, so without
+  // this floor the screen would flash for a frame (or not paint at all)
+  // and the unified waiting UX would be invisible. 1200ms is comfortably
+  // perceptible while still feeling snappy.
+  const MIN_SEARCHING_MS = 1200;
   const searchStartedAtRef = useRef(0);
   const ensureMinSearching = async () => {
     const remaining = MIN_SEARCHING_MS - (Date.now() - searchStartedAtRef.current);
@@ -206,6 +207,7 @@ export default function RoulettePvpLobbyPage() {
 
   const joinSpecific = async (matchId) => {
     setJoiningId(matchId);
+    searchStartedAtRef.current = Date.now();
     setError(null);
     try {
       const target = availableMatches.find((m) => m.id === matchId);
@@ -236,24 +238,24 @@ export default function RoulettePvpLobbyPage() {
         match_id: matchId,
         stake: target.stakeAmount,
       });
+      // Same guaranteed-minimum beat as create / vs-AI: the joining
+      // overlay must stay visible (not flash for a frame) before the
+      // match page takes over with its ready/waiting takeover.
+      await ensureMinSearching();
       router.push(`/casino/roulette/${data.data.match.id}`);
     } finally {
       setJoiningId(null);
     }
   };
 
+  // The full-screen "Searching for a match…" takeover is rendered by the
+  // shared PvpLobby whenever busy / vs-AI / join is in flight (see the
+  // `waitingSubtitle` prop below). Keeping it in ONE place guarantees the
+  // waiting page always appears first — the old code rendered a second
+  // overlay here that sat underneath the shared one and was never visible.
   return (
-    <>
-      {/* Unified full-screen waiting takeover — shown while the
-          create-or-join request is in flight. */}
-      {(busy || aiBusy) && (
-        <MatchWaiting
-          state="searching"
-          gameName="Roulette"
-          subtitle="Pairing you with a player on the same stake…"
-        />
-      )}
-      <PvpLobbyPage
+    <PvpLobbyPage
+      waitingSubtitle="Pairing you with a player on the same stake…"
       title="Roulette PvP Lobby"
       subtitle={
         <>
@@ -378,7 +380,6 @@ export default function RoulettePvpLobbyPage() {
       onJoin={(l) => joinSpecific(l.id)}
       joinBusyId={joiningId}
       onRefresh={fetchAvailable}
-      />
-    </>
+    />
   );
 }

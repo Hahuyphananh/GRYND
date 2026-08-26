@@ -243,6 +243,9 @@ export function PvpLobby({
   vsAi = null, // { label, onClick, disabled, busy }
   escrowNote = null,
   extraActions = null,
+  // game-specific context line shown under the searching overlay title
+  // (e.g. "Pairing you with a player on the same stake…")
+  waitingSubtitle = null,
   // error
   error = null,
   // open lobbies
@@ -292,11 +295,13 @@ export function PvpLobby({
       {/* Unified full-screen "Searching for a match…" takeover — shown
           whenever a Play / Join / vs-AI action is in flight. Every game
           that renders this shared lobby gets the identical waiting
-          screen (GRYND logo + radar sweep) for free. */}
+          screen (GRYND logo + radar sweep) for free; games pass a
+          `waitingSubtitle` for a game-specific context line. */}
       {(busy || vsAi?.busy || joinBusyId !== null) && (
         <MatchWaiting
           state="searching"
           gameName={typeof title === "string" ? title : undefined}
+          subtitle={waitingSubtitle}
         />
       )}
 
