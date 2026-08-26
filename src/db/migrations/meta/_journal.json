@@ -694,6 +694,13 @@
       "when": 1787743196410,
       "tag": "0092_missing_tables_from_push",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1787749778269,
+      "tag": "0093_rls_policy_indexes",
+      "breakpoints": true
     }
   ]
 }

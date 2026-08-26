@@ -15,7 +15,6 @@ type PublicUser = {
   id: number;
   clerkId: string;
   name: string;
-  email: string;
   profilePicture: string | null;
   level: number;
   xp: number;

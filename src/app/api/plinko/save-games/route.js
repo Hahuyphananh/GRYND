@@ -1,59 +1,38 @@
-import { NextResponse } from "next/server";
+// src/app/api/plinko/save-games/route.js
+//
+// POST — SECURITY HARDENED: direct client-driven game-result recording is
+// DISABLED. This endpoint previously let any authenticated user submit an
+// arbitrary totalBet / multipliers / totalPayout, which forged game history
+// (plinko_games rows), leaderboard counters, and big-wins entries with no
+// server-side verification. The current plinko page plays through
+// /api/plinko-pvp/* (server-authoritative) and solo play through
+// /api/play-plinko, so nothing in the app depends on this route.
+//
+// This endpoint now only exists so legacy clients get a clear, explicit
+// error instead of silently failing — it never writes game history.
+
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../../db";
-import { plinkoGames } from "../../../../db/schema";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { NextResponse } from "next/server";
+import { auditLog } from "../../../../lib/security/auditLog";
 
-export async function POST(req) {
-  try {
-    const { userId } = await auth();
-    if (!userId)
-      return NextResponse.json(
-        { success: false, error: "Not authenticated" },
-        { status: 401 },
-      );
-
-    const body = await req.json();
-    const { totalBet, multipliers, totalPayout } = body;
-
-    if (!totalBet || !multipliers?.length) {
-      return NextResponse.json(
-        { success: false, error: "Invalid data" },
-        { status: 400 },
-      );
-    }
-
-    //  Determine result correctly
-    const numericBet = Number(totalBet);
-    const numericPayout = Number(totalPayout);
-
-    let result = "lost";
-    if (numericPayout > numericBet) result = "won";
-    else if (numericPayout === numericBet) result = "draw"; // optional
-
-    //  Save one combined game
-    await db.insert(plinkoGames).values({
-      userId: userId,
-      betAmount: numericBet,
-      resultMultiplier: multipliers.join(","), // e.g. "2,0.5,5"
-      payout: numericPayout,
-      result,
-      status: "completed",
-    });
-
-    await applyLeaderboardCounters({
-      clerkId: userId,
-      game: "plinko",
-      betAmount: numericBet,
-      payout: numericPayout,
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error saving Plinko games:", error);
+export async function POST() {
+  const { userId } = await auth();
+  if (!userId) {
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 },
+      { success: false, error: "Not authenticated" },
+      { status: 401 },
     );
   }
+
+  auditLog("plinko_save_games_blocked", { userId });
+
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        "Direct game-result recording is disabled. Results are only " +
+        "recorded by server-authoritative game settlement.",
+    },
+    { status: 403 },
+  );
 }

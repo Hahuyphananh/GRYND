@@ -8,8 +8,26 @@ export default function SplashScreen() {
   const [show, setShow] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setShow(false), 2200);
-    return () => clearTimeout(timer);
+    // Dismiss on a timer once hydration completes. If something throws
+    // during hydration the effect never runs, so also dismiss on the
+    // window `load` event and on a hard cap — the splash must never be
+    // able to trap the app in a permanent "loading" overlay.
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      setShow(false);
+    };
+
+    const timer = setTimeout(dismiss, 2200);
+    const hardCap = setTimeout(dismiss, 6000);
+    window.addEventListener("load", dismiss);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(hardCap);
+      window.removeEventListener("load", dismiss);
+    };
   }, []);
 
   return (
