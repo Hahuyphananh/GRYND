@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { users, userAutomationState } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { deleteUserLocalData } from "../../../../lib/security/deleteUserData";
 import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
-
-let dbInstance = null;
-const getDb = () => (dbInstance ??= drizzle(process.env.DATABASE_URL));
+// Use the shared app pool (single connection pool + SSL handling) instead
+// of spinning up a second raw drizzle client from DATABASE_URL, which
+// would bypass the shared pool's SSL config and connection limits.
+import { db } from "../../../../db";
 
 export async function POST(req) {
   try {
@@ -39,7 +38,7 @@ export async function POST(req) {
           crypto.randomBytes(32).toString("hex"),
           12,
         );
-        await getDb()
+        await db
           .insert(users)
           .values({
             clerkId: id,
@@ -54,7 +53,7 @@ export async function POST(req) {
             gamesLost: 0,
           })
           .onConflictDoNothing();
-        await getDb()
+        await db
           .insert(userAutomationState)
           .values({
             clerkId: id,
@@ -73,7 +72,7 @@ export async function POST(req) {
 
     if (evt.type === "session.created") {
       const clerkId = evt.data.user_id;
-      await getDb()
+      await db
         .insert(userAutomationState)
         .values({
           clerkId,

@@ -9,6 +9,8 @@ implemented in `src/components/TawkProvider.tsx`.
 | File | Fix | Risk | Needs |
 |------|-----|------|-------|
 | `DNS_AUDIT.md` | Dangling DNS records pointing at deleted Render/Vercel services | Low | Your DNS provider / dedyn.io console |
+| `DROP_ORPHAN_TABLES.sql` | Drop dead clicker/coin-flip tables (~87 rows total) | **Data loss** | Verify clicker is truly retired; run on a staging copy first |
+| `GRANT_REVOKE.sql` | Revoke anon/authenticated grants so the (unused) Data API can't expose tables | Medium | Apply after confirming the app still connects fine as the owner role |
 | `RLS_MIGRATION.sql` | Row Level Security + `SECURITY DEFINER` functions | **High** | App-side actor-context change + staging test |
 | `UUID_MIGRATION.sql` | Serial → UUID primary keys (18 tables + FK children) | **High** | Staging test; verify no integer-id assumptions in app code |
 

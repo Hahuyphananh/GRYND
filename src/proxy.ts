@@ -140,6 +140,29 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * Resolve a promise but fail open (return `fallback`) if it doesn't settle
+ * within `ms`. The proxy must never let a slow/hung DB round-trip block
+ * page delivery — that turns a DB hiccup into a site-wide "stuck loading"
+ * state (every request waits on the maintenance flag / age lookup before
+ * the first byte of HTML is sent).
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   if (forwardedFor) {
@@ -235,7 +258,10 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // maintenance page. /admin and /api/admin stay reachable so the admin
   // can flip the flag back off without a redeploy. The check is skipped
   // entirely when the flag is off (cached, one flag lookup per ~10s).
-  if (pathname !== "/maintenance" && (await isMaintenanceMode())) {
+  if (
+    pathname !== "/maintenance" &&
+    (await withTimeout(isMaintenanceMode(), 1500, false))
+  ) {
     const isAdminPath =
       pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
     let allowed = isAdminPath;
@@ -367,16 +393,24 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
     if (age === undefined || age === null) {
       // Fall back to a cached `users.age` lookup so a protected page load
-      // doesn't hit Neon on every navigation. Age only changes on a
+      // doesn't hit the DB on every navigation. Age only changes on a
       // birthdate edit (rare), so a short TTL is plenty. When Redis/KV is
       // not configured, cacheGet/cacheSet no-op and we do the DB read once
-      // per request, exactly as before.
+      // per request, exactly as before. A slow/hung DB must never block
+      // the page (fail open = treat as "age unknown", which redirects to
+      // /complete-profile rather than hanging the browser).
       age = await cacheGet<number | null>(CacheKeys.userAge(userId));
       if (age === null || age === undefined) {
-        const user = await db.query.users.findFirst({
-          where: eq(users.clerkId, userId),
-          columns: { age: true },
-        });
+        const user = await withTimeout(
+          db.query.users
+            .findFirst({
+              where: eq(users.clerkId, userId),
+              columns: { age: true },
+            })
+            .then((row) => row ?? null),
+          1500,
+          null,
+        );
         age = user?.age ?? null;
         if (age !== null && age !== undefined) {
           await cacheSet(CacheKeys.userAge(userId), age, CacheTTL.userAge).catch(() => {});
@@ -466,7 +500,13 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);
 const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 
-export default async function middleware(req: NextRequest, event: NextFetchEvent) {
+// Next.js 16: the `middleware` file convention was renamed to `proxy`.
+// Unlike `middleware.ts` (which runs on the Edge runtime by default),
+// `proxy.ts` runs on the Node.js runtime, which is required here: this
+// module imports `db` (via maintenance/isAdmin/age-gate lookups) and the
+// `pg` driver cannot load on the Edge runtime — it crashed every request
+// with MIDDLEWARE_INVOCATION_FAILED after the Neon → Supabase migration.
+export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   if (!hasClerkSecretKey) {
     return applySecurityHeaders(NextResponse.next());
   }

@@ -57,6 +57,23 @@ import {
  */
 const DELETED_USER_SENTINEL = "[deleted]";
 
+// Tables the purge touches whose existence can't be guaranteed (schema
+// drift: a table referenced by this module may not exist on a given
+// database — e.g. lane_runner_pvp_matches was never created on prod). A
+// DELETE against a missing table throws `relation ... does not exist`
+// inside the transaction and rolls back the whole purge, so the purge
+// must skip deletes for tables that aren't actually present.
+let existingTables: Set<string> | null = null;
+
+async function getExistingTables(): Promise<Set<string>> {
+  if (existingTables) return existingTables;
+  const { rows } = await db.execute(sql`
+    SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'
+  `);
+  existingTables = new Set(rows.map((r: any) => r.tablename));
+  return existingTables;
+}
+
 /**
  * Deletes (or anonymizes) every local DB row belonging to a user, given
  * their Clerk id.
@@ -243,14 +260,16 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
           eq(precisionMatches.player2Id, clerkId),
         ),
       );
-    await tx
-      .delete(laneRunnerPvpMatches)
-      .where(
-        or(
-          eq(laneRunnerPvpMatches.player1Id, clerkId),
-          eq(laneRunnerPvpMatches.player2Id, clerkId),
-        ),
-      );
+    if ((await getExistingTables()).has("lane_runner_pvp_matches")) {
+      await tx
+        .delete(laneRunnerPvpMatches)
+        .where(
+          or(
+            eq(laneRunnerPvpMatches.player1Id, clerkId),
+            eq(laneRunnerPvpMatches.player2Id, clerkId),
+          ),
+        );
+    }
     await tx
       .delete(roulettePvpMatches)
       .where(

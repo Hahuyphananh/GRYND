@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
+    // Public profiles are only served to signed-in users, and even then
+    // only non-sensitive stats are exposed — never email (or other
+    // contact/PII columns). This closes the PII leak where anyone could
+    // fetch any user's email address without authentication.
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+
     const clerkId = req.nextUrl.searchParams.get("clerkId");
     if (!clerkId) {
       return NextResponse.json(
@@ -18,7 +31,6 @@ export async function GET(req: NextRequest) {
         id: users.id,
         clerkId: users.clerkId,
         name: users.name,
-        email: users.email,
         profilePicture: users.profilePicture,
         level: users.level,
         xp: users.xp,
