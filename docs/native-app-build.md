@@ -1,7 +1,7 @@
 # Native App Build (downloadable APK / IPA)
 
 GRYND ships as a Capacitor wrapper that loads the live web app from
-`https://grynd.mywire.org` (see `capacitor.config.ts`). This doc covers
+`https://www.grynd.mywire.org` (see `capacitor.config.ts`). This doc covers
 producing a signed, distributable build — the identity placeholders have
 been replaced (`com.grynd.app` / "GRYND"), so the output no longer looks
 like a template project.
@@ -64,6 +64,7 @@ apksigner verify --print-certs app-release.apk
 keytool -printcert -jarfile app-release.apk | head
 # Confirm it points at the live site (strings should contain grynd.mywire.org)
 unzip -p app-release.apk assets/capacitor.config.json
+# Expected: https://www.grynd.mywire.org/
 ```
 
 ## iOS — signed IPA

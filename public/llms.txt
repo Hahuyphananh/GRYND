@@ -4,42 +4,42 @@
 GRYND covers dozens of arcade and table games playable solo, against AI, or against other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
 
 ## Skill Games
-- [Game Hub](https://grynd.mywire.org/games): Browse all skill games
-- [Poker](https://grynd.mywire.org/games/poker/multi): Texas Hold'em against AI or other players
-- [Blackjack](https://grynd.mywire.org/games/blackjack): Classic 21 against the dealer, solo or PvP
-- [Roulette](https://grynd.mywire.org/games/roulette): Classic wheel game, solo or PvP
-- [Slots](https://grynd.mywire.org/games/slots): Themed slot machines with bonus rounds
-- [Plinko](https://grynd.mywire.org/games/plinko): Ball-drop payout game, solo or PvP
-- [Mines](https://grynd.mywire.org/games/mines-pvp): Risk-based tile reveal game, solo or PvP
-- [Crash Arena](https://grynd.mywire.org/games/crash-arena): Multiplayer cash-out racing game
-- [Crash](https://grynd.mywire.org/games/crash): Classic crash multiplier game
-- [Dice Flush](https://grynd.mywire.org/games/dice-flush): Dice-based skill game
-- [Dice Duel](https://grynd.mywire.org/games/dice-duel): Player-vs-player dice game
-- [Coin Flip](https://grynd.mywire.org/games/coin-flip): Fast coin-flip game, solo or PvP
-- [Keno](https://grynd.mywire.org/games/keno): Number-draw payout game
-- [RPS](https://grynd.mywire.org/games/rps): Rock-paper-scissors, solo or PvP
-- [Chess](https://grynd.mywire.org/games/chess): Chess against AI or other players
-- [Connect Four](https://grynd.mywire.org/games/connect-four): Connect Four, solo or PvP
-- [Dots & Boxes](https://grynd.mywire.org/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
-- [Pool Masters](https://grynd.mywire.org/games/pool-masters): Physics-based pool, solo or PvP
-- [Precision](https://grynd.mywire.org/games/precision): Aim-and-accuracy skill game, solo or PvP
-- [Neon Flush](https://grynd.mywire.org/games/neon-flush): Neon-themed card game
-- [Hex Duel](https://grynd.mywire.org/games/hex-duel): Turn-based board duel, solo or PvP
-- [Uno](https://grynd.mywire.org/games/uno): Uno against AI or online players
-- [Farkle](https://grynd.mywire.org/games/farkle): Classic dice-combination scoring game
-- [Lane Rush Duel](https://grynd.mywire.org/games/lane-runner): PvP tower-climb duel on one shared tower — picks reveal together, so every safe pick by either player narrows the odds; first to BANK 1,000 points wins (banking locks your score and never ends your climb, so the race continues at reduced rates); 2 private peeks + 2 flags per match give each player a scarce hidden-information edge
-- [Odds](https://grynd.mywire.org/games/odds): Odds-style betting games
+- [Game Hub](https://www.grynd.mywire.org/games): Browse all skill games
+- [Poker](https://www.grynd.mywire.org/games/poker/multi): Texas Hold'em against AI or other players
+- [Blackjack](https://www.grynd.mywire.org/games/blackjack): Classic 21 against the dealer, solo or PvP
+- [Roulette](https://www.grynd.mywire.org/games/roulette): Classic wheel game, solo or PvP
+- [Slots](https://www.grynd.mywire.org/games/slots): Themed slot machines with bonus rounds
+- [Plinko](https://www.grynd.mywire.org/games/plinko): Ball-drop payout game, solo or PvP
+- [Mines](https://www.grynd.mywire.org/games/mines-pvp): Risk-based tile reveal game, solo or PvP
+- [Crash Arena](https://www.grynd.mywire.org/games/crash-arena): Multiplayer cash-out racing game
+- [Crash](https://www.grynd.mywire.org/games/crash): Classic crash multiplier game
+- [Dice Flush](https://www.grynd.mywire.org/games/dice-flush): Dice-based skill game
+- [Dice Duel](https://www.grynd.mywire.org/games/dice-duel): Player-vs-player dice game
+- [Coin Flip](https://www.grynd.mywire.org/games/coin-flip): Fast coin-flip game, solo or PvP
+- [Keno](https://www.grynd.mywire.org/games/keno): Number-draw payout game
+- [RPS](https://www.grynd.mywire.org/games/rps): Rock-paper-scissors, solo or PvP
+- [Chess](https://www.grynd.mywire.org/games/chess): Chess against AI or other players
+- [Connect Four](https://www.grynd.mywire.org/games/connect-four): Connect Four, solo or PvP
+- [Dots & Boxes](https://www.grynd.mywire.org/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
+- [Pool Masters](https://www.grynd.mywire.org/games/pool-masters): Physics-based pool, solo or PvP
+- [Precision](https://www.grynd.mywire.org/games/precision): Aim-and-accuracy skill game, solo or PvP
+- [Neon Flush](https://www.grynd.mywire.org/games/neon-flush): Neon-themed card game
+- [Hex Duel](https://www.grynd.mywire.org/games/hex-duel): Turn-based board duel, solo or PvP
+- [Uno](https://www.grynd.mywire.org/games/uno): Uno against AI or online players
+- [Farkle](https://www.grynd.mywire.org/games/farkle): Classic dice-combination scoring game
+- [Lane Rush Duel](https://www.grynd.mywire.org/games/lane-runner): PvP tower-climb duel on one shared tower — picks reveal together, so every safe pick by either player narrows the odds; first to BANK 1,000 points wins (banking locks your score and never ends your climb, so the race continues at reduced rates); 2 private peeks + 2 flags per match give each player a scarce hidden-information edge
+- [Odds](https://www.grynd.mywire.org/games/odds): Odds-style betting games
 
 ## Platform
-- [Home](https://grynd.mywire.org/): Site overview and featured games
-- [Rankings](https://grynd.mywire.org/classement): Leaderboards with weekly resets
-- [Profile](https://grynd.mywire.org/profil): Player stats, streaks, and token balance
-- [Sync](https://grynd.mywire.org/sync): Account sync and onboarding
-- [Contact](https://grynd.mywire.org/contact): Contact form for support
+- [Home](https://www.grynd.mywire.org/): Site overview and featured games
+- [Rankings](https://www.grynd.mywire.org/classement): Leaderboards with weekly resets
+- [Profile](https://www.grynd.mywire.org/profil): Player stats, streaks, and token balance
+- [Sync](https://www.grynd.mywire.org/sync): Account sync and onboarding
+- [Contact](https://www.grynd.mywire.org/contact): Contact form for support
 
 ## Optional
-- [Terms & Conditions](https://grynd.mywire.org/terms): Rules of use. Virtual tokens, 18+, no real-money value
-- [Privacy Policy](https://grynd.mywire.org/privacy-policy): Data collection, usage, and protection
-- [Security Policy](https://grynd.mywire.org/security-policy): TLS 1.3, encryption, and incident response
-- [Fair Play](https://grynd.mywire.org/fair-play): Fairness, anti-cheat, and responsible gaming
-- [Accessibility](https://grynd.mywire.org/accessibility): WCAG 2.1 Level AA commitments
+- [Terms & Conditions](https://www.grynd.mywire.org/terms): Rules of use. Virtual tokens, 18+, no real-money value
+- [Privacy Policy](https://www.grynd.mywire.org/privacy-policy): Data collection, usage, and protection
+- [Security Policy](https://www.grynd.mywire.org/security-policy): TLS 1.3, encryption, and incident response
+- [Fair Play](https://www.grynd.mywire.org/fair-play): Fairness, anti-cheat, and responsible gaming
+- [Accessibility](https://www.grynd.mywire.org/accessibility): WCAG 2.1 Level AA commitments

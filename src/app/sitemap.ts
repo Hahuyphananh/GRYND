@@ -27,11 +27,14 @@ import {
   userStats,
 } from "../db/schema";
 
-// Same base-URL convention used by src/lib/emails/*.ts.
-const BASE_URL =
+// Same base-URL convention used by src/lib/emails/*.ts. Trailing slashes
+// from env vars are stripped so a value like "https://www.grynd.mywire.org/"
+// never produces "//games/..." URLs.
+const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ??
   process.env.NEXT_PUBLIC_APP_URL ??
-  "https://grynd.mywire.org";
+  "https://www.grynd.mywire.org"
+).replace(/\/+$/, "");
 
 // ISR: the XML is prerendered at build time and served instantly from cache,
 // then regenerated in the background at most once per hour so the DB-backed
