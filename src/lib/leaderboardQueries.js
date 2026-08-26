@@ -1,4 +1,4 @@
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../db/neon";
 
 let _sql = null;
 function getSql() {
@@ -8,7 +8,7 @@ function getSql() {
       "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
     );
   }
-  _sql = neon(process.env.DATABASE_URL);
+  _sql = getNeonSql();
   return _sql;
 }
 

@@ -1,4 +1,4 @@
-import { neon } from "@neondatabase/serverless";
+import { getNeonSql } from "../../../../db/neon";
 
 let _sql = null;
 function getSql() {
@@ -6,7 +6,7 @@ function getSql() {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set.");
   }
-  _sql = neon(process.env.DATABASE_URL);
+  _sql = getNeonSql();
   return _sql;
 }
 

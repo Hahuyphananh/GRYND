@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "../../../../db/sql";
 
 /**
  * Creates a wallet for the user with a 1000 token initial bonus if none exists.
