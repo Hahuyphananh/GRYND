@@ -32,6 +32,14 @@ const nextConfig = {
       // /games/* is the canonical alias for the game hub. It rewrites to the
       // existing /casino/* routes so the app code stays untouched while
       // /games URLs serve the same pages (and stay in the address bar).
+      // Bare /games is handled by its own exact rule: an empty catch-all
+      // (/games/:path*) rewrites to /casino/ on Vercel, and Next 16's
+      // segment tree-prefetch can't match the trailing slash — it 404s the
+      // _rsc prefetch of /games.
+      {
+        source: "/games",
+        destination: "/casino",
+      },
       {
         source: "/games/:path*",
         destination: "/casino/:path*",
@@ -63,6 +71,14 @@ const nextConfig = {
         permanent: true,
       },
       // Old /casino/* links keep working — bounce them to the new /games/* URLs.
+      // Same exact-rule-first pattern as the rewrite above: bare /casino must
+      // redirect to /games, not /games/ (which would 308-loop into the
+      // rewrite and 404 the tree-prefetch).
+      {
+        source: "/casino",
+        destination: "/games",
+        permanent: true,
+      },
       {
         source: "/casino/:path*",
         destination: "/games/:path*",
