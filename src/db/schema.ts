@@ -452,7 +452,7 @@ export const plinkoGames = pgTable("plinko_games", {
 });
 
 export const chessGames = pgTable("chess_games", {
-  id: serial("id").primaryKey(),
+  id: uuid("id").defaultRandom().primaryKey(),
   // Clerk IDs for players
   playerWhiteId: varchar("player_white_id", { length: 255 }).notNull(),
   playerBlackId: varchar("player_black_id", { length: 255 }), // can be null if AI
@@ -472,7 +472,7 @@ export const chessMoves = pgTable(
   "chess_moves",
   {
     id: serial("id").primaryKey(),
-    gameId: integer("game_id")
+    gameId: uuid("game_id")
       .notNull()
       .references(() => chessGames.id, { onDelete: "cascade" }),
     playedBy: varchar("played_by", { length: 255 }).notNull(),

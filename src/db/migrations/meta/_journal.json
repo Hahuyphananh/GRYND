@@ -701,6 +701,20 @@
       "when": 1787749778269,
       "tag": "0093_rls_policy_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1787750400000,
+      "tag": "0094_fix_id_sequences",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1787755000000,
+      "tag": "0095_restore_lost_column_defaults",
+      "breakpoints": true
     }
   ]
 }

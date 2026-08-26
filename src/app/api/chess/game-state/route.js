@@ -2,6 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
 
 const HOUSE_EDGE_PERCENT = 10;
@@ -161,9 +164,9 @@ export async function GET(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const gameId = Number(searchParams.get("gameId"));
+    const gameId = String(searchParams.get("gameId") || "").trim();
 
-    if (!Number.isFinite(gameId) || gameId <= 0) {
+    if (!UUID_RE.test(gameId)) {
       return NextResponse.json({ error: "Invalid gameId" }, { status: 400 });
     }
 

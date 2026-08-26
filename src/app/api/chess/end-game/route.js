@@ -5,10 +5,13 @@ import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const HOUSE_EDGE_PERCENT = 10;
 
 // Ends any open game for this user.
-// Optional body: { gameId?: number, result?: "win" | "loss" | "draw" }
+// Optional body: { gameId?: string (uuid), result?: "win" | "loss" | "draw" }
 export async function POST(req) {
   try {
     const { userId } = await auth();
@@ -21,9 +24,9 @@ export async function POST(req) {
       body = {};
     }
 
-    const requestedGameId = Number(body?.gameId);
-    const hasRequestedGameId =
-      Number.isFinite(requestedGameId) && requestedGameId > 0;
+    const requestedGameId =
+      body?.gameId != null ? String(body.gameId).trim() : "";
+    const hasRequestedGameId = UUID_RE.test(requestedGameId);
     const normalizedResult =
       typeof body?.result === "string" ? body.result.toLowerCase() : null;
     const allowedResult = ["win", "loss", "draw"].includes(normalizedResult)

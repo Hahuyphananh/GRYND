@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../../db/neon";
 import { invalidateBigWins } from "../../../../../lib/redis/invalidation";
 
@@ -6,6 +7,11 @@ const MINIMUM_BIG_WIN_AMOUNT = 1000000; // 1 million tokens
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId: authedUserId } = await auth();
+    if (!authedUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { userId, username, game, betAmount, winAmount, multiplier } = body;
 

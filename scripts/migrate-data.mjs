@@ -153,16 +153,30 @@ async function copyTable(client, table, tx) {
 }
 
 async function fixSequences(client, tables) {
+  // NOTE: deliberately NOT pg_get_serial_sequence(). After a schema
+  // dump/restore the sequence→column dependency (pg_depend 'a' entry) can
+  // be missing, which makes that function return NULL for every column and
+  // silently skip all sequences — exactly what broke the Neon→Supabase
+  // migration (47 of 60 sequences were left at their fresh-install value,
+  // so the first INSERT into any populated table collided with the primary
+  // key and 500'd every game route). Matching columns by their nextval()
+  // default instead works regardless of the dependency state.
   for (const table of tables) {
-    const seqs = await client.query(
-      `SELECT pg_get_serial_sequence('"${table}"', a.attname) AS seq, a.attname
-       FROM pg_attribute a
-       WHERE a.attrelid = '"${table}"'::regclass
-         AND pg_get_serial_sequence('"${table}"', a.attname) IS NOT NULL`,
+    const { rows } = await client.query(
+      `SELECT column_name, column_default
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1
+         AND column_default LIKE 'nextval(%'`,
+      [table],
     );
-    for (const s of seqs.rows) {
+    for (const col of rows) {
+      const m = col.column_default.match(/nextval\('([^']+)'::regclass\)/);
+      if (!m) continue;
       await client.query(
-        `SELECT setval('${s.seq}', COALESCE((SELECT MAX("${s.attname}") FROM "${table}"), 1))`,
+        `SELECT setval($1, COALESCE((SELECT MAX(${client.escapeIdentifier(
+          col.column_name,
+        )}) FROM ${client.escapeIdentifier(table)}), 1), true)`,
+        [m[1]],
       );
     }
   }

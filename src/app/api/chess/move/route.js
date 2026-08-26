@@ -3,6 +3,9 @@ import { auth } from "@clerk/nextjs/server";
 import { asc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
 
 const HOUSE_EDGE_PERCENT = 10;
@@ -25,9 +28,9 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { gameId, from, to, promotion = "q" } = await req.json();
-    const normalizedGameId = Number(gameId);
+    const normalizedGameId = String(gameId ?? "").trim();
 
-    if (!Number.isFinite(normalizedGameId) || !from || !to) {
+    if (!UUID_RE.test(normalizedGameId) || !from || !to) {
       return NextResponse.json(
         { error: "Invalid move payload" },
         { status: 400 },
