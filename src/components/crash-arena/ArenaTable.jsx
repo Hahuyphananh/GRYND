@@ -7,6 +7,7 @@ import {
   IconChevronRight,
   IconCircleCheck,
   IconClock,
+  IconFlag,
   IconHome,
   IconRocket,
   IconTrophy,
@@ -21,7 +22,9 @@ import RoundStatus from "./RoundStatus";
 import BuyInModal from "./BuyInModal";
 import RoundResultModal from "./RoundResultModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
-import CashoutButton from "../games/crash-engine/CashoutButton";
+import BettingControls from "./BettingControls";
+import CrashRiskMeter from "./CrashRiskMeter";
+import { computePots } from "../../lib/crash-poker/roundSystem";
 import { playCrash, playVictory, playDefeat } from "../../lib/gameAudio";
 
 const ROUND_START_COUNTDOWN = 12; // seconds between rounds / after ready votes
@@ -47,6 +50,12 @@ const READY_VOTES_NEEDED = 2;
  *   markReady         — () => void
  *   onStartRound      — () => void (called when the countdown expires)
  *   onNextRound       — () => void
+ *   onSubmitAction    — (action: "fold"|"call"|"raise", raiseTo?: number) => void
+ *   currentMultiplier — live curve multiplier (drives the CRASH RISK meter;
+ *                      shared across clients via the synchronized curve)
+ *   activeCheckpointIndex — highest checkpoint the shared curve reached
+ *                      (null = betting not open yet this window)
+ *   checkpointMultiplierFor — (index) => multiplier of a checkpoint
  *   onJoin            — (buyInAmount) => void
  *   onLeave           — () => void (→ wait list)
  *   onExitToLobby     — () => void (permanent leave → lobby)
@@ -65,6 +74,10 @@ export default function ArenaTable({
   markReady,
   onStartRound,
   onNextRound,
+  onSubmitAction,
+  currentMultiplier = 1,
+  activeCheckpointIndex = null,
+  checkpointMultiplierFor = (i) => (125 + 25 * i) / 100,
   onJoin,
   onLeave,
   onExitToLobby,
@@ -106,6 +119,24 @@ export default function ArenaTable({
   const isFull = players.length >= maxPlayers;
   const youCashedOut = you?.cashoutMultiplier != null;
   const youBusted = you?.busted || false;
+  const youFolded = you?.folded || false;
+  const youAllIn = you?.allIn || false;
+  // All-in players are still in the hand (active) but can no longer act —
+  // they're committed and just ride the curve.
+  const youInHand = Boolean(you && you.isActive && !you.folded && !youBusted);
+  // Checkpoint window shown to the player: the one the curve reached, else
+  // the next one coming up.
+  const windowIndex =
+    activeCheckpointIndex != null
+      ? activeCheckpointIndex
+      : roundState.checkpointIndex >= 0
+        ? roundState.checkpointIndex + 1
+        : 0;
+  const windowMultiplier = checkpointMultiplierFor(windowIndex);
+  const canActNow = activeCheckpointIndex != null && youInHand;
+  // Whether "You" has already made a decision at the open checkpoint (a
+  // raise by anyone re-opens action and clears this).
+  const youActedThisCheckpoint = Boolean(you?.actedThisCheckpoint);
   // The practice stack is virtual — once it drops below the wager the
   // round can't start; the player should head back to the lobby.
   const practiceStackEmpty = isAi && isSeated && playerChips < (wager || 0);
@@ -153,6 +184,17 @@ export default function ArenaTable({
     setResultDismissed(true);
     onNextRound?.();
   }, [onNextRound]);
+
+  // ── Side-pot tier breakdown for the pot display (running hands) ──────
+  // Mirrors the server's tier accounting so players see the main pot and
+  // each side pot (what an all-in short stack can actually win).
+  const potTiers = useMemo(() => {
+    if (phase !== "running") return [];
+    return computePots(
+      { players: roundState.players, carryOver: roundState.carryOver ?? 0 },
+      roundState.carryOver ?? 0,
+    );
+  }, [phase, roundState.players, roundState.carryOver]);
 
   // ── Live cashout feed (during running) ───────────────────────────────
 
@@ -217,12 +259,9 @@ export default function ArenaTable({
           </div>
         )}
         {isRunning && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#00e5ff]/10 border border-[#00e5ff]/20">
-            <span className="text-xs text-[#9dd8ff]">Crash at</span>
-            <span className="text-sm font-black text-[#00e5ff]">{crashPoint?.toFixed(2)}x</span>
-          </div>
+          <CrashRiskMeter multiplier={currentMultiplier} />
         )}
-        <PotDisplay pot={pot} />
+        <PotDisplay pot={pot} pots={potTiers} />
         {/* Rules popup button — always available during play */}
         <button
           onClick={() => setShowRules(true)}
@@ -253,7 +292,9 @@ export default function ArenaTable({
                 <IconTrophy size={20} /> {results.winner} wins the pot!
               </span>
               <span className="block text-sm text-[#d8fbff] mt-1">
-                Cashed out at {results.winnerMultiplier?.toFixed(2)}x
+                {results.wonByFold
+                  ? `Latest fold before the crash at ${results.winnerMultiplier?.toFixed(2)}x`
+                  : `Last player standing at ${results.winnerMultiplier?.toFixed(2)}x`}
               </span>
               <span className="block text-sm text-[#00ffa6] mt-1">
                 +${results.payout?.toLocaleString()} • Fee: ${results.fee?.toLocaleString() || 0}
@@ -298,7 +339,16 @@ export default function ArenaTable({
             <span className="text-xs text-[#9dd8ff]/60">
               Min buy-in: <span className="text-[#d8fbff] font-bold">${minBuyIn}</span>
             </span>
-            {crashPoint && isCrashed && (
+            {/* Crash Poker blinds — the SB/BB rotate every hand */}
+            {isRunning && roundState.smallBlind != null && roundState.bigBlind != null && (
+              <span className="text-xs text-[#9dd8ff]/60">
+                Blinds:{" "}
+                <span className="text-[#d8fbff] font-bold">
+                  ${Number(roundState.smallBlind).toLocaleString()} / ${Number(roundState.bigBlind).toLocaleString()}
+                </span>
+              </span>
+            )}
+            {isCrashed && crashMultiplier != null && (
               <span className="text-xs text-[#9dd8ff]/60">
                 Crashed at: <span className="text-red-400 font-bold">{crashMultiplier?.toFixed(2)}x</span>
               </span>
@@ -381,17 +431,15 @@ export default function ArenaTable({
                 )
               )}
 
-              {/* Cashout button during running */}
-              {isRunning && !youCashedOut && !youBusted && (
-                <CashoutButton
-                  onCashout={() => crashEngineRef?.current?.cashout()}
-                />
+              {/* Folded / busted / all-in status badges during the hand */}
+              {youAllIn && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#ff4fd8]/15 text-[#ff4fd8] border border-[#ff4fd8]/40">
+                  All-in
+                </span>
               )}
-
-              {/* Cashout status badges */}
-              {youCashedOut && !isRunning && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30">
-                  <IconCircleCheck size={14} /> {you.cashoutMultiplier?.toFixed(2)}x
+              {youFolded && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+                  <IconFlag size={14} /> Folded
                 </span>
               )}
               {youBusted && (
@@ -451,8 +499,8 @@ export default function ArenaTable({
             </div>
           )}
 
-          {/* Live cashout overlay during running — shows on top of CrashEngine */}
-          {isRunning && liveCashouts.length > 0 && (
+        {/* Live betting/status overlay during running — shows on top of CrashEngine */}
+        {isRunning && liveCashouts.length > 0 && (
             <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 max-w-[180px]">
               {liveCashouts.map((p) => (
                 <div
@@ -481,6 +529,47 @@ export default function ArenaTable({
           />
         )}
       </div>
+
+      {/* ═══ Crash Poker betting panel — shown while the local player is
+          still in the running hand AND can still act (all-in players are
+          committed and ride the curve) ═══ */}
+      {isRunning && youInHand && !youAllIn && (
+        <BettingControls
+          requiredBet={roundState.requiredBet || 0}
+          contributed={you?.contributed || 0}
+          bigBlind={roundState.bigBlind || wager || 2}
+          balance={playerChips}
+          checkpointLabel={`${windowMultiplier.toFixed(2)}x`}
+          bettingOpen={canActNow}
+          // True while the shared curve hasn't reached the next 0.25x
+          // checkpoint yet — actions are locked until it does.
+          waitingForCheckpoint={
+            activeCheckpointIndex == null && roundState.checkpointIndex >= 0
+          }
+          youActed={youActedThisCheckpoint}
+          deadlineAt={roundState.windowDeadlineAt ?? null}
+          disabled={busy || !canActNow}
+          onAction={(action, raiseTo) => onSubmitAction?.(action, raiseTo)}
+        />
+      )}
+
+      {/* ═══ Your status while the hand runs but you can't act ═══ */}
+      {isRunning && youAllIn && youInHand && (
+        <div className="px-4 py-2 rounded-xl border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 text-[#ff4fd8] text-sm font-bold text-center">
+          You&apos;re all-in — committed and riding the curve. Good luck!
+        </div>
+      )}
+      {isRunning && you && !youInHand && (youFolded || youBusted) && (
+        <div
+          className={`px-4 py-2 rounded-xl border text-sm font-bold text-center ${
+            youFolded
+              ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
+              : "border-red-500/30 bg-red-500/10 text-red-400"
+          }`}
+        >
+          {youFolded ? `You folded — out of this hand.` : `You busted — the crash got you.`}
+        </div>
+      )}
 
       {/* ═══ Player list + wait list ═══ */}
       <div className="flex flex-col lg:flex-row gap-4">

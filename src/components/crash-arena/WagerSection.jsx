@@ -45,7 +45,7 @@ export default function WagerSection({
               Create Table
             </span>
             <div className="text-sm font-bold text-white/90 mt-0.5">
-              Set your round wager
+              Set your big blind
             </div>
           </div>
           <span className="px-3 py-1 rounded-full text-xs font-bold border border-cyan-500/40 bg-cyan-500/15 text-cyan-300">
@@ -53,9 +53,9 @@ export default function WagerSection({
           </span>
         </div>
 
-        {/* Wager input */}
+        {/* Wager input — the table wager doubles as the Big Blind */}
         <div>
-          <label className="text-xs text-white/55 uppercase tracking-wider">Round Wager</label>
+          <label className="text-xs text-white/55 uppercase tracking-wider">Big Blind (wager)</label>
           <div className="flex items-center mt-1 bg-[#020617] border border-amber-600/50 rounded-xl overflow-hidden focus-within:border-amber-400 focus-within:shadow-[0_0_15px_rgba(251,191,36,0.35)] transition-all">
             <span className="pl-4 text-amber-300 font-bold text-lg">$</span>
             <input
@@ -101,11 +101,17 @@ export default function WagerSection({
         </div>
 
         {/* Dynamic info */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="grid grid-cols-3 gap-3 text-sm">
           <div className="flex flex-col">
             <span className="text-cyan-100/50 text-xs">Min Buy-in</span>
             <span className="text-white/90 font-semibold">
               {wagerNum >= CRASH_MIN_WAGER ? `$${minBuyIn.toLocaleString()}` : "—"}
+            </span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-cyan-100/50 text-xs">Small Blind</span>
+            <span className="text-white/90 font-semibold">
+              {wagerNum >= CRASH_MIN_WAGER ? `$${(wagerNum / 2).toLocaleString()}` : "—"}
             </span>
           </div>
           <div className="flex flex-col">

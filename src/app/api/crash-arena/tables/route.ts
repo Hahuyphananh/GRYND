@@ -180,15 +180,50 @@ export async function GET(req: Request) {
               .select()
               .from(crashArenaEntries)
               .where(eq(crashArenaEntries.roundId, latestRound[0].id));
+            // The crash point is NEVER exposed while the hand is running
+            // (it must stay unknown to clients until the crash) — it is
+            // only revealed after the hand settles, alongside the seed, for
+            // provable-fairness verification.
+            const roundSettled =
+              latestRound[0].status === "settled" ||
+              latestRound[0].status === "crashed";
             latestRoundInfo = {
               id: latestRound[0].id,
               status: latestRound[0].status,
-              crashPoint:
-                latestRound[0].crashPoint != null
+              crashPoint: roundSettled
+                ? latestRound[0].crashPoint != null
                   ? Number(latestRound[0].crashPoint)
-                  : null,
+                  : null
+                : null,
               seedHash: latestRound[0].seedHash ?? null,
               createdAt: latestRound[0].createdAt,
+              // Server epoch ms when the hand started — clients align
+              // their crash curve to it so every player renders the
+              // same multiplier at the same moment.
+              startedAt: new Date(latestRound[0].createdAt).getTime(),
+              // ── Crash Poker hand window ────────────────────────────────
+              smallBlind:
+                latestRound[0].smallBlind != null
+                  ? Number(latestRound[0].smallBlind)
+                  : null,
+              bigBlind:
+                latestRound[0].bigBlind != null
+                  ? Number(latestRound[0].bigBlind)
+                  : null,
+              dealerPosition: latestRound[0].dealerPosition ?? null,
+              checkpointIndex: latestRound[0].checkpointIndex ?? -1,
+              requiredBet:
+                latestRound[0].requiredBet != null
+                  ? Number(latestRound[0].requiredBet)
+                  : 0,
+              bettingOpen: Boolean(latestRound[0].bettingOpen),
+              handState: latestRound[0].handState ?? null,
+              // Stall-guard deadline (epoch ms) for the open checkpoint
+              // window — clients render the auto-fold countdown from it.
+              windowDeadlineAt:
+                (latestRound[0].handState as { windowDeadlineAt?: number } | null)
+                  ?.windowDeadlineAt ?? null,
+              carryOver: Number(table.carryOver ?? 0),
               entries: roundEntries.map((e) => ({
                 userId: e.userId,
                 result: e.result,
@@ -196,6 +231,14 @@ export async function GET(req: Request) {
                   e.cashoutMultiplier != null
                     ? Number(e.cashoutMultiplier)
                     : null,
+                contributed: Number(e.contributed ?? 0),
+                isActive: e.isActive !== false,
+                allIn: e.allIn === true,
+                foldedAtMultiplier:
+                  e.foldedAtMultiplier != null
+                    ? Number(e.foldedAtMultiplier)
+                    : null,
+                lastAction: e.lastAction ?? null,
               })),
             };
           }
@@ -218,6 +261,9 @@ export async function GET(req: Request) {
           minBuyIn: Number(table.minimumBuyin),
           maxPlayers: table.maxPlayers,
           status: table.status,
+          carryOver: Number(table.carryOver ?? 0),
+          // Configurable per-table Small Blind (null = standard wager/2).
+          smallBlind: table.smallBlind != null ? Number(table.smallBlind) : null,
           isAi: table.isAi,
           aiDifficulty: table.aiDifficulty ?? "medium",
           hostId: table.hostId,

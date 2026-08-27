@@ -6,6 +6,16 @@
  * so payouts are consistent.
  */
 
+/**
+ * Exponential growth rate of the crash curve: multiplier = e^(rate·t).
+ *
+ * This MUST match the client's animation curve (CrashGraph.jsx exports it
+ * as GROWTH_RATE) so the server's crash timing (crashDueAtMs) lines up with
+ * what every client renders. Kept here so the server routes and the shared
+ * client curve import one source of truth instead of two drifting literals.
+ */
+export const CRASH_GROWTH_RATE = 0.33;
+
 /** Minimum crash multiplier. */
 export const CRASH_MIN = 1.2;
 

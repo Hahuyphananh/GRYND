@@ -5,6 +5,7 @@ import {
   IconBomb,
   IconCircleCheck,
   IconClock,
+  IconFlag,
   IconHome,
   IconMoodSilence,
   IconRocket,
@@ -37,11 +38,14 @@ export default function PlayerSidebar({
 
   const statusOf = (p) => {
     if (p.isSittingOut) return { label: "Sitting out", cls: "text-yellow-400", icon: <IconMoodSilence size={13} className="inline" /> };
+    if (p.allIn) return { label: "All-in", cls: "text-[#ff4fd8]", icon: <IconCircleCheck size={13} className="inline" /> };
+    if (p.folded) return { label: "Folded", cls: "text-yellow-400", icon: <IconFlag size={13} className="inline" /> };
     if (p.busted) return { label: "Busted", cls: "text-red-400", icon: <IconBomb size={13} className="inline" /> };
     if (p.cashoutMultiplier != null) {
       return { label: `${p.cashoutMultiplier.toFixed(2)}x`, cls: "text-[#00ffa6]", icon: <IconCircleCheck size={13} className="inline" /> };
     }
-    if (isLive && p.isPlaying) return { label: "In flight…", cls: "text-[#00e5ff]", icon: <IconRocket size={13} className="inline" /> };
+    if (isLive && p.isActive) return { label: "In hand…", cls: "text-[#00e5ff]", icon: <IconRocket size={13} className="inline" /> };
+    if (isLive && p.isPlaying && !p.isActive) return { label: "Not in hand", cls: "text-[#9dd8ff]/60", icon: <IconArmchair size={13} className="inline" /> };
     return { label: "Waiting", cls: "text-[#9dd8ff]/70", icon: <IconArmchair size={13} className="inline" /> };
   };
 

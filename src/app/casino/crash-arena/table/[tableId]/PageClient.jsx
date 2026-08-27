@@ -103,6 +103,10 @@ export default function TableRoomPage() {
     markReady,
     startNewRound,
     goToNextRound,
+    submitAction,
+    currentMultiplier,
+    activeCheckpointIndex,
+    checkpointMultiplierFor,
     syncPlayers,
     syncWaitingPlayers,
     syncRoundFromServer,
@@ -306,6 +310,10 @@ export default function TableRoomPage() {
           playerName={playerName}
           onStartRound={startNewRound}
           onNextRound={goToNextRound}
+          onSubmitAction={submitAction}
+          currentMultiplier={currentMultiplier}
+          activeCheckpointIndex={activeCheckpointIndex}
+          checkpointMultiplierFor={checkpointMultiplierFor}
           onJoin={handleJoin}
           onLeave={handleLeave}
           onExitToLobby={handleExitToLobby}
@@ -314,10 +322,15 @@ export default function TableRoomPage() {
           busy={busy}
           onReportPlayer={handleReportPlayer}
         >
-          {/* CrashEngine renders in the game area */}
+          {/* CrashEngine renders in the game area. Crash Poker keeps the
+              crash point server-only until the crash, so crashPoint is null:
+              the curve flies blind and the hook triggers the explosion when
+              the server announces the crash. startedAt aligns the curve to
+              the server's hand start so everyone sees the same multiplier. */}
           <CrashEngine
             ref={crashEngineRef}
             crashPoint={crashEngineProps.crashPoint}
+            startedAt={crashEngineProps.startedAt}
             running={crashEngineProps.running}
             onCashout={crashEngineProps.onCashout}
             onCrash={crashEngineProps.onCrash}

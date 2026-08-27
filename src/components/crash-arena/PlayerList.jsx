@@ -2,6 +2,7 @@
 import React from "react";
 import { IconBomb, IconCircleCheck, IconFlag } from "@tabler/icons-react";
 
+
 /**
  * PlayerList — shows seated players at an arena table with live round status.
  *
@@ -20,6 +21,8 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
   function cardStyle(player) {
     if (!player) return "border-dashed border-[#00e5ff]/10 bg-transparent opacity-40";
     if (player.isSittingOut) return "border-yellow-500/30 bg-[#020617] opacity-60";
+    if (player.allIn) return "border-[#ff4fd8]/50 bg-[#ff4fd8]/10 shadow-[0_0_12px_rgba(255,79,216,0.25)]";
+    if (player.folded) return "border-yellow-500/40 bg-yellow-950/20 opacity-70 shadow-[0_0_12px_rgba(250,204,21,0.15)]";
     if (player.busted) return "border-red-500/40 bg-red-950/30 shadow-[0_0_12px_rgba(239,68,68,0.25)]";
     if (player.cashoutMultiplier != null) return "border-[#00ffa6]/40 bg-[#00ffa6]/5 shadow-[0_0_12px_rgba(0,255,166,0.25)]";
     if (player.isPlaying && isLive) return "border-[#00e5ff]/40 bg-[#020617] shadow-[0_0_12px_rgba(0,229,255,0.18)] animate-pulse";
@@ -32,7 +35,19 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
         // Determine the live-status badge
         let liveBadge = null;
         if (player && isLive && !player.isSittingOut) {
-          if (player.cashoutMultiplier != null && !player.busted) {
+          if (player.allIn) {
+            liveBadge = (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff4fd8]/15 text-[#ff4fd8] border border-[#ff4fd8]/40 font-bold">
+                All-in
+              </span>
+            );
+          } else if (player.folded) {
+            liveBadge = (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 font-bold">
+                <IconFlag size={12} className="mr-1 inline" /> Folded
+              </span>
+            );
+          } else if (player.cashoutMultiplier != null && !player.busted) {
             liveBadge = (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30 font-bold">
                 <IconCircleCheck size={12} className="mr-1 inline" /> {player.cashoutMultiplier.toFixed(2)}x

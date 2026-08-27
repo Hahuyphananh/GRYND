@@ -184,7 +184,8 @@ export default function ArenaLobby({
           <IconRocket size={30} className="mb-1.5 mr-2 inline" /> Crash Arena
         </h1>
         <p className="mt-2 text-sm text-white/60">
-          Set your wager, create a table or join an open one. Survive the crash, claim the pot.
+          Set your wager, take a seat, and bet blinds against the crash curve.
+          Last player standing takes the pot.
         </p>
         {/* Rules popup button */}
         <button
@@ -303,7 +304,7 @@ export default function ArenaLobby({
             </div>
 
             <p className="text-[10px] text-[#9dd8ff]/50 leading-tight">
-              Easy bots cash out early · Hard bots push close to the crash point.
+              Easy bots fold to pressure · Hard bots raise and call relentlessly.
               Free play — no real tokens.
             </p>
 

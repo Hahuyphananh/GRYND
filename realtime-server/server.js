@@ -469,6 +469,142 @@ async function runCrashArenaStaleSweep() {
 // Start the periodic sweep (first tick after one interval).
 setInterval(runCrashArenaStaleSweep, CRASH_ARENA_SWEEP_INTERVAL_MS);
 
+// ── Crash Arena checkpoint auto-fold sweep ────────────────────────────
+// Stall guard: every Crash Poker hand has a `windowDeadlineAt` — how long
+// an unmatched player has to act once a betting checkpoint window opens.
+// This interval asks Next.js to auto-fold overdue players in running hands
+// whose deadline passed, so one staller can't freeze betting for the whole
+// table (the action/settle routes also enforce it lazily; this makes it
+// proactive for hands where nobody is acting at all).
+//
+// Same internal-route pattern as the stale-seat sweep: fetch the Next.js
+// route with the optional shared secret. Skipped entirely when no
+// crash-arena table room has any live socket (nothing to un-stall).
+const CRASH_ARENA_AUTOFOLD_INTERVAL_MS = 10_000;
+
+async function runCrashArenaAutoFoldSweep() {
+  try {
+    const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+
+    // No live crash-arena rooms → nothing to un-stall, skip the round trip.
+    let hasLiveCrashArenaSockets = false;
+    const adapterRooms = io.sockets.adapter.rooms;
+    if (adapterRooms && typeof adapterRooms.entries === "function") {
+      for (const [roomId] of adapterRooms.entries()) {
+        if (
+          typeof roomId === "string" &&
+          roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)
+        ) {
+          hasLiveCrashArenaSockets = true;
+          break;
+        }
+      }
+    }
+    if (!hasLiveCrashArenaSockets) return;
+
+    const res = await fetch(`${baseUrl}/api/crash-arena/auto-fold`, {
+      method: "POST",
+      headers: crashArenaSweepHeaders(),
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => null);
+    if (!data || data.success !== true) {
+      console.warn("[crash-arena] auto-fold sweep rejected:", res.status);
+      return;
+    }
+    const folded = data.data?.autoFoldedByRound || {};
+    const roundIds = Object.keys(folded);
+    if (roundIds.length > 0) {
+      console.log(
+        "[crash-arena] auto-fold sweep folded",
+        roundIds.reduce((n, id) => n + (folded[id] || []).length, 0),
+        "stalled player(s) across",
+        roundIds.length,
+        "hand(s)",
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[crash-arena] auto-fold sweep failed:",
+      err && err.message ? err.message : err,
+    );
+  }
+}
+
+setInterval(runCrashArenaAutoFoldSweep, CRASH_ARENA_AUTOFOLD_INTERVAL_MS);
+
+// ── Crash Arena crash sweep ───────────────────────────────────────────
+// The crash point is generated server-side at hand start and NEVER sent to
+// clients before the crash. Because the curve is deterministic
+// (multiplier = e^(GROWTH_RATE·t)), the exact moment the curve crosses the
+// crash point is a server-side constant: the Next.js crash-check route
+// settles every running hand whose crash time has passed and returns the
+// settled hands. This sweep then broadcasts the crash (with the now-
+// revealed multiplier + authoritative results) to the table room, so every
+// client animates the same explosion at the same multiplier — decided by
+// server time, never by a client timer or network latency.
+//
+// Same internal-route pattern as the auto-fold sweep. Runs unconditionally
+// (unlike the un-stall/stale sweeps): a due hand must settle even when no
+// socket is connected, so carry-over + table status stay correct for the
+// next hand.
+const CRASH_ARENA_CRASH_SWEEP_INTERVAL_MS = 1000;
+
+async function runCrashArenaCrashSweep() {
+  try {
+    const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+
+    const res = await fetch(`${baseUrl}/api/crash-arena/crash-check`, {
+      method: "POST",
+      headers: crashArenaSweepHeaders(),
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => null);
+    if (!data || data.success !== true) {
+      if (res.status >= 500) {
+        console.warn("[crash-arena] crash sweep rejected:", res.status);
+      }
+      return;
+    }
+
+    const crashed = Array.isArray(data.data?.crashed) ? data.data.crashed : [];
+    for (const evt of crashed) {
+      if (evt == null || evt.tableId == null || evt.multiplier == null) continue;
+      const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${evt.tableId}`;
+      io.to(roomId).emit("lobby:updated", {
+        tableId: evt.tableId,
+        crashed: true,
+        multiplier: evt.multiplier,
+        handOver: true,
+        results: evt.results || null,
+        sentAt: new Date().toISOString(),
+      });
+      // Keep the lobby grid's LIVE badge in sync too.
+      io.to("lobby:crash-arena").emit("lobby:updated", {
+        tableId: evt.tableId,
+        crashed: true,
+        roundId: evt.roundId,
+        sentAt: new Date().toISOString(),
+      });
+    }
+    if (crashed.length > 0) {
+      console.log(
+        "[crash-arena] crash sweep settled",
+        crashed.length,
+        "hand(s)",
+        crashed.map((e) => `#${e.roundId}@${e.multiplier}x`).join(","),
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[crash-arena] crash sweep failed:",
+      err && err.message ? err.message : err,
+    );
+  }
+}
+
+setInterval(runCrashArenaCrashSweep, CRASH_ARENA_CRASH_SWEEP_INTERVAL_MS);
+
 // ── Generic disconnect grace timer (hex duel / precision / plinko) ────
 // Same model as the crash arena timer above, shared by the 1v1 games.
 // `onFire` runs when the grace window elapses without a re-join; if it

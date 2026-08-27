@@ -66,6 +66,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Round is not active" }, { status: 400 });
     }
 
+    // Crash Poker hands have no cashout — players fold/call/raise instead.
+    // A legacy client must never corrupt a running hand's state.
+    if (round.handState != null) {
+      return NextResponse.json({
+        success: false,
+        error: "Cashout is not part of Crash Poker hands — use fold/call/raise",
+      }, { status: 400 });
+    }
+
     // ── Get player's entry for this round ─────────────────────────────────
     const entryData = await db
       .select()

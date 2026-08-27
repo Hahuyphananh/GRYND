@@ -1,7 +1,11 @@
 "use client";
 import React, { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from "react";
 import { IconCircleCheck } from "@tabler/icons-react";
-import CrashGraph, { CANVAS_WIDTH, CANVAS_HEIGHT } from "./CrashGraph";
+import CrashGraph, {
+  CANVAS_WIDTH,
+  CANVAS_HEIGHT,
+  DEFAULT_MAX_MULTIPLIER,
+} from "./CrashGraph";
 import CrashMultiplier from "./CrashMultiplier";
 import Explosion from "./Explosion";
 import CashoutButton from "./CashoutButton";
@@ -23,18 +27,28 @@ import useCrashAnimation from "./useCrashAnimation";
  *   • Auto-cashout thresholds (that's the parent's concern)
  *
  * Props:
- *   crashPoint      — multiplier at which the curve crashes
+ *   crashPoint      — multiplier at which the curve crashes (null = unknown:
+ *                     Crash Poker hides it server-side; the curve flies
+ *                     until triggerCrash() is called by the parent when the
+ *                     server announces the crash)
  *   running         — when true, starts the animation
+ *   startedAt       — server epoch-ms when the hand started; aligns the
+ *                     curve so all clients render the same multiplier at
+ *                     the same wall-clock moment
  *   onCashout       — (multiplier: number) => void — called when user cashes out
  *   onCrash         — (multiplier: number) => void — called when game crashes
  *   onMultiplierUpdate — (multiplier: number, isCrashed: boolean) => void — live feed
  *
  * Ref API:
- *   cashout() — trigger a manual cashout at the current multiplier
+ *   cashout()      — trigger a manual cashout at the current multiplier
+ *   triggerCrash(multiplier) — crash the hand at a server-announced
+ *                     multiplier (Crash Poker: the client never knows the
+ *                     crash point in advance)
  */
 const CrashEngine = forwardRef(function CrashEngine({
-  crashPoint = 2.0,
+  crashPoint = null,
   running = false,
+  startedAt = null,
   onCashout,
   onCrash,
   onMultiplierUpdate,
@@ -46,15 +60,20 @@ const CrashEngine = forwardRef(function CrashEngine({
   const [hasCashout, setHasCashout] = useState(false);
   const [cashoutMultiplier, setCashoutMultiplier] = useState(null);
 
-  // Y-axis upper bound: always show at least 20% past crash point
-  const maxMultiplier = Math.max(crashPoint * 1.2, 2);
+  // Y-axis upper bound: unknown crash point → fixed generous scale (any
+  // point in the game's range fits); known → always show 20% past it.
+  const maxMultiplier = crashPoint
+    ? Math.max(crashPoint * 1.2, 2)
+    : DEFAULT_MAX_MULTIPLIER;
 
   // Animation hook
   const {
     getCurrentMultiplier,
+    triggerCrash,
   } = useCrashAnimation({
     crashPoint,
     running,
+    startedAt,
     onFrame: useCallback(({ multiplier, currentMultiplier, points, crashed }) => {
       setDisplayMultiplier(multiplier);
       setIsCrashed(crashed);
@@ -129,12 +148,16 @@ const CrashEngine = forwardRef(function CrashEngine({
     if (onCashout) onCashout(mult);
   }, [running, isCrashed, hasCashout, getCurrentMultiplier, onCashout]);
 
-  // Expose cashout() via ref
+  // Expose cashout() + triggerCrash() via ref
   useImperativeHandle(ref, () => ({
     cashout() {
       handleCashout();
     },
-  }), [handleCashout]);
+    /** Crash the hand at a server-announced multiplier (Crash Poker). */
+    triggerCrash(multiplier) {
+      triggerCrash(multiplier, maxMultiplier);
+    },
+  }), [handleCashout, triggerCrash, maxMultiplier]);
 
   // Y-axis labels
   const yAxisLabels = (() => {
