@@ -1,6 +1,10 @@
 name: Grynd Daily QA Agent
 
 on:
+  push:
+    branches:
+      - main
+
   workflow_dispatch:
 
   schedule:
