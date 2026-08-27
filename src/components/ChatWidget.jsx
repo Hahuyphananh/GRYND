@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
+import {
+  subscribeToBigWins,
+  subscribeToChatMessages,
+} from "../lib/realtime";
 import { IconCoin, IconConfetti, IconFlame, IconX } from "@tabler/icons-react";
 
 const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
@@ -226,6 +230,35 @@ export default function ChatWidget() {
       loadBigWins();
     }
   }, [activeTab, isOpen]);
+
+  // Supabase Realtime: live-append new big wins as the backend inserts them
+  // into big_wins — no polling. The DB write itself is the event. This runs
+  // whenever the Big Wins tab is open, so the feed updates while it's on
+  // screen; opening the tab still fetches the latest snapshot first.
+  useEffect(() => {
+    if (!isOpen || activeTab !== "bigwins") return;
+    const unsubscribe = subscribeToBigWins((win) => {
+      setBigWins((prev) => {
+        const next = [win, ...prev.filter((w) => w.id !== win.id)];
+        return next.slice(0, 50);
+      });
+    });
+    return unsubscribe;
+  }, [isOpen, activeTab]);
+
+  // Supabase Realtime: reload the global room whenever the backend inserts a
+  // message into it (e.g. a message written outside this client's socket
+  // path). The subscription is server-side filtered to room_type=global, so
+  // it only fires for the global chat — game-room chat stays on the socket
+  // `chat:updated` fast path above, cutting realtime message volume.
+  useEffect(() => {
+    if (!isOpen || activeTab !== "chat" || !room || room.roomType !== "global") return;
+    const unsubscribe = subscribeToChatMessages((row) => {
+      if (row.roomType !== room.roomType || row.roomId !== room.roomId) return;
+      loadMessages().catch(() => {});
+    });
+    return unsubscribe;
+  }, [isOpen, activeTab, room?.roomType, room?.roomId]);
 
   async function handleRefresh() {
     setError("");
