@@ -1,0 +1,432 @@
+{
+  "timestamp": "2026-08-27T00:49:28.854Z",
+  "baseUrl": "https://www.grynd.mywire.org/",
+  "pagesVisited": [
+    "https://www.grynd.mywire.org/",
+    "https://www.grynd.mywire.org/#main-content",
+    "https://www.grynd.mywire.org/games",
+    "https://www.grynd.mywire.org/classement",
+    "https://www.grynd.mywire.org/contact",
+    "https://www.grynd.mywire.org/reviews",
+    "https://www.grynd.mywire.org/faq",
+    "https://www.grynd.mywire.org/sign-up",
+    "https://www.grynd.mywire.org/sign-in",
+    "https://www.grynd.mywire.org/games/roulette",
+    "https://www.grynd.mywire.org/games/blackjack",
+    "https://www.grynd.mywire.org/games/poker/multi",
+    "https://www.grynd.mywire.org/games/plinko",
+    "https://www.grynd.mywire.org/profil",
+    "https://www.grynd.mywire.org/games/neon-flush",
+    "https://www.grynd.mywire.org/games/chess",
+    "https://www.grynd.mywire.org/games/pool-masters",
+    "https://www.grynd.mywire.org/games/dice-flush",
+    "https://www.grynd.mywire.org/games/precision",
+    "https://www.grynd.mywire.org/security-policy",
+    "https://www.grynd.mywire.org/privacy-policy",
+    "https://www.grynd.mywire.org/terms",
+    "https://www.grynd.mywire.org/fair-play",
+    "https://www.grynd.mywire.org/accessibility"
+  ],
+  "errors": [
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/classement"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/classement"
+    },
+    {
+      "type": "http",
+      "status": 401,
+      "url": "https://www.grynd.mywire.org/api/user/stats"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 401 ()",
+      "url": "https://www.grynd.mywire.org/classement"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/contact"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/contact"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/reviews"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/reviews"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/faq"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/faq"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/sign-up"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/sign-up"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/sign-in"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/sign-in"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/roulette"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/roulette"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/blackjack"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/blackjack"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/poker/multi"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/poker/multi"
+    },
+    {
+      "type": "http",
+      "status": 401,
+      "url": "https://www.grynd.mywire.org/api/get-user-tokens"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 401 ()",
+      "url": "https://www.grynd.mywire.org/games/poker/multi"
+    },
+    {
+      "type": "console",
+      "message": "Failed to fetch tokens: Unauthorized",
+      "url": "https://www.grynd.mywire.org/games/poker/multi"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/plinko"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/plinko"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/profil"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/profil"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/neon-flush"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/neon-flush"
+    },
+    {
+      "type": "http",
+      "status": 401,
+      "url": "https://www.grynd.mywire.org/api/uno/available-games"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 401 ()",
+      "url": "https://www.grynd.mywire.org/games/neon-flush"
+    },
+    {
+      "type": "http",
+      "status": 401,
+      "url": "https://www.grynd.mywire.org/api/get-user-tokens"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 401 ()",
+      "url": "https://www.grynd.mywire.org/games/neon-flush"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/chess"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/chess"
+    },
+    {
+      "type": "http",
+      "status": 401,
+      "url": "https://www.grynd.mywire.org/api/get-user-tokens"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 401 ()",
+      "url": "https://www.grynd.mywire.org/games/chess"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/pool-masters"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/pool-masters"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/dice-flush"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/dice-flush"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/games/precision"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/games/precision"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/security-policy"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/security-policy"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/privacy-policy"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/privacy-policy"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/terms"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/terms"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/fair-play"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/fair-play"
+    },
+    {
+      "type": "console",
+      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+      "url": "https://www.grynd.mywire.org/accessibility"
+    },
+    {
+      "type": "requestfailed",
+      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
+      "error": "net::ERR_FAILED"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://www.grynd.mywire.org/accessibility"
+    }
+  ]
+}
