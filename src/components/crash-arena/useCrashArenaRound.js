@@ -3,27 +3,57 @@ import { useReducer, useCallback, useRef, useMemo, useEffect, useState } from "r
 import {
   createRoundState,
   startRound,
-  playerCashout,
   crashRound,
   settleRound,
   nextRound,
 } from "../../lib/crash-arena/roundSystem";
+import { checkpointIndexAtOrBelow, checkpointMultiplier } from "../../lib/crash-poker/constants";
+import { getBotBettingDecision } from "../../lib/crash-poker/botStrategy";
 import { useSocket } from "../../context/SocketProvider";
 import {
   crashArenaMatchRoom,
   CRASH_ARENA_TABLE_UPDATED,
   CRASH_ARENA_READY,
 } from "../../lib/crash-arena/rooms";
-import { getCrashBotCashoutTarget } from "../../lib/crash-arena/botStrategy";
 
 const DEFAULT_AI_DIFFICULTY = "medium";
 
 /**
- * Apply server-side round entries onto the local roster. Used when
- * reconciling a round that finished on the server (another player
- * settled it) so remote cashouts / busts show up for everyone.
- * Local state is preserved — a player who already cashed out locally
- * is never overwritten.
+ * Build the hand payload the local roundSystem.startRound expects from a
+ * server round snapshot (poll / socket). Contributions come from the
+ * entries; the betting window comes from the round columns.
+ */
+function handFromRoundInfo(roundInfo) {
+  const entries = Array.isArray(roundInfo?.entries) ? roundInfo.entries : [];
+  return {
+    smallBlind: roundInfo?.smallBlind ?? null,
+    bigBlind: roundInfo?.bigBlind ?? null,
+    dealerPosition: roundInfo?.dealerPosition ?? null,
+    checkpointIndex: roundInfo?.checkpointIndex ?? -1,
+    requiredBet: roundInfo?.requiredBet ?? 0,
+    bettingOpen: Boolean(roundInfo?.bettingOpen),
+    windowDeadlineAt: roundInfo?.windowDeadlineAt ?? null,
+    carryOver: Number(roundInfo?.carryOver ?? 0),
+    startedAt: roundInfo?.startedAt != null ? Number(roundInfo.startedAt) : null,
+    contributions: entries.map((e) => ({
+      userId: e.userId,
+      amount: Number(e.contributed ?? 0),
+      role:
+        e.lastAction === "sb" || e.lastAction === "bb" || e.lastAction === "ante"
+          ? e.lastAction
+          : "ante",
+      isActive: e.isActive !== false,
+      allIn: e.allIn === true,
+      foldedAtMultiplier:
+        e.foldedAtMultiplier != null ? Number(e.foldedAtMultiplier) : null,
+    })),
+  };
+}
+
+/**
+ * Apply server-side hand entries onto the local roster (used when
+ * reconciling a hand that finished on the server). Local round state is
+ * preserved — a player who already folded locally is never overwritten.
  */
 function applyServerEntries(state, entries = []) {
   if (!Array.isArray(entries) || entries.length === 0) return state;
@@ -32,24 +62,31 @@ function applyServerEntries(state, entries = []) {
     if (p.userId == null) return p;
     const entry = entries.find((e) => e.userId === p.userId);
     if (!entry) return p;
-    if (
-      entry.result === "won" &&
-      entry.cashoutMultiplier != null &&
-      p.cashoutMultiplier === null &&
-      !p.busted
-    ) {
+    if (entry.result === "won") {
       changed = true;
-      return { ...p, cashoutMultiplier: Number(entry.cashoutMultiplier) };
+      return { ...p, isActive: true, folded: false, busted: false };
     }
-    if (
-      (entry.result === "lost" || entry.result === "pending") &&
-      p.cashoutMultiplier === null &&
-      !p.busted &&
-      p.isPlaying &&
-      !p.isSittingOut
-    ) {
+    if (entry.result === "folded") {
       changed = true;
-      return { ...p, busted: true };
+      return {
+        ...p,
+        isActive: false,
+        folded: true,
+        busted: false,
+        foldedAtMultiplier:
+          entry.foldedAtMultiplier != null
+            ? Number(entry.foldedAtMultiplier)
+            : p.foldedAtMultiplier,
+      };
+    }
+    if (entry.result === "lost") {
+      changed = true;
+      return { ...p, isActive: false, folded: false, busted: true };
+    }
+    if (entry.result === "pending" && entry.isActive === false) {
+      // Folded mid-hand (still pending until settle).
+      changed = true;
+      return { ...p, isActive: false, folded: true, busted: false };
     }
     return p;
   });
@@ -57,29 +94,38 @@ function applyServerEntries(state, entries = []) {
 }
 
 /**
- * useCrashArenaRound — hook managing the Crash Arena round lifecycle.
+ * useCrashArenaRound — hook managing the Crash Arena (Crash Poker) round
+ * lifecycle.
  *
  * Connects to CrashEngine by providing crashPoint/running and handling
- * cashout/crash callbacks. Calls real backend APIs for all operations,
- * and keeps the table in sync over the realtime socket:
+ * betting/crash callbacks. Calls real backend APIs for all operations, and
+ * keeps the table in sync over the realtime socket:
  *
  *   • Joins the per-table socket room (`crash-arena:match:${tableId}`).
- *   • After successful API mutations it emits `crashArena:updated` so
- *     the other players at the table reconcile instantly.
- *   • On incoming `lobby:updated` events it reconciles round state
- *     (round start, remote cashouts, ready votes) and calls
+ *   • After successful API mutations it emits `crashArena:updated` so the
+ *     other players at the table reconcile instantly.
+ *   • On incoming `lobby:updated` events it reconciles hand state (round
+ *     start, remote fold/call/raise, settled hands) and calls
  *     `onRoomUpdate` so the page re-fetches the table roster.
  *
- * Round-start model (all players synced):
- *   • First round: seated players press "Start Round" (a ready vote).
- *     When 2+ distinct players are ready the countdown begins, and on
- *     expiry `startNewRound()` fires — the button itself never triggers
- *     the rocket directly.
- *   • Later rounds: no button — the auto-start countdown just runs.
+ * Hand-start model (all players synced):
+ *   • First hand: seated players press "Start Round" (a ready vote). When
+ *     2+ distinct players are ready the countdown begins, and on expiry
+ *     `startNewRound()` fires — the button itself never triggers the rocket
+ *     directly.
+ *   • Later hands: no button — the auto-start countdown just runs.
+ *
+ * Betting model:
+ *   • Checkpoints open at 1.25x and every +0.25x after. The client only
+ *     offers betting once its (deterministic, shared) curve crosses the
+ *     checkpoint multiplier; the server opens the next checkpoint lazily
+ *     when the first action for it arrives.
+ *   • `submitAction(action, raiseTo)` posts to /api/crash-arena/action and
+ *     the server validates everything (checkpoint, min-raise, balance).
  *
  * Params:
  *   tableId     — database ID of the crash_arena_table
- *   wager       — round wager amount
+ *   wager       — round wager / big blind amount
  *   roundNumber — starting round number
  *   onRoomUpdate — () => void — called when the socket signals a table
  *                  change so the page can re-fetch the roster.
@@ -88,9 +134,10 @@ function applyServerEntries(state, entries = []) {
  *   roundState, crashEngineRef, crashEngineProps
  *   readyVotes, markReady()
  *   startNewRound(), goToNextRound()
+ *   submitAction(action, raiseTo)
+ *   activeCheckpointIndex, checkpointMultiplierFor(index)
  *   joinTable(amount), leaveTable(), exitTable(), buyChips(name, amount)
  *   syncPlayers(), syncWaitingPlayers(), syncRoundFromServer(roundInfo)
- *   applyRemoteCashout(userId, multiplier)
  *   busy, error
  */
 export default function useCrashArenaRound({
@@ -104,26 +151,30 @@ export default function useCrashArenaRound({
   const { socket } = useSocket();
   const crashEngineRef = useRef(null);
   const currentRoundIdRef = useRef(null);
-  // AI practice: the bot's per-round committed cashout target, its
-  // internal user id, and whether its cashout already fired this round.
-  const botTargetRef = useRef(null);
+  // AI practice: the bot's user id + the last checkpoint it acted at, so it
+  // makes one decision per checkpoint (re-acting only when a raise re-opens
+  // its action).
   const botUserIdRef = useRef(null);
-  const botCashedOutRef = useRef(false);
+  const botActedIndexRef = useRef(-1);
   // Id + status of the most recent round reconciled from the server
   // (poll or socket) — guards against re-applying the same round on
   // every refetch while still allowing a status flip (running → settled)
   // to re-reconcile.
   const lastSyncedRef = useRef(null);
-  // Live mirror of roundState so stable callbacks (cashout/crash) can
-  // read the current roster without stale closures.
+  // Live mirror of roundState so stable callbacks can read the current
+  // roster without stale closures.
   const roundStateRef = useRef(null);
+  // Current curve multiplier (throttled feed from CrashEngine) — drives the
+  // checkpoint gate for betting + the AI bot.
+  const currentMultiplierRef = useRef(1.0);
   const onRoomUpdateRef = useRef(onRoomUpdate);
   onRoomUpdateRef.current = onRoomUpdate;
 
   const [busy, setBusy] = useReducer((_, v) => v, false);
   const [error, setError] = useReducer((_, v) => v, null);
+  const [currentMultiplier, setCurrentMultiplier] = useState(1.0);
   // User ids of seated players who pressed "Start Round" for the first
-  // round. Shared across clients via socket broadcasts.
+  // hand. Shared across clients via socket broadcasts.
   const [readyVotes, setReadyVotes] = useState([]);
 
   // ── Reducer ──────────────────────────────────────────────────────────
@@ -131,76 +182,204 @@ export default function useCrashArenaRound({
   const [roundState, dispatch] = useReducer((state, action) => {
     switch (action.type) {
       case "START_ROUND": {
-        const crashPoint = action.crashPoint;
-        if (crashPoint == null || !Number.isFinite(crashPoint) || crashPoint < 1) {
+        // Crash Poker keeps the crash point server-only until the crash —
+        // this dispatch carries crashPoint: null for the whole hand (never
+        // generated client-side). Anything non-null must be a positive
+        // number or it's rejected.
+        const crashPoint = action.crashPoint != null ? Number(action.crashPoint) : null;
+        if (crashPoint != null && (!Number.isFinite(crashPoint) || crashPoint < 1)) {
           return state; // guard
         }
         const seedHash = action.seedHash ?? null;
-        return startRound(state, wager, crashPoint, seedHash);
+        return startRound(state, wager, crashPoint, seedHash, null, action.hand ?? null);
       }
-      case "CASHOUT":
-        return playerCashout(state, action.playerName, action.multiplier);
-      case "REMOTE_CASHOUT": {
-        // Cashout broadcast from another player at the table (or the AI
-        // bot resolving its committed multiplier through ai-cashout).
+      case "ACTION": {
+        // Apply the server-authoritative result of the acting player's
+        // fold/call/raise + the updated hand window.
         if (state.phase !== "running") return state;
-        const { userId, multiplier } = action;
-        if (userId == null || !Number.isFinite(Number(multiplier))) return state;
+        const sa = action.serverAction;
+        if (!sa || sa.userId == null) return state;
+        const prev = state.players.find((p) => p.userId === sa.userId);
+        const prevContributed = prev ? Number(prev.contributed) : 0;
+        const newContributed = sa.contributed != null ? Number(sa.contributed) : prevContributed;
+        const players = state.players.map((p) => {
+          if (p.userId === sa.userId) {
+            return {
+              ...p,
+              contributed: newContributed,
+              balance: Math.max(0, Number(p.balance) - Math.max(0, newContributed - prevContributed)),
+              lastAction: sa.action ?? p.lastAction,
+              isActive: sa.action === "fold" ? false : p.isActive,
+              folded: sa.action === "fold",
+              foldedAtMultiplier:
+                sa.action === "fold"
+                  ? state.currentCheckpointMultiplier
+                  : p.foldedAtMultiplier,
+              allIn: Boolean(sa.allIn ?? p.allIn),
+              // The player has now decided at this checkpoint. A raise
+              // re-opens action for EVERYONE else below (not the raiser).
+              actedThisCheckpoint: true,
+            };
+          }
+          // A raise re-opens action for every other active non-all-in
+          // player — they get another decision window.
+          if (sa.action === "raise" && p.isActive && !p.folded && !p.allIn) {
+            return { ...p, actedThisCheckpoint: false };
+          }
+          return p;
+        });
+        const window = action.hand || {};
         return {
           ...state,
-          players: state.players.map((p) =>
-            p.userId === userId && p.cashoutMultiplier === null && !p.busted
-              ? { ...p, cashoutMultiplier: Number(multiplier) }
-              : p,
-          ),
+          players,
+          checkpointIndex:
+            window.checkpointIndex != null ? Number(window.checkpointIndex) : state.checkpointIndex,
+          currentCheckpointMultiplier:
+            window.checkpointIndex != null
+              ? checkpointMultiplier(Number(window.checkpointIndex))
+              : state.currentCheckpointMultiplier,
+          requiredBet:
+            window.requiredBet != null ? Number(window.requiredBet) : state.requiredBet,
+          bettingOpen:
+            window.bettingOpen != null ? Boolean(window.bettingOpen) : state.bettingOpen,
+          windowDeadlineAt:
+            window.windowDeadlineAt != null
+              ? Number(window.windowDeadlineAt)
+              : state.windowDeadlineAt,
+          pot: window.pot != null ? Number(window.pot) : state.pot,
         };
       }
-      case "BOT_BUST": {
-        // The bot committed past the crash point — resolved as a loss by
-        // the server, so show it busted locally to match the settle result.
+      case "REMOTE_ACTION": {
+        // Fold/call/raise broadcast from another player at the table.
         if (state.phase !== "running") return state;
-        const { userId } = action;
-        if (userId == null) return state;
+        const ra = action.serverAction;
+        if (!ra || ra.userId == null) return state;
+        const prev = state.players.find((p) => p.userId === ra.userId);
+        const prevContributed = prev ? Number(prev.contributed) : 0;
+        const newContributed = ra.contributed != null ? Number(ra.contributed) : prevContributed;
+        const players = state.players.map((p) => {
+          if (p.userId === ra.userId) {
+            return {
+              ...p,
+              contributed: newContributed,
+              balance: Math.max(0, Number(p.balance) - Math.max(0, newContributed - prevContributed)),
+              lastAction: ra.action ?? p.lastAction,
+              isActive: ra.action === "fold" ? false : p.isActive,
+              folded: ra.action === "fold",
+              foldedAtMultiplier:
+                ra.action === "fold"
+                  ? state.currentCheckpointMultiplier
+                  : p.foldedAtMultiplier,
+              allIn: Boolean(ra.allIn ?? p.allIn),
+              actedThisCheckpoint: true,
+            };
+          }
+          // A raise re-opens action for every other active non-all-in
+          // player — they get another decision window.
+          if (ra.action === "raise" && p.isActive && !p.folded && !p.allIn) {
+            return { ...p, actedThisCheckpoint: false };
+          }
+          return p;
+        });
+        const window = action.hand || {};
         return {
           ...state,
-          players: state.players.map((p) =>
-            p.userId === userId && p.cashoutMultiplier === null && !p.busted
-              ? { ...p, busted: true }
-              : p,
-          ),
+          players,
+          checkpointIndex:
+            window.checkpointIndex != null ? Number(window.checkpointIndex) : state.checkpointIndex,
+          currentCheckpointMultiplier:
+            window.checkpointIndex != null
+              ? checkpointMultiplier(Number(window.checkpointIndex))
+              : state.currentCheckpointMultiplier,
+          requiredBet:
+            window.requiredBet != null ? Number(window.requiredBet) : state.requiredBet,
+          bettingOpen:
+            window.bettingOpen != null ? Boolean(window.bettingOpen) : state.bettingOpen,
+          windowDeadlineAt:
+            window.windowDeadlineAt != null
+              ? Number(window.windowDeadlineAt)
+              : state.windowDeadlineAt,
+          pot: window.pot != null ? Number(window.pot) : state.pot,
         };
+      }
+      case "SETTLE_FROM_SERVER": {
+        // A hand ended on the server (fold-out or fold-order win) — apply
+        // the authoritative results and settle locally with them.
+        const res = action.results || {};
+        let next = applyServerEntries(state, res.entries || []);
+        const winnerName = res.winnerUserId != null
+          ? next.players.find((p) => p.userId === res.winnerUserId)?.name ?? null
+          : null;
+        // The winner's own entry carries the multiplier they folded at — a
+        // fold-order winner folded before the crash, a fold-out winner did
+        // not fold at all.
+        const winnerEntry =
+          res.winnerUserId != null && Array.isArray(res.entries)
+            ? res.entries.find((e) => e.userId === res.winnerUserId)
+            : null;
+        const wonByFold =
+          winnerEntry?.foldedAtMultiplier != null;
+        const winnerMultiplier = wonByFold
+          ? Number(winnerEntry.foldedAtMultiplier)
+          : state.currentCheckpointMultiplier;
+        next = {
+          ...next,
+          phase: "crashed",
+          // The server crash broadcast records the ACTUAL crash multiplier
+          // before these results land (crashRound sets it) — keep it. Only
+          // fold-out settlements (no prior crash) fall back to the open
+          // checkpoint multiplier.
+          crashMultiplier: next.crashMultiplier ?? state.currentCheckpointMultiplier,
+        };
+        return settleRound(next, {
+          winner: winnerName,
+          winnerCheckpoint: winnerMultiplier,
+          winnerMultiplier,
+          wonByFold,
+          payout: Number(res.payout ?? 0),
+          fee: Number(res.rake ?? 0),
+          carryOver: Number(res.carryOver ?? 0),
+          potDistributed: Number(res.payout ?? 0),
+          allCashouts: [],
+          returns: Array.isArray(res.returns) ? res.returns : [],
+          pots: Array.isArray(res.pots) ? res.pots : [],
+          activeAtCrash: Array.isArray(res.activeAtCrash) ? res.activeAtCrash : [],
+        });
       }
       case "CRASH":
         return settleRound(crashRound(state, action.multiplier));
       case "SYNC_ROUND": {
-        // Reconcile the server's latest round into local state. Covers
-        // the cases where another player started / settled the round and
-        // this client missed the live event (late join, socket drop).
+        // Reconcile the server's latest round into local state. Covers the
+        // cases where another player started / settled the hand and this
+        // client missed the live event (late join, socket drop).
         const sr = action.round;
         if (!sr || !sr.id) return state;
 
         let next = state;
-        const cp = Number(sr.crashPoint);
-        const hasValidCp = Number.isFinite(cp) && cp >= 1;
-        const fallbackCp = hasValidCp ? cp : 2.0;
+        // Crash Poker: crashPoint is null while running (server-only); it is
+        // only present on settled rounds (revealed after the crash).
+        const cp = sr.crashPoint != null ? Number(sr.crashPoint) : null;
+        const hasValidCp = cp != null && Number.isFinite(cp) && cp >= 1;
+        const hand = handFromRoundInfo(sr);
 
-        if (sr.status === "running" && hasValidCp) {
+        if (sr.status === "running") {
           if (next.phase === "waiting") {
-            next = startRound(next, action.wager, cp, sr.seedHash ?? null, null);
+            next = startRound(next, action.wager, null, sr.seedHash ?? null, null, hand);
           }
         }
 
         if (sr.status === "settled" || sr.status === "crashed") {
           if (next.phase !== "settling") {
             if (next.phase === "waiting") {
-              next = startRound(next, action.wager, fallbackCp, sr.seedHash ?? null, null);
+              next = startRound(next, action.wager, hasValidCp ? cp : null, sr.seedHash ?? null, null, hand);
             }
             if (next.phase === "running") {
-              // Apply server-side cashouts FIRST so players who cashed
-              // out (but whose broadcast this client missed) are not
-              // busted by the crash pass below.
+              // Apply server-side results FIRST (won → still active, folded
+              // → folded, lost → busted), then settle directly — the winner
+              // must NOT go through the crash pass, which busts everyone
+              // still active.
               next = applyServerEntries(next, sr.entries);
-              next = crashRound(next, fallbackCp);
+              next = settleRound(next);
             }
             if (next.phase === "crashed") {
               next = settleRound(next);
@@ -216,8 +395,9 @@ export default function useCrashArenaRound({
         return { ...state, players: action.players };
       case "SYNC_PLAYERS": {
         // Merge the server's seated roster into the local player list.
-        // Local round state (cashout/busted/sit-out) is preserved; in the
-        // waiting phase the roster mirrors the server exactly.
+        // Local round state (contributed/folded/busted/sit-out) is
+        // preserved; in the waiting phase the roster mirrors the server
+        // exactly.
         const serverPlayers = action.serverPlayers || [];
         const localPlayers = state.players;
         const inLiveRound = state.phase !== "waiting";
@@ -232,7 +412,7 @@ export default function useCrashArenaRound({
         // design) — duplicate display names at one table would collapse.
 
         // Drop local players who are no longer seated (unless mid-round,
-        // where we keep the roster stable so cashouts/busts stay visible).
+        // where we keep the roster stable so actions/busts stay visible).
         if (!inLiveRound) {
           for (const name of [...mergedByName.keys()]) {
             if (!serverByName.has(name)) mergedByName.delete(name);
@@ -253,7 +433,7 @@ export default function useCrashArenaRound({
             });
           } else {
             // A player first seen mid-round is seated but was not locked
-            // into the running round — keep them out until the next round.
+            // into the running hand — keep them out until the next hand.
             mergedByName.set(sp.name, {
               name: sp.name,
               userId: sp.userId ?? null,
@@ -262,6 +442,13 @@ export default function useCrashArenaRound({
               isBot: Boolean(sp.isBot),
               isSittingOut: false,
               isPlaying: !inLiveRound,
+              contributed: 0,
+              isActive: false,
+              folded: false,
+              foldedAtMultiplier: null,
+              lastAction: null,
+              allIn: false,
+              actedThisCheckpoint: false,
               cashoutMultiplier: null,
               busted: false,
             });
@@ -277,7 +464,7 @@ export default function useCrashArenaRound({
           ...state,
           players: state.players.map((p) =>
             p.name === action.playerName
-              ? { ...p, balance: p.balance + action.amount }
+              ? { ...p, balance: Number(p.balance) + Number(action.amount) }
               : p,
           ),
         };
@@ -322,125 +509,232 @@ export default function useCrashArenaRound({
     }
   }, [tableId, socket]);
 
-  // ── Crash callbacks ──────────────────────────────────────────────────
+  // ── Betting actions ─────────────────────────────────────────────────
 
-  const handleCashout = useCallback((multiplier) => {
-    dispatch({ type: "CASHOUT", playerName: "You", multiplier });
-    // Fire-and-forget API call — server validates against real crashPoint
-    const roundId = currentRoundIdRef.current;
-    if (roundId) {
-      fetch("/api/crash-arena/cashout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ roundId, cashoutMultiplier: multiplier }),
-      })
-        .catch((err) => console.warn("[crash-arena] cashout API failed:", err));
-    }
-    // Tell the rest of the table instantly (needs "You"'s internal id
-    // from the synced roster so remote players can match the seat).
-    const me = (roundStateRef.current?.players || []).find((p) => p.isYou);
-    if (me?.userId && socket) {
-      socket.emit(CRASH_ARENA_READY, {
-        tableId,
-        cashout: { userId: me.userId, multiplier },
-      });
-    }
-  }, [tableId, socket]);
+  /**
+   * The highest checkpoint the client's shared curve has reached. This is
+   * what gates the betting UI: actions may target the open checkpoint once
+   * the curve reached it, or the next one once the open one resolved (the
+   * server opens it lazily).
+   */
+  const activeCheckpointIndex = useMemo(() => {
+    const curveIndex = checkpointIndexAtOrBelow(currentMultiplier);
+    const open = Number(roundState.checkpointIndex ?? -1);
+    if (curveIndex >= open + 1) return open + 1;
+    if (curveIndex === open && roundState.bettingOpen) return open;
+    return null;
+  }, [currentMultiplier, roundState.checkpointIndex, roundState.bettingOpen]);
+
+  const checkpointMultiplierFor = useCallback((index) => checkpointMultiplier(index), []);
+
+  // ── Crash callback ──────────────────────────────────────────────────
+  // Declared BEFORE submitAction (which references it) to avoid a TDZ
+  // ReferenceError — deps arrays are evaluated at render, not call time.
 
   const handleCrash = useCallback((multiplier) => {
     dispatch({ type: "CRASH", multiplier });
-    // Fire-and-forget settle call
+    // No settle call and no room fanout here: the realtime-server crash
+    // sweep settles the hand at the server-authoritative crash moment and
+    // broadcasts the crash (multiplier + results) to the whole room itself.
+    // This callback only drives local round state.
+  }, []);
+
+  /**
+   * Submit a betting decision (fold / call / raise) for the current
+   * checkpoint. The server validates the checkpoint, min-raise and balance.
+   *
+   * @param {"fold"|"call"|"raise"} action
+   * @param {number} [raiseTo] required for "raise" — the new total bet
+   * @param {boolean} [forBot] AI practice: act for the bot (human's session)
+   * @returns {Promise<boolean>} true when the server accepted the action
+   */
+  const submitAction = useCallback(async (action, raiseTo, forBot = false) => {
     const roundId = currentRoundIdRef.current;
-    if (roundId) {
-      fetch("/api/crash-arena/settle", {
+    if (!roundId) {
+      if (!forBot) setError("No active hand");
+      return false;
+    }
+    const rs = roundStateRef.current;
+    if (rs.phase !== "running") {
+      if (!forBot) setError("The hand is not running");
+      return false;
+    }
+    // Pick the checkpoint to act on: the open one (curve reached it), or the
+    // next one when the open one resolved and the curve crossed the boundary.
+    const curveIndex = checkpointIndexAtOrBelow(currentMultiplierRef.current);
+    const open = Number(rs.checkpointIndex ?? -1);
+    let target = null;
+    if (curveIndex >= open + 1) target = open + 1;
+    else if (curveIndex === open && rs.bettingOpen) target = open;
+    if (target == null) {
+      if (!forBot) setError("Betting isn't open at this checkpoint yet");
+      return false;
+    }
+    if (forBot) botActedIndexRef.current = target;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/crash-arena/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ roundId }),
-      })
-        .catch((err) => console.warn("[crash-arena] settle API failed:", err));
-    }
-    // Notify the room so everyone reconciles the crash instantly.
-    if (socket) {
-      socket.emit(CRASH_ARENA_READY, { tableId, crashed: true, multiplier });
-    }
-  }, [tableId, socket]);
-
-  /**
-   * AI practice: when the running multiplier reaches the bot's committed
-   * target, cash the bot out through the server (which validates against
-   * the real crash point exactly like a human cashout). The commit fires
-   * once per round; a greedy target past the crash point never triggers
-   * and simply resolves as a bust at settle.
-   */
-  const handleMultiplierUpdate = useCallback((multiplier, crashed) => {
-    if (!isAi) return;
-    if (crashed) return;
-    const target = botTargetRef.current;
-    const botId = botUserIdRef.current;
-    if (target == null || botId == null || botCashedOutRef.current) return;
-    if (Number(multiplier) < target) return;
-
-    botCashedOutRef.current = true; // commit — fire once
-    const roundId = currentRoundIdRef.current;
-    if (!roundId) return;
-
-    fetch("/api/crash-arena/ai-cashout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ roundId, cashoutMultiplier: target }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data?.success) return;
-        if (data.data?.survived) {
-          dispatch({
-            type: "REMOTE_CASHOUT",
-            userId: botId,
-            multiplier: Number(data.data.cashoutMultiplier),
-          });
-        } else {
-          // Committed past the crash point — the server resolved it as a
-          // loss; mirror the bust locally so the standings match settle.
-          dispatch({ type: "BOT_BUST", userId: botId });
-        }
-      })
-      .catch(() => {
-        // Transient failure — allow a retry on the next frame tick.
-        botCashedOutRef.current = false;
+        body: JSON.stringify({
+          roundId,
+          checkpointIndex: target,
+          action,
+          ...(raiseTo != null ? { raiseTo } : {}),
+          ...(forBot ? { forBot: true } : {}),
+        }),
       });
-  }, [isAi, dispatch]);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        // A concurrent actor resolved the checkpoint — not an error for the
+        // bot; surface it for the human. Let the bot retry next tick.
+        if (forBot) botActedIndexRef.current = -1;
+        // The server already recorded this player's action at this
+        // checkpoint (e.g. an auto-check raced their own submit) — nothing
+        // to do, not an error worth surfacing.
+        if (!forBot && !/already acted/i.test(data?.error || "")) {
+          setError(data?.error || "Action rejected");
+        }
+        return false;
+      }
+      const d = data.data;
+      dispatch({
+        type: "ACTION",
+        serverAction: d.action,
+        hand: {
+          checkpointIndex: d.checkpointIndex,
+          requiredBet: d.requiredBet,
+          bettingOpen: d.bettingOpen,
+          pot: d.pot,
+        },
+      });
+      // The action raced the crash and lost — the server settled the hand
+      // at its deterministic crash moment. Record the crash locally (actual
+      // multiplier) and animate the explosion before the results land.
+      if (d.crashed && d.crashMultiplier != null) {
+        handleCrash(Number(d.crashMultiplier));
+        crashEngineRef.current?.triggerCrash?.(Number(d.crashMultiplier));
+      }
+      if (d.handOver && d.results) {
+        dispatch({ type: "SETTLE_FROM_SERVER", results: d.results });
+      }
+      // Other players' auto-folds (stall guard) — mirror their folded
+      // state so the roster + fold badges stay in sync.
+      if (Array.isArray(d.autoFolded) && d.autoFolded.length > 0) {
+        const folded = d.autoFolded.filter((id) => id != null);
+        for (const foldedId of folded) {
+          dispatch({
+            type: "REMOTE_ACTION",
+            serverAction: { userId: foldedId, action: "fold" },
+            hand: {
+              checkpointIndex: d.checkpointIndex,
+              requiredBet: d.requiredBet,
+              bettingOpen: d.bettingOpen,
+              pot: d.pot,
+              windowDeadlineAt: d.windowDeadlineAt,
+            },
+          });
+        }
+      }
+      // Tell the rest of the table instantly.
+      if (socket) {
+        socket.emit(CRASH_ARENA_READY, {
+          tableId,
+          action: {
+            userId: d.action.userId,
+            action: d.action.action,
+            contributed: d.action.contributed,
+            allIn: d.action.allIn,
+            checkpointIndex: d.checkpointIndex,
+          },
+          hand: {
+            checkpointIndex: d.checkpointIndex,
+            requiredBet: d.requiredBet,
+            bettingOpen: d.bettingOpen,
+            pot: d.pot,
+          },
+          ...(d.handOver && d.results
+            ? { handOver: true, results: d.results }
+            : {}),
+        });
+      }
+      return true;    } catch (err) {
+      if (forBot) botActedIndexRef.current = -1;
+      if (!forBot) setError("Network error submitting action");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [tableId, socket, handleCrash]);
+
+
+
 
   /**
-   * Arm the bot for a new round: pick its committed cashout target and
-   * remember its user id from the synced roster. Called whenever a round
-   * goes running (client-started or reconciled from the server).
+   * AI practice: the bot makes one betting decision per checkpoint the curve
+   * reaches. Executed through the same server-authoritative action route
+   * with `forBot: true` (mirrors the old ai-cashout pattern).
    */
-  const armBotForRound = useCallback((crashPoint) => {
-    if (!isAi) return;
-    botCashedOutRef.current = false;
-    botTargetRef.current = null;
-    const cp = Number(crashPoint);
-    if (!Number.isFinite(cp) || cp < 1) return;
-    const bot = (roundStateRef.current?.players || []).find((p) => p.isBot);
-    botUserIdRef.current = bot?.userId ?? null;
-    if (botUserIdRef.current == null) return;
-    // The bot's aggressiveness follows the difficulty picked in the lobby
-    // (mirrors the poker table AIs' easy/medium/hard seats).
-    botTargetRef.current = getCrashBotCashoutTarget(cp, aiDifficulty);
-  }, [isAi, aiDifficulty]);
+  const maybeActForBot = useCallback((multiplier) => {
+    if (!isAi || busy) return;
+    const rs = roundStateRef.current;
+    if (rs.phase !== "running") return;
+    const bot = rs.players.find((p) => p.isBot);
+    if (!bot || bot.userId == null || !bot.isActive || bot.folded || bot.busted || bot.allIn) return;
 
-  // ── Round control ────────────────────────────────────────────────────
+    const curveIndex = checkpointIndexAtOrBelow(multiplier);
+    const open = Number(rs.checkpointIndex ?? -1);
+    let target = null;
+    if (curveIndex >= open + 1) target = open + 1;
+    else if (curveIndex === open && rs.bettingOpen) target = open;
+    if (target == null) return;
+
+    // The bot already decided at this checkpoint AND is still matched (no
+    // raise re-opened its action) — nothing owed.
+    if (
+      Number(bot.contributed) >= Number(rs.requiredBet) &&
+      botActedIndexRef.current >= target
+    ) {
+      return;
+    }
+
+    const decision = getBotBettingDecision({
+      requiredBet: Number(rs.requiredBet),
+      contributed: Number(bot.contributed),
+      smallBlind: Number(rs.smallBlind ?? 1),
+      bigBlind: Number(rs.bigBlind ?? rs.requiredBet),
+      remainingBalance: Number(bot.balance),
+      difficulty: aiDifficulty,
+    });
+
+    // Every active player must act at each checkpoint — a matched bot still
+    // submits its decision so the checkpoint resolves immediately (the
+    // server turns a matched call into a check). Submitting here instead of
+    // waiting avoids the stall guard's 10s auto-resolve delay.
+    submitAction(decision.action, decision.raiseTo, true);
+  }, [isAi, busy, aiDifficulty, submitAction]);
+
+  const handleMultiplierUpdate = useCallback((multiplier, crashed) => {
+    currentMultiplierRef.current = multiplier;
+    setCurrentMultiplier(multiplier);
+    if (!isAi || crashed) return;
+    maybeActForBot(multiplier);
+  }, [isAi, maybeActForBot]);
+
+  // ── Hand control ────────────────────────────────────────────────────
 
   const startNewRound = useCallback(async () => {
     if (!tableId) return;
     // Only the first client whose countdown expires should create the
-    // round — once anyone starts it, everyone else syncs via broadcast.
+    // hand — once anyone starts it, everyone else syncs via broadcast.
     if (roundStateRef.current?.phase !== "waiting") return;
     setBusy(true);
     setError(null);
+    currentMultiplierRef.current = 1.0;
+    setCurrentMultiplier(1.0);
     try {
       const res = await fetch("/api/crash-arena/start-round", {
         method: "POST",
@@ -452,44 +746,52 @@ export default function useCrashArenaRound({
       if (!res.ok || !data.success) {
         // A concurrent start (another player's timer) is expected — ignore.
         if (!/already in progress/i.test(data?.error || "")) {
-          setError(data?.error || "Failed to start round");
+          setError(data?.error || "Failed to start hand");
         }
         return;
       }
-      const { roundId, crashPoint, seedHash } = data.data;
+      // NOTE: the response deliberately has NO crashPoint — it stays
+      // server-only until the crash. Only the seed commitment + the hand
+      // snapshot (plus the server start time for curve alignment) go out.
+      const { roundId, seedHash, startedAt, hand } = data.data;
       currentRoundIdRef.current = roundId;
       lastSyncedRef.current = { id: String(roundId), status: "running" };
       setReadyVotes([]);
-      dispatch({ type: "START_ROUND", crashPoint, seedHash });
-      if (isAi) armBotForRound(crashPoint);
+      botActedIndexRef.current = -1;
+      dispatch({
+        type: "START_ROUND",
+        crashPoint: null,
+        seedHash,
+        hand: { ...(hand || {}), startedAt },
+      });
       // Broadcast so the other players' CrashEngines start in sync.
       if (socket) {
         socket.emit(CRASH_ARENA_READY, {
           tableId,
           roundStarted: true,
           roundId,
-          crashPoint,
           seedHash,
+          startedAt,
+          hand: { ...(hand || {}), startedAt },
         });
       }
     } catch (err) {
-      setError("Network error starting round");
+      setError("Network error starting hand");
     } finally {
       setBusy(false);
     }
-  }, [tableId, socket, isAi, armBotForRound]);
+  }, [tableId, socket]);
 
   const goToNextRound = useCallback(() => {
     dispatch({ type: "NEXT_ROUND" });
     currentRoundIdRef.current = null;
     setReadyVotes([]);
-    // Clear the bot's per-round state so the next round re-arms fresh.
-    botTargetRef.current = null;
-    botUserIdRef.current = null;
-    botCashedOutRef.current = false;
+    currentMultiplierRef.current = 1.0;
+    setCurrentMultiplier(1.0);
+    botActedIndexRef.current = -1;
   }, []);
 
-  // ── Round reconciliation (from poll or socket) ──────────────────────
+  // ── Hand reconciliation (from poll or socket) ───────────────────────
 
   /**
    * Reconcile the server's latest round into local round state.
@@ -510,6 +812,8 @@ export default function useCrashArenaRound({
     if (last && last.id === roundId && last.status === roundStatus) return;
 
     const isActive = roundStatus === "running";
+    const roundSettled = roundStatus === "settled" || roundStatus === "crashed";
+    const wasRunning = roundStateRef.current?.phase === "running";
     let recent = true;
     if (roundInfo.createdAt) {
       const created = new Date(roundInfo.createdAt).getTime();
@@ -520,21 +824,25 @@ export default function useCrashArenaRound({
     if (!isActive && !recent) return;
 
     lastSyncedRef.current = { id: roundId, status: roundStatus };
-    // A running round is the one cashouts / settle must target.
+    // A running round is the one actions must target.
     if (isActive) {
       currentRoundIdRef.current = roundId;
-      if (isAi) armBotForRound(Number(roundInfo.crashPoint));
     }
     dispatch({ type: "SYNC_ROUND", round: roundInfo, wager });
-  }, [wager, isAi, armBotForRound]);
 
-  /**
-   * Apply a cashout broadcast from another player at the table.
-   */
-  const applyRemoteCashout = useCallback((userId, multiplier) => {
-    if (userId == null) return;
-    dispatch({ type: "REMOTE_CASHOUT", userId, multiplier });
-  }, []);
+    // The poll caught a hand that already CRASHED while we were mid-flight
+    // (missed broadcast / socket blip) — animate the explosion at the
+    // revealed crash point. Fold-out wins are skipped: they have a winner
+    // entry, and no crash ever happened for that hand.
+    if (wasRunning && roundSettled) {
+      const entries = Array.isArray(roundInfo.entries) ? roundInfo.entries : [];
+      const hasWinner = entries.some((e) => e?.result === "won");
+      const cp = roundInfo.crashPoint != null ? Number(roundInfo.crashPoint) : null;
+      if (!hasWinner && cp != null && Number.isFinite(cp) && cp >= 1) {
+        crashEngineRef.current?.triggerCrash?.(cp);
+      }
+    }
+  }, [wager]);
 
   // ── Realtime room wiring ─────────────────────────────────────────────
 
@@ -552,19 +860,53 @@ export default function useCrashArenaRound({
     joinRoom();
 
     const onUpdate = (payload = {}) => {
-      // Another player started a round — start ours with the same
-      // server-authoritative crash point immediately.
-      if (payload?.roundStarted && payload?.crashPoint != null) {
+      // Another player started a hand — start ours with the same
+      // server-authoritative crash point + hand snapshot immediately.
+      if (payload?.roundStarted) {
         syncRoundFromServer({
           id: payload.roundId,
           status: "running",
-          crashPoint: Number(payload.crashPoint),
+          // The crash point is server-only — it never travels with the
+          // round-start broadcast; clients fly the curve blind.
+          crashPoint: null,
           seedHash: payload.seedHash ?? null,
+          startedAt: payload.startedAt ?? null,
+          smallBlind: payload.hand?.smallBlind ?? null,
+          bigBlind: payload.hand?.bigBlind ?? null,
+          dealerPosition: payload.hand?.dealerPosition ?? null,
+          checkpointIndex: payload.hand?.checkpointIndex ?? -1,
+          requiredBet: payload.hand?.requiredBet ?? 0,
+          bettingOpen: Boolean(payload.hand?.bettingOpen),
+          windowDeadlineAt: payload.hand?.windowDeadlineAt ?? null,
+          carryOver: payload.hand?.carryOver ?? 0,
+          entries: (payload.hand?.contributions || []).map((c) => ({
+            userId: c.userId,
+            contributed: c.amount,
+            result: "pending",
+            isActive: true,
+            allIn: Boolean(c.allIn),
+            lastAction: c.role,
+          })),
         });
       }
-      // Another player cashed out — show it in the live standings.
-      if (payload?.cashout?.userId) {
-        applyRemoteCashout(payload.cashout.userId, payload.cashout.multiplier);
+      // The server announced the crash (realtime-server crash sweep) —
+      // settle locally and animate the explosion at the now-revealed
+      // multiplier. The results (handOver) land right after.
+      if (payload?.crashed && payload?.multiplier != null) {
+        handleCrash(Number(payload.multiplier));
+        crashEngineRef.current?.triggerCrash?.(Number(payload.multiplier));
+      }
+      // Another player folded / called / raised — mirror it live.
+      if (payload?.action?.userId) {
+        dispatch({
+          type: "REMOTE_ACTION",
+          serverAction: payload.action,
+          hand: payload.hand || {},
+        });
+      }
+      // A fold-out settled the hand on the server — apply results.
+      if (payload?.handOver && payload?.results) {
+        dispatch({ type: "SETTLE_FROM_SERVER", results: payload.results });
       }
       // A seated player pressed "Start Round" (first-round ready vote).
       if (payload?.ready && payload?.readyUserId) {
@@ -587,7 +929,7 @@ export default function useCrashArenaRound({
       socket.off("connect", joinRoom);
       socket.emit("leave_room", { roomId });
     };
-  }, [tableId, socket, syncRoundFromServer, applyRemoteCashout]);
+  }, [tableId, socket, syncRoundFromServer, handleCrash]);
 
   // ── Player management (API calls) ────────────────────────────────────
 
@@ -613,6 +955,13 @@ export default function useCrashArenaRound({
         isYou: true,
         isSittingOut: false,
         isPlaying: true,
+        contributed: 0,
+        isActive: false,
+        folded: false,
+        foldedAtMultiplier: null,
+        lastAction: null,
+        allIn: false,
+        actedThisCheckpoint: false,
         cashoutMultiplier: null,
         busted: false,
       };
@@ -759,13 +1108,18 @@ export default function useCrashArenaRound({
 
   // ── CrashEngine props ────────────────────────────────────────────────
 
+  // Crash Poker has no cashout — the engine's cashout callback is a no-op
+  // (kept so the shared CrashEngine component stays untouched). The crash
+  // point stays null (server-only until the crash): the engine flies blind
+  // and the hook triggers the explosion when the server announces the crash.
   const crashEngineProps = useMemo(() => ({
-    crashPoint: roundState.crashPoint || 2.0,
+    crashPoint: roundState.crashPoint || null,
+    startedAt: roundState.startedAt,
     running: roundState.phase === "running",
-    onCashout: handleCashout,
+    onCashout: () => {},
     onCrash: handleCrash,
     onMultiplierUpdate: handleMultiplierUpdate,
-  }), [roundState.crashPoint, roundState.phase, handleCashout, handleCrash, handleMultiplierUpdate]);
+  }), [roundState.crashPoint, roundState.startedAt, roundState.phase, handleCrash, handleMultiplierUpdate]);
 
   return {
     roundState,
@@ -775,15 +1129,17 @@ export default function useCrashArenaRound({
     markReady,
     startNewRound,
     goToNextRound,
-    playerCashout: handleCashout,
+    submitAction,
+    activeCheckpointIndex,
+    checkpointMultiplierFor,
     syncPlayers,
     syncWaitingPlayers,
     syncRoundFromServer,
-    applyRemoteCashout,
     joinTable,
     leaveTable,
     exitTable,
     buyChips,
+    currentMultiplier,
     busy,
     error,
   };

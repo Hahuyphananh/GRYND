@@ -12,6 +12,7 @@ import {
   CRASH_MAX_WAGER,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
+import { computeBlinds } from "../../../../lib/crash-poker/roundSystem";
 import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
@@ -109,6 +110,10 @@ export async function POST(req: Request) {
     }
 
     // ── Create the brand-new table ───────────────────────────────────────────
+    // Configurable blinds: resolve the Small Blind once at creation (default
+    // ratio round(wager/2)) and persist it so every hand at this table uses
+    // the same blind structure.
+    const { smallBlind } = computeBlinds(roundedWager);
     const [created] = await db
       .insert(crashArenaTables)
       .values({
@@ -118,6 +123,7 @@ export async function POST(req: Request) {
         maxPlayers: 6,
         hostId,
         status: "waiting",
+        smallBlind: smallBlind.toFixed(2),
       })
       .returning();
 

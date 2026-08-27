@@ -104,9 +104,13 @@ export async function releaseCrashArenaSeat(
     return { cleaned: true, deferred: false, returned: 0 };
   }
 
-  // ── Is a round mid-flight at this table? ──────────────────────────────
-  // A running round older than 5 minutes is treated as abandoned
-  // (mirrors the join / start-round recovery rules) → clean up freely.
+  // ── Is a round still open at this table? ──────────────────────────────
+  // Any non-settled round (running or crashed) with an entry for this
+  // player must have that entry locked in BEFORE the seat is released —
+  // including "abandoned" rounds older than 5 minutes. Without this, a
+  // released player's entry would stay "pending", they'd be counted as
+  // active at settlement, and a fold-out could crown them the winner and
+  // credit the pot to their (already refunded) seat — a double payout.
   const activeRound = await db
     .select()
     .from(crashArenaRounds)
@@ -119,43 +123,38 @@ export async function releaseCrashArenaSeat(
     .orderBy(sql`${crashArenaRounds.createdAt} DESC`)
     .limit(1);
 
-  let roundIsLive = false;
   if (activeRound[0]) {
     const st = activeRound[0].status;
     if (st === "running" || st === "crashed") {
-      const ageMs = Date.now() - new Date(activeRound[0].createdAt).getTime();
-      roundIsLive = ageMs < 5 * 60 * 1000;
-    }
-  }
+      const entryData = await db
+        .select()
+        .from(crashArenaEntries)
+        .where(
+          and(
+            eq(crashArenaEntries.roundId, activeRound[0].id),
+            eq(crashArenaEntries.userId, user.id),
+          ),
+        )
+        .limit(1);
 
-  if (roundIsLive) {
-    const entryData = await db
-      .select()
-      .from(crashArenaEntries)
-      .where(
-        and(
-          eq(crashArenaEntries.roundId, activeRound[0].id),
-          eq(crashArenaEntries.userId, user.id),
-        ),
-      )
-      .limit(1);
-
-    if (entryData.length) {
-      if (entryData[0].result === "pending") {
-        // Never cashed out → the crash would bust them anyway. Lock the
-        // loss in now so the refund below can't be gamed, then release.
-        await db
-          .update(crashArenaEntries)
-          .set({ result: "lost" })
-          .where(eq(crashArenaEntries.id, entryData[0].id));
-      } else if (entryData[0].result === "won") {
-        // Cashed out and could still win the pot. Keep the seat in place
-        // (no refund, no "left" yet) and ask the caller to re-check
-        // shortly — once the round settles, the payout lands on this row
-        // and the retry performs the full cleanup.
-        return { cleaned: false, deferred: true, returned: 0 };
+      if (entryData.length) {
+        if (entryData[0].result === "pending") {
+          // Never cashed out → the crash would bust them anyway. Lock the
+          // loss in now so the refund below can't be gamed and the hand
+          // can't later crown a released player the winner.
+          await db
+            .update(crashArenaEntries)
+            .set({ result: "lost" })
+            .where(eq(crashArenaEntries.id, entryData[0].id));
+        } else if (entryData[0].result === "won") {
+          // Cashed out and could still win the pot. Keep the seat in place
+          // (no refund, no "left" yet) and ask the caller to re-check
+          // shortly — once the round settles, the payout lands on this row
+          // and the retry performs the full cleanup.
+          return { cleaned: false, deferred: true, returned: 0 };
+        }
+        // result === "lost" → nothing owed, fall through to full cleanup.
       }
-      // result === "lost" → nothing owed, fall through to full cleanup.
     }
   }
 

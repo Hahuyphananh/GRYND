@@ -71,6 +71,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Round is not active" }, { status: 400 });
     }
 
+    // Crash Poker hands have no cashout — the bot bets through
+    // /api/crash-arena/action with `forBot: true` instead.
+    if (round.handState != null) {
+      return NextResponse.json({
+        success: false,
+        error: "Cashout is not part of Crash Poker hands — the bot bets instead",
+      }, { status: 400 });
+    }
+
     // ── Only AI practice tables can cash out the bot ──────────────────────
     const tableData = await db
       .select()

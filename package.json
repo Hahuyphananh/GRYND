@@ -31,7 +31,8 @@
     "test:connect-four-ai": "node --import tsx --test tests/connect-four-ai.test.mjs",
     "test:precision-ai": "node --import tsx --test tests/precision-ai.test.mjs",
     "test:plinko-pvp-ai": "node --import tsx --test tests/plinko-pvp-ai.test.mjs",
-    "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs"
+    "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs",
+    "test:crash-poker-engine": "node --test tests/crash-poker-engine.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

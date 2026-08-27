@@ -6,9 +6,12 @@ import React, { useEffect, useState } from "react";
  *
  * Props:
  *   pot      — current pot value
+ *   pots     — optional pot-tier breakdown [{ level, amount }] from the
+ *              rules engine (main pot + side pots) — shown as a compact
+ *              "Main $X · Side $Y" line when there are multiple tiers
  *   currency — prefix (default "$")
  */
-export default function PotDisplay({ pot = 0, currency = "$" }) {
+export default function PotDisplay({ pot = 0, pots = [], currency = "$" }) {
   const [displayed, setDisplayed] = useState(pot);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -31,6 +34,16 @@ export default function PotDisplay({ pot = 0, currency = "$" }) {
     }
   }, [pot]);
 
+  // Tier labels: level 0 = carry-over, otherwise main pot (lowest level)
+  // then side pots ascending.
+  const tiers = Array.isArray(pots) ? pots.filter((t) => t && t.amount > 0) : [];
+  const tierLine = tiers.length > 1
+    ? tiers.map((t, i) => ({
+        label: i === 0 ? "Main" : `Side ${i}`,
+        amount: t.amount,
+      }))
+    : [];
+
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-xs uppercase tracking-widest text-[#9dd8ff]/70">Pot</span>
@@ -40,6 +53,15 @@ export default function PotDisplay({ pot = 0, currency = "$" }) {
       >
         {currency}{displayed.toLocaleString()}
       </div>
+      {tierLine.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] text-[#9dd8ff]/70">
+          {tierLine.map((t) => (
+            <span key={t.label} className="rounded-full border border-[#00e5ff]/20 bg-[#00e5ff]/10 px-2 py-0.5 font-bold">
+              {t.label} {currency}{t.amount.toLocaleString()}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,11 +1,19 @@
 "use client";
 import React, { useRef, useImperativeHandle, forwardRef } from "react";
+import { CRASH_GROWTH_RATE } from "../../../lib/games/crash/constants";
 
 // ── Drawing constants ──────────────────────────────────────────────────
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
 export const GRAPH_PADDING = 40;
-export const GROWTH_RATE = 0.33;
+// Single source of truth for the curve growth rate — shared with the
+// server (src/lib/games/crash/constants.ts → crashDueAtMs) so the crash
+// moment computed server-side lands exactly on the curve clients render.
+export const GROWTH_RATE = CRASH_GROWTH_RATE;
+// Y-axis upper bound when the crash point is unknown to the client
+// (Crash Poker hides it until the crash) — high enough that any crash
+// point within the game's range (max 9.2x) stays on the chart.
+export const DEFAULT_MAX_MULTIPLIER = 10;
 export const TRAIL_FADE_ALPHA = 0.12;
 
 // ── Helpers (module-scoped for use in imperative draw) ─────────────────

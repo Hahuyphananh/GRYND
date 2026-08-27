@@ -812,6 +812,7 @@ export const crashArenaTransactionTypeEnum = pgEnum("crash_arena_transaction_typ
   "WIN",
   "LEAVE",
   "RAKE",
+  "RETURN",
 ]);
 
 // ── Table (lobby) ──────────────────────────────────────────────────────────
@@ -835,6 +836,17 @@ export const crashArenaTables = pgTable(
     // real tables; defaults to "medium" for AI tables created before the
     // column existed.
     aiDifficulty: varchar("ai_difficulty", { length: 20 }),
+    // Crash Poker: pot carried over from a hand that ended with no winner
+    // (crash with 2+ players still active). Server-authoritative; feeds the
+    // next hand's pot and is paid out to a fold-out winner or carried again.
+    carryOver: numeric("carry_over", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    // Configurable Small Blind for this table. NULL (the default) means
+    // the standard ratio applies: round(wager / 2) — the value is resolved
+    // once at table creation and can be overridden per table without code
+    // changes.
+    smallBlind: numeric("small_blind", { precision: 10, scale: 2 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -886,6 +898,28 @@ export const crashArenaRounds = pgTable(
     seed: varchar("seed", { length: 255 }),
     seedHash: varchar("seed_hash", { length: 255 }),
     crashPoint: numeric("crash_point", { precision: 6, scale: 2 }),
+    // ── Crash Poker hand state ──────────────────────────────────────────
+    // Blinds posted at the start of the hand. big_blind = table wager;
+    // small_blind = round(wager / 2).
+    smallBlind: numeric("small_blind", { precision: 10, scale: 2 }),
+    bigBlind: numeric("big_blind", { precision: 10, scale: 2 }),
+    // Seat index of the dealer button; SB = dealer + 1, BB = dealer + 2
+    // (wrapping). Rotates every hand: (round_number - 1) % seated_count.
+    dealerPosition: integer("dealer_position"),
+    // Currently open betting checkpoint: 0 = 1.25x, 1 = 1.50x, ...
+    // -1 before the first checkpoint opens. Server-authoritative.
+    checkpointIndex: integer("checkpoint_index").notNull().default(-1),
+    // Total contribution an active player must have committed to stay in
+    // (call = top up to this). Starts at big_blind; raises raise it.
+    requiredBet: numeric("required_bet", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    // Whether the current checkpoint window accepts fold/call/raise actions.
+    bettingOpen: boolean("betting_open").notNull().default(false),
+    // Compact hand snapshot: roles, acted flags, action log. The per-player
+    // money truth lives in crash_arena_entries; this is the transient
+    // betting-window state + audit trail.
+    handState: jsonb("hand_state"),
     status: varchar("status", { length: 20 }).notNull().default("waiting"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -909,8 +943,25 @@ export const crashArenaEntries = pgTable(
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Legacy solo-crash field — unused by Crash Poker hands (kept for
+    // compatibility with cleanup/refund code and older rows).
     cashoutMultiplier: numeric("cashout_multiplier", { precision: 6, scale: 2 }),
     cashoutTimestamp: timestamp("cashout_timestamp"),
+    // ── Crash Poker hand state ──────────────────────────────────────────
+    // Total committed to the pot this hand (blinds/ante + calls/raises).
+    contributed: numeric("contributed", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    // Checkpoint multiplier where the player folded (null until folded).
+    foldedAtMultiplier: numeric("folded_at_multiplier", { precision: 6, scale: 2 }),
+    // Last betting action: ante/sb/bb/call/check/raise/fold.
+    lastAction: varchar("last_action", { length: 20 }),
+    // Still in the hand (false after fold or when the hand settles).
+    isActive: boolean("is_active").notNull().default(true),
+    // Committed their whole remaining stack to the pot — can no longer act
+    // (fold/call/raise) at later checkpoints and is treated as matched.
+    allIn: boolean("all_in").notNull().default(false),
+    // pending | won | lost | folded
     result: varchar("result", { length: 20 }).notNull().default("pending"),
   },
   (table) => ({
