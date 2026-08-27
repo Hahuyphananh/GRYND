@@ -1,0 +1,157 @@
+name: Grynd Daily QA Agent
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  qa-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create AI fix branch
+        shell: bash
+        run: |
+          git config user.name "Grynd QA Agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="ai-fix/${GITHUB_RUN_ID}"
+
+          git checkout -b "$BRANCH"
+
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run repository tests
+        id: tests
+        continue-on-error: true
+        run: npm test
+
+      - name: Run build
+        id: build
+        continue-on-error: true
+        run: npm run build
+
+      - name: Run browser QA
+        id: browser
+        continue-on-error: true
+        env:
+          GRYND_URL: https://www.grynd.mywire.org/
+        run: node qa/smoke-test.mjs
+
+      - name: Check whether AI is needed
+        id: check
+        shell: bash
+        run: |
+          if [ "${{ steps.tests.outcome }}" = "failure" ] || \
+             [ "${{ steps.build.outcome }}" = "failure" ] || \
+             [ "${{ steps.browser.outcome }}" = "failure" ]; then
+            echo "needs_fix=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_fix=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop if everything is healthy
+        if: steps.check.outputs.needs_fix == 'false'
+        run: |
+          echo "Grynd is healthy."
+          exit 0
+
+      - name: Show QA report
+        if: steps.check.outputs.needs_fix == 'true'
+        run: |
+          echo "===== QA REPORT ====="
+
+          if [ -f qa/reports/qa-report.json ]; then
+            cat qa/reports/qa-report.json
+          else
+            echo "QA report does not exist."
+          fi
+
+          echo ""
+          echo "===== GIT STATUS ====="
+          git status --short
+
+      - name: Install AI SDK
+        if: steps.check.outputs.needs_fix == 'true'
+        run: npm install --no-save openai
+
+      - name: Run AI fixer
+        if: steps.check.outputs.needs_fix == 'true'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GRYND_URL: https://www.grynd.mywire.org/
+        run: node .github/qa-agent.mjs
+
+      - name: Check AI changes
+        if: steps.check.outputs.needs_fix == 'true'
+        id: changes
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run tests after AI fix
+        if: steps.changes.outputs.changed == 'true'
+        id: retest
+        continue-on-error: true
+        run: npm test
+
+      - name: Run build after AI fix
+        if: steps.changes.outputs.changed == 'true'
+        id: rebuild
+        continue-on-error: true
+        run: npm run build
+
+      - name: Re-run browser QA
+        if: steps.changes.outputs.changed == 'true'
+        id: rebrowser
+        continue-on-error: true
+        env:
+          GRYND_URL: https://www.grynd.mywire.org/
+        run: node qa/smoke-test.mjs
+
+      - name: Push AI fix branch
+        if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success'
+        run: |
+          git add -A
+          git commit -m "fix: automated Grynd QA repair"
+          git push origin "$BRANCH"
+
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "fix: automated Grynd QA repair" \
+            --body "Automated QA detected an issue, the AI agent proposed a fix, and the repository tests, build, and browser QA passed after the fix.
+
+This PR was created automatically by the Grynd QA agent. Review the changes before merging."

@@ -54,3 +54,4 @@ next-env.d.ts
 # Prevents re-creation. Match anything starting with a digit at the root.
 /[0-9]*
 .env*
+.aider*
