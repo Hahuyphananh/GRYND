@@ -11,14 +11,19 @@ import { CRASH_WAGERS, CRASH_MIN_WAGER, CRASH_MAX_WAGER, CRASH_MIN_BUYIN_MULTIPL
  * Props:
  *   wager        — current wager input value
  *   setWager     — (value) => void — update wager
+ *   isPrivate    — whether the table is private (hidden from the lobby;
+ *                  only the host can add AIs to private tables)
+ *   setIsPrivate — (bool) => void — toggle public/private
  *   isSignedIn   — whether the user is authenticated
  *   creating     — whether a create request is in flight
- *   onCreate     — (wager) => void — create a brand-new table
+ *   onCreate     — (wager, isPrivate) => void — create a brand-new table
  *   userBalance  — player's wallet balance (null = loading)
  */
 export default function WagerSection({
   wager,
   setWager,
+  isPrivate = false,
+  setIsPrivate,
   isSignedIn = false,
   creating = false,
   onCreate,
@@ -51,6 +56,42 @@ export default function WagerSection({
           <span className="px-3 py-1 rounded-full text-xs font-bold border border-cyan-500/40 bg-cyan-500/15 text-cyan-300">
             Custom
           </span>
+        </div>
+
+        {/* Visibility: public tables appear in the lobby grid; private
+            tables are hidden — the creator plays there with invited
+            friends and can add AI seats (poker-style). */}
+        <div>
+          <label className="text-xs text-white/55 uppercase tracking-wider">Visibility</label>
+          <div className="mt-1 grid grid-cols-2 gap-1.5 rounded-xl border border-amber-600/40 bg-[#020617] p-1">
+            <button
+              type="button"
+              onClick={() => setIsPrivate?.(false)}
+              className={`rounded-lg px-3 py-2 text-xs font-bold transition-all duration-200 ${
+                !isPrivate
+                  ? "bg-amber-400 text-black shadow-[0_0_10px_rgba(251,191,36,0.4)]"
+                  : "text-amber-200/70 hover:bg-amber-500/15"
+              }`}
+            >
+              Public
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPrivate?.(true)}
+              className={`rounded-lg px-3 py-2 text-xs font-bold transition-all duration-200 ${
+                isPrivate
+                  ? "bg-amber-400 text-black shadow-[0_0_10px_rgba(251,191,36,0.4)]"
+                  : "text-amber-200/70 hover:bg-amber-500/15"
+              }`}
+            >
+              Private
+            </button>
+          </div>
+          <p className="mt-1.5 text-[10px] text-white/45">
+            {isPrivate
+              ? "Hidden from the lobby — only players with the table link can join. AIs can only be added to private tables."
+              : "Listed in the lobby — anyone can see and join it. No AI seats in public games."}
+          </p>
         </div>
 
         {/* Wager input — the table wager doubles as the Big Blind */}
@@ -122,7 +163,7 @@ export default function WagerSection({
 
         {/* Create Table button */}
         <button
-          onClick={() => onCreate?.(wagerNum)}
+          onClick={() => onCreate?.(wagerNum, isPrivate)}
           disabled={creating || !isValid || !isSignedIn}
           className={`mt-1 w-full py-2.5 rounded-xl font-bold text-sm text-center transition-all duration-300
             bg-amber-500 text-black border-b-4 border-amber-700

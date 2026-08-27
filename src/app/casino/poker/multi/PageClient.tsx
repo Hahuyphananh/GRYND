@@ -71,6 +71,8 @@ type Game = {
   lastAggressorIndex?: number;
   hostClerkId?: string;
   actionLog?: { text: string; at: number }[];
+  // Private games are virtual chips (play money) — no real tokens move.
+  isPrivate?: boolean;
 };
 
 const SUITS = ["♠", "♥", "♦", "♣"];
@@ -619,6 +621,7 @@ export default function PokerPage() {
         inviteCode: data.gameCode,
         waiting: true,
         hostClerkId: data.hostClerkId || clerkId,
+        isPrivate,
       };
 
       setGame(newGame);
@@ -778,6 +781,7 @@ export default function PokerPage() {
         dealerIndex: serverGame.dealerIndex ?? 0,
         waiting: true,
         hostClerkId: serverGame?.playerPositions?.hostClerkId,
+        isPrivate: Boolean(serverGame?.isPrivate),
       });
       setInviteCode(codeToUse);
       await fetchGameState(codeToUse);
@@ -1429,8 +1433,9 @@ export default function PokerPage() {
       return;
     }
 
-    // Reset buy-in amount to a sensible default
-    const defaultBuyIn = Math.min(100, tokenBalance || 100);
+    // Reset buy-in amount to a sensible default (private games are virtual
+    // so they don't depend on the wallet balance)
+    const defaultBuyIn = isPrivateGame ? 100 : Math.min(100, tokenBalance || 100);
     setBuyInAmount(defaultBuyIn);
     setShowBuyInPopup(true);
   }
@@ -1438,7 +1443,10 @@ export default function PokerPage() {
   async function confirmBuyIn() {
     if (selectedSeat === null || !game || !clerkId) return;
     if (buyInAmount < 10) return alert("Buy-in must be at least 10 tokens");
-    if (buyInAmount > tokenBalance) return alert("Insufficient balance for this buy-in");
+    // Public games spend real tokens — the wallet caps the buy-in.
+    if (!isPrivateGame && buyInAmount > tokenBalance) {
+      return alert("Insufficient balance for this buy-in");
+    }
 
     const res = await fetch("/api/poker/sit", {
       method: "POST",
@@ -1503,6 +1511,9 @@ export default function PokerPage() {
     return game?.players.find((p) => p.seatIndex === seatIndex) ?? null;
   }
   const isHost = !!(game && clerkId && game.hostClerkId === clerkId);
+  // Private games are virtual chips — the buy-in is play money the player
+  // chooses freely, so the wallet balance never caps or checks it.
+  const isPrivateGame = !!game?.isPrivate;
 
   const me = game?.players.find((p) => p.id === myId);
   const highestBetInRound = game
@@ -2264,7 +2275,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               {occupant ? (
                 <div
                   onClick={() => {
-                    if (occupant.isAI && game?.waiting) {
+                    // Only the HOST manages AIs (add / remove) — non-hosts
+                    // clicking an AI seat get nothing.
+                    if (occupant.isAI && game?.waiting && isHost) {
                       setSelectedAi(occupant);
                       setAiInfoOpen(true);
                     }
@@ -2466,7 +2479,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             </button>
 
             {/* AI OPTION (host only, private only) */}
-            {isPrivate && isHost && (
+            {isPrivateGame && isHost && (
               <>
                 <div className="border-t border-slate-600 my-3" />
 
@@ -2537,10 +2550,16 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               Seat {selectedSeat}. Définissez votre mise initiale
             </p>
 
-            {/* Balance display */}
+            {/* Balance display — public games spend real tokens; private
+                games are virtual chips (play money), so the wallet is not
+                involved at all. */}
             <div className="mb-3 flex items-center justify-between bg-black/40 px-4 py-2 rounded-xl border border-amber-700/40">
-              <span className="text-white/60 text-sm">Solde disponible</span>
-              <span className="text-amber-300 font-black text-lg">{tokenBalance.toLocaleString()} jetons</span>
+              <span className="text-white/60 text-sm">
+                {isPrivateGame ? "Virtual chips (play money)" : "Solde disponible"}
+              </span>
+              <span className="text-amber-300 font-black text-lg">
+                {isPrivateGame ? "∞" : `${tokenBalance.toLocaleString()} jetons`}
+              </span>
             </div>
 
             {/* Buy-in input */}
@@ -2555,7 +2574,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   onBlur={() => { if (!buyInAmount || buyInAmount < 10) setBuyInAmount(10); }}
                   onKeyDown={(e) => { if (e.key === "Enter") confirmBuyIn(); if (e.key === "Escape") cancelBuyIn(); }}
                   min={0}
-                  max={tokenBalance}
+                  max={isPrivateGame ? undefined : tokenBalance}
                   autoFocus
                   className="w-full pl-8 pr-4 py-3 rounded-xl bg-black/50 border-2 border-amber-600/50 text-amber-300 text-2xl font-black text-center placeholder:text-amber-300/30 focus:outline-none focus:border-amber-400 focus:shadow-[0_0_20px_rgba(251,191,36,0.3)] transition-all"
                   placeholder="Mise"
@@ -2569,7 +2588,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             {/* Quick presets */}
             <div className="grid grid-cols-4 gap-2 mb-4">
               {[10, 25, 50, 100, 250, 500, 1000].map((v) => (
-                v <= tokenBalance ? (
+                isPrivateGame || v <= tokenBalance ? (
                   <button
                     key={v}
                     onClick={() => setBuyInAmount(v)}
@@ -2583,21 +2602,25 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               ))}
             </div>
 
-            {/* ½ Balance / All-in */}
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              <button
-                onClick={() => setBuyInAmount(Math.max(10, Math.floor(tokenBalance / 2)))}
-                className="px-3 py-2 rounded-xl text-xs font-bold border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25 hover:border-cyan-500/60 active:scale-95 transition-all"
-              >
-                ½ Solde
-              </button>
-              <button
-                onClick={() => setBuyInAmount(tokenBalance)}
-                className="px-3 py-2 rounded-xl text-xs font-bold border border-amber-400/40 bg-amber-400/10 text-amber-300 hover:bg-amber-400/25 hover:border-amber-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(251,191,36,0.15)]"
-              >
-                <span className="inline-flex items-center gap-1.5"><IconFlame size={14} /> Tout miser</span>
-              </button>
-            </div>
+            {/* ½ Balance / All-in — balance-based shortcuts only make sense
+                when real tokens are involved (public games); private games
+                are virtual, so the player just types an amount. */}
+            {!isPrivateGame && (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <button
+                  onClick={() => setBuyInAmount(Math.max(10, Math.floor(tokenBalance / 2)))}
+                  className="px-3 py-2 rounded-xl text-xs font-bold border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/25 hover:border-cyan-500/60 active:scale-95 transition-all"
+                >
+                  ½ Solde
+                </button>
+                <button
+                  onClick={() => setBuyInAmount(tokenBalance)}
+                  className="px-3 py-2 rounded-xl text-xs font-bold border border-amber-400/40 bg-amber-400/10 text-amber-300 hover:bg-amber-400/25 hover:border-amber-400/60 active:scale-95 transition-all shadow-[0_0_10px_rgba(251,191,36,0.15)]"
+                >
+                  <span className="inline-flex items-center gap-1.5"><IconFlame size={14} /> Tout miser</span>
+                </button>
+              </div>
+            )}
 
             {/* Confirm / Cancel */}
             <div className="flex gap-3">
@@ -2609,9 +2632,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               </button>
               <button
                 onClick={confirmBuyIn}
-                disabled={buyInAmount < 10 || buyInAmount > tokenBalance}
+                disabled={buyInAmount < 10 || (!isPrivateGame && buyInAmount > tokenBalance)}
                 className={`flex-1 px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                  buyInAmount >= 10 && buyInAmount <= tokenBalance
+                  buyInAmount >= 10 && (isPrivateGame || buyInAmount <= tokenBalance)
                     ? "bg-amber-500 border-b-4 border-amber-700 text-black hover:brightness-110 shadow-[0_0_20px_rgba(251,191,36,0.4)]"
                     : "bg-gray-700 text-gray-400 cursor-not-allowed"
                 }`}
@@ -2656,22 +2679,34 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               </button>
 
               <button
-                onClick={() => {
-                  if (!game) return;
+                onClick={async () => {
+                  if (!game || !selectedAi) return;
 
-                  setGame((g) =>
-                    g
-                      ? {
-                          ...g,
-                          players: g.players.filter(
-                            (p) => p.id !== selectedAi.id,
-                          ),
-                        }
-                      : g,
-                  );
-
-                  setAiInfoOpen(false);
-                  setSelectedAi(null);
+                  // Persist the removal server-side (host + private only —
+                  // the route re-validates), then reconcile from the DB so
+                  // the seat is actually freed for everyone.
+                  try {
+                    const res = await fetch("/api/poker/remove-ai", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        gameCode: game.inviteCode,
+                        aiId: selectedAi.id,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      alert(data?.error || "Failed to remove AI");
+                    } else {
+                      await fetchGameState(game.inviteCode!);
+                    }
+                  } catch (err) {
+                    console.error("Remove AI error", err);
+                    alert("Failed to remove AI");
+                  } finally {
+                    setAiInfoOpen(false);
+                    setSelectedAi(null);
+                  }
                 }}
                 className="flex-1 bg-red-600 hover:bg-red-500 px-4 py-2 rounded font-bold"
               >
@@ -3011,7 +3046,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 })()}
 
       {/* Multiplayer Waiting Panel — bottom-left, public-only */}
-      {!isPrivate && (
+      {!isPrivateGame && (
         <div className="fixed bottom-56 left-3 right-3 z-50 pointer-events-auto lg:bottom-6 lg:left-6 lg:right-auto">
           <div className="w-full lg:w-64 bg-black/60 backdrop-blur-md border border-amber-700/40 rounded-lg shadow-[0_0_20px_rgba(251,191,36,0.12)] p-3">
             <div className="flex items-center justify-between mb-2">

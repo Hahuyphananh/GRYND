@@ -143,7 +143,7 @@ export default function BettingControls({
 
       {!bettingOpen && waitingForCheckpoint && (
         <p className="text-[11px] text-[#9dd8ff]/70 animate-pulse">
-          The curve hasn&apos;t reached {checkpointLabel} yet — betting unlocks there. No actions can be submitted between checkpoints.
+          The rocket hasn&apos;t reached {checkpointLabel} yet — the action buttons unlock there. No decisions can be made between checkpoints.
         </p>
       )}
       {!bettingOpen && !waitingForCheckpoint && (
@@ -172,8 +172,10 @@ export default function BettingControls({
         </p>
       )}
 
-      {/* Decision buttons */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Decision buttons — hidden until the rocket actually hits the
+          0.25x checkpoint (bettingOpen) AND the player still owes a
+          decision (a raise by anyone re-opens action). */}
+      {bettingOpen && !youActed && <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => onAction?.("fold")}
           disabled={disabled || youActed}
@@ -206,10 +208,10 @@ export default function BettingControls({
         >
           <IconArrowUp size={15} className="mr-1.5 inline" /> Raise
         </button>
-      </div>
+      </div>}
 
       {/* Raise sub-panel */}
-      {showRaise && (
+      {bettingOpen && !youActed && showRaise && (
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {canOnlyShove ? (
             // Stack can't cover the minimum raise — the only raise is an

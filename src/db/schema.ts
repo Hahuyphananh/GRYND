@@ -847,6 +847,19 @@ export const crashArenaTables = pgTable(
     // once at table creation and can be overridden per table without code
     // changes.
     smallBlind: numeric("small_blind", { precision: 10, scale: 2 }),
+    // Host-created private table: hidden from the public lobby grid; only
+    // the host may add AI seats (AIs are private-only, like the poker
+    // tables). Joining still works via the table URL.
+    isPrivate: boolean("is_private").notNull().default(false),
+    // Server-authoritative wall-clock deadline for the next round start,
+    // written when a hand settles. Every client counts down to the SAME
+    // moment and start-round rejects early starts, so a round can never
+    // fire before a client's countdown ends.
+    nextRoundAt: timestamp("next_round_at"),
+    // Invite code for PRIVATE tables (NULL on public / AI-practice tables):
+    // joining requires it, so the table URL alone no longer grants access.
+    // Returned only to the host for sharing.
+    joinCode: varchar("join_code", { length: 12 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -876,6 +889,14 @@ export const crashArenaPlayers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     balance: numeric("balance", { precision: 14, scale: 2 }).notNull().default("0.00"),
     status: varchar("status", { length: 20 }).notNull().default("seated"),
+    // Per-bot difficulty (easy/medium/hard) chosen in the Add-AI dialog.
+    // NULL for human seats; the practice-table bot uses the table-level
+    // ai_difficulty instead.
+    aiDifficulty: varchar("ai_difficulty", { length: 20 }),
+    // Optional per-seat display-name override — the host's custom name for
+    // an AI bot (the shared users row is never touched). NULL = the bot's
+    // default name from the users table.
+    nickname: varchar("nickname", { length: 40 }),
     joinedAt: timestamp("joined_at").notNull().defaultNow(),
   },
   (table) => ({

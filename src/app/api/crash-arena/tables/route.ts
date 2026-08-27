@@ -17,7 +17,10 @@ import {
   isMissingCrashArenaColumn,
   CRASH_ARENA_SCHEMA_HINT,
 } from "../../../../lib/crash-arena/errors";
-import { resolveCrashArenaAiBotId } from "../../../../lib/crash-arena/aiBot";
+import {
+  resolveCrashArenaAiBotId,
+  resolveCrashArenaAiBotIds,
+} from "../../../../lib/crash-arena/aiBot";
 
 /** Default tables to seed if none exist. Min buy-in = 5× wager. */
 const DEFAULT_TABLES = CRASH_WAGERS.map((wager) => ({
@@ -90,10 +93,18 @@ export async function GET(req: Request) {
     await ensureDefaultTables();
 
     // Closed tables are not joinable and are hidden from the lobby.
+    // Private + AI practice tables are hidden from the PUBLIC grid (lobby
+    // mode) — they're reachable only via their table URL.
     const tables = await db
       .select()
       .from(crashArenaTables)
-      .where(ne(crashArenaTables.status, "closed"))
+      .where(
+        and(
+          ne(crashArenaTables.status, "closed"),
+          isLobbyMode ? eq(crashArenaTables.isPrivate, false) : undefined,
+          isLobbyMode ? eq(crashArenaTables.isAi, false) : undefined,
+        ),
+      )
       .orderBy(crashArenaTables.wagerAmount);
 
     const tableIds = tables.map((t) => t.id);
@@ -112,10 +123,11 @@ export async function GET(req: Request) {
         );
     }
 
-    // ── Internal id of the reserved AI bot (null until a practice table
-    //    has ever been created) — used to flag bot seats so the UI never
-    //    offers to report them.
+    // ── Internal ids of the reserved AI bots (null until any bot row
+    //    exists) — used to flag bot seats so the UI never offers to report
+    //    them and so the host can drive their decisions.
     const aiBotId = await resolveCrashArenaAiBotId();
+    const aiBotIds = new Set((await resolveCrashArenaAiBotIds()).keys());
 
     // ── Bulk-fetch display names for players AND hosts ─────────────────────
     const hostIds = tables
@@ -201,6 +213,12 @@ export async function GET(req: Request) {
               // their crash curve to it so every player renders the
               // same multiplier at the same moment.
               startedAt: new Date(latestRound[0].createdAt).getTime(),
+              // Server-scheduled next-round deadline (epoch ms) — every
+              // client counts down to the same moment.
+              nextRoundAt:
+                table.nextRoundAt != null
+                  ? new Date(table.nextRoundAt).getTime()
+                  : null,
               // ── Crash Poker hand window ────────────────────────────────
               smallBlind:
                 latestRound[0].smallBlind != null
@@ -223,6 +241,12 @@ export async function GET(req: Request) {
               windowDeadlineAt:
                 (latestRound[0].handState as { windowDeadlineAt?: number } | null)
                   ?.windowDeadlineAt ?? null,
+              // Epoch-ms the current flight segment started — drives the
+              // pause-aware curve so every client renders the same
+              // multiplier (paused at open checkpoints) at the same moment.
+              flightResumedAt:
+                (latestRound[0].handState as { flightResumedAt?: number } | null)
+                  ?.flightResumedAt ?? null,
               carryOver: Number(table.carryOver ?? 0),
               entries: roundEntries.map((e) => ({
                 userId: e.userId,
@@ -265,11 +289,20 @@ export async function GET(req: Request) {
           // Configurable per-table Small Blind (null = standard wager/2).
           smallBlind: table.smallBlind != null ? Number(table.smallBlind) : null,
           isAi: table.isAi,
+          // Private host-created tables: hidden from the public grid; only
+          // the host may add AI seats to them.
+          isPrivate: table.isPrivate,
           aiDifficulty: table.aiDifficulty ?? "medium",
           hostId: table.hostId,
           hostName:
             table.hostId != null
               ? userNameById.get(table.hostId) || null
+              : null,
+          // Server-authoritative next-round deadline (epoch ms) — clients
+          // count down to it so every client starts the round together.
+          nextRoundAt:
+            table.nextRoundAt != null
+              ? new Date(table.nextRoundAt).getTime()
               : null,
           players: players.map((p) => ({
             userId: p.userId,
@@ -280,11 +313,15 @@ export async function GET(req: Request) {
             ...(isLobbyMode
               ? {}
               : { clerkId: userClerkIdById.get(p.userId) ?? null }),
-            name: userNameById.get(p.userId) || `Player ${p.userId}`,
+            // The seat's custom name (host-renamed AIs) wins over the
+            // users-table name — renaming never touches the shared user.
+            name: p.nickname ?? (userNameById.get(p.userId) || `Player ${p.userId}`),
             balance: Number(p.balance),
             status: p.status,
             isYou: internalUserId != null && p.userId === internalUserId,
-            isBot: aiBotId != null && p.userId === aiBotId,
+            isBot: aiBotIds.size > 0 ? aiBotIds.has(p.userId) : aiBotId != null && p.userId === aiBotId,
+            // Per-bot difficulty picked in the Add-AI dialog (null for humans).
+            aiDifficulty: p.aiDifficulty ?? null,
           })),
           ...(isLobbyMode
             ? {}
@@ -292,11 +329,12 @@ export async function GET(req: Request) {
                 waitingPlayers: waiting.map((p) => ({
                   userId: p.userId,
                   clerkId: userClerkIdById.get(p.userId) ?? null,
-                  name: userNameById.get(p.userId) || `Player ${p.userId}`,
+                  name: p.nickname ?? (userNameById.get(p.userId) || `Player ${p.userId}`),
                   balance: Number(p.balance),
                   status: p.status,
                   isYou: internalUserId != null && p.userId === internalUserId,
-                  isBot: aiBotId != null && p.userId === aiBotId,
+                  isBot: aiBotIds.size > 0 ? aiBotIds.has(p.userId) : aiBotId != null && p.userId === aiBotId,
+                  aiDifficulty: p.aiDifficulty ?? null,
                 })),
               }),
           playerCount: players.length,
@@ -309,6 +347,19 @@ export async function GET(req: Request) {
                 latestRound: latestRoundInfo,
                 amISeated: Boolean(mySeat),
                 amIWaiting: Boolean(myWait),
+                amIHost:
+                  internalUserId != null &&
+                  table.hostId != null &&
+                  internalUserId === table.hostId,
+                // The invite code is only ever returned to the HOST (for
+                // sharing) — other clients must already have the code to
+                // have reached the table at all, so it never leaks here.
+                joinCode:
+                  internalUserId != null &&
+                  table.hostId != null &&
+                  internalUserId === table.hostId
+                    ? table.joinCode ?? null
+                    : null,
                 myBalance: mySeat ? Number(mySeat.balance) : null,
               }),
         };

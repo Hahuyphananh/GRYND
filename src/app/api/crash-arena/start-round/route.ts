@@ -74,6 +74,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Table is closed" }, { status: 400 });
     }
 
+    // ── Server-authoritative round-start schedule: after a hand settles the
+    //    table gets a `next_round_at` deadline. Every client counts down to
+    //    the SAME wall-clock moment, and this gate rejects early starts — a
+    //    desynced client can never fire a hand before the countdown ends.
+    //    The very first hand (no next_round_at yet, ready-vote flow) and
+    //    stale scheduled times (clock already passed) are unaffected.
+    if (table.nextRoundAt) {
+      const nextRoundAtMs = new Date(table.nextRoundAt).getTime();
+      if (Date.now() < nextRoundAtMs) {
+        return NextResponse.json({
+          success: false,
+          error: "Next round hasn't started yet",
+        }, { status: 400 });
+      }
+    }
+
     // ── AI practice tables: only the host (the human who created the
     //    practice session) may start hands — prevents a stranger from
     //    burning the host's virtual chips.
@@ -155,6 +171,9 @@ export async function POST(req: Request) {
     const stackByUser = new Map(
       seatedPlayers.map((p) => [p.userId, Number(p.balance)]),
     );
+    // The hand's flight starts NOW (server epoch ms) — clients align their
+    // curve to the round's createdAt; the few-ms skew is imperceptible.
+    const startedAt = Date.now();
     const hand = createHand({
       players: seatedPlayers,
       bigBlind,
@@ -162,6 +181,7 @@ export async function POST(req: Request) {
       smallBlind: tableSmallBlind,
       carryOver,
       stackByUser,
+      startedAt,
     });
 
     // ── Per-player deductions (only players who actually entered the hand
@@ -194,7 +214,6 @@ export async function POST(req: Request) {
     //    server settles the hand at the deterministic crash moment.
     const { seed, hash: seedHash } = generateRoundSeed();
     const crashPoint = generateCrashPoint(seed);
-    const startedAt = Date.now();
 
     // ── Apply every money move atomically: balance deductions, the round
     //    row (hand state), the entry rows and the table status flip either
@@ -266,6 +285,7 @@ export async function POST(req: Request) {
         requiredBet: hand.requiredBet,
         bettingOpen: hand.bettingOpen,
         carryOver,
+        flightResumedAt: hand.flightResumedAt,
         windowDeadlineAt: hand.windowDeadlineAt,
         contributions: playerDeductions.map((pd) => ({
           userId: pd.userId,
@@ -292,6 +312,7 @@ export async function POST(req: Request) {
           requiredBet: hand.requiredBet,
           bettingOpen: hand.bettingOpen,
           carryOver,
+          flightResumedAt: hand.flightResumedAt,
           windowDeadlineAt: hand.windowDeadlineAt,
           contributions: playerDeductions.map((pd) => ({
             userId: pd.userId,

@@ -37,10 +37,27 @@ export const MIN_RAISE_UNITS = 1;
  * opens (or re-opens after a raise). When the deadline passes, the server
  * auto-folds every active non-all-in player who still owes a call — the
  * stall guard that keeps one player from freezing betting for the table.
- * Deliberately generous (the crash curve moves fast); it bounds worst-case
- * stalls, not normal play.
+ * When every player acts before the deadline the game continues immediately
+ * (the checkpoint resolves on the last action — no waiting for the timer).
  */
-export const CHECKPOINT_ACTION_DEADLINE_MS = 10_000;
+export const CHECKPOINT_ACTION_DEADLINE_MS = 30_000;
+
+/**
+ * How long the "next round" countdown lasts once a hand settles. The
+ * settle writes an absolute `next_round_at` deadline on the table row so
+ * every client counts down to the SAME wall-clock moment and the round
+ * starts exactly on schedule (no per-client drift that could start a hand
+ * before a slow client's countdown ends).
+ */
+export const NEXT_ROUND_COUNTDOWN_MS = 12_000;
+
+/**
+ * Exponential growth rate of the crash curve: multiplier = e^(rate·t).
+ * MUST match `CRASH_GROWTH_RATE` in src/lib/games/crash/constants.ts (the
+ * server routes import that one; the pure engine keeps a copy so it stays
+ * importable by the plain-JS test runner).
+ */
+export const CRASH_GROWTH_RATE = 0.33;
 
 /** Platform fee applied to a won pot (same rake as Crash Arena). */
 export const PLATFORM_FEE = 0.05;
@@ -86,4 +103,17 @@ export function checkpointIndexAtOrBelow(multiplier) {
   const m = Number(multiplier);
   if (!Number.isFinite(m) || m < FIRST_BETTING_CHECKPOINT) return -1;
   return Math.floor((m - FIRST_BETTING_CHECKPOINT) / CHECKPOINT_STEP + 1e-9);
+}
+
+/**
+ * The multiplier the crash curve shows at the START of a flight segment.
+ * Index -1 (no checkpoint opened yet) means the flight starts at 1.00x.
+ *
+ * @param {number} checkpointIndex
+ * @returns {number}
+ */
+export function segmentStartMultiplier(checkpointIndex) {
+  const idx = Math.floor(Number(checkpointIndex) || 0);
+  if (idx < 0) return 1.0;
+  return checkpointMultiplier(idx);
 }

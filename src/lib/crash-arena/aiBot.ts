@@ -33,29 +33,80 @@ import {
 } from "../../db/schema";
 import { eq, and, ne, inArray, sql } from "drizzle-orm";
 
-/** Reserved Clerk id of the Crash Arena practice bot. Never a real account. */
+/** Reserved Clerk id of the FIRST Crash Arena practice bot. Never a real account. */
 export const CRASH_ARENA_AI_CLERK_ID = "crash_arena_ai_bot";
 
-/** Display name shown for the bot at AI tables. */
+/** Display name shown for the first bot. */
 export const CRASH_ARENA_AI_NAME = "GRYND AI";
 
 /** Unique email for the reserved bot row (never used for logins). */
 export const CRASH_ARENA_AI_EMAIL = "crash-arena-ai-bot@grynd.local";
 
 /**
- * Get (creating on first use) the reserved bot user. Idempotent — safe to
- * call from any AI-table API route. Returns the bot's internal users.id.
+ * Clerk id for the n-th bot (0-based). Every AI seat at a private table is
+ * a DISTINCT reserved user so multiple bots can sit one table (a single
+ * users.id can only hold one entry per hand).
  */
-export async function getOrCreateCrashArenaAiBot(): Promise<number> {
-  const existing = await resolveCrashArenaAiBotId();
-  if (existing != null) return existing;
+export function crashArenaAiClerkId(index: number): string {
+  const n = Math.max(0, Math.floor(index));
+  return n === 0 ? CRASH_ARENA_AI_CLERK_ID : `${CRASH_ARENA_AI_CLERK_ID}_${n + 1}`;
+}
+
+/** True when a clerkId belongs to a reserved Crash Arena bot. */
+export function isCrashArenaAiBotClerkId(clerkId: string | null | undefined): boolean {
+  return typeof clerkId === "string" && clerkId.startsWith(`${CRASH_ARENA_AI_CLERK_ID}`);
+}
+
+/**
+ * Resolve ALL reserved bot users (read-only; never creates).
+ * @returns Map<users.id, users.clerkId>
+ */
+export async function resolveCrashArenaAiBotIds(): Promise<Map<number, string>> {
+  const rows = await db
+    .select({ id: users.id, clerkId: users.clerkId })
+    .from(users)
+    .where(sql`${users.clerkId} LIKE ${`${CRASH_ARENA_AI_CLERK_ID}%`}`);
+  return new Map(rows.map((r) => [r.id, r.clerkId]));
+}
+
+/** True when the given internal user id is one of the reserved bots. */
+export async function isCrashArenaAiBotId(userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.id, userId),
+        sql`${users.clerkId} LIKE ${`${CRASH_ARENA_AI_CLERK_ID}%`}`,
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+/**
+ * Get (creating on first use) the reserved bot user #index. Idempotent —
+ * safe to call from any AI-table / add-AI API route. Returns the bot's
+ * internal users.id.
+ */
+export async function getOrCreateCrashArenaAiBot(index = 0): Promise<number> {
+  const clerkId = crashArenaAiClerkId(index);
+  const existing = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
+  if (existing[0]) return existing[0].id;
 
   const [created] = await db
     .insert(users)
     .values({
-      clerkId: CRASH_ARENA_AI_CLERK_ID,
-      name: CRASH_ARENA_AI_NAME,
-      email: CRASH_ARENA_AI_EMAIL,
+      clerkId,
+      name: index === 0 ? CRASH_ARENA_AI_NAME : `${CRASH_ARENA_AI_NAME} ${index + 1}`,
+      email:
+        index === 0
+          ? CRASH_ARENA_AI_EMAIL
+          : `crash-arena-ai-bot-${index + 1}@grynd.local`,
       // Never used — the bot has no login. Random so the column stays
       // populated like every other row (it is NOT NULL).
       password: crypto.randomBytes(24).toString("hex"),
@@ -69,18 +120,18 @@ export async function getOrCreateCrashArenaAiBot(): Promise<number> {
   const [row] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.clerkId, CRASH_ARENA_AI_CLERK_ID))
+    .where(eq(users.clerkId, clerkId))
     .limit(1);
   if (!row) {
-    throw new Error("[crash-arena:ai] failed to resolve AI bot user");
+    throw new Error(`[crash-arena:ai] failed to resolve AI bot user ${clerkId}`);
   }
   return row.id;
 }
 
 /**
- * Resolve the bot's internal users.id WITHOUT creating it. Returns null
- * when the bot row doesn't exist yet (read-only callers like the tables
- * listing use this so a GET never writes).
+ * Resolve the FIRST bot's internal users.id WITHOUT creating it. Returns
+ * null when the bot row doesn't exist yet (read-only callers like the
+ * tables listing use this so a GET never writes).
  */
 export async function resolveCrashArenaAiBotId(): Promise<number | null> {
   const [row] = await db

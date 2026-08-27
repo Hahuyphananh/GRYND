@@ -31,8 +31,10 @@ import {
   MIN_RAISE_UNITS,
   BETTING_ACTIONS,
   CHECKPOINT_ACTION_DEADLINE_MS,
+  CRASH_GROWTH_RATE,
   checkpointMultiplier,
   checkpointIndexAtOrBelow,
+  segmentStartMultiplier,
   roundMoney,
 } from "./constants.js";
 
@@ -145,6 +147,8 @@ export function computeOpeningContributions(
  * @param {number} [opts.carryOver] pot carried over from the previous hand
  * @param {Map<number, number>} [opts.stackByUser] server-authoritative
  *   table balances, used to cap opening contributions (all-in on the blinds)
+ * @param {number} [opts.startedAt] server epoch-ms the hand started — the
+ *   flight segment anchor for the pause-aware curve (defaults to now)
  * @returns {object} the initial hand state
  */
 export function createHand({
@@ -154,6 +158,7 @@ export function createHand({
   smallBlind = null,
   carryOver = 0,
   stackByUser = null,
+  startedAt = null,
 }) {
   const { smallBlind: sb } = computeBlinds(bigBlind, smallBlind);
   const contributions = computeOpeningContributions(
@@ -194,21 +199,114 @@ export function createHand({
     handPlayers.reduce((sum, p) => sum + p.contributed, 0) + Number(carryOver),
   );
 
+  // The hand starts with NO checkpoint open: the curve flies from 1.00x
+  // toward the first betting checkpoint (1.25x) and the server (crash
+  // sweep) opens checkpoint 0 when the curve reaches it — the flight then
+  // PAUSES there while players decide. `flightResumedAt` is the epoch-ms
+  // the current flight segment started (hand start here); it advances to
+  // the resolution moment whenever a checkpoint closes so the curve can
+  // resume from the checkpoint multiplier.
+  const startedAtMs =
+    startedAt != null && Number.isFinite(Number(startedAt)) ? Number(startedAt) : Date.now();
+
   return {
     bigBlind: Number(bigBlind),
     smallBlind: sb,
     dealerPosition,
     carryOver: Number(carryOver),
-    checkpointIndex: 0,
-    bettingOpen: true,
+    checkpointIndex: -1,
+    bettingOpen: false,
     requiredBet,
     pot,
     players: handPlayers,
     actions: [],
-    // Stall guard: checkpoint 0 opens at hand start — unmatched players
-    // must act before this deadline or the server auto-folds them.
-    windowDeadlineAt: Date.now() + CHECKPOINT_ACTION_DEADLINE_MS,
+    flightResumedAt: startedAtMs,
+    // No betting window is open at hand start — the stall-guard deadline
+    // is set when a checkpoint opens (curve arrival).
+    windowDeadlineAt: null,
   };
+}
+
+/**
+ * The crash curve's PAUSE-AWARE multiplier at a wall-clock moment.
+ *
+ * The curve climbs exponentially during flight segments only:
+ *   multiplier = fromMultiplier · e^(GROWTH_RATE · (now − flightResumedAt))
+ * While a checkpoint window is OPEN the flight is paused at the checkpoint
+ * multiplier (players decide before the curve moves on). While CLOSED it
+ * climbs from the checkpoint (or 1.00x at hand start) toward the next one
+ * (or the crash point) until it reaches the cap.
+ *
+ * @param {object} hand
+ * @param {number} [now] epoch ms
+ * @param {number} [growthRate]
+ * @returns {number} the multiplier the shared curve shows at `now`
+ */
+export function curveMultiplierAt(hand, now = Date.now(), growthRate = CRASH_GROWTH_RATE) {
+  const idx = Number(hand?.checkpointIndex ?? -1);
+  const fromMult = segmentStartMultiplier(idx);
+  const resumedAt = Number(hand?.flightResumedAt ?? now);
+  const elapsed = Math.max(0, (now - resumedAt) / 1000);
+  const climbing = fromMult * Math.exp(growthRate * elapsed);
+  if (hand?.bettingOpen && idx >= 0) {
+    // Paused at the open checkpoint (clamped once the curve reached it).
+    return Math.min(checkpointMultiplier(idx), climbing);
+  }
+  return climbing;
+}
+
+/**
+ * Whether the curve has reached the NEXT checkpoint's multiplier — i.e.
+ * the flight has finished this segment and the next betting window should
+ * open (the server sweep opens it, pausing the flight there).
+ *
+ * @param {object} hand
+ * @param {number} [now] epoch ms
+ * @param {number} [growthRate]
+ * @returns {boolean}
+ */
+export function hasCurveReachedNextCheckpoint(hand, now = Date.now(), growthRate = CRASH_GROWTH_RATE) {
+  const idx = Number(hand?.checkpointIndex ?? -1);
+  const nextMult = checkpointMultiplier(idx + 1);
+  return curveMultiplierAt(hand, now, growthRate) >= nextMult - 1e-9;
+}
+
+/**
+ * Whether the hand's crash is due at `now` under the pause-aware timeline.
+ *
+ * The old fixed wall-clock cut-off (crashDueAtMs) no longer applies because
+ * pauses at betting checkpoints stretch the timeline: the crash happens
+ * only once the (unpaused) curve actually reaches the crash point. While a
+ * window is open the flight is paused BELOW the crash point (the sweep
+ * would have crashed it before ever opening a checkpoint beyond it), so a
+ * paused hand is never "due".
+ *
+ * @param {object} hand
+ * @param {number} now epoch ms
+ * @param {number} crashPoint the server-authoritative crash multiplier
+ * @param {number} [growthRate]
+ * @returns {boolean}
+ */
+export function isCrashDueAt(hand, now, crashPoint, growthRate = CRASH_GROWTH_RATE) {
+  const cp = Number(crashPoint);
+  if (!Number.isFinite(cp) || cp <= 1) return false;
+  if (hand?.bettingOpen) return false;
+  return curveMultiplierAt(hand, now, growthRate) >= cp;
+}
+
+/**
+ * Whether a hand is paused at a betting checkpoint (window open AND the
+ * curve has actually arrived there — the pause is only meaningful once the
+ * flight reached the checkpoint).
+ *
+ * @param {object} hand
+ * @param {number} [now] epoch ms
+ * @returns {boolean}
+ */
+export function isHandPaused(hand, now = Date.now()) {
+  const idx = Number(hand?.checkpointIndex ?? -1);
+  if (!hand?.bettingOpen || idx < 0) return false;
+  return curveMultiplierAt(hand, now) >= checkpointMultiplier(idx) - 1e-9;
 }
 
 /**
@@ -337,22 +435,41 @@ export function expireStaleActions(hand, now = Date.now(), exceptUserId = null) 
  * @param {object} hand
  * @returns {object} updated hand
  */
-export function openNextCheckpoint(hand) {
+export function openNextCheckpoint(hand, now = Date.now()) {
   if (hand.bettingOpen) return hand;
-  if (!isCheckpointResolved(hand)) return hand;
+  // A checkpoint is only ever opened when the previous one fully resolved
+  // (or none has opened yet — hand start, where the curve flies to 1.25x).
+  if (hand.checkpointIndex >= 0 && !isCheckpointResolved(hand)) return hand;
   const nextIndex = hand.checkpointIndex + 1;
   return {
     ...hand,
     checkpointIndex: nextIndex,
     bettingOpen: true,
-    // Fresh stall-guard deadline for the new window.
-    windowDeadlineAt: Date.now() + CHECKPOINT_ACTION_DEADLINE_MS,
+    // Fresh stall-guard deadline for the new window: players have
+    // CHECKPOINT_ACTION_DEADLINE_MS to decide; the flight pauses here until
+    // every active player acts (or the deadline auto-resolves them).
+    windowDeadlineAt: now + CHECKPOINT_ACTION_DEADLINE_MS,
     players: hand.players.map((p) =>
       p.isActive && !p.folded && !p.allIn
         ? { ...p, actedThisCheckpoint: false }
         : p,
     ),
   };
+}
+
+/**
+ * Mark the flight as resumed: record `now` as the moment the curve starts
+ * climbing again from the last checkpoint. Called whenever a betting window
+ * closes (resolution), so the pause-aware curve continues from the
+ * checkpoint multiplier instead of from the hand start.
+ *
+ * @param {object} hand
+ * @param {number} [now] epoch ms
+ * @returns {object} updated hand
+ */
+export function resumeFlight(hand, now = Date.now()) {
+  if (!hand || hand.bettingOpen) return hand;
+  return { ...hand, flightResumedAt: now };
 }
 
 /**
@@ -544,8 +661,9 @@ export function handFromEntries({ round, entries, carryOver = 0 }) {
       role: savedP.role ?? "ante",
       contributed: Number(e.contributed || 0),
       isActive,
-      folded,    foldedAtMultiplier:
-      e.foldedAtMultiplier != null ? Number(e.foldedAtMultiplier) : null,
+      folded,
+      foldedAtMultiplier:
+        e.foldedAtMultiplier != null ? Number(e.foldedAtMultiplier) : null,
       allIn,
       lastAction: e.lastAction ?? null,
       actedThisCheckpoint: allIn || Boolean(savedP.actedThisCheckpoint),
@@ -564,6 +682,11 @@ export function handFromEntries({ round, entries, carryOver = 0 }) {
     ),
     players,
     actions: Array.isArray(saved.actions) ? saved.actions : [],
+    // Epoch-ms the current flight segment started (hand start, or the moment
+    // the last checkpoint closed). Null on legacy hands → falls back to the
+    // round creation time by callers that need the curve.
+    flightResumedAt:
+      saved.flightResumedAt != null ? Number(saved.flightResumedAt) : null,
     windowDeadlineAt: saved.windowDeadlineAt ?? null,
   };
 }

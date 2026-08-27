@@ -35,6 +35,16 @@ import useCrashAnimation from "./useCrashAnimation";
  *   startedAt       — server epoch-ms when the hand started; aligns the
  *                     curve so all clients render the same multiplier at
  *                     the same wall-clock moment
+ *   curveFrom       — multiplier the current flight segment starts from
+ *                     (1.00 at hand start, or the checkpoint multiplier
+ *                     after a betting window closes) — pause-aware curve
+ *   curveResumedAt  — server epoch-ms the current flight segment started
+ *                     (hand start, or the moment the last checkpoint
+ *                     closed); the curve pauses at betting checkpoints
+ *                     and resumes from them (pause-aware curve)
+ *   curveCap        — multiplier to HOLD at while a betting checkpoint
+ *                     window is open (null = free climb) — the flight
+ *                     stops at every 0.25x increment for decisions
  *   onCashout       — (multiplier: number) => void — called when user cashes out
  *   onCrash         — (multiplier: number) => void — called when game crashes
  *   onMultiplierUpdate — (multiplier: number, isCrashed: boolean) => void — live feed
@@ -49,6 +59,9 @@ const CrashEngine = forwardRef(function CrashEngine({
   crashPoint = null,
   running = false,
   startedAt = null,
+  curveFrom = 1,
+  curveResumedAt = null,
+  curveCap = null,
   onCashout,
   onCrash,
   onMultiplierUpdate,
@@ -74,6 +87,9 @@ const CrashEngine = forwardRef(function CrashEngine({
     crashPoint,
     running,
     startedAt,
+    curveFrom,
+    curveResumedAt,
+    curveCap,
     onFrame: useCallback(({ multiplier, currentMultiplier, points, crashed }) => {
       setDisplayMultiplier(multiplier);
       setIsCrashed(crashed);

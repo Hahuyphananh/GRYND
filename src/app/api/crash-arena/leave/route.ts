@@ -74,12 +74,14 @@ export async function POST(req: Request) {
     // so they must NEVER be refunded. Close the whole practice table — a
     // table with only the bot left has no reason to exist.
     const tableData = await db
-      .select({ id: crashArenaTables.id, isAi: crashArenaTables.isAi })
+      .select({ id: crashArenaTables.id, isAi: crashArenaTables.isAi, isPrivate: crashArenaTables.isPrivate })
       .from(crashArenaTables)
       .where(eq(crashArenaTables.id, tableId))
       .limit(1);
 
-    if (tableData[0]?.isAi) {
+    const table = tableData[0];
+
+    if (table?.isAi) {
       await closeAiCrashArenaTable(tableId);
       broadcastTableUpdate(tableId, { left: true, userId: user.id });
       broadcastLobbyUpdate({ left: true, tableId });
@@ -116,7 +118,12 @@ export async function POST(req: Request) {
     }
 
     // ── "Back to Lobby" → return balance to wallet ────────────────────────
-    if (returnAmount > 0) {
+    // PRIVATE tables are virtual-chips only: the buy-in was never taken
+    // from the wallet, so the remaining table balance is play money and is
+    // NEVER refunded (mirrors the practice-table rule). Only public tables
+    // convert the table balance back to real tokens.
+    const isVirtual = Boolean(table?.isPrivate);
+    if (!isVirtual && returnAmount > 0) {
       await db
         .update(users)
         .set({ balance: sql`${users.balance} + ${returnAmount}` })
@@ -129,14 +136,17 @@ export async function POST(req: Request) {
       .set({ status: "left" })
       .where(eq(crashArenaPlayers.id, player.id));
 
-    // ── Record transaction ────────────────────────────────────────────────
-    await db.insert(crashArenaTransactions).values({
-      userId: user.id,
-      tableId,
-      amount: returnAmount.toFixed(2),
-      type: "LEAVE",
-      reason: `Left table with balance`,
-    });
+    // ── Record transaction (real ledger only — virtual chips never touch
+    //    it; private tables are play money) ────────────────────────────────
+    if (!isVirtual) {
+      await db.insert(crashArenaTransactions).values({
+        userId: user.id,
+        tableId,
+        amount: returnAmount.toFixed(2),
+        type: "LEAVE",
+        reason: `Left table with balance`,
+      });
+    }
 
     // Best-effort live fanout so the remaining players + lobby refresh.
     broadcastTableUpdate(tableId, { left: true, userId: user.id });

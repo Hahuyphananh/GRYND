@@ -25,8 +25,9 @@ import {
 } from "../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { handFromEntries, resolveHand, expireStaleActions } from "./roundSystem";
-import { PLATFORM_FEE } from "./constants";
+import { PLATFORM_FEE, NEXT_ROUND_COUNTDOWN_MS } from "./constants";
 import { broadcastTableUpdate } from "../crash-arena/rooms";
+import { isCrashArenaAiBotId } from "../crash-arena/aiBot";
 import type { CrashPokerHand } from "./types";
 
 export interface CrashPokerPotTier {
@@ -62,6 +63,8 @@ export interface CrashPokerSettleResult {
     contributed: number;
     foldedAtMultiplier: number | null;
   }[];
+  /** Absolute epoch-ms of the next round start (null when already settled). */
+  nextRoundAt: number | null;
 }
 
 /**
@@ -109,6 +112,7 @@ export async function settleCrashPokerHand(
         payout: 0,
         payoutGross: 0,
         winnerUserId: null as number | null,
+        nextRoundAt: null as Date | null,
       };
     }
 
@@ -239,10 +243,12 @@ export async function settleCrashPokerHand(
         );
     }
 
-    // ── WIN / RAKE / RETURN transactions (real tables only — practice
-    //    chips are virtual and never touch the ledger). ──────────────────
-    if (!table.isAi) {
-      if (winnerUserId != null) {
+    // ── WIN / RAKE / RETURN transactions (real tables only — practice and
+    //    PRIVATE tables are virtual chips that never touch the ledger; bot
+    //    seats are reserved users whose table balances are virtual too, so
+    //    their wins/refunds are never ledgered). ───────────────────────────
+    if (!table.isAi && !table.isPrivate) {
+      if (winnerUserId != null && !(await isCrashArenaAiBotId(winnerUserId))) {
         await tx.insert(crashArenaTransactions).values({
           userId: winnerUserId,
           tableId,
@@ -262,6 +268,7 @@ export async function settleCrashPokerHand(
       }
       for (const ret of returns) {
         if (ret.amount <= 0) continue;
+        if (await isCrashArenaAiBotId(ret.userId)) continue;
         await tx.insert(crashArenaTransactions).values({
           userId: ret.userId,
           tableId,
@@ -285,9 +292,14 @@ export async function settleCrashPokerHand(
       .set({ status: "settled" })
       .where(eq(crashArenaRounds.id, roundId));
 
+    // Schedule the NEXT round start on an absolute wall-clock deadline
+    // (settle time + countdown). Every client counts down to this same
+    // moment and the start-round route rejects early starts, so a slow or
+    // desynced client can never see the round fire before its countdown.
+    const nextRoundAt = new Date(Date.now() + NEXT_ROUND_COUNTDOWN_MS);
     await tx
       .update(crashArenaTables)
-      .set({ status: "waiting" })
+      .set({ status: "waiting", nextRoundAt })
       .where(eq(crashArenaTables.id, tableId));
 
     // Seat any wait-listed players now that the hand is over.
@@ -312,10 +324,11 @@ export async function settleCrashPokerHand(
       payout,
       payoutGross,
       winnerUserId,
+      nextRoundAt,
     };
   });
 
-  const { round, tableId, updatedEntries, resolved, returns, rake, payout, payoutGross, winnerUserId, alreadySettled } = outcome;
+  const { round, tableId, updatedEntries, resolved, returns, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt } = outcome;
 
   // Best-effort fanout so the whole table reconciles instantly (after the
   // transaction committed).
@@ -330,6 +343,9 @@ export async function settleCrashPokerHand(
     crashPoint: Number(round.crashPoint ?? 0),
     returns,
     pots: resolved.pots,
+    // Absolute epoch-ms of the next round start — clients count down to it.
+    nextRoundAt:
+      nextRoundAt != null ? nextRoundAt.getTime() : Date.now() + NEXT_ROUND_COUNTDOWN_MS,
   });
 
   return {
@@ -348,6 +364,10 @@ export async function settleCrashPokerHand(
     seed: round.seed,
     seedHash: round.seedHash,
     entries: updatedEntries,
+    nextRoundAt:
+      outcome.nextRoundAt != null
+        ? outcome.nextRoundAt.getTime()
+        : null,
   };
 }
 
