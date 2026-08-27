@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
-
   schedule:
     - cron: "0 4 * * *"
 
@@ -23,18 +21,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Create AI fix branch
-        shell: bash
-        run: |
-          git config user.name "Grynd QA Agent"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          BRANCH="ai-fix/${GITHUB_RUN_ID}"
-
-          git checkout -b "$BRANCH"
-
-          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -79,15 +65,12 @@ jobs:
 
       - name: Stop if everything is healthy
         if: steps.check.outputs.needs_fix == 'false'
-        run: |
-          echo "Grynd is healthy."
-          exit 0
+        run: echo "Grynd is healthy."
 
       - name: Show QA report
         if: steps.check.outputs.needs_fix == 'true'
         run: |
           echo "===== QA REPORT ====="
-
           if [ -f qa/reports/qa-report.json ]; then
             cat qa/reports/qa-report.json
           else
@@ -140,12 +123,21 @@ jobs:
           GRYND_URL: https://www.grynd.mywire.org/
         run: node qa/smoke-test.mjs
 
-      - name: Push AI fix branch
+      - name: Create fix branch
         if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success'
+        shell: bash
         run: |
+          git config user.name "Grynd QA Agent"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="ai-fix/${GITHUB_RUN_ID}"
+
+          git checkout -b "$BRANCH"
           git add -A
           git commit -m "fix: automated Grynd QA repair"
           git push origin "$BRANCH"
+
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
 
       - name: Create pull request
         if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success'
@@ -156,6 +148,4 @@ jobs:
             --base main \
             --head "$BRANCH" \
             --title "fix: automated Grynd QA repair" \
-            --body "Automated QA detected an issue, the AI agent proposed a fix, and the repository tests, build, and browser QA passed after the fix.
-
-This PR was created automatically by the Grynd QA agent. Review the changes before merging."
+            --body "Automated QA detected an issue. The AI agent proposed a fix and all tests passed after the fix."
