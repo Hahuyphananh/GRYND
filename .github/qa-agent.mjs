@@ -1,94 +1,140 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import OpenAI from "openai";
+
+const MAX_AI_ATTEMPTS = 2;
 
 const client = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: "https://openrouter.ai/api/v1"
 });
 
-const MODEL = "openrouter/free";
-const REPORT_PATH = "qa/reports/qa-report.json";
+const model = "openrouter/free";
 
-const protectedPaths = [
-  ".env",
-  ".env.local",
-  ".env.production",
-  ".github/workflows/",
-  "supabase/migrations/",
-  "node_modules/",
-  ".git/"
-];
-
-function isProtected(filePath) {
-  const normalized = filePath.replaceAll("\\", "/");
-
-  return protectedPaths.some(
-    protectedPath =>
-      normalized === protectedPath ||
-      normalized.startsWith(protectedPath)
-  );
+function run(command, args = []) {
+  return execFileSync(command, args, {
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024
+  });
 }
 
-function readFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`File does not exist: ${filePath}`);
+function getFiles(dir, result = [], root = dir) {
+  const entries = fs.readdirSync(dir, {
+    withFileTypes: true
+  });
+
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    const relative = path.relative(root, full);
+
+    if (
+      entry.name === "node_modules" ||
+      entry.name === ".git" ||
+      entry.name === ".next" ||
+      entry.name === "dist" ||
+      entry.name === "build"
+    ) {
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      getFiles(full, result, root);
+      continue;
+    }
+
+    if (
+      relative.endsWith(".js") ||
+      relative.endsWith(".jsx") ||
+      relative.endsWith(".ts") ||
+      relative.endsWith(".tsx") ||
+      relative.endsWith(".mjs") ||
+      relative.endsWith(".json") ||
+      relative.endsWith(".css")
+    ) {
+      result.push(relative);
+    }
   }
 
-  if (isProtected(filePath)) {
-    throw new Error(`Protected file cannot be edited: ${filePath}`);
-  }
-
-  const stats = fs.statSync(filePath);
-
-  if (stats.size > 500_000) {
-    throw new Error(`File is too large to edit: ${filePath}`);
-  }
-
-  return fs.readFileSync(filePath, "utf8");
+  return result;
 }
 
-function writeFile(filePath, content) {
-  if (isProtected(filePath)) {
-    throw new Error(`Protected file cannot be edited: ${filePath}`);
+function isExpectedError(error) {
+  const text = JSON.stringify(error).toLowerCase();
+
+  // Expected authentication failures from protected APIs.
+  if (
+    text.includes('"status":401') ||
+    text.includes("401 unauthorized") ||
+    text.includes("unauthorized")
+  ) {
+    return true;
   }
 
-  if (path.isAbsolute(filePath)) {
-    throw new Error("Absolute paths are not allowed.");
+  // Known third-party Tawk.to browser errors.
+  if (
+    text.includes("tawk.to") ||
+    text.includes("embed.tawk.to")
+  ) {
+    return true;
   }
 
-  const normalized = path.normalize(filePath);
-
-  if (normalized.startsWith("..")) {
-    throw new Error("Path traversal is not allowed.");
-  }
-
-  fs.writeFileSync(filePath, content, "utf8");
-
-  console.log(`Modified: ${filePath}`);
+  return false;
 }
 
-if (!process.env.OPENROUTER_API_KEY) {
-  throw new Error("OPENROUTER_API_KEY is missing.");
-}
+const reportPath = "qa/reports/qa-report.json";
 
-if (!fs.existsSync(REPORT_PATH)) {
-  throw new Error(`QA report does not exist: ${REPORT_PATH}`);
-}
-
-const report = JSON.parse(
-  fs.readFileSync(REPORT_PATH, "utf8")
-);
-
-const reportText = JSON.stringify(report, null, 2);
-
-if (!report.errors || report.errors.length === 0) {
-  console.log("QA report contains no errors.");
+if (!fs.existsSync(reportPath)) {
+  console.log("No QA report found. Nothing for AI to analyze.");
   process.exit(0);
 }
 
+let report;
+
+try {
+  report = JSON.parse(
+    fs.readFileSync(reportPath, "utf8")
+  );
+} catch (error) {
+  throw new Error(
+    `Could not read QA report: ${error.message}`
+  );
+}
+
+const originalErrors = Array.isArray(report.errors)
+  ? report.errors
+  : [];
+
+const actionableErrors = originalErrors.filter(
+  error => !isExpectedError(error)
+);
+
+if (originalErrors.length > 0) {
+  console.log(`Total QA errors: ${originalErrors.length}`);
+  console.log(`Actionable errors: ${actionableErrors.length}`);
+}
+
+if (actionableErrors.length === 0) {
+  console.log(
+    "No actionable application errors were detected."
+  );
+  console.log(
+    "Skipping AI repair because the detected errors are expected or third-party."
+  );
+  process.exit(0);
+}
+
+const files = getFiles(".");
+
+const fileList = files.slice(0, 500);
+
+const actionableReport = {
+  ...report,
+  errors: actionableErrors
+};
+
 const prompt = `
-You are the autonomous QA repair agent for the Grynd skill-based PvP gaming application.
+You are the autonomous QA repair agent for the GRYND skill-based PvP gaming application.
 
 Repository:
 Hahuyphananh/Casino-app
@@ -101,165 +147,170 @@ Technology:
 - Clerk
 - Socket.io
 - Drizzle
+- Vercel deployment
 
-A QA run detected the following errors:
-
-${reportText}
-
-Your task is to identify the smallest safe code change that fixes the reported problem.
+Your job is to fix ONLY concrete application problems identified by the QA report.
 
 IMPORTANT:
 
-1. Fix ONLY the concrete QA problem.
-2. Do not redesign the application.
-3. Do not change game mechanics unless required by the reported bug.
-4. Do not modify authentication.
-5. Do not modify Supabase RLS.
-6. Do not modify payment logic.
-7. Do not modify wallet/balance logic unless directly required.
-8. Do not modify environment variables or secrets.
-9. Do not modify GitHub Actions workflows.
-10. Do not modify package versions.
-11. Do not delete tests.
-12. Do not disable tests.
-13. Do not remove security checks.
-14. Do not make unrelated improvements.
-15. If you cannot confidently determine a safe fix, do not make any changes.
-16. Read files before editing them.
-17. Make the smallest possible change.
-18. Preserve the existing UI and game behavior.
+1. Do NOT redesign the application.
+2. Do NOT change game mechanics unless the reported error explicitly requires it.
+3. Do NOT modify authentication architecture.
+4. Do NOT modify Supabase RLS policies.
+5. Do NOT modify payment logic.
+6. Do NOT modify wallet/balance logic unless the reported bug specifically requires it.
+7. Do NOT remove security checks.
+8. Do NOT disable tests.
+9. Do NOT delete tests.
+10. Do NOT remove error handling just to make tests pass.
+11. Do NOT modify environment secrets.
+12. Do NOT modify package versions unless absolutely necessary.
+13. Do NOT modify GitHub Actions workflows.
+14. Do NOT modify files inside .github/workflows.
+15. Do NOT modify Supabase migrations.
+16. Make the smallest possible fix.
+17. Preserve existing UI and game behavior.
+18. Only change files directly related to the reported problem.
+19. If you cannot confidently identify a safe fix, make NO changes.
+20. Do not create fake fixes just to make the QA test pass.
+
+EXPECTED/IGNORED ERRORS:
+
+The QA system has already filtered out expected authentication failures and known third-party Tawk.to errors.
+
+Only the remaining errors below should be investigated.
+
+QA REPORT:
+
+${JSON.stringify(actionableReport, null, 2)}
+
+AVAILABLE SOURCE FILES:
+
+${fileList.join("\n")}
+
+PROCESS:
+
+1. Inspect the relevant source files.
+2. Identify the root cause.
+3. Make the smallest safe correction.
+4. Do not modify unrelated files.
+5. Do not merely describe the solution.
+6. Actually modify the repository files.
+7. Stop if there is no safe fix.
+
+Remember: a correct NO-CHANGE decision is better than an unsafe change.
 `;
 
-const tools = [
-  {
-    type: "function",
-    function: {
-      name: "read_file",
-      description:
-        "Read a repository source file before deciding whether it needs to be changed.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "Relative repository file path."
-          }
-        },
-        required: ["path"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "write_file",
-      description:
-        "Replace the complete contents of a repository source file with corrected contents.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "Relative repository file path."
+let lastAnswer = "";
+
+for (let attempt = 1; attempt <= MAX_AI_ATTEMPTS; attempt++) {
+  console.log("");
+  console.log(`AI iteration ${attempt}/${MAX_AI_ATTEMPTS}`);
+
+  try {
+    const response =
+      await client.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a careful autonomous software maintenance agent. Make minimal, evidence-based fixes. Never invent changes."
           },
-          content: {
-            type: "string",
-            description: "Complete corrected file contents."
+          {
+            role: "user",
+            content: prompt
           }
-        },
-        required: ["path", "content"]
-      }
+        ],
+        temperature: 0.1
+      });
+
+    const answer =
+      response.choices?.[0]?.message?.content || "";
+
+    lastAnswer = answer;
+
+    console.log("AI:");
+    console.log(answer);
+
+    if (!answer) {
+      console.log("AI returned an empty response.");
+      break;
     }
-  }
-];
 
-const messages = [
-  {
-    role: "system",
-    content:
-      "You are a cautious autonomous software maintenance agent. Use read_file before write_file. Make minimal evidence-based changes only."
-  },
-  {
-    role: "user",
-    content: prompt
-  }
-];
-
-let changedFiles = new Set();
-
-for (let iteration = 0; iteration < 8; iteration++) {
-  console.log(`AI iteration ${iteration + 1}/8`);
-
-  const response = await client.chat.completions.create({
-    model: MODEL,
-    messages,
-    tools,
-    tool_choice: "auto",
-    parallel_tool_calls: false,
-    temperature: 0.1
-  });
-
-  const message = response.choices?.[0]?.message;
-
-  if (!message) {
-    throw new Error("OpenRouter returned no message.");
-  }
-
-  messages.push(message);
-
-  if (message.content) {
-    console.log("AI:", message.content);
-  }
-
-  const toolCalls = message.tool_calls || [];
-
-  if (toolCalls.length === 0) {
-    console.log("AI finished without requesting another edit.");
+    // One successful AI response is enough.
     break;
-  }
+  } catch (error) {
+    if (
+      error?.status === 429 ||
+      error?.code === 429 ||
+      String(error?.message || "")
+        .toLowerCase()
+        .includes("rate limit")
+    ) {
+      console.log("");
+      console.log(
+        "OpenRouter rate limit reached."
+      );
+      console.log(
+        "The AI repair was stopped safely."
+      );
+      console.log(
+        "No automated fix PR will be created from this run."
+      );
 
-  for (const toolCall of toolCalls) {
-    const name = toolCall.function?.name;
-
-    let args;
-
-    try {
-      args = JSON.parse(toolCall.function.arguments);
-    } catch {
-      throw new Error(`Invalid tool arguments returned by AI.`);
+      process.exit(0);
     }
 
-    let result;
+    console.error("");
+    console.error("AI request failed:");
+    console.error(error);
 
-    try {
-      if (name === "read_file") {
-        result = readFile(args.path);
-      } else if (name === "write_file") {
-        writeFile(args.path, args.content);
-        changedFiles.add(args.path);
-        result = `Successfully modified ${args.path}.`;
-      } else {
-        result = `Unknown tool: ${name}`;
-      }
-    } catch (error) {
-      result = `ERROR: ${error.message}`;
+    if (attempt === MAX_AI_ATTEMPTS) {
+      throw error;
     }
-
-    messages.push({
-      role: "tool",
-      tool_call_id: toolCall.id,
-      content: result
-    });
   }
+}
+
+if (!lastAnswer) {
+  console.log(
+    "AI did not produce a repair response."
+  );
+  process.exit(0);
 }
 
 console.log("");
-console.log("===== AI FIX SUMMARY =====");
+console.log("Checking whether the AI changed the repository...");
 
-if (changedFiles.size === 0) {
-  console.log("No files were modified.");
-} else {
-  for (const file of changedFiles) {
-    console.log(`Changed: ${file}`);
-  }
+let status = "";
+
+try {
+  status = run("git", [
+    "status",
+    "--porcelain"
+  ]).trim();
+} catch (error) {
+  console.error(
+    `Could not check git status: ${error.message}`
+  );
+  process.exit(0);
 }
+
+if (!status) {
+  console.log(
+    "AI made no repository changes."
+  );
+  console.log(
+    "No automated fix PR will be created."
+  );
+  process.exit(0);
+}
+
+console.log("");
+console.log("AI changed:");
+console.log(status);
+
+console.log("");
+console.log(
+  "AI changes detected. The workflow will now run tests, build, and browser QA."
+);
