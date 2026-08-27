@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
+import { notifyAdmins } from "../../../../lib/adminNotify";
 import {
   submitReport,
   ensurePlayerReportsTable,
@@ -31,6 +32,12 @@ export async function POST(req: NextRequest) {
       tableEnsured = true;
     },
   });
+
+  // Push a live admin notification (best-effort — the report is already
+  // stored; the admin queue also has a manual Refresh button).
+  if (result.success) {
+    notifyAdmins({ type: "report" }).catch(() => {});
+  }
 
   return NextResponse.json(
     {

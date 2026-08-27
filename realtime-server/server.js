@@ -57,6 +57,34 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// ── Server-to-server emit ──────────────────────────────────────────────
+// Lets the Next.js backend push events to socket rooms (e.g. admin
+// notifications when a player report / contact message is inserted). The
+// Next.js side calls this via src/lib/adminNotify.ts. Guarded by the same
+// optional REALTIME_INTERNAL_SECRET convention used by the crash-arena
+// sweep (skipped when the env var is unset, e.g. local dev).
+app.post("/emit", (req, res) => {
+  const secret = process.env.REALTIME_INTERNAL_SECRET;
+  if (secret && req.headers["x-internal-secret"] !== secret) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+  const { room, event, payload } = req.body || {};
+  if (!room || !event) {
+    return res.status(400).json({ success: false, error: "room and event are required" });
+  }
+  io.to(String(room)).emit(String(event), {
+    ...(payload && typeof payload === "object" ? payload : {}),
+    sentAt: new Date().toISOString(),
+  });
+  res.json({ success: true });
+});
+
+// Room that verified admins join to receive admin notifications (new
+// player reports / contact messages). Joining is gated by the `admin:join`
+// handler below, which re-verifies admin status server-side via Next.js —
+// a plain `join_room` with this id is never honored.
+const ADMIN_NOTIFICATIONS_ROOM = "admin:notifications";
+
 // H4: rate-limited logger for hot realtime paths. Logging every socket
 // event (pool shot, hex action, participant join/leave, relay) floods
 // stdout and burns CPU on the single realtime instance. `logThrottled`
@@ -689,12 +717,48 @@ io.on("connection", (socket) => {
   }
   socket.on("join_room", ({ roomId }) => {
     if (!roomId) return;
+    // The admin notifications room must NEVER be joinable via the generic
+    // path — only the verified `admin:join` handler below may enter it.
+    if (String(roomId) === ADMIN_NOTIFICATIONS_ROOM) return;
     socket.join(String(roomId));
     trackPrecisionJoin(String(roomId), socket.data.userId);
     trackPlinkoJoin(String(roomId), socket.data.userId);
     trackKenoPvpJoin(String(roomId), socket.data.userId);
     trackMemoryGridJoin(String(roomId), socket.data.userId);
     trackCrashArenaJoin(String(roomId), socket.data.userId);
+  });
+
+  // ── Admin notifications room join ──────────────────────────────────
+  // Re-verifies admin status server-side (Clerk token → Next.js isAdmin)
+  // before allowing the socket into the admin-only room. Fails closed on
+  // any error / unreachable Next.js. The client re-emits on socket
+  // reconnect (Socket.IO does not restore room membership automatically).
+  socket.on("admin:join", async (ack) => {
+    const allow = async () => {
+      try {
+        const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+        const res = await fetch(`${baseUrl}/api/admin/socket-verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: socket.data.clerkToken }),
+        });
+        const payload = await res.json().catch(() => null);
+        return payload && payload.success === true && payload.isAdmin === true;
+      } catch {
+        return false;
+      }
+    };
+    if (await allow()) {
+      socket.join(ADMIN_NOTIFICATIONS_ROOM);
+      if (typeof ack === "function") ack({ success: true });
+    } else {
+      socket.leave(ADMIN_NOTIFICATIONS_ROOM);
+      if (typeof ack === "function") ack({ success: false, error: "Not an admin." });
+    }
+  });
+
+  socket.on("admin:leave", () => {
+    socket.leave(ADMIN_NOTIFICATIONS_ROOM);
   });
 
   socket.on("leave_room", ({ roomId }) => {

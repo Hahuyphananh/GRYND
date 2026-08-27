@@ -16,6 +16,7 @@ import {
   IconMail,
   IconStar,
 } from "@tabler/icons-react";
+import { useSocket } from "../../context/SocketProvider";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -153,6 +154,12 @@ export default function AdminDashboardClient({
   const [replyTarget, setReplyTarget] = useState<ContactMessage | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
+
+  // ── Realtime notification badges ───────────────────────────────
+  // Counts of new player reports / contact messages that arrived while the
+  // tab was closed. Cleared when the tab is opened.
+  const [reportNotifCount, setReportNotifCount] = useState(0);
+  const [messageNotifCount, setMessageNotifCount] = useState(0);
 
   // ── Reviews state ──────────────────────────────────────────────
   interface AdminReview {
@@ -467,10 +474,11 @@ export default function AdminDashboardClient({
     }
   }, []);
 
-  // Fetch reports when switching to reports tab
+  // Fetch reports when switching to reports tab (and clear the live badge)
   useEffect(() => {
-    if (activeTab === "reports" && reports.length === 0) {
-      fetchReports();
+    if (activeTab === "reports") {
+      setReportNotifCount(0);
+      if (reports.length === 0) fetchReports();
     }
   }, [activeTab, reports.length, fetchReports]);
 
@@ -490,12 +498,44 @@ export default function AdminDashboardClient({
     }
   }, []);
 
-  // Fetch messages when switching to messages tab
+  // Fetch messages when switching to messages tab (and clear the live badge)
   useEffect(() => {
-    if (activeTab === "messages" && messages.length === 0) {
-      fetchMessages();
+    if (activeTab === "messages") {
+      setMessageNotifCount(0);
+      if (messages.length === 0) fetchMessages();
     }
   }, [activeTab, messages.length, fetchMessages]);
+
+  // ── Live admin notifications via the Socket.IO admin room ──────
+  // The backend pushes `admin:notify` events to the verified admin-only
+  // room after inserting a player report / contact message (see
+  // src/lib/adminNotify.ts + realtime-server/server.js). The badge counts
+  // arrivals while the tab is closed; opening the tab resets it and fetches
+  // the fresh queue (above). Re-joins on every socket (re)connection —
+  // Socket.IO doesn't restore room membership automatically.
+  const { socket } = useSocket();
+  useEffect(() => {
+    if (!isSignedIn || !adminVerified || !socket) return;
+    const ADMIN_NOTIFICATIONS_ROOM = "admin:notifications";
+    const join = () => socket.emit("admin:join");
+    const onAdminNotify = (payload: { type?: string }) => {
+      if (payload?.type === "report") {
+        setReportNotifCount((c) => c + 1);
+        if (activeTab === "reports") fetchReports();
+      } else if (payload?.type === "message") {
+        setMessageNotifCount((c) => c + 1);
+        if (activeTab === "messages") fetchMessages();
+      }
+    };
+    join();
+    socket.on("connect", join);
+    socket.on("admin:notify", onAdminNotify);
+    return () => {
+      socket.off("connect", join);
+      socket.off("admin:notify", onAdminNotify);
+      socket.emit("leave_room", { roomId: ADMIN_NOTIFICATIONS_ROOM });
+    };
+  }, [socket, isSignedIn, adminVerified, activeTab, fetchReports, fetchMessages]);
 
   // ── Fetch reviews (moderation queue) ───────────────────────────
   const fetchReviews = useCallback(async () => {
@@ -925,7 +965,7 @@ export default function AdminDashboardClient({
                 : "text-gray-400 hover:text-gray-200")
             }
           >
-            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports</> : tab === "messages" ? <><IconMail size={14} /> Messages</> : <><IconStar size={14} /> Reviews</>}</span>
+            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports{reportNotifCount > 0 && <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">{reportNotifCount > 9 ? "9+" : reportNotifCount}</span>}</> : tab === "messages" ? <><IconMail size={14} /> Messages{messageNotifCount > 0 && <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">{messageNotifCount > 9 ? "9+" : messageNotifCount}</span>}</> : <><IconStar size={14} /> Reviews</>}</span>
           </button>
         ))}
       </div>

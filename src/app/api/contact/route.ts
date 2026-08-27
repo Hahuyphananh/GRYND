@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getNeonSql } from "../../../db/neon";
 import { ensureContactTables } from "../../../lib/contact/ensureTables";
 import { sendContactNotificationEmail } from "../../../lib/emails/contact";
+import { notifyAdmins } from "../../../lib/adminNotify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,6 +73,12 @@ export async function POST(request: NextRequest) {
       message: message.trim(),
     }).catch((err) => {
       console.error("[api/contact] admin notification failed:", err);
+    });
+
+    // Live admin inbox notification via the realtime server (best-effort,
+    // same fire-and-forget treatment as the email).
+    notifyAdmins({ type: "message" }).catch((err) => {
+      console.error("[api/contact] realtime admin notification failed:", err);
     });
 
     return NextResponse.json({ success: true });
