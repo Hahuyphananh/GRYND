@@ -99,12 +99,6 @@ async function visit(url) {
 
 await visit(baseUrl);
 
-// TEMPORARY QA AGENT TEST
-errors.push({
-  type: "test",
-  message: "TEMPORARY QA AGENT TEST: remove this test entry to restore healthy QA."
-});
-
 const links = await page.locator("a").evaluateAll(anchors =>
   anchors
     .map(a => a.href)
