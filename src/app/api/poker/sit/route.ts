@@ -70,6 +70,15 @@ export async function POST(req: Request) {
       );
     }
 
+    // AIs are private-only (same rule as Crash Arena): public games pair
+    // real players — no AI seats in the public queue.
+    if (isAI && !game.isPrivate) {
+      return NextResponse.json(
+        { error: "AIs can only be added to private games" },
+        { status: 400 },
+      );
+    }
+
     if (!isAI && players.some((p) => p.clerkId === userId)) {
       return NextResponse.json(
         { error: "User already seated" },
@@ -78,6 +87,11 @@ export async function POST(req: Request) {
     }
 
     // ── Buy-in: deduct tokens from user balance ──
+    // PRIVATE games are virtual-chips only: the buy-in is play money the
+    // player chooses freely and can never win as real tokens — no wallet
+    // move happens (and no balance check is needed). Only PUBLIC games
+    // spend real tokens.
+    const isVirtual = Boolean(game.isPrivate);
     let finalStack = 1000;
     if (!isAI) {
       const buyInAmount = Number(buyIn) || 0;
@@ -87,20 +101,22 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
-      // Deduct from token balance
-      const [updatedUser] = await db
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${buyInAmount}` })
-        .where(
-          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${buyInAmount}`,
-        )
-        .returning({ balance: users.balance });
+      if (!isVirtual) {
+        // Deduct from token balance
+        const [updatedUser] = await db
+          .update(users)
+          .set({ balance: sql`${users.balance} - ${buyInAmount}` })
+          .where(
+            sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${buyInAmount}`,
+          )
+          .returning({ balance: users.balance });
 
-      if (!updatedUser) {
-        return NextResponse.json(
-          { error: "Insufficient balance for buy-in" },
-          { status: 400 },
-        );
+        if (!updatedUser) {
+          return NextResponse.json(
+            { error: "Insufficient balance for buy-in" },
+            { status: 400 },
+          );
+        }
       }
       finalStack = buyInAmount;
     }

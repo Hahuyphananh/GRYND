@@ -41,6 +41,11 @@ export interface CrashPokerHand {
   pot: number;
   players: CrashPokerPlayer[];
   actions: CrashPokerAction[];
+  /**
+   * Epoch-ms the current flight segment started (hand start, or the moment
+   * the last checkpoint closed). Drives the pause-aware crash curve.
+   */
+  flightResumedAt: number | null;
   /** Stall guard: epoch-ms deadline for the open checkpoint window. */
   windowDeadlineAt: number | null;
 }

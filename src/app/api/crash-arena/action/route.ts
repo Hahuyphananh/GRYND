@@ -14,11 +14,15 @@ import {
   applyAction,
   openNextCheckpoint,
   expireStaleActions,
+  isCrashDueAt,
+  resumeFlight,
 } from "../../../../lib/crash-poker/roundSystem";
 import { checkpointMultiplier as checkpointMultiplierOf } from "../../../../lib/crash-poker/constants";
-import { crashDueAtMs } from "../../../../lib/games/crash/generateCrashPoint";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
-import { resolveCrashArenaAiBotId } from "../../../../lib/crash-arena/aiBot";
+import {
+  resolveCrashArenaAiBotId,
+  isCrashArenaAiBotClerkId,
+} from "../../../../lib/crash-arena/aiBot";
 import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
 
 /**
@@ -72,6 +76,10 @@ export async function POST(req: Request) {
     const actionRaw = String(body?.action ?? "");
     const raiseTo = body?.raiseTo != null ? Number(body.raiseTo) : undefined;
     const forBot = Boolean(body?.forBot);
+    // For private-table AI seats (multiple bots per table) the client names
+    // the exact bot user it is acting for; the server validates it is a
+    // reserved bot seat at this table.
+    const forBotUserId = body?.forBotUserId != null ? Number(body.forBotUserId) : null;
 
     if (!Number.isFinite(roundId) || !Number.isFinite(checkpointIndex)) {
       return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 });
@@ -124,10 +132,18 @@ export async function POST(req: Request) {
       // ── Resolve who is acting ───────────────────────────────────────────
       let actingUserId = caller.id;
       if (forBot) {
-        // The bot has no account — the seated human acts on its behalf, and
-        // only on AI practice tables (mirrors /api/crash-arena/ai-cashout).
-        if (!table.isAi) {
-          return { ok: false, error: "Not an AI practice table", status: 400 as const };
+        // Bots have no account — the seated human acts on their behalf. Allowed
+        // on AI practice tables (mirrors /api/crash-arena/ai-cashout) and on
+        // PRIVATE tables where the caller is the host (AIs may only be added
+        // to private games, so only their host can drive them).
+        const isPractice = table.isAi;
+        const isPrivateHost = Boolean(table.isPrivate && table.hostId === caller.id);
+        if (!isPractice && !isPrivateHost) {
+          return {
+            ok: false,
+            error: "Bots can only be driven by the host of a private table",
+            status: 400 as const,
+          };
         }
         const callerSeat = await tx
           .select({ id: crashArenaPlayers.id })
@@ -143,7 +159,36 @@ export async function POST(req: Request) {
         if (!callerSeat.length) {
           return { ok: false, error: "Not seated at this table", status: 400 as const };
         }
-        const botId = await resolveCrashArenaAiBotId();
+        let botId: number | null = null;
+        if (isPractice) {
+          botId = await resolveCrashArenaAiBotId();
+        } else if (forBotUserId != null && Number.isFinite(forBotUserId)) {
+          // Private table: the client names the bot seat; validate it is a
+          // reserved bot user seated at THIS table.
+          const botUser = await tx
+            .select({ id: users.id, clerkId: users.clerkId })
+            .from(users)
+            .where(eq(users.id, forBotUserId))
+            .limit(1);
+          if (!botUser[0] || !isCrashArenaAiBotClerkId(botUser[0].clerkId)) {
+            return { ok: false, error: "Not a bot user", status: 400 as const };
+          }
+          const botSeat = await tx
+            .select({ id: crashArenaPlayers.id })
+            .from(crashArenaPlayers)
+            .where(
+              and(
+                eq(crashArenaPlayers.tableId, table.id),
+                eq(crashArenaPlayers.userId, forBotUserId),
+                eq(crashArenaPlayers.status, "seated"),
+              ),
+            )
+            .limit(1);
+          if (!botSeat.length) {
+            return { ok: false, error: "Bot not seated at this table", status: 400 as const };
+          }
+          botId = forBotUserId;
+        }
         if (botId == null) {
           return { ok: false, error: "AI bot not found", status: 404 as const };
         }
@@ -184,18 +229,6 @@ export async function POST(req: Request) {
 
       const seatBalance = Number(seatData[0]?.balance ?? 0);
 
-      // ── Crash cut-off: if the hand's deterministic crash moment has
-      //    passed, NO betting action may be accepted — the crash already
-      //    happened. The settle runs AFTER this transaction commits (it
-      //    takes its own row lock, so settling here would self-deadlock).
-      const crashPointNum = Number(round.crashPoint);
-      if (Number.isFinite(crashPointNum) && crashPointNum > 0) {
-        const dueAt = crashDueAtMs(round.createdAt, crashPointNum);
-        if (Date.now() >= dueAt) {
-          return { ok: false as const, crashDue: true as const, table };
-        }
-      }
-
       // ── Build the hand from the persisted snapshot ──────────────────────
       const rawHand = round.handState;
       if (!rawHand || typeof rawHand !== "object") {
@@ -207,6 +240,23 @@ export async function POST(req: Request) {
       }
       let hand: CrashPokerHand = rawHand as CrashPokerHand;
 
+      // ── Crash cut-off: if the PAUSE-AWARE curve already reached the
+      //    crash point, NO betting action may be accepted — the crash
+      //    already happened (the flight stops at betting checkpoints, so
+      //    while a window is open the curve is paused below the crash
+      //    point and actions are still valid). The settle runs AFTER this
+      //    transaction commits (it takes its own row lock, so settling
+      //    here would self-deadlock).
+      const now = Date.now();
+      const crashPointNum = Number(round.crashPoint);
+      if (
+        Number.isFinite(crashPointNum) &&
+        crashPointNum > 0 &&
+        isCrashDueAt(hand, now, crashPointNum)
+      ) {
+        return { ok: false as const, crashDue: true as const, table };
+      }
+
       // ── Stall guard: auto-resolve silent players at the open checkpoint
       //    BEFORE the checkpoint gate so a resolved checkpoint can advance
       //    (server-authoritative — never trust a client timer). Silent
@@ -214,9 +264,11 @@ export async function POST(req: Request) {
       //    players are auto-checked so the checkpoint still resolves.
       // The acting player is about to submit their own decision — exclude
       // them so the guard can't auto-resolve them a moment before they act.
-      const expired = expireStaleActions(hand, Date.now(), actingUserId);
+      const expired = expireStaleActions(hand, now, actingUserId);
       if (expired.autoFolded.length > 0 || expired.autoChecked.length > 0) {
         hand = expired.hand;
+        // A deadline auto-resolve that closed the window resumes the flight.
+        if (!hand.bettingOpen) hand = resumeFlight(hand, now);
         const foldedIds = new Set(expired.autoFolded);
         const checkedIds = new Set(expired.autoChecked);
         for (const hp of hand.players) {
@@ -283,6 +335,11 @@ export async function POST(req: Request) {
         return { ok: false, error: result.error, status: 400 as const };
       }
       hand = result.hand;
+      // The acting player's decision closed the checkpoint → the flight
+      // resumes from the checkpoint multiplier at this moment (pause-aware
+      // curve), and everyone who hasn't acted yet would have their window
+      // auto-resolved by the sweep / next action.
+      if (!hand.bettingOpen) hand = resumeFlight(hand, Date.now());
 
       // ── Persist acting player's entry + balance deduction + hand window
       //    (same transaction, under the row lock — atomic + serialized). ───
@@ -359,6 +416,9 @@ export async function POST(req: Request) {
           pots: settled.pots,
           returns: settled.returns,
           entries: settled.entries,
+          // Absolute epoch-ms of the next round start — every client counts
+          // down to the same moment (the settle scheduled it).
+          nextRoundAt: settled.nextRoundAt,
         };
         broadcastTableUpdate(outcome.table.id, {
           crashed: true,
@@ -402,6 +462,9 @@ export async function POST(req: Request) {
         pots: settled.pots,
         returns: settled.returns,
         entries: settled.entries,
+        // Absolute epoch-ms of the next round start — every client counts
+        // down to the same moment (the settle scheduled it).
+        nextRoundAt: settled.nextRoundAt,
       };
     }
 
@@ -419,6 +482,7 @@ export async function POST(req: Request) {
         requiredBet: hand.requiredBet,
         bettingOpen: hand.bettingOpen,
         pot: hand.pot,
+        flightResumedAt: hand.flightResumedAt ?? null,
         windowDeadlineAt: hand.windowDeadlineAt ?? null,
       },
       ...(results ? { handOver: true, results } : {}),
@@ -435,6 +499,7 @@ export async function POST(req: Request) {
         requiredBet: hand.requiredBet,
         bettingOpen: hand.bettingOpen,
         pot: hand.pot,
+        flightResumedAt: hand.flightResumedAt ?? null,
         windowDeadlineAt: hand.windowDeadlineAt ?? null,
         autoFolded: expired.autoFolded.length > 0 ? expired.autoFolded : undefined,
         autoChecked: expired.autoChecked.length > 0 ? expired.autoChecked : undefined,

@@ -49,6 +49,14 @@ export function createRoundState(players = [], roundNumber = 1) {
     seedHash: null,          // published before the hand (commitment)
     seed: null,              // revealed after the hand (for verification)
     startedAt: null,         // server epoch ms — aligns the shared curve
+    // Epoch-ms the current flight segment started (hand start, or the
+    // moment the last checkpoint closed) — drives the pause-aware curve
+    // that stops at every 0.25x betting checkpoint.
+    flightResumedAt: null,
+    // Server-authoritative wall-clock deadline for the NEXT round start
+    // (set when a hand settles) — every client counts down to it so the
+    // round never fires before a client's countdown ends.
+    nextRoundAt: null,
     // ── Crash Poker hand window ──────────────────────────────────────────
     checkpointIndex: -1,     // 0 = 1.25x, 1 = 1.50x, ... (-1 = none open)
     currentCheckpointMultiplier: null,
@@ -159,6 +167,14 @@ export function startRound(state, wager, crashPoint = null, seedHash = null, see
     seedHash,
     seed,
     startedAt: hand?.startedAt != null ? Number(hand.startedAt) : null,
+    // The flight starts at the hand start; it resumes from the checkpoint
+    // multiplier each time a betting window closes (server-authoritative).
+    flightResumedAt:
+      hand?.flightResumedAt != null
+        ? Number(hand.flightResumedAt)
+        : hand?.startedAt != null
+          ? Number(hand.startedAt)
+          : null,
     checkpointIndex: hand?.checkpointIndex ?? -1,
     currentCheckpointMultiplier:
       hand?.currentCheckpointMultiplier ??
@@ -471,6 +487,7 @@ export function nextRound(state) {
     seedHash: null,
     seed: null,
     startedAt: null,
+    flightResumedAt: null,
     checkpointIndex: -1,
     currentCheckpointMultiplier: null,
     requiredBet: 0,

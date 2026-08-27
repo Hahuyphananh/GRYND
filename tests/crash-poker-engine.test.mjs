@@ -8,6 +8,10 @@ import {
   isCheckpointResolved,
   openNextCheckpoint,
   expireStaleActions,
+  resumeFlight,
+  curveMultiplierAt,
+  hasCurveReachedNextCheckpoint,
+  isCrashDueAt,
   computePots,
   resolveHand,
   handFromEntries,
@@ -26,8 +30,17 @@ const SIX_PLAYERS = Array.from({ length: 6 }, (_, i) => ({
   name: `P${i + 1}`,
 }));
 
-function handAt({ players = SIX_PLAYERS, bigBlind = 10, dealerPosition = 0 } = {}) {
+/** A brand-new hand with NO betting checkpoint open yet — the flight is
+ * climbing from 1.00x toward the first 0.25x checkpoint (1.25x), which the
+ * server sweep opens when the curve reaches it. */
+function freshHand({ players = SIX_PLAYERS, bigBlind = 10, dealerPosition = 0 } = {}) {
   return createHand({ players, bigBlind, dealerPosition });
+}
+
+/** A hand mid-flight with the first betting checkpoint OPEN — the curve
+ * reached 1.25x and the flight paused there for decisions. */
+function handAt(opts) {
+  return openNextCheckpoint(freshHand(opts));
 }
 
 function player(hand, userId) {
@@ -67,12 +80,23 @@ test("heads-up (2 players): SB is the dealer, BB is the other seat", () => {
   assert.equal(player(hand, 2).contributed, 10);
 });
 
-test("initial hand: checkpoint 0 (1.25x) open, required bet = big blind", () => {
-  const hand = handAt({ bigBlind: 10 });
-  assert.equal(hand.checkpointIndex, 0);
-  assert.equal(hand.bettingOpen, true);
+test("initial hand: NO checkpoint open — the flight flies to 1.25x before betting opens", () => {
+  // The hand starts with the curve climbing from 1.00x; the first betting
+  // checkpoint (1.25x) is opened lazily (server sweep / first action) once
+  // the curve reaches it — the rocket never offers betting mid-segment.
+  const hand = freshHand({ bigBlind: 10 });
+  assert.equal(hand.checkpointIndex, -1);
+  assert.equal(hand.bettingOpen, false);
+  assert.equal(hand.windowDeadlineAt, null);
   assert.equal(hand.requiredBet, 10);
   assert.equal(hand.pot, 5 * 5 + 10); // five antes of $5 + BB $10
+  // Opening the first checkpoint pauses the flight there with a fresh
+  // 30s stall-guard deadline for the decisions.
+  const opened = openNextCheckpoint(hand, hand.flightResumedAt + 1000);
+  assert.equal(opened.checkpointIndex, 0);
+  assert.equal(opened.bettingOpen, true);
+  // Fresh 30s stall-guard deadline for the new window.
+  assert.equal(opened.windowDeadlineAt, hand.flightResumedAt + 1000 + 30_000);
 });
 
 // ── Checkpoint math ─────────────────────────────────────────────────────────
@@ -180,7 +204,8 @@ test("fold-out: when a fold leaves one active player the hand is over", () => {
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  let hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
+  // The curve reached 1.25x → the first checkpoint opened.
+  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
   // A is SB ($5), B is BB ($10). A must call $5 to stay in.
   const res = applyAction(hand, { userId: 1, action: "fold" });
   assert.ok(!res.error, res.error);
@@ -209,7 +234,7 @@ test("one active player left wins the pot (fold-order rule)", () => {
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  const hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
+  const hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
   // B folds at 1.25x → A wins even if the crash comes later.
   const folded = applyAction(hand, { userId: 2, action: "fold" });
   assert.equal(folded.winnerUserId, 1);
@@ -369,7 +394,7 @@ test("a fold-out leaves the all-in player as the winner (fold-order rule)", () =
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  let hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
+  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
   // A (SB $5) has only $3 left — all-in for $3 extra (total $8).
   let res = applyAction(hand, { userId: 1, action: "call", stack: 3 });
   assert.ok(!res.error, res.error);
@@ -397,7 +422,7 @@ test("all-in players bust with everyone else when the crash lands (nobody folded
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  let hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
+  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
   let res = applyAction(hand, { userId: 1, action: "call", stack: 3 }); // A all-in $8
   hand = res.hand;
   res = applyAction(hand, { userId: 2, action: "call" }); // B calls $5 → $10
@@ -654,7 +679,7 @@ test("same-checkpoint folds: the later fold in the action log wins", () => {
     { userId: 3, name: "C" },
     { userId: 4, name: "D" },
   ];
-  let hand = createHand({ players: four, bigBlind: 10, dealerPosition: 0 });
+  let hand = openNextCheckpoint(createHand({ players: four, bigBlind: 10, dealerPosition: 0 }));
   // P1 raises to $25 at checkpoint 0 (1.25x) — everyone else is now
   // unmatched, so the checkpoint stays open across the folds below.
   let res = applyAction(hand, { userId: 1, action: "raise", raiseTo: 25 });
@@ -723,6 +748,68 @@ test("createHand opens checkpoint 0 with a future action deadline", () => {
   const hand = handAt({ bigBlind: 10 });
   assert.ok(hand.windowDeadlineAt > Date.now());
 });
+
+// ── Pause-aware crash curve (the flight stops at every 0.25x checkpoint) ──
+
+test("curveMultiplierAt climbs exponentially from 1.00x before the first checkpoint", () => {
+  const hand = freshHand({ bigBlind: 10 });
+  // t=0 → 1.00x; after 1s → e^0.33 ≈ 1.39x (between 1.25 and 1.50).
+  assert.ok(Math.abs(curveMultiplierAt(hand, hand.flightResumedAt) - 1.0) < 1e-6);
+  const at = curveMultiplierAt(hand, hand.flightResumedAt + 1000);
+  assert.ok(Math.abs(at - Math.exp(0.33)) < 1e-3);
+});
+
+test("the flight PAUSES at the open checkpoint multiplier while a window is open", () => {
+  const hand = handAt({ bigBlind: 10 }); // checkpoint 0 open (1.25x)
+  // Well past the arrival moment, the curve is HELD at 1.25x — it never
+  // climbs during the betting window.
+  for (const later of [1000, 5000, 30_000]) {
+    assert.equal(curveMultiplierAt(hand, hand.flightResumedAt + later), 1.25);
+  }
+  assert.equal(isHandPausedLike(hand), true);
+});
+
+test("after a window closes the curve resumes from the checkpoint multiplier", () => {
+  let hand = handAt({ bigBlind: 10 }); // paused at 1.25x
+  // The window closes (everyone acted) → the flight resumes from the
+  // checkpoint multiplier at the close moment.
+  hand = { ...hand, bettingOpen: false };
+  const resumeAt = hand.flightResumedAt + 10_000; // window stayed open 10s
+  hand = resumeFlight(hand, resumeAt);
+  assert.equal(hand.bettingOpen, false);
+  assert.equal(hand.flightResumedAt, resumeAt);
+  // The curve climbs from 1.25x at the resume moment — the paused time is
+  // NOT counted.
+  assert.ok(Math.abs(curveMultiplierAt(hand, resumeAt) - 1.25) < 1e-6);
+  const later = curveMultiplierAt(hand, resumeAt + 1000);
+  assert.ok(Math.abs(later - 1.25 * Math.exp(0.33)) < 1e-3);
+});
+
+test("hasCurveReachedNextCheckpoint opens the next window once the segment finishes", () => {
+  const hand = freshHand({ bigBlind: 10 });
+  assert.equal(hasCurveReachedNextCheckpoint(hand, hand.flightResumedAt), false);
+  // After ~1.1s the curve crossed 1.25x — the next checkpoint is due.
+  assert.equal(hasCurveReachedNextCheckpoint(hand, hand.flightResumedAt + 1100), true);
+});
+
+test("isCrashDueAt: the crash fires only when the UNPAUSED curve reaches the crash point", () => {
+  const hand = freshHand({ bigBlind: 10 });
+  const crashPoint = 2.0;
+  // e^0.33 ≈ 1.39 < 2.0 at 1s → not due; e^0.99 ≈ 2.69 ≥ 2.0 at 3s → due.
+  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 1000, crashPoint), false);
+  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 3000, crashPoint), true);
+  // While a betting window is open the flight is paused BELOW the crash
+  // point — a paused hand is never "due" (the sweep would have crashed it
+  // before opening a window beyond the crash point).
+  const paused = handAt({ bigBlind: 10 });
+  assert.equal(isCrashDueAt(paused, paused.flightResumedAt + 60_000, crashPoint), false);
+});
+
+// Helper: the local pause check (isHandPaused is exported below via the
+// engine's isHandPaused — kept inline here to avoid re-deriving it).
+function isHandPausedLike(hand) {
+  return hand.bettingOpen && hand.checkpointIndex >= 0;
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -806,7 +893,7 @@ test("a matched player who stalls is auto-checked, not folded", () => {
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  let hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
+  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
   // A (SB $5) calls → matched. B (BB $10) is matched but hasn't acted.
   let res = applyAction(hand, { userId: 1, action: "call" });
   assert.ok(!res.error, res.error);
@@ -846,7 +933,7 @@ test("expireStaleActions never folds a sole survivor", () => {
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  let hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
+  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
   // B folds → A is the sole survivor (fold-out already determined).
   const fold = applyAction(hand, { userId: 2, action: "fold" });
   assert.equal(fold.handOver, true);
@@ -865,7 +952,7 @@ test("expireStaleActions can end the hand (auto-fold fold-out)", () => {
     { userId: 3, name: "C" },
     { userId: 4, name: "D" },
   ];
-  let hand = createHand({ players: four, bigBlind: 10, dealerPosition: 0 });
+  let hand = openNextCheckpoint(createHand({ players: four, bigBlind: 10, dealerPosition: 0 }));
   let res = applyAction(hand, { userId: 1, action: "fold" });
   hand = res.hand;
   res = applyAction(hand, { userId: 2, action: "fold" });

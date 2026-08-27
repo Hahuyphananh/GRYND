@@ -72,7 +72,13 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     success: true,
-    game: { ...state, hostClerkId: meta.hostClerkId },
+    game: {
+      ...state,
+      hostClerkId: meta.hostClerkId,
+      // Private games are virtual chips — the client needs to know so it
+      // can skip the wallet-balance caps on buy-in.
+      isPrivate: Boolean(game.isPrivate),
+    },
   });
 }
 
@@ -151,9 +157,12 @@ export async function POST(req: Request) {
     })
     .where(eq(pokerGames.gameCode, gameCode));
 
-  // Track leaderboard stats when a new winner is determined
+  // Track leaderboard stats when a new winner is determined. PRIVATE games
+  // are virtual chips — nothing is won or lost for real, so they never
+  // count toward ranked stats (no farming leaderboards in play-money
+  // games).
   const newWinnerId = (state as any)?.winnerId as string | undefined;
-  if (newWinnerId && !hadWinner) {
+  if (newWinnerId && !hadWinner && !game.isPrivate) {
     const players = (state as any)?.players as any[] | undefined;
     if (players && Array.isArray(players)) {
       const humanPlayers = players.filter(

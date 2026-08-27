@@ -12,8 +12,12 @@ import { IconBomb, IconCircleCheck, IconFlag } from "@tabler/icons-react";
  *   maxSeats — total seats at the table
  *   phase    — current round phase ("waiting" | "running" | "crashed" | "settling")
  *   onReport — (player) => void — opens the report modal for a seated opponent
+ *   onRemoveAi — (player) => void — the HOST's control to remove an AI
+ *              seat (only rendered on bot cards when provided)
+ *   onRenameAi — (player) => void — the HOST's control to rename an AI
+ *              seat (only rendered on bot cards when provided)
  */
-export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting", onReport }) {
+export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting", onReport, onRemoveAi, onRenameAi }) {
   const seats = Array.from({ length: maxSeats }, (_, i) => players[i] || null);
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
 
@@ -101,6 +105,23 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
               {player ? player.name : "Empty"}
             </span>
 
+            {/* Difficulty badge (AI bots only) — easy / medium / hard
+                drives the bot's fold/call/raise aggressiveness, so it's
+                surfaced right on the seat card. */}
+            {player?.isBot && player.aiDifficulty && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                  player.aiDifficulty === "easy"
+                    ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-300"
+                    : player.aiDifficulty === "hard"
+                      ? "border-red-400/40 bg-red-500/15 text-red-300"
+                      : "border-amber-400/40 bg-amber-500/15 text-amber-300"
+                }`}
+              >
+                {player.aiDifficulty}
+              </span>
+            )}
+
             {/* Balance */}
             {player && (
               <span className="text-[10px] text-[#00ffa6] font-bold">
@@ -118,10 +139,38 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             {/* Live round badge (cashout / busted / in-flight) */}
             {liveBadge}
 
+            {/* Host controls for AI seats — rename + remove. Only rendered
+                on bot cards and only when the parent (the private-table
+                host) passes the handlers. */}
+            {player?.isBot && (onRenameAi || onRemoveAi) && (
+              <div className="mt-0.5 flex items-center gap-1">
+                {onRenameAi && (
+                  <button
+                    onClick={() => onRenameAi(player)}
+                    title={`Rename ${player.name || "this AI"}`}
+                    aria-label={`Rename ${player.name || "this AI"}`}
+                    className="px-1.5 py-0.5 rounded-md border border-cyan-500/40 bg-cyan-500/15 text-[10px] font-bold text-cyan-300 transition-all hover:bg-cyan-500/30 hover:shadow-[0_0_8px_rgba(34,211,238,0.4)]"
+                  >
+                    ✎
+                  </button>
+                )}
+                {onRemoveAi && (
+                  <button
+                    onClick={() => onRemoveAi(player)}
+                    title={`Remove ${player.name || "this AI"} from the table`}
+                    aria-label={`Remove ${player.name || "this AI"}`}
+                    className="px-1.5 py-0.5 rounded-md border border-red-500/40 bg-red-500/15 text-[10px] font-bold text-red-400 transition-all hover:bg-red-500/30 hover:shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Report flag — lets a seated player report any opponent at
                 the table. Hidden on the player's own seat and on empty
                 seats; only wired up when the parent passes onReport. */}
-            {player && !player.isYou && onReport && (
+            {player && !player.isYou && !player.isBot && onReport && (
               <button
                 onClick={() => onReport(player)}
                 title={`Report ${player.name || "this player"}`}

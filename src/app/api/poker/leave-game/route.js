@@ -23,9 +23,11 @@ export async function POST(req) {
       .where(eq(pokerGames.gameCode, gameCode));
     if (!game) return NextResponse.json({ success: true, deleted: true });
 
-    // Credit remaining stack back to token balance
+    // Credit remaining stack back to token balance — PUBLIC games only.
+    // Private games are virtual chips: the buy-in was never deducted, so
+    // the stack is play money and must never be converted to real tokens.
     const cashOutAmount = Number(body?.stack) || 0;
-    if (cashOutAmount > 0) {
+    if (cashOutAmount > 0 && !game.isPrivate) {
       await db
         .update(users)
         .set({ balance: sql`${users.balance} + ${cashOutAmount}` })

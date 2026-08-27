@@ -83,6 +83,14 @@ export default function ArenaTable({
   onExitToLobby,
   onBuyChips,
   onReportPlayer,
+  // Private tables: the host adds / removes / renames AI seats (mirrors
+  // the poker table AIs — the host who added them manages them).
+  onAddAi,
+  onRemoveAi,
+  onRenameAi,
+  // Invite code for PRIVATE tables — from the shared URL (?code=) or the
+  // host's own table row. Players without it are prompted before joining.
+  inviteCode = null,
   playerName = "You",
   maxBalance = null,
   busy = false,
@@ -97,6 +105,10 @@ export default function ArenaTable({
   } = table;
   // Free practice table (human vs the GRYND AI bot). Chips are virtual.
   const isAi = Boolean(table?.isAi);
+  // Private host-created tables: hidden from the public grid; the host may
+  // add AI seats (and only the host's client drives them).
+  const isPrivate = Boolean(table?.isPrivate);
+  const amIHost = Boolean(table?.amIHost);
 
   const {
     phase = "waiting",
@@ -150,16 +162,28 @@ export default function ArenaTable({
   const isFirstRound = roundNumber === 1 && !hasAnyRound;
 
   const seatedCount = players.length;
-  const readyCount = readyVotes.length;
+  // Seated AI bots are effectively ALWAYS ready — they never cast a vote
+  // (the host drives their actions), so counting them lets a host playing
+  // only against AIs start the first round with their own ready vote
+  // instead of being stuck forever at "1/2 ready".
+  const seatedBotCount = players.filter((p) => p.isBot).length;
+  const readyCount = readyVotes.length + seatedBotCount;
   const youReady = you?.userId != null && readyVotes.includes(you.userId);
+  // Server-scheduled next-round deadline (epoch ms) — written when a hand
+  // settles. Every client counts down to the SAME wall-clock moment, so
+  // the round starts exactly on schedule for everyone (no per-client
+  // drift that could start a hand before a slow client's countdown ends).
+  const nextRoundAt =
+    roundState?.nextRoundAt ?? table?.nextRoundAt ?? null;
   // Countdown runs once 2+ players are seated and (first round) 2+ are
   // ready. AI practice tables skip the ready-vote gate entirely — the
-  // bot never votes, so the human + bot pair just count down.
+  // bot never votes, so the human + bot pair just count down. Later
+  // rounds always have a server-scheduled nextRoundAt.
   const countdownActive =
     isWaiting &&
     !practiceStackEmpty &&
     seatedCount >= 2 &&
-    (!isFirstRound || isAi || readyCount >= READY_VOTES_NEEDED);
+    (nextRoundAt != null || !isFirstRound || isAi || readyCount >= READY_VOTES_NEEDED);
 
   // ── Local UI state ──────────────────────────────────────────────────
 
@@ -167,6 +191,22 @@ export default function ArenaTable({
   const [showRules, setShowRules] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [resultDismissed, setResultDismissed] = useState(false);
+  // ── Add-AI modal (private tables, host only) ─────────────────────────
+  const [showAddAi, setShowAddAi] = useState(false);
+  const [aiDifficulty, setAiDifficulty] = useState("medium");
+  const [aiStackInput, setAiStackInput] = useState("");
+  const [addingAi, setAddingAi] = useState(false);
+  const [addAiError, setAddAiError] = useState(null);
+  // Optional custom name for the AI being added.
+  const [aiNameInput, setAiNameInput] = useState("");
+  // ── Invite-code prompt (private tables: joining requires the code) ───
+  const [showJoinCodePrompt, setShowJoinCodePrompt] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [enteredInviteCode, setEnteredInviteCode] = useState(null);
+  // The effective invite code: from the shared URL / host row, or the code
+  // the player typed in the prompt.
+  const effectiveInviteCode = inviteCode ?? enteredInviteCode;
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Reset the results-popup dismissal flag whenever we leave settling.
   useEffect(() => {
@@ -184,6 +224,26 @@ export default function ArenaTable({
     setResultDismissed(true);
     onNextRound?.();
   }, [onNextRound]);
+
+  // ── Host AI management ───────────────────────────────────────────────
+  // Only the host of a private table sees the controls; the server
+  // re-validates host + private on every add/remove call.
+  const canManageAi = isPrivate && amIHost;
+  const handleRemoveAi = useCallback((player) => {
+    if (!canManageAi || !player?.userId) return;
+    if (!window.confirm(`Remove ${player.name || "this AI"} from the table?`)) return;
+    onRemoveAi?.(player);
+  }, [canManageAi, onRemoveAi]);
+
+  const handleRenameAi = useCallback((player) => {
+    if (!canManageAi || !player?.userId) return;
+    const current = player.name && player.name !== "GRYND AI" ? player.name : "";
+    const newName = window.prompt("Name this AI:", current);
+    if (newName == null) return; // cancelled
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    onRenameAi?.(player, trimmed);
+  }, [canManageAi, onRenameAi]);
 
   // ── Side-pot tier breakdown for the pot display (running hands) ──────
   // Mirrors the server's tier accounting so players see the main pot and
@@ -240,12 +300,26 @@ export default function ArenaTable({
           crashedAt={crashMultiplier}
         />
         {isWaiting && countdownActive && (
-          <RoundTimer
-            label={isFirstRound ? "Starting in" : "Next round in"}
-            seconds={ROUND_START_COUNTDOWN}
-            isRunning={true}
-            onExpire={handleTimerExpire}
-          />
+          // After the first hand the server writes an absolute next-round
+          // deadline — every client counts down to the same moment and the
+          // round starts exactly on schedule (never before). The first
+          // round (no deadline yet) uses the classic local ready-vote
+          // countdown.
+          nextRoundAt != null ? (
+            <RoundTimer
+              label="Next round in"
+              deadlineAt={nextRoundAt}
+              isRunning={true}
+              onExpire={handleTimerExpire}
+            />
+          ) : (
+            <RoundTimer
+              label={isFirstRound ? "Starting in" : "Next round in"}
+              seconds={ROUND_START_COUNTDOWN}
+              isRunning={true}
+              onExpire={handleTimerExpire}
+            />
+          )
         )}
         {isWaiting && !countdownActive && (
           <div className="px-3 py-1.5 rounded-lg bg-[#9dd8ff]/5 border border-[#9dd8ff]/15 text-xs font-bold text-[#9dd8ff]">
@@ -319,6 +393,31 @@ export default function ArenaTable({
           <span className="text-xs text-[#9dd8ff]/60 uppercase tracking-wider">Table</span>
           <div className="flex items-center gap-2">
             <span className="text-lg font-black text-[#FFD700]">{name}</span>
+            {isPrivate && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-amber-400/50 bg-amber-400/15 text-amber-300">
+                Private
+              </span>
+            )}
+            {/* The host sees the invite code + a copy-link button so they
+                can invite friends (the code is the ONLY way others join). */}
+            {isPrivate && amIHost && effectiveInviteCode && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-400/50 bg-emerald-400/15 text-emerald-300">
+                Invite code: {effectiveInviteCode}
+                <button
+                  onClick={() => {
+                    const link = `${window.location.origin}/casino/crash-arena/table/${table?.id}?code=${effectiveInviteCode}`;
+                    navigator.clipboard?.writeText(link).then(() => {
+                      setCopiedInvite(true);
+                      setTimeout(() => setCopiedInvite(false), 2000);
+                    }).catch(() => {});
+                  }}
+                  title="Copy invite link"
+                  className="px-1.5 py-0.5 rounded-md text-[10px] font-black border border-emerald-400/40 bg-emerald-400/20 hover:bg-emerald-400/35 transition-all"
+                >
+                  {copiedInvite ? "✓ Copied" : "Copy link"}
+                </button>
+              </span>
+            )}
             {isAi && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-[#00e5ff]/40 bg-[#00e5ff]/15 text-[#00e5ff]">
                 AI Practice{/* Difficulty picked in the lobby (defaults to
@@ -385,7 +484,17 @@ export default function ArenaTable({
           )}
           {!isSeated && !isWaitingPlayer && !isAi && !isFull && (
             <button
-              onClick={() => setShowBuyInModal(true)}
+              onClick={() => {
+                // Private tables are invite-only: without a code (from the
+                // shared URL or a previously entered one) the player is
+                // prompted before the buy-in.
+                if (isPrivate && !effectiveInviteCode) {
+                  setJoinCodeInput("");
+                  setShowJoinCodePrompt(true);
+                } else {
+                  setShowBuyInModal(true);
+                }
+              }}
               className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_14px_rgba(0,229,255,0.4)] hover:shadow-[0_0_24px_rgba(0,229,255,0.7)] hover:scale-105 transition-all duration-300"
             >
               Join Table
@@ -408,6 +517,23 @@ export default function ArenaTable({
                   className="px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/30 bg-[#00ffa6]/10 text-[#00ffa6] hover:bg-[#00ffa6]/20 transition-all"
                 >
                   + Buy Chips
+                </button>
+              )}
+
+              {/* Private tables (host only): add an AI seat — mirrors the
+                  poker table AIs. Every click seats a NEW bot (up to
+                  capacity); bots join as seated players and the host's
+                  client drives their fold/call/raise decisions. Remove
+                  buttons sit on each bot card in the player list. */}
+              {canManageAi && !isFull && (
+                <button
+                  onClick={() => {
+                    setAddAiError(null);
+                    setShowAddAi(true);
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-bold border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 text-[#ff4fd8] hover:bg-[#ff4fd8]/20 transition-all"
+                >
+                  + Add AI
                 </button>
               )}
 
@@ -477,6 +603,34 @@ export default function ArenaTable({
         </div>
       </div>
 
+      {/* ═══ Crash Poker betting panel — placed at the TOP of the game
+          board so the action buttons are always visible while the hand
+          runs (fold / call / raise at every 0.25x checkpoint). Shown
+          while the local player is still in the hand AND can still act
+          (all-in players are committed and ride the curve). The buttons
+          themselves stay hidden until the curve reaches the checkpoint. ═══ */}
+      {isRunning && youInHand && !youAllIn && (
+        <BettingControls
+          requiredBet={roundState.requiredBet || 0}
+          contributed={you?.contributed || 0}
+          bigBlind={roundState.bigBlind || wager || 2}
+          balance={playerChips}
+          checkpointLabel={`${windowMultiplier.toFixed(2)}x`}
+          bettingOpen={canActNow}
+          // True while the shared curve hasn't reached the target
+          // checkpoint yet (the hand-start climb to 1.25x, or the climb
+          // between resolved checkpoints while this player hasn't decided
+          // at the upcoming one) — the buttons stay hidden until it does.
+          waitingForCheckpoint={
+            activeCheckpointIndex == null && !youActedThisCheckpoint
+          }
+          youActed={youActedThisCheckpoint}
+          deadlineAt={roundState.windowDeadlineAt ?? null}
+          disabled={busy || !canActNow}
+          onAction={(action, raiseTo) => onSubmitAction?.(action, raiseTo)}
+        />
+      )}
+
       {/* ═══ Game area — centered, square-ish 4:3 canvas + side panel ═══ */}
       <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
         {/* Main game canvas — hosts CrashEngine. The 4:3 ratio matches
@@ -530,29 +684,6 @@ export default function ArenaTable({
         )}
       </div>
 
-      {/* ═══ Crash Poker betting panel — shown while the local player is
-          still in the running hand AND can still act (all-in players are
-          committed and ride the curve) ═══ */}
-      {isRunning && youInHand && !youAllIn && (
-        <BettingControls
-          requiredBet={roundState.requiredBet || 0}
-          contributed={you?.contributed || 0}
-          bigBlind={roundState.bigBlind || wager || 2}
-          balance={playerChips}
-          checkpointLabel={`${windowMultiplier.toFixed(2)}x`}
-          bettingOpen={canActNow}
-          // True while the shared curve hasn't reached the next 0.25x
-          // checkpoint yet — actions are locked until it does.
-          waitingForCheckpoint={
-            activeCheckpointIndex == null && roundState.checkpointIndex >= 0
-          }
-          youActed={youActedThisCheckpoint}
-          deadlineAt={roundState.windowDeadlineAt ?? null}
-          disabled={busy || !canActNow}
-          onAction={(action, raiseTo) => onSubmitAction?.(action, raiseTo)}
-        />
-      )}
-
       {/* ═══ Your status while the hand runs but you can't act ═══ */}
       {isRunning && youAllIn && youInHand && (
         <div className="px-4 py-2 rounded-xl border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 text-[#ff4fd8] text-sm font-bold text-center">
@@ -577,7 +708,16 @@ export default function ArenaTable({
           <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 mb-3 text-center">
             Players &bull; {seatedCount}/{maxPlayers}
           </h3>
-          <PlayerList players={players} maxSeats={maxPlayers} phase={phase} onReport={onReportPlayer} />
+          <PlayerList
+            players={players}
+            maxSeats={maxPlayers}
+            phase={phase}
+            onReport={onReportPlayer}
+            // Host-only controls for AI seats (bots carry isBot + userId
+            // from the server roster).
+            onRemoveAi={canManageAi ? handleRemoveAi : undefined}
+            onRenameAi={canManageAi ? handleRenameAi : undefined}
+          />
         </div>
 
         {waitingPlayers.length > 0 && (
@@ -641,11 +781,18 @@ export default function ArenaTable({
         <BuyInModal
           table={{ wager, minBuyIn, maxBuyIn }}
           maxBalance={maxBalance}
-          onBuyIn={(amount) => {
+          onBuyIn={async (amount) => {
             if (isSeated) {
               onBuyChips?.(amount);
             } else {
-              onJoin?.(amount);
+              // Private tables: the invite code travels with the join so
+              // the server can validate it.
+              const ok = await onJoin?.(amount, effectiveInviteCode);
+              // The code was wrong (or the join was rejected) — clear the
+              // typed code so the invite prompt shows again on retry.
+              if (ok === false && isPrivate && enteredInviteCode) {
+                setEnteredInviteCode(null);
+              }
             }
             setShowBuyInModal(false);
           }}
@@ -653,8 +800,153 @@ export default function ArenaTable({
         />
       )}
 
+      {/* ═══ Invite-code prompt (private tables) ═══ */}
+      {showJoinCodePrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+          <div className="relative w-full max-w-sm rounded-2xl border border-[#00e5ff]/40 bg-[#0a1a2e] p-6 shadow-[0_0_30px_rgba(0,229,255,0.2)]">
+            <h2 className="text-xl font-black text-[#d8fbff] mb-1">Private Table</h2>
+            <p className="text-sm text-[#9dd8ff]/70 mb-4">
+              This game is invite-only. Enter the invite code the host shared
+              to join it.
+            </p>
+            <input
+              type="text"
+              value={joinCodeInput}
+              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
+              placeholder="e.g. K7PM2A"
+              autoFocus
+              className="w-full rounded-lg border border-[#00e5ff]/40 bg-[#020617] px-3 py-2.5 text-sm font-bold uppercase tracking-widest text-[#d8fbff] outline-none focus:border-[#00e5ff] mb-4"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && joinCodeInput.trim()) {
+                  setEnteredInviteCode(joinCodeInput.trim().toUpperCase());
+                  setShowJoinCodePrompt(false);
+                  setShowBuyInModal(true);
+                }
+              }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowJoinCodePrompt(false)}
+                className="flex-1 rounded-lg border border-gray-600/50 bg-gray-800/40 px-4 py-2 text-sm font-bold text-gray-300 hover:bg-gray-800/70 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!joinCodeInput.trim()) return;
+                  setEnteredInviteCode(joinCodeInput.trim().toUpperCase());
+                  setShowJoinCodePrompt(false);
+                  setShowBuyInModal(true);
+                }}
+                disabled={!joinCodeInput.trim()}
+                className="flex-1 rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/20 px-4 py-2 text-sm font-black text-[#00e5ff] hover:bg-[#00e5ff]/35 disabled:opacity-50 transition-all"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ Rules popup ═══ */}
       {showRules && <CrashArenaRulesModal onClose={() => setShowRules(false)} />}
+
+      {/* ═══ Add-AI popup (private tables, host only) ═══ */}
+      {showAddAi && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+          <div className="relative w-full max-w-sm rounded-2xl border border-[#ff4fd8]/40 bg-[#0a1a2e] p-6 shadow-[0_0_30px_rgba(255,79,216,0.2)]">
+            <h2 className="text-xl font-black text-[#d8fbff] mb-1">Add AI Player</h2>
+            <p className="text-sm text-[#9dd8ff]/70 mb-4">
+              Seat a GRYND AI bot at this private table. Its fold/call/raise
+              decisions follow the difficulty you pick.
+            </p>
+
+            {/* Optional custom name */}
+            <label className="block text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-1">
+              AI Name (optional)
+            </label>
+            <input
+              type="text"
+              value={aiNameInput}
+              onChange={(e) => setAiNameInput(e.target.value.slice(0, 40))}
+              placeholder="GRYND AI"
+              className="w-full rounded-lg border border-[#ff4fd8]/30 bg-[#020617] px-3 py-2 text-sm font-bold text-[#d8fbff] outline-none focus:border-[#ff4fd8] mb-4"
+            />
+
+            {/* Difficulty picker */}
+            <label className="block text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-1">
+              AI Difficulty
+            </label>
+            <div className="flex gap-1.5 mb-4">
+              {["easy", "medium", "hard"].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setAiDifficulty(d)}
+                  className={`flex-1 rounded-full border px-3 py-1.5 text-xs font-bold capitalize transition-all duration-200 ${
+                    aiDifficulty === d
+                      ? "border-[#ff4fd8] bg-[#ff4fd8]/20 text-[#ff4fd8] shadow-[0_0_10px_rgba(255,79,216,0.35)]"
+                      : "border-gray-600/50 bg-gray-800/40 text-gray-400 hover:border-[#ff4fd8]/60 hover:text-[#ff4fd8]/80"
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+
+            {/* Optional stack override (defaults to 20× the wager) */}
+            <label className="block text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-1">
+              Stack (optional)
+            </label>
+            <input
+              type="number"
+              value={aiStackInput}
+              onChange={(e) => setAiStackInput(e.target.value)}
+              min={minBuyIn}
+              step="0.01"
+              placeholder={`Default: $${(Number(wager || 0) * 20).toLocaleString()}`}
+              className="w-full rounded-lg border border-[#ff4fd8]/30 bg-[#020617] px-3 py-2 text-sm font-bold text-[#d8fbff] outline-none focus:border-[#ff4fd8] mb-4"
+            />
+
+            {addAiError && (
+              <p className="text-xs text-red-400 mb-3">{addAiError}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAddAi(false)}
+                className="flex-1 rounded-lg border border-gray-600/50 bg-gray-800/40 px-4 py-2 text-sm font-bold text-gray-300 hover:bg-gray-800/70 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setAddingAi(true);
+                  setAddAiError(null);
+                  try {
+                    const stack = aiStackInput !== "" ? Number(aiStackInput) : undefined;
+                    const name = aiNameInput.trim() ? aiNameInput.trim() : undefined;
+                    const ok = await onAddAi?.(aiDifficulty, stack, name);
+                    if (ok === false) {
+                      setAddAiError("Couldn't add the AI — the table may be full.");
+                    } else {
+                      setShowAddAi(false);
+                    }
+                  } catch (err) {
+                    setAddAiError(err?.message || "Failed to add AI");
+                  } finally {
+                    setAddingAi(false);
+                  }
+                }}
+                disabled={addingAi}
+                className="flex-1 rounded-lg border border-[#ff4fd8]/50 bg-[#ff4fd8]/20 px-4 py-2 text-sm font-black text-[#ff4fd8] hover:bg-[#ff4fd8]/35 disabled:opacity-50 transition-all"
+              >
+                {addingAi ? "Adding…" : "Add AI"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

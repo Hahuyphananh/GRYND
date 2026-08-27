@@ -5,7 +5,7 @@ import {
   crashArenaEntries,
 } from "../../../../db/schema";
 import { eq, and, lt, sql } from "drizzle-orm";
-import { expireStaleActions } from "../../../../lib/crash-poker/roundSystem";
+import { expireStaleActions, resumeFlight } from "../../../../lib/crash-poker/roundSystem";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
@@ -72,6 +72,10 @@ export async function POST(req: NextRequest) {
 
       const expired = expireStaleActions(hand, now);
       if (expired.autoFolded.length === 0 && expired.autoChecked.length === 0) continue;
+      // The window closed → the flight resumes from the checkpoint now.
+      if (!expired.hand.bettingOpen) {
+        expired.hand = resumeFlight(expired.hand, now);
+      }
 
       if (expired.autoFolded.length > 0) {
         autoFoldedByRound[round.id] = expired.autoFolded;
@@ -137,6 +141,9 @@ export async function POST(req: NextRequest) {
             pots: settled.pots,
             returns: settled.returns,
             entries: settled.entries,
+            // Absolute epoch-ms of the next round start — every client
+            // counts down to the same moment.
+            nextRoundAt: settled.nextRoundAt,
           },
         });
       }

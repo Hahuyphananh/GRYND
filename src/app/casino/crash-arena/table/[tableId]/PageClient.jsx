@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../../../../components/navigation-bar";
 import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
 import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
@@ -21,7 +21,15 @@ import Link from "next/link";
 export default function TableRoomPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isSignedIn: isUserSignedIn } = useUser();
+  // Invite code for private tables — travels in the shared URL (?code=)
+  // so the join route can validate it. The host's code comes from their
+  // own table row instead (returned only to the host by the tables API).
+  const urlInviteCode =
+    typeof searchParams?.get === "function"
+      ? (searchParams.get("code") ?? null)
+      : null;
   const rawId = typeof params.tableId === "string" ? Number(params.tableId) : NaN;
   const tableId = Number.isFinite(rawId) ? rawId : null;
   const playerName = "You";
@@ -126,6 +134,10 @@ export default function TableRoomPage() {
     // aggressiveness follows the difficulty picked in the lobby.
     isAi: table?.isAi || false,
     aiDifficulty: table?.aiDifficulty || "medium",
+    // Private tables: only the host's client drives the AI seats (the
+    // server rejects bot actions from non-hosts).
+    isPrivate: table?.isPrivate || false,
+    amIHost: table?.amIHost || false,
     // Socket-triggered table updates re-fetch the roster + latest round
     // so round state stays in sync across all players at the table.
     onRoomUpdate: () => refetchTablesRef.current?.(),
@@ -146,6 +158,8 @@ export default function TableRoomPage() {
         isYou: p.isYou,
         // The reserved GRYND AI bot — never reportable.
         isBot: Boolean(p.isBot),
+        // Per-bot difficulty (Add-AI dialog) — drives the bot's decisions.
+        aiDifficulty: p.aiDifficulty ?? null,
       })),
     [playerName],
   );
@@ -224,8 +238,8 @@ export default function TableRoomPage() {
 
   // ── Player actions ───────────────────────────────────────────────────
 
-  const handleJoin = useCallback((buyIn) => {
-    joinTable(buyIn);
+  const handleJoin = useCallback((buyIn, joinCode) => {
+    joinTable(buyIn, joinCode);
   }, [joinTable]);
 
   const handleBuyChips = useCallback((amount) => {
@@ -244,6 +258,76 @@ export default function TableRoomPage() {
     const ok = await exitTable();
     if (ok) router.push("/casino/crash-arena");
   }, [exitTable, router]);
+
+  // ── Add an AI seat (private tables, host only) ─────────────────────
+  // The server validates host + isPrivate; the new bot shows up via the
+  // roster refetch and the host's client drives its decisions through
+  // /api/crash-arena/action with forBot + forBotUserId.
+  const handleAddAi = useCallback(async (difficulty, stack, name) => {
+    if (!tableId) return false;
+    try {
+      const res = await fetch("/api/crash-arena/add-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tableId,
+          difficulty,
+          ...(stack != null && Number.isFinite(Number(stack)) ? { stack: Number(stack) } : {}),
+          ...(name ? { name } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return false;
+      // Refresh the roster so the new bot seat shows up immediately.
+      refetchTablesRef.current?.();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [tableId]);
+
+  // ── Rename an AI seat (private tables, host only) ───────────────────
+  // The custom name is stored on the seat (never the shared users row);
+  // the roster refetch shows it everywhere immediately.
+  const handleRenameAi = useCallback(async (botPlayer, newName) => {
+    if (!tableId || !botPlayer?.userId || !newName) return false;
+    try {
+      const res = await fetch("/api/crash-arena/rename-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tableId, userId: botPlayer.userId, name: newName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return false;
+      refetchTablesRef.current?.();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [tableId]);
+
+  // ── Remove an AI seat (private tables, host only) ───────────────────
+  // The server re-validates host + private and releases any mid-round
+  // entry; the roster refetch makes the removed bot disappear instantly.
+  const handleRemoveAi = useCallback(async (botPlayer) => {
+    if (!tableId || !botPlayer?.userId) return false;
+    try {
+      const res = await fetch("/api/crash-arena/remove-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tableId, userId: botPlayer.userId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return false;
+      refetchTablesRef.current?.();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [tableId]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -315,10 +399,18 @@ export default function TableRoomPage() {
           activeCheckpointIndex={activeCheckpointIndex}
           checkpointMultiplierFor={checkpointMultiplierFor}
           onJoin={handleJoin}
+          // Private tables: the invite code from the shared URL, or the
+          // host's own code (tables API returns it to the host only).
+          inviteCode={urlInviteCode ?? (table?.amIHost ? table?.joinCode ?? null : null)}
           onLeave={handleLeave}
           onExitToLobby={handleExitToLobby}
           onBuyChips={handleBuyChips}
-          maxBalance={userBalance}
+          onAddAi={handleAddAi}
+          onRemoveAi={handleRemoveAi}
+          onRenameAi={handleRenameAi}
+          // Private tables are virtual chips — the buy-in is play money the
+          // player chooses freely, so it's NOT capped by the wallet balance.
+          maxBalance={table?.isPrivate ? null : userBalance}
           busy={busy}
           onReportPlayer={handleReportPlayer}
         >
@@ -332,6 +424,9 @@ export default function TableRoomPage() {
             crashPoint={crashEngineProps.crashPoint}
             startedAt={crashEngineProps.startedAt}
             running={crashEngineProps.running}
+            curveFrom={crashEngineProps.curveFrom}
+            curveResumedAt={crashEngineProps.curveResumedAt}
+            curveCap={crashEngineProps.curveCap}
             onCashout={crashEngineProps.onCashout}
             onCrash={crashEngineProps.onCrash}
             onMultiplierUpdate={crashEngineProps.onMultiplierUpdate}

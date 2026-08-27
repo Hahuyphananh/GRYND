@@ -587,12 +587,33 @@ async function runCrashArenaCrashSweep() {
         sentAt: new Date().toISOString(),
       });
     }
+    // Checkpoint opens / stall-guard auto-resolves produced by the sweep
+    // (the flight pauses at every 0.25x checkpoint; clients mirror the
+    // open window + fold badges live instead of waiting for the 10s poll).
+    const updates = Array.isArray(data.data?.updates) ? data.data.updates : [];
+    for (const evt of updates) {
+      if (evt == null || evt.tableId == null) continue;
+      const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${evt.tableId}`;
+      io.to(roomId).emit("lobby:updated", {
+        tableId: evt.tableId,
+        ...evt,
+        sentAt: new Date().toISOString(),
+      });
+    }
     if (crashed.length > 0) {
       console.log(
         "[crash-arena] crash sweep settled",
         crashed.length,
         "hand(s)",
         crashed.map((e) => `#${e.roundId}@${e.multiplier}x`).join(","),
+      );
+    }
+    if (updates.length > 0) {
+      logThrottled(
+        "crash:updates",
+        "[crash-arena] sweep pushed",
+        updates.length,
+        "checkpoint update(s)",
       );
     }
   } catch (err) {

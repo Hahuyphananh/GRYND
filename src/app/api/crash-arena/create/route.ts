@@ -17,6 +17,7 @@ import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
 } from "../../../../lib/crash-arena/rooms";
+import { generateJoinCode } from "../../../../lib/crash-arena/joinCode";
 import {
   isMissingCrashArenaColumn,
   CRASH_ARENA_SCHEMA_HINT,
@@ -42,8 +43,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { wager } = await req.json();
+    const { wager, isPrivate } = await req.json();
     const wagerNum = Number(wager);
+    const privateTable = Boolean(isPrivate);
 
     if (!Number.isFinite(wagerNum) || wagerNum < CRASH_MIN_WAGER) {
       return NextResponse.json(
@@ -114,6 +116,10 @@ export async function POST(req: Request) {
     // ratio round(wager/2)) and persist it so every hand at this table uses
     // the same blind structure.
     const { smallBlind } = computeBlinds(roundedWager);
+    // Private tables get an invite code — the ONLY way non-members can join
+    // (the table URL alone no longer grants access). Public tables don't
+    // need one (anyone can join from the lobby).
+    const joinCode = privateTable ? generateJoinCode() : null;
     const [created] = await db
       .insert(crashArenaTables)
       .values({
@@ -123,6 +129,10 @@ export async function POST(req: Request) {
         maxPlayers: 6,
         hostId,
         status: "waiting",
+        // Private tables are hidden from the public lobby grid — the host
+        // shares the invite code (and may add AI seats there, like poker).
+        isPrivate: privateTable,
+        joinCode,
         smallBlind: smallBlind.toFixed(2),
       })
       .returning();
@@ -140,6 +150,10 @@ export async function POST(req: Request) {
         name: created.name,
         wager: roundedWager,
         minBuyIn,
+        isPrivate: privateTable,
+        // The host needs the code to invite friends — shared in the lobby
+        // "Join with invite code" flow and on the table page.
+        joinCode,
       },
     });
   } catch (err) {

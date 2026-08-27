@@ -26,6 +26,13 @@ const MAX_CURVE_POINTS = 450;
  *     the server announces it. The engine is NOT the source of truth for
  *     when the crash happens.
  *
+ * Pause-aware curve (Crash Poker): the flight STOPS at every 0.25x betting
+ * checkpoint. While a checkpoint window is open the curve holds at the
+ * checkpoint multiplier (curveCap); when the window closes the server
+ * advances flightResumedAt and the curve resumes climbing from that
+ * multiplier. This keeps every client rendering the same multiplier at
+ * the same wall-clock moment as the server.
+ *
  * Params:
  *   crashPoint  — multiplier at which the game crashes (null = unknown /
  *                 server-triggered crash only)
@@ -33,6 +40,14 @@ const MAX_CURVE_POINTS = 450;
  *   startedAt   — server epoch-ms when the hand started; the curve is
  *                 aligned to it so every client renders the same
  *                 multiplier at the same wall-clock moment
+ *   curveFrom   — multiplier the current flight segment starts from
+ *                 (1.00 at hand start, or the checkpoint multiplier after
+ *                 a betting window closes)
+ *   curveResumedAt — server epoch-ms the current flight segment started
+ *                 (hand start, or the moment the last checkpoint closed)
+ *   curveCap    — multiplier to HOLD at while a betting window is open
+ *                 (null = free climb); the flight pauses here until the
+ *                 window resolves
  *   onFrame     — called every ~80ms with { multiplier, points, crashed }
  *   onCrash     — called when the crash happens (autonomous or triggered)
  */
@@ -40,6 +55,9 @@ export default function useCrashAnimation({
   crashPoint,
   running = false,
   startedAt = null,
+  curveFrom = 1,
+  curveResumedAt = null,
+  curveCap = null,
   onFrame,
   onCrash,
 }) {
@@ -47,6 +65,13 @@ export default function useCrashAnimation({
 
   const stateRef = useRef({
     startTime: 0,
+    // Pause-aware curve segment bookkeeping: which server flight segment
+    // this client is currently rendering (its epoch-ms anchor + the
+    // multiplier it starts from). Re-anchored live whenever the server
+    // resumes the flight after a betting window closes.
+    segmentAnchorMs: 0,
+    segmentStartTime: 0,
+    segmentFrom: 1,
     currentMultiplier: 1,
     displayMultiplier: 1,
     crashPoint: 0,
@@ -69,6 +94,14 @@ export default function useCrashAnimation({
     startedAtRef.current = startedAt;
   }, [startedAt]);
 
+  // Live curve-segment props (pause-aware). The animation loop reads these
+  // every frame, so a betting window opening (cap set) or closing (resumedAt
+  // advancing) takes effect WITHOUT restarting the animation.
+  const curveRef = useRef({ from: 1, resumedAt: null, cap: null });
+  useEffect(() => {
+    curveRef.current = { from: curveFrom, resumedAt: curveResumedAt, cap: curveCap };
+  }, [curveFrom, curveResumedAt, curveCap]);
+
   // Persist callbacks in refs so the animation loop always calls the latest
   const callbacksRef = useRef({ onFrame, onCrash });
   useEffect(() => {
@@ -89,17 +122,23 @@ export default function useCrashAnimation({
     const cp = crashPointRef.current;
     const maxMultiplier = cp ? Math.max(cp * 1.2, 2) : DEFAULT_MAX_MULTIPLIER;
 
-    // Align the curve to the server's hand start (epoch ms): the animation
-    // begins `elapsed` ms into the curve instead of at t=0, so a client
-    // that received the broadcast late still renders the same multiplier
-    // everyone else sees at that moment. Never starts in the future.
+    // Align the curve to the server's flight segment start (epoch ms): the
+    // animation begins `elapsed` ms into the curve instead of at t=0, so a
+    // client that received the broadcast late still renders the same
+    // multiplier everyone else sees at that moment. Never starts in the
+    // future. The segment anchor is the hand's flightResumedAt (= startedAt
+    // at hand start); it advances live when a betting window closes.
     const startedAtMs = Number(startedAtRef.current) || 0;
-    const startTime = startedAtMs
-      ? performance.now() - Math.max(0, Date.now() - startedAtMs)
+    const anchorMs = Number(curveRef.current.resumedAt) || startedAtMs || 0;
+    const startTime = anchorMs
+      ? performance.now() - Math.max(0, Date.now() - anchorMs)
       : performance.now();
 
     stateRef.current = {
       startTime,
+      segmentAnchorMs: anchorMs,
+      segmentStartTime: startTime,
+      segmentFrom: Number(curveRef.current.from) || 1,
       currentMultiplier: 1,
       displayMultiplier: 1,
       crashPoint: cp || 0,
@@ -113,14 +152,40 @@ export default function useCrashAnimation({
 
     const animationLoop = (now) => {
       const s = stateRef.current;
-      const elapsedSeconds = (now - s.startTime) / 1000;
-      const deterministicMultiplier = Math.exp(GROWTH_RATE * elapsedSeconds);
+      const c = curveRef.current;
+
+      // Segment re-anchor: the server resumed the flight at a NEW moment
+      // (a betting window closed → flightResumedAt advanced). Restart the
+      // curve from the checkpoint multiplier at that moment instead of
+      // continuing from the hand start — otherwise the paused time would
+      // inflate the multiplier.
+      const anchorMs = Number(c.resumedAt) || Number(startedAtRef.current) || 0;
+      if (anchorMs && s.segmentAnchorMs !== anchorMs) {
+        s.segmentAnchorMs = anchorMs;
+        s.segmentStartTime = performance.now() - Math.max(0, Date.now() - anchorMs);
+        s.segmentFrom = Number(c.from) || 1;
+      }
+
+      const elapsedSeconds = (now - s.segmentStartTime) / 1000;
+      let deterministicMultiplier =
+        s.segmentFrom * Math.exp(GROWTH_RATE * elapsedSeconds);
+      // Pause at an open betting checkpoint: hold the multiplier at the
+      // cap while the window is open — the curve stops at every 0.25x
+      // increment so players can decide without the rocket racing away.
+      if (c.cap != null && deterministicMultiplier >= c.cap) {
+        deterministicMultiplier = c.cap;
+      }
       const roundedMultiplier = parseFloat(deterministicMultiplier.toFixed(4));
       // Autonomous crash detection only when the engine knows the point.
       // With an unknown point (Crash Poker) the curve flies until the
-      // server announces the crash — the engine never decides it.
+      // server announces the crash — the engine never decides it. Never
+      // crash while paused at a checkpoint: the sweep would have crashed
+      // the hand before ever opening a window beyond the crash point.
       const hasKnownCrashPoint = s.crashPoint > 0;
-      const didCrash = hasKnownCrashPoint && roundedMultiplier >= s.crashPoint;
+      const didCrash =
+        hasKnownCrashPoint &&
+        c.cap == null &&
+        roundedMultiplier >= s.crashPoint;
 
       s.currentMultiplier = didCrash ? s.crashPoint : roundedMultiplier;
       s.displayMultiplier = parseFloat(s.currentMultiplier.toFixed(2));

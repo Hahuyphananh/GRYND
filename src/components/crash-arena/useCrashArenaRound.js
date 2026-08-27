@@ -7,7 +7,11 @@ import {
   settleRound,
   nextRound,
 } from "../../lib/crash-arena/roundSystem";
-import { checkpointIndexAtOrBelow, checkpointMultiplier } from "../../lib/crash-poker/constants";
+import {
+  checkpointIndexAtOrBelow,
+  checkpointMultiplier,
+  segmentStartMultiplier,
+} from "../../lib/crash-poker/constants";
 import { getBotBettingDecision } from "../../lib/crash-poker/botStrategy";
 import { useSocket } from "../../context/SocketProvider";
 import {
@@ -35,6 +39,15 @@ function handFromRoundInfo(roundInfo) {
     windowDeadlineAt: roundInfo?.windowDeadlineAt ?? null,
     carryOver: Number(roundInfo?.carryOver ?? 0),
     startedAt: roundInfo?.startedAt != null ? Number(roundInfo.startedAt) : null,
+    // Epoch-ms the current flight segment started — the pause-aware curve
+    // resumes from the checkpoint multiplier at this moment after each
+    // betting window closes (server-authoritative, keeps every client
+    // rendering the same multiplier at the same wall-clock moment).
+    flightResumedAt:
+      roundInfo?.flightResumedAt != null ? Number(roundInfo.flightResumedAt) : null,
+    // Server-scheduled next-round deadline (epoch ms).
+    nextRoundAt:
+      roundInfo?.nextRoundAt != null ? Number(roundInfo.nextRoundAt) : null,
     contributions: entries.map((e) => ({
       userId: e.userId,
       amount: Number(e.contributed ?? 0),
@@ -147,15 +160,25 @@ export default function useCrashArenaRound({
   onRoomUpdate,
   isAi = false,
   aiDifficulty = DEFAULT_AI_DIFFICULTY,
+  // Private tables: the host may add AI seats; only the host's client
+  // drives them (the server rejects bot actions from non-hosts).
+  isPrivate = false,
+  amIHost = false,
 }) {
   const { socket } = useSocket();
   const crashEngineRef = useRef(null);
   const currentRoundIdRef = useRef(null);
-  // AI practice: the bot's user id + the last checkpoint it acted at, so it
-  // makes one decision per checkpoint (re-acting only when a raise re-opens
-  // its action).
-  const botUserIdRef = useRef(null);
-  const botActedIndexRef = useRef(-1);
+  // Multi-bot driver: per-bot tracking so EVERY seated bot makes one
+  // decision per checkpoint (a raise re-opens action for all of them).
+  //   botActedIndexRef — Map<userId, last checkpoint index acted at>
+  //   botInFlightRef   — Set<userId> with an action request in flight
+  //                      (per-bot, so bots act in parallel instead of
+  //                      blocking each other on the global busy flag)
+  const botActedIndexRef = useRef(new Map());
+  const botInFlightRef = useRef(new Set());
+  // Whether THIS client is allowed to drive bot decisions (practice table
+  // host, or the host of a private table that added AI seats).
+  const canDriveBots = isAi || (isPrivate && amIHost);
   // Id + status of the most recent round reconciled from the server
   // (poll or socket) — guards against re-applying the same round on
   // every refetch while still allowing a status flip (running → settled)
@@ -246,7 +269,32 @@ export default function useCrashArenaRound({
             window.windowDeadlineAt != null
               ? Number(window.windowDeadlineAt)
               : state.windowDeadlineAt,
+          flightResumedAt:
+            window.flightResumedAt != null
+              ? Number(window.flightResumedAt)
+              : state.flightResumedAt,
           pot: window.pot != null ? Number(window.pot) : state.pot,
+        };
+      }
+      case "CHECKPOINT_OPENED": {
+        // The server sweep opened the next 0.25x checkpoint (the flight
+        // paused there) — mirror the open window + fresh stall-guard
+        // deadline instantly instead of waiting for the poll.
+        if (state.phase !== "running") return state;
+        const w = action.window || {};
+        const idx =
+          w.checkpointIndex != null
+            ? Number(w.checkpointIndex)
+            : state.checkpointIndex;
+        return {
+          ...state,
+          checkpointIndex: idx,
+          currentCheckpointMultiplier: checkpointMultiplier(idx),
+          bettingOpen: true,
+          windowDeadlineAt:
+            w.windowDeadlineAt != null
+              ? Number(w.windowDeadlineAt)
+              : state.windowDeadlineAt,
         };
       }
       case "REMOTE_ACTION": {
@@ -299,6 +347,10 @@ export default function useCrashArenaRound({
             window.windowDeadlineAt != null
               ? Number(window.windowDeadlineAt)
               : state.windowDeadlineAt,
+          flightResumedAt:
+            window.flightResumedAt != null
+              ? Number(window.flightResumedAt)
+              : state.flightResumedAt,
           pot: window.pot != null ? Number(window.pot) : state.pot,
         };
       }
@@ -307,6 +359,10 @@ export default function useCrashArenaRound({
         // the authoritative results and settle locally with them.
         const res = action.results || {};
         let next = applyServerEntries(state, res.entries || []);
+        // The settle scheduled the next round start (absolute deadline).
+        if (res.nextRoundAt != null) {
+          next = { ...next, nextRoundAt: Number(res.nextRoundAt) };
+        }
         const winnerName = res.winnerUserId != null
           ? next.players.find((p) => p.userId === res.winnerUserId)?.name ?? null
           : null;
@@ -361,8 +417,20 @@ export default function useCrashArenaRound({
         const cp = sr.crashPoint != null ? Number(sr.crashPoint) : null;
         const hasValidCp = cp != null && Number.isFinite(cp) && cp >= 1;
         const hand = handFromRoundInfo(sr);
+        // The server-scheduled next-round deadline travels with the round
+        // snapshot so a client that missed the settle broadcast still
+        // counts down to the exact same moment.
+        if (sr.nextRoundAt != null) {
+          next = { ...next, nextRoundAt: Number(sr.nextRoundAt) };
+        }
 
         if (sr.status === "running") {
+          // A client still showing the previous hand's results when the
+          // server already started the next round (settle → countdown →
+          // start) catches up directly instead of waiting for a click.
+          if (next.phase === "settling") {
+            next = nextRound(next);
+          }
           if (next.phase === "waiting") {
             next = startRound(next, action.wager, null, sr.seedHash ?? null, null, hand);
           }
@@ -429,6 +497,7 @@ export default function useCrashArenaRound({
               isYou: lp.isYou || Boolean(sp.isYou),
               userId: lp.userId ?? sp.userId ?? null,
               isBot: Boolean(sp.isBot) || lp.isBot === true,
+              aiDifficulty: sp.aiDifficulty ?? lp.aiDifficulty ?? null,
               balance: lp.isYou ? lp.balance : Number(sp.balance),
             });
           } else {
@@ -440,6 +509,7 @@ export default function useCrashArenaRound({
               balance: Number(sp.balance),
               isYou: Boolean(sp.isYou),
               isBot: Boolean(sp.isBot),
+              aiDifficulty: sp.aiDifficulty ?? null,
               isSittingOut: false,
               isPlaying: !inLiveRound,
               contributed: 0,
@@ -545,10 +615,13 @@ export default function useCrashArenaRound({
    *
    * @param {"fold"|"call"|"raise"} action
    * @param {number} [raiseTo] required for "raise" — the new total bet
-   * @param {boolean} [forBot] AI practice: act for the bot (human's session)
+   * @param {boolean} [forBot] act on behalf of a bot (no account)
+   * @param {number|null} [forBotUserId] the bot's user id at a private
+   *   table (the server validates it is a reserved bot seated there);
+   *   practice tables resolve their single bot automatically
    * @returns {Promise<boolean>} true when the server accepted the action
    */
-  const submitAction = useCallback(async (action, raiseTo, forBot = false) => {
+  const submitAction = useCallback(async (action, raiseTo, forBot = false, forBotUserId = null) => {
     const roundId = currentRoundIdRef.current;
     if (!roundId) {
       if (!forBot) setError("No active hand");
@@ -570,7 +643,10 @@ export default function useCrashArenaRound({
       if (!forBot) setError("Betting isn't open at this checkpoint yet");
       return false;
     }
-    if (forBot) botActedIndexRef.current = target;
+    if (forBot && forBotUserId != null) {
+      botActedIndexRef.current.set(forBotUserId, target);
+      botInFlightRef.current.add(forBotUserId);
+    }
 
     setBusy(true);
     setError(null);
@@ -585,13 +661,16 @@ export default function useCrashArenaRound({
           action,
           ...(raiseTo != null ? { raiseTo } : {}),
           ...(forBot ? { forBot: true } : {}),
+          ...(forBot && forBotUserId != null ? { forBotUserId } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
         // A concurrent actor resolved the checkpoint — not an error for the
         // bot; surface it for the human. Let the bot retry next tick.
-        if (forBot) botActedIndexRef.current = -1;
+        if (forBot && forBotUserId != null) {
+          botActedIndexRef.current.delete(forBotUserId);
+        }
         // The server already recorded this player's action at this
         // checkpoint (e.g. an auto-check raced their own submit) — nothing
         // to do, not an error worth surfacing.
@@ -609,6 +688,8 @@ export default function useCrashArenaRound({
           requiredBet: d.requiredBet,
           bettingOpen: d.bettingOpen,
           pot: d.pot,
+          flightResumedAt: d.flightResumedAt ?? null,
+          windowDeadlineAt: d.windowDeadlineAt ?? null,
         },
       });
       // The action raced the crash and lost — the server settled the hand
@@ -655,6 +736,8 @@ export default function useCrashArenaRound({
             requiredBet: d.requiredBet,
             bettingOpen: d.bettingOpen,
             pot: d.pot,
+            flightResumedAt: d.flightResumedAt ?? null,
+            windowDeadlineAt: d.windowDeadlineAt ?? null,
           },
           ...(d.handOver && d.results
             ? { handOver: true, results: d.results }
@@ -662,10 +745,15 @@ export default function useCrashArenaRound({
         });
       }
       return true;    } catch (err) {
-      if (forBot) botActedIndexRef.current = -1;
+      if (forBot && forBotUserId != null) {
+        botActedIndexRef.current.delete(forBotUserId);
+      }
       if (!forBot) setError("Network error submitting action");
       return false;
     } finally {
+      if (forBot && forBotUserId != null) {
+        botInFlightRef.current.delete(forBotUserId);
+      }
       setBusy(false);
     }
   }, [tableId, socket, handleCrash]);
@@ -674,55 +762,79 @@ export default function useCrashArenaRound({
 
 
   /**
-   * AI practice: the bot makes one betting decision per checkpoint the curve
-   * reaches. Executed through the same server-authoritative action route
-   * with `forBot: true` (mirrors the old ai-cashout pattern).
+   * Drive every seated bot to make its decision at the given checkpoint.
+   *
+   * Executed through the same server-authoritative action route with
+   * `forBot: true` + the bot's user id (mirrors the poker-table AI seats).
+   * Per-bot tracking (acted-index + in-flight set) means bots act in
+   * parallel and make exactly one decision per checkpoint — a raise by
+   * anyone re-opens their action and they decide again.
    */
-  const maybeActForBot = useCallback((multiplier) => {
-    if (!isAi || busy) return;
+  const driveBotsAt = useCallback((targetIndex) => {
+    if (!canDriveBots) return;
     const rs = roundStateRef.current;
-    if (rs.phase !== "running") return;
-    const bot = rs.players.find((p) => p.isBot);
-    if (!bot || bot.userId == null || !bot.isActive || bot.folded || bot.busted || bot.allIn) return;
+    if (!rs || rs.phase !== "running") return;
+    const target = Number(targetIndex);
+    if (!Number.isFinite(target) || target < 0) return;
 
+    for (const bot of rs.players) {
+      if (!bot.isBot || bot.userId == null) continue;
+      if (!bot.isActive || bot.folded || bot.busted || bot.allIn) continue;
+
+      // Already decided at this checkpoint AND still matched (no raise
+      // re-opened its action) — nothing owed.
+      if (
+        Number(bot.contributed) >= Number(rs.requiredBet) &&
+        (botActedIndexRef.current.get(bot.userId) ?? -1) >= target
+      ) {
+        continue;
+      }
+      if (botInFlightRef.current.has(bot.userId)) continue;
+
+      const decision = getBotBettingDecision({
+        requiredBet: Number(rs.requiredBet),
+        contributed: Number(bot.contributed),
+        smallBlind: Number(rs.smallBlind ?? 1),
+        bigBlind: Number(rs.bigBlind ?? rs.requiredBet),
+        remainingBalance: Number(bot.balance),
+        // Per-bot difficulty (picked in the Add-AI dialog) wins; practice
+        // bots fall back to the table's difficulty.
+        difficulty: bot.aiDifficulty ?? aiDifficulty,
+      });
+
+      // Every active player must act at each checkpoint — a matched bot
+      // still submits its decision so the checkpoint resolves immediately
+      // (the server turns a matched call into a check). Submitting here
+      // instead of waiting avoids the stall guard's auto-resolve delay.
+      botInFlightRef.current.add(bot.userId);
+      botActedIndexRef.current.set(bot.userId, target);
+      submitAction(decision.action, decision.raiseTo, true, bot.userId);
+    }
+  }, [canDriveBots, aiDifficulty, submitAction]);
+
+  /**
+   * The checkpoint the bots should target right now, derived from the live
+   * curve multiplier + the local window mirror. Same rules as submitAction:
+   * the OPEN checkpoint once the curve reached it, else the next one once
+   * the open one resolved and the curve crossed the boundary.
+   */
+  const botTargetFromMultiplier = useCallback((multiplier) => {
+    const rs = roundStateRef.current;
+    if (!rs || rs.phase !== "running") return null;
     const curveIndex = checkpointIndexAtOrBelow(multiplier);
     const open = Number(rs.checkpointIndex ?? -1);
-    let target = null;
-    if (curveIndex >= open + 1) target = open + 1;
-    else if (curveIndex === open && rs.bettingOpen) target = open;
-    if (target == null) return;
-
-    // The bot already decided at this checkpoint AND is still matched (no
-    // raise re-opened its action) — nothing owed.
-    if (
-      Number(bot.contributed) >= Number(rs.requiredBet) &&
-      botActedIndexRef.current >= target
-    ) {
-      return;
-    }
-
-    const decision = getBotBettingDecision({
-      requiredBet: Number(rs.requiredBet),
-      contributed: Number(bot.contributed),
-      smallBlind: Number(rs.smallBlind ?? 1),
-      bigBlind: Number(rs.bigBlind ?? rs.requiredBet),
-      remainingBalance: Number(bot.balance),
-      difficulty: aiDifficulty,
-    });
-
-    // Every active player must act at each checkpoint — a matched bot still
-    // submits its decision so the checkpoint resolves immediately (the
-    // server turns a matched call into a check). Submitting here instead of
-    // waiting avoids the stall guard's 10s auto-resolve delay.
-    submitAction(decision.action, decision.raiseTo, true);
-  }, [isAi, busy, aiDifficulty, submitAction]);
+    if (curveIndex >= open + 1) return open + 1;
+    if (curveIndex === open && rs.bettingOpen) return open;
+    return null;
+  }, []);
 
   const handleMultiplierUpdate = useCallback((multiplier, crashed) => {
     currentMultiplierRef.current = multiplier;
     setCurrentMultiplier(multiplier);
-    if (!isAi || crashed) return;
-    maybeActForBot(multiplier);
-  }, [isAi, maybeActForBot]);
+    if (crashed || !canDriveBots) return;
+    const target = botTargetFromMultiplier(multiplier);
+    if (target != null) driveBotsAt(target);
+  }, [canDriveBots, botTargetFromMultiplier, driveBotsAt]);
 
   // ── Hand control ────────────────────────────────────────────────────
 
@@ -757,7 +869,8 @@ export default function useCrashArenaRound({
       currentRoundIdRef.current = roundId;
       lastSyncedRef.current = { id: String(roundId), status: "running" };
       setReadyVotes([]);
-      botActedIndexRef.current = -1;
+      botActedIndexRef.current = new Map();
+      botInFlightRef.current = new Set();
       dispatch({
         type: "START_ROUND",
         crashPoint: null,
@@ -788,7 +901,8 @@ export default function useCrashArenaRound({
     setReadyVotes([]);
     currentMultiplierRef.current = 1.0;
     setCurrentMultiplier(1.0);
-    botActedIndexRef.current = -1;
+    botActedIndexRef.current = new Map();
+    botInFlightRef.current = new Set();
   }, []);
 
   // ── Hand reconciliation (from poll or socket) ───────────────────────
@@ -878,6 +992,7 @@ export default function useCrashArenaRound({
           requiredBet: payload.hand?.requiredBet ?? 0,
           bettingOpen: Boolean(payload.hand?.bettingOpen),
           windowDeadlineAt: payload.hand?.windowDeadlineAt ?? null,
+          flightResumedAt: payload.hand?.flightResumedAt ?? null,
           carryOver: payload.hand?.carryOver ?? 0,
           entries: (payload.hand?.contributions || []).map((c) => ({
             userId: c.userId,
@@ -908,6 +1023,21 @@ export default function useCrashArenaRound({
       if (payload?.handOver && payload?.results) {
         dispatch({ type: "SETTLE_FROM_SERVER", results: payload.results });
       }
+      // The realtime-server sweep opened the next 0.25x checkpoint — mirror
+      // the open window instantly (buttons unlock) and drive the bots the
+      // moment betting opens (no waiting for the multiplier feed / poll).
+      if (payload?.checkpointOpened) {
+        dispatch({
+          type: "CHECKPOINT_OPENED",
+          window: {
+            checkpointIndex: payload.checkpointIndex,
+            windowDeadlineAt: payload.windowDeadlineAt,
+          },
+        });
+        if (payload.checkpointIndex != null) {
+          driveBotsAt(Number(payload.checkpointIndex));
+        }
+      }
       // A seated player pressed "Start Round" (first-round ready vote).
       if (payload?.ready && payload?.readyUserId) {
         setReadyVotes((prev) =>
@@ -929,11 +1059,11 @@ export default function useCrashArenaRound({
       socket.off("connect", joinRoom);
       socket.emit("leave_room", { roomId });
     };
-  }, [tableId, socket, syncRoundFromServer, handleCrash]);
+  }, [tableId, socket, syncRoundFromServer, handleCrash, driveBotsAt]);
 
   // ── Player management (API calls) ────────────────────────────────────
 
-  const joinTable = useCallback(async (buyIn) => {
+  const joinTable = useCallback(async (buyIn, joinCode = null) => {
     if (!tableId) return;
     setBusy(true);
     setError(null);
@@ -942,12 +1072,18 @@ export default function useCrashArenaRound({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ tableId, buyInAmount: buyIn }),
+        body: JSON.stringify({
+          tableId,
+          buyInAmount: buyIn,
+          // Private tables are invite-only — the server validates the code
+          // (hosts and members are exempt).
+          ...(joinCode ? { joinCode } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data?.error || "Failed to join table");
-        return;
+        return false;
       }
       const me = {
         name: "You",
@@ -986,8 +1122,10 @@ export default function useCrashArenaRound({
         });
       }
       if (socket) socket.emit(CRASH_ARENA_READY, { tableId, joined: true });
+      return true;
     } catch (err) {
       setError("Network error joining table");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1112,14 +1250,27 @@ export default function useCrashArenaRound({
   // (kept so the shared CrashEngine component stays untouched). The crash
   // point stays null (server-only until the crash): the engine flies blind
   // and the hook triggers the explosion when the server announces the crash.
-  const crashEngineProps = useMemo(() => ({
-    crashPoint: roundState.crashPoint || null,
-    startedAt: roundState.startedAt,
-    running: roundState.phase === "running",
-    onCashout: () => {},
-    onCrash: handleCrash,
-    onMultiplierUpdate: handleMultiplierUpdate,
-  }), [roundState.crashPoint, roundState.startedAt, roundState.phase, handleCrash, handleMultiplierUpdate]);
+  //
+  // Pause-aware curve: the engine holds at curveCap (the open checkpoint
+  // multiplier) while a betting window is open, and resumes from it at
+  // curveResumedAt (flightResumedAt) once the window closes — the rocket
+  // STOPS at every 0.25x increment for decisions, exactly like the server's
+  // pause-aware timeline.
+  const crashEngineProps = useMemo(() => {
+    const idx = Number(roundState.checkpointIndex ?? -1);
+    const pausedAtCheckpoint = roundState.bettingOpen && idx >= 0;
+    return {
+      crashPoint: roundState.crashPoint || null,
+      startedAt: roundState.startedAt,
+      running: roundState.phase === "running",
+      curveFrom: segmentStartMultiplier(idx),
+      curveResumedAt: roundState.flightResumedAt,
+      curveCap: pausedAtCheckpoint ? checkpointMultiplier(idx) : null,
+      onCashout: () => {},
+      onCrash: handleCrash,
+      onMultiplierUpdate: handleMultiplierUpdate,
+    };
+  }, [roundState.crashPoint, roundState.startedAt, roundState.phase, roundState.bettingOpen, roundState.checkpointIndex, roundState.flightResumedAt, handleCrash, handleMultiplierUpdate]);
 
   return {
     roundState,
