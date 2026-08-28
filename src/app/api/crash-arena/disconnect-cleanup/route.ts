@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { releaseCrashArenaSeat } from "../../../../lib/crash-arena/cleanup";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,14 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[crash-arena:disconnect-cleanup]", err);
+    await logError({
+      errorType: "crash_arena_disconnect_cleanup_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena disconnect cleanup failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/disconnect-cleanup",
+      game: "Crash Arena",
+      metadata: { operation: "release_disconnected_seat" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

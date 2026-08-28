@@ -27,7 +27,7 @@ export async function logError({
   metadata,
 }: ErrorDetails) {
   try {
-    await supabase.from("error_logs").insert({
+    const { error } = await supabase.from("error_logs").insert({
       error_type: errorType,
       error_message: errorMessage,
       stack_trace: stackTrace,
@@ -37,6 +37,10 @@ export async function logError({
       device,
       metadata,
     });
+
+    if (error) {
+      console.error("Failed to log application error:", error);
+    }
   } catch (loggingError) {
     console.error("Failed to log application error:", loggingError);
   }

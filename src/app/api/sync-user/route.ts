@@ -5,6 +5,7 @@ import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { logError } from "../../../lib/logError";
 
 export async function POST(req: Request) {
   try {
@@ -156,6 +157,13 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error(" Error in /api/sync-user:", error);
+    await logError({
+      errorType: "user_sync_error",
+      errorMessage: error instanceof Error ? error.message : "User synchronization failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/sync-user",
+      metadata: { operation: "sync_user", clerkId: "authenticated" },
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

@@ -15,6 +15,7 @@ import {
   clearAnomalyLedgerForMatch,
   flushLedgerForMatch,
 } from "../../../../lib/precision/anomalyDetection";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -64,8 +65,16 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ success: true });
   } catch (err) {
+    await logError({
+      errorType: "precision_resignation_error",
+      errorMessage: err instanceof Error ? err.message : "Precision resignation failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/precision/resign",
+      game: "Precision",
+      metadata: { operation: "resign_match" },
+    });
     return NextResponse.json(
-      { success: false, error: (err as Error)?.message ?? "Unknown error" },
+      { success: false, error: "Server error" },
       { status: 500 },
     );
   }

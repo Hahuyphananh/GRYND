@@ -8,6 +8,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
+import { logError } from "../../../../lib/logError";
 
 /**
  * POST /api/crash-arena/cashout
@@ -131,6 +132,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:cashout]", err);
+    await logError({
+      errorType: "crash_arena_cashout_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena cashout failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/cashout",
+      game: "Crash Arena",
+      metadata: { operation: "cashout" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

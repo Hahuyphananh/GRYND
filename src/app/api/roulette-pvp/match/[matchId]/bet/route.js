@@ -15,6 +15,7 @@ import {
   playAiTurn,
   submitBets,
 } from "../../../../../../lib/roulette-pvp/serverStore";
+import { logError } from "../../../../../../lib/logError";
 
 function normaliseMatch(match, viewerId) {
   if (!match) return null;
@@ -133,6 +134,13 @@ export async function POST(req, { params }) {
       const aiResult = await playAiTurn({ userId, matchId });
       if (aiResult.error) {
         console.error("[roulette-pvp/match/bet] AI turn error:", aiResult.error);
+        await logError({
+          errorType: "roulette_pvp_ai_turn_error",
+          errorMessage: String(aiResult.error),
+          endpoint: "/api/roulette-pvp/match/[matchId]/bet",
+          game: "Roulette PvP",
+          metadata: { operation: "ai_turn" },
+        });
       } else {
         finalMatch = aiResult.match || finalMatch;
         aiJustResolved = Boolean(aiResult.justResolved);
@@ -148,6 +156,14 @@ export async function POST(req, { params }) {
     });
   } catch (error) {
     console.error("[roulette-pvp/match/bet] error:", error);
+    await logError({
+      errorType: "roulette_pvp_bet_error",
+      errorMessage: error instanceof Error ? error.message : "Roulette PvP bet failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/roulette-pvp/match/[matchId]/bet",
+      game: "Roulette PvP",
+      metadata: { operation: "submit_bets" },
+    });
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },

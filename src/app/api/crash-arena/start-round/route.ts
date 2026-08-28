@@ -13,6 +13,7 @@ import { generateRoundSeed } from "../../../../lib/games/crash/generateSeed";
 import { generateCrashPoint } from "../../../../lib/games/crash/generateCrashPoint";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 import { createHand } from "../../../../lib/crash-poker/roundSystem";
+import { logError } from "../../../../lib/logError";
 
 /**
  * POST /api/crash-arena/start-round
@@ -331,6 +332,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:start-round]", err);
+    await logError({
+      errorType: "crash_arena_round_start_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena round start failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/start-round",
+      game: "Crash Arena",
+      metadata: { operation: "start_round" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

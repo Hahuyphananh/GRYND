@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { createOrJoin } from "../../../../lib/roulette-pvp/serverStore";
+import { logError } from "../../../../lib/logError";
 
 function normaliseMatch(match) {
   if (!match) return null;
@@ -106,6 +107,14 @@ export async function POST(req) {
     });
   } catch (error) {
     console.error("[roulette-pvp/create-or-join] error:", error);
+    await logError({
+      errorType: "roulette_pvp_matchmaking_error",
+      errorMessage: error instanceof Error ? error.message : "Roulette PvP matchmaking failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/roulette-pvp/create-or-join",
+      game: "Roulette PvP",
+      metadata: { operation: "create_or_join" },
+    });
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },

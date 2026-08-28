@@ -9,6 +9,7 @@ import { claimIdempotency } from "../../../lib/security/idempotency";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { updateDailyStreak } from "../../../lib/dailyStreak";
 import { getAllStreakTitles, getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
+import { logError } from "../../../lib/logError";
 
 const LOGIN_REWARD_BASE = 100;
 const MAX_DAY = 14;
@@ -154,6 +155,14 @@ export async function POST(req) {
       streakResult = await updateDailyStreak(userId);
     } catch (streakErr) {
       console.error("[CLAIM_LOGIN_REWARD] streak update failed (non-fatal):", streakErr);
+      await logError({
+        errorType: "login_reward_streak_error",
+        errorMessage: streakErr instanceof Error ? streakErr.message : "Daily streak update failed",
+        stackTrace: streakErr instanceof Error ? streakErr.stack : undefined,
+        endpoint: "/api/claim-login-reward",
+        game: "Login Reward",
+        metadata: { operation: "update_daily_streak", userId },
+      });
     }
 
     // ── Streak milestone bonus ──
@@ -186,6 +195,14 @@ export async function POST(req) {
           .where(eq(users.id, uid));
       } catch (bonusErr) {
         console.error("[CLAIM_LOGIN_REWARD] milestone bonus award failed:", bonusErr);
+        await logError({
+          errorType: "login_reward_milestone_error",
+          errorMessage: bonusErr instanceof Error ? bonusErr.message : "Milestone bonus award failed",
+          stackTrace: bonusErr instanceof Error ? bonusErr.stack : undefined,
+          endpoint: "/api/claim-login-reward",
+          game: "Login Reward",
+          metadata: { operation: "award_milestone_bonus", userId, milestoneBonus },
+        });
         milestoneBonus = 0;
       }
     }
@@ -207,6 +224,14 @@ export async function POST(req) {
     });
   } catch (err) {
     console.error("[CLAIM_LOGIN_REWARD_ERROR]", err);
+    await logError({
+      errorType: "login_reward_error",
+      errorMessage: err instanceof Error ? err.message : "Login reward request failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/claim-login-reward",
+      game: "Login Reward",
+      metadata: { operation: "claim_reward", userId: userId ?? null },
+    });
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },

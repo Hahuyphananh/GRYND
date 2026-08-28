@@ -31,6 +31,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { verifyToken } from "@clerk/backend";
 import { recordRoundStop } from "../../../../lib/precision/serverStore";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -139,8 +140,16 @@ export async function POST(req: NextRequest) {
       match: result.match,
     });
   } catch (err) {
+    await logError({
+      errorType: "precision_round_stop_error",
+      errorMessage: err instanceof Error ? err.message : "Precision round stop failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/precision/round-stop",
+      game: "Precision",
+      metadata: { operation: "record_round_stop" },
+    });
     return NextResponse.json(
-      { success: false, error: (err as Error)?.message ?? "Unknown error" },
+      { success: false, error: "Server error" },
       { status: 500 },
     );
   }

@@ -13,6 +13,7 @@ import {
   broadcastTableUpdate,
 } from "../../../../lib/crash-arena/rooms";
 import { closeAiCrashArenaTable } from "../../../../lib/crash-arena/aiBot";
+import { logError } from "../../../../lib/logError";
 
 /**
  * POST /api/crash-arena/leave
@@ -168,6 +169,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:leave]", err);
+    await logError({
+      errorType: "crash_arena_leave_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena leave failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/leave",
+      game: "Crash Arena",
+      metadata: { operation: "leave_table" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
 import { recordBigWinIfNeeded } from "../../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { logError } from "../../../../../lib/logError";
 
 const PAYOUT_MULTIPLIER = 1.9;
 
@@ -257,6 +258,14 @@ export async function POST(req: Request) {
     // The 404 case preserves its specific message because it is a
     // deliberate, user-actionable signal ("No active game found"),
     // not a transport/DB error.
+    await logError({
+      errorType: "hex_duel_payout_error",
+      errorMessage: error?.message || "Hex Duel payout failed",
+      stackTrace: error?.stack,
+      endpoint: "/api/hex-duel/multiplayer/end",
+      game: "Hex Duel",
+      metadata: { operation: "settle_match", winner },
+    });
     return NextResponse.json(
       {
         success: false,

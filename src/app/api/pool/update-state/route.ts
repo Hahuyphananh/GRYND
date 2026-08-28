@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches } from "../../../../db/schema";
+import { logError } from "../../../../lib/logError";
 
 function getVersionFromGameState(gameState: unknown): number {
   if (!gameState || typeof gameState !== "object") return 0;
@@ -50,7 +51,15 @@ export async function POST(req: Request) {
       })
       .where(eq(poolMatches.id, String(matchId)));
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    await logError({
+      errorType: "pool_state_update_error",
+      errorMessage: error instanceof Error ? error.message : "Pool state update failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/pool/update-state",
+      game: "Pool",
+      metadata: { operation: "update_state" },
+    });
     return NextResponse.json(
       { ok: false, error: "server_error" },
       { status: 500 },

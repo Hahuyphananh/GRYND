@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { sql } from "../../../db/sql";
 import { deleteUserLocalData } from "../../../lib/security/deleteUserData";
+import { logError } from "../../../lib/logError";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -117,6 +118,13 @@ export async function POST(request) {
       // presence, automation state, login rewards).
       await deleteUserLocalData(userId);
     } catch (dbError) {
+      await logError({
+        errorType: "account_cleanup_error",
+        errorMessage: dbError instanceof Error ? dbError.message : "Local account cleanup failed",
+        stackTrace: dbError instanceof Error ? dbError.stack : undefined,
+        endpoint: "/api/delete-account",
+        metadata: { operation: "delete_local_user_data", userId },
+      });
       // Clerk account is already gone; if this fires the local rows
       // are orphaned and must be purged manually.
       console.error(
@@ -144,6 +152,13 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[DELETE_ACCOUNT_ERROR]", error);
+    await logError({
+      errorType: "account_deletion_error",
+      errorMessage: error instanceof Error ? error.message : "Account deletion failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/delete-account",
+      metadata: { operation: "delete_account", userId },
+    });
     return new Response(
       JSON.stringify({ success: false, error: "Failed to delete account" }),
       {

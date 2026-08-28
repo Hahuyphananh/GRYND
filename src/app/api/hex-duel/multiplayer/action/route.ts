@@ -3,6 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelActions, hexDuelGames } from "../../../../../db/schema";
+import { logError } from "../../../../../lib/logError";
 
 const ALLOWED_ACTION_TYPES = ["attack", "displace", "endTurn", "skipRound"] as const;
 type AllowedActionType = typeof ALLOWED_ACTION_TYPES[number];
@@ -212,8 +213,16 @@ export async function POST(req: Request) {
         stack: error?.stack,
       },
     );
+    await logError({
+      errorType: "hex_duel_action_error",
+      errorMessage: error?.message || "Hex Duel action failed",
+      stackTrace: error?.stack,
+      endpoint: "/api/hex-duel/multiplayer/action",
+      game: "Hex Duel",
+      metadata: { operation: "submit_action", gameId, actionType },
+    });
     return NextResponse.json(
-      { success: false, error: error?.message || "Server error" },
+      { success: false, error: httpStatus >= 500 ? "Server error" : error?.message || "Action failed" },
       { status: httpStatus },
     );
   }

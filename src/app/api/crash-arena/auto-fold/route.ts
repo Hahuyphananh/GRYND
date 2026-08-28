@@ -9,6 +9,7 @@ import { expireStaleActions, resumeFlight } from "../../../../lib/crash-poker/ro
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -159,6 +160,14 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[crash-arena:auto-fold]", err);
+    await logError({
+      errorType: "crash_arena_auto_fold_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena auto-fold failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/auto-fold",
+      game: "Crash Arena",
+      metadata: { operation: "auto_fold_stale_actions" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

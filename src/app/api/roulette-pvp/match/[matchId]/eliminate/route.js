@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { buyElimination } from "../../../../../../lib/roulette-pvp/serverStore";
+import { logError } from "../../../../../../lib/logError";
 
 function normaliseMatch(match, viewerId) {
   if (!match) return null;
@@ -103,6 +104,14 @@ export async function POST(req, { params }) {
     });
   } catch (error) {
     console.error("[roulette-pvp/match/eliminate] error:", error);
+    await logError({
+      errorType: "roulette_pvp_elimination_error",
+      errorMessage: error instanceof Error ? error.message : "Roulette PvP elimination failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/roulette-pvp/match/[matchId]/eliminate",
+      game: "Roulette PvP",
+      metadata: { operation: "buy_elimination" },
+    });
     return NextResponse.json(
       { success: false, error: "Server error" },
       { status: 500 },
