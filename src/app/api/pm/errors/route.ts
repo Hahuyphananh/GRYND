@@ -28,14 +28,19 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    if (error) {
-      console.error("Failed to fetch error logs:", error);
+ if (error) {
+  console.error("Failed to fetch error logs:", error);
 
-      return NextResponse.json(
-        { error: "Failed to fetch error logs" },
-        { status: 500 }
-      );
-    }
+  return NextResponse.json(
+    {
+      error: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    },
+    { status: 500 }
+  );
+}
 
     return NextResponse.json({
       period: "previous_24_hours",
