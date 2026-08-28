@@ -15,6 +15,7 @@ import {
 } from "../../../../lib/crash-arena/rooms";
 import { CRASH_MAX_BUYIN } from "../../../../lib/games/crash/constants";
 import { normalizeJoinCode } from "../../../../lib/crash-arena/joinCode";
+import { logError } from "../../../../lib/logError";
 
 /**
  * POST /api/crash-arena/join
@@ -240,6 +241,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:join]", err);
+    await logError({
+      errorType: "crash_arena_join_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena join failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/join",
+      game: "Crash Arena",
+      metadata: { operation: "join_table" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

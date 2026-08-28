@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import { crashDueAtMs } from "../../../../lib/games/crash/generateCrashPoint";
+import { logError } from "../../../../lib/logError";
 
 /**
  * POST /api/crash-arena/settle
@@ -97,6 +98,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:settle]", err);
+    await logError({
+      errorType: "crash_arena_settlement_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena settlement failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/settle",
+      game: "Crash Arena",
+      metadata: { operation: "settle_hand" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

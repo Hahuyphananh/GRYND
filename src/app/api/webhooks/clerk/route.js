@@ -10,6 +10,7 @@ import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
 // of spinning up a second raw drizzle client from DATABASE_URL, which
 // would bypass the shared pool's SSL config and connection limits.
 import { db } from "../../../../db";
+import { logError } from "../../../../lib/logError";
 
 export async function POST(req) {
   try {
@@ -107,6 +108,13 @@ export async function POST(req) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Webhook Error", err);
+    await logError({
+      errorType: "clerk_webhook_error",
+      errorMessage: err instanceof Error ? err.message : "Clerk webhook failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/webhooks/clerk",
+      metadata: { operation: "clerk_webhook" },
+    });
     return new Response("Webhook Error", { status: 500 });
   }
 }

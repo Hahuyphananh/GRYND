@@ -24,6 +24,7 @@ import {
   isCrashArenaAiBotClerkId,
 } from "../../../../lib/crash-arena/aiBot";
 import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
+import { logError } from "../../../../lib/logError";
 
 /**
  * POST /api/crash-arena/action
@@ -515,6 +516,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:action]", err);
+    await logError({
+      errorType: "crash_arena_action_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena action failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/action",
+      game: "Crash Arena",
+      metadata: { operation: "submit_action" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@clerk/backend";
 import { forfeitMatch } from "../../../../lib/precision/serverStore";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,14 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[precision:disconnect-forfeit]", err);
+    await logError({
+      errorType: "precision_disconnect_forfeit_error",
+      errorMessage: err instanceof Error ? err.message : "Precision disconnect forfeit failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/precision/disconnect-forfeit",
+      game: "Precision",
+      metadata: { operation: "forfeit_match" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

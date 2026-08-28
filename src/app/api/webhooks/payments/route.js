@@ -34,6 +34,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { logError } from "../../../../lib/logError";
 import { claimIdempotency } from "../../../../lib/security/idempotency";
 import {
   verifyPaymentSignature,
@@ -53,6 +54,21 @@ function getSecret() {
 }
 
 export async function POST(req) {
+  try {
+    return await handlePaymentWebhook(req);
+  } catch (error) {
+    await logError({
+      errorType: "payment_webhook_error",
+      errorMessage: error instanceof Error ? error.message : "Payment webhook failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/webhooks/payments",
+      metadata: { operation: "payment.completed" },
+    });
+    return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
+  }
+}
+
+async function handlePaymentWebhook(req) {
   const secret = getSecret();
   if (!secret) {
     // Refuse to process when the signing secret isn't configured —

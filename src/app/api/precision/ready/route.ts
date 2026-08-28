@@ -18,6 +18,7 @@ import {
   markPlayerReady,
   precisionMatchStore,
 } from "../../../../lib/precision/serverStore";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +72,16 @@ export async function POST(req: NextRequest) {
       match: result.match,
     });
   } catch (err) {
+    await logError({
+      errorType: "precision_ready_error",
+      errorMessage: err instanceof Error ? err.message : "Precision ready-up failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/precision/ready",
+      game: "Precision",
+      metadata: { operation: "mark_player_ready" },
+    });
     return NextResponse.json(
-      { success: false, error: (err as Error)?.message ?? "Unknown error" },
+      { success: false, error: "Server error" },
       { status: 500 },
     );
   }

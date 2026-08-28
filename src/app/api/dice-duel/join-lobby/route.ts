@@ -3,15 +3,17 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { and, eq, sql } from "drizzle-orm";
 import { diceLobbies, diceMatches } from "../../../../db/schema";
+import { logError } from "../../../../lib/logError";
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId)
-    return NextResponse.json(
-      { ok: false, message: "Unauthorized" },
-      { status: 401 },
-    );
-  const { lobbyId } = await req.json();
+  try {
+    const { userId } = await auth();
+    if (!userId)
+      return NextResponse.json(
+        { ok: false, message: "Unauthorized" },
+        { status: 401 },
+      );
+    const { lobbyId } = await req.json();
   const lobby = await db
     .select()
     .from(diceLobbies)
@@ -66,5 +68,16 @@ export async function POST(req: Request) {
       .returning({ id: diceMatches.id });
     matchId = m.id;
   }
-  return NextResponse.json({ ok: true, lobby: updated[0], matchId });
+    return NextResponse.json({ ok: true, lobby: updated[0], matchId });
+  } catch (error) {
+    await logError({
+      errorType: "dice_duel_lobby_join_error",
+      errorMessage: error instanceof Error ? error.message : "Dice Duel lobby join failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/dice-duel/join-lobby",
+      game: "Dice Duel",
+      metadata: { operation: "join_lobby" },
+    });
+    return NextResponse.json({ ok: false, message: "Unable to join lobby" }, { status: 500 });
+  }
 }

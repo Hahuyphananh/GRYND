@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { diceMatches, diceTurns } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
+import { logError } from "../../../../lib/logError";
 
 const d6 = () => Math.floor(Math.random() * 6) + 1;
 
@@ -44,10 +45,11 @@ function calc(actionType: string) {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ ok: false }, { status: 401 });
-  }
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ ok: false }, { status: 401 });
+    }
 
   const { matchId, actionType } = await req.json();
 
@@ -163,17 +165,28 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({
-    ok: true,
-    actionType,
-    aiTurn: isAI && status === "active" && nextTurn === "AI_BOT",
-    turnResult: {
-      roll1: turn.r1,
-      roll2: turn.r2,
-      damage: turn.damage,
-      selfDamage: turn.selfDamage,
-      heal: turn.heal,
-      actor: userId,
-    },
-  });
+    return NextResponse.json({
+      ok: true,
+      actionType,
+      aiTurn: isAI && status === "active" && nextTurn === "AI_BOT",
+      turnResult: {
+        roll1: turn.r1,
+        roll2: turn.r2,
+        damage: turn.damage,
+        selfDamage: turn.selfDamage,
+        heal: turn.heal,
+        actor: userId,
+      },
+    });
+  } catch (error) {
+    await logError({
+      errorType: "dice_duel_turn_error",
+      errorMessage: error instanceof Error ? error.message : "Dice Duel turn failed",
+      stackTrace: error instanceof Error ? error.stack : undefined,
+      endpoint: "/api/dice-duel/submit-turn",
+      game: "Dice Duel",
+      metadata: { operation: "submit_turn" },
+    });
+    return NextResponse.json({ ok: false, message: "Unable to submit turn" }, { status: 500 });
+  }
 }

@@ -24,6 +24,7 @@ import {
   PRECISION_PAYOUT_MULTIPLIER,
 } from "../../../../lib/precision/finishMatch";
 import { precisionMatchStore } from "../../../../lib/precision/serverStore";
+import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
 
@@ -73,9 +74,9 @@ export async function POST(req: Request) {
     if (!result.success) {
       const status = result.reason === "Match not found" ? 404 : 409;
       return NextResponse.json(
-        {
-          success: false,
-          error: result.reason ?? "Payout processing failed.",
+      {
+        success: false,
+        error: result.reason ?? "Payout processing failed.",
           alreadyProcessed: result.alreadyProcessed,
           payout: result.payout,
           finalScore: result.finalScore,
@@ -106,10 +107,18 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[precision] /finish-match error:", err);
+    await logError({
+      errorType: "precision_payout_error",
+      errorMessage: err instanceof Error ? err.message : "Precision payout failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/precision/finish-match",
+      game: "Precision",
+      metadata: { operation: "process_match_finished_payout" },
+    });
     return NextResponse.json(
       {
         success: false,
-        error: (err as Error)?.message ?? "Server error",
+        error: "Server error",
       },
       { status: 500 },
     );

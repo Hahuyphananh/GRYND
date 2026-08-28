@@ -14,6 +14,7 @@ import {
   CRASH_ARENA_AI_CLERK_ID,
   resolveCrashArenaAiBotId,
 } from "../../../../lib/crash-arena/aiBot";
+import { logError } from "../../../../lib/logError";
 
 /** Upper sanity bound for any cashout multiplier (CRASH_MAX = 9.2). */
 const MAX_CASHOUT_MULTIPLIER = 20;
@@ -175,6 +176,14 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[crash-arena:ai-cashout]", err);
+    await logError({
+      errorType: "crash_arena_ai_cashout_error",
+      errorMessage: err instanceof Error ? err.message : "Crash Arena AI cashout failed",
+      stackTrace: err instanceof Error ? err.stack : undefined,
+      endpoint: "/api/crash-arena/ai-cashout",
+      game: "Crash Arena",
+      metadata: { operation: "ai_cashout" },
+    });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
   }
 }

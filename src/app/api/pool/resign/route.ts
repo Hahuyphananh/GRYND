@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { eq, sql } from "drizzle-orm";
 import { poolMatches, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { logError } from "../../../../lib/logError";
 
 export async function POST(req: Request) {
   try {
@@ -128,6 +129,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (e: any) {
     console.error("Pool resign error:", e);
+    await logError({
+      errorType: "pool_resignation_error",
+      errorMessage: e instanceof Error ? e.message : "Pool resignation failed",
+      stackTrace: e instanceof Error ? e.stack : undefined,
+      endpoint: "/api/pool/resign",
+      game: "Pool",
+      metadata: { operation: "resign_match" },
+    });
     return NextResponse.json(
       { success: false, error: e?.message || "Server error" },
       { status: 500 },
