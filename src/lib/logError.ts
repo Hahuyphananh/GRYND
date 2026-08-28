@@ -38,6 +38,8 @@ export async function logError({
       metadata,
     });
   } catch (loggingError) {
-    console.error("Failed to log application error:", loggingError);
-  }
+  console.error("Failed to log application error:", loggingError);
+
+  throw loggingError;
+}
 }
