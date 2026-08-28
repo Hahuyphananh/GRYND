@@ -613,7 +613,7 @@ export async function recordAction({ userId, matchId, action, payload }) {
       return { match: refreshed, raced: true };
     }
 
-    const bothLocked = bothSeatsLocked(updated);
+    const bothLocked = canResolveRound(updated);
 
     let resolved = updated;
     if (bothLocked) {
@@ -690,7 +690,7 @@ async function recordAiAction({ matchId, action, payload, expected }) {
 
     if (!updated) return { raced: true };
 
-    const bothLocked = bothSeatsLocked(updated);
+    const bothLocked = canResolveRound(updated);
     const resolved = bothLocked ? await resolveRound(tx, updated) : updated;
     return {
       match: resolved,
@@ -790,11 +790,9 @@ function applyAction(match, action, seat, fields, payload) {
       // BUG-FIX (stand button unclickable after SWAP/FREEZE in
       // Round 2/3): accept STAND from BUSTED as well as PLAYING so
       // the player can finalise their turn from any non-stood seat.
-      // A BUSTED hand resolving as STOOD is a no-op outcome-wise —
-      // `BUSTED_SCORE_SENTINEL` already guarantees a busted hand
-      // always loses to any non-busted score, so flipping to STOOD
-      // doesn't change the round's resolution. STOOD is the only
-      // state that genuinely locks the hand permanently.
+      // Standing is the explicit action that finalizes a busted hand;
+      // until then recovery actions remain available and the round
+      // cannot resolve.
       if (
         currentState !== PLAYER_STATE.PLAYING &&
         currentState !== PLAYER_STATE.BUSTED
@@ -1031,8 +1029,10 @@ function applyAction(match, action, seat, fields, payload) {
         setValues: {
           [fields.heldCard]: null,
           [fields.heldResolved]: HELD_RESOLUTION.DISCARD,
-          // State unchanged — stash removal doesn't change the score.
-          [fields.state]: PLAYER_STATE.PLAYING,
+          // Discarding a held card does not change the hand score. Preserve
+          // BUSTED until the player explicitly stands; this is the final
+          // busted-result gate requested by the game rules.
+          [fields.state]: currentState,
         },
       };
     }
@@ -1079,6 +1079,21 @@ function bothSeatsLocked(match) {
   );
 }
 
+// A bust is only final after the player explicitly stands. Recovery
+// actions are available while busted, but a round must never resolve
+// merely because both hands happen to be busted.
+function bustedSeatMustStand(match, seatPrefix) {
+  return match?.[`${seatPrefix}State`] === PLAYER_STATE.BUSTED;
+}
+
+function canResolveRound(match) {
+  return (
+    bothSeatsLocked(match) &&
+    !bustedSeatMustStand(match, "player1") &&
+    !bustedSeatMustStand(match, "player2")
+  );
+}
+
 // ── Force-deadline advance ────────────────────────────────────────────
 // If the round timer elapsed and any seat is still in `playing`,
 // force-mark them `stood` so the round can resolve. After the
@@ -1122,7 +1137,7 @@ async function forceDeadlineAdvance(tx, match) {
     .returning();
 
   const effective = updated || match;
-  if (!bothSeatsLocked(effective)) {
+  if (!canResolveRound(effective)) {
     return effective;
   }
   return await resolveRound(tx, effective);
@@ -1196,8 +1211,9 @@ async function resolveRound(tx, match) {
   });
 
   // Score totals — read from rounds_won_playerN columns (renamed
-  // from score_playerN by the Prompt 9 schema refactor). The score
-  // is the MATCH-LEVEL round-win counter, not the hand value.
+  // from score_playerN by the Prompt 9 schema refactor). A draw is
+  // a replay: it is recorded for the reveal/history, but it does NOT
+  // consume a best-of-3 round or advance the match score.
   let newScoreP1 = Number(match.roundsWonPlayer1) || 0;
   let newScoreP2 = Number(match.roundsWonPlayer2) || 0;
   if (roundWinner === RESULT.PLAYER1) newScoreP1 += 1;
@@ -1216,6 +1232,45 @@ async function resolveRound(tx, match) {
   let result = null;
 
   const earlyFinish = newScoreP1 >= 2 || newScoreP2 >= 2;
+  // Ties replay the same best-of-3 slot. They must not count toward
+  // TOTAL_ROUNDS and must not create a round-4 tiebreak merely because
+  // the replay is still on the same numbered round.
+  const replayDraw = roundWinner === RESULT.DRAW && slot <= TOTAL_ROUNDS;
+
+  if (replayDraw) {
+    nextStatus = MATCH_STATUS.BETWEEN_ROUNDS;
+    nextRound = slot;
+    nextDeadline = new Date(Date.now() + BETWEEN_ROUNDS_MS);
+
+    const [replayUpdated] = await tx
+      .update(blackjackPvpMatches)
+      .set({
+        status: nextStatus,
+        roundNumber: nextRound,
+        roundsWonPlayer1: newScoreP1,
+        roundsWonPlayer2: newScoreP2,
+        roundDeadline: nextDeadline,
+        player1Hand: match.player1Hand ?? [],
+        player2Hand: match.player2Hand ?? [],
+        player1State: match.player1State ?? PLAYER_STATE.STOOD,
+        player2State: match.player2State ?? PLAYER_STATE.STOOD,
+        deck: match.deck ?? [],
+        player1UsedSwap: 0,
+        player2UsedSwap: 0,
+        player1UsedFreeze: 0,
+        player2UsedFreeze: 0,
+        player1UsedPeek: 0,
+        player2UsedPeek: 0,
+        player1FrozenCard: null,
+        player2FrozenCard: null,
+        player1HeldResolved: null,
+        player2HeldResolved: null,
+      })
+      .where(eq(blackjackPvpMatches.id, match.id))
+      .returning();
+
+    return replayUpdated || match;
+  }
 
   if (earlyFinish || slot >= TOTAL_ROUNDS) {
     // ── TIEBREAK transition ─────────────────────────────────────
