@@ -87,9 +87,11 @@ async function queryPvpRows(start: Date, end: Date) {
 async function queryPostHog(start: Date, end: Date) {
   const host = (process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/$/, "");
   const key = process.env.POSTHOG_PERSONAL_API_KEY || process.env.POSTHOG_API_KEY;
+  const projectId = process.env.POSTHOG_PROJECT_ID;
   if (!key) throw new Error("POSTHOG_PERSONAL_API_KEY or POSTHOG_API_KEY is not configured");
+  if (!projectId) throw new Error("POSTHOG_PROJECT_ID is not configured");
 
-  const response = await fetch(`${host}/api/query`, {
+  const response = await fetch(`${host}/api/projects/${encodeURIComponent(projectId)}/query/`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
