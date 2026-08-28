@@ -24,6 +24,7 @@ import {
   users,
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { ROULETTE_NUMBERS } from "../rouletteConfig";
 import {
   ACTIVE_STATES,
@@ -288,9 +289,9 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
       description: `User ${userId} created roulette PvP lobby (${stakeAmount} stake).`,
       metadata: { userId, stakeAmount, matchId: match.id },
     }).catch(() => {});
-  }
-
-  return { match, joined: false };
+  }    mirrorQueueCreated({ gameKey: "roulette-pvp", matchId: match.id, playerCount: 1, queuedAt: match.createdAt ? new Date(match.createdAt) : undefined });
+    mirrorQueueCreated({ gameKey: "roulette-pvp", matchId: match.id, playerCount: 1, queuedAt: match.createdAt ? new Date(match.createdAt) : undefined });
+    return { match, joined: false };
 }
 
 async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
@@ -359,9 +360,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
       .set({ balance: sql`${users.balance} + ${stakeAmount}` })
       .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
-  }
-
-  return { match: updated, joined: true };
+  }    mirrorQueueCreated({ gameKey: "roulette-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
+    mirrorQueueCreated({ gameKey: "roulette-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
+    return { match: updated, joined: true };
 }
 
 // Auto-advance `ready → round_1`. Called from fetchMatchWithAutoResolve
@@ -436,6 +437,8 @@ export async function cancelMatch({ userId, matchId }) {
       .where(eq(roulettePvpMatches.id, matchId))
       .returning();
 
+    mirrorQueueTransition({ gameKey: "roulette-pvp", matchId, status: "cancelled", cancelReason: "user_cancelled", playerCount: 1 });
+    mirrorQueueTransition({ gameKey: "roulette-pvp", matchId, status: "cancelled", cancelReason: "user_cancelled", playerCount: 1 });
     return { match: updated };
   });
 }

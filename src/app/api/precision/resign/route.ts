@@ -16,6 +16,7 @@ import {
   flushLedgerForMatch,
 } from "../../../../lib/precision/anomalyDetection";
 import { logError } from "../../../../lib/logError";
+import { mirrorPrecisionTransition } from "../../../../lib/precision/canonicalLifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,12 @@ export async function POST(req: NextRequest) {
       );
     }
     match.phase = "finished";
+    mirrorPrecisionTransition({
+      matchId,
+      status: "cancelled",
+      cancelReason: "user_cancelled",
+      playerCount: match.players.length,
+    });
     match.version += 1;
     // ── Audit fix: cancel any pending arming timer so a late-firing
     // ── `setTimeout` from `armMatchRound` can't flip phase back to

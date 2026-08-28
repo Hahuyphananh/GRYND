@@ -38,6 +38,7 @@ import {
   users,
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { mirrorMinesQueued, mirrorMinesTransition } from "./canonicalLifecycle";
 import {
   ACTIVE_STATES,
   GRID_CELLS,
@@ -350,6 +351,12 @@ async function createWaitingMatch(tx, userId, stakeAmount, minesCount) {
     }).catch(() => {});
   }
 
+  mirrorMinesQueued({
+    matchId: match.id,
+    playerCount: 1,
+    queuedAt: match.createdAt ? new Date(match.createdAt) : undefined,
+    mode: `pvp:${Number(minesCount)}`,
+  });
   return { match, joined: false };
 }
 
@@ -428,6 +435,12 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
+  mirrorMinesQueued({
+    matchId: updated.id,
+    playerCount: 2,
+    queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined,
+    mode: `pvp:${Number(updated.minesCount)}`,
+  });
   return { match: updated, joined: true };
 }
 
@@ -469,6 +482,12 @@ export async function cancelMatch({ userId, matchId }) {
       .where(eq(minesPvpMatches.id, matchId))
       .returning();
 
+    mirrorMinesTransition({
+      matchId,
+      status: "cancelled",
+      cancelReason: "user_cancelled",
+      playerCount: 1,
+    });
     return { match: updated };
   });
 }
@@ -1079,6 +1098,11 @@ async function resolveMatch(tx, match, loserId) {
     .returning();
 
   const finalRow = updated || match;
+  mirrorMinesTransition({
+    matchId: match.id,
+    status: "completed",
+    playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
+  });
 
   // Best-effort stat side-effects (failures don't roll the match).
   // Skipped for AI matches since bot results should not affect

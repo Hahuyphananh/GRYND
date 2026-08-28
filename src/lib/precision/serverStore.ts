@@ -19,6 +19,7 @@ import {
   recordAnomalySample,
 } from "./anomalyDetection";
 import type { PrecisionAnomalySample } from "./anomalyDetection";
+import { mirrorPrecisionTransition } from "./canonicalLifecycle";
 import type {
   PlayerSeat,
   PrecisionLobby,
@@ -177,6 +178,11 @@ export function forfeitMatch(
   const winnerSeat: PlayerSeat = loser.seat === 1 ? 2 : 1;
   match.winnerSeat = winnerSeat;
   match.phase = "finished";
+  mirrorPrecisionTransition({
+    matchId,
+    status: "completed",
+    playerCount: match.players.length,
+  });
   cancelArming(matchId);
   clearPendingStops(matchId);
   flushLedgerForMatch(matchId);

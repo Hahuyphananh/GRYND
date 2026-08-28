@@ -65,6 +65,7 @@ import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { laneRushDuelMatches, users } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { randomHex } from "../laneRunner";
 import {
   ACTIVE_STATES,
@@ -300,7 +301,9 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
     }).catch(() => {});
   }
 
-  return { match: withTower || match, joined: false };
+  const queuedMatch = withTower || match;
+  mirrorQueueCreated({ gameKey: "lane-rush-duel", matchId: queuedMatch.id, playerCount: 1, queuedAt: queuedMatch.createdAt ? new Date(queuedMatch.createdAt) : undefined, mode: `pvp:${queuedMatch.difficulty}` });
+  return { match: queuedMatch, joined: false };
 }
 
 async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
@@ -367,6 +370,7 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
+  mirrorQueueCreated({ gameKey: "lane-rush-duel", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined, mode: `pvp:${updated.difficulty}` });
   return { match: updated, joined: true };
 }
 
@@ -419,7 +423,9 @@ async function createBotMatch(tx, userId, difficulty) {
     .where(eq(laneRushDuelMatches.id, match.id))
     .returning();
 
-  return { match: withTowers || match, joined: true };
+  const botMatch = withTowers || match;
+  mirrorQueueCreated({ gameKey: "lane-rush-duel", matchId: botMatch.id, playerCount: 2, queuedAt: botMatch.createdAt ? new Date(botMatch.createdAt) : undefined, mode: `ai:${botMatch.difficulty}` });
+  return { match: botMatch, joined: true };
 }
 
 // ── Bot executor ─────────────────────────────────────────────────────
@@ -524,6 +530,7 @@ export async function cancelMatch({ userId, matchId }) {
       .where(eq(laneRushDuelMatches.id, matchId))
       .returning();
 
+    mirrorQueueTransition({ gameKey: "lane-rush-duel", matchId, status: "cancelled", cancelReason: "user_cancelled", playerCount: 1 });
     return { match: updated };
   });
 }
@@ -1079,6 +1086,7 @@ async function settle(tx, match, { result, action, reason }) {
     .returning();
 
   const finalRow = updated || match;
+  mirrorQueueTransition({ gameKey: "lane-rush-duel", matchId: match.id, status: "completed", playerCount: [match.player1Id, match.player2Id].filter(Boolean).length });
 
   // Practice (bot) matches are zero-stake and never feed the
   // leaderboards — no stats, no wins to farm.

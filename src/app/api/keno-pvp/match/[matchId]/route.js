@@ -26,6 +26,7 @@ import {
   fetchMatchRounds,
   scrubMatchForViewer,
 } from "../../../../../lib/keno-pvp/serverStore";
+import { getKenoCanonicalLifecycle } from "../../../../../lib/keno-pvp/canonicalLifecycleLookup";
 import {
   MATCH_STATUS,
   pickPositiveInt,
@@ -187,9 +188,12 @@ export async function GET(req, { params }) {
       rounds = [];
     }
 
+    const canonicalLifecycle = await getKenoCanonicalLifecycle(matchId);
+
     return NextResponse.json({
       success: true,
       data: {
+        canonicalLifecycle,
         // Server clock so the client can sync its glow stream to the
         // authoritative grading clock — devices whose clock drifts
         // otherwise see tiles light up at the wrong moment.

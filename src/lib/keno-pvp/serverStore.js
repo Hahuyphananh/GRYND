@@ -33,6 +33,7 @@ import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { kenoPvpMatches, kenoPvpRounds, users } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { mirrorKenoQueued, mirrorKenoTransition } from "./canonicalLifecycle";
 import {
   ACTIVE_STATES,
   BALL_COUNT,
@@ -410,6 +411,11 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
     }).catch(() => {});
   }
 
+  mirrorKenoQueued({
+    matchId: String(match.id),
+    playerCount: 1,
+    queuedAt: match.createdAt ? new Date(match.createdAt) : undefined,
+  });
   return { match, joined: false };
 }
 
@@ -464,6 +470,11 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
+  mirrorKenoQueued({
+    matchId: String(updated.id),
+    playerCount: 2,
+    queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined,
+  });
   return { match: updated, joined: true };
 }
 
@@ -501,6 +512,12 @@ export async function cancelMatch({ userId, matchId }) {
       .where(eq(kenoPvpMatches.id, matchId))
       .returning();
 
+    mirrorKenoTransition({
+      matchId: String(matchId),
+      status: "cancelled",
+      cancelReason: "user_cancelled",
+      playerCount: 1,
+    });
     return { match: updated || match };
   });
 }
@@ -705,6 +722,11 @@ async function settleMatch(tx, match, options = {}) {
     .returning();
 
   const finalRow = updated || match;
+  mirrorKenoTransition({
+    matchId: String(match.id),
+    status: "completed",
+    playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
+  });
 
   if (!isAi) {
     await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
@@ -1026,6 +1048,11 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       .returning();
 
     const finalRow = updated || match;
+    mirrorKenoTransition({
+      matchId: String(match.id),
+      status: "completed",
+      playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
+    });
 
     // Record AFTER the row update so the stat side-effect sees the
     // freshly stamped prizePaid (mirrors settleMatch).

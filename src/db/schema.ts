@@ -20,8 +20,152 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
+// CANONICAL MATCH LIFECYCLE — platform-wide queue and match state.
+// This is intentionally independent from game-specific match tables so those
+// flows can migrate incrementally without changing their existing schemas.
+export const matchLifecycle = pgTable(
+  "match_lifecycle",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: varchar("match_id", { length: 255 }).notNull().unique(),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    mode: varchar("mode", { length: 80 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("queued"),
+    queuedAt: timestamp("queued_at").notNull().defaultNow(),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    cancelReason: varchar("cancel_reason", { length: 40 }),
+    playerCount: integer("player_count").notNull().default(0),
+    queueWaitMs: integer("queue_wait_ms"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusQueueIdx: index("match_lifecycle_status_queue_idx").on(table.status, table.queuedAt),
+    gameModeIdx: index("match_lifecycle_game_mode_idx").on(table.gameKey, table.mode, table.status),
+  }),
+);
+
 // APP SETTINGS — simple key/value store for runtime-toggleable platform
 // flags (e.g. maintenance_mode). Kept tiny on purpose; not for user data.
+export const matchLifecycleEvents = pgTable(
+  "match_lifecycle_events",
+  {
+    eventId: uuid("event_id").primaryKey(),
+    matchId: varchar("match_id", { length: 255 }).notNull(),
+    eventType: varchar("event_type", { length: 40 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+    publishedAt: timestamp("published_at"),
+    attempts: integer("attempts").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    unpublishedIdx: index("match_lifecycle_events_unpublished_idx").on(table.publishedAt, table.createdAt),
+    matchIdx: index("match_lifecycle_events_match_idx").on(table.matchId, table.createdAt),
+  }),
+);
+
+export const availabilityAlerts = pgTable(
+  "availability_alerts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    gameKey: varchar("game_key", { length: 80 }),
+    mode: varchar("mode", { length: 80 }),
+    region: varchar("region", { length: 80 }),
+    minPlayerCount: integer("min_player_count").notNull().default(1),
+    maxWaitMs: integer("max_wait_ms"),
+    active: boolean("active").notNull().default(true),
+    expiresAt: timestamp("expires_at"),
+    lastTriggeredAt: timestamp("last_triggered_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    activeLookupIdx: index("availability_alerts_active_lookup_idx").on(
+      table.active,
+      table.gameKey,
+      table.mode,
+      table.region,
+    ),
+  }),
+);
+
+export const availabilityAlertDeliveries = pgTable(
+  "availability_alert_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    alertId: uuid("alert_id").notNull().references(() => availabilityAlerts.id, { onDelete: "cascade" }),
+    availabilityKey: varchar("availability_key", { length: 255 }).notNull(),
+    deliveredAt: timestamp("delivered_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    dedupeIdx: unique("availability_alert_delivery_unique").on(table.alertId, table.availabilityKey),
+    alertIdx: index("availability_alert_deliveries_alert_idx").on(table.alertId, table.deliveredAt),
+  }),
+);
+
+export const quickQueueRequests = pgTable(
+  "quick_queue_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    preferredGames: jsonb("preferred_games").notNull(),
+    preferredModes: jsonb("preferred_modes").notNull().default(sql`'[]'::jsonb`),
+    region: varchar("region", { length: 80 }),
+    playerCount: integer("player_count").notNull().default(2),
+    maxWaitMs: integer("max_wait_ms"),
+    status: varchar("status", { length: 20 }).notNull().default("queued"),
+    queuedAt: timestamp("queued_at").notNull().defaultNow(),
+    cancelledAt: timestamp("cancelled_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    activeIdx: index("quick_queue_requests_active_idx").on(table.status, table.queuedAt),
+    userIdx: index("quick_queue_requests_user_idx").on(table.userId, table.status, table.createdAt),
+  }),
+);
+
+export const quickQueueAssignments = pgTable(
+  "quick_queue_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requestIds: jsonb("request_ids").notNull(),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    mode: varchar("mode", { length: 80 }).notNull(),
+    playerCount: integer("player_count").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("ready"),
+    assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+    launchedAt: timestamp("launched_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("quick_queue_assignments_status_idx").on(table.status, table.assignedAt),
+  }),
+);
+
+export const quickQueueAssignmentEvents = pgTable(
+  "quick_queue_assignment_events",
+  {
+    eventId: uuid("event_id").defaultRandom().primaryKey(),
+    assignmentId: uuid("assignment_id")
+      .notNull()
+      .references(() => quickQueueAssignments.id, { onDelete: "cascade" }),
+    requestIds: jsonb("request_ids").notNull(),
+    eventType: varchar("event_type", { length: 40 }).notNull().default("quick_queue:ready"),
+    payload: jsonb("payload").notNull(),
+    publishedAt: timestamp("published_at"),
+    attempts: integer("attempts").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    unpublishedIdx: index("quick_queue_assignment_events_unpublished_idx").on(table.publishedAt, table.createdAt),
+    assignmentIdx: index("quick_queue_assignment_events_assignment_idx").on(table.assignmentId, table.createdAt),
+  }),
+);
+
 export const appSettings = pgTable(
   "app_settings",
   {
