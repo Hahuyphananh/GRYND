@@ -1,0 +1,26 @@
+name: Grynd Daily Report
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+      timezone: "America/Toronto"
+  workflow_dispatch:
+
+jobs:
+  run-daily-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Dify workflow
+        env:
+          DIFY_API_KEY: ${{ secrets.DIFY_API_KEY }}
+        run: |
+          curl --fail-with-body -X POST \
+            "https://api.dify.ai/v1/workflows/run" \
+            -H "Authorization: Bearer $DIFY_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "inputs": {},
+              "response_mode": "blocking",
+              "user": "grynd-daily-report"
+            }'
