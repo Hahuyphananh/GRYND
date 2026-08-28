@@ -22,38 +22,43 @@ type LifecycleDefinition = {
   table: string;
   playedAt: string;
   startedAt: string;
-  completedAt: string;
+  completedAt?: string;
+  completionWindow: "created_at" | "started_at" | "completed_at" | "none";
+  parentId: string;
+  playerColumns?: string[];
+  completionStatus?: string[];
+  completionRequiresTimestamp?: boolean;
   limitations?: string[];
 };
 
 // Every definition counts the canonical parent row exactly once. Child rounds,
 // actions, and lobby rows are deliberately excluded from the game totals.
 const lifecycleDefinitions: LifecycleDefinition[] = [
-  { game: "roulette", table: "roulette_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy one-shot row has no separate started_at/ended_at."] },
-  { game: "crash", table: "crash_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy row completion is represented by result/status; timestamps are row creation timestamps."] },
-  { game: "blackjack", table: "blackjack_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy one-shot row has no separate started_at/ended_at."] },
-  { game: "mines", table: "mines_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy row completion is represented by result/status; timestamps are row creation timestamps."] },
-  { game: "lane-runner", table: "lane_runner_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy row has no separate lifecycle timestamps."] },
-  { game: "plinko", table: "plinko_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy row has no separate lifecycle timestamps."] },
-  { game: "rps", table: "rps_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy one-shot row has no separate started_at/ended_at."] },
-  { game: "uno", table: "uno_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["UNO rows are created for waiting online lobbies; played/started therefore include only persisted rows, not a canonical start timestamp."] },
-  { game: "keno", table: "keno_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Legacy Keno has no separate started_at/ended_at."] },
-  { game: "chess", table: "chess_games", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at", limitations: ["Waiting/cancelled games are excluded from played and started."] },
-  { game: "connect-four", table: "connect_four_games", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at", limitations: ["Waiting games are excluded from played and started."] },
-  { game: "hex-duel", table: "hex_duel_games", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at", limitations: ["Only rows with started_at are counted as played/started."] },
-  { game: "dice", table: "dice_matches", playedAt: "created_at", startedAt: "created_at", completedAt: "ended_at", limitations: ["The match parent is canonical; dice_lobbies are excluded. This table has no started_at, so a match row is the best persisted start signal."] },
-  { game: "pool", table: "pool_matches", playedAt: "created_at", startedAt: "created_at", completedAt: "ended_at", limitations: ["The match parent is canonical; pool_lobbies are excluded. This table has no started_at."] },
-  { game: "rps-pvp", table: "rps_pvp_games", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["The match table has no started_at/ended_at; only matched/finished rows count as played/started/completed population."] },
-  { game: "lane-rush-duel", table: "lane_rush_duel_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "roulette-pvp", table: "roulette_pvp_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "blackjack-pvp", table: "blackjack_pvp_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "mines-pvp", table: "mines_pvp_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "memory-grid", table: "memory_grid_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "plinko-pvp", table: "plinko_pvp_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "keno-pvp", table: "keno_pvp_matches", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "dots-and-boxes", table: "dots_and_boxes_games", playedAt: "started_at", startedAt: "started_at", completedAt: "ended_at" },
-  { game: "precision", table: "precision_matches", playedAt: "created_at", startedAt: "created_at", completedAt: "created_at", limitations: ["Precision match has no started_at/ended_at; match status and winner are used for lifecycle predicates."] },
-  { game: "odds", table: "odds_games", playedAt: "created_at", startedAt: "created_at", completedAt: "ended_at", limitations: ["Odds has no started_at; waiting rows are excluded from played/started."] },
+  { game: "roulette", table: "roulette_games", parentId: "id", completionWindow: "none", playedAt: "created_at", startedAt: "created_at", limitations: ["Legacy row has no reliable completion timestamp or terminal status."] },
+  { game: "crash", table: "crash_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["crashed", "cashed_out", "finished", "completed"], limitations: ["Completion uses the parent result/status; created_at is used only for the activity window."] },
+  { game: "blackjack", table: "blackjack_games", parentId: "id", completionWindow: "none", playedAt: "created_at", startedAt: "created_at", limitations: ["Legacy row has no reliable completion timestamp or terminal status."] },
+  { game: "mines", table: "mines_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["lost", "won", "cashed_out", "finished", "completed"], limitations: ["Completion uses the parent result/status; created_at is used only for the activity window."] },
+  { game: "lane-runner", table: "lane_runner_games", parentId: "id", completionWindow: "none", playedAt: "created_at", startedAt: "created_at", limitations: ["Legacy row has no reliable completion timestamp or terminal status."] },
+  { game: "plinko", table: "plinko_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["lost", "won", "finished", "completed"], limitations: ["Completion uses the parent result/status; created_at is used only for the activity window."] },
+  { game: "rps", table: "rps_games", parentId: "id", completionWindow: "none", playedAt: "created_at", startedAt: "created_at", limitations: ["Legacy row has no reliable completion timestamp or terminal status."] },
+  { game: "uno", table: "uno_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["finished"], limitations: ["Completion uses the parent status; created_at is used only for the activity window. Waiting rows are excluded."] },
+  { game: "keno", table: "keno_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["finished", "completed"], limitations: ["Completion uses the parent status; created_at is used only for the activity window."] },
+  { game: "chess", table: "chess_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", limitations: ["This table has no completion timestamp; completed is unavailable rather than inferred from creation or result."] },
+  { game: "connect-four", table: "connect_four_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", limitations: ["This table has no completion timestamp; completed is unavailable rather than inferred from creation or result."] },
+  { game: "hex-duel", table: "hex_duel_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["No terminal timestamp is available in the deployed table; completion uses terminal status only."] },
+  { game: "dice", table: "dice_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["Canonical parent has created_at, status, winner_id but no started_at or ended_at; completion uses terminal status only."] },
+  { game: "pool", table: "pool_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["Canonical parent has created_at, status, winner_id but no started_at or ended_at; completion uses terminal status only."] },
+  { game: "rps-pvp", table: "rps_pvp_games", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", limitations: ["This table has created_at, status, and winner_id but no started_at or terminal timestamp; completed is unavailable."] },
+  { game: "lane-rush-duel", table: "lane_rush_duel_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "roulette-pvp", table: "roulette_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "blackjack-pvp", table: "blackjack_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "mines-pvp", table: "mines_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "memory-grid", table: "memory_grid_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "plinko-pvp", table: "plinko_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "keno-pvp", table: "keno_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "dots-and-boxes", table: "dots_and_boxes_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
+  { game: "precision", table: "precision_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["finished", "completed"], limitations: ["Completion uses the parent status and winner_id; created_at is used only for the activity window."] },
+  { game: "odds", table: "odds_games", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["No terminal timestamp is available in the deployed table; completion uses terminal status only."] },
 ];
 
 const COMPLETED_STATUS = ["finished", "completed", "closed"];
@@ -76,16 +81,16 @@ function statusPredicate(table: string, prefix: string, completed: boolean): str
     return completed ? `${prefix}status NOT IN ('waiting') AND ${prefix}winner_id IS NOT NULL` : `${prefix}status NOT IN ('waiting','cancelled')`;
   }
   if (table === "odds_games") {
-    return completed ? `${prefix}status IN ('finished','completed','closed') OR ${prefix}ended_at IS NOT NULL` : `${prefix}status NOT IN ('waiting','cancelled')`;
+    return completed ? `${prefix}status IN ('finished','completed','closed')` : `${prefix}status NOT IN ('waiting','cancelled')`;
   }
   if (["dice_matches", "pool_matches"].includes(table)) {
-    return completed ? `${prefix}ended_at IS NOT NULL OR ${prefix}status IN ('finished','completed','closed')` : `${prefix}${table === "dice_matches" ? "player2_id" : "player2_id"} IS NOT NULL AND ${prefix}status NOT IN ('waiting','cancelled')`;
+    return completed ? `${prefix}status IN ('finished','completed','closed')` : `${prefix}player2_id IS NOT NULL AND ${prefix}status NOT IN ('waiting','cancelled')`;
   }
   if (["chess_games", "connect_four_games", "hex_duel_games", "dots_and_boxes_games"].includes(table)) {
-    return completed ? `${prefix}ended_at IS NOT NULL OR ${prefix}status IN ('finished','completed','closed')` : `${prefix}status NOT IN ('waiting','cancelled','expired')`;
+    return completed ? `${prefix}status IN ('finished','completed','closed')` : `${prefix}status NOT IN ('waiting','cancelled','expired')`;
   }
   if (table.endsWith("_matches") && !table.endsWith("_games")) {
-    return completed ? `${prefix}ended_at IS NOT NULL OR ${prefix}status::text IN ('finished','completed','closed')` : `${prefix}status::text NOT IN ('waiting','cancelled')`;
+    return completed ? `${prefix}status::text IN ('finished','completed','closed')` : `${prefix}status::text NOT IN ('waiting','cancelled')`;
   }
   if (table === "uno_games") {
     return completed ? `${prefix}status = 'finished'` : `${prefix}status IN ('active','finished')`;
@@ -102,22 +107,47 @@ async function queryDefinition(definition: LifecycleDefinition, start: Date, end
   const playedTime = definition.playedAt;
   const completedTime = definition.completedAt;
   const startedPredicate = statusPredicate(definition.table, "", false);
-  const completedPredicate = statusPredicate(definition.table, "", true);
+  const completedPredicate = definition.completionStatus
+    ? `status::text IN (${definition.completionStatus.map((status) => `'${status}'`).join(",")})`
+    : statusPredicate(definition.table, "", true);
+  const completedPopulation = completedTime
+    ? `${completedPredicate} AND ${completedTime} >= $1 AND ${completedTime} < $2`
+    : definition.completionStatus
+      ? `${completedPredicate} AND ${startedTime} >= $1 AND ${startedTime} < $2`
+      : "FALSE";
+  const windowParams = [start, end];
+  const completionIsAvailable = Boolean(completedTime || definition.completionStatus);
+  const diagnostic = await sql.query(
+    `SELECT COUNT(*)::int AS matching_rows, COUNT(DISTINCT ${definition.parentId})::int AS matching_parent_ids
+       FROM ${definition.table}
+      WHERE ${completedPopulation}`,
+    completedPopulation.includes("$1") ? windowParams : [],
+  );
+  console.info("[pm analytics completion trace]", {
+    table: definition.table,
+    parentId: definition.parentId,
+    matchingRows: diagnostic.rows[0]?.matching_rows,
+    matchingParentIds: diagnostic.rows[0]?.matching_parent_ids,
+    predicate: completedPredicate,
+    usesDistinct: true,
+    join: false,
+    source: definition.table,
+  });
   const result = await sql.query(
     `SELECT
-       COUNT(*) FILTER (WHERE ${startedPredicate} AND ${playedTime} >= $1 AND ${playedTime} < $2)::int AS played,
-       COUNT(*) FILTER (WHERE ${startedPredicate} AND ${startedTime} >= $1 AND ${startedTime} < $2)::int AS started,
-       COUNT(*) FILTER (WHERE ${completedPredicate} AND ${completedTime} >= $1 AND ${completedTime} < $2)::int AS completed
+       COUNT(DISTINCT ${definition.parentId}) FILTER (WHERE ${startedPredicate} AND ${playedTime} >= $1 AND ${playedTime} < $2)::int AS played,
+       COUNT(DISTINCT ${definition.parentId}) FILTER (WHERE ${startedPredicate} AND ${startedTime} >= $1 AND ${startedTime} < $2)::int AS started,
+       COUNT(DISTINCT ${definition.parentId}) FILTER (WHERE ${completedPopulation})::int AS completed
      FROM ${definition.table}`,
-    [start, end],
+    windowParams,
   );
   const row = result.rows[0] ?? {};
   return {
     game: definition.game,
     played: number(row.played),
     started: number(row.started),
-    completed: number(row.completed),
-    status: definition.limitations?.length ? "partial" : "reliable",
+    completed: completionIsAvailable ? number(row.completed) : 0,
+    status: definition.limitations?.length || !completionIsAvailable ? "partial" : "reliable",
     limitations: definition.limitations ?? [],
   };
 }
@@ -160,6 +190,7 @@ export async function GET(request: Request) {
   const totalPlayed = games.reduce((sum, row) => sum + row.played, 0);
   const totalStarted = games.reduce((sum, row) => sum + row.started, 0);
   const totalCompleted = games.reduce((sum, row) => sum + row.completed, 0);
+  const completedExceedsStarted = games.filter((row) => row.completed > row.started || row.started > row.played);
 
   const byGame = games.map((row) => {
     const previousRow = oldGames.get(row.game);
@@ -176,7 +207,7 @@ export async function GET(request: Request) {
       played: row.played,
       started: row.started,
       completed: row.completed,
-      completion_rate: row.started > 0 ? row.completed / row.started : null,
+      completion_rate: row.started > 0 && row.completed <= row.started && row.started <= row.played ? row.completed / row.started : null,
       popularity_share: totalPlayed > 0 ? row.played / totalPlayed : null,
       trend: { classification, current_count: row.played, previous_count: previousCount, absolute_change: change, percentage_change: percentage },
       metric_status: row.status,
@@ -193,6 +224,7 @@ export async function GET(request: Request) {
     "Metrics remain partial where the repository has no separate start or completion timestamp.",
     "PostHog is supplemental only and does not override database counts.",
     ...games.flatMap((row) => row.limitations.map((limitation) => `${row.game}: ${limitation}`)),
+    ...(completedExceedsStarted.length ? ["Completion invariant violated for: " + completedExceedsStarted.map((row) => row.game).join(", ")] : []),
     ...errors,
   ];
 
