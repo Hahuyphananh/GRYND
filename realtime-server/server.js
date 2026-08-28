@@ -72,7 +72,15 @@ app.post("/emit", (req, res) => {
   if (!room || !event) {
     return res.status(400).json({ success: false, error: "room and event are required" });
   }
-  io.to(String(room)).emit(String(event), {
+  const roomName = String(room);
+  const eventName = String(event);
+  // Lifecycle events are scoped to canonical match rooms. The endpoint is
+  // internal-only by the shared secret above, and payloads are forwarded
+  // without granting clients any authority over game state.
+  if (eventName === "match:lifecycle" && !roomName.startsWith("match:lifecycle:")) {
+    return res.status(400).json({ success: false, error: "Invalid lifecycle room" });
+  }
+  io.to(roomName).emit(eventName, {
     ...(payload && typeof payload === "object" ? payload : {}),
     sentAt: new Date().toISOString(),
   });

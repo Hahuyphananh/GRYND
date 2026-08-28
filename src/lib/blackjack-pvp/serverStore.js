@@ -24,6 +24,7 @@ import {
   users,
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import {
   ACTION_TYPE,
   BETWEEN_ROUNDS_MS,
@@ -312,6 +313,7 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
     }).catch(() => {});
   }
 
+  mirrorQueueCreated({ gameKey: "blackjack-pvp", matchId: match.id, playerCount: 1, queuedAt: match.createdAt ? new Date(match.createdAt) : undefined });
   return { match, joined: false };
 }
 
@@ -500,6 +502,7 @@ export async function resignMatch({ userId, matchId }) {
         .where(eq(blackjackPvpMatches.id, matchId))
         .returning();
 
+      mirrorQueueTransition({ gameKey: "blackjack-pvp", matchId, status: "cancelled", cancelReason: "user_cancelled", playerCount: 1 });
       return { match: updated, refunded: true };
     }
 
@@ -508,10 +511,10 @@ export async function resignMatch({ userId, matchId }) {
     const winnerSeat = forfeiterIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
     const credit = await creditWinner(tx, match, winnerSeat);
 
-    const [updated] = await tx
-      .update(blackjackPvpMatches)
-      .set({
-        status: MATCH_STATUS.FINISHED,
+  const [updated] = await tx
+    .update(blackjackPvpMatches)
+    .set({
+      status: MATCH_STATUS.FINISHED,
         roundDeadline: null,
         winner: credit.winnerId,
         result: winnerSeat,
@@ -527,6 +530,7 @@ export async function resignMatch({ userId, matchId }) {
       .returning();
 
     const finalRow = updated || match;
+    mirrorQueueTransition({ gameKey: "blackjack-pvp", matchId, status: "completed", playerCount: [match.player1Id, match.player2Id].filter(Boolean).length });
     // Best-effort stat side-effect — mirrors resolveRound.
     await recordPvPResult(tx, finalRow, credit.winnerId, winnerSeat).catch(
       () => {},

@@ -13,6 +13,7 @@ import {
 } from "../../../../lib/precision/serverStore";
 import { makeInitialMatch } from "../../../../lib/precision/matchmaking";
 import type { PrecisionPlayer } from "../../../../lib/precision/types";
+import { mirrorPrecisionQueued } from "../../../../lib/precision/canonicalLifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,11 @@ export async function POST(req: NextRequest) {
     // timer with no warning — breaking the round for both players.
     const match = makeInitialMatch(matchId, lobby.wager, players, "ready_up", 1);
     precisionMatchStore.set(matchId, match);
+    mirrorPrecisionQueued({
+      matchId,
+      playerCount: players.length,
+      queuedAt: new Date(lobby.createdAt),
+    });
 
     return NextResponse.json({
       success: true,

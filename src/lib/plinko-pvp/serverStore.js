@@ -41,6 +41,7 @@ import {
   users,
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import {
   BALL_OUTCOME,
   LAUNCHABLE_STATES,
@@ -617,9 +618,9 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
       description: `User ${userId} created plinko PvP lobby (${stakeAmount} stake).`,
       metadata: { userId, stakeAmount, matchId: match.id },
     }).catch(() => {});
-  }
-
-  return { match, joined: false };
+  }    mirrorQueueCreated({ gameKey: "plinko-pvp", matchId: match.id, playerCount: 1, queuedAt: match.createdAt ? new Date(match.createdAt) : undefined });
+    mirrorQueueCreated({ gameKey: "plinko-pvp", matchId: match.id, playerCount: 1, queuedAt: match.createdAt ? new Date(match.createdAt) : undefined });
+    return { match, joined: false };
 }
 
 async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
@@ -686,9 +687,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
       .set({ balance: sql`${users.balance} + ${stakeAmount}` })
       .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
-  }
-
-  return { match: updated, joined: true };
+  }    mirrorQueueCreated({ gameKey: "plinko-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
+    mirrorQueueCreated({ gameKey: "plinko-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
+    return { match: updated, joined: true };
 }
 
 // ── Auto-advance ready → ball_1 ───────────────────────────────────────
@@ -761,6 +762,7 @@ export async function cancelMatch({ userId, matchId }) {
       .where(eq(plinkoPvpMatches.id, matchId))
       .returning();
 
+    mirrorQueueTransition({ gameKey: "plinko-pvp", matchId, status: "cancelled", cancelReason: "user_cancelled", playerCount: 1 });
     return { match: updated };
   });
 }
@@ -794,7 +796,9 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
         .where(eq(plinkoPvpMatches.id, matchId))
         .returning();
-      return { match: updated, cancelled: true };
+      mirrorQueueTransition({ gameKey: "plinko-pvp", matchId, status: "cancelled", cancelReason: "timeout", playerCount: 1 });
+      mirrorQueueTransition({ gameKey: "plinko-pvp", matchId, status: "cancelled", cancelReason: "timeout", playerCount: 1 });
+    return { match: updated, cancelled: true };
     }
 
     if (!ACTIVE_STATES.has(match.status)) {

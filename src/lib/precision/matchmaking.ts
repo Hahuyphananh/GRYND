@@ -15,6 +15,7 @@
 
 import { precisionLobbyStore, precisionMatchStore } from "./serverStore";
 import type { PrecisionLobby, PrecisionPlayer, PrecisionState } from "./types";
+import { mirrorPrecisionQueued } from "./canonicalLifecycle";
 
 /** Construct the initial server-authoritative state for a new match.
  *  PvP-only (Precision's solo practice lives at
@@ -196,5 +197,10 @@ export function tryAutoMatch({
     createdAt: Date.now(),
   };
   precisionLobbyStore.set(lobbyId, lobby);
+  mirrorPrecisionQueued({
+    matchId: lobbyId,
+    playerCount: 1,
+    queuedAt: new Date(lobby.createdAt),
+  });
   return { status: "waiting", gameId: lobbyId, lobby };
 }
