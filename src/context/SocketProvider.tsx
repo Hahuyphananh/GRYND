@@ -10,12 +10,13 @@ import {
 
 type SocketContextValue = {
   socket: RealtimeSocket | null;
+  userId: string | null;
 };
 
-const SocketContext = createContext<SocketContextValue>({ socket: null });
+const SocketContext = createContext<SocketContextValue>({ socket: null, userId: null });
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { getToken, isSignedIn, isLoaded } = useAuth(); // added isLoaded
+  const { getToken, isSignedIn, isLoaded, userId } = useAuth(); // added isLoaded
   const [socket, setSocket] = useState<RealtimeSocket | null>(null);
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     };
   }, [getToken, isSignedIn, isLoaded]);
 
-  const value = useMemo(() => ({ socket }), [socket]);
+  const value = useMemo(() => ({ socket, userId: isSignedIn ? userId : null }), [socket, isSignedIn, userId]);
 
   return (
     <SocketContext.Provider value={value}>{children}</SocketContext.Provider>
