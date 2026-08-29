@@ -106,6 +106,32 @@ export const availabilityAlertDeliveries = pgTable(
   }),
 );
 
+export const quickQueueReadiness = pgTable(
+  "quick_queue_readiness",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    preferredGames: jsonb("preferred_games").notNull(),
+    preferredModes: jsonb("preferred_modes").notNull().default(sql`'[]'::jsonb`),
+    region: varchar("region", { length: 80 }),
+    playerCount: integer("player_count").notNull().default(2),
+    maxWaitMs: integer("max_wait_ms"),
+    minesStakeAmount: numeric("mines_stake_amount", { precision: 14, scale: 2 }),
+    minesCount: integer("mines_count"),
+    status: varchar("status", { length: 20 }).notNull().default("ready"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    activeLookupIdx: index("quick_queue_readiness_active_lookup_idx").on(
+      table.status,
+      table.expiresAt,
+      table.updatedAt,
+    ),
+  }),
+);
+
 export const quickQueueRequests = pgTable(
   "quick_queue_requests",
   {
@@ -116,6 +142,8 @@ export const quickQueueRequests = pgTable(
     region: varchar("region", { length: 80 }),
     playerCount: integer("player_count").notNull().default(2),
     maxWaitMs: integer("max_wait_ms"),
+    minesStakeAmount: numeric("mines_stake_amount", { precision: 14, scale: 2 }),
+    minesCount: integer("mines_count"),
     status: varchar("status", { length: 20 }).notNull().default("queued"),
     queuedAt: timestamp("queued_at").notNull().defaultNow(),
     cancelledAt: timestamp("cancelled_at"),
@@ -135,6 +163,7 @@ export const quickQueueAssignments = pgTable(
     requestIds: jsonb("request_ids").notNull(),
     gameKey: varchar("game_key", { length: 80 }).notNull(),
     mode: varchar("mode", { length: 80 }).notNull(),
+    destinationMatchId: varchar("destination_match_id", { length: 255 }),
     playerCount: integer("player_count").notNull(),
     status: varchar("status", { length: 20 }).notNull().default("ready"),
     assignedAt: timestamp("assigned_at").notNull().defaultNow(),

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findCompatibleQuickQueueCandidate, normalizeQuickQueueRequest } from "../src/lib/quickQueue.ts";
+import { findCompatibleQuickQueueCandidate, findCompatibleQuickQueuePair, normalizeQuickQueueRequest } from "../src/lib/quickQueue.ts";
 
 test("normalizes a Quick Queue request", () => {
   const request = normalizeQuickQueueRequest({ userId: " user-1 ", preferredGames: ["mines-pvp", "invalid", "mines-pvp"], preferredModes: [" pvp "], playerCount: 2, region: "eu", maxWaitMs: 5000 });

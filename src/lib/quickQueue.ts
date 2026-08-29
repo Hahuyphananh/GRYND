@@ -5,6 +5,18 @@ export const QUICK_QUEUE_GAME_KEYS = [
   "blackjack-pvp",
   "roulette-pvp",
   "lane-rush-duel",
+  "connect-four",
+  "memory-grid",
+  "dots-and-boxes",
+  "rps-pvp",
+  "uno",
+  "dice-duel",
+  "pool-masters",
+  "precision",
+  "hex-duel",
+  "chess",
+  "dice-flush",
+  "crash-arena",
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];
@@ -19,6 +31,8 @@ export interface QuickQueueRequest {
 }
 
 export interface QuickQueueCandidate {
+  requestId?: string;
+  userId?: string;
   gameKey: QuickQueueGameKey;
   mode: string;
   region?: string | null;
@@ -67,7 +81,7 @@ export function findCompatibleQuickQueueCandidate(
   now = Date.now(),
 ): QuickQueueCandidate | null {
   const eligible = candidates.filter((candidate) => {
-    if (!candidate.available) return false;
+    if (!candidate.available || candidate.userId === request.userId) return false;
     if (!request.preferredGames.includes(candidate.gameKey)) return false;
     if (request.preferredModes.length > 0 && !request.preferredModes.includes(candidate.mode)) return false;
     if (request.region && candidate.region && request.region !== candidate.region) return false;
@@ -81,4 +95,32 @@ export function findCompatibleQuickQueueCandidate(
     if (gamePriority !== 0) return gamePriority;
     return a.queuedAt - b.queuedAt;
   })[0] ?? null;
+}
+
+export function findCompatibleQuickQueuePair(
+  requests: readonly (QuickQueueRequest & { requestId: string; queuedAt: number; row?: Record<string, unknown> })[],
+  now = Date.now(),
+) {
+  for (const source of requests) {
+    const candidates = requests.filter((candidate) => candidate.requestId !== source.requestId).flatMap((candidate) =>
+      source.preferredGames
+        .filter((gameKey) => candidate.preferredGames.includes(gameKey))
+        .filter((gameKey) => source.preferredModes.length === 0 || candidate.preferredModes.length === 0 || source.preferredModes.some((mode) => candidate.preferredModes.includes(mode)))
+        .filter(() => !source.region || !candidate.region || source.region === candidate.region)
+        .filter(() => source.playerCount === candidate.playerCount)
+        .map((gameKey) => ({
+          requestId: candidate.requestId,
+          userId: candidate.userId,
+          gameKey,
+          mode: source.preferredModes.find((mode) => candidate.preferredModes.includes(mode)) ?? candidate.preferredModes[0] ?? source.preferredModes[0] ?? "pvp",
+          region: source.region ?? candidate.region,
+          playerCount: source.playerCount,
+          queuedAt: candidate.queuedAt,
+          available: candidate.userId !== source.userId && (source.maxWaitMs === null || now - candidate.queuedAt <= source.maxWaitMs) && (candidate.maxWaitMs === null || now - source.queuedAt <= candidate.maxWaitMs),
+        })),
+    );
+    const candidate = findCompatibleQuickQueueCandidate(source, candidates, now);
+    if (candidate?.requestId) return { source, partner: requests.find((request) => request.requestId === candidate.requestId)!, candidate };
+  }
+  return null;
 }

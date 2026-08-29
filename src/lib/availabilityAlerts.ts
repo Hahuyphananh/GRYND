@@ -1,4 +1,4 @@
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { availabilityAlertDeliveries, availabilityAlerts } from "../db/schema";
 
@@ -44,7 +44,7 @@ export async function claimMatchingAvailabilityAlerts(
     .where(
       and(
         eq(availabilityAlerts.active, true),
-        or(isNull(availabilityAlerts.expiresAt), eq(availabilityAlerts.expiresAt, now)),
+        or(isNull(availabilityAlerts.expiresAt), sql`${availabilityAlerts.expiresAt} > ${now}`),
       ),
     );
 

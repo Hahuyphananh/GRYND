@@ -28,6 +28,7 @@ import Link from "next/link";
 import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
 import MatchWaiting from "./MatchWaiting";
+import { usePlatformQuickQueue } from "./PlatformQuickQueue";
 import {
   IconTrophy,
   IconRefresh,
@@ -264,6 +265,9 @@ export function PvpLobby({
   onResume,
   onCancel,
   cancelling = false,
+  // platform-wide Quick Queue readiness
+  quickQueue = null, // { ready, busy, error, onToggle, disabled, label, preferences }
+
   // extra content inside the main card (e.g. difficulty pickers)
   children = null,
   // trailing content after the lobbies card (e.g. rules box)
@@ -473,6 +477,46 @@ export function PvpLobby({
           </div>
         </div>
 
+        {quickQueue && (
+          <div className="mt-5 rounded-xl border border-cyan-500/30 bg-cyan-950/25 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-cyan-200">Platform Quick Queue</p>
+                <p className="mt-1 text-xs text-white/60">
+                  {quickQueue.ready
+                    ? "You’re ready across your selected eligible games."
+                    : "Get notified when a compatible game becomes available."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={quickQueue.onToggle}
+                disabled={quickQueue.disabled || quickQueue.busy || quickQueue.emptySelection}
+                aria-pressed={Boolean(quickQueue.ready)}
+                className={`rounded-xl border-b-4 px-4 py-2.5 text-sm font-extrabold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  quickQueue.ready
+                    ? "border-emerald-800 bg-emerald-400 text-black"
+                    : "border-cyan-800 bg-cyan-400 text-black"
+                }`}
+              >
+                {quickQueue.busy ? "Updating…" : quickQueue.label || (quickQueue.ready ? "Not Ready" : "I’m Ready")}
+              </button>
+            </div>
+            {quickQueue.preferences}
+            {quickQueue.emptySelection && (
+              <p className="mt-2 text-xs text-amber-200">Select at least one game before becoming ready.</p>
+            )}
+            {quickQueue.notification && (
+              <p className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200" role="status">
+                {quickQueue.notification.message}
+              </p>
+            )}
+            {quickQueue.error && (
+              <p className="mt-2 text-xs text-red-200">{quickQueue.error}</p>
+            )}
+          </div>
+        )}
+
         {children}
 
         {error && (
@@ -570,13 +614,14 @@ export function PvpLobby({
  * Full lobby page — page chrome + the shared lobby content.
  */
 export default function PvpLobbyPage(props) {
+  const quickQueue = usePlatformQuickQueue({ readinessBody: props.quickQueueReadinessBody });
   return (
     <div
       className={`min-h-screen overflow-x-clip px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 ${PALETTE.page}`}
     >
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
-        <PvpLobby {...props} />
+        <PvpLobby {...props} quickQueue={props.quickQueue ? { ...quickQueue, ...props.quickQueue } : { ...quickQueue, preferences: props.quickQueuePreferences }} />
         <Footer />
       </div>
     </div>

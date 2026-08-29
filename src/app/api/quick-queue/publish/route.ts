@@ -15,8 +15,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
   try {
+    const baseUrl = String(process.env.REALTIME_INTERNAL_URL || "").replace(/\/$/, "");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (secret) headers["x-internal-secret"] = secret;
     const result = await publishQuickQueueAssignmentEvents(async (event) => {
-      const baseUrl = String(process.env.REALTIME_INTERNAL_URL || "").replace(/\/$/, "");
       if (!baseUrl) return;
       const requests = await db
         .select({ userId: quickQueueRequests.userId })
@@ -30,8 +32,6 @@ export async function POST(req: NextRequest) {
           .where(eq(quickQueueRequests.id, requestId));
         if (request) userIds.add(request.userId);
       }
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (secret) headers["x-internal-secret"] = secret;
       for (const userId of userIds) {
         const response = await fetch(`${baseUrl}/emit`, {
           method: "POST",
@@ -45,6 +45,22 @@ export async function POST(req: NextRequest) {
         });
         if (!response.ok) throw new Error(`Realtime relay returned ${response.status}`);
       }
+    }, {
+      onAssignmentAlert: async ({ userId, event }) => {
+        await fetch(`${baseUrl}/emit`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            room: `quick-queue:user:${userId}`,
+            event: "quick-queue:availability",
+            payload: {
+              ...event.payload,
+              notification: "A compatible game is ready.",
+            },
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+      },
     });
     return NextResponse.json({ success: true, result });
   } catch (error) {

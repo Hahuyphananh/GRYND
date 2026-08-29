@@ -360,6 +360,31 @@ export default function MinesPvpLobbyPage() {
   const stakeValid = stake > 0 && (balance === null || balance >= stake);
   const canCreate = isSignedIn && !busy && minesCountValid && stakeValid && myOpenMatchId === null;
   const canPlayAi = isSignedIn && !busy && minesCountValid;
+  const quickQueuePreferences = (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+        Quick Queue stake
+        <input
+          type="number"
+          min={1}
+          value={stake}
+          onChange={(event) => setStake(Math.max(1, Number(event.target.value) || 1))}
+          className="mt-1 w-full rounded-md border border-cyan-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+        />
+      </label>
+      <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+        Quick Queue mines
+        <input
+          type="number"
+          min={MIN_MINES}
+          max={MAX_MINES}
+          value={minesCount}
+          onChange={(event) => setMinesCount(Math.max(MIN_MINES, Math.min(MAX_MINES, Number(event.target.value) || MIN_MINES)))}
+          className="mt-1 w-full rounded-md border border-cyan-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+        />
+      </label>
+    </div>
+  );
 
   // ── No-guess guarantee copy (honest per mine count) ───────────────
   // The generator guarantees EVERY board keeps the 3×3 center block
@@ -385,6 +410,8 @@ export default function MinesPvpLobbyPage() {
 
   return (
     <PvpLobbyPage
+      quickQueuePreferences={quickQueuePreferences}
+      quickQueueReadinessBody={{ preferredGames: ["mines-pvp"], minesStakeAmount: stake, minesCount }}
       title="Mines Duel Lobby"
       subtitle={
         <>
