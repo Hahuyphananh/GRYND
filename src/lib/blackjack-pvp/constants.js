@@ -310,7 +310,7 @@ function cardValueForAi(card) {
   return Number.isFinite(value) ? value : 0;
 }
 
-// ── Round-winner decision (closer to 21, no bust) ────────────────────
+// ── Round-winner decision (closest score to 21) ─────────────────────
 export function decideRoundWinner({
   p1Cards,
   p1State,
@@ -320,10 +320,8 @@ export function decideRoundWinner({
   const p1Score = effectiveHandScore(p1Cards, p1State);
   const p2Score = effectiveHandScore(p2Cards, p2State);
 
-  // Both busted (or both busted-equivalent sentinel) → draw.
-  if (p1Score === BUSTED_SCORE_SENTINEL && p2Score === BUSTED_SCORE_SENTINEL) {
-    return { winner: RESULT.DRAW, p1Score, p2Score };
-  }
+  // Equal scores are draws. A player with the higher calculated score
+  // wins; bust status is not used as a special loss condition.
   if (p1Score === p2Score) {
     return { winner: RESULT.DRAW, p1Score, p2Score };
   }

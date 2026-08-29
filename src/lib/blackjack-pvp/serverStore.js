@@ -778,8 +778,7 @@ function applyAction(match, action, seat, fields, payload) {
       const drawn = drawCards(currentDeck, 1);
       const nextHand = [...currentHand, ...drawn];
       const newScore = calcHandValue(nextHand);
-      const nextState =
-        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
+      const nextState = PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
@@ -870,8 +869,7 @@ function applyAction(match, action, seat, fields, payload) {
       const nextHand = [...currentHand];
       nextHand[choice] = drawnCard;
       const newScore = calcHandValue(nextHand);
-      const nextState =
-        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
+      const nextState = PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
@@ -961,16 +959,13 @@ function applyAction(match, action, seat, fields, payload) {
       const stored = currentHand[currentHand.length - 1];
       const nextHand = currentHand.slice(0, -1);
       const newScore = calcHandValue(nextHand);
-      const nextState =
-        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
+      const nextState = PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
           [fields.hand]: nextHand,
           [fields.heldCard]: stored,
           [fields.holdsUsed]: holdsUsed + 1,
-          // State MAY transition BUSTED → PLAYING if the lifted card
-          // brings the hand back under 21 (busted-recovery path).
           [fields.state]: nextState,
         },
       };
@@ -1087,15 +1082,11 @@ function bothSeatsLocked(match) {
 // actions are available while busted, but a round must never resolve
 // merely because both hands happen to be busted.
 function bustedSeatMustStand(match, seatPrefix) {
-  return match?.[`${seatPrefix}State`] === PLAYER_STATE.BUSTED;
+  return false;
 }
 
 function canResolveRound(match) {
-  return (
-    bothSeatsLocked(match) &&
-    !bustedSeatMustStand(match, "player1") &&
-    !bustedSeatMustStand(match, "player2")
-  );
+  return bothSeatsLocked(match);
 }
 
 // ── Force-deadline advance ────────────────────────────────────────────

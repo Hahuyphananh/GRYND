@@ -67,6 +67,7 @@ import {
   BLACKJACK_PVP_MATCH_UPDATED,
   blackjackPvpMatchRoom,
 } from "../../../../lib/blackjack-pvp/rooms";
+import EmotePicker from "../../../../components/game/EmotePicker";
 
 // ── Types ────────────────────────────────────────────────────────────
 type Card = { suit: string; value: string };
@@ -272,6 +273,8 @@ export default function BlackjackPvpMatchPage({
   const [localPeekedCard, setLocalPeekedCard] = useState<Card | null>(null);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
+  const [incomingEmote, setIncomingEmote] = useState(null);
+  const [myEmote, setMyEmote] = useState(null);
   // Resign flow — forfeits the match (opponent wins the pot) and
   // returns to the lobby. The confirmation modal guards the stake
   // loss so a stray tap can't throw the match away.
@@ -429,9 +432,18 @@ export default function BlackjackPvpMatchPage({
     const refresh = () => fetchStatus({ silent: true });
     socket.emit("join_room", { roomId: blackjackPvpMatchRoom(matchId) });
     socket.on(BLACKJACK_PVP_MATCH_UPDATED, refresh);
+    const handleEmote = (payload) => {
+      if (payload?.senderId && payload.senderId === user?.id) return;
+      setIncomingEmote(payload?.emote || null);
+      // Mirror the 3s clear applied to my own emote bubble so the
+      // opponent's bubble in the round-counter doesn't persist forever.
+      window.setTimeout(() => setIncomingEmote(null), 3000);
+    };
+    socket.on("blackjack:emote", handleEmote);
     return () => {
       socket.emit("leave_room", { roomId: blackjackPvpMatchRoom(matchId) });
       socket.off(BLACKJACK_PVP_MATCH_UPDATED, refresh);
+      socket.off("blackjack:emote", handleEmote);
     };
   }, [socket, matchId, isValidMatchId, fetchStatus]);
 
@@ -925,6 +937,8 @@ export default function BlackjackPvpMatchPage({
             }
             mySeatLabel={mySeatLabel}
             oppSeatLabel={oppSeatLabel}
+            myEmote={myEmote}
+            incomingEmote={incomingEmote}
           />
 
           {/* ▶ BOTTOM SECTION — You
@@ -1034,6 +1048,23 @@ export default function BlackjackPvpMatchPage({
                   sendAction("use_held", { subaction: "discard" })
                 }
               />
+              <div className="mt-2 flex justify-center">
+                <EmotePicker
+                  compact
+                  hideBubbles
+                  incomingEmote={incomingEmote}
+                  myEmote={myEmote}
+                  onSend={(emote) => {
+                    setMyEmote(emote);
+                    socket?.emit("room_event", {
+                      roomId: blackjackPvpMatchRoom(matchId),
+                      event: "blackjack:emote",
+                      payload: { emote, senderId: user?.id },
+                    });
+                    window.setTimeout(() => setMyEmote(null), 3000);
+                  }}
+                />
+              </div>
             </>
           )}
           {/* STOOD lock: the hand is frozen and the round resolves
@@ -1772,6 +1803,8 @@ function GameTableCenter({
   oppRounds,
   mySeatLabel,
   oppSeatLabel,
+  incomingEmote,
+  myEmote,
 }: {
   t: TFn;
   viewerIsPlayer1: boolean;
@@ -1784,6 +1817,8 @@ function GameTableCenter({
   oppRounds: number;
   mySeatLabel: string;
   oppSeatLabel: string;
+  incomingEmote?: { value: string } | null;
+  myEmote?: { value: string } | null;
 }) {
   // GameTableCenter stays visible across `ready` (warm-up banner) and
   // `between_rounds` (transitional countdown) — both surface the round
@@ -1819,9 +1854,24 @@ function GameTableCenter({
               {t("blackjackPvp.scoreboard.roundsUnit", "rd")}
             </span>
           </div>
-          <span className="text-[10px] uppercase tracking-widest text-white/50 mt-1 truncate max-w-[110px]">
-            {mySeatLabel}
-          </span>
+          <div className="relative mt-1">
+            <AnimatePresence>
+              {myEmote && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                  className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base normal-case tracking-normal shadow-[0_0_18px_rgba(0,229,255,.3)]"
+                >
+                  {myEmote.value}
+                </motion.span>
+              )}
+            </AnimatePresence>
+            <span className="block max-w-[110px] truncate text-[10px] uppercase tracking-widest text-white/50">
+              {mySeatLabel}
+            </span>
+          </div>
         </div>
 
         {/* CENTER — current round chip (prominent Round N/3) */}
@@ -1855,9 +1905,24 @@ function GameTableCenter({
               {t("blackjackPvp.scoreboard.roundsUnit", "rd")}
             </span>
           </div>
-          <span className="text-[10px] uppercase tracking-widest text-white/50 mt-1 truncate max-w-[110px]">
-            {oppSeatLabel}
-          </span>
+          <div className="relative mt-1">
+            <AnimatePresence>
+              {incomingEmote && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                  className="absolute bottom-full right-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base normal-case tracking-normal shadow-[0_0_18px_rgba(255,60,172,.35)]"
+                >
+                  {incomingEmote.value}
+                </motion.span>
+              )}
+            </AnimatePresence>
+            <span className="block max-w-[110px] truncate text-[10px] uppercase tracking-widest text-white/50">
+              {oppSeatLabel}
+            </span>
+          </div>
         </div>
       </div>
 

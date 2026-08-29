@@ -614,7 +614,8 @@ export function PvpLobby({
  * Full lobby page — page chrome + the shared lobby content.
  */
 export default function PvpLobbyPage(props) {
-  const quickQueue = usePlatformQuickQueue({ readinessBody: props.quickQueueReadinessBody });
+  const quickQueueReadinessBody = props.quickQueueReadinessBody;
+  const quickQueue = usePlatformQuickQueue({ readinessBody: quickQueueReadinessBody });
   return (
     <div
       className={`min-h-screen overflow-x-clip px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8 ${PALETTE.page}`}
