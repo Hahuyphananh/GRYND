@@ -13,7 +13,7 @@ import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import SoundToggle from "./SoundToggle";
-import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconStar, IconX } from "@tabler/icons-react";
+import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
 
 // M1: sessionStorage TTL for the nav's level + equipped-title meta. Level
@@ -384,18 +384,18 @@ function NavigationBar({ currentPath }) {
                 </Link>
               </motion.div>
               <motion.div
-                key="/reviews"
+                key="/shop"
                 initial={itemVariant.initial}
                 animate={itemVariant.animate}
                 transition={itemVariant.transition}
                 whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
               >
                 <Link
-                  href="/reviews"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/reviews" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                  href="/shop"
+                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/shop" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
-                    <IconStar size={15} className="shrink-0" /> Reviews
+                    <IconShoppingBag size={15} className="shrink-0" /> Shop
                   </span>
                 </Link>
               </motion.div>
@@ -658,12 +658,12 @@ function NavigationBar({ currentPath }) {
                     </span>
                   </Link>
                   <Link
-                    href="/reviews"
+                    href="/shop"
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
                     <span className="inline-flex items-center gap-1.5">
-                      <IconStar size={15} className="shrink-0" /> Reviews
+                      <IconShoppingBag size={15} className="shrink-0" /> Shop
                     </span>
                   </Link>
                   <Link

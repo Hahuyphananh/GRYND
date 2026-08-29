@@ -78,6 +78,7 @@ import {
   AlertIcon,
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
+import EmotePicker from "../../../../components/game/EmotePicker";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import { playVictory, playDefeat, playTick, playCardPlace } from "../../../../lib/gameAudio";
 
@@ -341,6 +342,8 @@ export default function RoulettePvpGamePage({ params }) {
   const [matchEndedBanner, setMatchEndedBanner] = useState(null);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
+  const [incomingEmote, setIncomingEmote] = useState(null);
+  const [myEmote, setMyEmote] = useState(null);
 
   const canvasRef = useRef(null);
   const betsRef = useRef(bets);
@@ -583,11 +586,16 @@ export default function RoulettePvpGamePage({ params }) {
     // the user hard-navigates back to the page.
     join();
     socket.on("connect", join);
-    socket.on("lobby:updated", fetchStatus);
+    socket.on("lobby:updated", fetchStatus);      const handleEmote = (payload) => {
+      if (payload?.senderId && payload.senderId === user?.id) return;
+      setIncomingEmote(payload?.emote || null);
+    };
+    socket.on("roulette:emote", handleEmote);
     return () => {
       socket.emit("leave_room", { roomId });
       socket.off("connect", join);
       socket.off("lobby:updated", fetchStatus);
+      socket.off("roulette:emote", handleEmote);
     };
   }, [socket, matchId, fetchStatus]);
 
@@ -1802,12 +1810,13 @@ export default function RoulettePvpGamePage({ params }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div
-                    className={`rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
+                    className={`relative rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
                       displayMyBets
                         ? "border-green-400/40 bg-green-500/10 text-green-200"
                         : "border-yellow-300/30 bg-yellow-300/10 text-yellow-200"
                     }`}
                   >
+                    {myEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.3)]">{myEmote.value}</span>}
                     <span>You</span>
                     {displayMyBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
@@ -1816,12 +1825,13 @@ export default function RoulettePvpGamePage({ params }) {
                     )}
                   </div>
                   <div
-                    className={`rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
+                    className={`relative rounded-md px-2 py-1 border text-center text-xs inline-flex items-center justify-center gap-1 ${
                       displayOppBets
                         ? "border-green-400/40 bg-green-500/10 text-green-200"
                         : "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
                     }`}
                   >
+                    {incomingEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]">{incomingEmote.value}</span>}
                     <span>Opp</span>
                     {displayOppBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
@@ -2104,6 +2114,22 @@ export default function RoulettePvpGamePage({ params }) {
               </div>
             </div>
           )}
+
+          <div className="mb-3 flex justify-end">
+            <EmotePicker
+              incomingEmote={incomingEmote}
+              myEmote={myEmote}
+              onSend={(emote) => {
+                setMyEmote(emote);
+                socket?.emit("room_event", {
+                  roomId: roulettePvpMatchRoom(matchId),
+                  event: "roulette:emote",
+                  payload: { emote, senderId: user?.id },
+                });
+                window.setTimeout(() => setMyEmote(null), 3000);
+              }}
+            />
+          </div>
 
           {/* Waiting panel (creator can cancel) */}
           {match.status === MATCH_STATUS.WAITING && (

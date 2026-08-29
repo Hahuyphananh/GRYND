@@ -53,18 +53,8 @@ function Disc({
   className?: string;
   style?: CSSProperties;
 }) {
-  const color =
-    value === 1
-      ? "bg-green-500"
-      : value === 2
-        ? "bg-red-500"
-        : "bg-slate-900/60";
-  return (
-    <div
-      className={`w-11 h-11 md:w-14 md:h-14 rounded-full border border-black/50 shadow-inner ${color} ${className}`}
-      style={style}
-    />
-  );
+  const color = value === 1 ? "connect-four-disc-green" : value === 2 ? "connect-four-disc-red" : "connect-four-slot";
+  return <div aria-hidden className={`connect-four-disc ${color} ${className}`} style={style} />;
 }
 
 export default function ConnectFourGamePage() {
@@ -520,7 +510,7 @@ export default function ConnectFourGamePage() {
         gameType="Connect Four"
       />
 
-      <div className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl">
+      <div className="connect-four-viewport max-w-5xl mx-auto relative overflow-visible rounded-2xl pb-4">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-3xl font-extrabold text-yellow-300">
@@ -571,8 +561,8 @@ export default function ConnectFourGamePage() {
           </div>
         )}
 
-        <div className="grid lg:grid-cols-[1fr_320px] gap-6">
-          <div className="casino-surface p-4 rounded-2xl">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+          <div className="casino-surface p-3 rounded-2xl">
             <div className="flex justify-between items-center mb-4">
               <div>
                 <p className="text-white/70 text-sm">
@@ -615,13 +605,13 @@ export default function ConnectFourGamePage() {
               </div>
             </div>
 
-            <div className="mb-2 grid grid-cols-7 gap-2">
+            <div className="connect-four-drop-controls mb-3 grid grid-cols-7 gap-2">
               {Array.from({ length: 7 }).map((_, col) => (
                 <button
                   key={`drop-${col}`}
                   onClick={() => playColumn(col)}
                   disabled={!canPlay || getDropRow(game?.board || [], col) < 0}
-                  className="h-8 rounded-lg bg-yellow-400 text-[#0b2f57] font-black hover:bg-yellow-300 disabled:bg-slate-700 disabled:text-slate-400"
+                  className="connect-four-drop-button"
                   title={`Drop in column ${col + 1}`}
                 >
                   ↓
@@ -629,7 +619,7 @@ export default function ConnectFourGamePage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-2 bg-[#11457e] p-3 rounded-xl border border-[#1e5b9a]">
+            <div className="connect-four-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
               {(game?.board || []).map((row: number[], rowIndex: number) =>
                 row.map((value, colIndex) => {
                   const isAnimatedCell =

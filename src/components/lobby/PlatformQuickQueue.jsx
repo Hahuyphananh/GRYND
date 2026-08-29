@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSocket } from "../../context/SocketProvider";
 import { useRouter } from "next/navigation";
 import { QuickQueueStatus } from "./QuickQueueStatus";
@@ -25,6 +25,8 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["dice-flush", "Dice Flush"],
   ["crash-arena", "Crash Arena"],
 ];
+
+const EMPTY_READINESS_BODY = Object.freeze({});
 
 const GAME_ROUTES = {
   "keno-pvp": "/casino/keno-pvp",
@@ -54,9 +56,24 @@ export function quickQueueGameRoute(gameKey, matchId) {
 }
 
 export function usePlatformQuickQueue(options = {}) {
-  const { readinessBody = {} } = options;
-  const [preferredGames, setPreferredGames] = useState(readinessBody.preferredGames || QUICK_QUEUE_GAME_OPTIONS.map(([key]) => key));
-  useEffect(() => { setPreferredGames(readinessBody.preferredGames || QUICK_QUEUE_GAME_OPTIONS.map(([key]) => key)); }, [readinessBody]);
+  const { readinessBody } = options;
+  const stableReadinessBody = readinessBody && typeof readinessBody === "object" ? readinessBody : EMPTY_READINESS_BODY;
+  const preferredGamesFromOptions = stableReadinessBody.preferredGames;
+  const preferredGamesKey = Array.isArray(preferredGamesFromOptions)
+    ? preferredGamesFromOptions.join("\u0001")
+    : "";
+  const defaultPreferredGames = useRef(QUICK_QUEUE_GAME_OPTIONS.map(([key]) => key)).current;
+  const [preferredGames, setPreferredGames] = useState(
+    Array.isArray(preferredGamesFromOptions) ? preferredGamesFromOptions : defaultPreferredGames,
+  );
+  const previousPreferredGamesKey = useRef(preferredGamesKey);
+  useEffect(() => {
+    if (previousPreferredGamesKey.current === preferredGamesKey) return;
+    previousPreferredGamesKey.current = preferredGamesKey;
+    setPreferredGames(
+      Array.isArray(preferredGamesFromOptions) ? preferredGamesFromOptions : defaultPreferredGames,
+    );
+  }, [defaultPreferredGames, preferredGamesFromOptions, preferredGamesKey]);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -126,7 +143,7 @@ export function usePlatformQuickQueue(options = {}) {
         method: ready ? "DELETE" : "POST",
         credentials: "include",
         headers: ready ? undefined : { "Content-Type": "application/json" },
-        body: ready ? undefined : JSON.stringify({ ...readinessBody, preferredGames }),
+        body: ready ? undefined : JSON.stringify({ ...stableReadinessBody, preferredGames }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) {
@@ -139,7 +156,7 @@ export function usePlatformQuickQueue(options = {}) {
     } finally {
       setBusy(false);
     }
-  }, [ready, readinessBody, preferredGames]);
+  }, [ready, stableReadinessBody, preferredGames]);
 
   const preferences = (
     <div className="mt-3">

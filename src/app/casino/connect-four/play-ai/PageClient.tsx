@@ -42,18 +42,8 @@ function Disc({
   className?: string;
   style?: CSSProperties;
 }) {
-  const color =
-    value === HUMAN_PLAYER
-      ? "bg-green-500"
-      : value === AI_PLAYER
-        ? "bg-red-500"
-        : "bg-slate-900/60";
-  return (
-    <div
-      className={`w-11 h-11 md:w-14 md:h-14 rounded-full border border-black/50 shadow-inner ${color} ${className}`}
-      style={style}
-    />
-  );
+  const color = value === HUMAN_PLAYER ? "connect-four-disc-green" : value === AI_PLAYER ? "connect-four-disc-red" : "connect-four-slot";
+  return <div aria-hidden className={`connect-four-disc ${color} ${className}`} style={style} />;
 }
 
 // ── Heuristic AI ─────────────────────────────────────────────────────
@@ -345,7 +335,7 @@ export default function ConnectFourVsAiPage() {
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-3xl sm:mt-6">
+      <div className="connect-four-viewport mx-auto mt-2 max-w-3xl sm:mt-3 pb-4">
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -355,15 +345,15 @@ export default function ConnectFourVsAiPage() {
             CONNECT FOUR vs AI
           </h1>
         </motion.div>
-        <p className="text-center text-xs text-white/60 mb-5">
+        <p className="text-center text-xs text-white/60 mb-3">
           Free play · No wager · You go first as{" "}
           <span className="text-green-300 font-semibold">Green</span>, AI plays as{" "}
           <span className="text-red-300 font-semibold">Red</span>.
         </p>
 
-        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/25 rounded-2xl shadow-[0_0_28px_rgba(0,229,255,0.15)] p-4 sm:p-5">
+        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/25 rounded-2xl shadow-[0_0_28px_rgba(0,229,255,0.15)] p-3 sm:p-4">
           {/* Header stats row */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
@@ -397,13 +387,13 @@ export default function ConnectFourVsAiPage() {
           </div>
 
           {/* Drop buttons */}
-          <div className="mb-2 grid grid-cols-7 gap-2">
+          <div className="connect-four-drop-controls mb-3 grid grid-cols-7 gap-2">
             {Array.from({ length: 7 }).map((_, col) => (
               <button
                 key={`ai-drop-${col}`}
                 onClick={() => handleHumanMove(col)}
                 disabled={!canPlay || getDropRow(board, col) < 0}
-                className="h-8 rounded-lg bg-yellow-400 text-[#0b2f57] font-black hover:bg-yellow-300 disabled:bg-slate-700 disabled:text-slate-400 transition-colors"
+                className="connect-four-drop-button"
                 title={`Drop in column ${col + 1}`}
               >
                 ↓
@@ -412,7 +402,7 @@ export default function ConnectFourVsAiPage() {
           </div>
 
           {/* Board */}
-          <div className="grid grid-cols-7 gap-2 bg-[#11457e] p-3 rounded-xl border border-[#1e5b9a]">
+          <div className="connect-four-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
             {board.map((row, rowIndex) =>
               row.map((value, colIndex) => {
                 const isDropping =

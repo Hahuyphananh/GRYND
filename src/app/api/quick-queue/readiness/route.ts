@@ -18,7 +18,11 @@ async function getUserId() {
 export async function GET() {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (process.env.QUICK_QUEUE_ENABLED !== "1") return disabled();
+  // Readiness is the current Quick Queue API used by all shared lobbies.
+  // Keep it available unless explicitly disabled; older deployments may not
+  // define QUICK_QUEUE_ENABLED yet, which must not turn the endpoint into a
+  // misleading 404.
+  if (process.env.QUICK_QUEUE_ENABLED === "0") return disabled();
 
   const [readiness] = await db
     .select()
@@ -41,7 +45,11 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (process.env.QUICK_QUEUE_ENABLED !== "1") return disabled();
+  // Readiness is the current Quick Queue API used by all shared lobbies.
+  // Keep it available unless explicitly disabled; older deployments may not
+  // define QUICK_QUEUE_ENABLED yet, which must not turn the endpoint into a
+  // misleading 404.
+  if (process.env.QUICK_QUEUE_ENABLED === "0") return disabled();
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -55,7 +63,11 @@ export async function POST(req: NextRequest) {
 export async function DELETE() {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (process.env.QUICK_QUEUE_ENABLED !== "1") return disabled();
+  // Readiness is the current Quick Queue API used by all shared lobbies.
+  // Keep it available unless explicitly disabled; older deployments may not
+  // define QUICK_QUEUE_ENABLED yet, which must not turn the endpoint into a
+  // misleading 404.
+  if (process.env.QUICK_QUEUE_ENABLED === "0") return disabled();
 
   const result = await cancelQuickQueueReadiness(userId);
   return NextResponse.json({ success: true, ready: false, ...result });
