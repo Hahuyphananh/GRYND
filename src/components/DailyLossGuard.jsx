@@ -22,6 +22,7 @@ import {
   DAILY_LOSS_WARNING_THRESHOLD,
   DAILY_LOSS_CHIP_THRESHOLD,
 } from "../lib/games/economy";
+import useDailyLoss from "../lib/useDailyLoss";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 
 // The player's own setting (0 = warnings off) wins over the global default.
@@ -44,27 +45,21 @@ function usdValue(tokens) {
 }
 
 export default function DailyLossGuard({ children }) {
-  const [dailyNet, setDailyNet] = useState(0);
-  const [loaded, setLoaded] = useState(false);
+  // Shared hook: today's net across all games (single fetch, one source of
+  // truth — also used by the navbar's home-page chip).
+  const { dailyNet, loaded } = useDailyLoss();
   const [showWarning, setShowWarning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        // Custom per-player limit (may be null/0) + today's net, in parallel.
-        const [betsRes, limitRes] = await Promise.all([
-          fetch(
-            `/api/get-bet-history?since=${encodeURIComponent(startOfTodayUtcIso())}`,
-            { cache: "no-store" },
-          ),
-          fetch("/api/user/daily-loss-limit", { cache: "no-store" }),
-        ]);
-        const [data, limitData] = await Promise.all([
-          betsRes.json(),
-          limitRes.json().catch(() => ({ success: false })),
-        ]);
-        if (cancelled || !data?.success || !Array.isArray(data.bets)) return;
+        // Custom per-player limit may lower (or disable) the warning.
+        const limitRes = await fetch("/api/user/daily-loss-limit", {
+          cache: "no-store",
+        });
+        const limitData = await limitRes.json().catch(() => ({ success: false }));
+        if (cancelled) return;
 
         const customLimit = limitData?.success ? limitData.limit : null;
         // null → global default; 0 → warnings disabled; > 0 → custom.
@@ -75,13 +70,7 @@ export default function DailyLossGuard({ children }) {
               ? customLimit
               : GLOBAL_DEFAULT_LIMIT;
 
-        const net = data.bets.reduce(
-          (sum, b) => sum + (Number(b?.tokenDiff) || 0),
-          0,
-        );
-        setDailyNet(net);
-        setLoaded(true);
-        if (net < -threshold) {
+        if (dailyNet < -threshold) {
           let acked = false;
           try {
             acked = localStorage.getItem(ackKey()) === "1";
@@ -97,7 +86,7 @@ export default function DailyLossGuard({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dailyNet]);
 
   const acknowledge = useCallback(() => {
     try {

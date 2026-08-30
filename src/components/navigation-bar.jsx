@@ -15,6 +15,8 @@ import AdminBadge from "./AdminBadge";
 import SoundToggle from "./SoundToggle";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
 import { isSafeProfilePictureUrl } from "../lib/security/media";
+import useDailyLoss from "../lib/useDailyLoss";
+import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 
 // M1: sessionStorage TTL for the nav's level + equipped-title meta. Level
 // and titles are slow-changing (and the server-side /api/user-stats is
@@ -41,6 +43,10 @@ function NavigationBar({ currentPath }) {
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const [balance, setBalance] = useState(null);
+  // Today's net (responsible-play) — powers the home-page chip next to the
+  // balance. Only rendered on the home page so it never duplicates the
+  // fixed lobby chip (DailyLossGuard).
+  const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState({
     name: "",
     profilePicture: "",
@@ -631,8 +637,20 @@ function NavigationBar({ currentPath }) {
 
               {/* TOKENS */}
               {isSignedIn && (
-                <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
-                  <IconCoins size={16} className="mb-0.5 mr-1 inline" /> Tokens: {balance !== null ? Number(balance).toFixed(2) : "Loading..."}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
+                    <IconCoins size={16} className="mb-0.5 mr-1 inline" /> Tokens: {balance !== null ? Number(balance).toFixed(2) : "Loading..."}
+                  </div>
+                  {currentPath === "/" &&
+                    dailyLossLoaded &&
+                    dailyLoss > DAILY_LOSS_CHIP_THRESHOLD && (
+                      <div
+                        className="rounded-lg border border-amber-400/40 bg-black/60 px-3 py-2 text-sm font-bold text-amber-300"
+                        title="Your net loss today — take it easy"
+                      >
+                        ▼ {dailyLoss.toLocaleString()} today
+                      </div>
+                    )}
                 </div>
               )}
 
