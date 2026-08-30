@@ -24,6 +24,10 @@ import {
 } from "../lib/games/economy";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 
+// The player's own setting (0 = warnings off) wins over the global default.
+// Mirrors /api/user/daily-loss-limit semantics: null → global, 0 → off.
+const GLOBAL_DEFAULT_LIMIT = DAILY_LOSS_WARNING_THRESHOLD;
+
 function startOfTodayUtcIso() {
   const d = new Date();
   d.setUTCHours(0, 0, 0, 0);
@@ -48,19 +52,36 @@ export default function DailyLossGuard({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/get-bet-history?since=${encodeURIComponent(startOfTodayUtcIso())}`,
-          { cache: "no-store" },
-        );
-        const data = await res.json();
+        // Custom per-player limit (may be null/0) + today's net, in parallel.
+        const [betsRes, limitRes] = await Promise.all([
+          fetch(
+            `/api/get-bet-history?since=${encodeURIComponent(startOfTodayUtcIso())}`,
+            { cache: "no-store" },
+          ),
+          fetch("/api/user/daily-loss-limit", { cache: "no-store" }),
+        ]);
+        const [data, limitData] = await Promise.all([
+          betsRes.json(),
+          limitRes.json().catch(() => ({ success: false })),
+        ]);
         if (cancelled || !data?.success || !Array.isArray(data.bets)) return;
+
+        const customLimit = limitData?.success ? limitData.limit : null;
+        // null → global default; 0 → warnings disabled; > 0 → custom.
+        const threshold =
+          customLimit === 0
+            ? Number.POSITIVE_INFINITY
+            : typeof customLimit === "number" && customLimit > 0
+              ? customLimit
+              : GLOBAL_DEFAULT_LIMIT;
+
         const net = data.bets.reduce(
           (sum, b) => sum + (Number(b?.tokenDiff) || 0),
           0,
         );
         setDailyNet(net);
         setLoaded(true);
-        if (net < -DAILY_LOSS_WARNING_THRESHOLD) {
+        if (net < -threshold) {
           let acked = false;
           try {
             acked = localStorage.getItem(ackKey()) === "1";

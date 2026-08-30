@@ -813,6 +813,13 @@
       "when": 1788300000008,
       "tag": "0126_pack_bulk_discount",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1788300000009,
+      "tag": "0127_daily_loss_limit",
+      "breakpoints": true
     }
   ]
 }
