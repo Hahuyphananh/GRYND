@@ -5,6 +5,8 @@ import { poolLobbies, poolMatches } from "../db/schema";
 export async function createOrJoinPoolDestination({ userId, wager = 10 }) {
   const amount = Math.trunc(Number(wager));
   if (!Number.isFinite(amount) || amount <= 0) return { error: "Invalid Pool Masters wager", status: 400 };
+  // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
+  if (amount > 100000) return { error: "Wager exceeds the maximum of 100,000 tokens", status: 400 };
 
   return db.transaction(async (tx) => {
     const [open] = await tx.select().from(poolLobbies).where(and(eq(poolLobbies.status, "waiting"), eq(poolLobbies.gameMode, "pvp"), ne(poolLobbies.hostUserId, userId), eq(poolLobbies.wager, amount))).orderBy(asc(poolLobbies.createdAt)).for("update").limit(1);

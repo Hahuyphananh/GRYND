@@ -5,6 +5,13 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import ContactMessageHistory from "../../components/ContactMessageHistory";
+import AvatarFrame from "../../components/AvatarFrame";
+import {
+  DEFAULT_PROFILE_ACCENT,
+  HEX_COLOR_REGEX,
+  ACCENT_COLORS,
+  AVATAR_FRAME_OPTIONS,
+} from "../../lib/profileCosmetics";
 import {
   ALLOWED_IMAGE_MIME,
   MAX_IMAGE_BYTES,
@@ -21,6 +28,20 @@ const statsCards = [
   { key: "favoriteGame", label: "Favorite Game" },
 ];
 
+// Grynd+ chat color palette (matches the neon casino aesthetic).
+const CHAT_COLORS = [
+  "#00e5ff",
+  "#f5ff3b",
+  "#f0abfc",
+  "#34d399",
+  "#fb923c",
+  "#a78bfa",
+  "#f43f5e",
+  "#22d3ee",
+  "#facc15",
+  "#e2e8f0",
+];
+
 export default function ProfilePage() {
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useClerk();
@@ -30,7 +51,18 @@ export default function ProfilePage() {
     name: "",
     email: "",
     profilePicture: "",
+    profileAccent: null,
+    profileBanner: null,
+    avatarFrame: null,
   });
+  // Unsaved profile customization (accent / banner / frame) — saved via
+  // /api/user/profile-customization (Grynd+ perk).
+  const [cosmetics, setCosmetics] = useState({
+    accent: DEFAULT_PROFILE_ACCENT,
+    banner: "",
+    frame: null,
+  });
+  const [cosmeticsMsg, setCosmeticsMsg] = useState(null);
   const [bets, setBets] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [error, setError] = useState(null);
@@ -55,6 +87,23 @@ export default function ProfilePage() {
     dailyStreakBest: 0,
     allStreakTitles: [],
   });
+
+  const [membership, setMembership] = useState(null);
+  const [chatColor, setChatColor] = useState("#00e5ff");
+  const [chatColorMsg, setChatColorMsg] = useState(null);
+  const loadMembership = async () => {
+    try {
+      const response = await fetch("/api/membership/status", {
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (response.ok && data?.success) {
+        setMembership(data.active ? data : null);
+      }
+    } catch (err) {
+      console.error("[LOAD_MEMBERSHIP_ERROR]", err);
+    }
+  };
 
   const [titlesView, setTitlesView] = useState("special");
   const [titlesOpen, setTitlesOpen] = useState(false); // collapsed by default so the profile stays compact
@@ -198,8 +247,17 @@ export default function ProfilePage() {
       const name = tokensData.data.name || user?.fullName || "Unknown user";
       const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
       const profilePicture = tokensData.data.profilePicture || "";
-      setProfileInfo({ name, email, profilePicture });
+      const profileAccent = tokensData.data.profileAccent || null;
+      const profileBanner = tokensData.data.profileBanner || null;
+      const avatarFrame = tokensData.data.avatarFrame || null;
+      setProfileInfo({ name, email, profilePicture, profileAccent, profileBanner, avatarFrame });
       setEditForm((prev) => ({ ...prev, name, email, profilePicture }));
+      // Sync the customization pickers with the saved values.
+      setCosmetics({
+        accent: profileAccent || DEFAULT_PROFILE_ACCENT,
+        banner: profileBanner || "",
+        frame: avatarFrame || null,
+      });
     }
 
     const historyResponse = await fetch("/api/get-bet-history", {
@@ -521,6 +579,7 @@ export default function ProfilePage() {
           loadSpecialTitles(),
           loadVipTitles(),
           loadStreakTitles(),
+          loadMembership(),
           loadFriends(),
           loadFriendPresence(),
           loadFriendInvites(),
@@ -570,6 +629,86 @@ export default function ProfilePage() {
     window.addEventListener("titleUpdated", refreshTitles);
     return () => window.removeEventListener("titleUpdated", refreshTitles);
   }, []);
+
+  // Initialize the chat color picker from the saved membership color once
+  // the membership status loads.
+  useEffect(() => {
+    if (membership?.chatColor && /^#[0-9a-fA-F]{6}$/.test(membership.chatColor)) {
+      setChatColor(membership.chatColor);
+    }
+  }, [membership]);
+
+  const handleSaveChatColor = async () => {
+    setChatColorMsg(null);
+    if (!/^#[0-9a-fA-F]{6}$/.test(chatColor)) {
+      setChatColorMsg("Enter a valid hex color like #00e5ff.");
+      return;
+    }
+    try {
+      const response = await fetch("/api/user/chat-color", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ color: chatColor }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setChatColorMsg("Chat color saved!");
+        setMembership((m) => (m ? { ...m, chatColor } : m));
+      } else {
+        setChatColorMsg(data.error || "Could not save color.");
+      }
+    } catch (err) {
+      setChatColorMsg("Could not save color.");
+    }
+  };
+
+  const handleSaveCosmetics = async () => {
+    setCosmeticsMsg(null);
+    if (!HEX_COLOR_REGEX.test(cosmetics.accent)) {
+      setCosmeticsMsg("Enter a valid hex accent color like #00e5ff.");
+      return;
+    }
+    try {
+      const response = await fetch("/api/user/profile-customization", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileAccent: cosmetics.accent,
+          profileBanner: cosmetics.banner.trim() || null,
+          avatarFrame: cosmetics.frame,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setCosmeticsMsg("Profile customization saved!");
+        await loadProfileData();
+      } else {
+        setCosmeticsMsg(data.error || "Could not save customization.");
+      }
+    } catch (err) {
+      setCosmeticsMsg("Could not save customization.");
+    }
+  };
+
+  const handleResetChatColor = async () => {
+    setChatColorMsg(null);
+    try {
+      const response = await fetch("/api/user/chat-color", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ color: null }),
+      });
+      if (response.ok) {
+        setChatColor("#00e5ff");
+        setChatColorMsg("Chat color reset to default.");
+        setMembership((m) => (m ? { ...m, chatColor: null } : m));
+      } else {
+        setChatColorMsg("Could not reset color.");
+      }
+    } catch (err) {
+      setChatColorMsg("Could not reset color.");
+    }
+  };
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -928,10 +1067,26 @@ export default function ProfilePage() {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div
-            className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+            className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${
+              profileInfo.profileBanner ? "pt-24" : ""
+            }`}
+            style={
+              profileInfo.profileAccent
+                ? {
+                    borderColor: profileInfo.profileAccent,
+                    boxShadow: `0 0 24px ${profileInfo.profileAccent}33`,
+                  }
+                : undefined
+            }
           >
+            {/* Grynd+ profile banner */}
+            {profileInfo.profileBanner && (
+              <div
+                className="absolute inset-x-0 top-0 h-16 rounded-t-xl bg-cover bg-center"
+                style={{ backgroundImage: `url("${profileInfo.profileBanner}")` }}
+                aria-hidden="true"
+              />
+            )}
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
               <button
@@ -949,23 +1104,30 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
               </button>
             </div>
             <div className="mb-3 flex items-center gap-3">
-              {isSafeProfilePictureUrl(profileInfo.profilePicture) ? (
-                <img
-                  src={profileInfo.profilePicture}
-                  alt="Profile"
-                  className="h-14 w-14 rounded-full object-cover border border-[#FFD700]"
-                />
-              ) : (
-                <div
-                  className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
+              <AvatarFrame frame={profileInfo.avatarFrame}>
+                {isSafeProfilePictureUrl(profileInfo.profilePicture) ? (
+                  <img
+                    src={profileInfo.profilePicture}
+                    alt="Profile"
+                    className="h-14 w-14 rounded-full object-cover border border-[#FFD700]"
+                  />
+                ) : (
+                  <div
+                    className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
 shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg font-bold"
-                >
-                  {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
-                </div>
-              )}
+                  >
+                    {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </AvatarFrame>
               <div>
                 <div className="flex items-center gap-2">
                   <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+                  {membership?.active && (
+                    <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
+                      {membership.title || "GRYND+ Elite"}
+                    </span>
+                  )}
                   {(specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle) && (
                     <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
                       {specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle}
@@ -1032,6 +1194,229 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               {Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} next level
             </span>
           </div>
+        </div>
+
+        <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="text-xl text-emerald-300">Grynd+ Membership</h2>
+            {membership?.active ? (
+              <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
+                Active
+              </span>
+            ) : (
+              <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-sm text-gray-400">
+                Not subscribed
+              </span>
+            )}
+          </div>
+
+          {membership?.active ? (
+            <>
+              <p className="mb-3 text-sm text-gray-300">
+                Custom chat name color — Grynd+ perk.
+              </p>
+
+              <div className="mb-3 flex flex-wrap gap-2">
+                {CHAT_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setChatColor(color)}
+                    aria-label={`Set chat color ${color}`}
+                    title={color}
+                    className={`h-8 w-8 rounded-full border-2 transition ${
+                      chatColor.toLowerCase() === color.toLowerCase()
+                        ? "scale-110 border-white"
+                        : "border-white/20 hover:border-white/60"
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+
+              <div className="mb-3 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={chatColor}
+                  onChange={(e) => setChatColor(e.target.value)}
+                  aria-label="Custom chat color"
+                  className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
+                />
+                <input
+                  type="text"
+                  value={chatColor}
+                  onChange={(e) => setChatColor(e.target.value.trim())}
+                  maxLength={7}
+                  aria-label="Custom chat color hex value"
+                  className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                />
+              </div>
+
+              <div className="mb-4 flex items-center gap-2 rounded bg-black/30 px-3 py-2 text-sm">
+                <span className="text-gray-400">Preview:</span>
+                <span className="font-bold" style={{ color: chatColor }}>
+                  {profileInfo.name || user.fullName || "YourName"}
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveChatColor}
+                  className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#001a0e] transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
+                >
+                  Save color
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetChatColor}
+                  className="rounded-lg border border-white/20 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
+                >
+                  Reset
+                </button>
+              </div>
+
+              {chatColorMsg && (
+                <p className="mt-3 text-sm text-emerald-300">{chatColorMsg}</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Unlock custom chat colors with a Grynd+ membership.{" "}
+              <a href="/shop" className="text-emerald-300 underline">
+                See the shop
+              </a>
+              .
+            </p>
+          )}
+        </div>
+
+        {/* Grynd+ Profile Customization */}
+        <div className="mt-8 rounded-xl border border-sky-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(56,189,248,0.15)]">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <h2 className="text-xl text-sky-300">Profile Customization</h2>
+            {membership?.active && (
+              <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
+                Grynd+
+              </span>
+            )}
+          </div>
+
+          {membership?.active ? (
+            <>
+              <p className="mb-4 text-sm text-gray-300">
+                Accent color, banner, and avatar frame — Grynd+ perk. Shown on your
+                profile card.
+              </p>
+
+              <p className="mb-2 text-sm font-semibold text-sky-300">Accent color</p>
+              <div className="mb-2 flex flex-wrap gap-2">
+                {ACCENT_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setCosmetics((c) => ({ ...c, accent: color }))}
+                    aria-label={`Set accent color ${color}`}
+                    title={color}
+                    className={`h-8 w-8 rounded-full border-2 transition ${
+                      cosmetics.accent.toLowerCase() === color.toLowerCase()
+                        ? "scale-110 border-white"
+                        : "border-white/20 hover:border-white/60"
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+              <div className="mb-4 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={cosmetics.accent}
+                  onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value }))}
+                  aria-label="Custom accent color"
+                  className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
+                />
+                <input
+                  type="text"
+                  value={cosmetics.accent}
+                  onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value.trim() }))}
+                  maxLength={7}
+                  aria-label="Custom accent hex value"
+                  className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-none"
+                />
+              </div>
+
+              <p className="mb-2 text-sm font-semibold text-sky-300">Banner image</p>
+              <input
+                type="text"
+                value={cosmetics.banner}
+                onChange={(e) => setCosmetics((c) => ({ ...c, banner: e.target.value }))}
+                placeholder="https://… (raster image URL)"
+                aria-label="Profile banner image URL"
+                className="mb-2 w-full rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:border-sky-400 focus:outline-none"
+              />
+              {cosmetics.banner ? (
+                <div
+                  className="mb-4 h-16 rounded-lg border border-white/20 bg-cover bg-center"
+                  style={{ backgroundImage: `url("${cosmetics.banner}")` }}
+                  aria-hidden="true"
+                />
+              ) : (
+                <p className="mb-4 text-xs text-white/40">
+                  No banner set — the card shows the default background.
+                </p>
+              )}
+
+              <p className="mb-2 text-sm font-semibold text-sky-300">Avatar frame</p>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCosmetics((c) => ({ ...c, frame: null }))}
+                  className={`h-10 w-10 rounded-full border-2 bg-white/10 text-[9px] font-bold text-white/60 transition ${
+                    cosmetics.frame === null
+                      ? "scale-110 border-white"
+                      : "border-white/20 hover:border-white/60"
+                  }`}
+                >
+                  None
+                </button>
+                {Object.entries(AVATAR_FRAME_OPTIONS).map(([key, def]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setCosmetics((c) => ({ ...c, frame: key }))}
+                    title={def.label}
+                    aria-label={`Avatar frame ${def.label}`}
+                    className={`h-10 w-10 rounded-full border-2 transition ${
+                      cosmetics.frame === key
+                        ? "scale-110 border-white"
+                        : "border-white/20 hover:border-white/60"
+                    }`}
+                    style={{ background: def.background }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveCosmetics}
+                  className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
+                >
+                  Save customization
+                </button>
+              </div>
+
+              {cosmeticsMsg && <p className="mt-3 text-sm text-sky-300">{cosmeticsMsg}</p>}
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Customize your profile with a Grynd+ membership.{" "}
+              <a href="/shop" className="text-sky-300 underline">
+                See the shop
+              </a>
+              .
+            </p>
+          )}
         </div>
 
         <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">

@@ -141,7 +141,7 @@ test("roundNumberForStatus round-trips round_N and rejects other states", () => 
 
 test("stake + house-fee constants match the standard 90/10 split", () => {
   assert.equal(MIN_STAKE, 1);
-  assert.equal(MAX_STAKE, 1000000);
+  assert.equal(MAX_STAKE, 100000); // economy cap (GLOBAL_MAX_BET)
   assert.ok(STAKE_PRESETS.length > 0);
   assert.equal(HOUSE_FEE_PCT, 0.1);
   assert.equal(WINNER_RATIO, 0.9);

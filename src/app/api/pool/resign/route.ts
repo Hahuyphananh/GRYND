@@ -69,7 +69,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const houseFee = Math.floor(wager * 2 * 0.02); // 2% house edge
+    // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
+    // src/lib/games/economy.ts). Winner keeps 95% of the pot.
+    const houseFee = Math.floor(wager * 2 * 0.05);
     const payout = isAi ? 0 : wager * 2 - houseFee;
 
     // Update the match

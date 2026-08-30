@@ -84,7 +84,8 @@ async function forfeitPlayer(
   wager: number,
   winner: "player1" | "player2",
 ) {
-  const payout = wager * 2;
+  // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
+  const payout = wager * 1.9;
 
   await db.transaction(async (tx: any) => {
     // Lock the row

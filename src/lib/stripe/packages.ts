@@ -28,6 +28,31 @@ export type PackagePriceBundle = {
 };
 
 /**
+ * Rich product descriptions shown in Stripe (product page + checkout). Keyed
+ * by package key so the auto-created products carry real sales copy instead of
+ * a one-line disclaimer. Falls back to the generic line for unknown keys.
+ */
+const PACKAGE_DESCRIPTIONS: Record<string, string> = {
+  starter:
+    "5,000 Grynd Tokens — the perfect way to start playing on GRYND. Use tokens to join any game: Blackjack, Mines, Plinko, Roulette, Crash Arena, Slots, Coin Flip and more. Tokens never expire, work across the whole platform, and are virtual — they have no cash value and are non-refundable.",
+  small:
+    "10,500 Grynd Tokens (10,000 + 500 bonus). A step up for regular players: jump into higher-stakes tables and PvP lobbies across Blackjack, Plinko, Mines, Roulette, Crash Arena, Slots and more. Tokens never expire, work across the whole platform, and are virtual — they have no cash value and are non-refundable.",
+  medium:
+    "22,000 Grynd Tokens (20,000 + 2,000 bonus — 10% extra value). Built for active players who want a bigger bankroll for tournaments, streaks and high-stakes PvP across all GRYND games. Tokens never expire, work across the whole platform, and are virtual — they have no cash value and are non-refundable.",
+  large:
+    "48,000 Grynd Tokens (40,000 + 8,000 bonus — 20% extra value). The most popular pack. A serious bankroll for grinding the leaderboard, chasing daily streaks and playing every game GRYND offers at the stakes you want. Tokens never expire, work across the whole platform, and are virtual — they have no cash value and are non-refundable.",
+  mega:
+    "120,000 Grynd Tokens (90,000 + 30,000 bonus — 33% extra value). The best value pack on GRYND: the largest token top-up at the best price per token. For high rollers and long-term players who live on the leaderboard. Tokens never expire, work across the whole platform, and are virtual — they have no cash value and are non-refundable.",
+};
+
+export function getPackageDescription(key: string): string {
+  return (
+    PACKAGE_DESCRIPTIONS[key] ??
+    "Virtual tokens for GRYND. No cash value; non-refundable."
+  );
+}
+
+/**
  * Guarantee the package has a Stripe Product + one-time Price, creating what's
  * missing and persisting the resulting ids back onto `token_packages`.
  * Returns the resolved product/price ids. Idempotent per field — already-set
@@ -45,7 +70,7 @@ export async function ensurePackageStripe(
   if (!productId) {
     const product = await stripe.products.create({
       name: `${pkg.name} — Grynd Tokens`,
-      description: "Virtual tokens for GRYND. No cash value; non-refundable.",
+      description: getPackageDescription(pkg.key),
       metadata: { packageKey: pkg.key },
     });
     productId = product.id;

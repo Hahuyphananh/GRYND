@@ -257,6 +257,9 @@ export const APP_TEXT_TRANSLATIONS = {
         claimed: "claimed",
         current_streak: "Current streak",
         days: "days",
+        premium_badge: "Grynd+ +50%",
+        premium_active: "Grynd+ active — +50% on every daily reward",
+        premium_bonus_earned: "Grynd+ bonus earned!",
       },
       // ── Live stats ticker ────────────────────────────────
       live_stats: {
@@ -1306,6 +1309,9 @@ export const APP_TEXT_TRANSLATIONS = {
         claimed: "réclamé",
         current_streak: "Streak actuel",
         days: "jours",
+        premium_badge: "Grynd+ +50 %",
+        premium_active: "Grynd+ actif — +50 % sur chaque récompense quotidienne",
+        premium_bonus_earned: "Bonus Grynd+ obtenu !",
       },
       // ── Live stats ticker ────────────────────────────────
       live_stats: {
@@ -2006,6 +2012,9 @@ export const APP_TEXT_TRANSLATIONS = {
         claimed: "reclamado",
         current_streak: "Racha actual",
         days: "días",
+        premium_badge: "Grynd+ +50 %",
+        premium_active: "Grynd+ activo — +50 % en cada recompensa diaria",
+        premium_bonus_earned: "¡Bono Grynd+ obtenido!",
       },
       // ── Live stats ticker ────────────────────────────────
       live_stats: {

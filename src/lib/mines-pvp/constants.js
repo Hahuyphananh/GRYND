@@ -137,7 +137,8 @@ export const ROUND_PICK_DEADLINE_MS = ROUND_TIMER_SECONDS * 1000;
 // free-form validated against MIN_STAKE / MAX_STAKE.
 export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 export const MIN_STAKE = 1;
-export const MAX_STAKE = 1000000;
+// Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
+export const MAX_STAKE = 100000;
 
 // ── House fee (per user spec: 10% rake on the LOSER's stake) ──────────
 // 0.10 = 10% of the loser's stake goes to the house. The winner

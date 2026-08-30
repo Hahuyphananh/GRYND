@@ -5,7 +5,9 @@ import { rpsPvpGames, users } from "../../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { eq, sql } from "drizzle-orm";
 
-const HOUSE_EDGE_PERCENT = 10;
+// Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
+// src/lib/games/economy.ts). Winner keeps 95% of the pot.
+const HOUSE_EDGE_PERCENT = 5;
 // Best-of-7 — first player to ROUNDS_TO_WIN decided rounds takes the match.
 const ROUNDS_TO_WIN = 4;
 

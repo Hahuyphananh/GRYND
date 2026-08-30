@@ -40,6 +40,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
         playerCount: row.playerCount,
         maxWaitMs: row.maxWaitMs,
       }),
+      premium: Boolean(row.premium),
       requestId: row.id,
       queuedAt: row.queuedAt.getTime(),
       row,

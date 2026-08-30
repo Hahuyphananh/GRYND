@@ -712,7 +712,7 @@ test("SUBMIT_STATES is exactly the simultaneous active state", () => {
 test("stake presets / limits are in the expected range", () => {
   assert.ok(STAKE_PRESETS.length >= 4);
   assert.equal(MIN_STAKE, 1);
-  assert.equal(MAX_STAKE, 1000000);
+  assert.equal(MAX_STAKE, 100000); // economy cap (GLOBAL_MAX_BET)
   for (const s of STAKE_PRESETS) {
     assert.ok(s >= MIN_STAKE && s <= MAX_STAKE);
   }

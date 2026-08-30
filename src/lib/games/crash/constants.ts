@@ -38,13 +38,15 @@ export const CRASH_MIN_BUYIN_MULTIPLIER = 5;
  * Hard cap on a single Crash Arena buy-in (tokens).
  *
  * A player can theoretically put their whole balance in, so every buy-in
- * (initial join or top-up) is clamped to 10,000,000 tokens.
+ * (initial join or top-up) is clamped to 1,000,000 tokens (~10x the max
+ * table wager; must match the global cap economy).
  */
-export const CRASH_MAX_BUYIN = 10_000_000;
+export const CRASH_MAX_BUYIN = 1_000_000;
 
 /**
  * Hard cap on a Crash Arena table's round wager (tokens), applied in the
  * lobby's Create Table wager input. Prevents runaway wagers (e.g. the full
  * balance) when creating a table.
  */
-export const CRASH_MAX_WAGER = 1_000_000;
+// Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
+export const CRASH_MAX_WAGER = 100_000;

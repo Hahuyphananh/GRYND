@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { quickQueueAssignments, quickQueueRequests } from "../db/schema";
 import { normalizeQuickQueueRequest } from "./quickQueue";
+import { isPremiumMember } from "./stripe/subscriptions";
 
 export async function createQuickQueueRequest(input: unknown) {
   const request = normalizeQuickQueueRequest(input);
@@ -12,6 +13,10 @@ export async function createQuickQueueRequest(input: unknown) {
     .limit(1);
   if (existing) return existing;
 
+  // Grynd+ members get priority matchmaking: their request is flagged so the
+  // matcher pairs them first.
+  const premium = await isPremiumMember(request.userId).catch(() => false);
+
   const [created] = await db
     .insert(quickQueueRequests)
     .values({
@@ -21,6 +26,7 @@ export async function createQuickQueueRequest(input: unknown) {
       region: request.region,
       playerCount: request.playerCount,
       maxWaitMs: request.maxWaitMs,
+      premium,
     })
     .returning();
   return created;

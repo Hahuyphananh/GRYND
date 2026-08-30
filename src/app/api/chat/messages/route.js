@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { chatMessages, specialTitles, users } from "../../../../db/schema";
+import { chatMessages, specialTitles, tokenSubscriptions, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import { sanitizeString } from "../../../../lib/security/validation";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
+import { ACTIVE_SUBSCRIPTION_STATUSES, isPremiumMember } from "../../../../lib/stripe/subscriptions";
+
+// Membership title shown next to members' names in chat.
+const MEMBERSHIP_TITLE = "GRYND+ Elite";
 
 const ALLOWED_ROOM_TYPES = new Set(["global", "game"]);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -90,9 +94,18 @@ export async function GET(req) {
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
+        chatColor: users.chatColor,
+        premiumStatus: tokenSubscriptions.status,
       })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
+      .leftJoin(
+        tokenSubscriptions,
+        and(
+          eq(tokenSubscriptions.clerkId, chatMessages.clerkId),
+          inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+        ),
+      )
       .where(
         and(
           eq(chatMessages.roomType, room.roomType),
@@ -120,13 +133,26 @@ export async function GET(req) {
       // Build equippedTitle: primary title only (special or regular title)
       // Streak title is returned as a separate field for its own badge
       const primaryTitle = specialTitle || regularTitle || null;
+      const premium = Boolean(msg.premiumStatus);
 
       // Remove extra fields we added for computation
-      const { selectedStreakType, dailyStreakCurrent, dailyStreakBest, ...cleanMsg } = msg;
+      const {
+        selectedStreakType,
+        dailyStreakCurrent,
+        dailyStreakBest,
+        premiumStatus,
+        ...cleanMsg
+      } = msg;
       return {
         ...cleanMsg,
         equippedTitle: primaryTitle,
         streakTitle: streakTitle || null,
+        premium,
+        premiumTitle: premium ? MEMBERSHIP_TITLE : null,
+        // Custom chat color is a membership perk — only surface it for members
+        // (the column is only ever set through the premium-gated API, but
+        // defense in depth: never leak it for non-members).
+        chatColor: premium ? (msg.chatColor || null) : null,
       };
     });
 
@@ -176,12 +202,14 @@ export async function POST(req) {
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
+        chatColor: users.chatColor,
         balance: users.balance,
       })
       .from(users)
       .where(eq(users.clerkId, userId))
       .limit(1);
 
+    const premium = await isPremiumMember(userId);
     const displayName = appUser?.name?.trim() || "Player";
     const profileImageUrl = appUser?.profilePicture || null;
     const selectedTitle = appUser?.selectedTitle || null;
@@ -230,6 +258,9 @@ export async function POST(req) {
           selectedSpecialTitle,
           equippedTitle,
           streakTitle,
+          premium,
+          premiumTitle: premium ? MEMBERSHIP_TITLE : null,
+          chatColor: premium ? (appUser?.chatColor || null) : null,
         },
         unlockedSpecialTitles,
       },

@@ -25,11 +25,14 @@ export const ROUND_DEADLINE_MS = ROUND_TIMER_SECONDS * 1000;
 
 // ── Stake matchmaking constants ───────────────────────────────────────
 export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
-export const MAX_STAKE = 1000000;
+// Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
+export const MAX_STAKE = 100000;
 export const MIN_STAKE = 1;
 
 // ── House fee (matches roulette-pvp: 2.5%) ────────────────────────────
-export const HOUSE_FEE_PCT = 0.025;
+// Harmonized to the shared PvP rake (must match PVP_RAKE_PCT in
+// src/lib/games/economy.ts). Winner keeps 95% of the pot (1.9x stake).
+export const HOUSE_FEE_PCT = 0.05;
 
 // ── Status state machine ─────────────────────────────────────────────
 export const MATCH_STATUS = Object.freeze({

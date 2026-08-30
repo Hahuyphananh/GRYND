@@ -750,6 +750,69 @@
       "when": 1788054922398,
       "tag": "0117_stripe_product_bind",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1788300000000,
+      "tag": "0118_token_subscriptions_and_one_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1788300000001,
+      "tag": "0119_grynd_plus_price_bind",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1788300000002,
+      "tag": "0120_grynd_plus_perks_price",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1788300000003,
+      "tag": "0121_membership_perks",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1788300000004,
+      "tag": "0122_rebalance_monthly_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1788300000005,
+      "tag": "0123_profile_customization",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1788300000006,
+      "tag": "0124_token_economy_rebalance",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1788300000007,
+      "tag": "0125_own_package_5000",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1788300000008,
+      "tag": "0126_pack_bulk_discount",
+      "breakpoints": true
     }
   ]
 }

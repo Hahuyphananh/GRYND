@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { tokenPackages, stripeCheckoutSessions } from "../../../../db/schema";
 import { getStripe, getBaseUrl } from "../../../../lib/stripe";
@@ -66,6 +66,35 @@ export async function POST(req: NextRequest) {
       { success: false, error: "Unknown or disabled package" },
       { status: 404 }
     );
+  }
+
+  // One-time-only offers: a user may buy this package at most once. The gate
+  // is the fulfilled ledger row (tokens actually credited), so an abandoned
+  // or failed checkout never blocks a retry. The race window between two
+  // concurrent checkouts is tiny and the webhook credit is per-session.
+  if (pkg.oneTime) {
+    const prior = await db
+      .select({ id: stripeCheckoutSessions.id })
+      .from(stripeCheckoutSessions)
+      .where(
+        and(
+          eq(stripeCheckoutSessions.clerkId, clerkId),
+          eq(stripeCheckoutSessions.packageKey, pkg.key),
+          eq(stripeCheckoutSessions.fulfilled, true)
+        )
+      )
+      .limit(1);
+
+    if (prior[0]) {
+      auditLog("stripe_one_time_repeat_attempt", {
+        userId: clerkId,
+        packageKey: pkg.key,
+      });
+      return NextResponse.json(
+        { success: false, error: "This offer can only be purchased once." },
+        { status: 409 }
+      );
+    }
   }
 
   // Total tokens awarded = base + optional bonus. Frozen at purchase time and

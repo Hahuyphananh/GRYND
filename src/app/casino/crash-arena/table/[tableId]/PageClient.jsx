@@ -238,9 +238,26 @@ export default function TableRoomPage() {
 
   // ── Player actions ───────────────────────────────────────────────────
 
+  // Responsible-play guard (mirrors confirmLargeStake in PvpLobby): confirm
+  // before a large buy-in (>= 10,000 tokens or > 10% of the wallet balance).
+  const confirmLargeBuyIn = useCallback((buyIn) => {
+    const amount = Number(buyIn);
+    if (!Number.isFinite(amount) || amount <= 0) return true;
+    const bal = Number(userBalance);
+    const isLargeAbsolute = amount >= 10000;
+    const isLargeVsBalance = Number.isFinite(bal) && bal > 0 && amount > bal * 0.1;
+    if (!isLargeAbsolute && !isLargeVsBalance) return true;
+    return window.confirm(
+      `You're about to buy in for ${amount.toLocaleString()} tokens — that's ${
+        isLargeVsBalance ? "more than 10% of your balance" : "a large amount"
+      }. Continue?`,
+    );
+  }, [userBalance]);
+
   const handleJoin = useCallback((buyIn, joinCode) => {
+    if (!confirmLargeBuyIn(buyIn)) return;
     joinTable(buyIn, joinCode);
-  }, [joinTable]);
+  }, [joinTable, confirmLargeBuyIn]);
 
   const handleBuyChips = useCallback((amount) => {
     buyChips(playerName, amount);

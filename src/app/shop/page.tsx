@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
-import ShopBuyClient, { type ShopPackage } from "../../components/ShopBuyClient";
+import ShopBuyClient, {
+  type ShopPackage,
+  type SubscriptionPlan,
+} from "../../components/ShopBuyClient";
 import { db } from "../../db";
-import { tokenPackages } from "../../db/schema";
+import { tokenPackages, stripeCheckoutSessions, tokenSubscriptionPlans } from "../../db/schema";
 import { resolvePackagePriceCents } from "../../lib/stripe/packages";
+import {
+  findActiveSubscription,
+  resolveSubscriptionPlanPriceCents,
+} from "../../lib/stripe/subscriptions";
 
 export const metadata: Metadata = {
   title: "Shop | GRYND",
@@ -29,6 +37,7 @@ async function loadPackages(): Promise<ShopPackage[]> {
         priceCents: tokenPackages.priceCents,
         badge: tokenPackages.badge,
         featured: tokenPackages.featured,
+        oneTime: tokenPackages.oneTime,
         stripeProductId: tokenPackages.stripeProductId,
         stripePriceId: tokenPackages.stripePriceId,
       })
@@ -66,6 +75,7 @@ async function loadPackages(): Promise<ShopPackage[]> {
         priceUsd: (priceCents / 100).toFixed(2),
         badge: r.badge,
         featured: r.featured,
+        oneTime: r.oneTime,
         tokensPerDollar,
       };
     });
@@ -75,17 +85,121 @@ async function loadPackages(): Promise<ShopPackage[]> {
   }
 }
 
+// Loads the enabled subscription plans (Grynd+) server-side, resolving the
+// display price from Stripe where the plan is bound to a real product.
+async function loadSubscriptionPlans(): Promise<SubscriptionPlan[]> {
+  try {
+    const rows = await db
+      .select({
+        id: tokenSubscriptionPlans.id,
+        key: tokenSubscriptionPlans.key,
+        name: tokenSubscriptionPlans.name,
+        monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
+        priceCents: tokenSubscriptionPlans.priceCents,
+        badge: tokenSubscriptionPlans.badge,
+        perks: tokenSubscriptionPlans.perks,
+        featured: tokenSubscriptionPlans.featured,
+        stripeProductId: tokenSubscriptionPlans.stripeProductId,
+        stripePriceId: tokenSubscriptionPlans.stripePriceId,
+      })
+      .from(tokenSubscriptionPlans)
+      .where(eq(tokenSubscriptionPlans.enabled, true))
+      .orderBy(asc(tokenSubscriptionPlans.sortOrder));
+
+    const offers = await Promise.all(
+      rows.map(async (r) => {
+        const priceCents = await resolveSubscriptionPlanPriceCents({
+          id: r.id,
+          key: r.key,
+          name: r.name,
+          monthlyTokens: Number(r.monthlyTokens ?? 0),
+          priceCents: Number(r.priceCents ?? 0),
+          stripeProductId: r.stripeProductId,
+          stripePriceId: r.stripePriceId,
+        });
+        return { ...r, priceCents };
+      })
+    );
+
+    return offers.map((r) => ({
+      key: r.key,
+      name: r.name,
+      monthlyTokens: Number(r.monthlyTokens ?? 0),
+      priceUsd: (Number(r.priceCents ?? 0) / 100).toFixed(2),
+      badge: r.badge,
+      perks: Array.isArray(r.perks) ? r.perks.filter((p): p is string => Boolean(p)) : [],
+      featured: r.featured,
+    }));
+  } catch (err) {
+    console.error("[shop] Failed to load subscription plans:", err);
+    return [];
+  }
+}
+
 export default async function ShopPage() {
-  const packages = await loadPackages();
+  const [packages, subscriptionPlans] = await Promise.all([
+    loadPackages(),
+    loadSubscriptionPlans(),
+  ]);
+
+  // Which one-time offers this user has already bought (only relevant for
+  // signed-in users; guests get the full catalog and are asked to sign in
+  // when they try to buy).
+  const { userId } = await auth();
+  let purchasedKeys: string[] = [];
+  let activeSubscription: {
+    planKey: string;
+    status: string;
+    currentPeriodEnd: string | null;
+  } | null = null;
+
+  if (userId) {
+    try {
+      const purchasedRows = await db
+        .select({ packageKey: stripeCheckoutSessions.packageKey })
+        .from(stripeCheckoutSessions)
+        .where(
+          and(
+            eq(stripeCheckoutSessions.clerkId, userId),
+            eq(stripeCheckoutSessions.fulfilled, true)
+          )
+        );
+      purchasedKeys = purchasedRows
+        .map((r) => r.packageKey)
+        .filter((k): k is string => Boolean(k));
+    } catch (err) {
+      console.error("[shop] Failed to load purchase history:", err);
+    }
+
+    try {
+      const sub = await findActiveSubscription(userId);
+      if (sub) {
+        activeSubscription = {
+          planKey: sub.planKey,
+          status: sub.status,
+          currentPeriodEnd: sub.currentPeriodEnd
+            ? sub.currentPeriodEnd.toISOString()
+            : null,
+        };
+      }
+    } catch (err) {
+      console.error("[shop] Failed to load subscription:", err);
+    }
+  }
 
   return (
     <div className="relative min-h-screen">
       <InteractiveCasinoBg variant="subtle" />
       <NavigationBar currentPath="/shop" />
       <main className="relative z-10 mx-auto max-w-6xl px-4 pb-20 pt-24">
-        {packages.length > 0 ? (
+        {packages.length > 0 || subscriptionPlans.length > 0 ? (
           <>
-            <ShopBuyClient packages={packages} />
+            <ShopBuyClient
+              packages={packages}
+              purchasedKeys={purchasedKeys}
+              subscriptionPlans={subscriptionPlans}
+              activeSubscription={activeSubscription}
+            />
             <p className="mt-4 text-center text-xs text-[#9dd8ff]/50">
               Purchases are processed securely by Stripe. Grynd tokens are virtual and have no cash
               value — non-refundable.

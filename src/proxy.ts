@@ -98,6 +98,7 @@ const isPublicRoute = createRouteMatcher([
   "/contact",
   "/reviews",
   "/faq",
+  "/shop",
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [

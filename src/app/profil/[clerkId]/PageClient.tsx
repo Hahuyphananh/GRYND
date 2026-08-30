@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import AvatarFrame from "../../../components/AvatarFrame";
 import { IconFlag } from "@tabler/icons-react";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 import { isSafeProfilePictureUrl } from "../../../lib/security/media";
@@ -16,6 +17,9 @@ type PublicUser = {
   clerkId: string;
   name: string;
   profilePicture: string | null;
+  profileAccent: string | null;
+  profileBanner: string | null;
+  avatarFrame: string | null;
   level: number;
   xp: number;
   gamesWon: number;
@@ -156,20 +160,40 @@ export default function PublicProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8"
+          className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8 ${
+            profile.profileBanner ? "pt-28" : ""
+          }`}
+          style={
+            profile.profileAccent
+              ? {
+                  borderColor: profile.profileAccent,
+                  boxShadow: `0 0 24px ${profile.profileAccent}33`,
+                }
+              : undefined
+          }
         >
+          {/* Grynd+ profile banner */}
+          {profile.profileBanner && (
+            <div
+              className="absolute inset-x-0 top-0 h-20 rounded-t-xl bg-cover bg-center"
+              style={{ backgroundImage: `url("${profile.profileBanner}")` }}
+              aria-hidden="true"
+            />
+          )}
           <div className="flex items-center gap-4">
-            {isSafeProfilePictureUrl(profile.profilePicture) ? (
-              <img
-                src={profile.profilePicture}
-                alt={profile.name}
-                className="h-20 w-20 rounded-full object-cover border-2 border-[#FFD700]"
-              />
-            ) : (
-              <div className="h-20 w-20 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-3xl font-bold">
-                {(profile.name || "U").charAt(0).toUpperCase()}
-              </div>
-            )}
+            <AvatarFrame frame={profile.avatarFrame}>
+              {isSafeProfilePictureUrl(profile.profilePicture) ? (
+                <img
+                  src={profile.profilePicture}
+                  alt={profile.name}
+                  className="h-20 w-20 rounded-full object-cover border-2 border-[#FFD700]"
+                />
+              ) : (
+                <div className="h-20 w-20 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-3xl font-bold">
+                  {(profile.name || "U").charAt(0).toUpperCase()}
+                </div>
+              )}
+            </AvatarFrame>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{profile.name}</h1>

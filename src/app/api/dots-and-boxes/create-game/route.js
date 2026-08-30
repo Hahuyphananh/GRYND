@@ -19,6 +19,13 @@ export async function POST(req) {
         { status: 400 },
       );
     }
+    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
+    if (betAmount > 100000) {
+      return NextResponse.json(
+        { error: "Bet exceeds the maximum of 100,000 tokens" },
+        { status: 400 },
+      );
+    }
 
     const game = await db.transaction(async (tx) => {
       const [updated] = await tx

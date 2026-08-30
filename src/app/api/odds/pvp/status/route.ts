@@ -66,7 +66,7 @@ export async function GET() {
         rounds: state?.rounds ?? [],
         gameOver: state?.gameOver ?? false,
         winner: state?.winner ?? null,
-        payout: game.wager * 2,
+        payout: game.wager * 1.9,
         userHasPendingPick,
       },
     });

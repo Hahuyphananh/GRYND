@@ -12,6 +12,13 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     const { wager = 10 } = await req.json().catch(() => ({}));
+    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
+    if (!Number.isFinite(Number(wager)) || Number(wager) <= 0 || Number(wager) > 100000) {
+      return NextResponse.json(
+        { ok: false, message: "Wager must be between 1 and 100,000 tokens" },
+        { status: 400 },
+      );
+    }
     const [row] = await db
       .insert(poolLobbies)
       .values({

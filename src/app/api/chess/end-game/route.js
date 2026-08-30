@@ -8,7 +8,9 @@ import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const HOUSE_EDGE_PERCENT = 10;
+// Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
+// src/lib/games/economy.ts). Winner keeps 95% of the pot.
+const HOUSE_EDGE_PERCENT = 5;
 
 // Ends any open game for this user.
 // Optional body: { gameId?: string (uuid), result?: "win" | "loss" | "draw" }

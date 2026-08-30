@@ -7,6 +7,8 @@ export async function POST(req) {
     const { wager } = await req.json();
     const amount = Number(wager);
     if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ success: false, error: "Invalid wager" }, { status: 400 });
+    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
+    if (amount > 100000) return NextResponse.json({ success: false, error: "Wager exceeds the maximum of 100,000 tokens" }, { status: 400 });
 
     const result = await db.transaction(async (tx) => {
       await lockBalance(tx, userId, amount);

@@ -95,7 +95,7 @@ test("turn window is 20s", () => {
 
 test("stake bounds match the other PvP games", () => {
   assert.equal(MIN_STAKE, 1);
-  assert.equal(MAX_STAKE, 1000000);
+  assert.equal(MAX_STAKE, 100000); // economy cap (GLOBAL_MAX_BET)
   assert.ok(STAKE_PRESETS.length > 0);
 });
 

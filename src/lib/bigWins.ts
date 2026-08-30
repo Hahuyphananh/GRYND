@@ -24,7 +24,10 @@
 import { getNeonSql } from "../db/neon";
 import { invalidateBigWins } from "./redis/invalidation";
 
-const MINIMUM_BIG_WIN_AMOUNT = 1000000; // 1 million tokens
+// Scaled to the economy caps: with GLOBAL_MAX_BET = 100k, a max-stake PvP
+// win (100k × 1.9 = 190k) now qualifies — 1M was only reachable at the old
+// 1M bet cap. (Audit finding #7.)
+const MINIMUM_BIG_WIN_AMOUNT = 100000;
 
 export interface BigWinRecord {
   userId: string;        // clerkId of the user

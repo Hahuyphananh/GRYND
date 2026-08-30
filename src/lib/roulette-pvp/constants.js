@@ -49,7 +49,9 @@ export function calculateMatchSettlement(match, roundWinner) {
 // ── House fee (Prompt 10: 2.5% per the math in the spec) ─────────────────
 // NOTE: this constant is Roulette-PvP-specific. coin_flip PvP still uses
 // 2% — figure out whether you'd like to keep them in lockstep later.
-export const HOUSE_FEE_PCT = 0.025;
+// Harmonized to the shared PvP rake (must match PVP_RAKE_PCT in
+// src/lib/games/economy.ts). Winner keeps 95% of the pot (1.9x stake).
+export const HOUSE_FEE_PCT = 0.05;
 
 // ── Per-bet amount hard caps ───────────────────────────────────────────
 // `MAX_SINGLE_BET` is the largest amount a single bet key may carry
@@ -61,7 +63,9 @@ export const HOUSE_FEE_PCT = 0.025;
 // the per-bet cap so a few medium-sized bets can still take a round
 // close to the player's balance.
 export const MAX_SINGLE_BET = 10000;
-export const MAX_TOTAL_BET = 1000000;
+// Roulette is high-variance (35:1 on a straight) — round total capped at
+// HIGH_VARIANCE_MAX_BET (must match src/lib/games/economy.ts).
+export const MAX_TOTAL_BET = 10000;
 
 // ── Skill layer: elimination market + opponent call ────────────────────
 // Paying players can remove a single number from the shared wheel for

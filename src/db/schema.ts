@@ -154,6 +154,9 @@ export const quickQueueRequests = pgTable(
     region: varchar("region", { length: 80 }),
     playerCount: integer("player_count").notNull().default(2),
     maxWaitMs: integer("max_wait_ms"),
+    // Grynd+ members: their queued request is paired first (priority
+    // matchmaking) by the quick-queue matcher.
+    premium: boolean("premium").notNull().default(false),
     minesStakeAmount: numeric("mines_stake_amount", { precision: 14, scale: 2 }),
     minesCount: integer("mines_count"),
     status: varchar("status", { length: 20 }).notNull().default("queued"),
@@ -269,6 +272,15 @@ export const users = pgTable("users", {
   highestTitle: text("highest_title").default(null),
   selectedSpecialTitle: text("selected_special_title").default(null),
   selectedStreakType: varchar("selected_streak_type", { length: 10 }).default(null),
+  // Custom chat name color (Grynd+ perk). Only settable by active members —
+  // enforced in /api/user/chat-color. Null = default color.
+  chatColor: varchar("chat_color", { length: 7 }),
+  // Grynd+ profile customization suite (accent / banner / avatar frame).
+  // Only writable by active members — enforced in
+  // /api/user/profile-customization. Null = default styling.
+  profileAccent: varchar("profile_accent", { length: 7 }),
+  profileBanner: text("profile_banner"),
+  avatarFrame: varchar("avatar_frame", { length: 40 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),
@@ -2974,6 +2986,10 @@ export const tokenPackages = pgTable(
     // Marketing flag to highlight the recommended / best-value offer in the shop.
     // Purely cosmetic positioning — it changes no price, award, or logic.
     featured: boolean("featured").notNull().default(false),
+    // One-time-only offer: each user can buy this package at most once.
+    // Enforced server-side in /api/stripe/checkout against fulfilled ledger
+    // rows; the Shop also swaps the buy button for a "Purchased" state.
+    oneTime: boolean("one_time").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2995,6 +3011,8 @@ export const stripeCheckoutSessions = pgTable(
     customerId: varchar("customer_id", { length: 255 }),
     clerkId: varchar("clerk_id", { length: 255 }).notNull(),
     packageKey: varchar("package_key", { length: 120 }),
+    // Stripe Checkout mode: 'payment' (one-time top-up) or 'subscription'.
+    sessionMode: varchar("session_mode", { length: 20 }).notNull().default("payment"),
     tokenAmount: bigint("token_amount", { mode: "number" }).notNull().default(0),
     amountCents: integer("amount_cents").notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("usd"),
@@ -3012,10 +3030,112 @@ export const stripeCheckoutSessions = pgTable(
   })
 );
 
+// GRYND+ TOKEN SUBSCRIPTIONS
+// ==============================================================================
+// Recurring monthly token grants backed by Stripe Billing. Three tables back
+// the flow (same server-authoritative rules as the one-time economy):
+//
+//   * token_subscription_plans   — the purchasable subscription catalog
+//     (monthly token grant + price). Admin-managed; mirrors token_packages.
+//   * token_subscriptions        — one row per Stripe subscription with its
+//     lifecycle status. `stripe_subscription_id` is UNIQUE so webhook replays
+//     can never create duplicates.
+//   * token_subscription_credits — per-invoice grant ledger; `stripe_invoice_id`
+//     is UNIQUE so a replayed `invoice.paid` webhook can never double-credit
+//     a month. Tokens are granted per paid invoice (including the first),
+//     never at checkout time.
+
+// Catalog of subscription offers (Grynd+ membership). Mirrors token_packages:
+// server-resolved price -> monthly token grant.
+export const tokenSubscriptionPlans = pgTable(
+  "token_subscription_plans",
+  {
+    id: serial("id").primaryKey(),
+    // Stable slug used in URLs, session metadata and admin tooling.
+    key: varchar("key", { length: 120 }).notNull().unique(),
+    name: varchar("name", { length: 255 }).notNull(),
+    // Monthly token grant, credited once per paid invoice (webhook).
+    monthlyTokens: bigint("monthly_tokens", { mode: "number" }).notNull(),
+    priceCents: integer("price_cents").notNull(),
+    // Real Stripe Product + recurring Price ids backing this plan. Populated
+    // lazily by src/lib/stripe/subscriptions.ts on first subscribe (mirrors
+    // token_packages). Nullable — empty means "not yet created in Stripe".
+    stripeProductId: varchar("stripe_product_id", { length: 255 }),
+    stripePriceId: varchar("stripe_price_id", { length: 255 }),
+    badge: varchar("badge", { length: 40 }),
+    // Benefit list rendered on the Shop membership card (sales copy; each
+    // perk is implemented behind the active-subscription check).
+    perks: text("perks").array().notNull().default([]),
+    enabled: boolean("enabled").notNull().default(true),
+    // Marketing flag to highlight the recommended plan. Cosmetic only.
+    featured: boolean("featured").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sortIdx: index("token_subscription_plans_sort_idx").on(
+      table.enabled,
+      table.sortOrder
+    ),
+  })
+);
+
+// One row per Stripe subscription (lifecycle mirror). `stripe_subscription_id`
+// is UNIQUE so webhook events are idempotent at the database level.
+export const tokenSubscriptions = pgTable(
+  "token_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    clerkId: varchar("clerk_id", { length: 255 }).notNull(),
+    planKey: varchar("plan_key", { length: 120 }).notNull(),
+    stripeSubscriptionId: varchar("stripe_subscription_id", {
+      length: 255,
+    }).notNull().unique(),
+    customerId: varchar("customer_id", { length: 255 }),
+    // Stripe subscription status: active | trialing | past_due | canceled |
+    // incomplete | unpaid | paused.
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    clerkIdx: index("token_subscriptions_clerk_idx").on(
+      table.clerkId,
+      table.status
+    ),
+  })
+);
+
+// Per-invoice grant ledger. `stripe_invoice_id` is UNIQUE so each paid
+// invoice credits exactly once — a replayed `invoice.paid` webhook is a no-op.
+export const tokenSubscriptionCredits = pgTable(
+  "token_subscription_credits",
+  {
+    id: serial("id").primaryKey(),
+    clerkId: varchar("clerk_id", { length: 255 }).notNull(),
+    planKey: varchar("plan_key", { length: 120 }).notNull(),
+    stripeInvoiceId: varchar("stripe_invoice_id", { length: 255 }).notNull().unique(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    periodStart: timestamp("period_start"),
+    periodEnd: timestamp("period_end"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    clerkIdx: index("token_subscription_credits_clerk_idx").on(
+      table.clerkId,
+      table.createdAt
+    ),
+  })
+);
+
 // TOKEN TRANSACTION HISTORY
 // ==============================================================================
 // Durable, auditable record of every token credit/debit flowing through the
-// virtual-token economy (Stripe purchases, and any shop spend added later).
+// virtual-token economy (Stripe purchases, subscription grants, and any shop
+// spend added later).
 // One row per token-mutating operation, written inside the same database
 // transaction as the balance change so the ledger can never disagree with
 // `users.balance`. `type = 'purchase'` rows carry the Stripe session id as
