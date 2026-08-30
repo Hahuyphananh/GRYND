@@ -43,7 +43,7 @@ export const matchLifecycle = pgTable(
   (table) => ({
     statusQueueIdx: index("match_lifecycle_status_queue_idx").on(table.status, table.queuedAt),
     gameModeIdx: index("match_lifecycle_game_mode_idx").on(table.gameKey, table.mode, table.status),
-  }),
+  })
 );
 
 // APP SETTINGS — simple key/value store for runtime-toggleable platform
@@ -61,9 +61,12 @@ export const matchLifecycleEvents = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    unpublishedIdx: index("match_lifecycle_events_unpublished_idx").on(table.publishedAt, table.createdAt),
+    unpublishedIdx: index("match_lifecycle_events_unpublished_idx").on(
+      table.publishedAt,
+      table.createdAt
+    ),
     matchIdx: index("match_lifecycle_events_match_idx").on(table.matchId, table.createdAt),
-  }),
+  })
 );
 
 export const availabilityAlerts = pgTable(
@@ -87,23 +90,28 @@ export const availabilityAlerts = pgTable(
       table.active,
       table.gameKey,
       table.mode,
-      table.region,
+      table.region
     ),
-  }),
+  })
 );
 
 export const availabilityAlertDeliveries = pgTable(
   "availability_alert_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    alertId: uuid("alert_id").notNull().references(() => availabilityAlerts.id, { onDelete: "cascade" }),
+    alertId: uuid("alert_id")
+      .notNull()
+      .references(() => availabilityAlerts.id, { onDelete: "cascade" }),
     availabilityKey: varchar("availability_key", { length: 255 }).notNull(),
     deliveredAt: timestamp("delivered_at").notNull().defaultNow(),
   },
   (table) => ({
-    dedupeIdx: unique("availability_alert_delivery_unique").on(table.alertId, table.availabilityKey),
+    dedupeIdx: unique("availability_alert_delivery_unique").on(
+      table.alertId,
+      table.availabilityKey
+    ),
     alertIdx: index("availability_alert_deliveries_alert_idx").on(table.alertId, table.deliveredAt),
-  }),
+  })
 );
 
 export const quickQueueReadiness = pgTable(
@@ -112,7 +120,9 @@ export const quickQueueReadiness = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: varchar("user_id", { length: 255 }).notNull(),
     preferredGames: jsonb("preferred_games").notNull(),
-    preferredModes: jsonb("preferred_modes").notNull().default(sql`'[]'::jsonb`),
+    preferredModes: jsonb("preferred_modes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     region: varchar("region", { length: 80 }),
     playerCount: integer("player_count").notNull().default(2),
     maxWaitMs: integer("max_wait_ms"),
@@ -127,9 +137,9 @@ export const quickQueueReadiness = pgTable(
     activeLookupIdx: index("quick_queue_readiness_active_lookup_idx").on(
       table.status,
       table.expiresAt,
-      table.updatedAt,
+      table.updatedAt
     ),
-  }),
+  })
 );
 
 export const quickQueueRequests = pgTable(
@@ -138,7 +148,9 @@ export const quickQueueRequests = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: varchar("user_id", { length: 255 }).notNull(),
     preferredGames: jsonb("preferred_games").notNull(),
-    preferredModes: jsonb("preferred_modes").notNull().default(sql`'[]'::jsonb`),
+    preferredModes: jsonb("preferred_modes")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     region: varchar("region", { length: 80 }),
     playerCount: integer("player_count").notNull().default(2),
     maxWaitMs: integer("max_wait_ms"),
@@ -153,7 +165,7 @@ export const quickQueueRequests = pgTable(
   (table) => ({
     activeIdx: index("quick_queue_requests_active_idx").on(table.status, table.queuedAt),
     userIdx: index("quick_queue_requests_user_idx").on(table.userId, table.status, table.createdAt),
-  }),
+  })
 );
 
 export const quickQueueAssignments = pgTable(
@@ -172,7 +184,7 @@ export const quickQueueAssignments = pgTable(
   },
   (table) => ({
     statusIdx: index("quick_queue_assignments_status_idx").on(table.status, table.assignedAt),
-  }),
+  })
 );
 
 export const quickQueueAssignmentEvents = pgTable(
@@ -190,9 +202,15 @@ export const quickQueueAssignmentEvents = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    unpublishedIdx: index("quick_queue_assignment_events_unpublished_idx").on(table.publishedAt, table.createdAt),
-    assignmentIdx: index("quick_queue_assignment_events_assignment_idx").on(table.assignmentId, table.createdAt),
-  }),
+    unpublishedIdx: index("quick_queue_assignment_events_unpublished_idx").on(
+      table.publishedAt,
+      table.createdAt
+    ),
+    assignmentIdx: index("quick_queue_assignment_events_assignment_idx").on(
+      table.assignmentId,
+      table.createdAt
+    ),
+  })
 );
 
 export const appSettings = pgTable(
@@ -202,7 +220,7 @@ export const appSettings = pgTable(
     value: text("value"),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.key] })],
+  (table) => [primaryKey({ columns: [table.key] })]
 );
 
 // Maintenance-mode flag key, read by middleware + admin toggle.
@@ -219,9 +237,7 @@ export const users = pgTable("users", {
   profilePicture: text("profile_picture"),
   password: varchar("password", { length: 255 }).notNull(),
   age: integer("age"),
-  balance: numeric("balance", { precision: 30, scale: 2 })
-    .default("1000.00")
-    .notNull(),
+  balance: numeric("balance", { precision: 30, scale: 2 }).default("1000.00").notNull(),
   gamesWon: integer("games_won").default(0),
   gamesLost: integer("games_lost").default(0),
   referralCode: varchar("referral_code", { length: 30 }).unique(),
@@ -230,16 +246,12 @@ export const users = pgTable("users", {
   referralEarnings: numeric("referral_earnings", { precision: 10, scale: 2 })
     .default("0.00")
     .notNull(),
-  totalWagered: bigint("total_wagered", { mode: "number" })
-    .default(0)
-    .notNull(),
+  totalWagered: bigint("total_wagered", { mode: "number" }).default(0).notNull(),
   totalWon: bigint("total_won", { mode: "number" }).default(0).notNull(),
   level: integer("level").default(1).notNull(),
   xp: integer("xp").default(0).notNull(),
   biggestWin: integer("biggest_win").default(0).notNull(),
-  bestMultiplier: numeric("best_multiplier", { precision: 10, scale: 4 })
-    .default("0")
-    .notNull(),
+  bestMultiplier: numeric("best_multiplier", { precision: 10, scale: 4 }).default("0").notNull(),
   currentStreak: integer("current_streak").default(0).notNull(),
   bestStreak: integer("best_streak").default(0).notNull(),
   dailyStreakCurrent: integer("daily_streak_current").default(0).notNull(),
@@ -249,13 +261,9 @@ export const users = pgTable("users", {
   weekKey: varchar("week_key", { length: 8 }),
   lastLoginDate: date("last_login_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
-  weeklyWagered: bigint("weekly_wagered", { mode: "number" })
-    .default(0)
-    .notNull(),
+  weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),
   weeklyWon: bigint("weekly_won", { mode: "number" }).default(0).notNull(),
-  weeklyProfit: bigint("weekly_profit", { mode: "number" })
-    .default(0)
-    .notNull(),
+  weeklyProfit: bigint("weekly_profit", { mode: "number" }).default(0).notNull(),
   weeklyWins: integer("weekly_wins").default(0).notNull(),
   selectedTitle: text("selected_title").default(null),
   highestTitle: text("highest_title").default(null),
@@ -281,11 +289,8 @@ export const friendRelations = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    uniqueFriendship: index("friend_relations_user_friend_idx").on(
-      table.userId,
-      table.friendId,
-    ),
-  }),
+    uniqueFriendship: index("friend_relations_user_friend_idx").on(table.userId, table.friendId),
+  })
 );
 
 export const userGamePresence = pgTable(
@@ -300,18 +305,11 @@ export const userGamePresence = pgTable(
     lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
   },
   (table) => ({
-    userGameIdx: index("user_game_presence_user_game_idx").on(
-      table.userId,
-      table.gameKey,
-    ),
-  }),
+    userGameIdx: index("user_game_presence_user_game_idx").on(table.userId, table.gameKey),
+  })
 );
 
-export const presenceStatusEnum = pgEnum("presence_status", [
-  "online",
-  "in_game",
-  "offline",
-]);
+export const presenceStatusEnum = pgEnum("presence_status", ["online", "in_game", "offline"]);
 
 export const userPresence = pgTable(
   "user_presence",
@@ -323,11 +321,8 @@ export const userPresence = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
-    statusSeenIdx: index("user_presence_status_seen_idx").on(
-      table.status,
-      table.lastSeen,
-    ),
-  }),
+    statusSeenIdx: index("user_presence_status_seen_idx").on(table.status, table.lastSeen),
+  })
 );
 
 export const userLoginRewards = pgTable("user_login_rewards", {
@@ -345,21 +340,11 @@ export const userStats = pgTable("user_stats", {
   totalBets: integer("total_bets").notNull().default(0),
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
-  winRate: numeric("win_rate", { precision: 5, scale: 2 })
-    .notNull()
-    .default("0"),
-  totalWagered: numeric("total_wagered", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  totalWon: numeric("total_won", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  biggestWin: numeric("biggest_win", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  favoriteGame: varchar("favorite_game", { length: 100 })
-    .notNull()
-    .default("N/A"),
+  winRate: numeric("win_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  totalWagered: numeric("total_wagered", { precision: 14, scale: 2 }).notNull().default("0"),
+  totalWon: numeric("total_won", { precision: 14, scale: 2 }).notNull().default("0"),
+  biggestWin: numeric("biggest_win", { precision: 14, scale: 2 }).notNull().default("0"),
+  favoriteGame: varchar("favorite_game", { length: 100 }).notNull().default("N/A"),
   currentStreak: integer("current_streak").notNull().default(0),
   bestStreak: integer("best_streak").notNull().default(0),
   dailyStreakCurrent: integer("daily_streak_current").notNull().default(0),
@@ -368,20 +353,14 @@ export const userStats = pgTable("user_stats", {
   weeklyStreakBest: integer("weekly_streak_best").notNull().default(0),
   level: integer("level").notNull().default(1),
   xp: integer("xp").notNull().default(0),
-  weeklyWagered: bigint("weekly_wagered", { mode: "number" })
-    .notNull()
-    .default(0),
+  weeklyWagered: bigint("weekly_wagered", { mode: "number" }).notNull().default(0),
   weeklyWon: bigint("weekly_won", { mode: "number" }).notNull().default(0),
   weeklyWins: integer("weekly_wins").notNull().default(0),
   weeklyLosses: integer("weekly_losses").notNull().default(0),
   weeklyLevelGain: integer("weekly_level_gain").notNull().default(0),
   weeklyBestStreak: integer("weekly_best_streak").notNull().default(0),
-  weeklyBiggestWin: bigint("weekly_biggest_win", { mode: "number" })
-    .notNull()
-    .default(0),
-  weeklyWinRate: numeric("weekly_win_rate", { precision: 5, scale: 2 })
-    .notNull()
-    .default("0"),
+  weeklyBiggestWin: bigint("weekly_biggest_win", { mode: "number" }).notNull().default(0),
+  weeklyWinRate: numeric("weekly_win_rate", { precision: 5, scale: 2 }).notNull().default("0"),
   weeklyGameStreak: integer("weekly_game_streak").notNull().default(0),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -406,11 +385,8 @@ export const userSpecialTitles = pgTable(
     unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
   },
   (table) => ({
-    uniqUserTitle: index("user_special_titles_user_title_idx").on(
-      table.userId,
-      table.titleKey,
-    ),
-  }),
+    uniqUserTitle: index("user_special_titles_user_title_idx").on(table.userId, table.titleKey),
+  })
 );
 
 export const streakTitles = pgTable("streak_titles", {
@@ -462,16 +438,9 @@ export const chatMessages = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    roomIdx: index("chat_messages_room_idx").on(
-      table.roomType,
-      table.roomId,
-      table.createdAt,
-    ),
-    moderationIdx: index("chat_messages_moderation_idx").on(
-      table.isDeleted,
-      table.createdAt,
-    ),
-  }),
+    roomIdx: index("chat_messages_room_idx").on(table.roomType, table.roomId, table.createdAt),
+    moderationIdx: index("chat_messages_moderation_idx").on(table.isDeleted, table.createdAt),
+  })
 );
 
 // GAMES TABLES
@@ -595,15 +564,11 @@ export const laneRunnerGames = pgTable("lane_runner_games", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  payout: numeric("payout", { precision: 10, scale: 2 })
-    .notNull()
-    .default("0.00"),
+  payout: numeric("payout", { precision: 10, scale: 2 }).notNull().default("0.00"),
   result: varchar("result", { length: 20 }).notNull().default("pending"),
   difficulty: varchar("difficulty", { length: 20 }).notNull(),
   currentLane: integer("current_lane").notNull().default(0),
-  multiplier: numeric("multiplier", { precision: 12, scale: 4 })
-    .notNull()
-    .default("1.0000"),
+  multiplier: numeric("multiplier", { precision: 12, scale: 4 }).notNull().default("1.0000"),
   clientSeed: varchar("client_seed", { length: 255 }).notNull(),
   serverSeedHash: varchar("server_seed_hash", { length: 255 }).notNull(),
   serverSeed: varchar("server_seed", { length: 255 }),
@@ -656,7 +621,7 @@ export const chessMoves = pgTable(
   },
   (table) => ({
     gameIdx: index("chess_moves_game_idx").on(table.gameId),
-  }),
+  })
 );
 
 export const diceLobbies = pgTable("dice_lobbies", {
@@ -708,9 +673,7 @@ export const dicePlayerStats = pgTable("dice_player_stats", {
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
   gamesPlayed: integer("games_played").notNull().default(0),
-  totalWagered: bigint("total_wagered", { mode: "number" })
-    .notNull()
-    .default(0),
+  totalWagered: bigint("total_wagered", { mode: "number" }).notNull().default(0),
   totalWon: bigint("total_won", { mode: "number" }).notNull().default(0),
   highestWin: integer("highest_win").notNull().default(0),
   currentStreak: integer("current_streak").notNull().default(0),
@@ -729,11 +692,8 @@ export const poolLobbies = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
-    statusIdx: index("idx_pool_lobbies_status").on(
-      table.status,
-      table.createdAt,
-    ),
-  }),
+    statusIdx: index("idx_pool_lobbies_status").on(table.status, table.createdAt),
+  })
 );
 
 export const poolMatches = pgTable(
@@ -759,7 +719,7 @@ export const poolMatches = pgTable(
     player1Idx: index("idx_pool_matches_player1").on(table.player1Id),
     player2Idx: index("idx_pool_matches_player2").on(table.player2Id),
     createdIdx: index("idx_pool_matches_created").on(table.createdAt),
-  }),
+  })
 );
 
 export const poolShots = pgTable(
@@ -777,7 +737,7 @@ export const poolShots = pgTable(
   },
   (table) => ({
     matchIdx: index("idx_pool_shots_match").on(table.matchId, table.createdAt),
-  }),
+  })
 );
 
 export const poolPlayerStats = pgTable("pool_player_stats", {
@@ -856,7 +816,9 @@ export const rpsPvpGames = pgTable(
     roundsWon1: integer("rounds_won_1").default(0).notNull(),
     roundsWon2: integer("rounds_won_2").default(0).notNull(),
     currentRound: integer("current_round").default(1).notNull(),
-    roundHistory: jsonb("round_history").default(sql`'[]'::jsonb`).notNull(),
+    roundHistory: jsonb("round_history")
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
     outcome: varchar("outcome", { length: 20 }),
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }).default("pending").notNull(),
@@ -866,7 +828,7 @@ export const rpsPvpGames = pgTable(
   (table) => ({
     openGamesIdx: index("rps_pvp_open_games_idx").on(table.player2Id),
     statusIdx: index("rps_pvp_status_idx").on(table.status),
-  }),
+  })
 );
 
 export const keno_games = pgTable("keno_games", {
@@ -893,13 +855,11 @@ export const connectFourGames = pgTable(
     board: jsonb("board")
       .notNull()
       .default(
-        sql`'[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]]'::jsonb`,
+        sql`'[[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0],[0,0,0,0,0,0,0]]'::jsonb`
       ),
     hostDiscsUsed: integer("host_discs_used").notNull().default(0),
     guestDiscsUsed: integer("guest_discs_used").notNull().default(0),
-    currentTurn: varchar("current_turn", { length: 10 })
-      .notNull()
-      .default("host"),
+    currentTurn: varchar("current_turn", { length: 10 }).notNull().default("host"),
     winnerClerkId: varchar("winner_clerk_id", { length: 255 }),
     result: varchar("result", { length: 30 }),
     payout: numeric("payout", { precision: 10, scale: 2 }),
@@ -914,13 +874,10 @@ export const connectFourGames = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    connectFourStatusIdx: index("connect_four_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
+    connectFourStatusIdx: index("connect_four_status_idx").on(table.status, table.createdAt),
     connectFourHostIdx: index("connect_four_host_idx").on(table.hostClerkId),
     connectFourGuestIdx: index("connect_four_guest_idx").on(table.guestClerkId),
-  }),
+  })
 );
 
 export const diceFlushRooms = pgTable(
@@ -930,12 +887,14 @@ export const diceFlushRooms = pgTable(
     status: varchar("status", { length: 20 }).notNull(),
     wager: integer("wager").notNull(),
     pot: integer("pot").notNull(),
-    gameState: jsonb("game_state").notNull().default(sql`'{}'::jsonb`),
+    gameState: jsonb("game_state")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
     diceFlushRoomsStatusIdx: index("idx_dice_flush_rooms_status").on(table.status),
-  }),
+  })
 );
 
 export const diceFlushPlayers = pgTable(
@@ -950,7 +909,7 @@ export const diceFlushPlayers = pgTable(
   },
   (table) => ({
     diceFlushPlayersRoomIdx: index("idx_dice_flush_players_room_id").on(table.roomId),
-  }),
+  })
 );
 
 export const diceFlushActions = pgTable(
@@ -966,19 +925,15 @@ export const diceFlushActions = pgTable(
   (table) => ({
     diceFlushActionsRoomIdx: index("idx_dice_flush_actions_room_id").on(
       table.roomId,
-      table.createdAt,
+      table.createdAt
     ),
-  }),
+  })
 );
 
 // CRASH ARENA TABLES
 // ==========================================================================
 
-export const crashArenaStatusEnum = pgEnum("crash_arena_status", [
-  "waiting",
-  "active",
-  "closed",
-]);
+export const crashArenaStatusEnum = pgEnum("crash_arena_status", ["waiting", "active", "closed"]);
 
 export const crashArenaTransactionTypeEnum = pgEnum("crash_arena_transaction_type", [
   "BUY_IN",
@@ -1012,9 +967,7 @@ export const crashArenaTables = pgTable(
     // Crash Poker: pot carried over from a hand that ended with no winner
     // (crash with 2+ players still active). Server-authoritative; feeds the
     // next hand's pot and is paid out to a fold-out winner or carried again.
-    carryOver: numeric("carry_over", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    carryOver: numeric("carry_over", { precision: 14, scale: 2 }).notNull().default("0.00"),
     // Configurable Small Blind for this table. NULL (the default) means
     // the standard ratio applies: round(wager / 2) — the value is resolved
     // once at table creation and can be overridden per table without code
@@ -1036,16 +989,9 @@ export const crashArenaTables = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    statusIdx: index("idx_crash_arena_tables_status").on(
-      table.status,
-      table.createdAt,
-    ),
-    hostIdx: index("idx_crash_arena_tables_host").on(
-      table.hostId,
-      table.status,
-      table.createdAt,
-    ),
-  }),
+    statusIdx: index("idx_crash_arena_tables_status").on(table.status, table.createdAt),
+    hostIdx: index("idx_crash_arena_tables_host").on(table.hostId, table.status, table.createdAt),
+  })
 );
 
 // ── Players at a table ─────────────────────────────────────────────────────
@@ -1073,11 +1019,8 @@ export const crashArenaPlayers = pgTable(
     joinedAt: timestamp("joined_at").notNull().defaultNow(),
   },
   (table) => ({
-    tablePlayerIdx: index("idx_crash_arena_players_table_user").on(
-      table.tableId,
-      table.userId,
-    ),
-  }),
+    tablePlayerIdx: index("idx_crash_arena_players_table_user").on(table.tableId, table.userId),
+  })
 );
 
 // ── Rounds ─────────────────────────────────────────────────────────────────
@@ -1105,9 +1048,7 @@ export const crashArenaRounds = pgTable(
     checkpointIndex: integer("checkpoint_index").notNull().default(-1),
     // Total contribution an active player must have committed to stay in
     // (call = top up to this). Starts at big_blind; raises raise it.
-    requiredBet: numeric("required_bet", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
+    requiredBet: numeric("required_bet", { precision: 14, scale: 2 }).notNull().default("0"),
     // Whether the current checkpoint window accepts fold/call/raise actions.
     bettingOpen: boolean("betting_open").notNull().default(false),
     // Compact hand snapshot: roles, acted flags, action log. The per-player
@@ -1118,11 +1059,8 @@ export const crashArenaRounds = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    tableRoundIdx: index("idx_crash_arena_rounds_table").on(
-      table.tableId,
-      table.createdAt,
-    ),
-  }),
+    tableRoundIdx: index("idx_crash_arena_rounds_table").on(table.tableId, table.createdAt),
+  })
 );
 
 // ── Round entries — one per player per round ──────────────────────────────
@@ -1143,9 +1081,7 @@ export const crashArenaEntries = pgTable(
     cashoutTimestamp: timestamp("cashout_timestamp"),
     // ── Crash Poker hand state ──────────────────────────────────────────
     // Total committed to the pot this hand (blinds/ante + calls/raises).
-    contributed: numeric("contributed", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
+    contributed: numeric("contributed", { precision: 14, scale: 2 }).notNull().default("0"),
     // Checkpoint multiplier where the player folded (null until folded).
     foldedAtMultiplier: numeric("folded_at_multiplier", { precision: 6, scale: 2 }),
     // Last betting action: ante/sb/bb/call/check/raise/fold.
@@ -1159,11 +1095,8 @@ export const crashArenaEntries = pgTable(
     result: varchar("result", { length: 20 }).notNull().default("pending"),
   },
   (table) => ({
-    roundEntryIdx: index("idx_crash_arena_entries_round_user").on(
-      table.roundId,
-      table.userId,
-    ),
-  }),
+    roundEntryIdx: index("idx_crash_arena_entries_round_user").on(table.roundId, table.userId),
+  })
 );
 
 // ── Transactions (buy-in, win, leave, rake) ───────────────────────────────
@@ -1186,7 +1119,7 @@ export const crashArenaTransactions = pgTable(
   (table) => ({
     userTxIdx: index("idx_crash_arena_tx_user").on(table.userId, table.createdAt),
     tableTxIdx: index("idx_crash_arena_tx_table").on(table.tableId, table.createdAt),
-  }),
+  })
 );
 
 //
@@ -1234,15 +1167,12 @@ export const minesGamesRelations = relations(minesGames, ({ one }) => ({
   }),
 }));
 
-export const laneRunnerGamesRelations = relations(
-  laneRunnerGames,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [laneRunnerGames.userId],
-      references: [users.id],
-    }),
+export const laneRunnerGamesRelations = relations(laneRunnerGames, ({ one }) => ({
+  user: one(users, {
+    fields: [laneRunnerGames.userId],
+    references: [users.id],
   }),
-);
+}));
 
 export const plinkoGamesRelations = relations(plinkoGames, ({ one }) => ({
   user: one(users, {
@@ -1333,9 +1263,7 @@ export const userAutomationState = pgTable("user_automation_state", {
   clerkId: varchar("clerk_id", { length: 255 }).primaryKey(),
   lastLoginAt: timestamp("last_login_at").notNull().defaultNow(),
   lastInactivityEmailSentAt: timestamp("last_inactivity_email_sent_at"),
-  inactivityCycleStartAt: timestamp("inactivity_cycle_start_at")
-    .notNull()
-    .defaultNow(),
+  inactivityCycleStartAt: timestamp("inactivity_cycle_start_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
@@ -1379,7 +1307,7 @@ export const hexDuelGames = pgTable(
   (table) => ({
     player1Idx: index("hex_duel_player1_idx").on(table.player1Id, table.createdAt),
     createdIdx: index("hex_duel_created_idx").on(table.createdAt),
-  }),
+  })
 );
 
 // Hex Duel action log — persisted record of every multiplayer action (like diceTurns)
@@ -1406,7 +1334,7 @@ export const hexDuelActions = pgTable(
   },
   (table) => ({
     gameSeqIdx: index("hex_duel_actions_game_seq_idx").on(table.gameId, table.id),
-  }),
+  })
 );
 
 // PRECISION TABLES — PvP "Precision" casino game (waiting → active → finished)
@@ -1430,19 +1358,10 @@ export const precisionMatches = pgTable(
   },
   (table) => ({
     // Per-project convention: open-lobby queries + per-player history.
-    statusIdx: index("idx_precision_matches_status").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("idx_precision_matches_player1").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("idx_precision_matches_player2").on(
-      table.player2Id,
-      table.createdAt,
-    ),
-  }),
+    statusIdx: index("idx_precision_matches_status").on(table.status, table.createdAt),
+    player1Idx: index("idx_precision_matches_player1").on(table.player1Id, table.createdAt),
+    player2Idx: index("idx_precision_matches_player2").on(table.player2Id, table.createdAt),
+  })
 );
 
 // One row per round of a Precision match. Cascade deleting with the
@@ -1467,23 +1386,17 @@ export const precisionRounds = pgTable(
   (table) => ({
     // Lookup is always ("all rounds of match X in order") so a
     // composite index on (match_id, round_number) is the right shape.
-    matchRoundIdx: index("idx_precision_rounds_match_round").on(
-      table.matchId,
-      table.roundNumber,
-    ),
-  }),
+    matchRoundIdx: index("idx_precision_rounds_match_round").on(table.matchId, table.roundNumber),
+  })
 );
 
 // Precision relations — declared here (after the tables) so the symbols
 // are bound before `relations(...)` runs. Drizzle relations are read at
 // query time, not module-load, so the position is purely about lexical
 // ordering for the TS compiler.
-export const precisionMatchesRelations = relations(
-  precisionMatches,
-  ({ many }) => ({
-    rounds: many(precisionRounds),
-  }),
-);
+export const precisionMatchesRelations = relations(precisionMatches, ({ many }) => ({
+  rounds: many(precisionRounds),
+}));
 
 export const precisionRoundsRelations = relations(precisionRounds, ({ one }) => ({
   match: one(precisionMatches, {
@@ -1506,7 +1419,7 @@ export const adminAuditLogs = pgTable(
   (table) => ({
     adminAuditEventIdx: index("idx_admin_audit_event").on(table.event, table.createdAt),
     adminAuditClerkIdx: index("idx_admin_audit_clerk").on(table.clerkId, table.createdAt),
-  }),
+  })
 );
 
 // PLAYER REPORTS — user-to-user reporting system for PVP games
@@ -1528,7 +1441,7 @@ export const playerReports = pgTable(
   (table) => ({
     statusIdx: index("idx_player_reports_status").on(table.status, table.createdAt),
     reportedIdx: index("idx_player_reports_reported").on(table.reportedClerkId),
-  }),
+  })
 );
 
 // CONTACT MESSAGES — user-submitted contact form messages (admin inbox).
@@ -1547,7 +1460,7 @@ export const contactMessages = pgTable(
   },
   (table) => ({
     statusIdx: index("idx_contact_messages_status").on(table.status, table.createdAt),
-  }),
+  })
 );
 
 // PRODUCT REVIEWS — authenticated user reviews of the platform.
@@ -1571,12 +1484,9 @@ export const productReviews = pgTable(
   },
   (table) => ({
     reviewUserIdx: index("idx_product_reviews_user").on(table.userId),
-    reviewStatusIdx: index("idx_product_reviews_status").on(
-      table.status,
-      table.createdAt,
-    ),
+    reviewStatusIdx: index("idx_product_reviews_status").on(table.status, table.createdAt),
     reviewUserUnique: unique("product_reviews_user_id_unique").on(table.userId),
-  }),
+  })
 );
 
 // CONTACT MESSAGE REPLIES — admin replies to contact form messages.
@@ -1596,7 +1506,7 @@ export const contactMessageReplies = pgTable(
   },
   (table) => ({
     messageIdx: index("idx_contact_message_replies_message").on(table.messageId),
-  }),
+  })
 );
 
 export const bigWins = pgTable(
@@ -1614,7 +1524,7 @@ export const bigWins = pgTable(
   (table) => ({
     createdAtIdx: index("idx_big_wins_created_at").on(table.createdAt),
     multiplierIdx: index("idx_big_wins_multiplier").on(table.multiplier),
-  }),
+  })
 );
 
 // ODDS GAME TABLE
@@ -1637,7 +1547,7 @@ export const oddsGames = pgTable(
   (table) => ({
     statusIdx: index("idx_odds_games_status").on(table.status, table.createdAt),
     player1Idx: index("idx_odds_games_player1").on(table.player1Id),
-  }),
+  })
 );
 
 // LANE RUNNER PvP MATCHES — "Lane Rush Duel"
@@ -1665,8 +1575,7 @@ export const laneRunnerPvpMatches = pgTable(
     id: serial("id").primaryKey(),
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
-      .notNull(),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: laneRunnerPvpStatusEnum("status").notNull().default("waiting"),
     // Host-picked difficulty at lobby creation (easy/medium/hard).
     // Determines lane width for BOTH towers (4/3/2 tiles) and the
@@ -1697,41 +1606,25 @@ export const laneRunnerPvpMatches = pgTable(
     // Chronological JSONB array of every action. Entry shape:
     //   { userId, seat, action: "pick"|"hold", lane, tileIndex|null,
     //     badTile|null, isBust, autoPicked, at: ISO ts }
-    actions: jsonb("actions").notNull().default(sql`'[]'::jsonb`),
-    roundDeadline: timestamp("round_deadline"),
-    roundTimerSeconds: integer("round_timer_seconds")
+    actions: jsonb("actions")
       .notNull()
-      .default(20),
+      .default(sql`'[]'::jsonb`),
+    roundDeadline: timestamp("round_deadline"),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    statusIdx: index("lane_runner_pvp_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("lane_runner_pvp_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("lane_runner_pvp_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
-    stakeIdx: index("lane_runner_pvp_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    statusIdx: index("lane_runner_pvp_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("lane_runner_pvp_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("lane_runner_pvp_player2_idx").on(table.player2Id, table.createdAt),
+    stakeIdx: index("lane_runner_pvp_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // ROULETTE PvP MATCHES — server-authoritative two-player roulette
@@ -1812,12 +1705,8 @@ export const roulettePvpMatches = pgTable(
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     // ── Persistent match "points" balance
     // Each player starts the match with `starting_points` (default
     // 100) and that balance PERSISTS across rounds — bets debit it,
@@ -1845,9 +1734,7 @@ export const roulettePvpMatches = pgTable(
     // as `now() + round_timer_seconds` whenever a new betting window
     // opens. Surfaced as a column so future admin tooling can tweak
     // a match's pacing without changing code.
-    roundTimerSeconds: integer("round_timer_seconds")
-      .notNull()
-      .default(25),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(25),
     // Match-level sudden-death flag (mirrors the per-round
     // `is_sudden_death` on roulette_pvp_rounds so admin / status
     // queries don't have to walk child rows).
@@ -1858,26 +1745,14 @@ export const roulettePvpMatches = pgTable(
   },
   (table) => ({
     // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("roulette_pvp_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("roulette_pvp_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("roulette_pvp_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
+    statusIdx: index("roulette_pvp_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("roulette_pvp_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("roulette_pvp_player2_idx").on(table.player2Id, table.createdAt),
     // Stake matchmaking — finding a waiting lobby whose stake matches
     // the joiner's request. `stake` + `status='waiting'` + player2 null
     // is the canonical query for "join any open match of this stake".
-    stakeIdx: index("roulette_pvp_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    stakeIdx: index("roulette_pvp_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // One row per round of a Roulette PvP match. Cascade-deleted with the
@@ -1894,8 +1769,12 @@ export const roulettePvpRounds = pgTable(
     isSuddenDeath: boolean("is_sudden_death").notNull().default(false),
     spinResultIndex: integer("spin_result_index").notNull(),
     spinResult: integer("spin_result").notNull(),
-    player1Bets: jsonb("player1_bets").notNull().default(sql`'{}'::jsonb`),
-    player2Bets: jsonb("player2_bets").notNull().default(sql`'{}'::jsonb`),
+    player1Bets: jsonb("player1_bets")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    player2Bets: jsonb("player2_bets")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     player1TotalBet: numeric("player1_total_bet", {
       precision: 10,
       scale: 2,
@@ -1908,21 +1787,13 @@ export const roulettePvpRounds = pgTable(
     })
       .notNull()
       .default("0.00"),
-    player1Payout: numeric("player1_payout", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    player2Payout: numeric("player2_payout", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    player1Payout: numeric("player1_payout", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    player2Payout: numeric("player2_payout", { precision: 10, scale: 2 }).notNull().default("0.00"),
     // net = payout − total_bet. Persisted for fast round-resolution
     // queries (the live match state is in roulette_pvp_matches but
     // history is in this table).
-    player1Net: numeric("player1_net", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    player2Net: numeric("player2_net", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    player1Net: numeric("player1_net", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    player2Net: numeric("player2_net", { precision: 10, scale: 2 }).notNull().default("0.00"),
     // Round winner — null when the round ended in a draw (identical
     // net result for both players).
     roundWinner: varchar("round_winner", { length: 10 }), // 'player1' | 'player2' | null
@@ -1936,27 +1807,21 @@ export const roulettePvpRounds = pgTable(
   (table) => ({
     matchRoundIdx: index("roulette_pvp_rounds_match_round_idx").on(
       table.matchId,
-      table.roundNumber,
+      table.roundNumber
     ),
-  }),
+  })
 );
 
-export const roulettePvpMatchesRelations = relations(
-  roulettePvpMatches,
-  ({ many }) => ({
-    rounds: many(roulettePvpRounds),
-  }),
-);
+export const roulettePvpMatchesRelations = relations(roulettePvpMatches, ({ many }) => ({
+  rounds: many(roulettePvpRounds),
+}));
 
-export const roulettePvpRoundsRelations = relations(
-  roulettePvpRounds,
-  ({ one }) => ({
-    match: one(roulettePvpMatches, {
-      fields: [roulettePvpRounds.matchId],
-      references: [roulettePvpMatches.id],
-    }),
+export const roulettePvpRoundsRelations = relations(roulettePvpRounds, ({ one }) => ({
+  match: one(roulettePvpMatches, {
+    fields: [roulettePvpRounds.matchId],
+    references: [roulettePvpMatches.id],
   }),
-);
+}));
 
 // DOTS & BOXES PvP GAME TABLE
 export const dotsAndBoxesGames = pgTable(
@@ -1979,13 +1844,10 @@ export const dotsAndBoxesGames = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    dotsStatusIdx: index("dots_and_boxes_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
+    dotsStatusIdx: index("dots_and_boxes_status_idx").on(table.status, table.createdAt),
     dotsHostIdx: index("dots_and_boxes_host_idx").on(table.hostClerkId),
     dotsGuestIdx: index("dots_and_boxes_guest_idx").on(table.guestClerkId),
-  }),
+  })
 );
 
 // BLACKJACK PvP MATCHES — server-authoritative Best-of-3 simultaneous
@@ -2033,10 +1895,11 @@ export const blackjackPvpStatusEnum = pgEnum("blackjack_pvp_status", [
   "cancelled",
 ]);
 
-export const blackjackPvpPlayerStateEnum = pgEnum(
-  "blackjack_pvp_player_state",
-  ["playing", "stood", "busted"],
-);
+export const blackjackPvpPlayerStateEnum = pgEnum("blackjack_pvp_player_state", [
+  "playing",
+  "stood",
+  "busted",
+]);
 
 export const blackjackPvpMatches = pgTable(
   "blackjack_pvp_matches",
@@ -2055,8 +1918,12 @@ export const blackjackPvpMatches = pgTable(
     // Live per-round transient state — both hands stored server-side
     // in JSONB. The match state route scrubs the OPPONENT's hand
     // before returning so cards stay hidden until the round resolves.
-    player1Hand: jsonb("player1_hand").notNull().default(sql`'[]'::jsonb`),
-    player2Hand: jsonb("player2_hand").notNull().default(sql`'[]'::jsonb`),
+    player1Hand: jsonb("player1_hand")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    player2Hand: jsonb("player2_hand")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // ── Original 2-card deal snapshot. Stamped the moment cards are
     // dealt (ready → round_1, between_rounds → round_(N+1)). NOT
     // updated by SWAP because a swap modifies the LIVE hand but the
@@ -2069,14 +1936,12 @@ export const blackjackPvpMatches = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     // Per-seat round action state.
-    player1State: blackjackPvpPlayerStateEnum("player1_state")
-      .notNull()
-      .default("playing"),
-    player2State: blackjackPvpPlayerStateEnum("player2_state")
-      .notNull()
-      .default("playing"),
+    player1State: blackjackPvpPlayerStateEnum("player1_state").notNull().default("playing"),
+    player2State: blackjackPvpPlayerStateEnum("player2_state").notNull().default("playing"),
     // Server-authoritative shoe. `deck[0]` is the next available card.
-    deck: jsonb("deck").notNull().default(sql`'[]'::jsonb`),
+    deck: jsonb("deck")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // ── Swap + Freeze (1 use per round, per seat) ──────────────────
     // The Swap action targets one of the hand's TWO ORIGINAL starting
     // cards (always at indices 0 and 1 because Hit pushes to the end).
@@ -2096,10 +1961,8 @@ export const blackjackPvpMatches = pgTable(
     player2UsedPeek: integer("player2_used_peek").notNull().default(0),
     player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
     player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
-    player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
-      .default(sql`NULL`),
-    player2HeldResolved: varchar("player2_held_resolved", { length: 10 })
-      .default(sql`NULL`),
+    player1HeldResolved: varchar("player1_held_resolved", { length: 10 }).default(sql`NULL`),
+    player2HeldResolved: varchar("player2_held_resolved", { length: 10 }).default(sql`NULL`),
     roundDeadline: timestamp("round_deadline"),
     // Final match bookkeeping. `winner` stores the userId of the
     // winning player (replaces the pre-refactor `winner_id`). The
@@ -2107,45 +1970,27 @@ export const blackjackPvpMatches = pgTable(
     // live on `result`.
     winner: varchar("winner", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     // Per-round turn-window duration in seconds (mirrors
     // roulette-pvp's `round_timer_seconds`). Match-flow constant:
     // `round_deadline` is computed as `now() + round_timer_seconds`
     // whenever a new betting window opens. Surfaced as a column so
     // future admin tooling can tweak a match's pacing without code.
-    roundTimerSeconds: integer("round_timer_seconds")
-      .notNull()
-      .default(20),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("blackjack_pvp_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("blackjack_pvp_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("blackjack_pvp_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
+    statusIdx: index("blackjack_pvp_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("blackjack_pvp_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("blackjack_pvp_player2_idx").on(table.player2Id, table.createdAt),
     // Stake matchmaking — finding a waiting lobby whose stake matches
     // the joiner's request.
-    stakeIdx: index("blackjack_pvp_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    stakeIdx: index("blackjack_pvp_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // Per-round final snapshots for replay/history. Cascades from the
@@ -2163,8 +2008,12 @@ export const blackjackPvpRounds = pgTable(
       .notNull()
       .references(() => blackjackPvpMatches.id, { onDelete: "cascade" }),
     roundNumber: integer("round_number").notNull(),
-    player1Hand: jsonb("player1_hand").notNull().default(sql`'[]'::jsonb`),
-    player2Hand: jsonb("player2_hand").notNull().default(sql`'[]'::jsonb`),
+    player1Hand: jsonb("player1_hand")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    player2Hand: jsonb("player2_hand")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Hand value as scored by `calcHandValue`; -1 for busted hands so a
     // busted hand always loses to a non-busted hand regardless of score.
     player1Score: integer("player1_score").notNull(),
@@ -2192,10 +2041,8 @@ export const blackjackPvpRounds = pgTable(
     player2UsedPeek: integer("player2_used_peek").notNull().default(0),
     player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
     player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
-    player1HeldResolved: varchar("player1_held_resolved", { length: 10 })
-      .default(sql`NULL`),
-    player2HeldResolved: varchar("player2_held_resolved", { length: 10 })
-      .default(sql`NULL`),
+    player1HeldResolved: varchar("player1_held_resolved", { length: 10 }).default(sql`NULL`),
+    player2HeldResolved: varchar("player2_held_resolved", { length: 10 }).default(sql`NULL`),
     // 'player1' | 'player2' | 'draw' | null
     roundWinner: varchar("round_winner", { length: 10 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2203,27 +2050,21 @@ export const blackjackPvpRounds = pgTable(
   (table) => ({
     matchRoundIdx: index("blackjack_pvp_rounds_match_round_idx").on(
       table.matchId,
-      table.roundNumber,
+      table.roundNumber
     ),
-  }),
+  })
 );
 
-export const blackjackPvpMatchesRelations = relations(
-  blackjackPvpMatches,
-  ({ many }) => ({
-    rounds: many(blackjackPvpRounds),
-  }),
-);
+export const blackjackPvpMatchesRelations = relations(blackjackPvpMatches, ({ many }) => ({
+  rounds: many(blackjackPvpRounds),
+}));
 
-export const blackjackPvpRoundsRelations = relations(
-  blackjackPvpRounds,
-  ({ one }) => ({
-    match: one(blackjackPvpMatches, {
-      fields: [blackjackPvpRounds.matchId],
-      references: [blackjackPvpMatches.id],
-    }),
+export const blackjackPvpRoundsRelations = relations(blackjackPvpRounds, ({ one }) => ({
+  match: one(blackjackPvpMatches, {
+    fields: [blackjackPvpRounds.matchId],
+    references: [blackjackPvpMatches.id],
   }),
-);
+}));
 
 // MINES PvP MATCHES — server-authoritative two-player "Mines Duel".
 // Both players on the same 5×5 board; the HOST picks the mine count
@@ -2290,8 +2131,7 @@ export const minesPvpMatches = pgTable(
     id: serial("id").primaryKey(),
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
-      .notNull(),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: minesPvpStatusEnum("status").notNull().default("waiting"),
     // Host-chosen mine count at lobby creation (1-24, since 25 would
     // be 100% mines and an instant loss for every pick).
@@ -2344,7 +2184,9 @@ export const minesPvpMatches = pgTable(
     // (`activePickerForMatch`). Mirrored onto `mines_pvp_rounds.
     // picks` at match resolution for post-match replays. See
     // src/db/migrations/0050_mines_pvp_odds_turns.sql.
-    picks: jsonb("picks").notNull().default(sql`'[]'::jsonb`),
+    picks: jsonb("picks")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Pick-window deadline. 20s per spec. The server's
     // `fetchMatchWithAutoResolve` mirrors blackjack-pvp /
     // roulette-pvp: when this timestamp elapses and the active
@@ -2353,18 +2195,12 @@ export const minesPvpMatches = pgTable(
     // 20 seconds default per spec. Stored on the row for parity
     // with roulette-pvp.round_timer_seconds and admin-tweakable
     // without code changes.
-    roundTimerSeconds: integer("round_timer_seconds")
-      .notNull()
-      .default(20),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     isAi: boolean("is_ai").notNull().default(false),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
@@ -2372,27 +2208,15 @@ export const minesPvpMatches = pgTable(
   },
   (table) => ({
     // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("mines_pvp_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("mines_pvp_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("mines_pvp_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
+    statusIdx: index("mines_pvp_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("mines_pvp_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("mines_pvp_player2_idx").on(table.player2Id, table.createdAt),
     // Stake matchmaking — finding a waiting lobby whose stake
     // matches the joiner's request. `stake + status='waiting' +
     // player2 IS NULL` is the canonical "join any open match of
     // this stake" query.
-    stakeIdx: index("mines_pvp_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    stakeIdx: index("mines_pvp_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // Per-match final snapshot. Cascade-deleted with the parent match so
@@ -2426,7 +2250,9 @@ export const minesPvpRounds = pgTable(
     // without re-walking the live match row. Shape of each entry
     // matches the `mines_pvp_matches.picks` element shape —
     // see that column for the contract.
-    picks: jsonb("picks").notNull().default(sql`'[]'::jsonb`),
+    picks: jsonb("picks")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // 'player1' | 'player2' | 'draw' | null
     roundWinner: varchar("round_winner", { length: 10 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2435,29 +2261,20 @@ export const minesPvpRounds = pgTable(
     // Lookup is always "all rounds of match X in order" so a
     // composite index on (match_id, round_number) is the right
     // shape (mirrors roulette_pvp_rounds_match_round_idx).
-    matchRoundIdx: index("mines_pvp_rounds_match_round_idx").on(
-      table.matchId,
-      table.roundNumber,
-    ),
-  }),
+    matchRoundIdx: index("mines_pvp_rounds_match_round_idx").on(table.matchId, table.roundNumber),
+  })
 );
 
-export const minesPvpMatchesRelations = relations(
-  minesPvpMatches,
-  ({ many }) => ({
-    rounds: many(minesPvpRounds),
-  }),
-);
+export const minesPvpMatchesRelations = relations(minesPvpMatches, ({ many }) => ({
+  rounds: many(minesPvpRounds),
+}));
 
-export const minesPvpRoundsRelations = relations(
-  minesPvpRounds,
-  ({ one }) => ({
-    match: one(minesPvpMatches, {
-      fields: [minesPvpRounds.matchId],
-      references: [minesPvpMatches.id],
-    }),
+export const minesPvpRoundsRelations = relations(minesPvpRounds, ({ one }) => ({
+  match: one(minesPvpMatches, {
+    fields: [minesPvpRounds.matchId],
+    references: [minesPvpMatches.id],
   }),
-);
+}));
 
 // ── MEMORY GRID ────────────────────────────────────────────────────────
 // Server-authoritative two-player "Memory Grid" — pure pattern
@@ -2497,8 +2314,7 @@ export const memoryGridMatches = pgTable(
     id: serial("id").primaryKey(),
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
-      .notNull(),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: memoryGridStatusEnum("status").notNull().default("waiting"),
     // True for free human-vs-AI matches. The bot occupies player2Id
     // but is not a real user and must never receive token/stat updates.
@@ -2572,7 +2388,9 @@ export const memoryGridMatches = pgTable(
     //     submittedAt: ISO ts }
     // Reset each round; completed rounds are snapshotted into
     // memory_grid_rounds.
-    flips: jsonb("flips").notNull().default(sql`'[]'::jsonb`),
+    flips: jsonb("flips")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Phase deadline (absolute). During 'memorize' it's the moment
     // the pattern hides (now + memorizeMs); during 'reconstruct' it's
     // the moment the player's selection locks (now +
@@ -2585,43 +2403,25 @@ export const memoryGridMatches = pgTable(
     // the row for parity with mines_pvp_matches.round_timer_seconds
     // and admin-tweakable without code changes. Memorize durations
     // come from ROUND_CONFIGS (they vary per round).
-    roundTimerSeconds: integer("round_timer_seconds")
-      .notNull()
-      .default(15),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(15),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("memory_grid_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("memory_grid_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("memory_grid_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
+    statusIdx: index("memory_grid_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("memory_grid_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("memory_grid_player2_idx").on(table.player2Id, table.createdAt),
     // Stake matchmaking — finding a waiting lobby whose stake
     // matches the joiner's request.
-    stakeIdx: index("memory_grid_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    stakeIdx: index("memory_grid_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // Per-round final snapshot. Cascade-deleted with the parent match so
@@ -2645,7 +2445,9 @@ export const memoryGridRounds = pgTable(
       .default(sql`'{"size":3,"total":9,"active":[]}'::jsonb`),
     // Full chronological reconstruction-submission list of the round
     // (one entry per player), mirrored at completion for replay views.
-    flips: jsonb("flips").notNull().default(sql`'[]'::jsonb`),
+    flips: jsonb("flips")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     p1RoundScore: integer("p1_round_score").notNull().default(0),
     p2RoundScore: integer("p2_round_score").notNull().default(0),
     // 'player1' | 'player2' | 'draw' | null
@@ -2656,29 +2458,20 @@ export const memoryGridRounds = pgTable(
     // Lookup is always "all rounds of match X in order" so a
     // composite index on (match_id, round_number) is the right
     // shape.
-    matchRoundIdx: index("memory_grid_rounds_match_round_idx").on(
-      table.matchId,
-      table.roundNumber,
-    ),
-  }),
+    matchRoundIdx: index("memory_grid_rounds_match_round_idx").on(table.matchId, table.roundNumber),
+  })
 );
 
-export const memoryGridMatchesRelations = relations(
-  memoryGridMatches,
-  ({ many }) => ({
-    rounds: many(memoryGridRounds),
-  }),
-);
+export const memoryGridMatchesRelations = relations(memoryGridMatches, ({ many }) => ({
+  rounds: many(memoryGridRounds),
+}));
 
-export const memoryGridRoundsRelations = relations(
-  memoryGridRounds,
-  ({ one }) => ({
-    match: one(memoryGridMatches, {
-      fields: [memoryGridRounds.matchId],
-      references: [memoryGridMatches.id],
-    }),
+export const memoryGridRoundsRelations = relations(memoryGridRounds, ({ one }) => ({
+  match: one(memoryGridMatches, {
+    fields: [memoryGridRounds.matchId],
+    references: [memoryGridMatches.id],
   }),
-);
+}));
 
 // LANE RUSH DUEL — server-authoritative two-player "Lane Rush Duel".
 // Both players race the SAME shared provably-fair tower (bad tile
@@ -2726,8 +2519,7 @@ export const laneRushDuelMatches = pgTable(
     id: serial("id").primaryKey(),
     player1Id: varchar("player1_id", { length: 255 }).notNull(),
     player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 })
-      .notNull(),
+    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: laneRushDuelStatusEnum("status").notNull().default("waiting"),
     // Host-chosen difficulty at lobby creation; the joiner consumes
     // whatever the host picked (mirrors mines-pvp minesCount).
@@ -2752,8 +2544,12 @@ export const laneRushDuelMatches = pgTable(
     p1ClientSeed: varchar("p1_client_seed", { length: 128 }).notNull(),
     p2ClientSeed: varchar("p2_client_seed", { length: 128 }),
     // Bad tile per lane for each player (server-only mid-match).
-    p1Tower: jsonb("p1_tower").notNull().default(sql`'[]'::jsonb`),
-    p2Tower: jsonb("p2_tower").notNull().default(sql`'[]'::jsonb`),
+    p1Tower: jsonb("p1_tower")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    p2Tower: jsonb("p2_tower")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Current lane (0..8) + hold flag per seat. lane === 8 means
     // the tower is complete (auto-banked at the top).
     p1Lane: integer("p1_lane").notNull().default(0),
@@ -2770,46 +2566,30 @@ export const laneRushDuelMatches = pgTable(
     p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
     // Chronological action history: [{ userId, seat, action:
     // "pick"|"hold", tile, safe, lane, multiplier, autoPicked, at }]
-    actions: jsonb("actions").notNull().default(sql`'[]'::jsonb`),
+    actions: jsonb("actions")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Pick-window deadline (20s per turn).
     roundDeadline: timestamp("round_deadline"),
-    roundTimerSeconds: integer("round_timer_seconds")
-      .notNull()
-      .default(20),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("lane_rush_duel_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
-    player1Idx: index("lane_rush_duel_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("lane_rush_duel_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
+    statusIdx: index("lane_rush_duel_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("lane_rush_duel_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("lane_rush_duel_player2_idx").on(table.player2Id, table.createdAt),
     // Stake matchmaking — finding a waiting lobby whose stake
     // matches the joiner's request.
-    stakeIdx: index("lane_rush_duel_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    stakeIdx: index("lane_rush_duel_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // PLINKO PvP MATCHES — server-authoritative two-player "Plinko Duel".
@@ -2869,11 +2649,7 @@ export const plinkoPvpStatusEnum = pgEnum("plinko_pvp_status", [
 // Per-ball outcome (who scored more points for this ball, or tie).
 // Distinct from the match-level `winner_id` (which is a clerkId).
 // Stored on each `plinko_pvp_rounds` row at resolution time.
-export const plinkoPvpBallOutcomeEnum = pgEnum("plinko_pvp_ball_outcome", [
-  "p1",
-  "p2",
-  "tie",
-]);
+export const plinkoPvpBallOutcomeEnum = pgEnum("plinko_pvp_ball_outcome", ["p1", "p2", "tie"]);
 
 export const plinkoPvpMatches = pgTable(
   "plinko_pvp_matches",
@@ -2916,46 +2692,28 @@ export const plinkoPvpMatches = pgTable(
     // code changes (mirrors mines-pvp / roulette-pvp /
     // blackjack-pvp).
     roundDeadline: timestamp("round_deadline"),
-    roundTimerSeconds: integer("round_timer_seconds")
-      .notNull()
-      .default(20),
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("plinko_pvp_status_idx").on(
-      table.status,
-      table.createdAt,
-    ),
+    statusIdx: index("plinko_pvp_status_idx").on(table.status, table.createdAt),
     // Per-player history (matches the mines-pvp / blackjack-pvp
     // / roulette-pvp convention).
-    player1Idx: index("plinko_pvp_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("plinko_pvp_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
+    player1Idx: index("plinko_pvp_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("plinko_pvp_player2_idx").on(table.player2Id, table.createdAt),
     // Stake matchmaking — finding a waiting lobby whose stake
     // matches the joiner's request. Same shape as the other PvP
     // stake_open_idx columns.
-    stakeIdx: index("plinko_pvp_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    stakeIdx: index("plinko_pvp_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // One row per ball of a Plinko Duel match (3 rows per match).
@@ -2997,22 +2755,14 @@ export const plinkoPvpRounds = pgTable(
     // True when the server auto-launched because round_deadline
     // elapsed before the player committed. Persisted for history
     // and replay so a spectator can see when a player went AFK.
-    player1AutoLaunched: boolean("player1_auto_launched")
-      .notNull()
-      .default(false),
-    player2AutoLaunched: boolean("player2_auto_launched")
-      .notNull()
-      .default(false),
+    player1AutoLaunched: boolean("player1_auto_launched").notNull().default(false),
+    player2AutoLaunched: boolean("player2_auto_launched").notNull().default(false),
     // Per-ball base-points awarded. Same values as
     // player{1,2}_result.points at resolution time, exposed as
     // a column so aggregate-totals queries can sum without
     // unpacking jsonb.
-    ballPointsPlayer1: integer("ball_points_player1")
-      .notNull()
-      .default(0),
-    ballPointsPlayer2: integer("ball_points_player2")
-      .notNull()
-      .default(0),
+    ballPointsPlayer1: integer("ball_points_player1").notNull().default(0),
+    ballPointsPlayer2: integer("ball_points_player2").notNull().default(0),
     // Per-ball outcome ('player1' | 'player2' | 'draw') — null
     // while the ball is in flight. NOTE: match-level `result`
     // is the AGGREGATE across all 3 balls, so per-ball `draw`
@@ -3021,33 +2771,24 @@ export const plinkoPvpRounds = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    matchBallIdx: index("plinko_pvp_rounds_match_ball_idx").on(
-      table.matchId,
-      table.ballNumber,
-    ),
-  }),
+    matchBallIdx: index("plinko_pvp_rounds_match_ball_idx").on(table.matchId, table.ballNumber),
+  })
 );
 
 // Drizzle relations — declared after the tables so all symbols
 // are bound before `relations(...)` runs. Relations are read at
 // query time, not module-load, so the position is purely about
 // lexical ordering for the TS compiler.
-export const plinkoPvpMatchesRelations = relations(
-  plinkoPvpMatches,
-  ({ many }) => ({
-    rounds: many(plinkoPvpRounds),
-  }),
-);
+export const plinkoPvpMatchesRelations = relations(plinkoPvpMatches, ({ many }) => ({
+  rounds: many(plinkoPvpRounds),
+}));
 
-export const plinkoPvpRoundsRelations = relations(
-  plinkoPvpRounds,
-  ({ one }) => ({
-    match: one(plinkoPvpMatches, {
-      fields: [plinkoPvpRounds.matchId],
-      references: [plinkoPvpMatches.id],
-    }),
+export const plinkoPvpRoundsRelations = relations(plinkoPvpRounds, ({ one }) => ({
+  match: one(plinkoPvpMatches, {
+    fields: [plinkoPvpRounds.matchId],
+    references: [plinkoPvpMatches.id],
   }),
-);
+}));
 
 // ── KENO PvP ("Keno Catch Duel") ─────────────────────────────────────
 // 1v1 skill keno: both players face the SAME shared 10-ball draw each
@@ -3126,31 +2867,18 @@ export const kenoPvpMatches = pgTable(
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 })
-      .notNull()
-      .default("0.00"),
+    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
     statusIdx: index("keno_pvp_status_idx").on(table.status, table.createdAt),
-    player1Idx: index("keno_pvp_player1_idx").on(
-      table.player1Id,
-      table.createdAt,
-    ),
-    player2Idx: index("keno_pvp_player2_idx").on(
-      table.player2Id,
-      table.createdAt,
-    ),
-    stakeIdx: index("keno_pvp_stake_open_idx").on(
-      table.stakeAmount,
-      table.status,
-    ),
-  }),
+    player1Idx: index("keno_pvp_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("keno_pvp_player2_idx").on(table.player2Id, table.createdAt),
+    stakeIdx: index("keno_pvp_stake_open_idx").on(table.stakeAmount, table.status),
+  })
 );
 
 // One row per round of a Keno PvP match (up to 5 rows per match).
@@ -3167,11 +2895,17 @@ export const kenoPvpRounds = pgTable(
     roundNumber: integer("round_number").notNull(),
     // The shared draw for this round (server-generated, both players
     // see the identical stream).
-    sharedDraw: jsonb("shared_draw").notNull().default(sql`'[]'::jsonb`),
+    sharedDraw: jsonb("shared_draw")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Per-player catch snapshots — { number, quality, caughtAt } per
     // caught ball. Lets the client replay the round identically.
-    player1Catches: jsonb("player1_catches").notNull().default(sql`'[]'::jsonb`),
-    player2Catches: jsonb("player2_catches").notNull().default(sql`'[]'::jsonb`),
+    player1Catches: jsonb("player1_catches")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    player2Catches: jsonb("player2_catches")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Per-round scores — exposed as columns so aggregate-totals
     // queries can sum without unpacking jsonb.
     player1Score: integer("player1_score").notNull().default(0),
@@ -3183,26 +2917,132 @@ export const kenoPvpRounds = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    matchRoundIdx: index("keno_pvp_rounds_match_round_idx").on(
-      table.matchId,
-      table.roundNumber,
+    matchRoundIdx: index("keno_pvp_rounds_match_round_idx").on(table.matchId, table.roundNumber),
+  })
+);
+
+export const kenoPvpMatchesRelations = relations(kenoPvpMatches, ({ many }) => ({
+  rounds: many(kenoPvpRounds),
+}));
+
+export const kenoPvpRoundsRelations = relations(kenoPvpRounds, ({ one }) => ({
+  match: one(kenoPvpMatches, {
+    fields: [kenoPvpRounds.matchId],
+    references: [kenoPvpMatches.id],
+  }),
+}));
+
+// STRIPE TOKEN PURCHASES
+// ==============================================================================
+//
+// Virtual-token top-up economy. Tokens are NOT a second currency — they live
+// in the existing `users.balance` column and are bought with real money via
+// Stripe Checkout. Two tables back up the flow:
+//
+//   * token_packages            — the purchasable catalog (server-resolved
+//     price -> token amount). Admin-managed; every Stripe session derives its
+//     price from a row here, never from the client.
+//   * stripe_checkout_sessions  — durable ledger of every Checkout Session we
+//     create. `session_id` is UNIQUE so webhook events are idempotent at the
+//     database level (a replay can never double-credit). `fulfilled` flips
+//     exactly once when tokens are credited.
+//
+// Creating sessions and crediting `users.balance` are server-authoritative
+// only. See src/lib/tokens/creditTokens.ts (shared credit authority) and
+// src/app/api/stripe/* (checkout + webhook routes).
+
+export const tokenPackages = pgTable(
+  "token_packages",
+  {
+    id: serial("id").primaryKey(),
+    // Stable slug used in URLs, session metadata and admin tooling.
+    key: varchar("key", { length: 120 }).notNull().unique(),
+    name: varchar("name", { length: 255 }).notNull(),
+    tokenAmount: bigint("token_amount", { mode: "number" }).notNull(),
+    // Optional bonus tokens awarded on top of tokenAmount.
+    bonusTokens: bigint("bonus_tokens", { mode: "number" }).notNull().default(0),
+    priceCents: integer("price_cents").notNull(),
+    // Real Stripe Product + one-time Price ids backing this package. Populated
+    // (created/persisted) lazily by src/lib/stripe/packages.ts the first time
+    // the package is purchased, so every sale references a real Stripe price
+    // rather than a client-trusted inline one. Both are nullable — empty means
+    // "not yet created in Stripe".
+    stripeProductId: varchar("stripe_product_id", { length: 255 }),
+    stripePriceId: varchar("stripe_price_id", { length: 255 }),
+    badge: varchar("badge", { length: 40 }),
+    enabled: boolean("enabled").notNull().default(true),
+    // Marketing flag to highlight the recommended / best-value offer in the shop.
+    // Purely cosmetic positioning — it changes no price, award, or logic.
+    featured: boolean("featured").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sortIdx: index("token_packages_sort_idx").on(table.enabled, table.sortOrder),
+  })
+);
+
+export const stripeCheckoutSessions = pgTable(
+  "stripe_checkout_sessions",
+  {
+    id: serial("id").primaryKey(),
+    // Stripe's Checkout Session id; UNIQUE so webhook credit is DB-idempotent.
+    sessionId: varchar("session_id", { length: 128 }).notNull().unique(),
+    // Stripe PaymentIntent + Customer ids, captured from the completed session
+    // for reconciliation / disputes. Null until the charge/async completes.
+    paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+    customerId: varchar("customer_id", { length: 255 }),
+    clerkId: varchar("clerk_id", { length: 255 }).notNull(),
+    packageKey: varchar("package_key", { length: 120 }),
+    tokenAmount: bigint("token_amount", { mode: "number" }).notNull().default(0),
+    amountCents: integer("amount_cents").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("usd"),
+    paymentStatus: varchar("payment_status", { length: 30 }).notNull().default("open"),
+    fulfilled: boolean("fulfilled").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    clerkIdx: index("stripe_checkout_sessions_clerk_idx").on(table.clerkId, table.createdAt),
+    fulfilledIdx: index("stripe_checkout_sessions_fulfilled_idx").on(
+      table.fulfilled,
+      table.sessionId
     ),
-  }),
+  })
 );
 
-export const kenoPvpMatchesRelations = relations(
-  kenoPvpMatches,
-  ({ many }) => ({
-    rounds: many(kenoPvpRounds),
-  }),
-);
+// TOKEN TRANSACTION HISTORY
+// ==============================================================================
+// Durable, auditable record of every token credit/debit flowing through the
+// virtual-token economy (Stripe purchases, and any shop spend added later).
+// One row per token-mutating operation, written inside the same database
+// transaction as the balance change so the ledger can never disagree with
+// `users.balance`. `type = 'purchase'` rows carry the Stripe session id as
+// their reference for reconciliation.
 
-export const kenoPvpRoundsRelations = relations(
-  kenoPvpRounds,
-  ({ one }) => ({
-    match: one(kenoPvpMatches, {
-      fields: [kenoPvpRounds.matchId],
-      references: [kenoPvpMatches.id],
-    }),
-  }),
+export const tokenTransactionTypeEnum = pgEnum("token_transaction_type", [
+  "purchase",
+  "spend",
+  "refund",
+]);
+
+export const tokenTransactions = pgTable(
+  "token_transactions",
+  {
+    id: serial("id").primaryKey(),
+    clerkId: varchar("clerk_id", { length: 255 }).notNull(),
+    type: tokenTransactionTypeEnum("type").notNull(),
+    // Signed delta (− spend, + purchase/refund).
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    // Where this change came from — e.g. a Stripe Checkout Session id.
+    referenceType: varchar("reference_type", { length: 40 }),
+    referenceId: varchar("reference_id", { length: 128 }),
+    note: text("note"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("token_transactions_user_idx").on(table.clerkId, table.createdAt),
+    refIdx: index("token_transactions_ref_idx").on(table.referenceType, table.referenceId),
+  })
 );

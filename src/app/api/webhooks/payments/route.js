@@ -30,12 +30,10 @@
 // this exact signed envelope directly.
 
 import { NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
-import { db } from "../../../../db/client";
-import { users } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
 import { claimIdempotency } from "../../../../lib/security/idempotency";
+import { creditUserBalance } from "../../../../lib/tokens/creditTokens";
 import {
   verifyPaymentSignature,
   verifyWebhookTimestamp,
@@ -152,14 +150,11 @@ async function handlePaymentWebhook(req) {
     return NextResponse.json({ success: true, duplicate: true });
   }
 
-  // 4) Atomic credit — server-side only, amount validated above.
-  const [updated] = await db
-    .update(users)
-    .set({ balance: sql`${users.balance} + ${Number(amountNum.toFixed(2))}` })
-    .where(eq(users.clerkId, userId))
-    .returning({ balance: users.balance });
+  // 4) Atomic credit through the SHARED authority (server-side only,
+  //    amount validated above). Single place tokens enter a balance.
+  const newBalance = await creditUserBalance(userId, amountNum);
 
-  if (!updated) {
+  if (newBalance === null) {
     auditLog("webhook_payment_user_not_found", {
       userId,
       transactionId,
@@ -175,8 +170,8 @@ async function handlePaymentWebhook(req) {
     userId,
     amount: amountNum,
     transactionId,
-    newBalance: Number(updated.balance),
+    newBalance,
   });
 
-  return NextResponse.json({ success: true, newBalance: Number(updated.balance) });
+  return NextResponse.json({ success: true, newBalance });
 }

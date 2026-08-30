@@ -32,6 +32,7 @@ export default function ProfilePage() {
     profilePicture: "",
   });
   const [bets, setBets] = useState([]);
+  const [purchases, setPurchases] = useState([]);
   const [error, setError] = useState(null);
 
   const [stats, setStats] = useState(null);
@@ -107,7 +108,7 @@ export default function ProfilePage() {
     if (!spectateOverlayUrl || spectateIsLoaded || spectateLoadError) return;
     const timeoutId = setTimeout(() => {
       setSpectateLoadError(
-        "Spectate view timed out. Please retry or ask your friend to reopen the game.",
+        "Spectate view timed out. Please retry or ask your friend to reopen the game."
       );
     }, 10000);
     return () => clearTimeout(timeoutId);
@@ -195,8 +196,7 @@ export default function ProfilePage() {
     if (tokensData.success && tokensData.data) {
       setUserTokens(Number(tokensData.data.balance || 0));
       const name = tokensData.data.name || user?.fullName || "Unknown user";
-      const email =
-        tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
+      const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
       const profilePicture = tokensData.data.profilePicture || "";
       setProfileInfo({ name, email, profilePicture });
       setEditForm((prev) => ({ ...prev, name, email, profilePicture }));
@@ -209,12 +209,21 @@ export default function ProfilePage() {
     const historyData = await historyResponse.json();
 
     if (historyData.success && Array.isArray(historyData.bets)) {
-      const sorted = historyData.bets.sort(
-        (a, b) => new Date(b.date) - new Date(a.date),
-      );
+      const sorted = historyData.bets.sort((a, b) => new Date(b.date) - new Date(a.date));
       setBets(sorted.slice(0, 10));
     } else {
       setBets([]);
+    }
+
+    const purchaseResponse = await fetch("/api/get-purchase-history", {
+      method: "GET",
+      credentials: "include",
+    });
+    const purchaseData = await purchaseResponse.json();
+    if (purchaseData.success && Array.isArray(purchaseData.purchases)) {
+      setPurchases(purchaseData.purchases);
+    } else {
+      setPurchases([]);
     }
   };
 
@@ -393,9 +402,7 @@ export default function ProfilePage() {
 
     if (
       presence?.presenceState === "in_game" ||
-      (normalizedGameKey &&
-        presence?.gameId !== null &&
-        presence?.gameId !== undefined)
+      (normalizedGameKey && presence?.gameId !== null && presence?.gameId !== undefined)
     ) {
       return {
         state: "in_game",
@@ -421,8 +428,7 @@ export default function ProfilePage() {
         body: JSON.stringify({ friendId }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success)
-        throw new Error(data.error || "Failed to add friend");
+      if (!response.ok || !data.success) throw new Error(data.error || "Failed to add friend");
       setFriendsStatus(data.message || "Friend invite sent.");
       await loadFriendInvites();
     } catch (err) {
@@ -431,8 +437,7 @@ export default function ProfilePage() {
     }
   };
 
-  const profileAvatar = (person) =>
-    person?.profile_picture || person?.profilePicture || "";
+  const profileAvatar = (person) => person?.profile_picture || person?.profilePicture || "";
 
   const isAllowedSpectateUrl = (url) => {
     if (!url || typeof url !== "string") return false;
@@ -458,8 +463,7 @@ export default function ProfilePage() {
       return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
     if (gameKey === "connect-four")
       return `/casino/connect-four/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
-    if (gameKey === "poker")
-      return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
+    if (gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
     return null;
   };
 
@@ -476,11 +480,7 @@ export default function ProfilePage() {
       if (!response.ok || !data.success)
         throw new Error(data.error || "Failed to respond to invite");
       setFriendsStatus(data.message || "Invite updated.");
-      await Promise.all([
-        loadFriends(),
-        loadFriendInvites(),
-        loadFriendPresence(),
-      ]);
+      await Promise.all([loadFriends(), loadFriendInvites(), loadFriendPresence()]);
     } catch (err) {
       console.error("[RESPOND_FRIEND_INVITE_ERROR]", err);
       setFriendsStatus(err.message || "Could not update invite.");
@@ -644,9 +644,7 @@ export default function ProfilePage() {
 
   const handleCopyReferralCode = async () => {
     if (!stats?.referralCode) {
-      setReferralStatus(
-        "No referral code found yet. Please wait a second and try again.",
-      );
+      setReferralStatus("No referral code found yet. Please wait a second and try again.");
       return;
     }
 
@@ -732,8 +730,7 @@ export default function ProfilePage() {
       const normalizedCurrentPicture = String(profileInfo.profilePicture || "");
       const normalizedNewPicture = String(editForm.profilePicture || "");
 
-      if (normalizedName && normalizedName !== normalizedCurrentName)
-        payload.name = normalizedName;
+      if (normalizedName && normalizedName !== normalizedCurrentName) payload.name = normalizedName;
       if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail)
         payload.email = normalizedEmail;
       if (normalizedPassword) payload.password = normalizedPassword;
@@ -789,9 +786,7 @@ export default function ProfilePage() {
     // FileReader. Mirrors the server-side allowlist in
     // src/lib/security/media.js.
     if (!ALLOWED_IMAGE_MIME.has(file.type)) {
-      setEditStatus(
-        "Please select a PNG, JPEG, WebP, GIF or AVIF image file.",
-      );
+      setEditStatus("Please select a PNG, JPEG, WebP, GIF or AVIF image file.");
       return;
     }
 
@@ -805,8 +800,7 @@ export default function ProfilePage() {
       new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () =>
-          reject(new Error("Could not read the selected file."));
+        reader.onerror = () => reject(new Error("Could not read the selected file."));
         reader.readAsDataURL(fileToRead);
       });
 
@@ -821,15 +815,11 @@ export default function ProfilePage() {
           canvas.width = Math.max(1, Math.round(width * scale));
           canvas.height = Math.max(1, Math.round(height * scale));
           const ctx = canvas.getContext("2d");
-          if (!ctx)
-            return reject(
-              new Error("Image processing is not supported in this browser."),
-            );
+          if (!ctx) return reject(new Error("Image processing is not supported in this browser."));
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           resolve(canvas.toDataURL("image/jpeg", quality));
         };
-        img.onerror = () =>
-          reject(new Error("Could not process the selected image."));
+        img.onerror = () => reject(new Error("Could not process the selected image."));
         img.src = dataUrl;
       });
 
@@ -907,9 +897,7 @@ export default function ProfilePage() {
     return (
       <div className="flex h-screen items-center justify-center bg-[#003366]">
         <div className="text-center">
-          <p className="mb-4 text-xl text-gray-300">
-            Connectez-vous pour voir votre profil
-          </p>
+          <p className="mb-4 text-xl text-gray-300">Connectez-vous pour voir votre profil</p>
           <a
             href="/sign-in?redirect_url=/profil"
             className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#003366]"
@@ -952,7 +940,10 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                   setSelectedProfileImageName("");
                   setIsEditOpen(true);
                 }}
-                className={cyberButton + " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}
+                className={
+                  cyberButton +
+                  " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                }
               >
                 Edit Profile
               </button>
@@ -969,38 +960,35 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                   className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
 shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg font-bold"
                 >
-                  {(profileInfo.name || user.fullName || "U")
-                    .charAt(0)
-                    .toUpperCase()}
+                  {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
                 </div>
               )}
               <div>
                 <div className="flex items-center gap-2">
-                  <p>
-                    Name : {profileInfo.name || user.fullName || "Unknown user"}
-                  </p>
-                  {(specialTitles.selectedSpecialTitleName ||
-                    titleMeta.selectedTitle) && (
+                  <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+                  {(specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle) && (
                     <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
-                      {specialTitles.selectedSpecialTitleName ||
-                        titleMeta.selectedTitle}
+                      {specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle}
                     </span>
                   )}
                 </div>
-                <p>
-                  Email :{" "}
-                  {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}
-                </p>
+                <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
                 {/* Streak info line */}
                 <p className="text-xs text-amber-300 mt-1">
-                  <svg className="w-3.5 h-3.5 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg> Daily Streak: {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}{" "}
-                  (Best: {streakState.dailyStreakBest})
+                  <svg
+                    className="w-3.5 h-3.5 inline text-amber-400"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
+                  </svg>{" "}
+                  Daily Streak: {streakState.dailyStreakCurrent} day
+                  {(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""} (Best:{" "}
+                  {streakState.dailyStreakBest})
                 </p>
               </div>
             </div>
-            <p>
-              Membre depuis : {new Date(user.createdAt).toLocaleDateString()}
-            </p>
+            <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
           </div>
 
           <div
@@ -1037,17 +1025,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           </div>
           <div className="mt-2 flex justify-between text-sm text-gray-300">
             <span>
-              {Number(
-                stats?.levelProgress?.prevLevelRequired ?? 0,
-              ).toLocaleString()}{" "}
-              wagered
+              {Number(stats?.levelProgress?.prevLevelRequired ?? 0).toLocaleString()} wagered
             </span>
             <span>{levelProgressPercent.toFixed(2)}%</span>
             <span>
-              {Number(
-                stats?.levelProgress?.nextLevelRequired ?? 0,
-              ).toLocaleString()}{" "}
-              next level
+              {Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} next level
             </span>
           </div>
         </div>
@@ -1075,224 +1057,254 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           {titlesOpen && (
             <div id="titles-section-body" className="mt-4">
               <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setTitlesView("special")}
-                className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
-                  titlesView === "special"
-                    ? "bg-fuchsia-500 text-white"
-                    : "bg-white/10 text-gray-300"
-                }`}
-              >
-                Special Titles
-              </button>
+                <button
+                  onClick={() => setTitlesView("special")}
+                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                    titlesView === "special"
+                      ? "bg-fuchsia-500 text-white"
+                      : "bg-white/10 text-gray-300"
+                  }`}
+                >
+                  Special Titles
+                </button>
 
-              <button
-                onClick={() => setTitlesView("vip")}
-                className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
-                  titlesView === "vip"
-                    ? "bg-cyan-500 text-white"
-                    : "bg-white/10 text-gray-300"
-                }`}
-              >
-                VIP Titles
-              </button>
-              <button
-                onClick={() => setTitlesView("streak")}
-                className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
-                  titlesView === "streak"
-                    ? "bg-amber-500 text-black"
-                    : "bg-white/10 text-gray-300"
-                }`}
-              >
-                Streak Titles <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
-              </button>
+                <button
+                  onClick={() => setTitlesView("vip")}
+                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                    titlesView === "vip" ? "bg-cyan-500 text-white" : "bg-white/10 text-gray-300"
+                  }`}
+                >
+                  VIP Titles
+                </button>
+                <button
+                  onClick={() => setTitlesView("streak")}
+                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                    titlesView === "streak"
+                      ? "bg-amber-500 text-black"
+                      : "bg-white/10 text-gray-300"
+                  }`}
+                >
+                  Streak Titles{" "}
+                  <svg
+                    className="w-4 h-4 inline text-amber-400"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
+                  </svg>
+                </button>
               </div>
 
               {titlesView === "special" && (
-            <div className="grid gap-3 md:grid-cols-2">
-              {(specialTitles.titles || []).map((title) => {
-                const isUnlocked = !!title.unlocked;
-                const isEquipped =
-                  specialTitles.selectedSpecialTitle === title.key;
+                <div className="grid gap-3 md:grid-cols-2">
+                  {(specialTitles.titles || []).map((title) => {
+                    const isUnlocked = !!title.unlocked;
+                    const isEquipped = specialTitles.selectedSpecialTitle === title.key;
 
-                return (
-                  <button
-                    key={title.key}
-                    disabled={!isUnlocked}
-                    onClick={() =>
-                      handleEquipSpecialTitle(isEquipped ? "" : title.key)
-                    }
-                    className={[
-                      "rounded-lg border p-3 text-left transition",
-                      isUnlocked
-                        ? "border-fuchsia-300/45 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
-                        : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
-                      isEquipped ? "ring-2 ring-yellow-300" : "",
-                    ].join(" ")}
-                  >
-                    <p className="text-xs uppercase tracking-widest text-slate-300">
-                      {title.rarity}
-                    </p>
-
-                    <p className="font-semibold text-white">
-                      {isUnlocked ? title.name : "?????"}
-                    </p>
-
-                    <p className="text-xs text-slate-300">
-                      {isUnlocked ? title.description : "Locked secret title"}
-                    </p>
-
-                    {isEquipped && (
-                      <p className="mt-2 text-yellow-300 text-xs">
-                        Click again to unequip
-                      </p>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {titlesView === "streak" && (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-amber-300/40 bg-amber-500/10 p-4">
-                <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">Current Streak</p>
-                <p className="text-2xl font-bold text-white">
-                  <svg className="w-6 h-6 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg> {streakState.dailyStreakCurrent} day{(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}
-                </p>
-                <p className="text-sm text-amber-200 mt-1">
-                  Best: {streakState.dailyStreakBest} day{(streakState.dailyStreakBest || 0) !== 1 ? "s" : ""}
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-amber-300/30 bg-amber-500/5 p-4">
-                <p className="text-xs uppercase tracking-wider text-amber-300 mb-3">Equip Streak Title</p>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <button
-                    onClick={() => handleEquipStreakTitle(streakState.selectedStreakType === "current" ? "" : "current")}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                      streakState.selectedStreakType === "current"
-                        ? "bg-amber-500 text-black ring-2 ring-yellow-300"
-                        : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
-                    }`}
-                  >
-                    {streakState.streakTitleCurrent || "No title"}
-                    {streakState.selectedStreakType === "current" ? " (equipped)" : ""}
-                  </button>
-                  <button
-                    onClick={() => handleEquipStreakTitle(streakState.selectedStreakType === "best" ? "" : "best")}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-                      streakState.selectedStreakType === "best"
-                        ? "bg-amber-500 text-black ring-2 ring-yellow-300"
-                        : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
-                    }`}
-                  >
-                    {streakState.streakTitleBest || "No title"}
-                    {streakState.selectedStreakType === "best" ? " (equipped)" : ""}
-                  </button>
-                </div>
-                {streakState.selectedStreakType && (
-                  <button
-                    onClick={() => handleEquipStreakTitle("")}
-                    className="text-xs text-amber-400 hover:text-amber-300 underline"
-                  >
-                    Unequip streak title
-                  </button>
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">All Streak Milestones</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {streakState.allStreakTitles.map((milestone) => {
-                    const isCurrentReached = (streakState.dailyStreakCurrent || 0) >= milestone.days;
-                    const isBestReached = (streakState.dailyStreakBest || 0) >= milestone.days;
-                    const reached = isCurrentReached || isBestReached;
                     return (
-                      <div
-                        key={milestone.days}
-                        className={`rounded-lg border p-2 text-sm ${
-                          reached
-                            ? "border-amber-400/40 bg-amber-500/10"
-                            : "border-slate-700 bg-slate-900/60 opacity-50"
-                        }`}
+                      <button
+                        key={title.key}
+                        disabled={!isUnlocked}
+                        onClick={() => handleEquipSpecialTitle(isEquipped ? "" : title.key)}
+                        className={[
+                          "rounded-lg border p-3 text-left transition",
+                          isUnlocked
+                            ? "border-fuchsia-300/45 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
+                            : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                          isEquipped ? "ring-2 ring-yellow-300" : "",
+                        ].join(" ")}
                       >
-                        <span className="text-slate-400">{milestone.days} days</span>
-                        <span className="ml-2 font-semibold text-white">{milestone.title}</span>
-                        {reached && <svg className="ml-1 w-3.5 h-3.5 inline text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
-                      </div>
+                        <p className="text-xs uppercase tracking-widest text-slate-300">
+                          {title.rarity}
+                        </p>
+
+                        <p className="font-semibold text-white">
+                          {isUnlocked ? title.name : "?????"}
+                        </p>
+
+                        <p className="text-xs text-slate-300">
+                          {isUnlocked ? title.description : "Locked secret title"}
+                        </p>
+
+                        {isEquipped && (
+                          <p className="mt-2 text-yellow-300 text-xs">Click again to unequip</p>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {titlesView === "vip" && (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {(vipTitles?.allTitles || []).map((title) => {
-                const unlocked = (vipTitles?.unlockedTitles || []).some(
-                  (x) => x.title === title.title,
-                );
-
-                const equipped = vipTitles?.selectedTitle === title.title;
-
-                return (
-                  <button
-                    key={title.title}
-                    disabled={!unlocked}
-                    onClick={async () => {
-                      const response = await fetch("/api/titles/select", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        credentials: "include",
-                        body: JSON.stringify({
-                          title: equipped ? "" : title.title,
-                        }),
-                      });
-
-                      const data = await response.json();
-
-                      if (response.ok && data.success) {
-                        await loadVipTitles();
-                        await loadTitles();
-                        await loadProfileData();
-
-                        window.dispatchEvent(new Event("titleUpdated"));
-                      }
-                    }}
-                    className={[
-                      "rounded-lg border p-3 text-left transition",
-                      unlocked
-                        ? "border-cyan-300/45 bg-cyan-500/10 hover:bg-cyan-500/20"
-                        : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
-                      equipped ? "ring-2 ring-yellow-300" : "",
-                    ].join(" ")}
-                  >
-                    <p className="text-xs uppercase tracking-widest text-slate-300">
-                      {title.rarity}
+              {titlesView === "streak" && (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-amber-300/40 bg-amber-500/10 p-4">
+                    <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">
+                      Current Streak
                     </p>
-
-                    <p className="font-semibold text-white">
-                      {unlocked ? title.title : "Locked"}
+                    <p className="text-2xl font-bold text-white">
+                      <svg
+                        className="w-6 h-6 inline text-amber-400"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
+                      </svg>{" "}
+                      {streakState.dailyStreakCurrent} day
+                      {(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}
                     </p>
-
-                    <p className="text-xs text-slate-300">
-                      Unlock at Level {title.level}
+                    <p className="text-sm text-amber-200 mt-1">
+                      Best: {streakState.dailyStreakBest} day
+                      {(streakState.dailyStreakBest || 0) !== 1 ? "s" : ""}
                     </p>
+                  </div>
 
-                    {equipped && (
-                      <p className="mt-2 text-yellow-300 text-xs">
-                        Click again to unequip
-                      </p>
+                  <div className="rounded-lg border border-amber-300/30 bg-amber-500/5 p-4">
+                    <p className="text-xs uppercase tracking-wider text-amber-300 mb-3">
+                      Equip Streak Title
+                    </p>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <button
+                        onClick={() =>
+                          handleEquipStreakTitle(
+                            streakState.selectedStreakType === "current" ? "" : "current"
+                          )
+                        }
+                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                          streakState.selectedStreakType === "current"
+                            ? "bg-amber-500 text-black ring-2 ring-yellow-300"
+                            : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
+                        }`}
+                      >
+                        {streakState.streakTitleCurrent || "No title"}
+                        {streakState.selectedStreakType === "current" ? " (equipped)" : ""}
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleEquipStreakTitle(
+                            streakState.selectedStreakType === "best" ? "" : "best"
+                          )
+                        }
+                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                          streakState.selectedStreakType === "best"
+                            ? "bg-amber-500 text-black ring-2 ring-yellow-300"
+                            : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
+                        }`}
+                      >
+                        {streakState.streakTitleBest || "No title"}
+                        {streakState.selectedStreakType === "best" ? " (equipped)" : ""}
+                      </button>
+                    </div>
+                    {streakState.selectedStreakType && (
+                      <button
+                        onClick={() => handleEquipStreakTitle("")}
+                        className="text-xs text-amber-400 hover:text-amber-300 underline"
+                      >
+                        Unequip streak title
+                      </button>
                     )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">
+                      All Streak Milestones
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {streakState.allStreakTitles.map((milestone) => {
+                        const isCurrentReached =
+                          (streakState.dailyStreakCurrent || 0) >= milestone.days;
+                        const isBestReached = (streakState.dailyStreakBest || 0) >= milestone.days;
+                        const reached = isCurrentReached || isBestReached;
+                        return (
+                          <div
+                            key={milestone.days}
+                            className={`rounded-lg border p-2 text-sm ${
+                              reached
+                                ? "border-amber-400/40 bg-amber-500/10"
+                                : "border-slate-700 bg-slate-900/60 opacity-50"
+                            }`}
+                          >
+                            <span className="text-slate-400">{milestone.days} days</span>
+                            <span className="ml-2 font-semibold text-white">{milestone.title}</span>
+                            {reached && (
+                              <svg
+                                className="ml-1 w-3.5 h-3.5 inline text-green-400"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                              >
+                                <path d="M20 6L9 17l-5-5" />
+                              </svg>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {titlesView === "vip" && (
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {(vipTitles?.allTitles || []).map((title) => {
+                    const unlocked = (vipTitles?.unlockedTitles || []).some(
+                      (x) => x.title === title.title
+                    );
+
+                    const equipped = vipTitles?.selectedTitle === title.title;
+
+                    return (
+                      <button
+                        key={title.title}
+                        disabled={!unlocked}
+                        onClick={async () => {
+                          const response = await fetch("/api/titles/select", {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                            credentials: "include",
+                            body: JSON.stringify({
+                              title: equipped ? "" : title.title,
+                            }),
+                          });
+
+                          const data = await response.json();
+
+                          if (response.ok && data.success) {
+                            await loadVipTitles();
+                            await loadTitles();
+                            await loadProfileData();
+
+                            window.dispatchEvent(new Event("titleUpdated"));
+                          }
+                        }}
+                        className={[
+                          "rounded-lg border p-3 text-left transition",
+                          unlocked
+                            ? "border-cyan-300/45 bg-cyan-500/10 hover:bg-cyan-500/20"
+                            : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                          equipped ? "ring-2 ring-yellow-300" : "",
+                        ].join(" ")}
+                      >
+                        <p className="text-xs uppercase tracking-widest text-slate-300">
+                          {title.rarity}
+                        </p>
+
+                        <p className="font-semibold text-white">
+                          {unlocked ? title.title : "Locked"}
+                        </p>
+
+                        <p className="text-xs text-slate-300">Unlock at Level {title.level}</p>
+
+                        {equipped && (
+                          <p className="mt-2 text-yellow-300 text-xs">Click again to unequip</p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1317,9 +1329,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
               <p className="text-sm text-gray-300">Referral Earnings</p>
-              <p className="text-2xl font-bold">
-                {stats?.referralEarnings ?? 0} tokens
-              </p>
+              <p className="text-2xl font-bold">{stats?.referralEarnings ?? 0} tokens</p>
             </div>
           </div>
 
@@ -1331,7 +1341,13 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           />
 
           <div className="flex flex-wrap gap-3 mb-4">
-            <button onClick={handleCopyReferralCode} className={cyberButton + " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}>
+            <button
+              onClick={handleCopyReferralCode}
+              className={
+                cyberButton +
+                " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              }
+            >
               Copy Code
             </button>
 
@@ -1347,7 +1363,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
-            <label htmlFor="profil-redeem-code" className="sr-only">Enter referral code</label>
+            <label htmlFor="profil-redeem-code" className="sr-only">
+              Enter referral code
+            </label>
             <input
               id="profil-redeem-code"
               value={referralCodeInput}
@@ -1364,9 +1382,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring
             </button>
           </div>
 
-          {referralStatus && (
-            <p className="mt-3 text-sm text-gray-200">{referralStatus}</p>
-          )}
+          {referralStatus && <p className="mt-3 text-sm text-gray-200">{referralStatus}</p>}
         </div>
 
         <div
@@ -1376,7 +1392,9 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
           <h2 className="text-xl text-[#00e5ff] mb-4">Add Friends</h2>
           <div className="flex gap-2 mb-4">
-            <label htmlFor="profil-friend-search" className="sr-only">Search users by name</label>
+            <label htmlFor="profil-friend-search" className="sr-only">
+              Search users by name
+            </label>
             <input
               id="profil-friend-search"
               value={friendSearch}
@@ -1428,18 +1446,12 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                 </button>
               </div>
             ))}
-            {friendSearch &&
-              friendSearchResults.length === 0 &&
-              !isSearchingFriends && (
-                <p className="text-sm text-gray-300">
-                  No users found for this name.
-                </p>
-              )}
+            {friendSearch && friendSearchResults.length === 0 && !isSearchingFriends && (
+              <p className="text-sm text-gray-300">No users found for this name.</p>
+            )}
           </div>
 
-          {friendsStatus && (
-            <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>
-          )}
+          {friendsStatus && <p className="mt-3 text-sm text-gray-200">{friendsStatus}</p>}
         </div>
 
         <div
@@ -1500,16 +1512,21 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                     <div className="flex-1">
                       <span>{friend.name}</span>
                       {friend.streakTitle && (
-                        <span                        className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
-                          <svg className="w-3 h-3 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg> {friend.streakTitle}
+                        <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                          <svg
+                            className="w-3 h-3 inline text-amber-400"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                          >
+                            <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
+                          </svg>{" "}
+                          {friend.streakTitle}
                         </span>
                       )}
                       {(() => {
                         const status = getFriendStatus(friend.id);
                         return (
-                          <p
-                            className={`text-xs flex items-center gap-2 ${status.color}`}
-                          >
+                          <p className={`text-xs flex items-center gap-2 ${status.color}`}>
                             <span
                               className={`h-2 w-2 rounded-full ${
                                 status.state === "online"
@@ -1528,38 +1545,30 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold
                       {(() => {
                         const status = getFriendStatus(friend.id);
                         const spectateUrl = spectateUrlForFriend(friend.id);
-                        const gameKey = String(
-                          friendPresenceByFriend?.[friend.id]?.gameKey || "",
-                        )
+                        const gameKey = String(friendPresenceByFriend?.[friend.id]?.gameKey || "")
                           .toLowerCase()
                           .trim();
 
-                        if (status.state !== "in_game" || !spectateUrl)
-                          return null;
+                        if (status.state !== "in_game" || !spectateUrl) return null;
 
-                        const allowedSpectateGames = new Set([
-                          "chess",
-                          "connect-four",
-                          "poker",
-                        ]);
+                        const allowedSpectateGames = new Set(["chess", "connect-four", "poker"]);
                         if (!allowedSpectateGames.has(gameKey)) return null;
 
                         return (
                           <button
                             onClick={() => {
                               if (!isAllowedSpectateUrl(spectateUrl)) {
-                                setFriendsStatus(
-                                  "This spectate link is invalid.",
-                                );
+                                setFriendsStatus("This spectate link is invalid.");
                                 return;
                               }
                               setSpectateLoadError("");
                               setSpectateIsLoaded(false);
                               setSpectateOverlayUrl(spectateUrl);
-                            }}                              aria-label={`Spectate ${friend.name}`}
-                              className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
-                            >
-                              Spectate
+                            }}
+                            aria-label={`Spectate ${friend.name}`}
+                            className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                          >
+                            Spectate
                           </button>
                         );
                       })()}
@@ -1605,29 +1614,23 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                       </div>
                     )}
                     <div className="flex-1">
-                      <p className="text-sm font-semibold">
-                        {invite.sender_name}
-                      </p>
+                      <p className="text-sm font-semibold">{invite.sender_name}</p>
                       <p className="text-xs text-gray-300">
                         Sent {new Date(invite.created_at).toLocaleString()}
                       </p>
                     </div>
                     <div className="flex flex-col gap-1">
                       <button
-                        onClick={() =>
-                          handleRespondToInvite(invite.id, "accept")
-                        }
+                        onClick={() => handleRespondToInvite(invite.id, "accept")}
                         aria-label={`Accept invite from ${invite.sender_name}`}
-                      className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                        className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         Accept
                       </button>
                       <button
-                        onClick={() =>
-                          handleRespondToInvite(invite.id, "decline")
-                        }
+                        onClick={() => handleRespondToInvite(invite.id, "decline")}
                         aria-label={`Decline invite from ${invite.sender_name}`}
-                      className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                        className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
                         Decline
                       </button>
@@ -1665,9 +1668,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                     onClick={() => {
                       setSpectateLoadError("");
                       setSpectateIsLoaded(false);
-                      setSpectateOverlayUrl(
-                        (prev) => `${prev.split("#")[0]}#retry-${Date.now()}`,
-                      );
+                      setSpectateOverlayUrl((prev) => `${prev.split("#")[0]}#retry-${Date.now()}`);
                     }}
                     className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
@@ -1683,7 +1684,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                   onLoad={() => setSpectateIsLoaded(true)}
                   onError={() =>
                     setSpectateLoadError(
-                      "Unable to render spectate page. The game may have ended or embedding is blocked.",
+                      "Unable to render spectate page. The game may have ended or embedding is blocked."
                     )
                   }
                 />
@@ -1705,10 +1706,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {statsCards.map((card) => (
-              <div
-                key={card.key}
-                className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4"
-              >
+              <div key={card.key} className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4">
                 <p className="text-sm text-gray-300">{card.label}</p>
                 <p className="text-2xl font-bold text-white mt-1">
                   {stats?.[card.key] ?? 0}
@@ -1739,9 +1737,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 {bets.length > 0 ? (
                   bets.map((bet, idx) => (
                     <tr key={idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">
-                        {new Date(bet.date).toLocaleDateString()}
-                      </td>
+                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
                       <td className="px-4 py-2">
                         {bet.type || bet.event || bet.game_type || "Inconnu"}
                       </td>
@@ -1797,6 +1793,48 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           </div>
         </div>
 
+        <div
+          className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+rounded-xl p-6 
+shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+        >
+          <h2 className="text-xl text-[#00e5ff] mb-4">Historique des Achats de Jetons</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="border-b border-[#FFD700] text-[#00e5ff]">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Forfait</th>
+                  <th className="px-4 py-2">Jetons</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchases.length > 0 ? (
+                  purchases.map((purchase, idx) => (
+                    <tr key={purchase.id ?? idx} className="border-b border-[#FFD700]/20">
+                      <td className="px-4 py-2">
+                        {new Date(purchase.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        {purchase.note || purchase.referenceId || "Achat"}
+                      </td>
+                      <td className="px-4 py-2 text-green-400">
+                        +{Number(purchase.amount ?? 0).toLocaleString()} tokens
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="3" className="text-center py-4 text-gray-400">
+                      Aucun achat trouvé
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="mt-12">
           <ContactMessageHistory />
         </div>
@@ -1805,15 +1843,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           className="mt-8 border border-red-500 bg-red-950/40 border border-red-500/40 
 shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
         >
-          <h2 className="text-xl text-red-400 mb-2">
-            Danger Zone: Delete Account
-          </h2>
+          <h2 className="text-xl text-red-400 mb-2">Danger Zone: Delete Account</h2>
           <p className="text-red-200 mb-4">
-            Warning: This action is permanent. Your account and data will be
-            removed forever.
+            Warning: This action is permanent. Your account and data will be removed forever.
           </p>
 
-          <label className="text-sm text-red-200" htmlFor="profil-delete-password">Confirm password</label>
+          <label className="text-sm text-red-200" htmlFor="profil-delete-password">
+            Confirm password
+          </label>
           <input
             id="profil-delete-password"
             type="password"
@@ -1835,12 +1872,8 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
                 : `Confirm in ${countdown}s`}
           </button>
 
-          {deleteError && (
-            <p className="mt-3 text-sm text-red-300">{deleteError}</p>
-          )}
-          {deleteStatus && (
-            <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>
-          )}
+          {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
+          {deleteStatus && <p className="mt-3 text-sm text-green-300">{deleteStatus}</p>}
         </div>
       </div>
 
@@ -1850,28 +1883,26 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
 shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
           >
-            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">
-              Edit Profile
-            </h3>
+            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">Edit Profile</h3>
             <div className="space-y-3">
-              <label htmlFor="profil-edit-name" className="sr-only">Name</label>
+              <label htmlFor="profil-edit-name" className="sr-only">
+                Name
+              </label>
               <input
                 id="profil-edit-name"
                 value={editForm.name}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, name: e.target.value }))
-                }
+                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Name"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
-              <label htmlFor="profil-edit-email" className="sr-only">Email</label>
+              <label htmlFor="profil-edit-email" className="sr-only">
+                Email
+              </label>
               <input
                 id="profil-edit-email"
                 value={editForm.email}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, email: e.target.value }))
-                }
+                onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder="Email"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
@@ -1915,23 +1946,21 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   </div>
                 )}
               </div>
-              <label htmlFor="profil-edit-password" className="sr-only">New password (optional)</label>
+              <label htmlFor="profil-edit-password" className="sr-only">
+                New password (optional)
+              </label>
               <input
                 id="profil-edit-password"
                 type="password"
                 value={editForm.password}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, password: e.target.value }))
-                }
+                onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
                 placeholder="New password (optional)"
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
             </div>
 
-            {editStatus && (
-              <p className="mt-3 text-sm text-gray-200">{editStatus}</p>
-            )}
+            {editStatus && <p className="mt-3 text-sm text-gray-200">{editStatus}</p>}
 
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -1943,7 +1972,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               <button
                 disabled={isSavingEdit}
                 onClick={handleSaveEditProfile}
-                className={cyberButton + " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}
+                className={
+                  cyberButton +
+                  " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                }
               >
                 {isSavingEdit ? "Saving..." : "Save changes"}
               </button>
@@ -1959,14 +1991,24 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
 shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
           >
             <p className="text-2xl font-bold text-[#00e5ff]">
-              <svg className="w-7 h-7 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg> Level Up! You reached Level {levelUpModal.level}
+              <svg
+                className="w-7 h-7 inline text-[#00e5ff]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z" />
+              </svg>{" "}
+              Level Up! You reached Level {levelUpModal.level}
             </p>
-            <p className="mt-2 text-gray-200">
-              Bonus received: {levelUpModal.bonus} tokens
-            </p>
+            <p className="mt-2 text-gray-200">Bonus received: {levelUpModal.bonus} tokens</p>
             <button
               onClick={() => setLevelUpModal(null)}
-              className={cyberButton + " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"}
+              className={
+                cyberButton +
+                " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              }
             >
               Awesome!
             </button>
