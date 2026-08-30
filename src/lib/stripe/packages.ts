@@ -71,6 +71,10 @@ export async function ensurePackageStripe(
     const product = await stripe.products.create({
       name: `${pkg.name} — Grynd Tokens`,
       description: getPackageDescription(pkg.key),
+      // Managed Payments (on by default) rejects checkout for products without
+      // a tax code. `txcd_99999999` is Stripe's general tax code for
+      // electronically supplied services — the right fit for virtual tokens.
+      tax_code: "txcd_99999999",
       metadata: { packageKey: pkg.key },
     });
     productId = product.id;
