@@ -844,6 +844,114 @@ io.on("connection", (socket) => {
     logThrottled("memory-grid:leave", "[memory-grid] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Roulette PvP room-participant tracking ──────────────────────
+  // Same pattern as keno-pvp so disconnect handling can forfeit
+  // abandoned matches to the opponent (and a re-joining socket
+  // cancels the pending forfeit timer). Keyed by matchId.
+  const ROULETTE_PVP_MATCH_ROOM_PREFIX = "roulette-pvp:match:";
+  if (!global.__roulettePvpRoomParticipants) {
+    global.__roulettePvpRoomParticipants = new Map();
+  }
+  const roulettePvpRoomParticipants = global.__roulettePvpRoomParticipants;
+
+  function trackRoulettePvpJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(ROULETTE_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(ROULETTE_PVP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!roulettePvpRoomParticipants.has(matchId)) {
+      roulettePvpRoomParticipants.set(matchId, new Set());
+    }
+    roulettePvpRoomParticipants.get(matchId).add(userId);
+    cancelDisconnectGraceTimer(`roulette:${matchId}:${userId}`);
+    logThrottled("roulette:join", "[roulette-pvp] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackRoulettePvpLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(ROULETTE_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(ROULETTE_PVP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = roulettePvpRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) roulettePvpRoomParticipants.delete(matchId);
+    logThrottled("roulette:leave", "[roulette-pvp] participant left: matchId=", matchId, "userId=", userId);
+  }
+
+  // ── RPS PvP room-participant tracking ───────────────────────────
+  // Poll-based game (no per-match state on the socket), but the match
+  // view joins a dedicated room so disconnect handling can forfeit
+  // abandoned best-of-7 games to the opponent. Keyed by gameId.
+  const RPS_PVP_MATCH_ROOM_PREFIX = "rps-pvp:match:";
+  if (!global.__rpsPvpRoomParticipants) {
+    global.__rpsPvpRoomParticipants = new Map();
+  }
+  const rpsPvpRoomParticipants = global.__rpsPvpRoomParticipants;
+
+  function trackRpsPvpJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(RPS_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const gameId = roomId.slice(RPS_PVP_MATCH_ROOM_PREFIX.length);
+    if (!gameId) return;
+    if (!rpsPvpRoomParticipants.has(gameId)) {
+      rpsPvpRoomParticipants.set(gameId, new Set());
+    }
+    rpsPvpRoomParticipants.get(gameId).add(userId);
+    cancelDisconnectGraceTimer(`rps:${gameId}:${userId}`);
+    logThrottled("rps:join", "[rps-pvp] participant joined: gameId=", gameId, "userId=", userId);
+  }
+  function trackRpsPvpLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(RPS_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const gameId = roomId.slice(RPS_PVP_MATCH_ROOM_PREFIX.length);
+    if (!gameId) return;
+    const set = rpsPvpRoomParticipants.get(gameId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) rpsPvpRoomParticipants.delete(gameId);
+    logThrottled("rps:leave", "[rps-pvp] participant left: gameId=", gameId, "userId=", userId);
+  }
+
+  // ── Dice Duel room-participant tracking ──────────────────────────
+  // Poll-based game; the match view joins a dedicated room so
+  // disconnect handling can settle abandoned matches to the
+  // opponent. Keyed by matchId.
+  const DICE_DUEL_MATCH_ROOM_PREFIX = "dice-duel:match:";
+  if (!global.__diceDuelRoomParticipants) {
+    global.__diceDuelRoomParticipants = new Map();
+  }
+  const diceDuelRoomParticipants = global.__diceDuelRoomParticipants;
+
+  function trackDiceDuelJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(DICE_DUEL_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(DICE_DUEL_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!diceDuelRoomParticipants.has(matchId)) {
+      diceDuelRoomParticipants.set(matchId, new Set());
+    }
+    diceDuelRoomParticipants.get(matchId).add(userId);
+    cancelDisconnectGraceTimer(`dice-duel:${matchId}:${userId}`);
+    logThrottled("dice-duel:join", "[dice-duel] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackDiceDuelLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(DICE_DUEL_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(DICE_DUEL_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = diceDuelRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) diceDuelRoomParticipants.delete(matchId);
+    logThrottled("dice-duel:leave", "[dice-duel] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -891,6 +999,9 @@ io.on("connection", (socket) => {
     trackKenoPvpJoin(String(roomId), socket.data.userId);
     trackMemoryGridJoin(String(roomId), socket.data.userId);
     trackCrashArenaJoin(String(roomId), socket.data.userId);
+    trackRoulettePvpJoin(String(roomId), socket.data.userId);
+    trackRpsPvpJoin(String(roomId), socket.data.userId);
+    trackDiceDuelJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -934,6 +1045,9 @@ io.on("connection", (socket) => {
     trackKenoPvpLeave(String(roomId), socket.data.userId);
     trackMemoryGridLeave(String(roomId), socket.data.userId);
     trackCrashArenaLeave(String(roomId), socket.data.userId);
+    trackRoulettePvpLeave(String(roomId), socket.data.userId);
+    trackRpsPvpLeave(String(roomId), socket.data.userId);
+    trackDiceDuelLeave(String(roomId), socket.data.userId);
   });
 
   socket.on("room_event", ({ roomId, event, payload }) => {
@@ -1539,6 +1653,113 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[memory-grid] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Roulette PvP: same pattern — forfeit to the opponent via
+    // /api/roulette-pvp/disconnect-forfeit once the grace timer
+    // expires (covers the both-players-gone case the AFK round
+    // resolution can't).
+    const roulettePvpMatchesForUser = [];
+    for (const [mid, set] of roulettePvpRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) roulettePvpMatchesForUser.push(mid);
+    }
+    for (const mid of roulettePvpMatchesForUser) {
+      const roomId = `${ROULETTE_PVP_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = roulettePvpRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) roulettePvpRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`roulette:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/roulette-pvp/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[roulette-pvp] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For RPS PvP: same pattern — forfeit to the opponent via
+    // /api/rps/pvp/disconnect-forfeit once the grace timer expires.
+    const rpsPvpGamesForUser = [];
+    for (const [gid, set] of rpsPvpRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) rpsPvpGamesForUser.push(gid);
+    }
+    for (const gid of rpsPvpGamesForUser) {
+      const roomId = `${RPS_PVP_MATCH_ROOM_PREFIX}${gid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = rpsPvpRoomParticipants.get(gid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) rpsPvpRoomParticipants.delete(gid);
+      }
+      scheduleDisconnectGraceTimer(`rps:${gid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/rps/pvp/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ gameId: gid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[rps-pvp] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Dice Duel: same pattern — settle to the opponent via
+    // /api/dice-duel/disconnect-forfeit once the grace timer expires.
+    const diceDuelMatchesForUser = [];
+    for (const [mid, set] of diceDuelRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) diceDuelMatchesForUser.push(mid);
+    }
+    for (const mid of diceDuelMatchesForUser) {
+      const roomId = `${DICE_DUEL_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = diceDuelRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) diceDuelRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`dice-duel:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/dice-duel/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[dice-duel] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry
