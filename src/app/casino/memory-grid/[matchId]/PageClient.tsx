@@ -364,6 +364,7 @@ export default function MemoryGridMatchPage({
   const [canLeave, setCanLeave] = useState(false);
   // Waiting state: cancelling an open lobby (creator only).
   const [cancelling, setCancelling] = useState(false);
+  const [forfeiting, setForfeiting] = useState(false);
   // Local clock: drives the phase countdown AND hides the pattern
   // at the server's absolute deadline (never wait for the poll).
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -566,6 +567,40 @@ export default function MemoryGridMatchPage({
       lastRoundRef.current = roundKey;
     }
   }, [roundKey, match]);
+
+  // ── Forfeit the match (surrender) ─────────────────────────────────
+  const handleForfeit = useCallback(async () => {
+    if (forfeiting) return;
+    if (
+      !window.confirm(
+        "Forfeit this match? Your stake is forfeited and your opponent wins.",
+      )
+    )
+      return;
+    setForfeiting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/memory-grid/match/${matchId}/forfeit`,
+        { method: "POST", credentials: "include" },
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Forfeit failed");
+        return;
+      }
+      posthog?.capture("memory_grid_forfeited", { match_id: matchId });
+      socket?.emit("room_event", {
+        roomId: memoryGridMatchRoom(matchId),
+        event: MEMORY_GRID_MATCH_UPDATED,
+      });
+      await fetchStatus();
+    } catch {
+      setError("Network error while forfeiting");
+    } finally {
+      setForfeiting(false);
+    }
+  }, [matchId, socket, posthog, forfeiting, fetchStatus]);
 
   // ── Reconstruct submission ────────────────────────────────────────
   const submitPicks = useCallback(
@@ -1245,7 +1280,14 @@ export default function MemoryGridMatchPage({
 
         {/* Reconstruct controls — free modification + explicit Submit */}
         {canPick && (
-          <div className="mx-auto mt-4 flex max-w-md items-center justify-between gap-3">
+          <div className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-between gap-3">
+            <button
+              onClick={handleForfeit}
+              disabled={forfeiting}
+              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/25 disabled:opacity-40"
+            >
+              {forfeiting ? "Forfeiting…" : "Forfeit"}
+            </button>
             <button
               onClick={() => setSelected([])}
               disabled={selected.length === 0 || submitting}

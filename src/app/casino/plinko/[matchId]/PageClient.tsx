@@ -1189,6 +1189,7 @@ export default function PlinkoPvpMatchPage({
   const [phase, setPhase] = useState<Phase>("idle");
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [forfeiting, setForfeiting] = useState(false);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -2034,6 +2035,40 @@ export default function PlinkoPvpMatchPage({
   ]);
 
   // ── Cancel handler ──────────────────────────────────────────────
+  // ── Forfeit the match (surrender) ─────────────────────────────────
+  const handleForfeit = useCallback(async () => {
+    if (forfeiting) return;
+    if (
+      !window.confirm(
+        "Forfeit this match? Your stake is forfeited and your opponent wins.",
+      )
+    )
+      return;
+    setForfeiting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/plinko-pvp/match/${matchId}/forfeit`,
+        { method: "POST", credentials: "include" },
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Forfeit failed");
+        return;
+      }
+      posthog?.capture("plinko_pvp_forfeited", { match_id: matchId });
+      socket?.emit("room_event", {
+        roomId: plinkoPvpMatchRoom(matchId),
+        event: PLINKO_PVP_MATCH_UPDATED,
+      });
+      await fetchStatus();
+    } catch {
+      setError("Network error while forfeiting");
+    } finally {
+      setForfeiting(false);
+    }
+  }, [matchId, socket, posthog, forfeiting, fetchStatus]);
+
   const handleCancel = useCallback(async () => {
     if (cancelling || !isValidMatchId) return;
     setCancelling(true);
@@ -2587,6 +2622,17 @@ export default function PlinkoPvpMatchPage({
                   }`}
                 >
                   {cancelling ? "Cancelling…" : "Cancel lobby"}
+                </button>
+              </div>
+            )}
+            {!isFinished && !isCancelled && (
+              <div className="mt-3 flex justify-center">
+                <button
+                  onClick={handleForfeit}
+                  disabled={forfeiting}
+                  className="px-4 py-2 rounded-xl text-xs font-bold border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                >
+                  {forfeiting ? "Forfeiting…" : "Forfeit match"}
                 </button>
               </div>
             )}
