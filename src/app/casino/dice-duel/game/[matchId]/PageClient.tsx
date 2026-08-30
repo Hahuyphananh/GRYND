@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../../../lib/gameAudio";
 import ReportModal from "../../../../../components/ReportModal";
+import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
+import { useSocket } from "../../../../../context/SocketProvider";
 import {
   IconFlag,
   IconSquareRounded,
@@ -74,6 +77,7 @@ function DiceFace({ value, rolling }: { value: number; rolling?: boolean }) {
 export default function DiceDuelMatchPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const router = useRouter();
+  const { socket } = useSocket();
 
   const [match, setMatch] = useState<any>(null);
   const [turns, setTurns] = useState<any[]>([]);
@@ -169,6 +173,13 @@ export default function DiceDuelMatchPage() {
       match?.turnUserId && viewerId && match.turnUserId === viewerId,
     );
   }, [match, viewerId]);
+
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `dice-duel:emote:${matchId}` : null,
+    eventName: "dice-duel:emote",
+    selfId: viewerId,
+  });
 
   //  Map hp1/hp2 to viewer vs enemy based on who the viewer is
   const viewerIsPlayer1 = match?.player1Id === viewerId;
@@ -384,9 +395,12 @@ export default function DiceDuelMatchPage() {
               ))}
 
             <p className="text-sm text-fuchsia-300 font-bold">
-              {viewerIsPlayer1
-                ? match?.player1Name
-                : match?.player2Name}
+              <span className="relative">
+                {viewerIsPlayer1
+                  ? match?.player1Name
+                  : match?.player2Name}
+                <EmoteBubble emote={myEmote} side="mine" />
+              </span>
             </p>
 
             <p className="text-3xl font-bold">HP: {viewerHP ?? "--"}</p>
@@ -406,9 +420,12 @@ export default function DiceDuelMatchPage() {
               ))}
 
             <p className="text-sm text-cyan-300 font-bold">
-              {viewerIsPlayer1
-                ? match?.player2Name
-                : match?.player1Name}
+              <span className="relative">
+                {viewerIsPlayer1
+                  ? match?.player2Name
+                  : match?.player1Name}
+                <EmoteBubble emote={incomingEmote} />
+              </span>
             </p>
 
             <p className="text-3xl font-bold">HP: {enemyHP ?? "--"}</p>
@@ -418,6 +435,16 @@ export default function DiceDuelMatchPage() {
         {/* Status */}
         <div className="mt-4 text-sm text-slate-300">
           Round {match?.round || 1} · {myTurn ? "Your Turn" : "Enemy Turn"}
+        </div>
+
+        {/* Emotes */}
+        <div className="mt-4 flex items-center justify-center">
+          <EmotePicker
+            onSend={(emote) => sendEmote(emote)}
+            incomingEmote={incomingEmote}
+            myEmote={myEmote}
+            compact
+          />
         </div>
 
         {/* Buttons */}
