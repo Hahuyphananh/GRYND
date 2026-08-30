@@ -344,6 +344,7 @@ export default function MinesPvpMatchPage({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); // true while a pick POST is in flight
   const [cancelling, setCancelling] = useState(false);
+  const [resigning, setResigning] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
@@ -770,6 +771,29 @@ export default function MinesPvpMatchPage({
       setCancelling(false);
     }
   }, [cancelling, matchId, posthog, router]);
+
+  const handleResign = useCallback(async () => {
+    if (resigning) return;
+    if (!window.confirm("Resign this match? Your stake is forfeited and your opponent wins.")) return;
+    setResigning(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/mines-pvp/match/${matchId}/resign`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data?.error || "Resign failed");
+        return;
+      }
+      posthog?.capture("mines_pvp_resigned", { match_id: matchId });
+      await fetchStatus();
+    } finally {
+      setResigning(false);
+    }
+  }, [matchId, posthog, resigning, fetchStatus]);
 
   // ── Minesweeper hint badge (the skill mechanic) ─────────────────
   // Distance semantics: 1 = right next to a mine (HOT), higher = safer.
@@ -1418,6 +1442,22 @@ export default function MinesPvpMatchPage({
             In flag mode, clicking a tile submits a "call a mine"
             flag instead of a pick: correct = opponent loses,
             wrong = you lose. Auto-resets when the turn passes. */}
+        {match.status !== MATCH_STATUS.FINISHED &&
+          match.status !== MATCH_STATUS.CANCELLED &&
+          match.status !== MATCH_STATUS.WAITING &&
+          match.status !== MATCH_STATUS.READY && (
+            <div className="mt-3 flex justify-center">
+              <button
+                onClick={handleResign}
+                disabled={resigning}
+                className="inline-flex items-center gap-1 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/25 disabled:opacity-50"
+              >
+                <IconFlag size={14} />
+                {resigning ? "Resigning…" : "Resign match"}
+              </button>
+            </div>
+          )}
+
         {isMyTurn &&
           match.status !== MATCH_STATUS.FINISHED &&
           match.status !== MATCH_STATUS.CANCELLED && (

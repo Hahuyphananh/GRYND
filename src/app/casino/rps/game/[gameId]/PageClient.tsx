@@ -78,6 +78,7 @@ export default function RPSPvpGamePage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [forfeiting, setForfeiting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -200,6 +201,34 @@ export default function RPSPvpGamePage() {
     }, 1000);
     return () => clearInterval(id);
   }, [status, myChoice, currentRound]);
+
+  const handleForfeit = async () => {
+    if (!gameId || forfeiting) return;
+    if (
+      !window.confirm(
+        "Forfeit this match? Your stake is forfeited and your opponent wins.",
+      )
+    )
+      return;
+    setForfeiting(true);
+    try {
+      const res = await fetch("/api/rps/pvp/forfeit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setMessage(data?.error || "Forfeit failed");
+        return;
+      }
+      setMessage("You forfeited the match.");
+    } catch {
+      setMessage("Network error while forfeiting");
+    } finally {
+      setForfeiting(false);
+    }
+  };
 
   const chooseMove = async (choice: Choice) => {
     if (!gameId || status !== "matched" || myChoice) return;
@@ -401,6 +430,13 @@ export default function RPSPvpGamePage() {
 
           {status === "matched" && !myChoice && (
             <>
+              <button
+                onClick={handleForfeit}
+                disabled={forfeiting}
+                className="mt-1 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+              >
+                {forfeiting ? "Forfeiting…" : "Forfeit match"}
+              </button>
               <p className="text-sm text-yellow-300 font-semibold">
                 Choose your move within: {countdown ?? CHOICE_SECONDS}s
               </p>

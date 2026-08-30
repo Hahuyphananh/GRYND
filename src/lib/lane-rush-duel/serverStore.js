@@ -77,6 +77,7 @@ import {
   MAX_FLAGS,
   MAX_LANES,
   MAX_PEEKS,
+  TERMINAL_STATES,
   MAX_STAKE,
   MIN_STAKE,
   PICKABLE_STATES,
@@ -532,6 +533,39 @@ export async function cancelMatch({ userId, matchId }) {
 
     mirrorQueueTransition({ gameKey: "lane-rush-duel", matchId, status: "cancelled", cancelReason: "user_cancelled", playerCount: 1 });
     return { match: updated };
+  });
+}
+
+// ── Resign from an active match ──────────────────────────────────────
+//
+// POST-only surrender: the resigner forfeits their stake and the
+// opponent is declared the winner (full settlement via the shared
+// `resolveMatch` path — winner credited, house fee taken, stats
+// recorded). Allowed from any non-terminal state where the opponent
+// has already joined; a `waiting` match is cancelled with a full
+// refund instead (see `cancelMatch`).
+export async function resignMatch({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (TERMINAL_STATES.has(match.status)) {
+      return { error: "Match already finished", status: 400 };
+    }
+    if (match.status === MATCH_STATUS.WAITING) {
+      return { error: "Use cancel to leave a waiting match", status: 400 };
+    }
+
+    // Resignation is a loss for the resigner: `resolveMatch` treats
+    // the passed `loserId` as the loser and credits the opponent.
+    const updated = await resolveMatch(tx, match, {
+      loserId: userId,
+      reason: "resigned",
+      action: "resign",
+    });
+    return { match: updated, resigned: true };
   });
 }
 

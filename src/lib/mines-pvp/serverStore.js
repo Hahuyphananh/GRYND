@@ -54,6 +54,7 @@ import {
   READY_WINDOW_MS,
   RESULT,
   ROUND_PICK_DEADLINE_MS,
+  TERMINAL_STATES,
   ROUND_TIMER_SECONDS,
   activePickerForMatch,
   chooseAiCell,
@@ -489,6 +490,41 @@ export async function cancelMatch({ userId, matchId }) {
       playerCount: 1,
     });
     return { match: updated };
+  });
+}
+
+// ── Resign from an active match ──────────────────────────────────────
+//
+// POST-only surrender: the resigner forfeits their stake and the
+// opponent is declared the winner (full settlement via the shared
+// `resolveMatch` path — winner credited, house fee taken, history
+// row + stats recorded). Allowed from any non-terminal state where
+// the opponent has already joined (ready / p1_turn / p2_turn); a
+// `waiting` match is cancelled with a full refund instead (see
+// `cancelMatch`), and terminal matches are rejected outright.
+export async function resignMatch({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(minesPvpMatches)
+      .where(eq(minesPvpMatches.id, matchId))
+      .for("update");
+
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (TERMINAL_STATES.has(match.status)) {
+      return { error: "Match already finished", status: 400 };
+    }
+    if (match.status === MATCH_STATUS.WAITING) {
+      return { error: "Use cancel to leave a waiting match", status: 400 };
+    }
+
+    // Resignation is a loss for the resigner: `resolveMatch` treats
+    // the passed `loserId` as the loser and credits the opponent.
+    const updated = await resolveMatch(tx, match, userId);
+    return { match: updated, resigned: true };
   });
 }
 
