@@ -25,6 +25,16 @@ export const GLOBAL_MAX_BET = 100_000;
 /** Ceiling for high-variance games (roulette / plinko style payouts). */
 export const HIGH_VARIANCE_MAX_BET = 10_000;
 
+/**
+ * Daily net-loss soft-warning threshold (tokens, ~$50 at 1,000 tokens/$).
+ * When a player is down more than this in one day, the lobby shows a
+ * responsible-play warning they must acknowledge before continuing.
+ */
+export const DAILY_LOSS_WARNING_THRESHOLD = 50_000;
+
+/** Below this daily loss, the lobby shows a subtle "down today" chip. */
+export const DAILY_LOSS_CHIP_THRESHOLD = 5_000;
+
 /** Shared PvP rake: 5% of the pot, winner keeps 95% (payout = 1.9x wager). */
 export const PVP_RAKE_PCT = 0.05;
 
