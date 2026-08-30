@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useHexDuel, otherPlayer, type DuelPlayer } from "../../../lib/hexDuelEngine";
 import { useSocket } from "../../../context/SocketProvider";
+import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
+import useGameEmotes from "../../../hooks/useGameEmotes";
 import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot } from "../../../lib/hexDuelAI";
 import { useHexAudio } from "../../../lib/hexAudio";
 import { useChessClock } from "../../../lib/useChessClock";
@@ -700,6 +702,7 @@ function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: num
 function PlayerCard({
   player, label, isActive, isSelected, color, moves, territory, currentAP, maxAP, isWinner, isAI,
   turnJustChanged, totalTroops, maxTroops, clockTime, isLocal,
+  emoteBubble, emoteSide,
 }: {
   player: DuelPlayer; label: string;
   isActive: boolean; isSelected: boolean; color: string;
@@ -710,6 +713,8 @@ function PlayerCard({
   maxTroops: number;
   clockTime: number;
   isLocal?: boolean;
+  emoteBubble?: { value: string; kind?: string } | null;
+  emoteSide?: "mine" | "incoming";
 }) {
   // Use color to determine blue/red styling — local player always blue, opponent always red
   const isBlue = color === "#22d3ee";
@@ -740,7 +745,7 @@ function PlayerCard({
       `}
     >
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>{label}</span>
+        <span className="relative text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>{label}<EmoteBubble emote={emoteBubble} side={emoteSide ?? "incoming"} /></span>
         <div className="flex items-center gap-2">
           {/* Chess clock display */}
           <span
@@ -1117,6 +1122,13 @@ export default function HexDuelPage() {
   const opponentReadyRef = useRef(false);
   const multiplayerJoinedRef = useRef(false);
   const [opponentName, setOpponentName] = useState<string | null>(null);
+  // Emotes — dedicated per-match room (mirrors the other PvP games).
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: multiplayerGameId ? `hex:emote:${multiplayerGameId}` : null,
+    eventName: "hex:emote",
+    selfId: user?.id,
+  });
   const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
   const [player1Name, setPlayer1Name] = useState<string | null>(null);
@@ -2972,6 +2984,7 @@ export default function HexDuelPage() {
                   isWinner={localIsWinner} isLocal={true} turnJustChanged={turnJustChanged}
                   totalTroops={localTotalTroops} maxTroops={maxTroops}
                   clockTime={localClockTime}
+                  emoteBubble={myEmote} emoteSide="mine"
                 />
                 {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
                   <HexActionPanel
@@ -3101,6 +3114,7 @@ export default function HexDuelPage() {
                   isWinner={opponentIsWinner} isAI={aiEnabled} isLocal={false} turnJustChanged={turnJustChanged}
                   totalTroops={opponentTotalTroops} maxTroops={maxTroops}
                   clockTime={opponentClockTime}
+                  emoteBubble={incomingEmote} emoteSide="incoming"
                 />
                 {showGame && !isSpectator && gameMode === "multiplayer" && !isPlayer1 && (
                   // Right-side action panel for the red local user
@@ -3142,6 +3156,19 @@ export default function HexDuelPage() {
                   <HexActionLog log={actionLog} compact={true} />
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── Emotes ──────────────────────────────────────────────── */}
+          {showGame && !isGameOver && !isSpectator && (
+            <div className="mt-6 flex justify-center">
+              <EmotePicker
+                compact
+                hideBubbles
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
             </div>
           )}
 

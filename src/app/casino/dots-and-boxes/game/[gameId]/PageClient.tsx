@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
+import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import ReportModal from "../../../../../components/ReportModal";
@@ -442,6 +444,14 @@ const prefersReducedMotion = useReducedMotion();
     game?.role === "host"
       ? game?.guestName || t("games.dots_and_boxes.guest_default")
       : game?.hostName || t("games.dots_and_boxes.host_default");
+
+  // Emotes — both players already join the dots-and-boxes room, so reuse it.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: gameId ? `dots-and-boxes:${gameId}` : null,
+    eventName: "dots-and-boxes:emote",
+    selfId: game?.role ?? null,
+  });
   const canReport =
     !!opponentClerkId &&
     !!game &&
@@ -702,8 +712,9 @@ const prefersReducedMotion = useReducedMotion();
                         : "bg-transparent"
                     }`}
                   >
-                    <span className="text-xs text-amber-300 font-medium">
+                    <span className="relative text-xs text-amber-300 font-medium">
                       {game?.hostName || t("games.dots_and_boxes.host_default")}
+                      <EmoteBubble emote={game?.role === "host" ? myEmote : incomingEmote} side={game?.role === "host" ? "mine" : "incoming"} />
                     </span>
                     <span className="text-3xl font-extrabold text-amber-400 tabular-nums">
                       {scores.host}
@@ -717,8 +728,9 @@ const prefersReducedMotion = useReducedMotion();
                         : "bg-transparent"
                     }`}
                   >
-                    <span className="text-xs text-orange-300 font-medium">
+                    <span className="relative text-xs text-orange-300 font-medium">
                       {game?.guestName || t("games.dots_and_boxes.guest_default")}
+                      <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                     </span>
                     <span className="text-3xl font-extrabold text-orange-400 tabular-nums">
                       {scores.guest}
@@ -824,6 +836,17 @@ const prefersReducedMotion = useReducedMotion();
             >
               {isFinished ? t("games.dots_and_boxes.return_to_lobby") : t("games.dots_and_boxes.back_to_lobby")}
             </button>
+
+            {/* Emotes */}
+            <div className="mt-3 flex justify-center">
+              <EmotePicker
+                compact
+                hideBubbles
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
+            </div>
           </div>
         </div>
       </div>

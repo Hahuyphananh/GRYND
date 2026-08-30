@@ -5,6 +5,8 @@ import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
+import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
@@ -148,6 +150,13 @@ export default function PokerPage() {
   const spectatorGameId = searchParams.get("gameId");
   const [name, setName] = useState("");
   const [game, setGame] = useState<Game | null>(null);
+  // Emotes — dedicated per-table room; the bubble lands on the sender's seat.
+  const { incomingEmote, incomingSenderId, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: game?.id ? `poker:emote:${game.id}` : null,
+    eventName: "poker:emote",
+    selfId: myId,
+  });
   useGamePresence({
     gameKey: "poker",
     gameId: Number(game?.id),
@@ -2296,7 +2305,13 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
     `}
                 >
                   <div className="flex justify-between w-full px-1 items-center gap-1">
-                    <span className="truncate text-[#ffffff]/90">{occupant.name}{occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}</span>
+                    <span className="relative truncate text-[#ffffff]/90">{occupant.name}{occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}
+                      {isPlayer ? (
+                        <EmoteBubble emote={myEmote} side="mine" />
+                      ) : occupant.id === incomingSenderId ? (
+                        <EmoteBubble emote={incomingEmote} />
+                      ) : null}
+                    </span>
                     <span className="text-xs text-[#00e5ff] drop-shadow-[0_0_4px_#00e5ff]">${occupant.stack}</span>
                   </div>
 
@@ -3039,6 +3054,17 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               </button>
             </div>
           )}
+
+          {/* Emotes */}
+          <div className="mt-3 flex justify-center">
+            <EmotePicker
+              compact
+              hideBubbles
+              incomingEmote={incomingEmote}
+              myEmote={myEmote}
+              onSend={(emote) => sendEmote(emote)}
+            />
+          </div>
         </div>
       </div>
     </>

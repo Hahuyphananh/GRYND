@@ -32,6 +32,8 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
@@ -495,6 +497,12 @@ export default function MinesPvpMatchPage({
 
   // ── Derived UI state ─────────────────────────────────────────────
   const myUserId = user?.id;
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `mines:emote:${matchId}` : null,
+    eventName: "mines:emote",
+    selfId: myUserId,
+  });
 
   // Per-seat pick history derived from the chronological `picks`
   // array. Replaces the old single `p1Pick`/`p2Pick` derived
@@ -1002,6 +1010,7 @@ export default function MinesPvpMatchPage({
         >
           <span className="font-bold text-base sm:text-lg">
             Your turn. Pick a tile
+            <EmoteBubble emote={myEmote} side="mine" />
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
@@ -1018,10 +1027,11 @@ export default function MinesPvpMatchPage({
     }
     return (
       <div
-        className={`flex flex-wrap items-center justify-center gap-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-500/10 px-4 py-3 text-fuchsia-200`}
+        className={`relative flex flex-wrap items-center justify-center gap-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-500/10 px-4 py-3 text-fuchsia-200`}
       >
         <span className="font-bold text-base sm:text-lg">
           {isAi ? "GRYND AI is picking…" : "Opponent is picking…"}
+          <EmoteBubble emote={incomingEmote} />
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/30 px-3 py-1 text-sm font-bold text-fuchsia-100">
           <ClockIcon className="w-4 h-4" />
@@ -1442,6 +1452,17 @@ export default function MinesPvpMatchPage({
               )}
             </div>
           )}
+
+        {/* Emotes */}
+        <div className="mt-3 flex justify-center">
+          <EmotePicker
+            compact
+            hideBubbles
+            incomingEmote={incomingEmote}
+            myEmote={myEmote}
+            onSend={(emote) => sendEmote(emote)}
+          />
+        </div>
 
         {/* Error banner */}
         {error && (

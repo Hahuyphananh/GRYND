@@ -54,6 +54,8 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
 // The casino's existing logo asset (GRYND smiley) — reused as the
@@ -332,6 +334,12 @@ export default function MemoryGridMatchPage({
   const { socket } = useSocket();
   const resolved = use(params);
   const matchId = Number(resolved?.matchId);
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: Number.isFinite(matchId) ? `memory:emote:${matchId}` : null,
+    eventName: "memory:emote",
+    selfId: user?.id,
+  });
 
   const [match, setMatch] = useState<MatchData | null>(null);
   const [rounds, setRounds] = useState<RoundSnapshot[]>([]);
@@ -769,8 +777,9 @@ export default function MemoryGridMatchPage({
               as the in-match board), rounds-won as the secondary line. */}
           <div className="mb-5 grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-3 text-center">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
+              <p className="relative text-[10px] font-bold uppercase tracking-widest text-white/50">
                 You
+                <EmoteBubble emote={myEmote} side="mine" />
               </p>
               <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
                 {myTotal ?? 0}
@@ -781,7 +790,7 @@ export default function MemoryGridMatchPage({
               </p>
             </div>
             <div className="rounded-2xl border border-cyan-400/70 bg-cyan-500/10 p-3 text-center">
-              <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
+              <p className="relative flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
                 {oppAvatar && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -791,6 +800,7 @@ export default function MemoryGridMatchPage({
                   />
                 )}
                 {oppName}
+                <EmoteBubble emote={incomingEmote} />
               </p>
               <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">
                 {oppTotal ?? 0}
@@ -1254,6 +1264,17 @@ export default function MemoryGridMatchPage({
             >
               {submitting ? "Submitting…" : "Submit"}
             </button>
+
+            {/* Emotes */}
+            <div className="flex justify-center">
+              <EmotePicker
+                compact
+                hideBubbles
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
+            </div>
           </div>
         )}
 

@@ -9,6 +9,8 @@ import UnoBack from "../../../../components/UnoBack";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
+import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardPlace, playTurnSwitch, playVictory } from "../../../../lib/gameAudio";
@@ -744,6 +746,14 @@ export default function UnoMultiplayerPage() {
     ) || null;
   }, [unoMultiPlayers, game]);
 
+  // Emotes — dedicated per-table room for human opponents.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: game?.id ? `uno:multi:emote:${game.id}` : null,
+    eventName: "uno:emote",
+    selfId: (game as any)?.currentUserId ?? null,
+  });
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1183,6 +1193,17 @@ export default function UnoMultiplayerPage() {
                 </div>
               </div>
 
+              {/* Emotes */}
+              <div className="mt-2 flex justify-center">
+                <EmotePicker
+                  compact
+                  hideBubbles
+                  incomingEmote={incomingEmote}
+                  myEmote={myEmote}
+                  onSend={(emote) => sendEmote(emote)}
+                />
+              </div>
+
               {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
                 const player = unoMultiPlayers.find((p) => p.seatIndex === seatIndex);
                 if (!player || seatIndex >= unoMultiSettings.maxPlayers) return null;
@@ -1201,7 +1222,14 @@ export default function UnoMultiplayerPage() {
                       className={`w-32 rounded-xl border px-2 py-2 text-center ${unoMultiTurnPlayerId === player.id ? "border-[#FFD700] bg-[#FFD700]/20 shadow-[0_0_20px_rgba(255,215,0,0.6)]" : "bg-[#08142f] border-[#00e5ff]/35 text-white"}`}
                     >
                       <p className="text-xs font-bold truncate">
-                        <span className="inline-flex items-center gap-1">{player.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {player.name}</span>
+                        <span className="relative inline-flex items-center gap-1">
+                          {player.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {player.name}
+                          {player.userId === (game as any)?.currentUserId ? (
+                            <EmoteBubble emote={myEmote} side="mine" />
+                          ) : player.userId === humanOpponent?.userId ? (
+                            <EmoteBubble emote={incomingEmote} />
+                          ) : null}
+                        </span>
                       </p>
                       <p className="text-[11px] opacity-80">{hand?.count ?? 0} cards</p>
                     </div>

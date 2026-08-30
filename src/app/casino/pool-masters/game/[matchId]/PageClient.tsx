@@ -13,6 +13,8 @@ import { drawAimGuide, drawBalls, drawBankPreview, drawShotPreview, drawTable } 
 import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
 import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
+import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import ReportModal from "../../../../../components/ReportModal";
 import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
@@ -260,6 +262,13 @@ export default function Page() {
   const [pull, setPull] = useState(0);
   const [started, setStarted] = useState(aiMode);
   const [myName, setMyName] = useState("Player 1");
+  // Emotes — both players already join the pool room, so reuse it.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: activeMatchId ? `pool:${activeMatchId}` : null,
+    eventName: "pool:emote",
+    selfId: String(owner),
+  });
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
   const [remoteAim, setRemoteAim] = useState<{
     angle: number;
@@ -1306,16 +1315,28 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 shadow-inner">
-            <p className="font-bold">{myName}</p>
+            <p className="relative font-bold">{myName}<EmoteBubble emote={myEmote} side="mine" /></p>
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {myRemaining.join(", ") || "none"}</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 text-right shadow-inner">
-            <p className="font-bold">{oppName}</p>
+            <p className="relative font-bold">{oppName}<EmoteBubble emote={incomingEmote} /></p>
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
           </div>
         </div>
+        {/* ── Emotes ── */}
+        {started && !winner && (
+          <div className="mt-3 flex justify-center">
+            <EmotePicker
+              compact
+              hideBubbles
+              incomingEmote={incomingEmote}
+              myEmote={myEmote}
+              onSend={(emote) => sendEmote(emote)}
+            />
+          </div>
+        )}
         {/* ── Resign button ── */}
         {started && !winner && (
           <div className="mt-3 flex flex-col items-center gap-2">

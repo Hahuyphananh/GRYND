@@ -8,6 +8,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import EmotePicker from "../../../../components/game/EmotePicker";
 import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
 import { usePostHog } from "posthog-js/react";
@@ -119,6 +120,9 @@ export default function ChessGamePage() {
   // Draw offer state
   const [drawOffered, setDrawOffered] = useState(false);
   const [drawOfferReceived, setDrawOfferReceived] = useState(false);
+  // Emote state
+  const [incomingEmote, setIncomingEmote] = useState(null);
+  const [myEmote, setMyEmote] = useState(null);
   // Handle promotion piece selection from react-chessboard dialog
   const promotionHandledRef = useRef(false);
 
@@ -421,6 +425,18 @@ export default function ChessGamePage() {
 
     socket.emit("join_game", { gameId });
 
+    // Emote room — dedicated per-match room so emotes work even though chess
+    // is poll-based (the server's join_game is a no-op). Both players join
+    // this room and the generic room_event handler broadcasts between them.
+    const emoteRoomId = `chess:emote:${gameId}`;
+    socket.emit("join_room", { roomId: emoteRoomId });
+    const handleEmote = (payload) => {
+      if (payload?.senderId && payload.senderId === color) return;
+      setIncomingEmote(payload?.emote || null);
+      window.setTimeout(() => setIncomingEmote(null), 3000);
+    };
+    socket.on("chess:emote", handleEmote);
+
     socket.on("move", fetchState);
 
     // Draw offer handling
@@ -439,7 +455,9 @@ export default function ChessGamePage() {
 
     return () => {
       socket.emit("leave_game", { gameId });
+      socket.emit("leave_room", { roomId: emoteRoomId });
       socket.off("move", fetchState);
+      socket.off("chess:emote", handleEmote);
       socket.off("draw_offered");
       socket.off("draw_declined");
       socket.off("draw_accepted");
@@ -792,10 +810,15 @@ export default function ChessGamePage() {
           <div className="flex justify-center">
             <div className="w-full max-w-[660px]">
               {/* OPPONENT */}
-              <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+              <div className="relative mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-cyan-300">
+                  <span className="relative font-bold text-cyan-300">
                     {opponentName || "Opponent"}
+                    {incomingEmote && (
+                      <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]">
+                        {incomingEmote.value}
+                      </span>
+                    )}
                   </span>
                   {oppCaptured.length > 0 && (
                     <span className="text-lg tracking-tight opacity-80">
@@ -849,10 +872,15 @@ export default function ChessGamePage() {
               </div>
 
               {/* YOU */}
-              <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+              <div className="relative mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-fuchsia-300">
+                  <span className="relative font-bold text-fuchsia-300">
                     {myName || "You"}
+                    {myEmote && (
+                      <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.35)]">
+                        {myEmote.value}
+                      </span>
+                    )}
                   </span>
                   {myCaptured.length > 0 && (
                     <span className="text-lg tracking-tight opacity-80">
@@ -961,6 +989,25 @@ export default function ChessGamePage() {
                 >
                   {isResigning ? "Resigning..." : "Resign"}
                 </button>
+
+                {/* Emotes */}
+                <div className="mt-3 flex justify-center">
+                  <EmotePicker
+                    compact
+                    hideBubbles
+                    incomingEmote={incomingEmote}
+                    myEmote={myEmote}
+                    onSend={(emote) => {
+                      setMyEmote(emote);
+                      socket?.emit("room_event", {
+                        roomId: `chess:emote:${gameId}`,
+                        event: "chess:emote",
+                        payload: { emote, senderId: color },
+                      });
+                      window.setTimeout(() => setMyEmote(null), 3000);
+                    }}
+                  />
+                </div>
 
                 {/* Resign confirmation modal */}
                 <AnimatePresence>

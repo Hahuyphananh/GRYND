@@ -6,6 +6,8 @@ import ArenaTable from "../../../../../components/crash-arena/ArenaTable";
 import CrashEngine from "../../../../../components/games/crash-engine/CrashEngine";
 import useCrashArenaRound from "../../../../../components/crash-arena/useCrashArenaRound";
 import { useSocket } from "../../../../../context/SocketProvider";
+import EmotePicker from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { IconPlug } from "@tabler/icons-react";
@@ -24,7 +26,7 @@ export default function TableRoomPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isSignedIn: isUserSignedIn } = useUser();
+  const { isSignedIn: isUserSignedIn, user } = useUser();
   // Invite code for private tables — travels in the shared URL (?code=)
   // so the join route can validate it. The host's code comes from their
   // own table row instead (returned only to the host by the tables API).
@@ -36,6 +38,13 @@ export default function TableRoomPage() {
   const tableId = Number.isFinite(rawId) ? rawId : null;
   const playerName = "You";
   const { socket } = useSocket();
+  // Emotes — dedicated per-table room (mirrors the other PvP games).
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: tableId ? `crash:emote:${tableId}` : null,
+    eventName: "crash-arena:emote",
+    selfId: user?.id,
+  });
 
   // ── Socket connection state (drives the "Reconnecting…" banner) ───
   // The realtime server holds the player's seat during its disconnect
@@ -454,6 +463,19 @@ export default function TableRoomPage() {
           />
         </ArenaTable>
       </div>
+
+      {/* Emotes — floating widget near the table actions; its own bubbles
+          appear next to it (crash-arena players are all at one table). */}
+      {table && table.players.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <EmotePicker
+            compact
+            incomingEmote={incomingEmote}
+            myEmote={myEmote}
+            onSend={(emote) => sendEmote(emote)}
+          />
+        </div>
+      )}
 
       {/* Report modal — flags a seated opponent for moderation. */}
       <ReportModal

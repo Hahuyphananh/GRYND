@@ -4,6 +4,8 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSocket } from "../../../../../context/SocketProvider";
+import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { getDropRow } from "../../../../../lib/connectFour";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
@@ -69,6 +71,13 @@ export default function ConnectFourGamePage() {
   const { socket } = useSocket();
 
   const [game, setGame] = useState<any>(null);
+  // Emotes — both players already join the connect-four room, so reuse it.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: gameId ? `connect-four:${gameId}` : null,
+    eventName: "connect-four:emote",
+    selfId: game?.role ?? null,
+  });
   const [loadingMove, setLoadingMove] = useState(false);
   const [statusText, setStatusText] = useState("Loading game...");
   const [fallingDisc, setFallingDisc] = useState<{
@@ -590,16 +599,18 @@ export default function ConnectFourGamePage() {
               <div
                 className={`rounded-lg p-2 border ${game?.currentTurn === "host" ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5"}`}
               >
-                <p className="text-sm text-white/70">
+                <p className="relative text-sm text-white/70">
                   {game?.hostName || "Host"}
+                  <EmoteBubble emote={game?.role === "host" ? myEmote : incomingEmote} side={game?.role === "host" ? "mine" : "incoming"} />
                 </p>
                 <p className="text-2xl font-mono font-bold">{hostTimer}s</p>
               </div>
               <div
                 className={`rounded-lg p-2 border ${game?.currentTurn === "guest" ? "border-red-400 bg-red-500/10" : "border-white/15 bg-white/5"}`}
               >
-                <p className="text-sm text-white/70">
+                <p className="relative text-sm text-white/70">
                   {game?.guestName || "Guest"}
+                  <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                 </p>
                 <p className="text-2xl font-mono font-bold">{guestTimer}s</p>
               </div>
@@ -617,6 +628,17 @@ export default function ConnectFourGamePage() {
                   ↓
                 </button>
               ))}
+            </div>
+
+            {/* Emotes */}
+            <div className="mb-3 flex justify-center">
+              <EmotePicker
+                compact
+                hideBubbles
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
             </div>
 
             <div className="connect-four-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
