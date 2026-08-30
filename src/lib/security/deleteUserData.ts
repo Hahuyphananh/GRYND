@@ -42,6 +42,7 @@ import {
   roulettePvpMatches,
   rpsGames,
   rpsPvpGames,
+  stripeCheckoutSessions,
   unoGames,
   userAutomationState,
   userLoginRewards,
@@ -120,212 +121,129 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     await tx.delete(chatMessages).where(eq(chatMessages.clerkId, clerkId));
     await tx.delete(emailEvents).where(eq(emailEvents.clerkId, clerkId));
     await tx.delete(userPresence).where(eq(userPresence.clerkId, clerkId));
-    await tx.delete(userAutomationState).where(
-      eq(userAutomationState.clerkId, clerkId),
-    );
-    await tx
-      .delete(dicePlayerStats)
-      .where(eq(dicePlayerStats.userId, clerkId));
-    await tx
-      .delete(poolPlayerStats)
-      .where(eq(poolPlayerStats.userId, clerkId));
+    await tx.delete(userAutomationState).where(eq(userAutomationState.clerkId, clerkId));
+    await tx.delete(dicePlayerStats).where(eq(dicePlayerStats.userId, clerkId));
+    await tx.delete(poolPlayerStats).where(eq(poolPlayerStats.userId, clerkId));
     await tx.delete(bigWins).where(eq(bigWins.userId, clerkId));
+
+    // Stripe checkout-session ledger (keyed by Clerk id) — a deleted account's
+    // purchase history is personal data. Guarded because the table only exists
+    // after migration 0113.
+    if ((await getExistingTables()).has("stripe_checkout_sessions")) {
+      await tx.delete(stripeCheckoutSessions).where(eq(stripeCheckoutSessions.clerkId, clerkId));
+    }
 
     // ── Solo games: integer user_id, no FK (rows would orphan). ──
     await tx.delete(unoGames).where(eq(unoGames.userId, localUserId));
     await tx.delete(blackjackGames).where(eq(blackjackGames.userId, localUserId));
     await tx.delete(crashGames).where(eq(crashGames.userId, localUserId));
     await tx.delete(minesGames).where(eq(minesGames.userId, localUserId));
-    await tx
-      .delete(laneRunnerGames)
-      .where(eq(laneRunnerGames.userId, localUserId));
+    await tx.delete(laneRunnerGames).where(eq(laneRunnerGames.userId, localUserId));
     await tx.delete(plinkoGames).where(eq(plinkoGames.userId, clerkId));
     await tx.delete(rouletteGames).where(eq(rouletteGames.userId, localUserId));
     await tx.delete(keno_games).where(eq(keno_games.user_id, localUserId));
 
     // ── Solo games: varchar user_id (Clerk id), no FK. ──
     await tx.delete(rpsGames).where(eq(rpsGames.userId, clerkId));
-    await tx
-      .delete(hexDuelActions)
-      .where(eq(hexDuelActions.userId, clerkId));
+    await tx.delete(hexDuelActions).where(eq(hexDuelActions.userId, clerkId));
     await tx.delete(poolShots).where(eq(poolShots.userId, clerkId));
     // chess_moves stores the player as `played_by` (Clerk id) with a
     // cascade on game_id; deleting the user's games covers their moves.
     await tx.delete(chessMoves).where(eq(chessMoves.playedBy, clerkId));
     // dice_flush_rooms carry no user column — the host is found via the
     // room's players/actions rows (deleted below).
-    await tx.delete(diceFlushRooms).where(
-      inArray(
-        diceFlushRooms.id,
-        tx
-          .select({ id: diceFlushPlayers.roomId })
-          .from(diceFlushPlayers)
-          .where(eq(diceFlushPlayers.userId, clerkId)),
-      ),
-    );
     await tx
-      .delete(diceFlushActions)
-      .where(eq(diceFlushActions.userId, clerkId));
-    await tx
-      .delete(diceFlushPlayers)
-      .where(eq(diceFlushPlayers.userId, clerkId));
+      .delete(diceFlushRooms)
+      .where(
+        inArray(
+          diceFlushRooms.id,
+          tx
+            .select({ id: diceFlushPlayers.roomId })
+            .from(diceFlushPlayers)
+            .where(eq(diceFlushPlayers.userId, clerkId))
+        )
+      );
+    await tx.delete(diceFlushActions).where(eq(diceFlushActions.userId, clerkId));
+    await tx.delete(diceFlushPlayers).where(eq(diceFlushPlayers.userId, clerkId));
 
     // ── PvP match history: player1_id / player2_id are Clerk ids. ──
     // Delete any match the user played in (either seat).
     await tx
       .delete(chessGames)
-      .where(
-        or(
-          eq(chessGames.playerWhiteId, clerkId),
-          eq(chessGames.playerBlackId, clerkId),
-        ),
-      );
+      .where(or(eq(chessGames.playerWhiteId, clerkId), eq(chessGames.playerBlackId, clerkId)));
     await tx
       .delete(diceLobbies)
-      .where(
-        or(
-          eq(diceLobbies.hostUserId, clerkId),
-          eq(diceLobbies.opponentUserId, clerkId),
-        ),
-      );
+      .where(or(eq(diceLobbies.hostUserId, clerkId), eq(diceLobbies.opponentUserId, clerkId)));
     await tx
       .delete(diceMatches)
-      .where(
-        or(
-          eq(diceMatches.player1Id, clerkId),
-          eq(diceMatches.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(diceMatches.player1Id, clerkId), eq(diceMatches.player2Id, clerkId)));
     await tx
       .delete(poolLobbies)
-      .where(
-        or(
-          eq(poolLobbies.hostUserId, clerkId),
-          eq(poolLobbies.opponentUserId, clerkId),
-        ),
-      );
+      .where(or(eq(poolLobbies.hostUserId, clerkId), eq(poolLobbies.opponentUserId, clerkId)));
     await tx
       .delete(poolMatches)
-      .where(
-        or(
-          eq(poolMatches.player1Id, clerkId),
-          eq(poolMatches.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(poolMatches.player1Id, clerkId), eq(poolMatches.player2Id, clerkId)));
     await tx
       .delete(rpsPvpGames)
-      .where(
-        or(
-          eq(rpsPvpGames.player1Id, clerkId),
-          eq(rpsPvpGames.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(rpsPvpGames.player1Id, clerkId), eq(rpsPvpGames.player2Id, clerkId)));
     await tx
       .delete(connectFourGames)
       .where(
-        or(
-          eq(connectFourGames.hostClerkId, clerkId),
-          eq(connectFourGames.guestClerkId, clerkId),
-        ),
+        or(eq(connectFourGames.hostClerkId, clerkId), eq(connectFourGames.guestClerkId, clerkId))
       );
     await tx
       .delete(dotsAndBoxesGames)
       .where(
-        or(
-          eq(dotsAndBoxesGames.hostClerkId, clerkId),
-          eq(dotsAndBoxesGames.guestClerkId, clerkId),
-        ),
+        or(eq(dotsAndBoxesGames.hostClerkId, clerkId), eq(dotsAndBoxesGames.guestClerkId, clerkId))
       );
     await tx
       .delete(hexDuelGames)
-      .where(
-        or(
-          eq(hexDuelGames.player1Id, clerkId),
-          eq(hexDuelGames.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(hexDuelGames.player1Id, clerkId), eq(hexDuelGames.player2Id, clerkId)));
     await tx
       .delete(oddsGames)
-      .where(
-        or(
-          eq(oddsGames.player1Id, clerkId),
-          eq(oddsGames.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(oddsGames.player1Id, clerkId), eq(oddsGames.player2Id, clerkId)));
     await tx
       .delete(precisionMatches)
-      .where(
-        or(
-          eq(precisionMatches.player1Id, clerkId),
-          eq(precisionMatches.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(precisionMatches.player1Id, clerkId), eq(precisionMatches.player2Id, clerkId)));
     if ((await getExistingTables()).has("lane_runner_pvp_matches")) {
       await tx
         .delete(laneRunnerPvpMatches)
         .where(
           or(
             eq(laneRunnerPvpMatches.player1Id, clerkId),
-            eq(laneRunnerPvpMatches.player2Id, clerkId),
-          ),
+            eq(laneRunnerPvpMatches.player2Id, clerkId)
+          )
         );
     }
     await tx
       .delete(roulettePvpMatches)
       .where(
-        or(
-          eq(roulettePvpMatches.player1Id, clerkId),
-          eq(roulettePvpMatches.player2Id, clerkId),
-        ),
+        or(eq(roulettePvpMatches.player1Id, clerkId), eq(roulettePvpMatches.player2Id, clerkId))
       );
     await tx
       .delete(blackjackPvpMatches)
       .where(
-        or(
-          eq(blackjackPvpMatches.player1Id, clerkId),
-          eq(blackjackPvpMatches.player2Id, clerkId),
-        ),
+        or(eq(blackjackPvpMatches.player1Id, clerkId), eq(blackjackPvpMatches.player2Id, clerkId))
       );
     await tx
       .delete(minesPvpMatches)
-      .where(
-        or(
-          eq(minesPvpMatches.player1Id, clerkId),
-          eq(minesPvpMatches.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(minesPvpMatches.player1Id, clerkId), eq(minesPvpMatches.player2Id, clerkId)));
     await tx
       .delete(memoryGridMatches)
       .where(
-        or(
-          eq(memoryGridMatches.player1Id, clerkId),
-          eq(memoryGridMatches.player2Id, clerkId),
-        ),
+        or(eq(memoryGridMatches.player1Id, clerkId), eq(memoryGridMatches.player2Id, clerkId))
       );
     await tx
       .delete(laneRushDuelMatches)
       .where(
-        or(
-          eq(laneRushDuelMatches.player1Id, clerkId),
-          eq(laneRushDuelMatches.player2Id, clerkId),
-        ),
+        or(eq(laneRushDuelMatches.player1Id, clerkId), eq(laneRushDuelMatches.player2Id, clerkId))
       );
     await tx
       .delete(plinkoPvpMatches)
-      .where(
-        or(
-          eq(plinkoPvpMatches.player1Id, clerkId),
-          eq(plinkoPvpMatches.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(plinkoPvpMatches.player1Id, clerkId), eq(plinkoPvpMatches.player2Id, clerkId)));
     await tx
       .delete(kenoPvpMatches)
-      .where(
-        or(
-          eq(kenoPvpMatches.player1Id, clerkId),
-          eq(kenoPvpMatches.player2Id, clerkId),
-        ),
-      );
+      .where(or(eq(kenoPvpMatches.player1Id, clerkId), eq(kenoPvpMatches.player2Id, clerkId)));
 
     // ── Poker: Clerk ids are embedded in jsonb — scrub, don't delete. ──
     // players: [{ seat, clerkId, ... }] — remove any seat referencing the
@@ -355,9 +273,7 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     `);
 
     // Reports the user filed are their personal data — erase them.
-    await tx
-      .delete(playerReports)
-      .where(eq(playerReports.reporterClerkId, clerkId));
+    await tx.delete(playerReports).where(eq(playerReports.reporterClerkId, clerkId));
     // Reports filed AGAINST the user are other users' evidence — keep the
     // report, scrub the erased account's identity from it.
     await tx

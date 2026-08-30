@@ -110,6 +110,12 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     config: { windowMs: 60_000, max: 20 },
   },
   {
+    // Stripe webhook — Stripe can re-deliver event bursts; give it headroom
+    // so legitimate events are never 429'd (idempotency handles replays).
+    pattern: /^\/api\/webhooks\/stripe$/,
+    config: { windowMs: 60_000, max: 300 },
+  },
+  {
     // Prevent abuse: only allow a handful of test emails per minute.
     pattern: /^\/api\/email\/test$/,
     config: { windowMs: 60_000, max: 5 },
@@ -211,7 +217,7 @@ function applySecurityHeaders(response: NextResponse) {
       "img-src 'self' data: blob: https:; " +
       "font-src 'self' data: https://fonts.gstatic.com https://*.tawk.to; " +
       "connect-src 'self' https: wss:; " +
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to; " +
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to https://js.stripe.com https://checkout.stripe.com https://*.stripe.com; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

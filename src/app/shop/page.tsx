@@ -1,38 +1,101 @@
 import type { Metadata } from "next";
+import { asc, eq } from "drizzle-orm";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
+import ShopBuyClient, { type ShopPackage } from "../../components/ShopBuyClient";
+import { db } from "../../db";
+import { tokenPackages } from "../../db/schema";
+import { resolvePackagePriceCents } from "../../lib/stripe/packages";
 
 export const metadata: Metadata = {
   title: "Shop | GRYND",
   description: "Grynd Shop",
 };
 
-const EMOTES = [
-  ["gg", "GG", "Good Game", "text-[#f5ff3b]"],
-  ["nice-move", "NICE MOVE", "Nice Move", "text-[#00e5ff]"],
-  ["laugh", "😂", "Laugh", ""],
-  ["wow", "😮", "Wow", ""],
-  ["fire", "🔥", "Fire", ""],
-  ["cry", "😭", "Cry", ""],
-] as const;
+// Loads the enabled token catalog server-side so the client never sees Stripe
+// secret/customer identifiers — only display data (name, tokens, price, badge).
+// For offers bound to a real Stripe product (stripe_product_id set) the price
+// is resolved live from Stripe; otherwise the catalog's stored price is used.
+async function loadPackages(): Promise<ShopPackage[]> {
+  try {
+    const rows = await db
+      .select({
+        id: tokenPackages.id,
+        key: tokenPackages.key,
+        name: tokenPackages.name,
+        baseTokens: tokenPackages.tokenAmount,
+        bonusTokens: tokenPackages.bonusTokens,
+        priceCents: tokenPackages.priceCents,
+        badge: tokenPackages.badge,
+        featured: tokenPackages.featured,
+        stripeProductId: tokenPackages.stripeProductId,
+        stripePriceId: tokenPackages.stripePriceId,
+      })
+      .from(tokenPackages)
+      .where(eq(tokenPackages.enabled, true))
+      .orderBy(asc(tokenPackages.sortOrder));
 
-export default function ShopPage() {
+    // Resolve each offer's price (Stripe-backed where possible) in parallel.
+    const offers = await Promise.all(
+      rows.map(async (r) => {
+        const priceCents = await resolvePackagePriceCents({
+          id: r.id,
+          key: r.key,
+          name: r.name,
+          priceCents: Number(r.priceCents ?? 0),
+          stripeProductId: r.stripeProductId,
+          stripePriceId: r.stripePriceId,
+        });
+        return { ...r, priceCents };
+      })
+    );
+
+    return offers.map((r) => {
+      const baseTokens = Number(r.baseTokens ?? 0);
+      const bonusTokens = Number(r.bonusTokens ?? 0);
+      const awardedTokens = baseTokens + bonusTokens;
+      const priceCents = Number(r.priceCents ?? 0);
+      const tokensPerDollar = priceCents > 0 ? Math.round((awardedTokens * 100) / priceCents) : 0;
+      return {
+        key: r.key,
+        name: r.name,
+        baseTokens,
+        bonusTokens,
+        awardedTokens,
+        priceUsd: (priceCents / 100).toFixed(2),
+        badge: r.badge,
+        featured: r.featured,
+        tokensPerDollar,
+      };
+    });
+  } catch (err) {
+    console.error("[shop] Failed to load token packages:", err);
+    return [];
+  }
+}
+
+export default async function ShopPage() {
+  const packages = await loadPackages();
+
   return (
     <div className="relative min-h-screen">
       <InteractiveCasinoBg variant="subtle" />
       <NavigationBar currentPath="/shop" />
       <main className="relative z-10 mx-auto max-w-6xl px-4 pb-20 pt-24">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          {EMOTES.map(([id, display, label, textClass]) => (
-            <div key={id} className="rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/70 p-4 text-center shadow-[0_0_20px_rgba(0,229,255,0.08)]">
-              <div className={`mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-[#00e5ff]/40 bg-[#071531] text-5xl shadow-[0_0_18px_rgba(0,229,255,0.2)] ${textClass}`} role="img" aria-label={label}>
-                <span className={id === "gg" || id === "nice-move" ? "text-center text-sm font-black leading-tight tracking-wider" : ""}>{display}</span>
-              </div>
-              <p className="mt-3 text-sm font-semibold text-[#c9f7ff]">{label}</p>
-            </div>
-          ))}
-        </div>
+        {packages.length > 0 ? (
+          <>
+            <ShopBuyClient packages={packages} />
+            <p className="mt-4 text-center text-xs text-[#9dd8ff]/50">
+              Purchases are processed securely by Stripe. Grynd tokens are virtual and have no cash
+              value — non-refundable.
+            </p>
+          </>
+        ) : (
+          <p className="pt-16 text-center text-lg text-[#9dd8ff]/70">
+            Token offers are coming soon.
+          </p>
+        )}
       </main>
       <Footer />
     </div>

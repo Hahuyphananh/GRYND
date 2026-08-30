@@ -78,6 +78,7 @@
     "resend": "^6.12.2",
     "socket.io-client": "^4.8.3",
     "stockfish": "^16.0.0",
+    "stripe": "^22.6.0",
     "svix": "^1.95.1",
     "swr": "^2.3.3",
     "typescript-eslint": "^8.59.3",
