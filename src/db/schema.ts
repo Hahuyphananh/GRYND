@@ -281,6 +281,9 @@ export const users = pgTable("users", {
   profileAccent: varchar("profile_accent", { length: 7 }),
   profileBanner: text("profile_banner"),
   avatarFrame: varchar("avatar_frame", { length: 40 }),
+  // Responsible-play setting: per-player daily loss limit (tokens).
+  // Null = global default, 0 = warnings disabled, > 0 = custom threshold.
+  dailyLossLimit: integer("daily_loss_limit"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),
