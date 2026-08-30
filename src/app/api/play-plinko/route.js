@@ -3,7 +3,7 @@ import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { recordBigWinIfNeeded } from "../../../lib/bigWins";
+import { recordBigWinIfNeeded, MINIMUM_BIG_WIN_AMOUNT } from "../../../lib/bigWins";
 
 export async function POST(req) {
   try {
@@ -16,6 +16,14 @@ export async function POST(req) {
     if (typeof betAmount !== "number" || betAmount <= 0) {
       return NextResponse.json(
         { error: "Invalid bet amount" },
+        { status: 400 },
+      );
+    }
+    // Plinko is high-variance (up to 120x) — capped at HIGH_VARIANCE_MAX_BET
+    // (must match src/lib/games/economy.ts).
+    if (betAmount > 10000) {
+      return NextResponse.json(
+        { error: "Bet exceeds the maximum of 10,000 tokens for Plinko" },
         { status: 400 },
       );
     }
@@ -57,7 +65,7 @@ export async function POST(req) {
       .where(eq(users.clerkId, clerkId));
 
     // Record big win if winAmount >= 1 million tokens
-    if (winAmount >= 1000000) {
+    if (winAmount >= MINIMUM_BIG_WIN_AMOUNT) {
       const clerkUser = await currentUser();
       recordBigWinIfNeeded({
         userId: clerkId,

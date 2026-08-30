@@ -67,6 +67,15 @@ export async function POST(req) {
         { status: 400 },
       );
     }
+    // Roulette is high-variance (35:1 on a straight) — total staked per spin
+    // capped at HIGH_VARIANCE_MAX_BET (must match src/lib/games/economy.ts).
+    const totalStaked = Object.values(bets).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    if (!Number.isFinite(totalStaked) || totalStaked <= 0 || totalStaked > 10000) {
+      return NextResponse.json(
+        { success: false, error: "Total bet must be between 1 and 10,000 tokens" },
+        { status: 400 },
+      );
+    }
 
     // Get user data
     const userData = await db

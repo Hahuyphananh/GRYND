@@ -49,6 +49,10 @@ function MainComponent() {
   const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
   const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
+  // Grynd+ membership (drives the +50% login bonus state) + the bonus amount
+  // from the last claim.
+  const [membership, setMembership] = useState(null);
+  const [premiumBonus, setPremiumBonus] = useState(0);
   const [streakData, setStreakData] = useState({
     currentDay: 0,
     claimedDays: [], // array of ISO dates strings
@@ -226,6 +230,27 @@ function MainComponent() {
     fetchRewardStatus();
   }, [user, isSignedIn]);
 
+  // Fetch Grynd+ membership status so the daily reward UI can show the +50%
+  // login bonus state.
+  useEffect(() => {
+    if (!isSignedIn) {
+      setMembership(null);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/membership/status", { credentials: "include" })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (!cancelled && data?.success) {
+          setMembership(data.active ? data : null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, user]);
+
   const claimDailyReward = async () => {
     if (!user || !isSignedIn) {
       showNotification(t("home.rewards.must_sign_in"), "error");
@@ -269,6 +294,7 @@ function MainComponent() {
       setMilestoneTitle(data.milestoneTitle || null);
 
       setRewardPopupVisible(true);
+      setPremiumBonus(data.premiumBonus || 0);
 
       // 4) Set 24h cooldown
       const nextTime = new Date();
@@ -828,13 +854,20 @@ function MainComponent() {
         </div>
       )}
       {isSignedIn && !dailyRewardCooldown && (
-        <button
-          onClick={claimDailyReward}
-          className="fixed right-4 bottom-16 z-50 rounded-lg px-4 py-2 text-sm font-semibold text-[#031026] transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse border border-amber-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-          title={t("home.rewards.claim_daily_title")}
-        >
-          {t("home.rewards.claim_button")}
-        </button>
+        <div className="fixed right-4 bottom-16 z-50 flex flex-col items-end gap-1.5">
+          {membership?.active && (
+            <span className="rounded-full border border-emerald-400/60 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]">
+              {t("home.rewards.premium_badge")}
+            </span>
+          )}
+          <button
+            onClick={claimDailyReward}
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-[#031026] transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse border border-amber-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+            title={t("home.rewards.claim_daily_title")}
+          >
+            {t("home.rewards.claim_button")}
+          </button>
+        </div>
       )}
 
       {isSignedIn && dailyRewardCooldown && (
@@ -879,12 +912,27 @@ function MainComponent() {
                   {t("home.rewards.claimed")}!
                 </p>
 
+                {/* Grynd+ +50% login bonus state */}
+                {(membership?.active || premiumBonus > 0) && (
+                  <p className="-mt-4 mb-6 text-sm font-semibold text-emerald-300">
+                    {premiumBonus > 0
+                      ? `+${premiumBonus.toLocaleString()} — ${t("home.rewards.premium_bonus_earned")}`
+                      : t("home.rewards.premium_active")}
+                  </p>
+                )}
+
                 {/* 14 DAY GRID */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 mb-6">
                   {Array.from({ length: streakData.maxDay || 14 }).map(
                     (_, i) => {
                       const day = i + 1;
-                      const reward = 100 * 2 ** (day - 1);
+                      // Must mirror /api/claim-login-reward (50 tokens per
+                      // streak day — linear escalation).
+                      const baseReward = 25 * day; // must match LOGIN_REWARD_PER_DAY in claim-login-reward
+                      // Grynd+ members earn +50% on the daily login reward.
+                      const reward = Math.round(
+                        baseReward * (membership?.active ? 1.5 : 1),
+                      );
 
                       const claimed = day < claimedDay;
                       const isToday = day === claimedDay;
@@ -924,6 +972,12 @@ function MainComponent() {
                           <div className="text-xs text-[#FFD700]">
                             {reward.toLocaleString()}
                           </div>
+
+                          {isToday && membership?.active && (
+                            <span className="mt-0.5 rounded-full bg-emerald-500/20 px-1.5 text-[9px] font-bold text-emerald-300">
+                              +50%
+                            </span>
+                          )}
                         </div>
                       );
                     },

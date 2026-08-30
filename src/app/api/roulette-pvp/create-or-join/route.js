@@ -77,10 +77,11 @@ export async function POST(req) {
     );
   }
 
-  // Hard cap matching the rounding precision of the user's balance.
-  if (stakeAmount > 1000000) {
+  // Roulette is high-variance (35:1 on a straight) — match stake capped at
+  // HIGH_VARIANCE_MAX_BET (must match src/lib/games/economy.ts).
+  if (stakeAmount > 10000) {
     return NextResponse.json(
-      { success: false, error: "Stake exceeds maximum limit" },
+      { success: false, error: "Stake exceeds the maximum of 10,000 tokens for Roulette" },
       { status: 400 },
     );
   }

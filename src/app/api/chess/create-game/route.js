@@ -47,6 +47,13 @@ export async function POST(req) {
         { status: 400 },
       );
     }
+    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
+    if (tableAmount > 100000) {
+      return NextResponse.json(
+        { error: "Stake exceeds the maximum of 100,000 tokens" },
+        { status: 400 },
+      );
+    }
     
     // Accept explicit timeLimit from client, or look up from TIMER_CONFIG
     const initialTimeSeconds = Number.isFinite(timeLimit) && timeLimit > 0

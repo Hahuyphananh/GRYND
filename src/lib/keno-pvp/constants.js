@@ -221,7 +221,8 @@ export const FINISHED_GRACE_MS = 5000;
 
 export const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 export const MIN_STAKE = 1;
-export const MAX_STAKE = 1000000;
+// Must match GLOBAL_MAX_BET in src/lib/games/economy.ts.
+export const MAX_STAKE = 100000;
 
 // Standard win: 90/10 split of the loser's stake (winner 1.9x net).
 export const HOUSE_FEE_PCT = 0.10;

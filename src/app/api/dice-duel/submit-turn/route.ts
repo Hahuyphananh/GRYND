@@ -128,7 +128,9 @@ export async function POST(req: Request) {
   if (status === "finished" && winnerId) {
     const wager = m.wager || 0;
     const isPvp = !isAI && m.player2Id !== null && m.player2Id !== "AI_BOT";
-    const payout = isPvp ? Math.floor(wager * 2 * 0.9) : 0;
+    // 5% house rake (must match PVP_RAKE_PCT in src/lib/games/economy.ts):
+    // winner keeps 95% of the 2x pot = 1.9x wager.
+    const payout = isPvp ? Math.floor(wager * 2 * 0.95) : 0;
     // For vs-AI matches no wager was ever deducted from the player's
     // balance, so the leaderboard must record betAmount=0; otherwise
     // total_wagered / weekly_wagered get inflated by phantom wagers

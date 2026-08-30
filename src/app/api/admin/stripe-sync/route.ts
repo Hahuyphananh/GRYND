@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { isAdmin } from "../../../../lib/auth/isAdmin";
 import { syncAllTokenPackagesToStripe } from "../../../../lib/stripe/packages";
+import { syncAllSubscriptionPlansToStripe } from "../../../../lib/stripe/subscriptions";
 import { adminAuditLog } from "../../../../lib/security/adminAuditLog";
 
 export const runtime = "nodejs";
@@ -31,12 +32,19 @@ export async function POST() {
   }
 
   try {
-    const result = await syncAllTokenPackagesToStripe();
+    const [packages, subscriptions] = await Promise.all([
+      syncAllTokenPackagesToStripe(),
+      syncAllSubscriptionPlansToStripe(),
+    ]);
     await adminAuditLog("admin_stripe_sync", {
       clerkId: userId,
-      details: { count: result.count },
+      details: { packages: packages.count, subscriptions: subscriptions.count },
     });
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({
+      success: true,
+      ...packages,
+      subscriptions,
+    });
   } catch (err) {
     console.error("[admin/stripe-sync] Failed:", err);
     return NextResponse.json(

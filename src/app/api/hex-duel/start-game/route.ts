@@ -28,6 +28,13 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
+    if (wager > 100000) {
+      return NextResponse.json(
+        { success: false, error: "Wager exceeds the maximum of 100,000 tokens" },
+        { status: 400 }
+      );
+    }
 
     // AI games are free play — no balance deduction, no `totalWagered`
     // bump. We still return the user's CURRENT balance (without any

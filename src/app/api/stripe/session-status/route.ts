@@ -17,6 +17,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { stripeCheckoutSessions } from "../../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { findActiveSubscription } from "../../../../lib/stripe/subscriptions";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ export async function GET(req: Request) {
       clerkId: stripeCheckoutSessions.clerkId,
       tokenAmount: stripeCheckoutSessions.tokenAmount,
       packageKey: stripeCheckoutSessions.packageKey,
+      sessionMode: stripeCheckoutSessions.sessionMode,
       paymentStatus: stripeCheckoutSessions.paymentStatus,
       fulfilled: stripeCheckoutSessions.fulfilled,
     })
@@ -49,6 +51,20 @@ export async function GET(req: Request) {
   // "not found" — no cross-user information leak.
   if (!row || row.clerkId !== userId) {
     return NextResponse.json({ success: true, fulfilled: false });
+  }
+
+  // Subscription sessions never carry a one-time token credit — "fulfilled"
+  // means the subscription itself is active (recorded by the webhook). The
+  // client polls while the webhook catches up, exactly like the one-time flow.
+  if (row.sessionMode === "subscription") {
+    const subscription = await findActiveSubscription(userId);
+    return NextResponse.json({
+      success: true,
+      fulfilled: Boolean(subscription),
+      subscription: true,
+      packageKey: row.packageKey,
+      paymentStatus: row.paymentStatus,
+    });
   }
 
   return NextResponse.json({

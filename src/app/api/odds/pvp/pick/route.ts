@@ -75,7 +75,8 @@ export async function POST(req: Request) {
       if (roundAge > TIMEOUT_MS && oppDone) {
         const forfeiterId = isPlayer1 ? game.player2Id : game.player1Id;
         const winnerId = userId;
-        const payout = game.wager * 2;
+        // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
+        const payout = game.wager * 1.9;
         const winner: "player1" | "player2" = isPlayer1 ? "player1" : "player2";
         // Persist the game-over state so the opponent's polls/socket
         // refetches reflect the match ending (not just the submitter).
@@ -229,7 +230,8 @@ export async function POST(req: Request) {
 
       // Both predictions in — resolve the round (accuracy scoring)
       const pickResult = resolvePvPRound(afterPred);
-      const payout = game.wager * 2;
+      // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
+      const payout = game.wager * 1.9;
 
       if (pickResult.updatedState.gameOver) {
         const winner = pickResult.updatedState.winner; // null = draw

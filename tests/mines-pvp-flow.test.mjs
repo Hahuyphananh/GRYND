@@ -487,9 +487,9 @@ test("validateMatchParams: accepts boundary stake (1)", () => {
   );
 });
 
-test("validateMatchParams: accepts boundary stake (1,000,000)", () => {
+test("validateMatchParams: accepts boundary stake (100,000)", () => {
   assert.equal(
-    validateMatchParams({ stakeAmount: 1_000_000, minesCount: 24 }).ok,
+    validateMatchParams({ stakeAmount: 100_000, minesCount: 24 }).ok,
     true,
   );
 });

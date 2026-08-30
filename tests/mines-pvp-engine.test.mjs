@@ -118,7 +118,7 @@ test("MIN_STAKE is 1", () => {
 });
 
 test("MAX_STAKE is 1,000,000 (one million cap)", () => {
-  assert.equal(MAX_STAKE, 1_000_000);
+  assert.equal(MAX_STAKE, 100_000); // economy cap (GLOBAL_MAX_BET)
 });
 
 // ════════════════════════════════════════════════════════════════════════

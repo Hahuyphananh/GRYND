@@ -6,31 +6,42 @@ import { eq, sql } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../lib/security/idempotency";
+import { isPremiumMember } from "../../../lib/stripe/subscriptions";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { updateDailyStreak } from "../../../lib/dailyStreak";
 import { getAllStreakTitles, getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
 import { logError } from "../../../lib/logError";
 
-const LOGIN_REWARD_BASE = 100;
+// Tokens per streak day — linear escalation (50 × day). The old exponential
+// curve (100 × 2^(day-1)) topped out at 819,200 tokens on day 14 (~$820 at
+// the 1,000 tokens/$ economy rate) and paid ~1.64M tokens per perfect cycle —
+// it made every other token source pointless. The economy is now anchored at
+// ~1,000 tokens/$ (packs + Grynd+ grant): 50 × day keeps the escalating
+// daily hook while a perfect 14-day cycle is worth ~5,250 tokens (~$5).
+// Economy rebalance: free logins are worth ~$5/mo (≈ the Grynd+ 5,000-token
+// monthly grant) instead of ~$10.50/mo — the subscription stays the premium
+// path. (Was 50/day; audit finding #4 — trim faucets.)
+const LOGIN_REWARD_PER_DAY = 25;
 const MAX_DAY = 14;
 const STREAK_RESET_DAYS = 1;
 
-// Streak milestone bonus rewards (awarded when daily streak hits these thresholds)
+// Streak milestone bonus rewards (awarded when daily streak hits these
+// thresholds) — scaled down to match the new economy (~1,000 tokens/$).
 const STREAK_MILESTONE_BONUSES = {
-  3: 200,
-  5: 400,
-  7: 700,
-  10: 1200,
-  14: 2000,
-  21: 3500,
-  30: 5000,
-  45: 8000,
-  60: 12000,
-  75: 16000,
-  100: 25000,
-  150: 40000,
-  200: 60000,
-  365: 150000,
+  3: 12,
+  5: 25,
+  7: 50,
+  10: 75,
+  14: 125,
+  21: 200,
+  30: 300,
+  45: 450,
+  60: 600,
+  75: 800,
+  100: 1250,
+  150: 2000,
+  200: 3000,
+  365: 5000,
 };
 
 function toUtcDayKey(value) {
@@ -122,8 +133,12 @@ export async function POST(req) {
       }
     }
 
-    //  Calculate reward AFTER reset logic
-    const reward = LOGIN_REWARD_BASE * 2 ** (rewardData.currentDay - 1);
+    //  Calculate reward AFTER reset logic. Grynd+ members earn +50% on the
+    //  daily login reward (perk: login bonus multiplier).
+    const premium = await isPremiumMember(userId);
+    const baseReward = LOGIN_REWARD_PER_DAY * rewardData.currentDay;
+    const reward = Math.round(baseReward * (premium ? 1.5 : 1));
+    const premiumBonus = premium ? reward - baseReward : 0;
 
     await db
       .update(users)
@@ -210,6 +225,8 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       reward,
+      premium,
+      premiumBonus,
       claimedDay: rewardData.currentDay,
       nextDay,
       unlockedSpecialTitles,

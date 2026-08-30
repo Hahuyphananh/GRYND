@@ -44,7 +44,8 @@ export async function POST(req: Request) {
 
       const forfeiterIsP1 = isPlayer1;
       const winnerId = forfeiterIsP1 ? game.player2Id : game.player1Id;
-      const payout = game.wager * 2;
+      // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
+      const payout = game.wager * 1.9;
       const winner: "player1" | "player2" = forfeiterIsP1
         ? "player2"
         : "player1";

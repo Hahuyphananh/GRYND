@@ -10,6 +10,7 @@ declare global {
       hideWidget?: () => void;
       showWidget?: () => void;
       maximize?: () => void;
+      setAttributes?: (attributes: Record<string, unknown>, callback?: () => void) => void;
       [key: string]: unknown;
     };
     Tawk_LoadStart?: Date;
@@ -61,6 +62,24 @@ export default function TawkProvider() {
 
     window.Tawk_API.onLoad = function () {
       window.Tawk_API.hideWidget?.();
+
+      // Flag Grynd+ members for support agents (priority support perk):
+      // custom attributes are visible to agents on the Tawk dashboard.
+      fetch("/api/membership/status", { credentials: "include" })
+        .then((response) => response.json().catch(() => ({})))
+        .then((data) => {
+          const active = Boolean(data?.active);
+          window.Tawk_API.setAttributes?.(
+            {
+              premium: active,
+              premiumTier: active ? "grynd+" : null,
+            },
+            () => {},
+          );
+        })
+        .catch(() => {
+          // Non-fatal — support flag is best-effort.
+        });
     };
 
     return () => {

@@ -32,6 +32,11 @@ export async function GET(req: NextRequest) {
         clerkId: users.clerkId,
         name: users.name,
         profilePicture: users.profilePicture,
+        // Grynd+ cosmetics — public by design (that's the point of showing
+        // them off). Cosmetic display data only.
+        profileAccent: users.profileAccent,
+        profileBanner: users.profileBanner,
+        avatarFrame: users.avatarFrame,
         level: users.level,
         xp: users.xp,
         gamesWon: users.gamesWon,

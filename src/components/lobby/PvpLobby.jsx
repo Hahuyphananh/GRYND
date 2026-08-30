@@ -104,6 +104,25 @@ function formatBalance(balance) {
 }
 
 /**
+ * Responsible-play guard: before a large wager is placed, ask the player to
+ * confirm. Triggers when the stake is >= 10,000 tokens or > 10% of their
+ * balance — the audit's recommended thresholds. Returns true to proceed.
+ */
+export function confirmLargeStake(stake, balance) {
+  const amount = Number(stake);
+  if (!Number.isFinite(amount) || amount <= 0) return true;
+  const bal = Number(balance);
+  const isLargeAbsolute = amount >= 10000;
+  const isLargeVsBalance = Number.isFinite(bal) && bal > 0 && amount > bal * 0.1;
+  if (!isLargeAbsolute && !isLargeVsBalance) return true;
+  return window.confirm(
+    `You're about to wager ${amount.toLocaleString()} tokens — that's ${
+      isLargeVsBalance ? "more than 10% of your balance" : "a large amount"
+    }. Continue?`,
+  );
+}
+
+/**
  * RulesModal — a "How to Play" overlay in the farkle palette. Each
  * section is { heading, body } where body may be JSX. Shared by every
  * game lobby so the rules popup looks identical across the casino.
@@ -436,7 +455,10 @@ export function PvpLobby({
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={onPlay}
+              onClick={() => {
+                if (!confirmLargeStake(stake, balance)) return;
+                onPlay?.();
+              }}
               disabled={!canPlay || busy}
               className={`inline-flex items-center justify-center gap-2 rounded-xl border-b-4 p-3 text-base font-extrabold transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${PALETTE.play}`}
             >

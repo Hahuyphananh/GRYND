@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
+import { recordBigWinIfNeeded, MINIMUM_BIG_WIN_AMOUNT } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { CacheKeys } from "../../../../lib/redis/keys";
 import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
@@ -281,7 +281,7 @@ export async function POST(req: Request) {
     }
 
     // Record big win if payout >= 1M tokens
-    if (payout >= 1_000_000) {
+    if (payout >= MINIMUM_BIG_WIN_AMOUNT) {
       const clerkUser = await currentUser();
       recordBigWinIfNeeded({
         userId: clerkId,
