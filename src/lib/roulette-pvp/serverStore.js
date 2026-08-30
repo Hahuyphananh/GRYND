@@ -443,6 +443,66 @@ export async function cancelMatch({ userId, matchId }) {
   });
 }
 
+// ── Forfeit from an active match ─────────────────────────────────────
+//
+// POST-only surrender: the forfeiter loses and the opponent is
+// declared the match winner, settled through the same
+// `creditWinner` house-fee path as a normal finish. Allowed from
+// any active (non-waiting, non-terminal) state; a `waiting` match
+// is cancelled with a full refund instead (see `cancelMatch`).
+export async function forfeitMatch({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (
+      match.status === MATCH_STATUS.FINISHED ||
+      match.status === MATCH_STATUS.CANCELLED
+    ) {
+      return { error: "Match already finished", status: 400 };
+    }
+    if (match.status === MATCH_STATUS.WAITING) {
+      return { error: "Use cancel to leave a waiting match", status: 400 };
+    }
+
+    const forfeiterSeat =
+      match.player1Id === userId ? "player1" : "player2";
+    const winningSide = forfeiterSeat === "player1" ? "player2" : "player1";
+
+    const { winner, fee, payout } = await creditWinner(
+      tx,
+      match,
+      winningSide,
+    );
+
+    const [updated] = await tx
+      .update(roulettePvpMatches)
+      .set({
+        status: MATCH_STATUS.FINISHED,
+        currentRound: match.currentRound,
+        roundDeadline: null,
+        winnerId: winner.winnerId,
+        result: winningSide,
+        prizePaid: payout.toFixed(2),
+        houseFee: fee.toFixed(2),
+        endedAt: new Date(),
+      })
+      .where(eq(roulettePvpMatches.id, matchId))
+      .returning();
+
+    mirrorQueueTransition({
+      gameKey: "roulette-pvp",
+      matchId,
+      status: "completed",
+      playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
+    });
+
+    return { match: updated, forfeited: true };
+  });
+}
+
 // ── Fetch match with row lock (for atomic operations) ─────────────────
 async function fetchMatchForUpdate(tx, matchId) {
   const [match] = await tx

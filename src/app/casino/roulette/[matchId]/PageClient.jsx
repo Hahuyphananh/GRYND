@@ -337,6 +337,7 @@ export default function RoulettePvpGamePage({ params }) {
   const [submitting, setSubmitting] = useState(false);
   const [aiTurning, setAiTurning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [forfeiting, setForfeiting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(null);
   const [roundResultBanner, setRoundResultBanner] = useState(null);
   const [matchEndedBanner, setMatchEndedBanner] = useState(null);
@@ -1288,6 +1289,39 @@ export default function RoulettePvpGamePage({ params }) {
     setError(null);
   };
 
+  // ── Forfeit the match (surrender) ─────────────────────────────────
+  const handleForfeit = useCallback(async () => {
+    if (forfeiting) return;
+    if (
+      !window.confirm(
+        "Forfeit this match? Your stake is forfeited and your opponent wins.",
+      )
+    )
+      return;
+    setForfeiting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/roulette-pvp/match/${matchId}/forfeit`,
+        { method: "POST", credentials: "include" },
+      );
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Forfeit failed");
+        return;
+      }
+      socket?.emit("room_event", {
+        roomId: roulettePvpMatchRoom(matchId),
+        event: ROULETTE_PVP_MATCH_UPDATED,
+      });
+      await fetchStatus();
+    } catch {
+      setError("Network error while forfeiting");
+    } finally {
+      setForfeiting(false);
+    }
+  }, [matchId, socket, forfeiting, fetchStatus]);
+
   // ── Submit bets for current round (replaces solo `handleSpin`) ─
   const playAiTurn = useCallback(async () => {
     if (!match?.isAi || !isPlayer1 || !matchId || aiTurnInFlightRef.current) {
@@ -2020,6 +2054,13 @@ export default function RoulettePvpGamePage({ params }) {
                 className="px-6 py-2 rounded-full font-bold border border-red-500/40 text-red-400 hover:bg-red-500/20 hover:text-red-200 transition shadow-[0_0_10px_rgba(255,0,0,0.3)] disabled:opacity-50"
               >
                 Clear bets
+              </button>
+              <button
+                onClick={handleForfeit}
+                disabled={forfeiting}
+                className="px-6 py-2 rounded-full font-bold border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/25 transition disabled:opacity-50"
+              >
+                {forfeiting ? "Forfeiting…" : "Forfeit match"}
               </button>
             </div>
           )}

@@ -690,6 +690,7 @@ export default function LaneRushDuelMatchPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [acting, setActing] = useState(false);
+  const [resigning, setResigning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [selectedPath, setSelectedPath] = useState("balanced");
@@ -950,6 +951,38 @@ export default function LaneRushDuelMatchPage({ params }) {
   // Soft bank: you can bank ANY number of times (each bank halves
   // your future pick rate), as long as your climb isn't over.
   const canHold = canAct && myScore > 0;
+
+  const handleResign = useCallback(async () => {
+    if (resigning) return;
+    if (
+      !window.confirm(
+        "Resign this match? Your stake is forfeited and your opponent wins.",
+      )
+    )
+      return;
+    setResigning(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/lane-rush-duel/match/${matchId}/resign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setError(json.error || "Resign failed");
+        return;
+      }
+      posthog?.capture("lane_rush_duel_resigned", { match_id: matchId });
+      socket?.emit("room_event", {
+        roomId: laneRushDuelMatchRoom(matchId),
+        event: LANE_RUSH_DUEL_MATCH_UPDATED,
+      });
+      await fetchStatus();
+    } finally {
+      setResigning(false);
+    }
+  }, [matchId, posthog, resigning, socket, fetchStatus]);
 
   // ── Actions ──────────────────────────────────────────────────────
   const doAction = useCallback(
@@ -1362,6 +1395,16 @@ export default function LaneRushDuelMatchPage({ params }) {
                 <p className="text-center text-[10px] text-white/40">
                   Busts reset only unbanked points. First to {WIN_BANKED_SCORE.toLocaleString()} banked wins.
                 </p>
+                {!cancelled && !isBotMatch && (
+                  <button
+                    type="button"
+                    onClick={handleResign}
+                    disabled={resigning}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 py-2.5 text-xs font-black uppercase tracking-wider text-red-300 transition hover:bg-red-500/25 disabled:opacity-50"
+                  >
+                    {resigning ? "Resigning…" : "Resign match"}
+                  </button>
+                )}
               </div>
             )}
 
