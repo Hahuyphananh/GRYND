@@ -10,6 +10,7 @@ import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { IconPlug } from "@tabler/icons-react";
 import DailyLossGuard from "../../../../../components/DailyLossGuard";
+import SessionGuard from "../../../../../components/SessionGuard";
 import Link from "next/link";
 
 /**
@@ -375,6 +376,7 @@ export default function TableRoomPage() {
 
   return (
     <DailyLossGuard>
+      <SessionGuard />
       <div className="flex min-h-screen flex-col items-center overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
 

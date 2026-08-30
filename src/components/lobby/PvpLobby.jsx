@@ -30,6 +30,7 @@ import Footer from "../Footer";
 import MatchWaiting from "./MatchWaiting";
 import { usePlatformQuickQueue } from "./PlatformQuickQueue";
 import DailyLossGuard from "../DailyLossGuard";
+import SessionGuard from "../SessionGuard";
 import {
   IconTrophy,
   IconRefresh,
@@ -316,6 +317,7 @@ export function PvpLobby({
 
   return (
     <DailyLossGuard>
+      <SessionGuard />
       {/* Unified full-screen "Searching for a match…" takeover — shown
           whenever a Play / Join / vs-AI action is in flight. Every game
           that renders this shared lobby gets the identical waiting
