@@ -6,6 +6,8 @@ import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import ReportModal from "../../../components/ReportModal";
+import EmotePicker from "../../../components/game/EmotePicker";
+import useGameEmotes from "../../../hooks/useGameEmotes";
 import { useSocket } from "../../../context/SocketProvider";
 import { celebrateWin } from "../../../lib/animations";
 import { useOddsAudio } from "../../../lib/oddsAudio";
@@ -768,6 +770,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const [finalPayout, setFinalPayout] = useState(0);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
+
+  // Emotes — dedicated per-match room (mirrors the other PvP games).
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: myGameId != null ? `odds:emote:${myGameId}` : null,
+    eventName: "odds:emote",
+    selfId: userId,
+  });
   const [forfeiting, setForfeiting] = useState(false);
   const [resuming, setResuming] = useState(true);
 
@@ -1543,6 +1553,16 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
               {isSubmitting ? "Locking in..." : "Lock In"}
             </button>
 
+            {/* Emotes */}
+            <div className="mt-4 flex justify-center">
+              <EmotePicker
+                compact
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
+            </div>
+
             {error && (
               <p className="mt-3 text-center text-sm text-red-400">{error}</p>
             )}
@@ -1659,6 +1679,16 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             >
               {isSubmitting ? "Locking in..." : "Lock In"}
             </button>
+
+            {/* Emotes */}
+            <div className="mt-4 flex justify-center">
+              <EmotePicker
+                compact
+                incomingEmote={incomingEmote}
+                myEmote={myEmote}
+                onSend={(emote) => sendEmote(emote)}
+              />
+            </div>
 
             {error && (
               <p className="mt-3 text-center text-sm text-red-400">{error}</p>

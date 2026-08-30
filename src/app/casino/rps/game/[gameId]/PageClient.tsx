@@ -15,6 +15,9 @@ import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
 import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
+import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
+import { useSocket } from "../../../../../context/SocketProvider";
 import { RockFistIcon } from "../../../../../components/icons/CustomIcons";
 import {
   IconHandStop,
@@ -47,6 +50,13 @@ export default function RPSPvpGamePage() {
   const gameId = Number(params?.gameId);
   const router = useRouter();
   const { user } = useUser();
+  const { socket } = useSocket();
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: Number.isFinite(gameId) ? `rps:emote:${gameId}` : null,
+    eventName: "rps:emote",
+    selfId: user?.id,
+  });
 
   const [status, setStatus] = useState<string | null>(null);
   const [myName, setMyName] = useState("You");
@@ -351,8 +361,8 @@ export default function RPSPvpGamePage() {
 
         <div className="w-full max-w-2xl flex flex-col items-center gap-4">
           <div className="w-full flex items-center justify-between sm:justify-center gap-4 sm:gap-10 text-xs sm:text-sm text-[#a8f4ff] font-semibold px-2">
-            <span>{myName}</span>
-            <span>{opponentName}</span>
+            <span className="relative">{myName}<EmoteBubble emote={myEmote} side="mine" /></span>
+            <span className="relative">{opponentName}<EmoteBubble emote={incomingEmote} /></span>
           </div>
 
           <div className="flex items-center justify-center gap-4 sm:gap-8 flex-wrap">
@@ -406,6 +416,17 @@ export default function RPSPvpGamePage() {
                     {choice}
                   </button>
                 ))}
+              </div>
+
+              {/* Emotes */}
+              <div className="flex justify-center pt-1">
+                <EmotePicker
+                  compact
+                  hideBubbles
+                  incomingEmote={incomingEmote}
+                  myEmote={myEmote}
+                  onSend={(emote) => sendEmote(emote)}
+                />
               </div>
             </>
           )}

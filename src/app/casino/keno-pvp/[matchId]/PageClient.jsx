@@ -22,6 +22,8 @@ import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   KENO_PVP_MATCH_UPDATED,
@@ -523,6 +525,12 @@ export default function KenoPvpMatchPage({ params }) {
   }
 
   const me = match.viewerIsPlayer1 ? "player1" : "player2";
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `keno:emote:${matchId}` : null,
+    eventName: "keno:emote",
+    selfId: me,
+  });
   const opponent = match.viewerIsPlayer1 ? "player2" : "player1";
   const myWins = match.viewerIsPlayer1 ? match.roundsWonPlayer1 : match.roundsWonPlayer2;
   const oppWins = match.viewerIsPlayer1 ? match.roundsWonPlayer2 : match.roundsWonPlayer1;
@@ -586,9 +594,9 @@ export default function KenoPvpMatchPage({ params }) {
           </div>
           <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 px-4 py-2 text-sm shadow-[0_0_14px_rgba(0,229,255,0.15)] min-w-[210px]">
             <div className="flex items-center gap-3">
-              <span className="font-bold text-[#00ffa6]">{me === "player1" ? "You" : p1Name} {myPts}</span>
+              <span className="relative font-bold text-[#00ffa6]">{me === "player1" ? "You" : p1Name} {myPts}<EmoteBubble emote={myEmote} side="mine" /></span>
               <span className="text-white/40">–</span>
-              <span className="font-bold text-[#FFD700]">{oppPts} {me === "player2" ? "You" : p2Name}</span>
+              <span className="relative font-bold text-[#FFD700]">{oppPts} {me === "player2" ? "You" : p2Name}<EmoteBubble emote={incomingEmote} /></span>
             </div>
             {/* Race to the finish: each player fills toward the centre
                 10-point line (myPts / POINTS_TO_WIN from the left,
@@ -695,6 +703,17 @@ export default function KenoPvpMatchPage({ params }) {
                 <p className="text-[11px] text-white/40">
                   Each tile glows for {GLOW_MS / 1000}s. Tap it while the ring is shrinking. Green = caught · Red = missed.
                 </p>
+              </div>
+
+              {/* Emotes */}
+              <div className="mt-2 flex justify-center">
+                <EmotePicker
+                  compact
+                  hideBubbles
+                  incomingEmote={incomingEmote}
+                  myEmote={myEmote}
+                  onSend={(emote) => sendEmote(emote)}
+                />
               </div>
 
               {/* Quality flash */}

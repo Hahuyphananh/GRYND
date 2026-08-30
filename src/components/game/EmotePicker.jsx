@@ -13,6 +13,26 @@ export const GAME_EMOTES = [
 
 const STORAGE_KEY = "grynd:emotes:settings";
 
+// Small animated bubble shown near a player's name when an emote arrives.
+// Drop it inside a `relative` container anchored to the name/avatar — e.g.
+// `<span className="relative ...">{opponentName}<EmoteBubble emote={incomingEmote} /></span>`.
+// `side` controls the color: "incoming" (opponent, fuchsia) vs "mine" (cyan).
+export function EmoteBubble({ emote, side = "incoming" }) {
+  if (!emote) return null;
+  const isMine = side === "mine";
+  return (
+    <span
+      role="status"
+      aria-label={isMine ? "Your emote" : "Opponent emote"}
+      className={`absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl ${
+        isMine ? "rounded-bl-sm border-cyan-300/60 shadow-[0_0_18px_rgba(0,229,255,.35)]" : "rounded-bl-sm border-fuchsia-300/60 shadow-[0_0_18px_rgba(255,60,172,.35)]"
+      } border bg-[#071531] px-2 py-1 text-base`}
+    >
+      <span className={emote.kind === "word" ? "font-black tracking-tight" : ""}>{emote.value}</span>
+    </span>
+  );
+}
+
 export default function EmotePicker({ onSend, incomingEmote = null, myEmote = null, compact = false, hideBubbles = false }) {
   const [open, setOpen] = useState(false);
   const [sendEnabled, setSendEnabled] = useState(true);

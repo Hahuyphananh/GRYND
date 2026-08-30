@@ -7,6 +7,8 @@ import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
+import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
+import useGameEmotes from "../../../hooks/useGameEmotes";
 import NavigationBar from "../../../components/navigation-bar";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import Footer from "../../../components/Footer";
@@ -359,6 +361,13 @@ export default function DiceFlushPage() {
   const [gameOverType, setGameOverType] = useState<"win" | "lose" | null>(null);
   const [gameOverScores, setGameOverScores] = useState<{ mine: number; theirs: number } | null>(null);
   const { socket } = useSocket();
+  // Emotes — both players already join the dice-flush room, so reuse it.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId,
+    eventName: "dice-flush:emote",
+    selfId: user?.id,
+  });
   const [aiAnimating, setAiAnimating] = useState(false);
   const [aiRollSteps, setAiRollSteps] = useState<{ dice: number[]; heldDice: boolean[]; rollNum: number }[]>([]);
   const aiTurnScheduledRef = useRef(false);
@@ -947,8 +956,9 @@ export default function DiceFlushPage() {
   <div className="border-b border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
     <div className="mb-2 flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <div className="rounded-full bg-[#f87171]/20 border border-[#f87171]/30 px-3 py-1 text-sm font-black text-[#f87171]">
+        <div className="relative rounded-full bg-[#f87171]/20 border border-[#f87171]/30 px-3 py-1 text-sm font-black text-[#f87171]">
           {opponent?.name || "OPPONENT"}
+          <EmoteBubble emote={incomingEmote} />
         </div>
         <motion.div
           key={sectionTotals(opponent?.userId).total}
@@ -1131,7 +1141,8 @@ export default function DiceFlushPage() {
     </div>
 
     {/* ─── BUTTONS ─── */}
-    <div className="mt-3 flex items-center justify-center gap-3">
+    <div className="mt-3 flex flex-col items-center gap-3">
+      <div className="flex items-center justify-center gap-3">
       <button
         disabled={!isYourTurn || waitingForOpponent || aiAnimating}
         onClick={async () => {
@@ -1159,6 +1170,16 @@ export default function DiceFlushPage() {
           "Confirm Play"
         )}
       </motion.button>
+      </div>
+
+      {/* Emotes */}
+      <EmotePicker
+        compact
+        hideBubbles
+        incomingEmote={incomingEmote}
+        myEmote={myEmote}
+        onSend={(emote) => sendEmote(emote)}
+      />
     </div>
 
     {/* ─── Turn indicator ─── */}
@@ -1180,8 +1201,9 @@ export default function DiceFlushPage() {
   <div className="border-t border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
     <div className="mb-2 flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <div className="rounded-full bg-[#34d399]/20 border border-[#34d399]/30 px-3 py-1 text-sm font-black text-[#34d399]">
+        <div className="relative rounded-full bg-[#34d399]/20 border border-[#34d399]/30 px-3 py-1 text-sm font-black text-[#34d399]">
           YOU
+          <EmoteBubble emote={myEmote} side="mine" />
         </div>
         <motion.div
           key={sectionTotals(you?.userId).total}

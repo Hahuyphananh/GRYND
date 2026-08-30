@@ -27,6 +27,8 @@ import Footer from "../../../../../components/Footer";
 import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
+import EmotePicker from "../../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import PrecisionReadyRoom from "../../../../../components/precision/PrecisionReadyRoom";
 import PrecisionScoreboard from "../../../../../components/precision/PrecisionScoreboard";
 import PrecisionResultPopup from "../../../../../components/precision/PrecisionResultPopup";
@@ -209,6 +211,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     } catch {
       return 1;
     }
+  });
+
+  // Emotes — dedicated per-match room (same pattern as the other PvP games).
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `precision:emote:${matchId}` : null,
+    eventName: "precision:emote",
+    selfId: String(localSeat),
   });
 
   // Keep a ref of latest state so async handlers always operate on the
@@ -1291,6 +1301,16 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   >
                     {t("games.precision.resign")}
                   </button>
+
+                  {/* Emotes — picker with its own bubbles, near the actions */}
+                  <div className="mt-6 flex justify-center">
+                    <EmotePicker
+                      compact
+                      incomingEmote={incomingEmote}
+                      myEmote={myEmote}
+                      onSend={(emote) => sendEmote(emote)}
+                    />
+                  </div>
                 </div>
               </div>
             </motion.div>

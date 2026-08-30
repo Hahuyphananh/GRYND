@@ -40,6 +40,8 @@ import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import { IconLock, IconFlag } from "@tabler/icons-react";
 import { useSocket } from "../../../../context/SocketProvider";
+import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import {
   PLINKO_PVP_LOBBY_ROOM,
@@ -960,6 +962,8 @@ function PlayerSidePanel({
   onReady,
   busy,
   inputsLocked,
+  emoteBubble,
+  onSendEmote,
 }: {
   seat: "player1" | "player2";
   displayName: string;
@@ -979,6 +983,8 @@ function PlayerSidePanel({
   onReady: () => void;
   busy: boolean;
   inputsLocked: boolean;
+  emoteBubble?: { value: string; kind?: string } | null;
+  onSendEmote?: (emote: { value: string; kind?: string }) => void;
 }) {
   const isCyan = seat === "player1";
   const headerColour = isCyan ? "text-cyan-200" : "text-fuchsia-200";
@@ -1024,10 +1030,11 @@ function PlayerSidePanel({
             {(isCyan ? "Player 1" : "Player 2") + (isViewer ? " · You" : "")}
           </p>
           <p
-            className={`text-sm font-bold ${headerColour} truncate`}
+            className={`relative text-sm font-bold ${headerColour} truncate`}
             title={displayName}
           >
             {displayName}
+            <EmoteBubble emote={emoteBubble} side={isViewer ? "mine" : "incoming"} />
           </p>
         </div>
         <div className="text-right shrink-0">
@@ -1090,6 +1097,14 @@ function PlayerSidePanel({
         theme={isCyan ? "cyan" : "fuchsia"}
         isOpponent={!isViewer}
       />
+
+      {/* Emotes — picker only on the viewer&apos;s own panel, near the
+          action controls. The bubble itself is anchored to the name. */}
+      {isViewer && onSendEmote && (
+        <div className="mt-1 flex justify-center">
+          <EmotePicker compact hideBubbles onSend={onSendEmote} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1117,6 +1132,12 @@ export default function PlinkoPvpMatchPage({
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `plinko:emote:${matchId}` : null,
+    eventName: "plinko:emote",
+    selfId: user?.id,
+  });
 
   // ── Core match state ─────────────────────────────────────────────
   const [match, setMatch] = useState<NormalisedMatch | null>(null);
@@ -2523,6 +2544,8 @@ export default function PlinkoPvpMatchPage({
               avatarUrl={p1Avatar}
               totalScore={match.p1Score}
               lastBallDelta={p1Delta}
+              emoteBubble={isViewerP1 ? myEmote : incomingEmote}
+              onSendEmote={isViewerP1 ? sendEmote : undefined}
               isViewer={isViewerP1}
               ready={p1PanelReady}
               isCurrent={isLaunchable && !isFinished && !isCancelled}
@@ -2602,6 +2625,8 @@ export default function PlinkoPvpMatchPage({
               avatarUrl={p2Avatar}
               totalScore={match.p2Score}
               lastBallDelta={p2Delta}
+              emoteBubble={isViewerP1 ? incomingEmote : myEmote}
+              onSendEmote={isViewerP1 ? undefined : sendEmote}
               isViewer={!isViewerP1}
               ready={p2PanelReady}
               isCurrent={isLaunchable && !isFinished && !isCancelled}
