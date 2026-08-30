@@ -183,6 +183,18 @@ export default function RPSPvpGamePage() {
     return () => clearInterval(interval);
   }, [gameId, user?.id]);
 
+  // Presence room — lets the realtime server track this participant so
+  // a disconnect past the grace window forfeits the match to the
+  // opponent (see /api/rps/pvp/disconnect-forfeit).
+  useEffect(() => {
+    if (!socket || !Number.isFinite(gameId)) return;
+    const roomId = `rps-pvp:match:${gameId}`;
+    socket.emit("join_room", { roomId });
+    return () => {
+      socket.emit("leave_room", { roomId });
+    };
+  }, [socket, gameId]);
+
   // 10-second pick countdown while it's our turn.
   useEffect(() => {
     if (status !== "matched" || myChoice) {

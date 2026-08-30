@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../../db";
-import { and, eq, sql } from "drizzle-orm";
-import { diceMatches, users } from "../../../../db/schema";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
-import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
+import { resignDiceDuelMatch } from "../../../../lib/dice-duel/serverStore";
 import { logError } from "../../../../lib/logError";
 
 // Resigns from a Dice Duel match (active state only).
@@ -12,7 +8,8 @@ import { logError } from "../../../../lib/logError";
 //     minus the shared 5% house rake.
 //   • AI matches are free play — no balance moves, the AI is simply
 //     declared the winner.
-// Mirrors the settlement math in `/api/dice-duel/submit-turn`.
+// Settlement logic lives in `src/lib/dice-duel/serverStore.ts` so
+// the realtime-server disconnect-forfeit route settles identically.
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
@@ -28,91 +25,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const [m] = await db
-      .select()
-      .from(diceMatches)
-      .where(and(eq(diceMatches.id, matchId), eq(diceMatches.status, "active")))
-      .limit(1);
-
-    if (!m) {
+    const result = await resignDiceDuelMatch({ userId, matchId });
+    if (!result.ok) {
       return NextResponse.json(
-        { ok: false, message: "Match unavailable" },
-        { status: 404 },
+        { ok: false, message: result.message },
+        { status: result.status || 400 },
       );
     }
 
-    const isPlayer1 = m.player1Id === userId;
-    const isPlayer2 = m.player2Id === userId;
-    if (!isPlayer1 && !isPlayer2) {
-      return NextResponse.json(
-        { ok: false, message: "Not a participant" },
-        { status: 403 },
-      );
-    }
-
-    const isAI = m.player2Id === "AI_BOT";
-
-    // The resigner loses; the opponent (or the AI) wins.
-    const winnerId = isPlayer1 ? m.player2Id : m.player1Id;
-
-    const wager = Number(m.wager || 0);
-    const isPvp = !isAI && m.player2Id !== null && m.player2Id !== "AI_BOT";
-    // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
-    // src/lib/games/economy.ts): winner keeps 95% of the 2x pot.
-    const houseFee = Math.floor(wager * 2 * 0.05);
-    const payout = isPvp ? wager * 2 - houseFee : 0;
-
-    await db.transaction(async (tx) => {
-      // Credit the winner (PvP only — AI matches move no tokens).
-      if (isPvp && winnerId) {
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${payout}` })
-          .where(eq(users.clerkId, String(winnerId)));
-      }
-
-      await tx
-        .update(diceMatches)
-        .set({
-          status: "finished",
-          winnerId,
-          prizePaid: payout,
-          houseFee,
-          endedAt: new Date(),
-        })
-        .where(eq(diceMatches.id, matchId));
-    });
-
-    // Fire system notification for large dice duel bets (≥ 1000 tokens).
-    if (wager >= 1000) {
-      sendSystemNotificationEmail({
-        eventType: "bet_placed",
-        description: `User ${userId} resigned a large Dice Duel game (wager: ${wager}, winner: ${winnerId}).`,
-        metadata: { userId, matchId, wager, winnerId, isPvp },
-      }).catch((err) => console.warn("[system_notify] Failed to send dice-duel resign:", err));
-    }
-
-    // Leaderboard stats — only for paid PvP matches.
-    const betAmountForCounters = isPvp ? wager : 0;
-    if (isPvp && winnerId) {
-      applyLeaderboardCounters({
-        clerkId: winnerId,
-        game: "Dice Duel",
-        betAmount: betAmountForCounters,
-        payout,
-        isPvpWin: true,
-      }).catch(() => {});
-    }
-    if (isPvp) {
-      applyLeaderboardCounters({
-        clerkId: userId,
-        game: "Dice Duel",
-        betAmount: betAmountForCounters,
-        payout: 0,
-      }).catch(() => {});
-    }
-
-    return NextResponse.json({ ok: true, winnerId, ended: true });
+    return NextResponse.json({ ok: true, winnerId: result.winnerId, ended: true });
   } catch (error) {
     await logError({
       errorType: "dice_duel_resign_error",

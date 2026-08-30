@@ -166,6 +166,18 @@ export default function DiceDuelMatchPage() {
     return () => clearInterval(id);
   }, [matchId]);
 
+  // Presence room — lets the realtime server track this participant so
+  // a disconnect past the grace window settles the match to the
+  // opponent (see /api/dice-duel/disconnect-forfeit).
+  useEffect(() => {
+    if (!socket || !matchId) return;
+    const roomId = `dice-duel:match:${matchId}`;
+    socket.emit("join_room", { roomId });
+    return () => {
+      socket.emit("leave_room", { roomId });
+    };
+  }, [socket, matchId]);
+
   const activeMatchId = match?.id || matchId;
 
   const myTurn = useMemo(() => {
