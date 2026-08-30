@@ -136,17 +136,33 @@ export async function POST(req: NextRequest) {
 
   const stripe = getStripe();
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: [{ price: resolvedPriceId, quantity: 1 }],
-    // Omitted by design: dynamic payment methods selected by Stripe.
-    client_reference_id: clerkId,
-    metadata: { clerkId, packageKey: pkg.key },
-    success_url: `${baseUrl}/shop?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/shop?checkout=cancelled`,
-    allow_promotion_codes: true,
-    integration_identifier: `grynd_checkout_${randomSuffix()}`,
-  });
+  // Managed Payments is enabled by default on the account and requires every
+  // line item's product to carry a tax_code — the token-pack products don't
+  // have one, which made one-time checkout 400 with "product tax code is
+  // missing". The app collects no tax, so opt this session out of Managed
+  // Payments (Stripe's own suggested remedy) while still setting tax codes on
+  // newly created products (packages.ts) for future-proofing.
+  let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: [{ price: resolvedPriceId, quantity: 1 }],
+      // Omitted by design: dynamic payment methods selected by Stripe.
+      client_reference_id: clerkId,
+      metadata: { clerkId, packageKey: pkg.key },
+      success_url: `${baseUrl}/shop?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/shop?checkout=cancelled`,
+      allow_promotion_codes: true,
+      managed_payments: { enabled: false },
+      integration_identifier: `grynd_checkout_${randomSuffix()}`,
+    });
+  } catch (err) {
+    console.error("[stripe/checkout] Failed to create checkout session:", err);
+    return NextResponse.json(
+      { success: false, error: "Could not start checkout. Please try again." },
+      { status: 502 }
+    );
+  }
 
   // Persist the ledger row before redirecting so the webhook can fulfil it
   // idempotently. `session_id` is the durable idempotency key.

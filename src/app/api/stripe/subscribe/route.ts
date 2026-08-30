@@ -129,6 +129,9 @@ export async function POST(req: NextRequest) {
     success_url: `${baseUrl}/shop?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/shop?checkout=cancelled`,
     allow_promotion_codes: true,
+    // Same Managed Payments opt-out as checkout: the app collects no tax and
+    // plans may lack a tax_code, which Managed Payments would reject.
+    managed_payments: { enabled: false },
     integration_identifier: `grynd_subscribe_${randomSuffix()}`,
   });
 

@@ -71,6 +71,8 @@ export async function ensureSubscriptionPlanStripe(
     const product = await stripe.products.create({
       name: `${plan.name} — Grynd Subscription`,
       description: "Monthly Grynd+ membership. Virtual tokens; no cash value; non-refundable.",
+      // Same Managed Payments compliance as packages.ts (see note there).
+      tax_code: "txcd_99999999",
       metadata: { planKey: plan.key },
     });
     productId = product.id;
