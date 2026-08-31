@@ -4,6 +4,13 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay, auto-starts when the real Odds game begins and
+// auto-stops once the result is captured. The page shell (nav, rules,
+// mode toggle) lives in OddsPage OUTSIDE these game components, so only
+// the actual game content is recorded.
+import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import ReportModal from "../../../components/ReportModal";
 import EmotePicker from "../../../components/game/EmotePicker";
@@ -474,11 +481,15 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   };
 
   const range = interactiveState?.currentMax ?? 100;
-  const userWon = gameOver && finalWinner === "player1";
-  const userDrew = gameOver && finalWinner === "";
-
+  const userWon = gameOver && finalWinner === "player1";  const userDrew = gameOver && finalWinner === "";
   return (
     <div>
+      <CreatorModeHost
+        autoStart={Boolean(gameId && interactiveState)}
+        autoStop={Boolean(gameOver)}
+        gameLabel="odds"
+      >
+      <CreatorResponsiveLayout>
       {resuming && (
         <p className="text-center text-white/40 py-8">Loading...</p>
       )}
@@ -734,6 +745,8 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           </button>
         </div>
       )}
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
     </div>
   );
 }
@@ -1385,6 +1398,12 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // ── Render ──
   return (
     <div>
+      <CreatorModeHost
+        autoStart={Boolean(myGameId && interactiveState && !waitingForOpponent)}
+        autoStop={Boolean(gameOver)}
+        gameLabel="odds"
+      >
+      <CreatorResponsiveLayout>
       {resuming && (
         <p className="text-center text-white/40 py-8">Loading...</p>
       )}
@@ -1849,6 +1868,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         reportedPlayerName="Opponent"
         gameType="Odds"
       />
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
     </div>
   );
 }

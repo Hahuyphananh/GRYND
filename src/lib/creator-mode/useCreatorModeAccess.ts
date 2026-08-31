@@ -2,19 +2,21 @@
 //
 // Client hook for Creator Mode access. Fetches /api/creator-mode/access
 // (server-authoritative, reuses the existing Clerk auth + isAdmin path)
-// and caches the result in sessionStorage per user — the same pattern
-// the navigation bar already uses for its is-admin check.
+// and renders any creator-mode UI only from that server answer.
 //
-// Rendering any creator-mode UI from this hook keeps normal users fully
-// shielded: the server never grants access, so `canUseCreatorMode` is
-// always false for them no matter what the client does.
+// Security stance: the decision is made ON the server from the Clerk
+// session (`auth()` + the DB-backed isAdmin check), never on the client.
+// This hook therefore never reads client-writable state to decide
+// access — no URL params, React state, or (critically) any client
+// storage like localStorage or sessionStorage. A normal user who plants
+// a sessionStorage flag, edits React state, or tampers with the browser
+// still gets `canUseCreatorMode === false`, because the authenticated
+// server response is the only thing that can ever grant access.
 
 "use client";
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-
-const ACCESS_CACHE_PREFIX = "grynd:creatorModeAccess:";
 
 type AccessState = {
   canUseCreatorMode: boolean;
@@ -23,6 +25,8 @@ type AccessState = {
 
 export function useCreatorModeAccess(): AccessState {
   const { user } = useUser();
+  // Authoritative answer, derived only from the server fetch. Never
+  // initialized from (or defaulted to) any client-writable value.
   const [canUseCreatorMode, setCanUseCreatorMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -33,34 +37,17 @@ export function useCreatorModeAccess(): AccessState {
       return;
     }
 
-    const cacheKey = `${ACCESS_CACHE_PREFIX}${user.id}`;
-
-    // sessionStorage cache first (mirrors the nav's is-admin cache).
-    try {
-      const cached = window.sessionStorage.getItem(cacheKey);
-      if (cached !== null) {
-        setCanUseCreatorMode(cached === "true");
-        setLoading(false);
-        return;
-      }
-    } catch {
-      // sessionStorage unavailable — fall through to the network fetch.
-    }
-
     let cancelled = false;
+
     fetch("/api/creator-mode/access", { credentials: "include" })
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-        const allowed = data?.canUseCreatorMode === true;
-        setCanUseCreatorMode(allowed);
-        try {
-          window.sessionStorage.setItem(cacheKey, String(allowed));
-        } catch {
-          // ignore
-        }
+        setCanUseCreatorMode(data?.canUseCreatorMode === true);
       })
       .catch(() => {
+        // Network / request failure → deny (safe default). Never grant
+        // access when the server can't be asked.
         if (!cancelled) setCanUseCreatorMode(false);
       })
       .finally(() => {
@@ -70,6 +57,7 @@ export function useCreatorModeAccess(): AccessState {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   return { canUseCreatorMode, loading };

@@ -208,8 +208,12 @@ export default function CreatorModeProvider({
   /** Begin the recording flow: 3→2→1 countdown, then in-page capture. */
   const start = () => {
     if (!enabled || recorder.isRecording) return;
-    // A fresh game/session is starting — the previous one has ended.
+    // A fresh game/session is starting — the previous one has ended, so
+    // cancel any stop (pending OR already-scheduled) from the previous
+    // session so it can't cut the new recording short.
     setGameEnded(false);
+    pendingStopRef.current = null;
+    cancelScheduledStop();
     cancelCountdown();
     const dims = dimensionsRef.current;
     setCountdown(3);
@@ -220,10 +224,23 @@ export default function CreatorModeProvider({
         cancelCountdown();
         const container = frameRef.current;
         if (container) {
+          // Capture begins after the probe resolves (async). If the game
+          // already reached its result while the countdown was running
+          // (a fast game — gameFinished() stored a pending stop because
+          // recording hadn't begun yet), apply that stopped delay now so
+          // the just-started recording still auto-stops. This prevents a
+          // recording from running forever on a game that ends very
+          // quickly / resolves during the countdown.
           recorder.start({
             container,
             width: dims.width,
             height: dims.height,
+          }).then((ok) => {
+            if (ok && pendingStopRef.current != null) {
+              const delay = pendingStopRef.current;
+              pendingStopRef.current = null;
+              scheduleStop(delay);
+            }
           });
         } else {
           recorder.cancel();
@@ -251,9 +268,27 @@ export default function CreatorModeProvider({
     }
   };
 
+  /** Schedule the delayed auto-stop once recording is actually running. */
+  const scheduleStop = (delayMs) => {
+    cancelScheduledStop();
+    const delay = Math.max(0, Number.isFinite(delayMs) ? delayMs : 0);
+    stopTimerRef.current = setTimeout(() => {
+      stopTimerRef.current = null;
+      if (recorder.isRecording) recorder.stop();
+    }, delay);
+  };
+
+  // If the game reaches its result BEFORE capture actually begins (e.g.
+  // it ends during the 3s countdown, or the page loads already ended), we
+  // can't schedule the recorder timeout yet (nothing is recording). Stash
+  // the desired stop delay here and apply it in `start()` once capture
+  // `recorder.start()` resolves, so a fast game never records forever.
+  const pendingStopRef = useRef(null);
+
   const stopCreatorRecording = () => {
     cancelCountdown();
     cancelScheduledStop();
+    pendingStopRef.current = null;
     if (recorder.isRecording) recorder.stop();
   };
 
@@ -261,12 +296,15 @@ export default function CreatorModeProvider({
   const gameFinished = (delayMs = autoStopDelayMs) => {
     cancelCountdown();
     cancelScheduledStop();
-    if (!recorder.isRecording) return;
     const delay = Math.max(0, Number.isFinite(delayMs) ? delayMs : 0);
-    stopTimerRef.current = setTimeout(() => {
-      stopTimerRef.current = null;
-      if (recorder.isRecording) recorder.stop();
-    }, delay);
+    if (recorder.isRecording) {
+      // Already capturing — just keep recording a bit longer, then stop.
+      scheduleStop(delay);
+    } else {
+      // Not capturing yet (e.g. ended during the 3s countdown). Remember
+      // so the recording stops as soon as capture actually begins.
+      pendingStopRef.current = delay;
+    }
   };
 
   // Canonical aliases so games/hooks use one consistent vocabulary.

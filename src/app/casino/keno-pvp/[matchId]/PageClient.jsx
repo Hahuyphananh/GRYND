@@ -22,6 +22,13 @@ import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay, auto-starts when the match actually begins (a real
+// round_1..N is in play, i.e. left the waiting room) and auto-stops once
+// it finishes/cancels. The matchmaking takeover and nav stay outside the
+// shared CreatorModeHost recording viewport.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -571,6 +578,16 @@ export default function KenoPvpMatchPage({ params }) {
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual match content is recorded — the matchmaking
+          takeover and nav sit outside the shared CreatorModeHost
+          recording viewport. Recording auto-starts when a round is in
+          play and stops once the match finishes/cancels. */}
+      <CreatorModeHost
+        autoStart={isRound}
+        autoStop={isFinished || isCancelled}
+        gameLabel="keno"
+      >
+      <CreatorResponsiveLayout>
       <div className="mx-auto mt-4 max-w-5xl">
         {/* Header + scoreboard */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -957,6 +974,8 @@ export default function KenoPvpMatchPage({ params }) {
 
         <Footer />
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
     </div>
     </>
   );

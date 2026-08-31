@@ -34,6 +34,16 @@ import {
   kenoPvpMatchRoom,
 } from "../../../lib/keno-pvp/rooms";
 import { STAKE_PRESETS } from "../../../lib/keno-pvp/constants";
+// Carry the Creator Mode flag (`?creator=1` / stored mode) into the match
+// page when this lobby redirects there, so recording arms deterministically
+// in the actual Keno game at /casino/keno-pvp/[matchId] (which mounts the
+// shared CreatorModeHost). This lobby itself is matchmaking-only — no game
+// plays here, so nothing is recorded on it (as required).
+import {
+  buildCreatorHref,
+  getStoredCreatorMode,
+  isCreatorModeSearch,
+} from "../../../lib/creator-mode/client";
 
 // ── Small inline SVG icons (mirror the slots-pvp lobby) ──────────────
 
@@ -144,7 +154,7 @@ export default function KenoLobbyPage() {
           joined: Boolean(data?.data?.joined),
           match_id: data?.data?.match?.id,
         });
-        router.push(`/casino/keno-pvp/${data.data.match.id}`);
+        router.push(creatorMatchHref(data.data.match.id));
       } finally {
         setBusy(false);
       }
@@ -181,7 +191,7 @@ export default function KenoLobbyPage() {
           match_id: matchId,
           stake: target.stakeAmount,
         });
-        router.push(`/casino/keno-pvp/${data.data.match.id}`);
+        router.push(creatorMatchHref(data.data.match.id));
       } finally {
         setJoiningId(null);
       }
@@ -239,7 +249,7 @@ export default function KenoLobbyPage() {
           roomId: kenoPvpMatchRoom(matchId),
           event: KENO_PVP_MATCH_UPDATED,
         });
-        router.push(`/casino/keno-pvp/${matchId}`);
+        router.push(creatorMatchHref(matchId));
       }
     } catch {
       setError("Unable to start free AI match");
@@ -251,6 +261,17 @@ export default function KenoLobbyPage() {
   const myOpenMatchId = myOpenMatch?.id ?? null;
   const stakeValid = stake > 0 && (balance === null || balance >= stake);
   const canCreate = isSignedIn && !busy && !aiBusy && stakeValid && myOpenMatchId === null;
+
+  // Redirect to the real Keno match page, carrying over Creator Mode
+  // (current URL `?creator=1` or the session-stored flag) so the shared
+  // CreatorModeHost on that page arms recording deterministically. Reads
+  // live at call-time inside the handlers below — never at render.
+  const creatorMatchHref = (matchId) =>
+    buildCreatorHref(
+      `/casino/keno-pvp/${matchId}`,
+      isCreatorModeSearch(window.location.search) ||
+        getStoredCreatorMode(user?.id),
+    );
 
   return (
     <PvpLobbyPage

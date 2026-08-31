@@ -1714,6 +1714,10 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           ]}
         />
       )}
+      {/* The rack is initialized on mount, so `balls.length > 0` alone is
+          true even during the waiting takeover above (PvP waiting for
+          the match to go active). Gate the recording start on `started`
+          so capture only begins when the match actually starts. */}
 
       <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
       <NavigationBar currentPath="/casino" />
@@ -1737,7 +1741,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
       </div>
 
             <CreatorModeHost
-        autoStart={balls.length > 0}
+        autoStart={started && balls.length > 0}
         autoStop={Boolean(winner)}
         gameLabel="pool-masters"
       >

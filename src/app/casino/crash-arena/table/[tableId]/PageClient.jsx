@@ -11,6 +11,14 @@ import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { IconPlug } from "@tabler/icons-react";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay, auto-starts when a round actually begins running
+// (real gameplay — the crash curve flies) and auto-stops after the crash
+// result is captured. The table lobby, nav and modals stay outside the
+// shared CreatorModeHost recording viewport so nothing is recorded until
+// real gameplay starts.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/CreatorModeLayout";
 import DailyLossGuard from "../../../../../components/DailyLossGuard";
 import SessionGuard from "../../../../../components/SessionGuard";
 import Link from "next/link";
@@ -415,6 +423,19 @@ export default function TableRoomPage() {
           </div>
         )}
 
+        {/* Only the actual table round is recorded — the nav, socket
+            banner, API banner, emotes widget and report modal stay
+            outside. Recording auto-starts when the round begins running
+            and stops once the crash result has been captured. */}
+        <CreatorModeHost
+          autoStart={roundState?.phase === "running"}
+          autoStop={
+            roundState?.phase === "crashed" ||
+            roundState?.phase === "settling"
+          }
+          gameLabel="crash-arena"
+        >
+        <CreatorResponsiveLayout>
         <ArenaTable
           table={table}
           roundState={roundState}
@@ -462,6 +483,8 @@ export default function TableRoomPage() {
             onMultiplierUpdate={crashEngineProps.onMultiplierUpdate}
           />
         </ArenaTable>
+        </CreatorResponsiveLayout>
+        </CreatorModeHost>
       </div>
 
       {/* Emotes — floating widget near the table actions; its own bubbles
