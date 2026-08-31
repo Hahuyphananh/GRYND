@@ -25,7 +25,6 @@ if (!chromePath) {
 const BASE = "http://localhost:3000";
 const PAGES = [
   "/casino/crash-arena",
-  "/casino/dice-duel",
   "/casino/dice-flush",
   "/casino/lane-runner",
   "/casino/memory-grid",

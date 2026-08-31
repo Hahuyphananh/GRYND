@@ -1663,7 +1663,7 @@ export default function HexDuelPage() {
     }
   }, [socket, multiplayerGameId]);
 
-  // ── Record action to server for action-based sync (like dice duel diceTurns) ──
+  // ── Record action to server for action-based sync (authoritative turn log) ──
   const multiplayerGameIdRef = useRef(multiplayerGameId);
   multiplayerGameIdRef.current = multiplayerGameId;
   const gameModeRef = useRef(gameMode);
@@ -2141,7 +2141,7 @@ export default function HexDuelPage() {
   }, [endTurn, gameMode, sendMultiplayerAction, recordMultiplayerAction, multiplayerGameId, currentTurn, isLocalTurn]);
 
   // ── Action-based sync: poll server for opponent actions we might have missed ──
-  // Equivalent to dice duel polling /api/dice-duel/get-match every 1.5s.
+  // Polls the server every 1.5s for missed remote actions.
   // Audit C2 fix: use the shared `enqueueRemoteAction` helper so polling
   // goes through the same dedup queue as the socket handler, preventing
   // double-apply when both delivery paths arrive for the same action.

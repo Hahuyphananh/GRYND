@@ -120,6 +120,11 @@ const io = new Server(httpServer, {
   // Keep connections alive through proxies by sending pings every 25s.
   pingInterval: 25000,
   pingTimeout: 20000,
+  // Compress match/lobby state payloads over the wire (negotiated
+  // automatically with the client). Shrinks every realtime frame, which
+  // matters most when broadcasting large authoritative snapshots (tower
+  // state, player tables) to 2-6 participants at once.
+  perMessageDeflate: true,
   cors: {
     origin(origin, callback) {
       if (isOriginAllowed(origin)) return callback(null, true);
@@ -916,40 +921,40 @@ io.on("connection", (socket) => {
     logThrottled("rps:leave", "[rps-pvp] participant left: gameId=", gameId, "userId=", userId);
   }
 
-  // ── Dice Duel room-participant tracking ──────────────────────────
+  // ── Tower Arena room-participant tracking ─────────────────────────
   // Poll-based game; the match view joins a dedicated room so
-  // disconnect handling can settle abandoned matches to the
-  // opponent. Keyed by matchId.
-  const DICE_DUEL_MATCH_ROOM_PREFIX = "dice-duel:match:";
-  if (!global.__diceDuelRoomParticipants) {
-    global.__diceDuelRoomParticipants = new Map();
+  // disconnect handling can drop a missing player (placed last) while
+  // the remaining players keep playing. Keyed by matchId.
+  const TOWER_ARENA_MATCH_ROOM_PREFIX = "tower-arena:match:";
+  if (!global.__towerArenaRoomParticipants) {
+    global.__towerArenaRoomParticipants = new Map();
   }
-  const diceDuelRoomParticipants = global.__diceDuelRoomParticipants;
+  const towerArenaRoomParticipants = global.__towerArenaRoomParticipants;
 
-  function trackDiceDuelJoin(roomId, userId) {
-    if (typeof roomId !== "string" || !roomId.startsWith(DICE_DUEL_MATCH_ROOM_PREFIX)) {
+  function trackTowerArenaJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(TOWER_ARENA_MATCH_ROOM_PREFIX)) {
       return;
     }
-    const matchId = roomId.slice(DICE_DUEL_MATCH_ROOM_PREFIX.length);
+    const matchId = roomId.slice(TOWER_ARENA_MATCH_ROOM_PREFIX.length);
     if (!matchId) return;
-    if (!diceDuelRoomParticipants.has(matchId)) {
-      diceDuelRoomParticipants.set(matchId, new Set());
+    if (!towerArenaRoomParticipants.has(matchId)) {
+      towerArenaRoomParticipants.set(matchId, new Set());
     }
-    diceDuelRoomParticipants.get(matchId).add(userId);
-    cancelDisconnectGraceTimer(`dice-duel:${matchId}:${userId}`);
-    logThrottled("dice-duel:join", "[dice-duel] participant joined: matchId=", matchId, "userId=", userId);
+    towerArenaRoomParticipants.get(matchId).add(userId);
+    cancelDisconnectGraceTimer(`tower-arena:${matchId}:${userId}`);
+    logThrottled("tower-arena:join", "[tower-arena] participant joined: matchId=", matchId, "userId=", userId);
   }
-  function trackDiceDuelLeave(roomId, userId) {
-    if (typeof roomId !== "string" || !roomId.startsWith(DICE_DUEL_MATCH_ROOM_PREFIX)) {
+  function trackTowerArenaLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(TOWER_ARENA_MATCH_ROOM_PREFIX)) {
       return;
     }
-    const matchId = roomId.slice(DICE_DUEL_MATCH_ROOM_PREFIX.length);
+    const matchId = roomId.slice(TOWER_ARENA_MATCH_ROOM_PREFIX.length);
     if (!matchId) return;
-    const set = diceDuelRoomParticipants.get(matchId);
+    const set = towerArenaRoomParticipants.get(matchId);
     if (!set) return;
     set.delete(userId);
-    if (set.size === 0) diceDuelRoomParticipants.delete(matchId);
-    logThrottled("dice-duel:leave", "[dice-duel] participant left: matchId=", matchId, "userId=", userId);
+    if (set.size === 0) towerArenaRoomParticipants.delete(matchId);
+    logThrottled("tower-arena:leave", "[tower-arena] participant left: matchId=", matchId, "userId=", userId);
   }
 
   // ── Crash Arena room-participant tracking ───────────────────────
@@ -1001,7 +1006,7 @@ io.on("connection", (socket) => {
     trackCrashArenaJoin(String(roomId), socket.data.userId);
     trackRoulettePvpJoin(String(roomId), socket.data.userId);
     trackRpsPvpJoin(String(roomId), socket.data.userId);
-    trackDiceDuelJoin(String(roomId), socket.data.userId);
+    trackTowerArenaJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1047,7 +1052,7 @@ io.on("connection", (socket) => {
     trackCrashArenaLeave(String(roomId), socket.data.userId);
     trackRoulettePvpLeave(String(roomId), socket.data.userId);
     trackRpsPvpLeave(String(roomId), socket.data.userId);
-    trackDiceDuelLeave(String(roomId), socket.data.userId);
+    trackTowerArenaLeave(String(roomId), socket.data.userId);
   });
 
   socket.on("room_event", ({ roomId, event, payload }) => {
@@ -1732,25 +1737,26 @@ io.on("connection", (socket) => {
       });
     }
 
-    // For Dice Duel: same pattern — settle to the opponent via
-    // /api/dice-duel/disconnect-forfeit once the grace timer expires.
-    const diceDuelMatchesForUser = [];
-    for (const [mid, set] of diceDuelRoomParticipants.entries()) {
-      if (set.has(socket.data.userId)) diceDuelMatchesForUser.push(mid);
+    // For Tower Arena: a disconnected player is dropped (placed last)
+    // via /api/tower-arena/disconnect-forfeit once the grace timer
+    // expires; the remaining players continue the match.
+    const towerArenaMatchesForUser = [];
+    for (const [mid, set] of towerArenaRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) towerArenaMatchesForUser.push(mid);
     }
-    for (const mid of diceDuelMatchesForUser) {
-      const roomId = `${DICE_DUEL_MATCH_ROOM_PREFIX}${mid}`;
+    for (const mid of towerArenaMatchesForUser) {
+      const roomId = `${TOWER_ARENA_MATCH_ROOM_PREFIX}${mid}`;
       if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
-      const set = diceDuelRoomParticipants.get(mid);
+      const set = towerArenaRoomParticipants.get(mid);
       if (set) {
         set.delete(socket.data.userId);
-        if (set.size === 0) diceDuelRoomParticipants.delete(mid);
+        if (set.size === 0) towerArenaRoomParticipants.delete(mid);
       }
-      scheduleDisconnectGraceTimer(`dice-duel:${mid}:${socket.data.userId}`, async () => {
+      scheduleDisconnectGraceTimer(`tower-arena:${mid}:${socket.data.userId}`, async () => {
         if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
         try {
           const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
-          const res = await fetch(`${baseUrl}/api/dice-duel/disconnect-forfeit`, {
+          const res = await fetch(`${baseUrl}/api/tower-arena/disconnect-forfeit`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
@@ -1759,7 +1765,7 @@ io.on("connection", (socket) => {
           return !(payload && payload.success === true);
         } catch (err) {
           console.warn(
-            "[dice-duel] disconnect forfeit failed:",
+            "[tower-arena] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry
@@ -1844,47 +1850,6 @@ io.on("connection", (socket) => {
 httpServer.listen(PORT, () => {
   console.log(`[realtime-server] listening on port ${PORT}`);
 });
-const diceLobbies = new Map();
-const diceMatches = new Map();
-const roll = () => Math.floor(Math.random() * 6) + 1;
-function resolveTurn(match, action) {
-  const me = match.turnUserId;
-  const enemy = match.player1Id === me ? match.player2Id : match.player1Id;
-  let dmg = 0,
-    self = 0,
-    r1 = null,
-    r2 = null;
-  if (action === "SAFE_ROLL") {
-    r1 = roll();
-    dmg = r1 <= 2 ? 0 : r1 <= 4 ? 2 : 4;
-  }
-  if (action === "POWER_ROLL") {
-    r1 = roll();
-    r2 = roll();
-    const t = r1 + r2;
-    if (t <= 4) self = 3;
-    else if (t <= 7) dmg = 3;
-    else if (t <= 10) dmg = 6;
-    else dmg = 8;
-  }
-  if (action === "SHIELD") {
-    match.shields[me] = (match.shields[me] || 0) + 1;
-  }
-  if (dmg > 0 && (match.shields[enemy] || 0) > 0) {
-    dmg = Math.floor(dmg / 2);
-    match.shields[enemy] = 0;
-  }
-  if (match.player1Id === me) {
-    match.hp2 = Math.max(0, match.hp2 - dmg);
-    match.hp1 = Math.max(0, match.hp1 - self);
-  } else {
-    match.hp1 = Math.max(0, match.hp1 - dmg);
-    match.hp2 = Math.max(0, match.hp2 - self);
-  }
-  match.round += 1;
-  match.turnUserId = enemy;
-  return { dmg, self, r1, r2 };
-}
 
 // ---- Pool Masters (input-sync, low-bandwidth) ----
 const poolLobbies = new Map();

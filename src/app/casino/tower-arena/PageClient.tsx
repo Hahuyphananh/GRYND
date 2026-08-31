@@ -1,0 +1,325 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { usePostHog } from "posthog-js/react";
+import { useSocket } from "../../../context/SocketProvider";
+import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import { CoinIcon } from "../../../components/lobby/PvpLobby";
+import { IconBuildingSkyscraper } from "@tabler/icons-react";
+
+const WAGER_OPTIONS = [10, 25, 50, 100, 250, 500, 1000];
+// Any 2–6 is supported; the creator's pick decides when the lobby is full.
+const PLAYER_COUNT_OPTIONS = [2, 3, 4, 5, 6];
+
+export default function TowerArenaLobbyPage() {
+  const [lobbies, setLobbies] = useState<any[]>([]);
+  const [wager, setWager] = useState(10);
+  const [maxPlayers, setMaxPlayers] = useState(6);
+  const [loading, setLoading] = useState(false);
+  const [tokens, setTokens] = useState<number | null>(null);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<any>(null);
+  const router = useRouter();
+  const posthog = usePostHog();
+  const { socket } = useSocket();
+
+  const loadTokens = async () => {
+    try {
+      const res = await fetch("/api/get-user-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data.success) setTokens(Number(data.data.balance));
+    } catch {
+      // silent
+    }
+  };
+
+  const load = async () => {
+    try {
+      const res = await fetch("/api/tower-arena/lobbies", { cache: "no-store" });
+      const data = await res.json();
+      setLobbies(data.lobbies || []);
+    } catch {
+      // silent
+    }
+  };
+
+  // The prize pool preview is computed server-side (centralized payout config).
+  const loadPreview = async () => {
+    try {
+      const res = await fetch(
+        `/api/tower-arena/payout-preview?wager=${wager}&maxPlayers=${maxPlayers}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      if (data.ok) setPreview(data.preview);
+    } catch {
+      // silent
+    }
+  };
+
+  // Recompute preview whenever the wager or player count changes.
+  useEffect(() => {
+    const t = setTimeout(loadPreview, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wager, maxPlayers]);
+
+  useEffect(() => {
+    load();
+    loadTokens();
+    loadPreview();
+    const id = setInterval(() => {
+      load();
+      loadTokens();
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Listen on the shared lobby grid room so open-lobby rows refresh the
+  // instant one is created / filled / cancelled (three-second poll as backstop).
+  useEffect(() => {
+    if (!socket) return;
+    const roomId = "tower-arena:lobbies";
+    socket.emit("join_room", { roomId });
+    const onUpdate = () => load();
+    socket.on("tower-arena:lobbies:updated", onUpdate);
+    return () => {
+      socket.emit("leave_room", { roomId });
+      socket.off("tower-arena:lobbies:updated", onUpdate);
+    };
+  }, [socket]);
+
+  const createLobby = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tower-arena/create-lobby", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wager, maxPlayers }),
+      });
+      const data = await res.json();
+      if (!data.match?.id) {
+        setError(data.error || data.message || "Unable to create lobby");
+        return;
+      }
+      posthog?.capture("tower_arena_lobby_created", {
+        playerCount: maxPlayers,
+        wagerTier: wager,
+        lobbyType: "pvp",
+      });
+      router.push(`/casino/tower-arena/game/${data.match.id}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const playAI = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tower-arena/create-ai-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxPlayers }),
+      });
+      const data = await res.json();
+      if (data.matchId) {
+        posthog?.capture("tower_arena_lobby_created", {
+          playerCount: maxPlayers,
+          wagerTier: 0,
+          lobbyType: "ai_freeplay",
+        });
+        router.push(`/casino/tower-arena/game/${data.matchId}`);
+      } else {
+        setError(data.message || "Unable to start free play");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const joinLobby = async (lobby: any) => {
+    setJoiningId(lobby.id);
+    setError(null);
+    try {
+      const res = await fetch("/api/tower-arena/join-lobby", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lobbyId: lobby.id }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.error || "Unable to join lobby");
+        return;
+      }
+      posthog?.capture("tower_arena_lobby_joined", {
+        playerCount: maxPlayers,
+        wagerTier: lobby.wager,
+        lobbyType: "pvp",
+      });
+      router.push(`/casino/tower-arena/game/${data.match?.id || lobby.id}`);
+    } finally {
+      setJoiningId(null);
+    }
+  };
+
+  return (
+    <PvpLobbyPage
+      title="Tower Arena"
+      subtitle="Shared Tower Survival — for 2 to 6 players. Place blocks, avoid the collapse, and outlast every rival."
+      icon={
+        <IconBuildingSkyscraper className="h-9 w-9 flex-shrink-0 text-cyan-400 drop-shadow-[0_0_12px_rgba(34,211,238,0.6)] sm:h-10 sm:w-10" />
+      }
+      rulesKey="tower-arena"
+      rules={{
+        title: "How to Play",
+        sections: [
+          {
+            heading: "Shared tower survival",
+            body: (
+              <>
+                Tower Arena is a competitive survival game for{" "}
+                <b>2–6 players</b>. Everyone places into one shared tower.
+                If your placement makes it collapse, you’re eliminated — then
+                the tower is recovered to its highest stable portion and play
+                continues. The last player standing wins.
+              </>
+            ),
+          },
+          {
+            heading: "Blocks & reserve",
+            body: (
+              <>
+                Players pick a block from the shared pool. Each round you may{" "}
+                <b>reserve</b> one block (limited uses) so it becomes private.
+                The pool refills when a player is eliminated or runs empty — the
+                tower is never reset.
+              </>
+            ),
+          },
+          {
+            heading: "Turn order",
+            body: (
+              <>
+                The starting player is randomized; turns then rotate
+                sequentially, skipping eliminated players. The server owns
+                every deadline and applies a safe fallback placement on timeout.
+              </>
+            ),
+          },
+          {
+            heading: "Win & payout",
+            body: (
+              <>
+                Final placement follows elimination order. The prize pool is
+                the combined wagers minus the house rake, split by placement.
+              </>
+            ),
+          },
+        ],
+      }}
+      balance={tokens}
+      stake={wager}
+      onStakeChange={(v) => setWager(Number(v))}
+      stakeOptions={WAGER_OPTIONS}
+      busy={loading}
+      onPlay={createLobby}
+      playLabel="Create PvP Lobby"
+      playBusyLabel="Creating lobby…"
+      vsAi={{
+        label: "Free Play vs Bots",
+        badge: "Free",
+        disabled: false,
+        busy: loading,
+        onClick: playAI,
+      }}
+      escrowNote="Every player pays the same entry wager. If no one is waiting at your chosen player count, your wager is escrowed in a private lobby until it fills or you cancel."
+      lobbies={lobbies}
+      lobbyEmptyText="No open Tower Arenas yet. Be the first to start one."
+      lobbyKey={(l) => l.id}
+      lobbyTitle={(l) => (
+        <>
+          Tower Arena{" "}
+          <span className="font-mono">{String(l.id).slice(-8)}</span>
+        </>
+      )}
+      lobbyMeta={(l) => (
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-semibold">
+            {l.playerCount ?? 0} / {l.maxPlayers} players
+          </span>
+          <span>
+            Entry:{" "}
+            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
+              {Number(l.wager).toLocaleString()}
+              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+            </span>
+          </span>
+          <span className="text-white/40">
+            Prize: ~{Number(l.prizePool ?? 0).toLocaleString()}
+          </span>
+        </span>
+      )}
+      onJoin={joinLobby}
+      joinBusyId={joiningId}
+      onRefresh={load}
+      error={error}
+      waitingSubtitle={`Waiting for a ${maxPlayers}-player Tower Arena to fill…`}
+    >
+      {/* Player-count selector (2–6) — the creator pick determines when full */}
+      <div className="mt-4">
+        <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+          Players
+        </label>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {PLAYER_COUNT_OPTIONS.map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setMaxPlayers(v)}
+              className={`rounded-full border px-3 py-1 text-[11px] font-bold transition ${
+                maxPlayers === v
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
+                  : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        {preview && (
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-cyan-700/30 bg-black/30 p-3 text-xs sm:grid-cols-4">
+            <div>
+              <p className="text-white/50">Total pot</p>
+              <p className="font-bold text-white">
+                {Number(preview.pot).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-white/50">House rake</p>
+              <p className="font-bold text-white/70">
+                {Number(preview.houseFee).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-white/50">Prize pool</p>
+              <p className="font-bold text-cyan-300">
+                {Number(preview.prizePool).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-white/50">Payout</p>
+              <p className="font-bold text-white/70">by placement</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </PvpLobbyPage>
+  );
+}

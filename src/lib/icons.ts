@@ -15,7 +15,7 @@
 // The client only ever renders official assets via `iconAssetUrl(key)`; the
 // server is the only writer of `users.selected_icon` (through selectIcon).
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { icons, userIcons, users } from "../db/schema";
 
@@ -109,8 +109,17 @@ export async function getOwnedIcons(clerkId: string): Promise<
   });
   if (!appUser) return [];
 
-  await grantDefaultIcon(appUser.id);
+  // Every user owns the full free official catalog (the default + all 12
+  // free Grynd icons). Granting here is idempotent (unlockIcon no-ops when
+  // already owned) and guarantees the modal always lists all 12 for every
+  // account — including users created via the Clerk webhook or backfilled
+  // before migration 0129, who may never hit the fresh-account sync path.
+  await grantAllOfficialIcons(appUser.id);
 
+  // Order deterministically: the default first (sort_order 0), then the
+  // official icons in catalog sort_order (gryndicon1..12). Without an ORDER BY
+  // the DB returns rows in arbitrary insertion order and the modal shows the
+  // icons shuffled on every load.
   const ownedRows = await db
     .select({
       iconKey: userIcons.iconKey,
@@ -119,7 +128,8 @@ export async function getOwnedIcons(clerkId: string): Promise<
     })
     .from(userIcons)
     .innerJoin(icons, eq(userIcons.iconKey, icons.key))
-    .where(eq(userIcons.userId, appUser.id));
+    .where(eq(userIcons.userId, appUser.id))
+    .orderBy(asc(icons.sortOrder), asc(icons.id));
 
   // Build a map so duplicates can't appear; skip disabled catalog rows.
   const map = new Map<string, (typeof ownedRows)[number]>();

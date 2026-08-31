@@ -9,7 +9,7 @@
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx ./src/db/migrate.ts",
-    "test": "npm run test:icons && node --import tsx --test tests/iconAssets.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs",
+    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs",
     "test:icons": "node scripts/check-tabler-icons.mjs",
     "test:icon-system": "node --import tsx --test tests/iconAssets.test.mjs tests/icons-db.test.mjs",
     "test:runtime": "node --test tests/runtime-security-http.test.mjs",
@@ -29,10 +29,11 @@
     "test:odds": "node --import tsx --test tests/odds-engine.test.mjs",
     "test:lane-rush-duel": "node --import tsx --test tests/lane-rush-duel-engine.test.mjs tests/lane-rush-duel-flow.test.mjs",
     "test:dots-and-boxes-ai": "node --import tsx --test tests/dots-and-boxes-ai.test.mjs",
-    "test:connect-four-ai": "node --import tsx --test tests/connect-four-ai.test.mjs",
+    "test:four-in-a-row-ai": "node --import tsx --test tests/four-in-a-row-ai.test.mjs",
     "test:precision-ai": "node --import tsx --test tests/precision-ai.test.mjs",
     "test:plinko-pvp-ai": "node --import tsx --test tests/plinko-pvp-ai.test.mjs",
     "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs",
+    "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
     "test:crash-poker-engine": "node --test tests/crash-poker-engine.test.mjs"
   },
   "dependencies": {

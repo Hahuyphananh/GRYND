@@ -10,7 +10,7 @@
 // letterbox bars, and it matches the neon-casino look of the other cards.
 //
 // Usage: node scripts/generate-16x9-card-images.mjs
-// Output: src/images/{roulette,blackjack,poker,dice-duel}-card.webp (16:9)
+// Output: src/images/{roulette,blackjack,poker}-card.webp (16:9)
 
 import sharp from "sharp";
 import { join, dirname } from "node:path";
@@ -26,7 +26,6 @@ const jobs = [
   { src: "roulette.webp", out: "roulette-card.webp" },
   { src: "blackjack-div.webp", out: "blackjack-card.webp" },
   { src: "poker div image.webp", out: "poker-card.webp" },
-  { src: "dice-duel div image.jpg", out: "dice-duel-card.webp" },
 ];
 
 async function makeCard(srcFile, outFile) {

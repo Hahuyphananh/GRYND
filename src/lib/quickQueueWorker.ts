@@ -8,12 +8,12 @@ import { createOrJoin as createOrJoinBlackjackMatch } from "./blackjack-pvp/serv
 import { createOrJoin as createOrJoinRouletteMatch } from "./roulette-pvp/serverStore";
 import { createOrJoin as createOrJoinKenoMatch } from "./keno-pvp/serverStore";
 import { createOrJoin as createOrJoinLaneRushMatch } from "./lane-rush-duel/serverStore";
-import { createOrJoinConnectFourDestination } from "./quickQueueConnectFour";
+import { createOrJoinFourInARowDestination } from "./quickQueueFourInARow";
 import { createOrJoinMemoryGridDestination } from "./quickQueueMemoryGrid";
 import { createOrJoinDotsAndBoxesDestination } from "./quickQueueDotsAndBoxes";
 import { createOrJoinRpsDestination } from "./quickQueueRps";
 import { createOrJoinUnoDestination } from "./quickQueueUno";
-import { createOrJoinDiceDuelDestination } from "./quickQueueDiceDuel";
+import { createOrJoinTowerArenaDestination } from "./tower-arena/quickQueue";
 import { createOrJoinPoolDestination } from "./quickQueuePool";
 import { createOrJoinPrecisionDestination } from "./quickQueuePrecision";
 import { createOrJoinHexDuelDestination } from "./quickQueueHexDuel";
@@ -61,6 +61,18 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     const sourceMines = Number(pair.source.row?.minesCount ?? 3);
     const partnerStake = Number(pair.partner.row?.minesStakeAmount ?? sourceStake);
     const partnerMines = Number(pair.partner.row?.minesCount ?? sourceMines);
+    // Tower Arena supports 2–6 players. The pair worker matches exactly two
+    // candidates (a 2-player Tower Arena), but the mode string may carry an
+    // explicit seat count when a distinct quick-queue grouping is configured.
+    const towerArenaPlayers = Number(pair.candidate.mode === "3p"
+      ? 3
+      : pair.candidate.mode === "4p"
+        ? 4
+        : pair.candidate.mode === "5p"
+          ? 5
+          : pair.candidate.mode === "6p"
+            ? 6
+            : pair.source.playerCount || 2);
     const createMatch = {
       "mines-pvp": (userId) => createOrJoinMinesMatch({ userId, stakeAmount: sourceStake, minesCount: sourceMines }),
       "plinko-pvp": (userId) => createOrJoinPlinkoMatch({ userId, stakeAmount: sourceStake }),
@@ -68,12 +80,12 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       "roulette-pvp": (userId) => createOrJoinRouletteMatch({ userId, stakeAmount: sourceStake }),
       "keno-pvp": (userId) => createOrJoinKenoMatch({ userId, stakeAmount: sourceStake }),
       "lane-rush-duel": (userId) => createOrJoinLaneRushMatch({ userId, stakeAmount: sourceStake, difficulty: "easy", vsBot: false }),
-      "connect-four": (userId) => createOrJoinConnectFourDestination({ userId, betAmount: sourceStake }),
+      "four-in-a-row": (userId) => createOrJoinFourInARowDestination({ userId, betAmount: sourceStake }),
       "memory-grid": (userId) => createOrJoinMemoryGridDestination({ userId, stakeAmount: sourceStake }),
       "dots-and-boxes": (userId) => createOrJoinDotsAndBoxesDestination({ userId, betAmount: sourceStake }),
       "rps-pvp": (userId) => createOrJoinRpsDestination({ userId, betAmount: sourceStake }),
       "uno": (userId) => createOrJoinUnoDestination({ userId, betAmount: sourceStake }),
-      "dice-duel": (userId) => createOrJoinDiceDuelDestination({ userId, wager: sourceStake }),
+      "tower-arena": (userId) => createOrJoinTowerArenaDestination({ userId, wager: sourceStake, maxPlayers: towerArenaPlayers }),
       "pool-masters": (userId) => createOrJoinPoolDestination({ userId, wager: sourceStake }),
       "precision": (userId) => createOrJoinPrecisionDestination({ userId, wager: sourceStake }),
       "hex-duel": (userId) => createOrJoinHexDuelDestination({ userId, wager: sourceStake }),
@@ -95,8 +107,8 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       try {
         second = pair.candidate.gameKey === "mines-pvp"
         ? await createOrJoinMinesMatch({ userId: pair.partner.userId, stakeAmount: partnerStake, minesCount: partnerMines })
-        : pair.candidate.gameKey === "connect-four"
-          ? await createOrJoinConnectFourDestination({ userId: pair.partner.userId, betAmount: sourceStake })
+        : pair.candidate.gameKey === "four-in-a-row"
+          ? await createOrJoinFourInARowDestination({ userId: pair.partner.userId, betAmount: sourceStake })
           : pair.candidate.gameKey === "memory-grid"
             ? await createOrJoinMemoryGridDestination({ userId: pair.partner.userId, stakeAmount: sourceStake })
             : pair.candidate.gameKey === "dots-and-boxes"
@@ -105,8 +117,8 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
                 ? await createOrJoinRpsDestination({ userId: pair.partner.userId, betAmount: sourceStake })
                 : pair.candidate.gameKey === "uno"
                 ? await createOrJoinUnoDestination({ userId: pair.partner.userId, betAmount: sourceStake })
-                : pair.candidate.gameKey === "dice-duel"
-                  ? await createOrJoinDiceDuelDestination({ userId: pair.partner.userId, wager: sourceStake })
+                : pair.candidate.gameKey === "tower-arena"
+                    ? await createOrJoinTowerArenaDestination({ userId: pair.partner.userId, wager: sourceStake, maxPlayers: towerArenaPlayers })
                   : pair.candidate.gameKey === "pool-masters"
                     ? await createOrJoinPoolDestination({ userId: pair.partner.userId, wager: sourceStake })
                     : pair.candidate.gameKey === "precision"

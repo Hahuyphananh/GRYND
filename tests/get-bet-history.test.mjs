@@ -161,7 +161,7 @@ const DIRECT_TABLES = [
   "kenoPvpMatches",
   "diceMatches",
   "poolMatches",
-  "connectFourGames",
+  "fourInARowGames",
   "laneRunnerGames",
   "hexDuelGames",
   "oddsGames",

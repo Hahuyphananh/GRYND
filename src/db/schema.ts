@@ -747,6 +747,108 @@ export const dicePlayerStats = pgTable("dice_player_stats", {
   bestStreak: integer("best_streak").notNull().default(0),
 });
 
+// ── Tower Arena ──────────────────────────────────────────────────────
+//
+// 2–6 player shared-tower stacking game. The server is fully
+// authoritative: every match/tower/resource/placement value is owned
+// by the server and stored here; clients only submit intent (block
+// shape + x + rotation) and render back the state the server persists.
+// No fixed player seats — seats live in `tower_arena_players`.
+//
+// `status` lifecycle: waiting (lobby open) → active (play began) →
+// finished | cancelled.
+// `phase` during an active match: reserve (resource-selection window)
+// → placement (turn play) → finished.
+export const towerArenaMatches = pgTable(
+  "tower_arena_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    wager: integer("wager").notNull(),
+    maxPlayers: integer("max_players").notNull(),
+    hostUserId: varchar("host_user_id", { length: 255 }).notNull(),
+    // Free-play human-vs-AI matches move zero tokens.
+    isAi: boolean("is_ai").notNull().default(false),
+    phase: varchar("phase", { length: 20 }).notNull().default("waiting"),
+    resourceCycle: integer("resource_cycle").notNull().default(0),
+    turnNumber: integer("turn_number").notNull().default(0),
+    currentTurnPlayerId: varchar("current_turn_player_id", { length: 255 }),
+    turnDeadline: timestamp("turn_deadline"),
+    resourcePool: jsonb("resource_pool").notNull().default(sql`'[]'::jsonb`),
+    towerState: jsonb("tower_state").notNull().default(sql`'[]'::jsonb`),
+    // Server-owned per-player reserve bookkeeping — NEVER sent to other
+    // players (each viewer only sees their own reservedBlock).
+    reserveState: jsonb("reserve_state").notNull().default(sql`'{}'::jsonb`),
+    placements: jsonb("placements").notNull().default(sql`'[]'::jsonb`),
+    finalRankings: jsonb("final_rankings").notNull().default(sql`'[]'::jsonb`),
+    winnerId: varchar("winner_id", { length: 255 }),
+    prizePool: integer("prize_pool").notNull().default(0),
+    houseFee: integer("house_fee").notNull().default(0),
+    pot: integer("pot").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+  },
+  (table) => [
+    index("tower_arena_matches_status_idx").on(table.status, table.createdAt),
+    index("tower_arena_matches_user_idx").on(table.hostUserId),
+  ],
+);
+
+// One row per participant (seat). Seats are 1..maxPlayers and double
+// as turn order (deterministic seat order around the table).
+export const towerArenaPlayers = pgTable(
+  "tower_arena_players",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => towerArenaMatches.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    seat: integer("seat").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("active"),
+    placement: integer("placement"),
+    isAi: boolean("is_ai").notNull().default(false),
+    reserveUsesRemaining: integer("reserve_uses_remaining").notNull().default(2),
+    reservedBlock: jsonb("reserved_block"),
+    joinedAt: timestamp("joined_at").notNull().defaultNow(),
+    eliminatedAt: timestamp("eliminated_at"),
+  },
+  (table) => [
+    index("tower_arena_players_match_idx").on(table.matchId),
+    unique("tower_arena_players_match_seat_unique").on(table.matchId, table.seat),
+  ],
+);
+
+// Placement / reserve audit log (replay + history). Every server-side
+// state transition is appended here. towerDelta captures what the tower
+// sim removed/added for that action.
+export const towerArenaTurns = pgTable(
+  "tower_arena_turns",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => towerArenaMatches.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    seat: integer("seat").notNull(),
+    turnNumber: integer("turn_number").notNull(),
+    resourceCycle: integer("resource_cycle").notNull(),
+    phase: varchar("phase", { length: 20 }).notNull(),
+    actionType: varchar("action_type", { length: 20 }).notNull(),
+    blockShape: varchar("block_shape", { length: 30 }),
+    positionX: integer("position_x"),
+    rotation: integer("rotation"),
+    blockId: varchar("block_id", { length: 40 }),
+    collapsed: boolean("collapsed").notNull().default(false),
+    towerDelta: jsonb("tower_delta").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("tower_arena_turns_match_idx").on(table.matchId),
+  ],
+);
+
 export const poolLobbies = pgTable(
   "pool_lobbies",
   {
@@ -911,8 +1013,8 @@ export const keno_games = pgTable("keno_games", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const connectFourGames = pgTable(
-  "connect_four_games",
+export const fourInARowGames = pgTable(
+  "four_in_a_row_games",
   {
     id: serial("id").primaryKey(),
     hostClerkId: varchar("host_clerk_id", { length: 255 }).notNull(),
@@ -941,9 +1043,9 @@ export const connectFourGames = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    connectFourStatusIdx: index("connect_four_status_idx").on(table.status, table.createdAt),
-    connectFourHostIdx: index("connect_four_host_idx").on(table.hostClerkId),
-    connectFourGuestIdx: index("connect_four_guest_idx").on(table.guestClerkId),
+    fourInARowStatusIdx: index("four_in_a_row_status_idx").on(table.status, table.createdAt),
+    fourInARowHostIdx: index("four_in_a_row_host_idx").on(table.hostClerkId),
+    fourInARowGuestIdx: index("four_in_a_row_guest_idx").on(table.guestClerkId),
   })
 );
 

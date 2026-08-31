@@ -31,7 +31,7 @@ any Postgres, including Supabase:
   schema. Now all 99 migrations are in the journal, ordered by number then
   creation date.
 - `src/db/migrations/0092_missing_tables_from_push.sql` — **new**: 7 tables
-  (`user_presence`, `user_login_rewards`, `connect_four_games`,
+  (`user_presence`, `user_login_rewards`, `four_in_a_row_games` (formerly `connect_four_games`; renamed in migration 0131),
   `dice_flush_rooms/players/actions`, `lane_runner_pvp_matches`) plus 2 enum
   types existed in `schema.ts` but were never in a migration (only ever
   `drizzle-kit push`ed). This migration recreates them so a fresh database

@@ -716,7 +716,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 :root[data-theme="light"] .hover\:bg-\[\#FFD700\]\/80:hover {
   background-color: #f4c430 !important;
 }
-@keyframes connectFourDrop {
+@keyframes fourInARowDrop {
   from {
     transform: translateY(calc(-1 * var(--drop-distance, 66px)));
   }
@@ -725,12 +725,12 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   }
 }
 
-.connect-four-fall {
-  animation: connectFourDrop 0.42s cubic-bezier(0.2, 0.9, 0.35, 1) both;
+.four-in-a-row-fall {
+  animation: fourInARowDrop 0.42s cubic-bezier(0.2, 0.9, 0.35, 1) both;
 }
 
-/* Connect Four: tactile arcade board */
-.connect-four-board {
+/* Four-In-A-Row: tactile arcade board */
+.four-in-a-row-board {
   position: relative;
   isolation: isolate;
   background: linear-gradient(145deg, #155aa0 0%, #0a3269 52%, #06234d 100%);
@@ -738,7 +738,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: inset 0 4px 0 rgba(255,255,255,.14), inset 0 -9px 0 rgba(0,0,0,.3), 0 18px 30px rgba(0,0,0,.35), 0 0 22px rgba(0, 229, 255, .28), 0 0 52px rgba(123, 47, 255, .16);
 }
 
-.connect-four-board::before {
+.four-in-a-row-board::before {
   content: "";
   position: absolute;
   inset: 5px;
@@ -749,7 +749,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   pointer-events: none;
 }
 
-.connect-four-disc {
+.four-in-a-row-disc {
   aspect-ratio: 1;
   width: 100%;
   border-radius: 999px;
@@ -758,16 +758,16 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   transition: transform .18s ease, filter .18s ease;
 }
 
-.connect-four-slot {
+.four-in-a-row-slot {
   background: radial-gradient(circle at 35% 28%, #214d7a 0 12%, #061b3b 62%, #020d22 100%);
   border-color: rgba(0,0,0,.55);
   box-shadow: inset 0 6px 9px rgba(0,0,0,.65), inset 0 -2px 2px rgba(255,255,255,.08), 0 2px 2px rgba(255,255,255,.08);
 }
 
-.connect-four-disc-green { background: radial-gradient(circle at 32% 24%, #d4ffe8 0 8%, #35e58f 22%, #07915c 64%, #025538 100%); box-shadow: inset 0 5px 5px rgba(255,255,255,.38), inset 0 -7px 8px rgba(0,0,0,.3), 0 0 11px rgba(0,255,166,.34), 0 4px 5px rgba(0,0,0,.35); }
-.connect-four-disc-red { background: radial-gradient(circle at 32% 24%, #ffd9de 0 8%, #ff6670 22%, #d7193f 64%, #770b2e 100%); box-shadow: inset 0 5px 5px rgba(255,255,255,.38), inset 0 -7px 8px rgba(0,0,0,.3), 0 0 11px rgba(255,38,112,.38), 0 4px 5px rgba(0,0,0,.35); }
+.four-in-a-row-disc-blue { background: radial-gradient(circle at 32% 24%, #e0f2fe 0 8%, #38bdf8 22%, #0284c7 64%, #075985 100%); box-shadow: inset 0 5px 5px rgba(255,255,255,.38), inset 0 -7px 8px rgba(0,0,0,.3), 0 0 11px rgba(56,189,248,.45), 0 4px 5px rgba(0,0,0,.35); }
+.four-in-a-row-disc-purple { background: radial-gradient(circle at 32% 24%, #f3e8ff 0 8%, #c084fc 22%, #9333ea 64%, #6b21a8 100%); box-shadow: inset 0 5px 5px rgba(255,255,255,.38), inset 0 -7px 8px rgba(0,0,0,.3), 0 0 11px rgba(192,132,252,.45), 0 4px 5px rgba(0,0,0,.35); }
 
-.connect-four-drop-button {
+.four-in-a-row-drop-button {
   height: 2.1rem;
   border: 1px solid rgba(255, 228, 121, .65);
   border-radius: .7rem;
@@ -777,41 +777,41 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 5px 10px rgba(0,0,0,.22);
   transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
 }
-.connect-four-drop-button:hover:not(:disabled) { box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 16px rgba(255,215,64,.45); }
-.connect-four-drop-button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.08); }
-.connect-four-drop-button:active:not(:disabled) { transform: translateY(1px); }
-.connect-four-drop-button:disabled { color: #71809a; background: #25344c; box-shadow: none; }
+.four-in-a-row-drop-button:hover:not(:disabled) { box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 16px rgba(255,215,64,.45); }
+.four-in-a-row-drop-button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.08); }
+.four-in-a-row-drop-button:active:not(:disabled) { transform: translateY(1px); }
+.four-in-a-row-drop-button:disabled { color: #71809a; background: #25344c; box-shadow: none; }
 
 @media (max-width: 480px) {
-  .connect-four-board { gap: .3rem; padding: .65rem; }
-  .connect-four-drop-controls { gap: .3rem; }
-  .connect-four-drop-button { height: 1.8rem; }
+  .four-in-a-row-board { gap: .3rem; padding: .65rem; }
+  .four-in-a-row-drop-controls { gap: .3rem; }
+  .four-in-a-row-drop-button { height: 1.8rem; }
 }
 
 /* Keep the complete board and controls visible in the viewport. The board
    stays square by sizing its cells from the available width/height. */
-.connect-four-viewport {
+.four-in-a-row-viewport {
   max-height: none;
   overflow: visible;
 }
 
-.connect-four-board {
+.four-in-a-row-board {
   width: min(100%, calc((100svh - 17rem) * 1.166));
   max-width: 100%;
   margin-inline: auto;
 }
 
 @media (max-width: 1023px) {
-  .connect-four-viewport { max-height: none; overflow: visible; }
-  .connect-four-board { width: min(100%, 78vw); }
+  .four-in-a-row-viewport { max-height: none; overflow: visible; }
+  .four-in-a-row-board { width: min(100%, 78vw); }
 }
 
 @media (max-width: 480px) {
-  .connect-four-board { width: min(100%, calc(100vw - 2rem)); }
+  .four-in-a-row-board { width: min(100%, calc(100vw - 2rem)); }
 }
 
 @media (max-height: 700px) and (min-width: 1024px) {
-  .connect-four-board { width: min(100%, calc((100svh - 13rem) * 1.166)); }
+  .four-in-a-row-board { width: min(100%, calc((100svh - 13rem) * 1.166)); }
 }
 
 @keyframes unoDrawPop {

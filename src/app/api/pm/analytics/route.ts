@@ -44,7 +44,7 @@ const lifecycleDefinitions: LifecycleDefinition[] = [
   { game: "uno", table: "uno_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["finished"], limitations: ["Completion uses the parent status; created_at is used only for the activity window. Waiting rows are excluded."] },
   { game: "keno", table: "keno_games", parentId: "id", completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["finished", "completed"], limitations: ["Completion uses the parent status; created_at is used only for the activity window."] },
   { game: "chess", table: "chess_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", limitations: ["This table has no completion timestamp; completed is unavailable rather than inferred from creation or result."] },
-  { game: "connect-four", table: "connect_four_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", limitations: ["This table has no completion timestamp; completed is unavailable rather than inferred from creation or result."] },
+  { game: "four-in-a-row", table: "four_in_a_row_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", limitations: ["This table has no completion timestamp; completed is unavailable rather than inferred from creation or result."] },
   { game: "hex-duel", table: "hex_duel_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["No terminal timestamp is available in the deployed table; completion uses terminal status only."] },
   { game: "dice", table: "dice_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["Canonical parent has created_at, status, winner_id but no started_at or ended_at; completion uses terminal status only."] },
   { game: "pool", table: "pool_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["Canonical parent has created_at, status, winner_id but no started_at or ended_at; completion uses terminal status only."] },
@@ -86,7 +86,7 @@ function statusPredicate(table: string, prefix: string, completed: boolean): str
   if (["dice_matches", "pool_matches"].includes(table)) {
     return completed ? `${prefix}status IN ('finished','completed','closed')` : `${prefix}player2_id IS NOT NULL AND ${prefix}status NOT IN ('waiting','cancelled')`;
   }
-  if (["chess_games", "connect_four_games", "hex_duel_games", "dots_and_boxes_games"].includes(table)) {
+  if (["chess_games", "four_in_a_row_games", "hex_duel_games", "dots_and_boxes_games"].includes(table)) {
     return completed ? `${prefix}status IN ('finished','completed','closed')` : `${prefix}status NOT IN ('waiting','cancelled','expired')`;
   }
   if (table.endsWith("_matches") && !table.endsWith("_games")) {
