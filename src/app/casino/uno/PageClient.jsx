@@ -13,6 +13,14 @@ import { useSocket } from "../../../context/SocketProvider";
 import useGamePresence from "../../../hooks/useGamePresence";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim, fireConfetti } from "../../../lib/animations";
 import { playCardPlace, playCardDraw, playTurnSwitch, playVictory, playDefeat } from "../../../lib/gameAudio";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay, auto-starts when a real hand/match is active
+// (`game` exists — the `!game` lobby stays unrecorded because autoStart
+// is false) and auto-stops once the result popup is shown so the
+// win/loss overlay is captured. The nav/footer/modals stay outside the
+// shared CreatorModeHost recording viewport.
+import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
 import {
   IconRobot,
   IconUser,
@@ -724,6 +732,16 @@ export default function UnoGamePage() {
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
+      {/* Only the actual game + its result popup are recorded — the nav,
+          footer and the `!game` lobby/finder stay outside (or unrecorded:
+          autoStart is false in the lobby). Recording starts when a real
+          hand is active and stops once the result is shown. */}
+      <CreatorModeHost
+        autoStart={Boolean(game)}
+        autoStop={Boolean(endPopup)}
+        gameLabel="neon-flush"
+      >
+      <CreatorResponsiveLayout>
       <AnimatePresence>
         {endPopup && (
           <motion.div
@@ -1282,6 +1300,8 @@ export default function UnoGamePage() {
           </aside>
         </div>
       )}
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
       <Footer />
     </div>
   );

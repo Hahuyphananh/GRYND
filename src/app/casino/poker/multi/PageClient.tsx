@@ -12,6 +12,15 @@ import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the real hand actually begins
+// (host clicked Start Game → `game.waiting` flips false), auto-stops
+// when the hand reaches its result (showdown + winner) or the user
+// quits. The build/join lobby render (the `!game` branch below) and the
+// report modal / footer stay OUTSIDE so nothing is recorded until
+// real gameplay starts.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../../components/lobby/PvpLobby";
 import confetti from "canvas-confetti";
@@ -1947,6 +1956,23 @@ export default function PokerPage() {
   // main UI when game exists
   return (
     <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white overflow-hidden relative">
+      {/* Only the actual hand table is recorded — the build/join lobby
+          (the `!game` early-return above) and the report modal / footer
+          below sit outside the shared CreatorModeHost recording viewport.
+          Recording auto-starts when the host starts the real hand
+          (`game.waiting` flips false = cards dealt) and auto-stops once
+          the hand reaches its result (showdown + winner) so the winner
+          animation is captured, then the grace period elapses. */}
+      <CreatorModeHost
+        autoStart={Boolean(game) && !game.waiting}
+        autoStop={
+          Boolean(game) &&
+          game.stage === "showdown" &&
+          Boolean(game.winnerId)
+        }
+        gameLabel="poker"
+      >
+      <CreatorResponsiveLayout>
       {/* ── Portrait-mode overlay (mobile only) ── */}
       {isPortrait && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
@@ -3121,6 +3147,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           </div>
         </div>
       )}
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
       <ReportModal
         isOpen={showReportModal && game != null && game.players.some((p: Player) => !p.isAI && p.id !== myId)}
         onClose={() => setShowReportModal(false)}

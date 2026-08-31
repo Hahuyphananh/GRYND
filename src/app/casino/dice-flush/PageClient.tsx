@@ -33,6 +33,13 @@ import {
   IconSkull,
   IconBook,
 } from "@tabler/icons-react";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay, auto-starts when the dice game actually begins
+// (`game.state === "playing"` — both players in) and auto-stops once the
+// finished result overlay is captured. The create/join lobby and modals
+// stay outside the shared CreatorModeHost recording viewport.
+import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
 
 
 type LobbyRoom = { id: string; wager: number; status: string };
@@ -907,6 +914,17 @@ export default function DiceFlushPage() {
         )}
       <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p className="text-gray-400 text-sm">No open games. Create one or play vs AI!</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded-lg bg-[#08142f]/80 border border-[#00e5ff]/20 p-2"><span className="text-sm text-gray-300">{l.id} · {l.wager} tokens</span><button onClick={() => joinGame(l.id)} className="rounded-lg bg-[#00e5ff] px-3 py-1 text-sm font-bold text-black hover:bg-[#00e5ff]/80">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
 
+      {/* Only the actual dice game is recorded — the create/join lobby
+          above and the report modal / footer below sit outside the
+          shared CreatorModeHost recording viewport. Recording starts
+          once the game is actually playing and stops after the finished
+          result overlay has been captured. */}
+      <CreatorModeHost
+        autoStart={Boolean(game) && game.state === "playing"}
+        autoStop={Boolean(game) && game.state === "finished"}
+        gameLabel="dice-flush"
+      >
+      <CreatorResponsiveLayout>
       {game && (<div className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-4 backdrop-blur">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1451,6 +1469,8 @@ export default function DiceFlushPage() {
           )}
         </AnimatePresence>
       </div>)}
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
     </div>
       <ReportModal
         isOpen={showReportModal && !!opponent && !opponent.isAI}
