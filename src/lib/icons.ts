@@ -85,6 +85,18 @@ export async function grantDefaultIcon(userId: number): Promise<boolean> {
 }
 
 /**
+ * Ensure the user owns every enabled official icon (idempotent). Used at
+ * account creation so new users start with the same full catalog as existing
+ * users (migration 0129 backfills ownership for pre-existing accounts).
+ */
+export async function grantAllOfficialIcons(userId: number): Promise<void> {
+  const keys = await getEnabledIconKeys();
+  for (const key of keys) {
+    await unlockIcon(userId, key);
+  }
+}
+
+/**
  * All icons a user owns, joined with their catalog metadata. Also ensures the
  * default icon is always included (every user implicitly owns it).
  */

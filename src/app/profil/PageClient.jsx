@@ -13,6 +13,7 @@ import {
   AVATAR_FRAME_OPTIONS,
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
+import ChooseIconModal from "../../components/ChooseIconModal";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 
 const statsCards = [
@@ -196,11 +197,8 @@ export default function ProfilePage() {
     email: "",
     password: "",
   });
-  // Owned official Grynd icons for the picker. iconKey / isDefault come from
-  // /api/user/icons; equipping writes the server-validated selection.
-  const [ownedIcons, setOwnedIcons] = useState([]);
-  const [isIconsLoading, setIsIconsLoading] = useState(false);
-  const [iconsStatus, setIconsStatus] = useState("");
+  // Official icon picker modal (owned Grynd icons only).
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
 
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
@@ -318,7 +316,6 @@ export default function ProfilePage() {
       const avatarFrame = tokensData.data.avatarFrame || null;
       setProfileInfo({ name, email, selectedIcon, profileAccent, profileBanner, avatarFrame });
       setEditForm((prev) => ({ ...prev, name, email }));
-      void loadOwnedIcons();
       // Sync the customization pickers with the saved values.
       setCosmetics({
         accent: profileAccent || DEFAULT_PROFILE_ACCENT,
@@ -977,52 +974,6 @@ export default function ProfilePage() {
     }
   };
 
-  // ── Official Grynd icon selection ──────────────────────────────────────
-  // Players choose an owned OFFICIAL icon; uploads / external avatar URLs are
-  // no longer supported (the server only accepts catalog keys via
-  // /api/user/icon/select).
-  const loadOwnedIcons = async () => {
-    setIsIconsLoading(true);
-    setIconsStatus("");
-    try {
-      const res = await fetch("/api/user/icons", { credentials: "include" });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.ownedIcons)) {
-        setOwnedIcons(data.ownedIcons);
-        if (data.selectedIcon) {
-          setProfileInfo((prev) => ({ ...prev, selectedIcon: data.selectedIcon }));
-        }
-      }
-    } catch (err) {
-      console.error("[LOAD_ICONS_ERROR]", err);
-    } finally {
-      setIsIconsLoading(false);
-    }
-  };
-
-  const handleEquipIcon = async (iconKey) => {
-    if (!iconKey || iconKey === profileInfo.selectedIcon) return;
-    setIconsStatus("");
-    try {
-      const res = await fetch("/api/user/icon/select", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ iconKey }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to equip icon");
-      }
-      setProfileInfo((prev) => ({ ...prev, selectedIcon: data.selectedIcon }));
-      // Reflect the change in every avatar around the app (nav bar etc.).
-      window.dispatchEvent(new Event("profileUpdated"));
-    } catch (err) {
-      console.error("[EQUIP_ICON_ERROR]", err);
-      setIconsStatus(err.message || "Could not equip icon.");
-    }
-  };
-
   const handleDeleteAccount = async () => {
     setDeleteError("");
     setDeleteStatus("");
@@ -1143,14 +1094,28 @@ export default function ProfilePage() {
               </button>
             </div>
             <div className="mb-3 flex items-center gap-3">
-              <AvatarFrame frame={profileInfo.avatarFrame}>
-                <IconAvatar
-                  iconKey={profileInfo.selectedIcon}
-                  name={profileInfo.name || user.fullName}
-                  size="h-14 w-14"
-                  className="border border-[#FFD700]"
-                />
-              </AvatarFrame>
+              {/* Clicking your own avatar opens the official icon picker.
+                  No upload / URL avatar path — only owned Grynd icons. */}
+              <button
+                type="button"
+                onClick={() => setIsIconPickerOpen(true)}
+                aria-label="Change your Grynd icon"
+                title="Change your Grynd icon"
+                className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              >
+                <AvatarFrame frame={profileInfo.avatarFrame}>
+                  <IconAvatar
+                    iconKey={profileInfo.selectedIcon}
+                    name={profileInfo.name || user.fullName}
+                    size="h-14 w-14"
+                    className="border border-[#FFD700] transition group-hover:scale-105"
+                  />
+                </AvatarFrame>
+                {/* Subtle "change" affordance so players know it's clickable */}
+                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-[#00e5ff]/50 bg-[#001933] text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.5)] transition group-hover:scale-110">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </span>
+              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
@@ -2380,42 +2345,25 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
                 <p className="mb-2 block text-sm text-gray-200">My Grynd Icon</p>
-                {isIconsLoading ? (
-                  <p className="text-xs text-gray-300">Loading icons…</p>
-                ) : ownedIcons.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                    {ownedIcons.map((icon) => {
-                      const equipped = profileInfo.selectedIcon === icon.key;
-                      return (
-                        <button
-                          key={icon.key}
-                          type="button"
-                          aria-pressed={equipped}
-                          aria-label={`Equip ${icon.name}`}
-                          onClick={() => handleEquipIcon(icon.key)}
-                          title={`${icon.name}${equipped ? " (equipped)" : ""}`}
-                          className={`flex flex-col items-center gap-1 rounded-lg border p-2 transition ${
-                            equipped
-                              ? "border-[#00e5ff] bg-[#00e5ff]/15 ring-2 ring-[#00e5ff]/40"
-                              : "border-white/15 bg-white/5 hover:border-[#00e5ff]/50 hover:bg-[#00e5ff]/5"
-                          }`}
-                        >
-                          <IconAvatar
-                            iconKey={icon.key}
-                            name={icon.name}
-                            size="h-9 w-9"
-                          />
-                          <span className="max-w-full truncate text-[10px] text-gray-300">
-                            {icon.name}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-300">No icons available.</p>
-                )}
-                {iconsStatus && <p className="mt-2 text-xs text-red-300">{iconsStatus}</p>}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditOpen(false);
+                    setIsIconPickerOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                >
+                  <IconAvatar
+                    iconKey={profileInfo.selectedIcon}
+                    name={profileInfo.name || user.fullName}
+                    size="h-10 w-10"
+                    showFrame={false}
+                  />
+                  <span className="flex-1 text-left text-sm text-gray-200">
+                    Choose Your Icon
+                  </span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
               </div>
               <label htmlFor="profil-edit-password" className="sr-only">
                 New password (optional)
@@ -2486,6 +2434,16 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
           </div>
         </div>
       )}
+
+      {/* Official Grynd icon picker — owned icons only, no uploads. */}
+      <ChooseIconModal
+        open={isIconPickerOpen}
+        onClose={() => setIsIconPickerOpen(false)}
+        currentIconKey={profileInfo.selectedIcon}
+        onEquipped={(iconKey) =>
+          setProfileInfo((prev) => ({ ...prev, selectedIcon: iconKey }))
+        }
+      />
       <Footer />
     </div>
   );
