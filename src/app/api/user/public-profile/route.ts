@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
+import { getIconByKey } from "../../../../lib/icons";
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
         id: users.id,
         clerkId: users.clerkId,
         name: users.name,
-        profilePicture: users.profilePicture,
+        selectedIcon: users.selectedIcon,
         // Grynd+ cosmetics — public by design (that's the point of showing
         // them off). Cosmetic display data only.
         profileAccent: users.profileAccent,
@@ -66,7 +68,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, user });
+    // Official Grynd icon only — never expose a stored/legacy avatar URL.
+    // Fall back to the default for NULL / malformed / disabled selections.
+    let safeIcon: string = isIconKey(user.selectedIcon)
+      ? user.selectedIcon
+      : DEFAULT_ICON_KEY;
+    if (safeIcon !== DEFAULT_ICON_KEY) {
+      const catalog = await getIconByKey(safeIcon);
+      if (!catalog) safeIcon = DEFAULT_ICON_KEY;
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: { ...user, selectedIcon: safeIcon },
+    });
   } catch (error: any) {
     console.error("[PUBLIC_PROFILE_ERROR]", error);
     return NextResponse.json(

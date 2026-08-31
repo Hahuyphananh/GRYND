@@ -83,7 +83,7 @@ export async function GET(req) {
         roomId: chatMessages.roomId,
         clerkId: chatMessages.clerkId,
         displayName: chatMessages.displayName,
-        profileImageUrl: chatMessages.profileImageUrl,
+        iconKey: chatMessages.iconKey,
         content: chatMessages.content,
         isDeleted: chatMessages.isDeleted,
         deletedAt: chatMessages.deletedAt,
@@ -196,7 +196,7 @@ export async function POST(req) {
     const [appUser] = await db
       .select({
         name: users.name,
-        profilePicture: users.profilePicture,
+        selectedIcon: users.selectedIcon,
         selectedTitle: users.selectedTitle,
         selectedSpecialTitle: users.selectedSpecialTitle,
         selectedStreakType: users.selectedStreakType,
@@ -211,7 +211,12 @@ export async function POST(req) {
 
     const premium = await isPremiumMember(userId);
     const displayName = appUser?.name?.trim() || "Player";
-    const profileImageUrl = appUser?.profilePicture || null;
+    // Official Grynd icon only. A malformed/legacy value can never reach a
+    // live <img> — fall back to the official default key.
+    const iconKey =
+      appUser?.selectedIcon && /^[a-z0-9][a-z0-9._-]{0,119}$/.test(appUser.selectedIcon)
+        ? appUser.selectedIcon
+        : "default";
     const selectedTitle = appUser?.selectedTitle || null;
     const selectedSpecialTitle = appUser?.selectedSpecialTitle || null;
     const [specialTitleRow] = selectedSpecialTitle
@@ -240,7 +245,7 @@ export async function POST(req) {
         roomId: room.roomId,
         clerkId: userId,
         displayName,
-        profileImageUrl,
+        iconKey,
         content,
       })
       .returning();

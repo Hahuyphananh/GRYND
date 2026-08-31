@@ -53,6 +53,20 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins
+// (leaves the waiting room), auto-stops when it finishes or the user
+// quits. The waiting/matchmaking takeover and Footer stay OUTSIDE so
+// nothing is recorded until real gameplay starts.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../components/creator-mode/CreatorModeLayout";
+import IconAvatar from "../../../../components/IconAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
@@ -102,7 +116,7 @@ type PatternData = {
 type PlayerHead = {
   id: string;
   displayName: string;
-  profileImageUrl: string | null;
+  iconKey: string | null;
   missing?: boolean;
 };
 
@@ -732,7 +746,7 @@ export default function MemoryGridMatchPage({
   const oppName = match?.isAi
     ? "GRYND AI"
     : oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
-  const oppAvatar = oppHead?.profileImageUrl || null;
+  const oppIconKey = oppHead?.iconKey || null;
 
   // Waiting state: the creator can cancel their own open lobby, and
   // anyone can copy the invite link (mirrors lane-runner's waiting
@@ -826,14 +840,11 @@ export default function MemoryGridMatchPage({
             </div>
             <div className="rounded-2xl border border-cyan-400/70 bg-cyan-500/10 p-3 text-center">
               <p className="relative flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
-                {oppAvatar && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={oppAvatar}
-                    alt=""
-                    className="h-3.5 w-3.5 rounded-full object-cover"
-                  />
-                )}
+                <IconAvatar
+                  iconKey={oppIconKey}
+                  name={oppName}
+                  size="h-3.5 w-3.5"
+                />
                 {oppName}
                 <EmoteBubble emote={incomingEmote} />
               </p>
@@ -918,6 +929,129 @@ export default function MemoryGridMatchPage({
         : `${Math.ceil(msLeft / 1000)}s`
       : null;
 
+  // ── Creator Mode bespoke portrait/landscape shell (shared recorder) ──
+  // Grid-first 9:16 presentation: compact header keeps the round, timer,
+  // and both scores readable, the memory grid fills the main area, and the
+  // reconstruct controls stay pinned below. Gameplay untouched.
+  const mgBoardNode = (
+    <div
+      className="mx-auto grid max-w-md gap-2.5 sm:gap-3"
+      style={{
+        gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+      }}
+    >
+      {Array.from({ length: totalTiles }, (_, tileIndex) => {
+        const isActive = activeSet.has(tileIndex);
+        const isSelected = selected.includes(tileIndex);
+        const faceUp = patternVisible && isActive;
+        const revealActive = isFinished && activeSet.has(tileIndex);
+        const clickable = canPick && !isFinished;
+        const showFace = faceUp || isSelected || revealActive;
+        return (
+          <motion.button
+            key={tileIndex}
+            type="button"
+            onClick={() => handleTileClick(tileIndex)}
+            disabled={!clickable}
+            whileTap={clickable ? { scale: 0.92 } : undefined}
+            aria-label={`Tile ${tileIndex + 1}`}
+            className={`relative aspect-square select-none overflow-hidden rounded-xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
+              revealActive
+                ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
+                : faceUp
+                  ? "border-amber-400/80 bg-gradient-to-br from-amber-400/80 to-yellow-500/70 shadow-[0_0_18px_rgba(251,191,36,0.6)]"
+                  : isSelected
+                    ? "border-cyan-300 bg-cyan-500/25"
+                    : clickable
+                      ? "cursor-pointer border-cyan-600/40 bg-[#08142f] hover:border-cyan-400/70 hover:bg-[#0b224f]"
+                      : "border-white/10 bg-[#08142f]"
+            }`}
+          >
+            <motion.div
+              className="absolute inset-0 [transform-style:preserve-3d]"
+              initial={false}
+              animate={{ rotateY: showFace ? 180 : 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            >
+              <span className="absolute inset-0 [backface-visibility:hidden]" />
+              <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-1.5 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                <Image
+                  src={LogoSmiley}
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+                />
+              </span>
+            </motion.div>
+          </motion.button>
+        );
+      })}
+    </div>
+  );
+  const mgControlsNode = (
+    <div className="mx-auto flex max-w-md flex-wrap items-center justify-between gap-3">
+      <button
+        onClick={handleForfeit}
+        disabled={forfeiting}
+        className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/25 disabled:opacity-40"
+      >
+        {forfeiting ? "Forfeiting…" : "Forfeit"}
+      </button>
+      <button
+        onClick={() => setSelected([])}
+        disabled={selected.length === 0 || submitting}
+        className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 transition hover:bg-white/10 disabled:opacity-40"
+      >
+        Clear
+      </button>
+      <span className="text-center text-xs text-white/45">
+        {selected.length} selected. Tap again to remove · {activeCount}{" "}
+        lit this round
+      </span>
+      <button
+        onClick={() => submitPicks(selected)}
+        disabled={submitting}
+        className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-6 py-2 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+      >
+        {submitting ? "Submitting…" : "Submit"}
+      </button>
+      <div className="flex justify-center">
+        <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
+      </div>
+    </div>
+  );
+  const mgShell = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
+            <p className="text-xs text-white/70">
+              Round {match?.roundNumber ?? 1}/{match?.roundsPerMatch ?? 5} · {gridSize}×{gridSize}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
+            ⏱ {countdownLabel ?? "—"}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
+          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">You · {myTotal ?? 0} pts</span>
+          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">{oppName} · {oppTotal ?? 0} pts</span>
+        </div>
+      </ShellHeader>
+      <ShellMain className="flex-col justify-center">
+        <div className="w-full max-w-[640px] px-2">{mgBoardNode}</div>
+      </ShellMain>
+      <ShellAside>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
+          Round wins · You {myScore ?? 0} / {oppName} {oppScore ?? 0}
+        </p>
+        {mgControlsNode}
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -950,7 +1084,25 @@ export default function MemoryGridMatchPage({
 
       <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+      {/* Only the actual game content is recorded — the matchmaking
+          takeover / NavBar above and the Footer + modals below sit
+          outside the shared CreatorModeHost recording viewport.
+          Recording auto-starts when the match leaves waiting and stops
+          when it finishes/cancels. */}
+      <CreatorModeHost
+        autoStart={
+          Boolean(match) &&
+          match.status !== MATCH_STATUS.WAITING &&
+          match.status !== MATCH_STATUS.FINISHED &&
+          match.status !== MATCH_STATUS.CANCELLED
+        }
+        autoStop={
+          match?.status === MATCH_STATUS.FINISHED ||
+          match?.status === MATCH_STATUS.CANCELLED
+        }
+        gameLabel="memory-grid"
+      >
+      <CreatorView normal={<><div className="mx-auto mt-4 max-w-3xl sm:mt-8">
         {/* Header — game title (same amber gradient treatment as the
             other casino games) + a compact stake line + the round
             indicator (ROUND X/5). */}
@@ -1038,14 +1190,11 @@ export default function MemoryGridMatchPage({
             }`}
           >
             <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
-              {oppAvatar && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={oppAvatar}
-                  alt=""
-                  className="h-3.5 w-3.5 rounded-full object-cover"
-                />
-              )}
+              <IconAvatar
+                iconKey={oppIconKey}
+                name={oppName}
+                size="h-3.5 w-3.5"
+              />
               {oppName}
               {opponentSubmitted && <span className="ml-0.5 text-cyan-300">✓</span>}
             </p>
@@ -1279,46 +1428,7 @@ export default function MemoryGridMatchPage({
         </div>
 
         {/* Reconstruct controls — free modification + explicit Submit */}
-        {canPick && (
-          <div className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-between gap-3">
-            <button
-              onClick={handleForfeit}
-              disabled={forfeiting}
-              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/25 disabled:opacity-40"
-            >
-              {forfeiting ? "Forfeiting…" : "Forfeit"}
-            </button>
-            <button
-              onClick={() => setSelected([])}
-              disabled={selected.length === 0 || submitting}
-              className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 transition hover:bg-white/10 disabled:opacity-40"
-            >
-              Clear
-            </button>
-            <span className="text-center text-xs text-white/45">
-              {selected.length} selected. Tap again to remove · {activeCount}{" "}
-              lit this round
-            </span>
-            <button
-              onClick={() => submitPicks(selected)}
-              disabled={submitting}
-              className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-6 py-2 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
-            >
-              {submitting ? "Submitting…" : "Submit"}
-            </button>
-
-            {/* Emotes */}
-            <div className="flex justify-center">
-              <EmotePicker
-                compact
-                hideBubbles
-                incomingEmote={incomingEmote}
-                myEmote={myEmote}
-                onSend={(emote) => sendEmote(emote)}
-              />
-            </div>
-          </div>
-        )}
+        {canPick && mgControlsNode}
 
         {/* Result panel */}
         {isFinished && match && (
@@ -1486,6 +1596,11 @@ export default function MemoryGridMatchPage({
           </motion.div>
         </motion.div>
       )}
+      </>}
+        portrait={mgShell}
+        landscape={mgShell}
+      />
+      </CreatorModeHost>
       <Footer />
       </div>
     </>

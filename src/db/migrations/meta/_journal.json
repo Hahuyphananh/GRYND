@@ -820,6 +820,13 @@
       "when": 1788300000009,
       "tag": "0127_daily_loss_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1789999999999,
+      "tag": "0128_grynd_icons",
+      "breakpoints": true
     }
   ]
 }

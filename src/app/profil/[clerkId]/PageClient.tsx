@@ -8,15 +8,15 @@ import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
 import AvatarFrame from "../../../components/AvatarFrame";
+import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
-import { isSafeProfilePictureUrl } from "../../../lib/security/media";
 
 type PublicUser = {
   id: number;
   clerkId: string;
   name: string;
-  profilePicture: string | null;
+  selectedIcon: string | null;
   profileAccent: string | null;
   profileBanner: string | null;
   avatarFrame: string | null;
@@ -182,17 +182,12 @@ export default function PublicProfilePage() {
           )}
           <div className="flex items-center gap-4">
             <AvatarFrame frame={profile.avatarFrame}>
-              {isSafeProfilePictureUrl(profile.profilePicture) ? (
-                <img
-                  src={profile.profilePicture}
-                  alt={profile.name}
-                  className="h-20 w-20 rounded-full object-cover border-2 border-[#FFD700]"
-                />
-              ) : (
-                <div className="h-20 w-20 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-3xl font-bold">
-                  {(profile.name || "U").charAt(0).toUpperCase()}
-                </div>
-              )}
+              <IconAvatar
+                iconKey={profile.selectedIcon}
+                name={profile.name}
+                size="h-20 w-20"
+                className="border-2 border-[#FFD700]"
+              />
             </AvatarFrame>
             <div>
               <div className="flex items-center gap-2">

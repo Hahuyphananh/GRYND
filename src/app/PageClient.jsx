@@ -8,7 +8,7 @@ import Footer from "../components/Footer";
 import ReviewWall from "../components/reviews/ReviewWall";
 import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
-import { isSafeProfilePictureUrl } from "../lib/security/media";
+import IconAvatar from "../components/IconAvatar";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
@@ -112,25 +112,15 @@ function MainComponent() {
         className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
         title={friends.map((f) => f.name).join(", ")}
       >
-        {friends.slice(0, 4).map((friend) =>
-          isSafeProfilePictureUrl(friend.profilePicture) ? (
-            <img
-              key={`${friend.id}-${friend.name}`}
-              src={friend.profilePicture}
-              alt={friend.name}
-              className="h-6 w-6 rounded-full border border-white/30 object-cover"
-              title={friend.name}
-            />
-          ) : (
-            <div
-              key={`${friend.id}-${friend.name}`}
-              className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
-              title={friend.name}
-            >
-              {friend.name?.charAt(0)?.toUpperCase() || "U"}
-            </div>
-          ),
-        )}
+        {friends.slice(0, 4).map((friend) => (
+          <IconAvatar
+            key={`${friend.id}-${friend.name}`}
+            iconKey={friend.iconKey}
+            name={friend.name}
+            size="h-6 w-6"
+            className="border border-white/30"
+          />
+        ))}
       </div>
     );
   };

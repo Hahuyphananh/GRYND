@@ -1382,7 +1382,7 @@ export async function fetchMatchRounds(matchId) {
 // Mirrors plinko-pvp / keno-pvp: the match row stores Clerk ids, so
 // the lobby + match view would otherwise render raw id truncation.
 // This looks up the `users` table and attaches a `players` field
-// ({ p1: {displayName, profileImageUrl}, p2: … }) so the shared
+// ({ p1: {displayName, iconKey}, p2: … }) so the shared
 // lobby rows and the match-view player cards show real names and
 // avatars. Best-effort: lookup failures degrade to the Clerk id
 // (never crash the route).
@@ -1393,7 +1393,8 @@ function summariseUsers(rows) {
     out[r.clerkId] = {
       id: r.clerkId,
       displayName: r.displayName || r.clerkId,
-      profileImageUrl: r.profileImageUrl || null,
+      // Official Grynd icon key only — never an arbitrary avatar URL.
+      iconKey: r.iconKey || "default",
     };
   }
   return out;
@@ -1420,7 +1421,7 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
       .select({
         clerkId: users.clerkId,
         displayName: users.name,
-        profileImageUrl: users.profilePicture,
+        iconKey: users.selectedIcon,
       })
       .from(users)
       .where(inArray(users.clerkId, Array.from(ids)));

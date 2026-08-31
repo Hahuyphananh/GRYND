@@ -38,6 +38,17 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins,
+// auto-stops when it ends or the user quits. No gameplay logic touched.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorModeShell,
+  CreatorView,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 import { IconLock, IconFlag } from "@tabler/icons-react";
 import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
@@ -85,7 +96,7 @@ type BallResult = {
 type PlayerHead = {
   id: string;
   displayName: string;
-  profileImageUrl: string | null;
+  iconKey: string | null;
   missing?: boolean;
 };
 
@@ -947,7 +958,7 @@ function CommitPanel({
 function PlayerSidePanel({
   seat,
   displayName,
-  avatarUrl,
+  avatarKey,
   totalScore,
   isViewer,
   ready,
@@ -967,7 +978,7 @@ function PlayerSidePanel({
 }: {
   seat: "player1" | "player2";
   displayName: string;
-  avatarUrl?: string | null;
+  avatarKey?: string | null;
   totalScore: number;
   lastBallDelta?: number | null;
   isViewer: boolean;
@@ -2254,8 +2265,8 @@ export default function PlinkoPvpMatchPage({
   const p2Name = match.isAi
     ? "Plinko AI"
     : match.players?.p2?.displayName ?? shortId(match.player2Id);
-  const p1Avatar = match.players?.p1?.profileImageUrl ?? null;
-  const p2Avatar = match.players?.p2?.profileImageUrl ?? null;
+  const p1IconKey = match.players?.p1?.iconKey ?? null;
+  const p2IconKey = match.players?.p2?.iconKey ?? null;
   // Report target: the opponent is whoever occupies the seat we don't
   // hold. Real Clerk id comes from the enriched player head; fall back
   // to the raw player1Id/player2Id fields.
@@ -2525,195 +2536,294 @@ export default function PlinkoPvpMatchPage({
     );
   }
 
-  // ── Main layout: grid on desktop, vertical stack on mobile ─────
+  // ── Main layout ──────────────────────────────────────────────────
+  // Only the actual game content (title, status, board, panels, result
+  // overlays) sits inside the shared CreatorModeHost recording viewport
+  // — the nav bar, footer, and modals stay outside so recordings capture
+  // just the game.
+  //
+  // Creator Mode lifecycle (driven by the game's REAL match state, never
+  // page load): recording starts when the match leaves the waiting room
+  // (ready/launchable). When it finishes or is cancelled, recording keeps
+  // running for a short grace period so the result/winner animation is
+  // captured, then stops. Leaving the page stops immediately. The overlay
+  // then shows the download UI.
+  //
+  // Creator Mode shared visual layout (see
+  // src/components/creator-mode/CreatorModeLayout.jsx): the SAME
+  // gameplay components below are only REARRANGED to fit the selected
+  // recording aspect ratio — game logic, controls, and rules are
+  // untouched. Portrait 9:16 prioritises the board, keeps branding + info
+  // in a compact header, and pins the controls below. Landscape / square
+  // reuse the standard grid. Normal mode (creator off) renders `pageBody`
+  // exactly as before.
+
+  const boardNode = (
+    <PlinkoBoard
+      p1BallPos={p1BallPos}
+      p2BallPos={p2BallPos}
+      highlightBucket={highlightBucket}
+      p1FellOut={latestP1FellOut}
+      p2FellOut={latestP2FellOut}
+      p1Preview={showVisor ? p1Preview : null}
+      p2Preview={showVisor ? p2Preview : null}
+      showVisor={showVisor}
+    />
+  );
+
+  const centerChrome = (
+    <>
+      <div className="mt-3">{renderBetweenBallsBanner()}</div>
+      {match.viewerCanCancel && (
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={() => handleCancel()}
+            disabled={cancelling}
+            className={`px-4 py-2 rounded-xl text-xs font-bold ${
+              cancelling
+                ? "bg-white/10 text-white/40 cursor-not-allowed"
+                : "bg-red-500/20 text-red-200 border border-red-400/40 hover:bg-red-500/30"
+            }`}
+          >
+            {cancelling ? "Cancelling…" : "Cancel lobby"}
+          </button>
+        </div>
+      )}
+      {!isFinished && !isCancelled && (
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={handleForfeit}
+            disabled={forfeiting}
+            className="px-4 py-2 rounded-xl text-xs font-bold border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+          >
+            {forfeiting ? "Forfeiting…" : "Forfeit match"}
+          </button>
+        </div>
+      )}
+      {migrationIncomplete && (
+        <div className="mt-3 mx-auto max-w-md rounded-xl border border-amber-400/40 bg-amber-900/30 p-3 text-sm text-amber-100 flex items-start gap-2">
+          <AlertIcon className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold">
+              Plinko Duel schema is out of date on this server.
+            </p>
+            <p className="mt-1 text-amber-200/80">
+              Run <code className="px-1 rounded bg-black/40 text-amber-100">npm run db:migrate</code>{" "}
+              (or paste migration{" "}
+              <code className="px-1 rounded bg-black/40 text-amber-100">0053_plinko_pvp_schema_safety_net.sql</code>{" "}
+              into the Neon SQL console) to add the{" "}
+              <code className="px-1 rounded bg-black/40 text-amber-100">p1_ready</code> /{" "}
+              <code className="px-1 rounded bg-black/40 text-amber-100">p2_ready</code>{" "}
+              columns, then refresh this page.
+            </p>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="mt-3 mx-auto max-w-md rounded-xl border border-red-400/40 bg-red-900/30 p-3 text-sm text-red-200 flex items-center gap-2">
+          <AlertIcon className="w-4 h-4 shrink-0 text-red-300" />
+          {error}
+        </div>
+      )}
+    </>
+  );
+
+  const p1Node = (
+    <PlayerSidePanel
+      seat="player1"
+      displayName={p1Name}
+      avatarKey={p1IconKey}
+      totalScore={match.p1Score}
+      lastBallDelta={p1Delta}
+      emoteBubble={isViewerP1 ? myEmote : incomingEmote}
+      onSendEmote={isViewerP1 ? sendEmote : undefined}
+      isViewer={isViewerP1}
+      ready={p1PanelReady}
+      isCurrent={isLaunchable && !isFinished && !isCancelled}
+      isFinished={isFinished}
+      startedX={isViewerP1 ? startX : opponentStartX}
+      power={isViewerP1 ? power : opponentPower}
+      angleDeg={isViewerP1 ? angleDeg : opponentAngle}
+      setStartX={isViewerP1 ? setStartX : () => {}}
+      setPower={isViewerP1 ? setPower : () => {}}
+      setAngleDeg={isViewerP1 ? setAngleDeg : () => {}}
+      onReady={() => handleReady()}
+      busy={busy}
+      inputsLocked={Boolean(match.p1CurrentInputs)}
+    />
+  );
+
+  const p2Node = (
+    <PlayerSidePanel
+      seat="player2"
+      displayName={p2Name}
+      avatarKey={p2IconKey}
+      totalScore={match.p2Score}
+      lastBallDelta={p2Delta}
+      emoteBubble={isViewerP1 ? incomingEmote : myEmote}
+      onSendEmote={isViewerP1 ? undefined : sendEmote}
+      isViewer={!isViewerP1}
+      ready={p2PanelReady}
+      isCurrent={isLaunchable && !isFinished && !isCancelled}
+      isFinished={isFinished}
+      startedX={!isViewerP1 ? startX : opponentStartX}
+      power={!isViewerP1 ? power : opponentPower}
+      angleDeg={!isViewerP1 ? angleDeg : opponentAngle}
+      setStartX={!isViewerP1 ? setStartX : () => {}}
+      setPower={!isViewerP1 ? setPower : () => {}}
+      setAngleDeg={!isViewerP1 ? setAngleDeg : () => {}}
+      onReady={() => handleReady()}
+      busy={busy}
+      inputsLocked={Boolean(match.p2CurrentInputs)}
+    />
+  );
+
+  // Branding + status chrome (shared across all layouts).
+  const chromeHeader = (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <PlinkoIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
+          <h1 className="text-lg sm:text-xl font-black tracking-tight">
+            Plinko Duel · Match #{matchId ?? "?"}
+          </h1>
+        </div>
+        <div className="text-[11px] sm:text-xs text-white/60 flex items-center gap-3">
+          <span className="font-mono">{match.isAi ? "Free AI practice" : `$${stake.toFixed(2)} stake`}</span>
+          <span className="font-mono">Best-score-of-3</span>
+          <span className="font-mono">{viewerSeat === "player1" ? "P1" : "P2"} seat</span>
+          {opponentClerkId && (
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+            >
+              <IconFlag size={12} /> Report
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="mt-3">{renderStatusBanner()}</div>
+      {/* Round counter */}
+      <div className="mt-2 flex justify-center">
+        <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white/70">
+          <span>Round</span>
+          <span className="font-black text-white text-base tabular-nums">
+            {displayBall}
+            <span className="text-white/40 text-sm">/{REQUIRED_BALLS}</span>
+          </span>
+        </div>
+      </div>
+    </>
+  );
+
+  const overlaysNode = (
+    <>
+      {renderWinnerPopup()}
+      {roundPopup && (
+        <RoundPopup
+          p1Points={roundPopup.p1Points}
+          p2Points={roundPopup.p2Points}
+          p1FellOut={roundPopup.p1FellOut}
+          p2FellOut={roundPopup.p2FellOut}
+          ballNumber={roundPopup.ballNumber}
+          p1Name={match?.players?.p1?.displayName || "Player 1"}
+          p2Name={match?.players?.p2?.displayName || "Player 2"}
+          onNextRound={onNextRound}
+          isLastBall={roundPopup.ballNumber >= REQUIRED_BALLS && match?.p1Score !== match?.p2Score}
+        />
+      )}
+    </>
+  );
+
+  // Standard 3-column grid (mobile stacks, board first).
+  const gameGrid = (
+    <div className="mt-4 grid gap-4 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_300px]">
+      <div className="order-2 lg:order-1">{p1Node}</div>
+      <div className="order-1 lg:order-2 min-w-0">{boardNode}{centerChrome}</div>
+      <div className="order-3">{p2Node}</div>
+    </div>
+  );
+
+  // Normal mode / landscape / square game body (unchanged from before).
+  const pageBody = (
+    <div className="mx-auto mt-3 sm:mt-4 max-w-[1400px]">
+      {chromeHeader}
+      {gameGrid}
+      {overlaysNode}
+    </div>
+  );
+
+  // Portrait 9:16 creator arrangement — gameplay (board) on top and
+  // filling most of the height, branding + status + totals in a compact
+  // header, controls pinned at the bottom.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex flex-col items-stretch gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <PlinkoIcon className="w-6 h-6 shrink-0 text-cyan-300 drop-shadow-[0_0_10px_rgba(0,229,255,0.6)]" />
+            <h1 className="truncate text-base font-black tracking-tight">
+              Plinko Duel · #{matchId ?? "?"}
+            </h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 text-[11px] font-bold tabular-nums">
+            <span className="rounded-full bg-white/5 px-2 py-0.5 text-white/70">
+              R {displayBall}/{REQUIRED_BALLS}
+            </span>
+            <span className="text-cyan-300">{match.p1Score}</span>
+            <span className="text-fuchsia-300">{match.p2Score}</span>
+          </div>
+        </div>
+        <div>{renderStatusBanner()}</div>
+      </ShellHeader>
+
+      <ShellMain className="flex-col items-center justify-start overflow-y-auto">
+        <div className="w-full max-w-[620px] px-3 py-2">
+          {boardNode}
+          {centerChrome}
+        </div>
+      </ShellMain>
+
+      <ShellAside>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div>{p1Node}</div>
+          <div>{p2Node}</div>
+        </div>
+      </ShellAside>
+
+      {overlaysNode}
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) creator arrangement — reuse the
+  // standard layout inside the frame shell so it adapts responsively.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="items-start justify-start overflow-y-auto">
+        {pageBody}
+      </ShellMain>
+    </CreatorModeShell>
+  );
+
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <div className="mx-auto mt-3 sm:mt-4 max-w-[1400px]">
-        {/* Title + status banners */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <PlinkoIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
-            <h1 className="text-lg sm:text-xl font-black tracking-tight">
-              Plinko Duel · Match #{matchId ?? "?"}
-            </h1>
-          </div>
-          <div className="text-[11px] sm:text-xs text-white/60 flex items-center gap-3">
-            <span className="font-mono">{match.isAi ? "Free AI practice" : `$${stake.toFixed(2)} stake`}</span>
-            <span className="font-mono">Best-score-of-3</span>
-            <span className="font-mono">{viewerSeat === "player1" ? "P1" : "P2"} seat</span>
-            {opponentClerkId && (
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
-              >
-                <IconFlag size={12} /> Report
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-3">{renderStatusBanner()}</div>
-
-        {/* Ball counter (mobile only — on desktop the side panels have
-            a "Total" indicator we keep, plus the counter lives next to
-            the board). */}
-        <div className="mt-2 flex justify-center">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white/70">
-            <span>Round</span>
-            <span className="font-black text-white text-base tabular-nums">
-              {displayBall}
-              <span className="text-white/40 text-sm">/{REQUIRED_BALLS}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* 3-column layout (mobile: stacked) */}
-        <div className="mt-4 grid gap-4 grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)_300px]">
-          {/* Player 1 panel (left) */}
-          <div className="order-2 lg:order-1">
-            <PlayerSidePanel
-              seat="player1"
-              displayName={p1Name}
-              avatarUrl={p1Avatar}
-              totalScore={match.p1Score}
-              lastBallDelta={p1Delta}
-              emoteBubble={isViewerP1 ? myEmote : incomingEmote}
-              onSendEmote={isViewerP1 ? sendEmote : undefined}
-              isViewer={isViewerP1}
-              ready={p1PanelReady}
-              isCurrent={isLaunchable && !isFinished && !isCancelled}
-              isFinished={isFinished}
-              startedX={isViewerP1 ? startX : opponentStartX}
-              power={isViewerP1 ? power : opponentPower}
-              angleDeg={isViewerP1 ? angleDeg : opponentAngle}
-              setStartX={isViewerP1 ? setStartX : () => {}}
-              setPower={isViewerP1 ? setPower : () => {}}
-              setAngleDeg={isViewerP1 ? setAngleDeg : () => {}}
-              onReady={() => handleReady()}
-              busy={busy}
-              inputsLocked={Boolean(match.p1CurrentInputs)}
-            />
-          </div>
-
-          {/* Center: board */}
-          <div className="order-1 lg:order-2 min-w-0">
-            <PlinkoBoard
-              p1BallPos={p1BallPos}
-              p2BallPos={p2BallPos}
-              highlightBucket={highlightBucket}
-              p1FellOut={latestP1FellOut}
-              p2FellOut={latestP2FellOut}
-              p1Preview={showVisor ? p1Preview : null}
-              p2Preview={showVisor ? p2Preview : null}
-              showVisor={showVisor}
-            />
-            <div className="mt-3">{renderBetweenBallsBanner()}</div>
-            {match.viewerCanCancel && (
-              <div className="mt-3 flex justify-center">
-                <button
-                  onClick={() => handleCancel()}
-                  disabled={cancelling}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold ${
-                    cancelling
-                      ? "bg-white/10 text-white/40 cursor-not-allowed"
-                      : "bg-red-500/20 text-red-200 border border-red-400/40 hover:bg-red-500/30"
-                  }`}
-                >
-                  {cancelling ? "Cancelling…" : "Cancel lobby"}
-                </button>
-              </div>
-            )}
-            {!isFinished && !isCancelled && (
-              <div className="mt-3 flex justify-center">
-                <button
-                  onClick={handleForfeit}
-                  disabled={forfeiting}
-                  className="px-4 py-2 rounded-xl text-xs font-bold border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/25 disabled:opacity-50"
-                >
-                  {forfeiting ? "Forfeiting…" : "Forfeit match"}
-                </button>
-              </div>
-            )}
-            {migrationIncomplete && (
-              <div className="mt-3 mx-auto max-w-md rounded-xl border border-amber-400/40 bg-amber-900/30 p-3 text-sm text-amber-100 flex items-start gap-2">
-                <AlertIcon className="w-4 h-4 shrink-0 text-amber-300 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-semibold">
-                    Plinko Duel schema is out of date on this server.
-                  </p>
-                  <p className="mt-1 text-amber-200/80">
-                    Run <code className="px-1 rounded bg-black/40 text-amber-100">npm run db:migrate</code>{" "}
-                    (or paste migration{" "}
-                    <code className="px-1 rounded bg-black/40 text-amber-100">0053_plinko_pvp_schema_safety_net.sql</code>{" "}
-                    into the Neon SQL console) to add the{" "}
-                    <code className="px-1 rounded bg-black/40 text-amber-100">p1_ready</code> /{" "}
-                    <code className="px-1 rounded bg-black/40 text-amber-100">p2_ready</code>{" "}
-                    columns, then refresh this page.
-                  </p>
-                </div>
-              </div>
-            )}
-            {error && (
-              <div className="mt-3 mx-auto max-w-md rounded-xl border border-red-400/40 bg-red-900/30 p-3 text-sm text-red-200 flex items-center gap-2">
-                <AlertIcon className="w-4 h-4 shrink-0 text-red-300" />
-                {error}
-              </div>
-            )}
-          </div>
-
-          {/* Player 2 panel (right) */}
-          <div className="order-3">
-            <PlayerSidePanel
-              seat="player2"
-              displayName={p2Name}
-              avatarUrl={p2Avatar}
-              totalScore={match.p2Score}
-              lastBallDelta={p2Delta}
-              emoteBubble={isViewerP1 ? incomingEmote : myEmote}
-              onSendEmote={isViewerP1 ? undefined : sendEmote}
-              isViewer={!isViewerP1}
-              ready={p2PanelReady}
-              isCurrent={isLaunchable && !isFinished && !isCancelled}
-              isFinished={isFinished}
-              startedX={!isViewerP1 ? startX : opponentStartX}
-              power={!isViewerP1 ? power : opponentPower}
-              angleDeg={!isViewerP1 ? angleDeg : opponentAngle}
-              setStartX={!isViewerP1 ? setStartX : () => {}}
-              setPower={!isViewerP1 ? setPower : () => {}}
-              setAngleDeg={!isViewerP1 ? setAngleDeg : () => {}}
-              onReady={() => handleReady()}
-              busy={busy}
-              inputsLocked={Boolean(match.p2CurrentInputs)}
-            />
-          </div>
-        </div>
-
-        {renderWinnerPopup()}
-
-        {/* Round result popup */}
-        {roundPopup && (
-          <RoundPopup
-            p1Points={roundPopup.p1Points}
-            p2Points={roundPopup.p2Points}
-            p1FellOut={roundPopup.p1FellOut}
-            p2FellOut={roundPopup.p2FellOut}
-            ballNumber={roundPopup.ballNumber}
-            p1Name={match?.players?.p1?.displayName || "Player 1"}
-            p2Name={match?.players?.p2?.displayName || "Player 2"}
-            onNextRound={onNextRound}
-            isLastBall={
-              // The popup only ever renders for balls 1-3 (overtime
-              // ball 4 skips it), so "View Final Results" applies
-              // exactly when this was the last normal ball AND the
-              // match is not going to a 4th tiebreaker round.
-              roundPopup.ballNumber >= REQUIRED_BALLS &&
-              match?.p1Score !== match?.p2Score
-            }
-          />
-        )}
-      </div>
+      <CreatorModeHost
+        autoStart={isReady || isLaunchable}
+        autoStop={isFinished || isCancelled}
+        gameLabel="plinko-duel"
+      >
+        <CreatorView
+          // Normal mode: the desktop game renders completely unchanged.
+          normal={pageBody}
+          // Creator Mode on: arrange the SAME gameplay components inside
+          // the shared recording-frame shell, optimised for the selected
+          // aspect ratio (portrait 9:16 / landscape / square).
+          portrait={portraitContent}
+          landscape={landscapeContent}
+        />
+      </CreatorModeHost>
 
       {/* Report modal */}
       <ReportModal

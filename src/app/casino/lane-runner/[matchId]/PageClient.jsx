@@ -42,6 +42,16 @@ import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
+// Shared creator-mode presentation layer (admin-only).
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../components/creator-mode/CreatorModeLayout";
+
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -1144,6 +1154,182 @@ export default function LaneRushDuelMatchPage({ params }) {
     </AnimatePresence>
   ) : null;
 
+
+  /* Creator Mode bespoke 9:16 portrait: race scoreboard (both players) on top,
+     the shared tower large, and pick/flag/peek + bank/resign controls below. */
+  const creatorScoreboard = (
+    <>
+<div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-cyan-300/50 bg-cyan-500/10 p-3 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-white/50">You</p>
+                <p className="text-2xl font-black text-cyan-200">{myScore} <span className="text-xs text-white/40">pts</span></p>
+                <p className="text-[10px] text-white/50">Race score · banked {myBanked}</p>
+              </div>
+              <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-3 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-white/50">Opponent</p>
+                <p className="text-2xl font-black text-rose-200">{oppScore} <span className="text-xs text-white/40">pts</span></p>
+                <p className="text-[10px] text-white/50">Race score · banked {oppBanked}</p>
+              </div>
+            </div>
+    </>
+  );
+  const creatorPressure = (
+    <>
+<PressureStrip
+              myScore={myScore}
+              oppScore={oppScore}
+              myBanked={myBanked}
+              oppBanked={oppBanked}
+              myHeld={myHeld}
+              oppHeld={oppHeld}
+              myRate={myRate}
+              oppRate={oppRate}
+              difficulty={match?.difficulty}
+              isBotMatch={isBotMatch}
+            />
+    </>
+  );
+  const creatorPathPicker = (
+    <>
+{canAct && (
+              <PathPicker
+                lane={myLane}
+                selectedPath={selectedPath}
+                onSelect={setSelectedPath}
+                flagMode={flagMode}
+                onToggleFlag={() => setFlagMode((f) => !f)}
+                peekMode={peekMode}
+                onTogglePeek={() => setPeekMode((p) => !p)}
+                disabled={acting}
+                flagsLeft={flagsLeft}
+                peeksLeft={peeksLeft}
+                deductions={deductions}
+              />
+            )}
+
+    </>
+  );
+  const creatorLastPeek = (
+    <>
+{lastPeek && !finished && (
+              <div
+                className={`rounded-2xl border px-4 py-2.5 text-xs ${
+                  lastPeek.result === "bad"
+                    ? "border-orange-300/50 bg-orange-500/15 text-orange-100"
+                    : "border-emerald-300/50 bg-emerald-500/15 text-emerald-100"
+                }`}
+              >
+                <b className="uppercase">
+                  Peek: {RISK_PATHS[lastPeek.path]?.label ?? lastPeek.path} @{" "}
+                  {lastPeek.tile + 1}
+                </b>{" "}
+                is the{" "}
+                {lastPeek.result === "bad" ? (
+                  <b>BAD tile — avoid it.</b>
+                ) : (
+                  <b>SAFE tile — it's a guaranteed pick.</b>
+                )}
+                <span className="ml-1 text-white/50">(only you saw this)</span>
+              </div>
+            )}
+
+    </>
+  );
+  const creatorTower = (
+    <>
+<div className="flex flex-col gap-3">
+              <DuelTower
+                label="Your tower"
+                tone="cyan"
+                lane={myLane}
+                held={myHeld}
+                isActiveClimber={true}
+                isViewerTurn={true}
+                clickable={canAct}
+                selectedPath={selectedPath}
+                flagMode={flagMode}
+                peekMode={peekMode}
+                myPeeks={myPeeks}
+                pathByLane={myHistory.myPath}
+                pickedTileByLane={myHistory.myPicked}
+                intelPathByLane={undefined}
+                intelPickedByLane={undefined}
+                deductions={deductions}
+                tower={myTower}
+                difficulty={match?.difficulty}
+                finished={finished}
+                onPick={(t) => doAction(peekMode ? "peek" : flagMode ? "flag" : "pick", t)}
+              />
+            </div>
+    </>
+  );
+  const creatorBank = (
+    <>
+{!finished && (
+              <div className="space-y-1">
+                <motion.button
+                  type="button"
+                  disabled={!canHold}
+                  animate={canHold ? { scale: [1, 1.02, 1] } : undefined}
+                  transition={{ repeat: canHold ? Infinity : 0, duration: 1.1 }}
+                  onClick={() => doAction("hold")}
+                  className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black uppercase tracking-wider transition ${canHold ? "bg-gradient-to-r from-amber-400 to-yellow-400 text-black" : "bg-white/10 text-white/40"}`}
+                >
+                  <IconLock size={16} />
+                  {myHeld ? `Re-bank ${myScore.toLocaleString()} pts` : `Bank ${myScore.toLocaleString()} pts`}
+                </motion.button>
+                <p className="text-center text-[10px] text-white/40">
+                  Busts reset only unbanked points. First to {WIN_BANKED_SCORE.toLocaleString()} banked wins.
+                </p>
+                {!cancelled && !isBotMatch && (
+                  <button
+                    type="button"
+                    onClick={handleResign}
+                    disabled={resigning}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 py-2.5 text-xs font-black uppercase tracking-wider text-red-300 transition hover:bg-red-500/25 disabled:opacity-50"
+                  >
+                    {resigning ? "Resigning…" : "Resign match"}
+                  </button>
+                )}
+              </div>
+            )}
+
+    </>
+  );
+
+  const desktopContent = (
+    <>
+      {(match?.status === "active" || finished) && (
+        <div className="space-y-4">
+          {matchEndPopup}
+          <div className="rounded-2xl border border-cyan-300/40 bg-cyan-400/10 p-3 text-sm text-cyan-100">Both players can act at the same time.</div>
+          {creatorScoreboard}
+          {creatorPressure}
+          {creatorPathPicker}
+          {creatorLastPeek}
+          {creatorTower}
+          {creatorBank}
+        </div>
+      )}
+    </>
+  );
+
+  const portraitContent = (
+    <CreatorModeShell className="bg-[#070b1e] bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)]">
+      <ShellHeader className="space-y-2">
+        {creatorScoreboard}
+        {creatorPressure}
+      </ShellHeader>
+      <ShellMain className="h-full items-start overflow-y-auto px-2">{creatorTower}</ShellMain>
+      <ShellAside className="space-y-3">
+        {creatorPathPicker}
+        {creatorLastPeek}
+        {creatorBank}
+      </ShellAside>
+      {matchEndPopup}
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -1280,137 +1466,18 @@ export default function LaneRushDuelMatchPage({ params }) {
         )}
 
         {/* ── Active game ────────────────────────────────────────── */}
-        {(match?.status === "active" || finished) && (
-          <div className="space-y-4">
-            {matchEndPopup}
-            <div className="rounded-2xl border border-cyan-300/40 bg-cyan-400/10 p-3 text-sm text-cyan-100">
-              Both players can act at the same time.
-            </div>
+                <CreatorModeHost
+          autoStart={Boolean(match && match.status === "active")}
+          autoStop={Boolean(finished || cancelled)}
+          gameLabel="lane-rush-duel"
+        >
+          <CreatorView
+            normal={desktopContent}
+            portrait={portraitContent}
+            landscape={desktopContent}
+          />
+        </CreatorModeHost>
 
-            {/* Scoreboard — points + the zugzwang chip */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-cyan-300/50 bg-cyan-500/10 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-wider text-white/50">You</p>
-                <p className="text-2xl font-black text-cyan-200">{myScore} <span className="text-xs text-white/40">pts</span></p>
-                <p className="text-[10px] text-white/50">Race score · banked {myBanked}</p>
-              </div>
-              <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-wider text-white/50">Opponent</p>
-                <p className="text-2xl font-black text-rose-200">{oppScore} <span className="text-xs text-white/40">pts</span></p>
-                <p className="text-[10px] text-white/50">Race score · banked {oppBanked}</p>
-              </div>
-            </div>
-
-            <PressureStrip
-              myScore={myScore}
-              oppScore={oppScore}
-              myBanked={myBanked}
-              oppBanked={oppBanked}
-              myHeld={myHeld}
-              oppHeld={oppHeld}
-              myRate={myRate}
-              oppRate={oppRate}
-              difficulty={match?.difficulty}
-              isBotMatch={isBotMatch}
-            />
-
-            {/* Risk-path picker — always available while the match is active. */}
-            {canAct && (
-              <PathPicker
-                lane={myLane}
-                selectedPath={selectedPath}
-                onSelect={setSelectedPath}
-                flagMode={flagMode}
-                onToggleFlag={() => setFlagMode((f) => !f)}
-                peekMode={peekMode}
-                onTogglePeek={() => setPeekMode((p) => !p)}
-                disabled={acting}
-                flagsLeft={flagsLeft}
-                peeksLeft={peeksLeft}
-                deductions={deductions}
-              />
-            )}
-
-            {lastPeek && !finished && (
-              <div
-                className={`rounded-2xl border px-4 py-2.5 text-xs ${
-                  lastPeek.result === "bad"
-                    ? "border-orange-300/50 bg-orange-500/15 text-orange-100"
-                    : "border-emerald-300/50 bg-emerald-500/15 text-emerald-100"
-                }`}
-              >
-                <b className="uppercase">
-                  Peek: {RISK_PATHS[lastPeek.path]?.label ?? lastPeek.path} @{" "}
-                  {lastPeek.tile + 1}
-                </b>{" "}
-                is the{" "}
-                {lastPeek.result === "bad" ? (
-                  <b>BAD tile — avoid it.</b>
-                ) : (
-                  <b>SAFE tile — it's a guaranteed pick.</b>
-                )}
-                <span className="ml-1 text-white/50">(only you saw this)</span>
-              </div>
-            )}
-
-            {/* Your tower — the opponent has an independent hidden board. */}
-            <div className="flex flex-col gap-3">
-              <DuelTower
-                label="Your tower"
-                tone="cyan"
-                lane={myLane}
-                held={myHeld}
-                isActiveClimber={true}
-                isViewerTurn={true}
-                clickable={canAct}
-                selectedPath={selectedPath}
-                flagMode={flagMode}
-                peekMode={peekMode}
-                myPeeks={myPeeks}
-                pathByLane={myHistory.myPath}
-                pickedTileByLane={myHistory.myPicked}
-                intelPathByLane={undefined}
-                intelPickedByLane={undefined}
-                deductions={deductions}
-                tower={myTower}
-                difficulty={match?.difficulty}
-                finished={finished}
-                onPick={(t) => doAction(peekMode ? "peek" : flagMode ? "flag" : "pick", t)}
-              />
-            </div>
-
-            {!finished && (
-              <div className="space-y-1">
-                <motion.button
-                  type="button"
-                  disabled={!canHold}
-                  animate={canHold ? { scale: [1, 1.02, 1] } : undefined}
-                  transition={{ repeat: canHold ? Infinity : 0, duration: 1.1 }}
-                  onClick={() => doAction("hold")}
-                  className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black uppercase tracking-wider transition ${canHold ? "bg-gradient-to-r from-amber-400 to-yellow-400 text-black" : "bg-white/10 text-white/40"}`}
-                >
-                  <IconLock size={16} />
-                  {myHeld ? `Re-bank ${myScore.toLocaleString()} pts` : `Bank ${myScore.toLocaleString()} pts`}
-                </motion.button>
-                <p className="text-center text-[10px] text-white/40">
-                  Busts reset only unbanked points. First to {WIN_BANKED_SCORE.toLocaleString()} banked wins.
-                </p>
-                {!cancelled && !isBotMatch && (
-                  <button
-                    type="button"
-                    onClick={handleResign}
-                    disabled={resigning}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 py-2.5 text-xs font-black uppercase tracking-wider text-red-300 transition hover:bg-red-500/25 disabled:opacity-50"
-                  >
-                    {resigning ? "Resigning…" : "Resign match"}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Match results are rendered in the fixed popup above. */}
-          </div>
-        )}
 
         {!loading && !match && (
           <div className="rounded-3xl border border-white/10 bg-slate-900/60 py-20 text-center">

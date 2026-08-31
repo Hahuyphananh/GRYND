@@ -31,6 +31,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins
+// (leaves the waiting room), auto-stops when it finishes or the user
+// quits. The waiting/matchmaking takeover stays OUTSIDE so nothing is
+// recorded until real gameplay starts.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
@@ -851,6 +858,18 @@ export default function BlackjackPvpMatchPage({
 
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
+      {/* Only the actual game content is recorded — the matchmaking
+          takeover above and the modals below sit outside the shared
+          CreatorModeHost recording viewport. Recording auto-starts when
+          the match leaves waiting and stops when it finishes/cancels. */}
+      <CreatorModeHost
+        autoStart={Boolean(match) && match.status !== "waiting"}
+        autoStop={
+          match?.status === "finished" || match?.status === "cancelled"
+        }
+        gameLabel="blackjack"
+      >
+      <CreatorResponsiveLayout>
       <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
         {/* Header */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1282,6 +1301,8 @@ export default function BlackjackPvpMatchPage({
           />
         )}
       </AnimatePresence>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
 
       {/* Resign confirmation modal — warns the player their stake is
           forfeited before hitting the resign API. */}

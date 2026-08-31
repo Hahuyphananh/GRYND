@@ -129,10 +129,10 @@ function normaliseMatchForViewer(match, viewerUserId) {
     p2RoundScore: Number(match.p2RoundScore || 0),
     // Pattern per the reveal rules above; null otherwise.
     pattern: canSeePattern ? match.board : null,
-    // Player heads (displayName + profileImageUrl) — populated by
+    // Player heads (displayName + official iconKey) — populated by
     // enrichMatchesWithUsers in the server store. The match view
-    // renders real names/avatars for the player cards instead of
-    // raw Clerk-id truncation (mirrors plinko-pvp / keno-pvp).
+    // renders real names/avatars (official Grynd icons) for the player
+    // cards instead of raw Clerk-id truncation (mirrors plinko-pvp / keno-pvp).
     players: match.players ?? null,
     // Provably-fair seed bookkeeping (lane-rush-duel convention):
     // the committed SHA-256 hash is always visible, and the raw

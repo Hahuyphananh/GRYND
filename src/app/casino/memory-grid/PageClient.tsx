@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
+import IconAvatar from "../../../components/IconAvatar";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
@@ -33,7 +34,7 @@ import {
 import { STAKE_PRESETS } from "../../../lib/memory-grid/constants";
 
 // Type for a single open-matches list entry returned by
-// /api/memory-grid/available. `hostName`/`hostProfileImageUrl` come
+// /api/memory-grid/available. `hostName`/`hostIconKey` come
 // from the server's user enrichment so rows show real player heads
 // (mirrors plinko-pvp / keno-pvp lobby rows).
 type AvailableMatch = {
@@ -42,7 +43,7 @@ type AvailableMatch = {
   stakeAmount: number;
   createdAt: string;
   hostName?: string | null;
-  hostProfileImageUrl?: string | null;
+  hostIconKey?: string | null;
 };
 
 // ── Inline SVG icons (kept in-file so this lobby doesn't pull in
@@ -418,18 +419,11 @@ export default function MemoryGridLobbyPage() {
         <>
           Lobby #{m.id}
           <span className="ml-2 inline-flex items-center gap-1.5">
-            {m.hostProfileImageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={m.hostProfileImageUrl}
-                alt=""
-                className="h-4 w-4 rounded-full object-cover"
-              />
-            ) : (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500/20 text-[8px] font-black text-amber-300">
-                {(m.hostName ?? "?")[0]?.toUpperCase()}
-              </span>
-            )}
+            <IconAvatar
+              iconKey={m.hostIconKey}
+              name={m.hostName}
+              size="h-4 w-4"
+            />
             <span className="text-[10px] text-white/50">
               host {m.hostName ?? `#${m.player1Id?.slice(0, 6)}…`}
             </span>

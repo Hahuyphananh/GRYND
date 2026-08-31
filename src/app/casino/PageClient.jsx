@@ -4,7 +4,7 @@ import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
-import { isSafeProfilePictureUrl } from "../../lib/security/media";
+import IconAvatar from "../../components/IconAvatar";
 import Img1 from "../../images/roulette.webp";
 import Img2 from "../../images/blackjack-div.webp";
 import Img3 from "../../images/poker div image.webp";
@@ -30,6 +30,8 @@ import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
 import StickyMobileCta from "../../components/StickyMobileCta";
 import OnboardingTour, { getTourStorageKey } from "../../components/OnboardingTour";
+import CreatorModeLobby from "../../components/creator-mode/CreatorModeLobby";
+import { buildCreatorHref } from "../../lib/creator-mode/client";
 
 function MainComponent() {
   const { user } = useUser();
@@ -39,6 +41,9 @@ function MainComponent() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTour, setShowTour] = useState(false);
+  // Creator Mode (admin-only): when enabled, game links carry ?creator=1
+  // so the shared CreatorModeProvider inside each game picks it up.
+  const [creatorModeEnabled, setCreatorModeEnabled] = useState(false);
   const { t } = useTranslation();
 
   // Phase-2 onboarding: continues right after the thank-you page tour.
@@ -308,7 +313,7 @@ function MainComponent() {
   }, [user]);
 
   const GameCard = ({ game }) => (        <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
-      <Link href={game.href} className="block cursor-pointer" aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}>
+      <Link href={buildCreatorHref(game.href, creatorModeEnabled)} className="block cursor-pointer" aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}>
         <div className="mb-3 h-32 overflow-hidden rounded-lg">
           <Image
             src={game.image}
@@ -343,25 +348,15 @@ function MainComponent() {
             className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-1"
             title={friendPresenceByGame[game.leaderboardKey].map((f) => f.name).join(", ")}
           >
-            {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) =>
-              isSafeProfilePictureUrl(friend.profilePicture) ? (
-                <img
-                  key={`${friend.id}-${friend.name}`}
-                  src={friend.profilePicture}
-                  alt={friend.name}
-                  className="h-6 w-6 rounded-full border border-white/30 object-cover"
-                  title={friend.name}
-                />
-              ) : (
-                <div
-                  key={`${friend.id}-${friend.name}`}
-                  className="h-6 w-6 rounded-full bg-[#FFD700] text-[#003366] text-xs font-bold flex items-center justify-center"
-                  title={friend.name}
-                >
-                  {friend.name?.charAt(0)?.toUpperCase() || "U"}
-                </div>
-              )
-            )}
+            {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) => (
+              <IconAvatar
+                key={`${friend.id}-${friend.name}`}
+                iconKey={friend.iconKey}
+                name={friend.name}
+                size="h-6 w-6"
+                className="border border-white/30"
+              />
+            ))}
           </div>
         )}
     </div>
@@ -432,7 +427,7 @@ function MainComponent() {
           </div>
         </div>
 
-        <div className="mb-10 flex flex-col items-center gap-4">
+        <div className="mb-6 flex flex-col items-center gap-4">
           <p className="text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff] opacity-80">
             {t("home.casino_lobby.sort_by")}
           </p>
@@ -456,6 +451,14 @@ function MainComponent() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Admin-only Creator Mode entry — normal users never see it
+            (the shared access hook hides it and the server never grants
+            access). Opens the settings modal; game links carry ?creator=1
+            only while enabled. Rendered above the game grid. */}
+        <div className="mb-8 flex justify-center">
+          <CreatorModeLobby onChange={setCreatorModeEnabled} />
         </div>
 
         {displayedGames.length > 0 && (
@@ -527,7 +530,7 @@ function MainComponent() {
         }
       `}</style>
       <Footer />
-      <StickyMobileCta playHref="/casino/roulette" />
+      <StickyMobileCta playHref={buildCreatorHref("/casino/roulette", creatorModeEnabled)} />
       {showTour && (
         <OnboardingTour steps={tourSteps} onFinish={finishTour} onSkip={finishTour} />
       )}

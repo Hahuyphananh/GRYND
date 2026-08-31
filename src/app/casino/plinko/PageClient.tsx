@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
+import IconAvatar from "../../../components/IconAvatar";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
@@ -49,7 +50,7 @@ type AvailableMatch = {
   // heads instead of clerkId truncation. Populated server-side via
   // enrichMatchesWithUsers in src/lib/plinko-pvp/serverStore.js.
   hostName?: string;
-  hostProfileImageUrl?: string | null;
+  hostIconKey?: string | null;
 };
 
 // ── Inline SVG icon (kept in-file so this lobby doesn't pull in
@@ -415,21 +416,12 @@ export default function PlinkoPvpLobbyPage() {
         <span className="inline-flex items-center gap-2">
           <span>Lobby #{m.id}</span>
           <span className="text-[10px] text-white/60 inline-flex items-center gap-1.5">
-            {m.hostProfileImageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={m.hostProfileImageUrl}
-                alt=""
-                className="h-4 w-4 rounded-full border border-cyan-500/40"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/20 text-[9px] font-black uppercase">
-                {(m.hostName ?? "?").slice(0, 1)}
-              </span>
-            )}
+            <IconAvatar
+              iconKey={m.hostIconKey}
+              name={m.hostName}
+              size="h-4 w-4"
+              className="border border-cyan-500/40"
+            />
             <span>{m.hostName ?? m.player1Id?.slice(0, 6) + "..."}</span>
           </span>
         </span>

@@ -26,7 +26,7 @@ export async function GET() {
           stakeAmount: Number(m.stakeAmount),
           createdAt: m.createdAt,
           hostName: m.players?.p1?.displayName ?? m.player1Id,
-          hostProfileImageUrl: m.players?.p1?.profileImageUrl ?? null,
+          hostIconKey: m.players?.p1?.iconKey ?? null,
         })),
       },
     });

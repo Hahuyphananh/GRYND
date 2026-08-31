@@ -79,6 +79,13 @@ import {
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
 import EmotePicker from "../../../../components/game/EmotePicker";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins
+// (leaves the waiting room / is playable), auto-stops when it ends or
+// the user quits. The unified matchmaking takeover (MatchWaiting) stays
+// OUTSIDE so nothing is recorded until real gameplay starts.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import { playVictory, playDefeat, playTick, playCardPlace } from "../../../../lib/gameAudio";
 
@@ -1680,6 +1687,22 @@ export default function RoulettePvpGamePage({ params }) {
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] pb-24 pt-20 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual game content is recorded — the matchmaking
+          takeover above and the nav/modal below sit outside the shared
+          CreatorModeHost recording viewport. Recording auto-starts when
+          the match is actually playable and stops on finish/cancel. */}
+      <CreatorModeHost
+        autoStart={
+          BETTABLE.has(match?.status) ||
+          match?.status === MATCH_STATUS.READY
+        }
+        autoStop={
+          match?.status === MATCH_STATUS.FINISHED ||
+          match?.status === MATCH_STATUS.CANCELLED
+        }
+        gameLabel="roulette"
+      >
+      <CreatorResponsiveLayout>
       <div className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
         {/* ── Left sidebar: PvP state + controls ─────────────────── */}
         <div className="flex w-full flex-shrink-0 flex-col items-start gap-3 sm:w-[280px] sm:gap-4">
@@ -2539,6 +2562,8 @@ export default function RoulettePvpGamePage({ params }) {
           </div>
         </div>
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
 
       {/* Animations */}
       <style jsx>{`

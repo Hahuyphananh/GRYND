@@ -55,7 +55,7 @@ export async function POST(request) {
     const queryString = normalized;
 
     const found = await sql`
-  SELECT id, name, profile_picture, selected_streak_type, daily_streak_current, daily_streak_best
+  SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best
   FROM users
   WHERE REPLACE(LOWER(search_name), ' ', '') LIKE '%' || ${queryString} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}

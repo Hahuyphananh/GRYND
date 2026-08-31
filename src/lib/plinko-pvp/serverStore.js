@@ -173,7 +173,7 @@ export async function ensurePlinkoReadyColumns() {
 // can show "Alice vs Bob" instead of "user_abcd1234 vs user_efgh5678".
 //
 // Returns a plain object keyed by `clerkId` → `{ id, displayName,
-// profileImageUrl, ... }`. Falls back to a derived flag (`missing: true`)
+// iconKey, ... }`. Falls back to a derived flag (`missing: true`)
 // if the lookup didn't find a row for that id (defensive — should not
 // happen given Clerk auth, but better than a TypeError in the JSON
 // response).
@@ -184,7 +184,8 @@ function summariseUsers(rows) {
     out[r.clerkId] = {
       id: r.clerkId,
       displayName: r.displayName || r.clerkId,
-      profileImageUrl: r.profileImageUrl || null,
+      // Official Grynd icon key only — never an arbitrary avatar URL.
+      iconKey: r.iconKey || "default",
     };
   }
   return out;
@@ -192,7 +193,7 @@ function summariseUsers(rows) {
 
 // Enrich a match (or list of matches) with a `players` field derived
 // from the `users` table. The match row's `player1Id`/`player2Id` are
-// Clerk ids — we look them up and surface displayName + profileImageUrl
+// Clerk ids — we look them up and surface displayName + official iconKey
 // so the client can render proper player heads instead of truncation.
 //
 // Accepts: one match, or an array of matches, or null/undefined.
@@ -233,17 +234,16 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
   }
   let rows = [];
   try {
-    // `users` exposes `name` + `profilePicture` (displayName /
-    // profileImageUrl only exist on chatMessages). Output keys stay
+    // `users` exposes `name` + `selectedIcon` (displayName and the legacy
+    // `profile_image_url` only exist on chatMessages). Output keys stay
     // aliased so summariseUsers + every consumer reading
-    // players.p1.displayName keeps working unchanged. Bug fix: the
-    // previous query referenced non-existent columns, breaking
-    // match-view names AND surfacing a 500 on the "I'm Ready" POST.
+    // players.p1.displayName keeps working unchanged. Avatar is an official
+    // icon key (iconKey), never an arbitrary URL.
     rows = await db
       .select({
         clerkId: users.clerkId,
         displayName: users.name,
-        profileImageUrl: users.profilePicture,
+        iconKey: users.selectedIcon,
       })
       .from(users)
       .where(inArray(users.clerkId, Array.from(ids)));

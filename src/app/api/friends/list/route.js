@@ -37,7 +37,7 @@ export async function GET() {
         u.id, 
         u.clerk_id,
         u.name, 
-        u.profile_picture,
+        u.selected_icon AS icon_key,
         u.daily_streak_current,
         u.daily_streak_best,
         u.selected_streak_type,

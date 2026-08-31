@@ -12,11 +12,7 @@ import {
   ACCENT_COLORS,
   AVATAR_FRAME_OPTIONS,
 } from "../../lib/profileCosmetics";
-import {
-  ALLOWED_IMAGE_MIME,
-  MAX_IMAGE_BYTES,
-  isSafeProfilePictureUrl,
-} from "../../lib/security/media";
+import IconAvatar from "../../components/IconAvatar";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 
 const statsCards = [
@@ -50,7 +46,7 @@ export default function ProfilePage() {
   const [profileInfo, setProfileInfo] = useState({
     name: "",
     email: "",
-    profilePicture: "",
+    selectedIcon: "",
     profileAccent: null,
     profileBanner: null,
     avatarFrame: null,
@@ -199,9 +195,12 @@ export default function ProfilePage() {
     name: "",
     email: "",
     password: "",
-    profilePicture: "",
   });
-  const [selectedProfileImageName, setSelectedProfileImageName] = useState("");
+  // Owned official Grynd icons for the picker. iconKey / isDefault come from
+  // /api/user/icons; equipping writes the server-validated selection.
+  const [ownedIcons, setOwnedIcons] = useState([]);
+  const [isIconsLoading, setIsIconsLoading] = useState(false);
+  const [iconsStatus, setIconsStatus] = useState("");
 
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
@@ -313,12 +312,13 @@ export default function ProfilePage() {
       setUserTokens(Number(tokensData.data.balance || 0));
       const name = tokensData.data.name || user?.fullName || "Unknown user";
       const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
-      const profilePicture = tokensData.data.profilePicture || "";
+      const selectedIcon = tokensData.data.selectedIcon || "";
       const profileAccent = tokensData.data.profileAccent || null;
       const profileBanner = tokensData.data.profileBanner || null;
       const avatarFrame = tokensData.data.avatarFrame || null;
-      setProfileInfo({ name, email, profilePicture, profileAccent, profileBanner, avatarFrame });
-      setEditForm((prev) => ({ ...prev, name, email, profilePicture }));
+      setProfileInfo({ name, email, selectedIcon, profileAccent, profileBanner, avatarFrame });
+      setEditForm((prev) => ({ ...prev, name, email }));
+      void loadOwnedIcons();
       // Sync the customization pickers with the saved values.
       setCosmetics({
         accent: profileAccent || DEFAULT_PROFILE_ACCENT,
@@ -561,8 +561,6 @@ export default function ProfilePage() {
       setFriendsStatus(err.message || "Could not send invite.");
     }
   };
-
-  const profileAvatar = (person) => person?.profile_picture || person?.profilePicture || "";
 
   const isAllowedSpectateUrl = (url) => {
     if (!url || typeof url !== "string") return false;
@@ -934,15 +932,11 @@ export default function ProfilePage() {
       const normalizedPassword = String(editForm.password || "").trim();
       const normalizedCurrentName = String(profileInfo.name || "").trim();
       const normalizedCurrentEmail = String(profileInfo.email || "").trim();
-      const normalizedCurrentPicture = String(profileInfo.profilePicture || "");
-      const normalizedNewPicture = String(editForm.profilePicture || "");
 
       if (normalizedName && normalizedName !== normalizedCurrentName) payload.name = normalizedName;
       if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail)
         payload.email = normalizedEmail;
       if (normalizedPassword) payload.password = normalizedPassword;
-      if (normalizedNewPicture !== normalizedCurrentPicture)
-        payload.profilePicture = normalizedNewPicture;
 
       if (!Object.keys(payload).length) {
         setEditStatus("No changes to save.");
@@ -962,16 +956,15 @@ export default function ProfilePage() {
         throw new Error(data.error || "Failed to update profile");
       }
 
-      setProfileInfo({
+      setProfileInfo((prev) => ({
+        ...prev,
         name: data.profile.name,
         email: data.profile.email,
-        profilePicture: data.profile.profilePicture || "",
-      });
+      }));
       setEditForm((prev) => ({
         ...prev,
         name: data.profile.name,
         email: data.profile.email,
-        profilePicture: data.profile.profilePicture || "",
         password: "",
       }));
       setEditStatus("Profile updated successfully.");
@@ -984,70 +977,49 @@ export default function ProfilePage() {
     }
   };
 
-  const handleProfileImageFileChange = async (event) => {
-    const file = event?.target?.files?.[0];
-    if (!file) return;
-
-    // Raster-image allowlist ONLY — SVG (can carry <script>), HTML
-    // and every other MIME is rejected before it even reaches the
-    // FileReader. Mirrors the server-side allowlist in
-    // src/lib/security/media.js.
-    if (!ALLOWED_IMAGE_MIME.has(file.type)) {
-      setEditStatus("Please select a PNG, JPEG, WebP, GIF or AVIF image file.");
-      return;
-    }
-
-    const maxBytes = MAX_IMAGE_BYTES; // 2MB safety cap for DB text storage
-    if (file.size > maxBytes) {
-      setEditStatus("Image is too large. Please pick an image under 2MB.");
-      return;
-    }
-
-    const readFileAsDataUrl = (fileToRead) =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("Could not read the selected file."));
-        reader.readAsDataURL(fileToRead);
-      });
-
-    const compressImageDataUrl = (dataUrl, maxSide = 256, quality = 0.7) =>
-      new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const width = img.width || 1;
-          const height = img.height || 1;
-          const scale = Math.min(1, maxSide / Math.max(width, height));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.round(width * scale));
-          canvas.height = Math.max(1, Math.round(height * scale));
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return reject(new Error("Image processing is not supported in this browser."));
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", quality));
-        };
-        img.onerror = () => reject(new Error("Could not process the selected image."));
-        img.src = dataUrl;
-      });
-
+  // ── Official Grynd icon selection ──────────────────────────────────────
+  // Players choose an owned OFFICIAL icon; uploads / external avatar URLs are
+  // no longer supported (the server only accepts catalog keys via
+  // /api/user/icon/select).
+  const loadOwnedIcons = async () => {
+    setIsIconsLoading(true);
+    setIconsStatus("");
     try {
-      const originalDataUrl = await readFileAsDataUrl(file);
-      let finalDataUrl = originalDataUrl;
-
-      try {
-        const compressed = await compressImageDataUrl(originalDataUrl);
-        if (compressed?.length && compressed.length < originalDataUrl.length) {
-          finalDataUrl = compressed;
+      const res = await fetch("/api/user/icons", { credentials: "include" });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.ownedIcons)) {
+        setOwnedIcons(data.ownedIcons);
+        if (data.selectedIcon) {
+          setProfileInfo((prev) => ({ ...prev, selectedIcon: data.selectedIcon }));
         }
-      } catch (compressionError) {
-        console.warn("[PROFILE_IMAGE_COMPRESSION_WARNING]", compressionError);
       }
-
-      setEditForm((prev) => ({ ...prev, profilePicture: finalDataUrl }));
-      setSelectedProfileImageName(file.name);
-      setEditStatus("");
     } catch (err) {
-      setEditStatus(err.message || "Could not read the selected file.");
+      console.error("[LOAD_ICONS_ERROR]", err);
+    } finally {
+      setIsIconsLoading(false);
+    }
+  };
+
+  const handleEquipIcon = async (iconKey) => {
+    if (!iconKey || iconKey === profileInfo.selectedIcon) return;
+    setIconsStatus("");
+    try {
+      const res = await fetch("/api/user/icon/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ iconKey }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to equip icon");
+      }
+      setProfileInfo((prev) => ({ ...prev, selectedIcon: data.selectedIcon }));
+      // Reflect the change in every avatar around the app (nav bar etc.).
+      window.dispatchEvent(new Event("profileUpdated"));
+    } catch (err) {
+      console.error("[EQUIP_ICON_ERROR]", err);
+      setIconsStatus(err.message || "Could not equip icon.");
     }
   };
 
@@ -1160,7 +1132,6 @@ export default function ProfilePage() {
               <button
                 onClick={() => {
                   setEditStatus("");
-                  setSelectedProfileImageName("");
                   setIsEditOpen(true);
                 }}
                 className={
@@ -1173,20 +1144,12 @@ export default function ProfilePage() {
             </div>
             <div className="mb-3 flex items-center gap-3">
               <AvatarFrame frame={profileInfo.avatarFrame}>
-                {isSafeProfilePictureUrl(profileInfo.profilePicture) ? (
-                  <img
-                    src={profileInfo.profilePicture}
-                    alt="Profile"
-                    className="h-14 w-14 rounded-full object-cover border border-[#FFD700]"
-                  />
-                ) : (
-                  <div
-                    className="h-14 w-14 rounded-full bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center text-lg font-bold"
-                  >
-                    {(profileInfo.name || user.fullName || "U").charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <IconAvatar
+                  iconKey={profileInfo.selectedIcon}
+                  name={profileInfo.name || user.fullName}
+                  size="h-14 w-14"
+                  className="border border-[#FFD700]"
+                />
               </AvatarFrame>
               <div>
                 <div className="flex items-center gap-2">
@@ -1951,20 +1914,11 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 className="flex items-center justify-between rounded border border-[#FFD700]/40 p-3"
               >
                 <div className="flex items-center gap-3">
-                  {profileAvatar(person) ? (
-                    <img
-                      src={profileAvatar(person)}
-                      alt={person.name}
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold"
-                    >
-                      {person.name?.charAt(0)?.toUpperCase() || "U"}
-                    </div>
-                  )}
+                  <IconAvatar
+                    iconKey={person.icon_key}
+                    name={person.name}
+                    size="h-10 w-10"
+                  />
                   <span>{person.name}</span>
                 </div>
                 <button
@@ -2027,20 +1981,11 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     href={`/profil/${encodeURIComponent(friend.clerk_id)}`}
                     className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
                   >
-                    {profileAvatar(friend) ? (
-                      <img
-                        src={profileAvatar(friend)}
-                        alt={friend.name}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold"
-                      >
-                        {friend.name?.charAt(0)?.toUpperCase() || "U"}
-                      </div>
-                    )}
+                    <IconAvatar
+                      iconKey={friend.icon_key}
+                      name={friend.name}
+                      size="h-10 w-10"
+                    />
                     <div className="flex-1">
                       <span>{friend.name}</span>
                       {friend.streakTitle && (
@@ -2134,17 +2079,11 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                     key={invite.id}
                     className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
                   >
-                    {invite.sender_profile_picture ? (
-                      <img
-                        src={invite.sender_profile_picture}
-                        alt={invite.sender_name}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-full bg-[#00e5ff] text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.4)] flex items-center justify-center font-bold">
-                        {invite.sender_name?.charAt(0)?.toUpperCase() || "U"}
-                      </div>
-                    )}
+                    <IconAvatar
+                      iconKey={invite.sender_icon_key}
+                      name={invite.sender_name}
+                      size="h-10 w-10"
+                    />
                     <div className="flex-1">
                       <p className="text-sm font-semibold">{invite.sender_name}</p>
                       <p className="text-xs text-gray-300">
@@ -2440,43 +2379,43 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
-                <label className="block mb-2 text-sm text-gray-200" htmlFor="profil-edit-picture">
-                  Profile picture
-                </label>
-                <input
-                  id="profil-edit-picture"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProfileImageFileChange}
-                  className="w-full text-sm"
-                />
-                {selectedProfileImageName && (
-                  <p className="mt-2 text-xs text-gray-300">
-                    Selected file: {selectedProfileImageName}
-                  </p>
-                )}
-                {isSafeProfilePictureUrl(editForm.profilePicture) && (
-                  <div className="mt-3 flex items-center gap-3">
-                    <img
-                      src={editForm.profilePicture}
-                      alt="Profile preview"
-                      className="h-14 w-14 rounded-full object-cover border border-[#FFD700]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditForm((prev) => ({
-                          ...prev,
-                          profilePicture: "",
-                        }));
-                        setSelectedProfileImageName("");
-                      }}
-                      className="rounded border border-white/30 px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
-                    >
-                      Remove image
-                    </button>
+                <p className="mb-2 block text-sm text-gray-200">My Grynd Icon</p>
+                {isIconsLoading ? (
+                  <p className="text-xs text-gray-300">Loading icons…</p>
+                ) : ownedIcons.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                    {ownedIcons.map((icon) => {
+                      const equipped = profileInfo.selectedIcon === icon.key;
+                      return (
+                        <button
+                          key={icon.key}
+                          type="button"
+                          aria-pressed={equipped}
+                          aria-label={`Equip ${icon.name}`}
+                          onClick={() => handleEquipIcon(icon.key)}
+                          title={`${icon.name}${equipped ? " (equipped)" : ""}`}
+                          className={`flex flex-col items-center gap-1 rounded-lg border p-2 transition ${
+                            equipped
+                              ? "border-[#00e5ff] bg-[#00e5ff]/15 ring-2 ring-[#00e5ff]/40"
+                              : "border-white/15 bg-white/5 hover:border-[#00e5ff]/50 hover:bg-[#00e5ff]/5"
+                          }`}
+                        >
+                          <IconAvatar
+                            iconKey={icon.key}
+                            name={icon.name}
+                            size="h-9 w-9"
+                          />
+                          <span className="max-w-full truncate text-[10px] text-gray-300">
+                            {icon.name}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
+                ) : (
+                  <p className="text-xs text-gray-300">No icons available.</p>
                 )}
+                {iconsStatus && <p className="mt-2 text-xs text-red-300">{iconsStatus}</p>}
               </div>
               <label htmlFor="profil-edit-password" className="sr-only">
                 New password (optional)

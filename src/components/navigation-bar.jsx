@@ -14,7 +14,7 @@ import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import SoundToggle from "./SoundToggle";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
-import { isSafeProfilePictureUrl } from "../lib/security/media";
+import IconAvatar from "./IconAvatar";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 
@@ -49,7 +49,7 @@ function NavigationBar({ currentPath }) {
   const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState({
     name: "",
-    profilePicture: "",
+    selectedIcon: "",
     selectedTitle: "",
     streakTitle: null,
   });
@@ -124,13 +124,10 @@ function NavigationBar({ currentPath }) {
     };
   }, []);
 
-  // Server-validated profile pictures only — a legacy/stale stored
-  // value (e.g. data:image/svg+xml) falls back to the default avatar.
-  const avatarSrc = isSafeProfilePictureUrl(profile?.profilePicture)
-    ? profile.profilePicture
-    : isSafeProfilePictureUrl(user?.imageUrl)
-      ? user.imageUrl
-      : "/default-avatar.png";
+  // Official Grynd icon only. The avatar comes from the selected icon key in
+  // get-user-tokens; <IconAvatar> resolves it through the official catalog and
+  // falls back to the default icon (Clerk's imageUrl is never used as a Grynd
+  // avatar).
 
   const fetchBalance = async ({ includeMeta = true } = {}) => {
     try {
@@ -153,7 +150,7 @@ function NavigationBar({ currentPath }) {
         setBalance(data.data.balance);          setProfile((prev) => ({
             ...prev,
             name: data.data.name || "",
-            profilePicture: data.data.profilePicture || "",
+            selectedIcon: data.data.selectedIcon || "",
             streakTitle: data.data.streakTitle || null,
           }));
         if (includeMeta) {
@@ -519,17 +516,12 @@ function NavigationBar({ currentPath }) {
                 <>
                   <div className="hidden items-center space-x-4 lg:flex">
                     <Link href="/profil" className="group flex items-center space-x-2">
-                      {avatarSrc ? (
-                        <img
-                          src={avatarSrc}
-                          alt="profile"
-                          className="h-8 w-8 rounded-full border border-[#00e5ff]/50 object-cover transition group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00e5ff] text-xs font-bold text-black">
-                          {user?.firstName?.[0] || "U"}
-                        </div>
-                      )}
+                      <IconAvatar
+                        iconKey={profile?.selectedIcon}
+                        name={profile?.name || user?.firstName}
+                        size="h-8 w-8"
+                        className="border border-[#00e5ff]/50 transition group-hover:scale-105"
+                      />
                       <div className="flex flex-col leading-tight">
                         <span className="text-xs text-[#c9f7ff] flex items-center gap-1.5">
                           {profile?.name ||
@@ -622,7 +614,11 @@ function NavigationBar({ currentPath }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3"
                 >
-                  <img src={avatarSrc} className="h-10 w-10 rounded-full" alt="User avatar" />
+                  <IconAvatar
+                    iconKey={profile?.selectedIcon}
+                    name={profile?.name || user?.firstName}
+                    size="h-10 w-10"
+                  />
                   <div>
                     <div className="text-[#c9f7ff] text-sm flex items-center gap-1.5">{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
                     <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>

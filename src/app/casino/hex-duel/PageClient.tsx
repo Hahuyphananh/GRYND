@@ -16,6 +16,16 @@ import HexParticles from "../../../components/HexParticles";
 import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
 import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
+// Shared creator-mode presentation layer (admin-only).
+import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../components/creator-mode/CreatorModeLayout";
+
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
@@ -2836,6 +2846,260 @@ export default function HexDuelPage() {
 
   // ── Render ─────────────────────────────────────────────────────────
 
+
+  /* Creator Mode bespoke 9:16 portrait: hex board large, turn/AP status bar
+     on top, and BOTH players' cards + action panel pinned below. */
+  const creatorStatus = (
+    <>
+{/* ── Status Bar ──────────────────────────────────────────── */}
+          {showGame && (
+            <div className="mb-6">
+              <StatusBar
+                currentTurn={currentTurn} currentAP={currentAP} maxAP={maxAP}
+                onEndTurn={handleEndTurn}                isGameOver={isGameOver}
+                aiThinking={aiThinking} aiEnabled={aiEnabled}
+                showEndTurn={!isSpectator && (gameMode !== "multiplayer" || isLocalTurn)}
+                isLocalTurn={isLocalTurn && !(aiEnabled && currentTurn === "player2")}
+              />
+            </div>
+          )}
+    </>
+  );
+  const creatorLeft = (
+    <>
+<div className={`order-2 ${localPlayerIsP1 ? "lg:order-1" : "lg:order-3"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
+                <PlayerCard
+                  player={localDuelPlayer} label={localLabel}
+                  isActive={localIsActive} isSelected={false}
+                  color={localColor} moves={localMoves} territory={localTerritory}
+                  currentAP={localIsActive ? currentAP : 0} maxAP={maxAP}
+                  isWinner={localIsWinner} isLocal={true} turnJustChanged={turnJustChanged}
+                  totalTroops={localTotalTroops} maxTroops={maxTroops}
+                  clockTime={localClockTime}
+                  emoteBubble={myEmote} emoteSide="mine"
+                />
+                {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
+                  <HexActionPanel
+                    currentTurn={currentTurn}
+                    currentAP={currentAP}
+                    maxAP={maxAP}
+                    selectedUnit={selectedUnit}
+                    validMoves={validMoves}
+                    selectedAction={selectedAction}
+                    onSelectAction={setSelectedAction}
+                    onSelectUnit={handleSelectUnit}
+                    pendingDescription={pendingDescription}
+                    hasPending={hasPending}
+                    onConfirm={handleConfirmAction}
+                    onClearAction={handleClearAction}
+                    isGameOver={isGameOver}
+                    playerLabel={localLabel}
+                    playerColor={localColor}
+                    isActive={isLocalTurn && localIsActive && !aiThinking}
+                    isAITurn={false}
+                    onEndTurn={handleEndTurn}
+                    onSkipRound={handleSkipRound}
+                  />
+                )}
+                {/* Troop count input when in inputTroops phase */}
+                {pendingActionPhase === "inputTroops" && (
+                  <div className="rounded-xl border border-white/10 bg-gradient-to-b from-[#071230]/80 to-[#0a1a3f]/60 p-3 backdrop-blur-sm">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Troops to send</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={maxSendTroops}
+                        value={pendingTroopCount}
+                        aria-label="Troops to send"
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setPendingTroopCount(Math.max(1, Math.min(val, maxSendTroops)));
+                        }}
+                        className="w-20 rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm text-center
+                          focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition"
+                      />
+                      <span className="text-[10px] text-slate-400">/ {maxSendTroops}</span>
+                    </div>
+                    <div className="flex gap-1.5 mt-2">
+                      {[1, 3, 5, 10].filter((n) => n <= maxSendTroops).map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setPendingTroopCount(n)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
+                            pendingTroopCount === n
+                              ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
+                              : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
+                          }`}
+                        >{n}</button>
+                      ))}
+                      <button
+                        onClick={() => setPendingTroopCount(maxSendTroops)}
+                        className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
+                          pendingTroopCount === maxSendTroops
+                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
+                            : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
+                        }`}
+                      >MAX</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+    </>
+  );
+  const creatorBoard = (
+    <>
+<div className="order-1 lg:order-2 flex flex-col items-center w-full">
+                {/* Waiting overlay for opponent's turn in multiplayer */}
+                {gameMode === "multiplayer" && !isLocalTurn && !isGameOver && opponentReady && (
+                  <div
+                    className="relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border border-red-500/20 bg-gradient-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center"
+                    style={{ animation: "waitingFadeIn 0.4s ease-out, waitingPulse 2s ease-in-out infinite" }}
+                  >
+                    <div className="flex items-center justify-center gap-3">
+                      <span
+                        className="inline-block w-5 h-5 rounded-full border-2 border-red-400/30 border-t-red-400"
+                        style={{ animation: "waitingSpin 0.8s linear infinite" }}
+                      />
+                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-300">
+                        Waiting for opponent...
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-slate-500">
+                      {opponentLabel} is planning their next move
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
+                <HexBoard
+                  grid={displayGrid}
+                  localColor={localColor}
+                  opponentColor={opponentColor}
+                  localLabel={localLabel}
+                  opponentLabel={opponentLabel}
+                  selectedTile={selectedTile ? flipPoint(selectedTile) : selectedTile}
+                  onTileClick={handleTileClickWithActions}
+                  recentlyCaptured={recentlyCaptured.map(flipKey)}
+                  disabled={
+  isGameOver || isSpectator ||
+  (aiThinking && currentTurn === "player2")
+}
+                  attackHighlightKeys={
+  isGameOver || (aiThinking && currentTurn === "player2")
+    ? []
+    : selectedAction === "attack"
+    ? attackHighlightKeys.map(flipKey)
+    : selectedAction === "displace"
+    ? displaceHighlightKeys.map(flipKey)
+    : []
+}
+                  sourceHighlightKeys={
+  isGameOver || (aiThinking && currentTurn === "player2")
+    ? []
+    : sourceHighlightKeys.map(flipKey)
+}
+                />
+              </div>
+              </div>
+    </>
+  );
+  const creatorRight = (
+    <>
+<div className={`order-3 ${localPlayerIsP1 ? "" : "lg:order-1"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
+                <PlayerCard
+                  player={opponentDuelPlayer} label={opponentLabel}
+                  isActive={opponentIsActive} isSelected={false}
+                  color={opponentColor} moves={opponentMoves} territory={opponentTerritory}
+                  currentAP={opponentIsActive ? currentAP : 0} maxAP={maxAP}
+                  isWinner={opponentIsWinner} isAI={aiEnabled} isLocal={false} turnJustChanged={turnJustChanged}
+                  totalTroops={opponentTotalTroops} maxTroops={maxTroops}
+                  clockTime={opponentClockTime}
+                  emoteBubble={incomingEmote} emoteSide="incoming"
+                />
+                {showGame && !isSpectator && gameMode === "multiplayer" && !isPlayer1 && (
+                  // Right-side action panel for the red local user
+                  // (`!isPlayer1`). Identical wiring to the LEFT panel —
+                  // real handlers, shared React state, isActive
+                  // mirrors the LEFT panel's logic — so this panel IS
+                  // the red local user's actual action board during
+                  // multiplayer, not decoration. `localColor` /
+                  // `localLabel` already swap to red on a player2 tab,
+                  // so the panel renders in red. Combined with the
+                  // LEFT-panel gate
+                  // `(gameMode !== "multiplayer" || isPlayer1)` above,
+                  // exactly one action board is visible per local
+                  // user: blue local → left, red local → right.
+                  <HexActionPanel
+                    currentTurn={currentTurn}
+                    currentAP={currentAP}
+                    maxAP={maxAP}
+                    selectedUnit={selectedUnit}
+                    validMoves={validMoves}
+                    selectedAction={selectedAction}
+                    onSelectAction={setSelectedAction}
+                    onSelectUnit={handleSelectUnit}
+                    pendingDescription={pendingDescription}
+                    hasPending={hasPending}
+                    onConfirm={handleConfirmAction}
+                    onClearAction={handleClearAction}
+                    isGameOver={isGameOver}
+                    playerLabel={localLabel}
+                    playerColor={localColor}
+                    isActive={isLocalTurn && localIsActive && !aiThinking}
+                    isAITurn={false}
+                    onEndTurn={handleEndTurn}
+                    onSkipRound={handleSkipRound}
+                  />
+                )}
+                {/* Action history log — visible for all game modes */}
+                {showGame && actionLog.length > 0 && (
+                  <HexActionLog log={actionLog} compact={true} />
+                )}
+              </div>
+    </>
+  );
+
+  const desktopGrid = (
+    <>
+      {showGame && (
+<div
+              className="
+                grid
+                gap-3 sm:gap-4 lg:gap-5
+                items-start
+
+                grid-cols-1
+                lg:grid-cols-[220px_minmax(0,1fr)_220px]
+                xl:grid-cols-[260px_minmax(0,1fr)_260px]
+                2xl:grid-cols-[280px_minmax(0,1fr)_280px]
+              "
+            >
+        {creatorLeft}
+        {creatorBoard}
+        {creatorRight}
+      </div>
+      )}
+    </>
+  );
+
+  const desktopContent = (
+    <>
+      {creatorStatus}
+      {desktopGrid}
+    </>
+  );
+
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916]">
+      <ShellHeader>{creatorStatus}</ShellHeader>
+      <ShellMain className="h-full items-center px-2">{creatorBoard}</ShellMain>
+      <ShellAside className="space-y-3">
+        {creatorLeft}
+        {creatorRight}
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Global keyframes */}
@@ -2949,215 +3213,18 @@ export default function HexDuelPage() {
           )}
 
           {/* ── Status Bar ──────────────────────────────────────────── */}
-          {showGame && (
-            <div className="mb-6">
-              <StatusBar
-                currentTurn={currentTurn} currentAP={currentAP} maxAP={maxAP}
-                onEndTurn={handleEndTurn}                isGameOver={isGameOver}
-                aiThinking={aiThinking} aiEnabled={aiEnabled}
-                showEndTurn={!isSpectator && (gameMode !== "multiplayer" || isLocalTurn)}
-                isLocalTurn={isLocalTurn && !(aiEnabled && currentTurn === "player2")}
-              />
-            </div>
-          )}
+                    <CreatorModeHost
+            autoStart={Boolean(showGame)}
+            autoStop={Boolean(isGameOver || effectiveWinner)}
+            gameLabel="hex-duel"
+          >
+            <CreatorView
+              normal={desktopContent}
+              portrait={portraitContent}
+              landscape={desktopContent}
+            />
+          </CreatorModeHost>
 
-          {/* ── Main layout ─────────────────────────────────────────── */}
-          {showGame && (
-            <div
-              className="
-                grid
-                gap-3 sm:gap-4 lg:gap-5
-                items-start
-
-                grid-cols-1
-                lg:grid-cols-[220px_minmax(0,1fr)_220px]
-                xl:grid-cols-[260px_minmax(0,1fr)_260px]
-                2xl:grid-cols-[280px_minmax(0,1fr)_280px]
-              "
-            >
-              <div className={`order-2 ${localPlayerIsP1 ? "lg:order-1" : "lg:order-3"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
-                <PlayerCard
-                  player={localDuelPlayer} label={localLabel}
-                  isActive={localIsActive} isSelected={false}
-                  color={localColor} moves={localMoves} territory={localTerritory}
-                  currentAP={localIsActive ? currentAP : 0} maxAP={maxAP}
-                  isWinner={localIsWinner} isLocal={true} turnJustChanged={turnJustChanged}
-                  totalTroops={localTotalTroops} maxTroops={maxTroops}
-                  clockTime={localClockTime}
-                  emoteBubble={myEmote} emoteSide="mine"
-                />
-                {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
-                  <HexActionPanel
-                    currentTurn={currentTurn}
-                    currentAP={currentAP}
-                    maxAP={maxAP}
-                    selectedUnit={selectedUnit}
-                    validMoves={validMoves}
-                    selectedAction={selectedAction}
-                    onSelectAction={setSelectedAction}
-                    onSelectUnit={handleSelectUnit}
-                    pendingDescription={pendingDescription}
-                    hasPending={hasPending}
-                    onConfirm={handleConfirmAction}
-                    onClearAction={handleClearAction}
-                    isGameOver={isGameOver}
-                    playerLabel={localLabel}
-                    playerColor={localColor}
-                    isActive={isLocalTurn && localIsActive && !aiThinking}
-                    isAITurn={false}
-                    onEndTurn={handleEndTurn}
-                    onSkipRound={handleSkipRound}
-                  />
-                )}
-                {/* Troop count input when in inputTroops phase */}
-                {pendingActionPhase === "inputTroops" && (
-                  <div className="rounded-xl border border-white/10 bg-gradient-to-b from-[#071230]/80 to-[#0a1a3f]/60 p-3 backdrop-blur-sm">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Troops to send</p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={maxSendTroops}
-                        value={pendingTroopCount}
-                        aria-label="Troops to send"
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setPendingTroopCount(Math.max(1, Math.min(val, maxSendTroops)));
-                        }}
-                        className="w-20 rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm text-center
-                          focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition"
-                      />
-                      <span className="text-[10px] text-slate-400">/ {maxSendTroops}</span>
-                    </div>
-                    <div className="flex gap-1.5 mt-2">
-                      {[1, 3, 5, 10].filter((n) => n <= maxSendTroops).map((n) => (
-                        <button
-                          key={n}
-                          onClick={() => setPendingTroopCount(n)}
-                          className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
-                            pendingTroopCount === n
-                              ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
-                              : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
-                          }`}
-                        >{n}</button>
-                      ))}
-                      <button
-                        onClick={() => setPendingTroopCount(maxSendTroops)}
-                        className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
-                          pendingTroopCount === maxSendTroops
-                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
-                            : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
-                        }`}
-                      >MAX</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="order-1 lg:order-2 flex flex-col items-center w-full">
-                {/* Waiting overlay for opponent's turn in multiplayer */}
-                {gameMode === "multiplayer" && !isLocalTurn && !isGameOver && opponentReady && (
-                  <div
-                    className="relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border border-red-500/20 bg-gradient-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center"
-                    style={{ animation: "waitingFadeIn 0.4s ease-out, waitingPulse 2s ease-in-out infinite" }}
-                  >
-                    <div className="flex items-center justify-center gap-3">
-                      <span
-                        className="inline-block w-5 h-5 rounded-full border-2 border-red-400/30 border-t-red-400"
-                        style={{ animation: "waitingSpin 0.8s linear infinite" }}
-                      />
-                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-300">
-                        Waiting for opponent...
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-[10px] text-slate-500">
-                      {opponentLabel} is planning their next move
-                    </p>
-                  </div>
-                )}
-                <div className="flex justify-center overflow-x-auto overflow-y-hidden px-1 sm:px-2 -mx-1 sm:-mx-2" style={{ scrollbarWidth: "none" }}>
-                <HexBoard
-                  grid={displayGrid}
-                  localColor={localColor}
-                  opponentColor={opponentColor}
-                  localLabel={localLabel}
-                  opponentLabel={opponentLabel}
-                  selectedTile={selectedTile ? flipPoint(selectedTile) : selectedTile}
-                  onTileClick={handleTileClickWithActions}
-                  recentlyCaptured={recentlyCaptured.map(flipKey)}
-                  disabled={
-  isGameOver || isSpectator ||
-  (aiThinking && currentTurn === "player2")
-}
-                  attackHighlightKeys={
-  isGameOver || (aiThinking && currentTurn === "player2")
-    ? []
-    : selectedAction === "attack"
-    ? attackHighlightKeys.map(flipKey)
-    : selectedAction === "displace"
-    ? displaceHighlightKeys.map(flipKey)
-    : []
-}
-                  sourceHighlightKeys={
-  isGameOver || (aiThinking && currentTurn === "player2")
-    ? []
-    : sourceHighlightKeys.map(flipKey)
-}
-                />
-              </div>
-              </div>
-              <div className={`order-3 ${localPlayerIsP1 ? "" : "lg:order-1"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
-                <PlayerCard
-                  player={opponentDuelPlayer} label={opponentLabel}
-                  isActive={opponentIsActive} isSelected={false}
-                  color={opponentColor} moves={opponentMoves} territory={opponentTerritory}
-                  currentAP={opponentIsActive ? currentAP : 0} maxAP={maxAP}
-                  isWinner={opponentIsWinner} isAI={aiEnabled} isLocal={false} turnJustChanged={turnJustChanged}
-                  totalTroops={opponentTotalTroops} maxTroops={maxTroops}
-                  clockTime={opponentClockTime}
-                  emoteBubble={incomingEmote} emoteSide="incoming"
-                />
-                {showGame && !isSpectator && gameMode === "multiplayer" && !isPlayer1 && (
-                  // Right-side action panel for the red local user
-                  // (`!isPlayer1`). Identical wiring to the LEFT panel —
-                  // real handlers, shared React state, isActive
-                  // mirrors the LEFT panel's logic — so this panel IS
-                  // the red local user's actual action board during
-                  // multiplayer, not decoration. `localColor` /
-                  // `localLabel` already swap to red on a player2 tab,
-                  // so the panel renders in red. Combined with the
-                  // LEFT-panel gate
-                  // `(gameMode !== "multiplayer" || isPlayer1)` above,
-                  // exactly one action board is visible per local
-                  // user: blue local → left, red local → right.
-                  <HexActionPanel
-                    currentTurn={currentTurn}
-                    currentAP={currentAP}
-                    maxAP={maxAP}
-                    selectedUnit={selectedUnit}
-                    validMoves={validMoves}
-                    selectedAction={selectedAction}
-                    onSelectAction={setSelectedAction}
-                    onSelectUnit={handleSelectUnit}
-                    pendingDescription={pendingDescription}
-                    hasPending={hasPending}
-                    onConfirm={handleConfirmAction}
-                    onClearAction={handleClearAction}
-                    isGameOver={isGameOver}
-                    playerLabel={localLabel}
-                    playerColor={localColor}
-                    isActive={isLocalTurn && localIsActive && !aiThinking}
-                    isAITurn={false}
-                    onEndTurn={handleEndTurn}
-                    onSkipRound={handleSkipRound}
-                  />
-                )}
-                {/* Action history log — visible for all game modes */}
-                {showGame && actionLog.length > 0 && (
-                  <HexActionLog log={actionLog} compact={true} />
-                )}
-              </div>
-            </div>
-          )}
 
           {/* ── Emotes ──────────────────────────────────────────────── */}
           {showGame && !isGameOver && !isSpectator && (

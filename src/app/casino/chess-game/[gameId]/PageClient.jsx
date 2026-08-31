@@ -9,6 +9,16 @@ import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import EmotePicker from "../../../../components/game/EmotePicker";
+// Self-contained Creator Mode (admin-only) presentation layer.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../components/creator-mode/CreatorModeLayout";
+
 import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
 import { usePostHog } from "posthog-js/react";
@@ -698,102 +708,11 @@ export default function ChessGamePage() {
   const myCaptured = activeColor === "white" ? capturedPieces.white : capturedPieces.black;
   const oppCaptured = activeColor === "white" ? capturedPieces.black : capturedPieces.white;
 
-  return (
-    <>
-      {/* Unified full-screen waiting takeover — no opponent seated yet */}
-      {gameData && !gameData.blackPlayerId && (
-        <MatchWaiting
-          state="waiting"
-          gameName="Chess Arena"
-          subtitle={`Game #${gameId} · Waiting for an opponent to join…`}
-          seats={[
-            {
-              label: "You",
-              name: color === "white" ? "White" : "Black",
-              occupied: true,
-            },
-            { label: "Opponent", occupied: false },
-          ]}
-        />
-      )}
 
-      {/* Turn Banner */}
-      <AnimatePresence>
-        {turnBanner && (
-          <motion.div
-            key="turn-banner"
-            {...turnBannerAnim}
-            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
-          >
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
-              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
-            >
-              {turnBanner}
-            </motion.div>
-            <div className="mt-2 flex justify-center gap-1">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  className="h-2 w-2 rounded-full bg-amber-300"
-                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Check Banner */}
-      <AnimatePresence>
-        {isInCheck && !gameData?.status?.match(/finished|expired/) && (
-          <motion.div
-            key="check-banner"
-            initial={{ opacity: 0, y: -30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -30 }}
-            className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
-          >
-            <span className="inline-flex items-center gap-2 text-lg font-bold text-red-300 tracking-wider"><IconAlertTriangle size={20} /> CHECK!</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Draw offer notification */}
-      <AnimatePresence>
-        {drawOfferReceived && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 rounded-2xl border-2 border-yellow-400 bg-[#1a1a0d] p-6 shadow-[0_0_30px_rgba(250,204,21,0.3)]"
-          >
-            <p className="text-yellow-300 font-bold text-lg mb-3">Opponent offers a draw</p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={acceptDraw}
-                className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold"
-              >
-                Accept
-              </button>
-              <button
-                onClick={declineDraw}
-                className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded-lg font-bold"
-              >
-                Decline
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
-      <div className="max-w-7xl mx-auto">
-        {/* HEADER */}
-        <div className="text-center mb-8">
+  /* Creator Mode bespoke 9:16 portrait: board + both players' info
+     (names, captured pieces, clocks) large, move history & actions below. */
+  const creatorHeader = (
+    <><div className="text-center mb-8">
           <h1 className="text-3xl font-black tracking-widest text-cyan-400 drop-shadow-[0_0_20px_#00ffff]">
             CHESS ARENA
           </h1>
@@ -803,12 +722,10 @@ export default function ChessGamePage() {
             {isSpectator ? "Spectating" : `Playing as ${color}`}
           </p>
         </div>
-
-        {/* MAIN */}
-        <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
-          {/* BOARD AREA */}
-          <div className="flex justify-center">
-            <div className="w-full max-w-[660px]">
+    </>
+  );
+  const creatorBoard = (
+    <><div className="w-full max-w-[660px]">
               {/* OPPONENT */}
               <div className="relative mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-2">
@@ -910,10 +827,10 @@ export default function ChessGamePage() {
                 )}
               </div>
             </div>
-          </div>
-
-          {/* SIDEBAR */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+    </>
+  );
+  const creatorSidebar = (
+    <><div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
             <h2 className="text-2xl font-bold text-cyan-400 mb-4">
               Move History
             </h2>
@@ -1065,41 +982,10 @@ export default function ChessGamePage() {
               Return to Lobby
             </button>
           </div>
-        </div>
-      </div>
-      {/* Report Modal */}
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSubmit={async (reason, details) => {
-          const opponentId = gameData
-            ? (color === "white" ? gameData.blackPlayerId : gameData.whitePlayerId)
-            : "";
-          const opponentName =
-            color === "white" ? (gameData?.blackPlayerName || "Opponent") : (gameData?.whitePlayerName || "Opponent");
-          const res = await fetch("/api/reports/submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reportedClerkId: opponentId,
-              gameType: "chess",
-              gameId: String(gameId),
-              reason,
-              details: details || undefined,
-            }),
-          });
-          const data = await res.json();
-          if (!data.success) throw new Error(data.error || "Failed to submit report");
-        }}
-        reportedPlayerName={
-          gameData
-            ? (color === "white" ? (gameData.blackPlayerName || "Opponent") : (gameData.whitePlayerName || "Opponent"))
-            : "Opponent"
-        }
-        gameType="Chess"
-      />
-
-      {showResultPopup && (
+    </>
+  );
+  const creatorResult = (
+    <>{showResultPopup && (
         <AnimatePresence>
         <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
           <motion.div
@@ -1167,6 +1053,170 @@ export default function ChessGamePage() {
         </div>
         </AnimatePresence>
       )}
+    </>
+  );
+
+  const desktopContent = (
+    <>
+      <div className="max-w-7xl mx-auto">
+        {creatorHeader}
+        <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
+          <div className="flex justify-center">
+            {creatorBoard}
+          </div>
+          {creatorSidebar}
+        </div>
+      </div>
+      {creatorResult}
+    </>
+  );
+
+  const portraitContent = (
+    <CreatorModeShell className="bg-[#050816]">
+      <ShellHeader>{creatorHeader}</ShellHeader>
+      <ShellMain className="h-full items-center">{creatorBoard}</ShellMain>
+      <ShellAside className="space-y-3">{creatorSidebar}</ShellAside>
+      {creatorResult}
+    </CreatorModeShell>
+  );
+
+  return (
+    <>
+      {/* Unified full-screen waiting takeover — no opponent seated yet */}
+      {gameData && !gameData.blackPlayerId && (
+        <MatchWaiting
+          state="waiting"
+          gameName="Chess Arena"
+          subtitle={`Game #${gameId} · Waiting for an opponent to join…`}
+          seats={[
+            {
+              label: "You",
+              name: color === "white" ? "White" : "Black",
+              occupied: true,
+            },
+            { label: "Opponent", occupied: false },
+          ]}
+        />
+      )}
+
+      {/* Turn Banner */}
+      <AnimatePresence>
+        {turnBanner && (
+          <motion.div
+            key="turn-banner"
+            {...turnBannerAnim}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+              className="text-center text-3xl font-black tracking-widest text-white drop-shadow-lg"
+            >
+              {turnBanner}
+            </motion.div>
+            <div className="mt-2 flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  className="h-2 w-2 rounded-full bg-amber-300"
+                  animate={{ scale: [1, 1.8, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Check Banner */}
+      <AnimatePresence>
+        {isInCheck && !gameData?.status?.match(/finished|expired/) && (
+          <motion.div
+            key="check-banner"
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
+          >
+            <span className="inline-flex items-center gap-2 text-lg font-bold text-red-300 tracking-wider"><IconAlertTriangle size={20} /> CHECK!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Draw offer notification */}
+      <AnimatePresence>
+        {drawOfferReceived && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 rounded-2xl border-2 border-yellow-400 bg-[#1a1a0d] p-6 shadow-[0_0_30px_rgba(250,204,21,0.3)]"
+          >
+            <p className="text-yellow-300 font-bold text-lg mb-3">Opponent offers a draw</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={acceptDraw}
+                className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-bold"
+              >
+                Accept
+              </button>
+              <button
+                onClick={declineDraw}
+                className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded-lg font-bold"
+              >
+                Decline
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
+        <CreatorModeHost
+        autoStart={Boolean(gameData && gameData.status === "in_progress")}
+        autoStop={Boolean(gameData && (gameData.status === "finished" || gameData.status === "expired"))}
+        gameLabel="chess"
+      >
+        <CreatorView
+          normal={desktopContent}
+          portrait={portraitContent}
+          landscape={desktopContent}
+        />
+      </CreatorModeHost>
+{/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={async (reason, details) => {
+          const opponentId = gameData
+            ? (color === "white" ? gameData.blackPlayerId : gameData.whitePlayerId)
+            : "";
+          const opponentName =
+            color === "white" ? (gameData?.blackPlayerName || "Opponent") : (gameData?.whitePlayerName || "Opponent");
+          const res = await fetch("/api/reports/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reportedClerkId: opponentId,
+              gameType: "chess",
+              gameId: String(gameId),
+              reason,
+              details: details || undefined,
+            }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Failed to submit report");
+        }}
+        reportedPlayerName={
+          gameData
+            ? (color === "white" ? (gameData.blackPlayerName || "Opponent") : (gameData.whitePlayerName || "Opponent"))
+            : "Opponent"
+        }
+        gameType="Chess"
+      />
+
+      
     </div>
     </>
   );
