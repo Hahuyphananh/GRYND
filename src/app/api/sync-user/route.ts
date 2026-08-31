@@ -6,7 +6,7 @@ import { users } from "../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { logError } from "../../../lib/logError";
-import { grantDefaultIcon } from "../../../lib/icons";
+import { grantAllOfficialIcons } from "../../../lib/icons";
 
 export async function POST(req: Request) {
   try {
@@ -174,8 +174,9 @@ export async function POST(req: Request) {
 }
 
 async function seedPlayerStats(user: { id: number; balance: string | null }) {
-  // New player owns the official default icon by default.
-  await grantDefaultIcon(user.id);
+  // New player owns the official default icon + the full official catalog
+  // (every enabled icon — migration 0129 backfills pre-existing accounts).
+  await grantAllOfficialIcons(user.id);
 
   await db.execute(sql`
     INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)
