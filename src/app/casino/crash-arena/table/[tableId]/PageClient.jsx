@@ -86,6 +86,9 @@ export default function TableRoomPage() {
   // ── User's wallet balance (used to cap the buy-in modal to the 10M
   //    hard limit when joining/buying chips at this table) ───────────────
   const [userBalance, setUserBalance] = useState(null);
+  // The caller's own official icon key (used for the brief local "You"
+  // placeholder in the round hook — server roster syncs override it).
+  const [myIconKey, setMyIconKey] = useState("default");
 
   useEffect(() => {
     if (!isUserSignedIn) return;
@@ -96,7 +99,10 @@ export default function TableRoomPage() {
     })
       .then((r) => r.json())
       .then((data) => {
-        if (data?.success) setUserBalance(Number(data.data.balance));
+        if (data?.success) {
+          setUserBalance(Number(data.data.balance));
+          if (data.data.selectedIcon) setMyIconKey(data.data.selectedIcon);
+        }
       })
       .catch(() => {});
   }, [isUserSignedIn]);
@@ -160,6 +166,8 @@ export default function TableRoomPage() {
     // Socket-triggered table updates re-fetch the roster + latest round
     // so round state stays in sync across all players at the table.
     onRoomUpdate: () => refetchTablesRef.current?.(),
+    // Official icon key for the local "You" seat.
+    myIconKey,
   });
 
   // Map the server's seated roster to the room's local player format.
@@ -172,6 +180,9 @@ export default function TableRoomPage() {
         userId: p.userId,
         // Clerk identity for reporting (userId is the internal users.id).
         clerkId: p.clerkId ?? null,
+        // Official Grynd icon key — the seat's avatar everywhere in the
+        // room (IconAvatar resolves it; invalid keys fall back to default).
+        iconKey: p.iconKey || "default",
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,
@@ -189,6 +200,8 @@ export default function TableRoomPage() {
       (tbl?.waitingPlayers || []).map((p) => ({
         userId: p.userId,
         clerkId: p.clerkId ?? null,
+        // Official Grynd icon key for the wait-list avatar.
+        iconKey: p.iconKey || "default",
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,

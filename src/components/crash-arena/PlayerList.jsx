@@ -1,13 +1,14 @@
 "use client";
 import React from "react";
 import { IconBomb, IconCircleCheck, IconFlag } from "@tabler/icons-react";
+import IconAvatar from "../IconAvatar";
 
 
 /**
  * PlayerList — shows seated players at an arena table with live round status.
  *
  * Props:
- *   players  — array of { name, avatar?, balance, isYou?, isSittingOut?,
+ *   players  — array of { name, iconKey, balance, isYou?, isSittingOut?,
  *                        cashoutMultiplier?, busted?, isPlaying? }
  *   maxSeats — total seats at the table
  *   phase    — current round phase ("waiting" | "running" | "crashed" | "settling")
@@ -77,21 +78,33 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             key={i}
             className={`flex flex-col items-center gap-1 p-2 rounded-xl border min-w-[85px] transition-all duration-300 ${cardStyle(player)}`}
           >
-            {/* Avatar */}
+            {/* Avatar — official Grynd icon, wrapped in the seat's
+                status-colored ring. Empty seats show their number. */}
             <div
-              className={`relative w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2
+              className={`relative w-10 h-10 rounded-full overflow-hidden border-2
                 ${player
                   ? player.isYou
-                    ? "border-[#FFD700] bg-[#FFD700]/25 text-[#FFD700] ring-2 ring-[#FFD700]/40"
+                    ? "border-[#FFD700] ring-2 ring-[#FFD700]/40"
                     : player.busted
-                      ? "border-red-500/50 bg-red-500/15 text-red-400"
+                      ? "border-red-500/50"
                       : player.cashoutMultiplier != null
-                        ? "border-[#00ffa6]/50 bg-[#00ffa6]/15 text-[#00ffa6]"
-                        : "border-[#00e5ff]/40 bg-[#00e5ff]/15 text-[#00e5ff]"
+                        ? "border-[#00ffa6]/50"
+                        : "border-[#00e5ff]/40"
                   : "border-gray-500/20 bg-transparent text-gray-500"
                 }`}
             >
-              {player ? (player.name?.charAt(0)?.toUpperCase() || "?") : i + 1}
+              {player ? (
+                <IconAvatar
+                  iconKey={player.iconKey}
+                  name={player.name}
+                  size="h-full w-full"
+                  showFrame={false}
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-sm font-bold">
+                  {i + 1}
+                </span>
+              )}
               {/* You badge */}
               {player?.isYou && (
                 <span className="absolute -bottom-1 -right-1 text-[8px] px-1 py-0.5 rounded-full bg-[#FFD700] text-black font-black">

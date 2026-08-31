@@ -138,9 +138,16 @@ export async function GET(req: Request) {
     ];
     let userNameById = new Map();
     let userClerkIdById = new Map();
+    let userIconKeyById = new Map();
     if (userIdsToResolve.length > 0) {
       const userRows = await db
-        .select({ id: users.id, name: users.name, clerkId: users.clerkId })
+        .select({
+          id: users.id,
+          name: users.name,
+          clerkId: users.clerkId,
+          // Official Grynd icon key — the ONLY avatar representation.
+          selectedIcon: users.selectedIcon,
+        })
         .from(users)
         .where(inArray(users.id, userIdsToResolve));
       userNameById = new Map(userRows.map((u) => [u.id, u.name]));
@@ -148,6 +155,9 @@ export async function GET(req: Request) {
         userRows
           .filter((u) => u.clerkId != null)
           .map((u) => [u.id, u.clerkId]),
+      );
+      userIconKeyById = new Map(
+        userRows.map((u) => [u.id, u.selectedIcon || "default"]),
       );
     }
 
@@ -313,6 +323,9 @@ export async function GET(req: Request) {
             ...(isLobbyMode
               ? {}
               : { clerkId: userClerkIdById.get(p.userId) ?? null }),
+            // Official Grynd icon key for the seat's avatar (AI seats fall
+            // back to the default icon).
+            iconKey: userIconKeyById.get(p.userId) || "default",
             // The seat's custom name (host-renamed AIs) wins over the
             // users-table name — renaming never touches the shared user.
             name: p.nickname ?? (userNameById.get(p.userId) || `Player ${p.userId}`),
@@ -329,6 +342,8 @@ export async function GET(req: Request) {
                 waitingPlayers: waiting.map((p) => ({
                   userId: p.userId,
                   clerkId: userClerkIdById.get(p.userId) ?? null,
+                  // Official Grynd icon key for the wait-list avatar.
+                  iconKey: userIconKeyById.get(p.userId) || "default",
                   name: p.nickname ?? (userNameById.get(p.userId) || `Player ${p.userId}`),
                   balance: Number(p.balance),
                   status: p.status,

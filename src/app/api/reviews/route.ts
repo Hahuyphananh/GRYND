@@ -131,6 +131,9 @@ export async function GET(req: NextRequest) {
         game: productReviews.game,
         createdAt: productReviews.createdAt,
         username: users.name,
+        // Official Grynd icon key for the reviewer's avatar (never an
+        // arbitrary profile-image URL).
+        iconKey: users.selectedIcon,
       })
       .from(productReviews)
       .innerJoin(users, eq(productReviews.userId, users.id))

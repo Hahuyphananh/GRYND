@@ -164,6 +164,10 @@ export default function useCrashArenaRound({
   // drives them (the server rejects bot actions from non-hosts).
   isPrivate = false,
   amIHost = false,
+  // Official Grynd icon key for the caller's own seat ("You"). Server
+  // roster syncs override it with the authoritative value; this only
+  // covers the brief local "You" placeholder before the first sync.
+  myIconKey = "default",
 }) {
   const { socket } = useSocket();
   const crashEngineRef = useRef(null);
@@ -492,8 +496,10 @@ export default function useCrashArenaRound({
           if (lp) {
             // Preserve local round state; refresh balance for remote players
             // only ("You"'s balance is tracked locally during rounds).
+            // Official icon key always flows from the server roster.
             mergedByName.set(sp.name, {
               ...lp,
+              iconKey: sp.iconKey || lp.iconKey || "default",
               isYou: lp.isYou || Boolean(sp.isYou),
               userId: lp.userId ?? sp.userId ?? null,
               isBot: Boolean(sp.isBot) || lp.isBot === true,
@@ -506,6 +512,7 @@ export default function useCrashArenaRound({
             mergedByName.set(sp.name, {
               name: sp.name,
               userId: sp.userId ?? null,
+              iconKey: sp.iconKey || "default",
               balance: Number(sp.balance),
               isYou: Boolean(sp.isYou),
               isBot: Boolean(sp.isBot),
@@ -1087,6 +1094,7 @@ export default function useCrashArenaRound({
       }
       const me = {
         name: "You",
+        iconKey: myIconKey,
         balance: buyIn,
         isYou: true,
         isSittingOut: false,
@@ -1129,7 +1137,7 @@ export default function useCrashArenaRound({
     } finally {
       setBusy(false);
     }
-  }, [tableId, roundState.players, roundState.waitingPlayers, socket]);
+  }, [tableId, roundState.players, roundState.waitingPlayers, socket, myIconKey]);
 
   /**
    * "Leave" — step off the table onto the wait list (balance stays at the
