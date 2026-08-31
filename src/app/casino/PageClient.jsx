@@ -5,26 +5,26 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
 import IconAvatar from "../../components/IconAvatar";
-import Img1 from "../../images/roulette.webp";
-import Img2 from "../../images/blackjack-div.webp";
-import Img3 from "../../images/poker div image.webp";
-import Img4 from "../../images/plinko-div.webp";
-import Img6 from "../../images/crash div image.webp";
-import Img7 from "../../images/chess game div.webp";
-import Img10 from "../../images/Keno image div.webp";
+import Img1 from "../../images/rouletteimage.png";
+import Img2 from "../../images/blackjackimage.png";
+import Img3 from "../../images/pokerimage.png";
+import Img4 from "../../images/plinkoimage.png";
+import Img6 from "../../images/crashimage.png";
+import Img7 from "../../images/chessimage.png";
+import Img10 from "../../images/kenoimage.png";
 import Img11 from "../../images/uno game div.webp";
-import Img12 from "../../images/rock paper scissors div casino.webp";
-import ImgDiceDuel from "../../images/dice-duel div image.jpg";
-import Img14 from "../../images/connect-4.svg";
-import ImgLaneRush from "../../images/lane-rush.svg";
-import Img17 from "../../images/pool.svg";
-import Img18 from "../../images/hex-duel.svg";
+import Img12 from "../../images/rockpaperscissorsimage.png";
+import ImgDiceDuel from "../../images/dice-duel-card.webp";
+import Img14 from "../../images/connectfourimage.png";
+import ImgLaneRush from "../../images/lanerushimage.png";
+import Img17 from "../../images/poolmastersimage.png";
+import Img18 from "../../images/hexduelimage.png";
 import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
-import ImgMinesPvp from "../../images/mines-div.webp";
-import ImgMemoryGrid from "../../images/memory-grid-div.webp";
+import ImgMinesPvp from "../../images/minesimage.png";
+import ImgMemoryGrid from "../../images/memorygridimage.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -83,6 +83,7 @@ function MainComponent() {
       href: "/casino/roulette",
       leaderboardKey: "roulette",
       image: Img1,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.roulette_desc",
       popular: true,
     },
@@ -91,6 +92,7 @@ function MainComponent() {
       href: "/casino/blackjack",
       leaderboardKey: "blackjack",
       image: Img2,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.blackjack_desc",
       popular: true,
     },
@@ -99,6 +101,7 @@ function MainComponent() {
       href: "/casino/mines-pvp",
       leaderboardKey: "mines-pvp",
       image: ImgMinesPvp,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.mines_pvp_desc",
       nameKey: "games.mines_pvp_name",
       popular: true,
@@ -108,6 +111,7 @@ function MainComponent() {
       href: "/casino/memory-grid",
       leaderboardKey: "memory-grid",
       image: ImgMemoryGrid,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.memory_grid_desc",
       nameKey: "games.memory_grid_name",
       popular: true,
@@ -118,6 +122,7 @@ function MainComponent() {
       href: "/casino/plinko",
       leaderboardKey: "plinko",
       image: Img4,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.plinko_desc",
       popular: true,
     },
@@ -126,6 +131,7 @@ function MainComponent() {
       href: "/casino/poker/multi",
       leaderboardKey: "poker",
       image: Img3,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.poker_desc",
     },
 
@@ -134,7 +140,7 @@ function MainComponent() {
       href: "/casino/crash-arena",
       leaderboardKey: "crash",
       image: Img6,
-      imageClassName: "object-center scale-[1.08]",
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.crash_arena_desc",
     },
     {
@@ -142,6 +148,7 @@ function MainComponent() {
       href: "/casino/chess",
       leaderboardKey: "chess",
       image: Img7,
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.chess_desc",
       nameKey: "games.chess_name",
     },
@@ -150,7 +157,7 @@ function MainComponent() {
       href: "/casino/keno",
       leaderboardKey: "keno",
       image: Img10,
-      imageClassName: "object-center scale-[1.35] group-hover:scale-[1.55]",
+      imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.keno_desc",
     },
     {
@@ -314,10 +321,11 @@ function MainComponent() {
 
   const GameCard = ({ game }) => (        <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
       <Link href={buildCreatorHref(game.href, creatorModeEnabled)} className="block cursor-pointer" aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}>
-        <div className="mb-3 h-32 overflow-hidden rounded-lg">
+        <div className="mb-3 aspect-video overflow-hidden rounded-lg">
           <Image
             src={game.image}
             alt={game.nameKey ? t(game.nameKey) : game.name}
+            quality={90}
             className={`h-full w-full object-cover object-center transition-transform group-hover:scale-110 ${game.imageClassName || ""}`}
           />
         </div>
