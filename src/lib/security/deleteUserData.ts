@@ -8,7 +8,7 @@ import {
   chatMessages,
   chessGames,
   chessMoves,
-  connectFourGames,
+  fourInARowGames,
   crashGames,
   diceFlushActions,
   diceFlushPlayers,
@@ -43,6 +43,8 @@ import {
   rpsGames,
   rpsPvpGames,
   stripeCheckoutSessions,
+  towerArenaMatches,
+  towerArenaPlayers,
   unoGames,
   userAutomationState,
   userLoginRewards,
@@ -177,6 +179,20 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     await tx
       .delete(diceMatches)
       .where(or(eq(diceMatches.player1Id, clerkId), eq(diceMatches.player2Id, clerkId)));
+    // Tower Arena: seats are normalized into tower_arena_players; deleting
+    // any match the user played in cascades to players + placement turns.
+    await tx
+      .delete(towerArenaMatches)
+      .where(
+        inArray(
+          towerArenaMatches.id,
+          tx
+            .select({ id: towerArenaPlayers.matchId })
+            .from(towerArenaPlayers)
+            .where(eq(towerArenaPlayers.userId, clerkId))
+        )
+      );
+    await tx.delete(towerArenaPlayers).where(eq(towerArenaPlayers.userId, clerkId));
     await tx
       .delete(poolLobbies)
       .where(or(eq(poolLobbies.hostUserId, clerkId), eq(poolLobbies.opponentUserId, clerkId)));
@@ -187,9 +203,9 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
       .delete(rpsPvpGames)
       .where(or(eq(rpsPvpGames.player1Id, clerkId), eq(rpsPvpGames.player2Id, clerkId)));
     await tx
-      .delete(connectFourGames)
+      .delete(fourInARowGames)
       .where(
-        or(eq(connectFourGames.hostClerkId, clerkId), eq(connectFourGames.guestClerkId, clerkId))
+        or(eq(fourInARowGames.hostClerkId, clerkId), eq(fourInARowGames.guestClerkId, clerkId))
       );
     await tx
       .delete(dotsAndBoxesGames)

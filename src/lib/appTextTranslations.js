@@ -370,7 +370,7 @@ export const APP_TEXT_TRANSLATIONS = {
       keno_desc: "1v1 Keno Catch Duel. Both players chase the same 10-ball draw and time their taps in the perfect window. Best-of-5, out-catch your rival, take the pot.",
       uno_desc: "Challenge AI in this fast strategic game.",
       rps_desc: "Challenge a rival in this fast strategic game.",
-      dice_duel_desc: "Turn-based 1v1 dice combat. Outroll your rival and claim the pot!",
+      tower_arena_desc: "Competitive shared-tower survival for 2–6 players. Place blocks, avoid the collapse, and be the last one standing.",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
       dice_flush_desc: "Roll five dice, lock in combos, and outscore your rival in this strategic dice showdown.",
       odds_desc: "Each player picks a hidden number, then predicts the opponent's. Closest predictions earn points. Range shrinks 100 → 50 → 25 → 12 → 6 → 3.",
@@ -555,7 +555,7 @@ export const APP_TEXT_TRANSLATIONS = {
         // Round-result overlay (suffix to round_result_title)
         seat_closer: "Seat {seat} was closer to the target.",
       },
-      connect_four_desc: "Challenge another player 1v1 and align 4 discs.",
+      four_in_a_row_desc: "Challenge another player 1v1 and align 4 discs.",
       dots_and_boxes_name: "Dots & Boxes",
       dots_and_boxes_desc: "A classic pencil-and-paper duel. Take turns drawing lines between dots to claim boxes. Each box scores a point and earns another turn.",
       dots_and_boxes: {
@@ -1422,8 +1422,8 @@ export const APP_TEXT_TRANSLATIONS = {
       keno_desc: "Duel 1v1 Keno Catch. Les deux joueurs poursuivent le même tirage de 10 boules et calent leur appui dans la fenêtre parfaite. Meilleur des 5, attrapez plus que votre rival et empochez le pot.",
       uno_desc: "Défie l’IA dans ce jeu rapide et stratégique.",
       rps_desc: "Affronte un rival dans ce jeu rapide et stratégique.",
-      dice_duel_desc:
-        "Combat 1v1 au dé en tour par tour. Surpasse ton rival et empoche la cagnotte !",
+      tower_arena_desc:
+        "Survie de tour partagée en compétition pour 2 à 6 joueurs. Placez des blocs, évitez l'effondrement et soyez le dernier debout.",
       yahtzee_desc:
         "Yahtzee autoritaire côté serveur avec mises JcJ ou affrontements IA instantanés.",
       dice_flush_desc:
@@ -1608,7 +1608,7 @@ export const APP_TEXT_TRANSLATIONS = {
         back_to_lobby_button: "RETOUR AU LOBBY",
         seat_closer: "Le siège {seat} était plus proche de la cible.",
       },
-      connect_four_desc: "Affrontez un joueur en 1v1 et alignez 4 disques.",
+      four_in_a_row_desc: "Affrontez un joueur en 1v1 et alignez 4 disques.",
       dots_and_boxes_name: "Points & Cases",
       dots_and_boxes_desc: "Un duel stratégique classique sur papier. Tracez à tour de rôle des lignes entre les points pour revendiquer des cases. Chaque case rapporte un point et vous donne un tour supplémentaire.",
       dots_and_boxes: {
@@ -2125,7 +2125,7 @@ export const APP_TEXT_TRANSLATIONS = {
       keno_desc: "Duelo 1v1 de Keno Catch: ambos jugadores persiguen el mismo sorteo de 10 bolas y aciertan el momento perfecto. Mejor de 5, atrapa más que tu rival y llévate el premio.",
       uno_desc: "Desafía a la IA en este juego rápido y estratégico.",
       rps_desc: "Enfréntate a un rival en este juego rápido y estratégico.",
-      dice_duel_desc: "Duelo 1v1 por turnos con dados. Supera a tu rival y gana el bote.",
+      tower_arena_desc: "Supervivencia competitiva de torre compartida para 2 a 6 jugadores. Coloca bloques, evita el derrumbe y sé el último en pie.",
       yahtzee_desc:
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
       dice_flush_desc:
@@ -2310,7 +2310,7 @@ export const APP_TEXT_TRANSLATIONS = {
         back_to_lobby_button: "VOLVER AL LOBBY",
         seat_closer: "El asiento {seat} estuvo más cerca del objetivo.",
       },
-      connect_four_desc: "Enfréntate 1v1 y alinea 4 fichas.",
+      four_in_a_row_desc: "Enfréntate 1v1 y alinea 4 fichas.",
       dots_and_boxes_name: "Puntos y Cuadros",
       dots_and_boxes_desc: "Un duelo clásico de estrategia sobre papel. Dibuja turnos líneas entre los puntos para reclamar cuadros. Cada cuadro suma un punto y te da otro turno.",
       dots_and_boxes: {

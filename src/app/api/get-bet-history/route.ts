@@ -14,9 +14,8 @@ import {
   chessGames,
   keno_games,
   kenoPvpMatches,
-  diceMatches,
   poolMatches,
-  connectFourGames,
+  fourInARowGames,
   laneRunnerGames,
   hexDuelGames,
   oddsGames,
@@ -75,9 +74,8 @@ export async function GET(req: NextRequest) {
       chess,
       kenoPvpRows,
       kenoRows,
-      diceRows,
       poolRows,
-      connectFourRows,
+      fourInARowRows,
       laneRunnerRows,
       hexDuelRows,
       oddsRows,
@@ -216,27 +214,6 @@ export async function GET(req: NextRequest) {
         .limit(HISTORY_LIMIT),
       db
         .select({
-          player1Id: diceMatches.player1Id,
-          player2Id: diceMatches.player2Id,
-          wager: diceMatches.wager,
-          prizePaid: diceMatches.prizePaid,
-          winnerId: diceMatches.winnerId,
-          endedAt: diceMatches.endedAt,
-          createdAt: diceMatches.createdAt,
-        })
-        .from(diceMatches)
-        .where(
-          and(
-            or(
-              eq(diceMatches.player1Id, clerkId),
-              eq(diceMatches.player2Id, clerkId),
-            ),
-            ...sinceFilter(diceMatches.endedAt),
-          ),
-        )
-        .limit(HISTORY_LIMIT),
-      db
-        .select({
           player1Id: poolMatches.player1Id,
           player2Id: poolMatches.player2Id,
           wager: poolMatches.wager,
@@ -258,22 +235,22 @@ export async function GET(req: NextRequest) {
         .limit(HISTORY_LIMIT),
       db
         .select({
-          hostClerkId: connectFourGames.hostClerkId,
-          guestClerkId: connectFourGames.guestClerkId,
-          betAmount: connectFourGames.betAmount,
-          payout: connectFourGames.payout,
-          winnerClerkId: connectFourGames.winnerClerkId,
-          endedAt: connectFourGames.endedAt,
-          createdAt: connectFourGames.createdAt,
+          hostClerkId: fourInARowGames.hostClerkId,
+          guestClerkId: fourInARowGames.guestClerkId,
+          betAmount: fourInARowGames.betAmount,
+          payout: fourInARowGames.payout,
+          winnerClerkId: fourInARowGames.winnerClerkId,
+          endedAt: fourInARowGames.endedAt,
+          createdAt: fourInARowGames.createdAt,
         })
-        .from(connectFourGames)
+        .from(fourInARowGames)
         .where(
           and(
             or(
-              eq(connectFourGames.hostClerkId, clerkId),
-              eq(connectFourGames.guestClerkId, clerkId),
+              eq(fourInARowGames.hostClerkId, clerkId),
+              eq(fourInARowGames.guestClerkId, clerkId),
             ),
-            ...sinceFilter(connectFourGames.endedAt),
+            ...sinceFilter(fourInARowGames.endedAt),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -564,31 +541,14 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const diceFormatted = diceRows
-      .map((game) => {
-        if (!game.winnerId) return null;
-        const amount = Number(game.wager ?? 0);
-        const payout = Number(game.prizePaid ?? 0);
-        const result = game.winnerId === clerkId ? "won" : "lost";
-        return {
-          type: "Dice Duel",
-          date: game.endedAt || game.createdAt || new Date().toISOString(),
-          amount,
-          payout,
-          result,
-          tokenDiff: result === "won" ? payout - amount : -amount,
-        };
-      })
-      .filter(Boolean);
-
-    const connectFourFormatted = connectFourRows
+    const fourInARowFormatted = fourInARowRows
       .map((game) => {
         if (!game.winnerClerkId) return null;
         const amount = Number(game.betAmount ?? 0);
         const payout = Number(game.payout ?? 0);
         const result = game.winnerClerkId === clerkId ? "won" : "lost";
         return {
-          type: "Connect Four",
+          type: "Four-In-A-Row",
           date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount,
           payout,
@@ -725,7 +685,7 @@ export async function GET(req: NextRequest) {
     // refunds both stakes (payout = stake, tokenDiff = 0). Named
     // `outcome` instead of `result` to avoid shadowing the server
     // row's `result` field in this scope (matches the style of
-    // the dice/pool/connectFour formatters which don't shadow).
+    // the dice/pool/fourInARow formatters which don't shadow).
     // Memory Grid — same shape as Mines Duel: winner's payout is
     // `stake * 1.9`, a loser's is 0, and a draw refunds both stakes
     // (payout = stake, tokenDiff = 0).
@@ -883,9 +843,8 @@ export async function GET(req: NextRequest) {
     ...chess.map((b) => formatBet("Chess", b)),
       ...kenoPvpFormatted,
       ...kenoFormatted,
-      ...diceFormatted,
       ...poolFormatted,
-      ...connectFourFormatted,
+      ...fourInARowFormatted,
       ...laneRunnerFormatted,
       ...hexDuelFormatted,
       ...oddsFormatted,

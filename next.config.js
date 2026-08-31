@@ -70,6 +70,48 @@ const nextConfig = {
         destination: "/games/dice-flush",
         permanent: true,
       },
+      // Legacy Dice Duel URLs now land on Tower Arena (its successor).
+      {
+        source: "/casino/dice-duel",
+        destination: "/casino/tower-arena",
+        permanent: true,
+      },
+      {
+        source: "/casino/dice-duel/:path*",
+        destination: "/casino/tower-arena",
+        permanent: true,
+      },
+      {
+        source: "/games/dice-duel",
+        destination: "/games/tower-arena",
+        permanent: true,
+      },
+      {
+        source: "/games/dice-duel/:path*",
+        destination: "/games/tower-arena",
+        permanent: true,
+      },
+      // Legacy Connect Four URLs now land on Four-In-A-Row (its renamed successor).
+      {
+        source: "/casino/connect-four",
+        destination: "/casino/four-in-a-row",
+        permanent: true,
+      },
+      {
+        source: "/casino/connect-four/:path*",
+        destination: "/casino/four-in-a-row/:path*",
+        permanent: true,
+      },
+      {
+        source: "/games/connect-four",
+        destination: "/games/four-in-a-row",
+        permanent: true,
+      },
+      {
+        source: "/games/connect-four/:path*",
+        destination: "/games/four-in-a-row/:path*",
+        permanent: true,
+      },
       // Old /casino/* links keep working — bounce them to the new /games/* URLs.
       // Same exact-rule-first pattern as the rewrite above: bare /casino must
       // redirect to /games, not /games/ (which would 308-loop into the

@@ -11,9 +11,10 @@
  * Prerequisites:
  *   1. Env vars (set in Vercel / local .env): NEXT_PUBLIC_SUPABASE_URL and
  *      the publishable key. Supabase renamed the legacy "anon key" to
- *      "publishable key" (same role, new label, anon deprecated by end of
- *      2026) — the code accepts NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY first,
- *      falling back to NEXT_PUBLIC_SUPABASE_ANON_KEY.
+ *      "publishable key" (same role, new label, anon deprecated by end of *     2026) — the code accepts NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY first,
+ *      falling back to NEXT_PUBLIC_SUPABASE_ANON_KEY. It also accepts
+ *      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY, the older name some
+ *      setups emit for the default publishable key.
  *   2. The table must be a member of the `supabase_realtime` publication —
  *      see src/db/migrations/0096_enable_realtime_publication.sql.
  *
@@ -46,12 +47,13 @@ function getClient(): SupabaseClient | null {
   // both names so either works. Same token role, only the label changed.
   const key =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
   if (!url || !key) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(
-        "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) are missing. Supabase Realtime features are disabled.",
+        "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY) are missing. Supabase Realtime features are disabled.",
       );
     }
     return null;

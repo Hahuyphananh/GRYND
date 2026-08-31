@@ -1,0 +1,1396 @@
+// src/lib/tower-arena/serverStore.ts
+//
+// Server-authoritative Tower Arena state machine.
+//
+// Everything that matters — who is in a match, which block the pool offers,
+// what a placement resolves to, whether a tower collapses, who is
+// eliminated, the final rankings, and every token transfer — is decided
+// here inside a DB transaction and persisted. Clients only submit intent
+// (reserve a block id, or a placement's shape / x / rotation); they never
+// supply HP, stability, winners, payouts, or balances.
+//
+// Settlement is idempotent: every money-writing path takes a FOR UPDATE
+// row lock on the match and only pays out when a conditional UPDATE (status
+// 'active' → 'finished') actually transitions the row, so a retried
+// resign / disconnect / timer packet can never pay a player twice.
+//
+// State machine:
+//   waiting → active {phase: reserve → placement} → finished | cancelled
+//   reserve : every active player may reserve one block this cycle (max 2
+//             uses/match) within a bounded window; the tower is unaffected.
+//   placement: currentTurnPlayerId places; a collapse eliminates them,
+//             the pool refills and a fresh reserve cycle opens, and the
+//             highest stable tower portion is retained (engine trims it).
+//             If the pool empties without an elimination it refills too,
+//             again WITHOUT rebuilding the tower.
+//   finish   : reached when only one player remains (or the match is
+//             resigned to that point). Payouts by placement, summing
+//             exactly to the prize pool.
+
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { db } from "../../db/client";
+import {
+  towerArenaMatches,
+  towerArenaPlayers,
+  towerArenaTurns,
+  users,
+} from "../../db/schema";
+import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { sendSystemNotificationEmail } from "../emails/system";
+import { DEFAULT_ICON_KEY } from "../iconAssets";
+import {
+  buildResourcePool,
+  BLOCK_SHAPES,
+  fitsInGrid,
+  footprintFor,
+  type BlockShape,
+  type ResourcePiece,
+  type TowerState,
+} from "./engine";
+import {
+  TURN_PLACEMENT_WINDOW_MS,
+  RESERVE_WINDOW_MS,
+  MAX_RESERVE_USES,
+} from "./turnResolver";
+import { computePotPrize, payoutsByPlacement } from "./payout";
+import {
+  towerArenaStarted,
+  towerArenaBlockPlaced,
+  towerArenaTimeout,
+  towerArenaCollapse,
+  towerArenaEliminated,
+  towerArenaFinished,
+} from "./analytics";
+import {
+  relayTowerArenaLobbyUpdate,
+  broadcastTowerArenaMatchEvent,
+  TOWER_ARENA_EVENTS,
+} from "./realtimeRelay";
+import {
+  resolvePlacement,
+  safeFallbackIntent,
+  parseReserveMap,
+  parsePool,
+  parsePlacements,
+  type ResolverPlayer,
+  type MatchSnapshot,
+  type PlacementIntent,
+  type ResolvedPlacement,
+} from "./turnResolver";
+
+// ── Tunables (re-exported so callers share one source of truth) ────────
+
+export { TURN_PLACEMENT_WINDOW_MS, RESERVE_WINDOW_MS, MAX_RESERVE_USES } from "./turnResolver";
+export const TOWER_ARENA_LOCK_NAMESPACE = 90_131; // arbitrary game namespace
+
+const ACTIVE_MATCH_STATES = new Set(["active"]);
+const OPEN_MATCH_STATES = new Set(["waiting", "active"]);
+
+// ── Small helpers ──────────────────────────────────────────────────────
+
+function hashMatchmakeKey(wager: number, maxPlayers: number): number {
+  let h = 2166136261;
+  const s = `${Math.trunc(wager)}:${maxPlayers}`;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h | 0) & 0x7fffffff;
+}
+
+async function fetchMatchForUpdate(tx: any, matchId: string) {
+  const [match] = await tx
+    .select()
+    .from(towerArenaMatches)
+    .where(eq(towerArenaMatches.id, matchId))
+    .for("update");
+  return match || null;
+}
+
+async function fetchPlayers(tx: any, matchId: string) {
+  return tx
+    .select()
+    .from(towerArenaPlayers)
+    .where(eq(towerArenaPlayers.matchId, matchId))
+    .orderBy(asc(towerArenaPlayers.seat));
+}
+
+function playerByUserId(players: any[], userId: string) {
+  for (const p of players) if (p.userId === userId) return p;
+  return null;
+}
+
+function isActive(p: any) {
+  return p?.status === "active";
+}
+
+// Seeded, stable pick of the starting seat (randomized but auditable).
+function pickStartId(players: any[]): string | null {
+  const active = players.filter(isActive);
+  if (active.length === 0) return null;
+  const idx = Math.floor(Math.random() * active.length);
+  return active[idx].userId;
+}
+
+// The next active seat after `afterUserId` (wraps around, skips
+// eliminated). Returns null when only `afterUserId`/none remain.
+function nextActiveAfter(players: any[], afterUserId: string): string | null {
+  const seats = players.filter(isActive).map((p) => p.userId);
+  if (seats.length <= 1) return null;
+  const idx = seats.indexOf(afterUserId);
+  return seats[(idx + 1) % seats.length];
+}
+
+function reserveMap(match: any): Record<string, { blockId: string; shape: BlockShape } | null> {
+  const raw = match?.reserveState;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+}
+
+function poolPieces(match: any): ResourcePiece[] {
+  return Array.isArray(match?.resourcePool) ? match.resourcePool : [];
+}
+
+function placements(match: any): any[] {
+  return Array.isArray(match?.placements) ? match.placements : [];
+}
+
+// Build a fresh pool + reset reserve bookkeeping for a new cycle.
+function newCycleState(match: any, idx: number) {
+  const nonce = `${match.id}:cycle:${idx}`;
+  const pool = buildResourcePool(match.maxPlayers, nonce);
+  return { pool, nonce };
+}
+
+// ── Create / join (matchmaking + manual join), wager escrow ────────────
+
+function validateParams(wager: number, maxPlayers: number) {
+  const w = Math.trunc(Number(wager) || 0);
+  const m = Math.trunc(Number(maxPlayers) || 0);
+  if (w <= 0) return { ok: false as const, error: "Wager must be a positive integer", status: 400 };
+  if (!Number.isInteger(m) || m < 2 || m > 6) {
+    return { ok: false as const, error: "maxPlayers must be an integer from 2 to 6", status: 400 };
+  }
+  return { ok: true as const, wager: w, maxPlayers: m };
+}
+
+/**
+ * Matchmaking entry point used by quick-queue and the tower arena lobby
+ * "play" flow: fill an open waiting lobby with the same wager + seat
+ * count, or create a new one. Escrows the wager on join. Returns the
+ * match (waiting until seats fill, then started).
+ */
+export async function createOrJoinTowerArena({
+  userId,
+  wager,
+  maxPlayers,
+}: {
+  userId: string;
+  wager: number;
+  maxPlayers: number;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  const v = validateParams(wager, maxPlayers);
+  if (!v.ok) return { error: v.error, status: v.status };
+
+  const lockKey = hashMatchmakeKey(v.wager, v.maxPlayers);
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${TOWER_ARENA_LOCK_NAMESPACE}, ${lockKey})`);
+
+    const candidates = await tx
+      .select()
+      .from(towerArenaMatches)
+      .where(
+        and(
+          eq(towerArenaMatches.wager, v.wager),
+          eq(towerArenaMatches.maxPlayers, v.maxPlayers),
+          eq(towerArenaMatches.status, "waiting"),
+        ),
+      )
+      .orderBy(asc(towerArenaMatches.createdAt))
+      .for("update");
+
+    for (const cand of candidates) {
+      const cur = await fetchPlayers(tx, cand.id);
+      if (cur.some((p) => p.userId === userId)) return { match: cand, joined: false };
+      if (cur.length < cand.maxPlayers) {
+        return await joinLobbyTx(tx, cand, userId);
+      }
+    }
+
+    return await createLobbyTx(tx, userId, v.wager, v.maxPlayers);
+  });
+}
+
+/** Manual create lobby (explicit player count). */
+export async function createTowerArenaLobby({
+  userId,
+  wager,
+  maxPlayers,
+}: {
+  userId: string;
+  wager: number;
+  maxPlayers: number;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  const v = validateParams(wager, maxPlayers);
+  if (!v.ok) return { error: v.error, status: v.status };
+  const res = await db.transaction(async (tx) => createLobbyTx(tx, userId, v.wager, v.maxPlayers));
+  if (!res.error && res.match?.id) {
+    void relayTowerArenaLobbyUpdate(res.match.id, { event: "created", wager: v.wager, maxPlayers: v.maxPlayers, playerCount: 1 });
+  }
+  return res;
+}
+
+/** Manual join a specific lobby. */
+export async function joinTowerArenaLobby({ userId, lobbyId }: { userId: string; lobbyId: string }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, lobbyId);
+    if (!match) return { error: "Match unavailable", status: 404 };
+    if (!OPEN_MATCH_STATES.has(match.status)) {
+      return { error: "Lobby is no longer available", status: 409 };
+    }
+    const cur = await fetchPlayers(tx, match.id);
+    if (cur.some((p) => p.userId === userId)) return { match, joined: false };
+    if (cur.length >= match.maxPlayers) return { error: "Lobby is full", status: 409 };
+    return await joinLobbyTx(tx, match, userId);
+  }).then(async (res: any) => {
+    if (!res.error && res.match?.id) {
+      void relayTowerArenaLobbyUpdate(res.match.id, {
+        event: res.started ? "started" : "joined",
+        wager: res.match.wager,
+        maxPlayers: res.match.maxPlayers,
+        playerCount: (typeof res.playerCount === "number" ? res.playerCount : undefined) ?? undefined,
+      });
+    }
+    return res;
+  });
+}
+
+async function createLobbyTx(tx: any, userId: string, wager: number, maxPlayers: number) {
+  // Escrow the host's wager (atomic balance guard).
+  const [funded] = await tx
+    .update(users)
+    .set({ balance: sql`${users.balance} - ${wager}` })
+    .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${wager}`))
+    .returning({ balance: users.balance });
+  if (!funded) return { error: "Insufficient balance", status: 400 };
+
+  const [match] = await tx
+    .insert(towerArenaMatches)
+    .values({
+      hostUserId: userId,
+      wager,
+      maxPlayers,
+      status: "waiting",
+      phase: "waiting",
+    })
+    .returning();
+
+  await tx.insert(towerArenaPlayers).values({
+    matchId: match.id,
+    userId,
+    seat: 1,
+    status: "active",
+    isAi: false,
+    reserveUsesRemaining: MAX_RESERVE_USES,
+  });
+
+  return { match, joined: false, started: false };
+}
+
+/**
+ * Free-play human-vs-AI match. No tokens move; `maxPlayers - 1` bot
+ * seats are added and the match starts immediately. reuses the full
+ * turn/collapse/reserve state machine (bots place via playAiTurn).
+ */
+export async function createAiTowerArenaMatch({
+  userId,
+  maxPlayers = 2,
+}: {
+  userId: string;
+  maxPlayers?: number;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  const m = Math.trunc(Number(maxPlayers) || 0);
+  if (!Number.isInteger(m) || m < 2 || m > 6) {
+    return { error: "maxPlayers must be an integer from 2 to 6", status: 400 };
+  }
+  return db.transaction(async (tx) => {
+    const [match] = await tx
+      .insert(towerArenaMatches)
+      .values({
+        hostUserId: userId,
+        wager: 0,
+        maxPlayers: m,
+        status: "waiting",
+        phase: "waiting",
+        isAi: true,
+      })
+      .returning();
+
+    await tx.insert(towerArenaPlayers).values({
+      matchId: match.id,
+      userId,
+      seat: 1,
+      status: "active",
+      isAi: false,
+      reserveUsesRemaining: MAX_RESERVE_USES,
+    });
+    for (let seat = 2; seat <= m; seat += 1) {
+      await tx.insert(towerArenaPlayers).values({
+        matchId: match.id,
+        userId: `AI_BOT_${seat}`,
+        seat,
+        status: "active",
+        isAi: true,
+        reserveUsesRemaining: MAX_RESERVE_USES,
+      });
+    }
+
+    const started = await startMatchTx(tx, match.id, { finalMaxPlayers: m });
+    return { match: started, joined: true, started: true };
+  });
+}
+
+/**
+ * Deterministic AI placement when it is a bot's turn. The bot prefers a
+ * held reservation, else the safest available shape, placed centered.
+ * Used by /api/tower-arena/ai-turn; timeout fallback also resolves bots.
+ */
+export async function playAiTurn({ matchId }: { matchId: string }) {
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "placement") {
+      return { error: "Not in placement phase", status: 400 };
+    }
+    const players = await fetchPlayers(tx, matchId);
+    const cur = playerByUserId(players, match.currentTurnPlayerId);
+    if (!cur) return { error: "No active turn", status: 400 };
+    if (!cur.isAi) return { error: "Not an AI turn", status: 403 };
+    const fallback = safeFallbackPlacement(match);
+    const result = await applyPlacement(tx, match, players, cur, {
+      ...fallback,
+      actionType: "AI",
+    });
+    return result.error
+      ? { error: result.error, status: result.status || 409 }
+      : { ok: true, match: await fetchMatchForUpdate(tx, matchId), ...result };
+  });
+}
+
+async function joinLobbyTx(tx: any, match: any, userId: string) {
+  const cur = await fetchPlayers(tx, match.id);
+  const nextSeat = cur.length + 1;
+
+  // Escrow the joiner's wager.
+  const [funded] = await tx
+    .update(users)
+    .set({ balance: sql`${users.balance} - ${match.wager}` })
+    .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${match.wager}`))
+    .returning({ balance: users.balance });
+  if (!funded) {
+    return { error: "Insufficient balance", status: 400 };
+  }
+
+  const [player] = await tx
+    .insert(towerArenaPlayers)
+    .values({
+      matchId: match.id,
+      userId,
+      seat: nextSeat,
+      status: "active",
+      isAi: false,
+      reserveUsesRemaining: MAX_RESERVE_USES,
+    })
+    .returning();
+
+  let updated = match;
+  if (nextSeat >= match.maxPlayers) {
+    updated = await startMatchTx(tx, match.id, {
+      finalMaxPlayers: match.maxPlayers,
+    });
+  }
+  return { match: updated, joined: true, started: nextSeat >= match.maxPlayers, player };
+}
+
+/**
+ * Flip a full waiting match into active play: pick a randomized starting
+ * player, open resource cycle 1's reserve phase, and build the pool.
+ */
+async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?: number }) {
+  const match = await fetchMatchForUpdate(tx, matchId);
+  const players = await fetchPlayers(tx, matchId);
+  const startId = pickStartId(players);
+
+  const { pool } = newCycleState(match, 1);
+  await tx
+    .update(towerArenaMatches)
+    .set({
+      status: "active",
+      phase: "reserve",
+      resourceCycle: 1,
+      turnNumber: 0,
+      currentTurnPlayerId: startId,
+      turnDeadline: new Date(Date.now() + RESERVE_WINDOW_MS),
+      resourcePool: pool,
+      towerState: [] as TowerState,
+      reserveState: {},
+      placements: [],
+      finalRankings: [],
+      startedAt: new Date(),
+    })
+    .where(eq(towerArenaMatches.id, matchId));
+
+  towerArenaStarted({
+    distinctId: startId || match.hostUserId || "tower_arena",
+    matchId: match.id,
+    maxPlayers: match.maxPlayers,
+    wager: match.wager,
+    isAi: Boolean(match.isAi),
+  });
+
+  const reserveDeadline = new Date(Date.now() + RESERVE_WINDOW_MS);
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
+    status: "active",
+    phase: "reserve",
+    currentTurnPlayerId: startId,
+    turnDeadline: reserveDeadline.toISOString(),
+    resourceCycle: 1,
+    turnNumber: 0,
+  });
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
+    currentTurnPlayerId: startId,
+    turnDeadline: reserveDeadline.toISOString(),
+    resourceCycle: 1,
+  });
+
+  return fetchMatchForUpdate(tx, matchId);
+}
+
+// ── Reserve ────────────────────────────────────────────────────────────
+//
+// During a reserve phase each ACTIVE player may reserve one available
+// block (removed from the shared pool and set aside privately). Reserving
+// consumes one of the player's MAX_RESERVE_USES. Reserve contents are held
+// in match.reserveState (keyed by userId) and are only revealed to the
+// owning player when a match is projected for a viewer.
+
+export async function reserveBlock({
+  userId,
+  matchId,
+  blockId,
+}: {
+  userId: string;
+  matchId: string;
+  blockId: string;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  if (!blockId || typeof blockId !== "string") {
+    return { error: "blockId is required", status: 400 };
+  }
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "reserve") {
+      return { error: "Not in reserve phase", status: 400 };
+    }
+    const players = await fetchPlayers(tx, matchId);
+    const p = playerByUserId(players, userId);
+    if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
+
+    if (Number(p.reserveUsesRemaining) <= 0) {
+      return { error: "No reserve uses remaining", status: 400 };
+    }
+    const reserve = reserveMap(match);
+    if (reserve[userId]) {
+      return { error: "You already hold a reserved block this cycle", status: 409 };
+    }
+
+    const pool = poolPieces(match);
+    const idx = pool.findIndex((piece) => piece.id === String(blockId));
+    if (idx === -1) {
+      return { error: "Block is no longer available", status: 409 };
+    }
+    const [piece] = pool.splice(idx, 1);
+
+    reserve[userId] = { blockId: piece.id, shape: piece.shape };
+    await tx
+      .update(towerArenaPlayers)
+      .set({
+        reserveUsesRemaining: sql`${towerArenaPlayers.reserveUsesRemaining} - 1`,
+        reservedBlock: piece,
+      })
+      .where(and(eq(towerArenaPlayers.matchId, matchId), eq(towerArenaPlayers.userId, userId)));
+    await tx
+      .update(towerArenaMatches)
+      .set({ resourcePool: pool, reserveState: reserve })
+      .where(eq(towerArenaMatches.id, matchId));
+    await tx.insert(towerArenaTurns).values({
+      matchId,
+      userId,
+      seat: p.seat,
+      turnNumber: match.turnNumber,
+      resourceCycle: match.resourceCycle,
+      phase: "reserve",
+      actionType: "RESERVE",
+      blockShape: piece.shape,
+      blockId: piece.id,
+    });
+
+    return { ok: true, reserved: { blockId: piece.id, shape: piece.shape } };
+  });
+}
+
+// ── Placement ──────────────────────────────────────────────────────────
+
+function validatePlacementPayload(body: any) {
+  const shape = String(body?.shape || "");
+  if (!BLOCK_SHAPES.includes(shape as BlockShape)) {
+    return { ok: false as const, error: "Unknown block shape", status: 400 };
+  }
+  const x = Math.trunc(Number(body?.positionX));
+  const rotation = Math.trunc(Number(body?.rotation) || 0);
+  if (!Number.isInteger(x)) return { ok: false as const, error: "positionX is required", status: 400 };
+  return { ok: true as const, shape: shape as BlockShape, x, rotation };
+}
+
+/** Explicit human (or AI) placement. */
+export async function submitPlacement({
+  userId,
+  matchId,
+  shape,
+  positionX,
+  rotation,
+}: {
+  userId: string;
+  matchId: string;
+  shape: BlockShape;
+  positionX: number;
+  rotation?: number;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  const v = validatePlacementPayload({ shape, positionX, rotation });
+  if (!v.ok) return { error: v.error, status: v.status };
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "placement") {
+      return { error: "Not in placement phase", status: 400 };
+    }
+    if (TURN_PLACEMENT_WINDOW_MS > 0 && match.turnDeadline) {
+      const dl = new Date(match.turnDeadline).getTime();
+      if (dl <= Date.now()) {
+        // Timed out — a safe deterministic fallback must resolve first.
+        return { error: "Turn expired; safe fallback will be applied", status: 409 };
+      }
+    }
+    const players = await fetchPlayers(tx, matchId);
+    if (userIsAi(players, userId)) {
+      return { error: "Cannot act for the AI seat", status: 403 };
+    }
+    if (match.currentTurnPlayerId !== userId) {
+      return { error: "Not your turn", status: 403 };
+    }
+    const p = playerByUserId(players, userId);
+    if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
+
+    // Grid-bounds validation before mutating anything.
+    const extent = footprintFor(v.shape, v.rotation);
+    if (!fitsInGrid(extent, v.x, 0)) {
+      return { error: "Placement out of bounds", status: 400 };
+    }
+
+    return applyPlacement(tx, match, players, p, {
+      shape: v.shape,
+      positionX: v.x,
+      rotation: v.rotation,
+      actionType: "PLACE",
+    });
+  });
+}
+
+function userIsAi(players: any[], userId: string): boolean {
+  const p = playerByUserId(players, userId);
+  return Boolean(p?.isAi);
+}
+
+// Full, shared placement transition (used by explicit submit, the AI
+// route, and the deterministic timeout fallback). Resolves the next state via
+// the pure turnResolver, then persists every outcome inside the caller's
+// transaction. The condition that only ONE active player remains short-circuits
+// straight to finishMatchTx (idempotent settlement).
+async function applyPlacement(
+  tx: any,
+  match: any,
+  players: any[],
+  acting: any,
+  params: { shape: BlockShape; positionX: number; rotation: number; actionType: "PLACE" | "AI" | "TIMEOUT" },
+) {
+  const snapshot: MatchSnapshot = matchSnapshot(match);
+  const resolvers: ResolverPlayer[] = players.map(toResolverPlayer);
+  const result = resolvePlacement(snapshot, resolvers, {
+    shape: params.shape,
+    positionX: params.positionX,
+    rotation: params.rotation,
+    actionType: params.actionType,
+  }, acting.userId);
+  if (!("resolved" in result)) return { error: result.error, status: result.status };
+  const r = result.resolved;
+  const eliminated = r.eliminations.length > 0;
+
+  // Persist eliminations (a collapse drops the responsible player).
+  for (const e of r.eliminations) {
+    await tx
+      .update(towerArenaPlayers)
+      .set({ status: "eliminated", eliminatedAt: new Date(), placement: e.placement })
+      .where(and(eq(towerArenaPlayers.matchId, match.id), eq(towerArenaPlayers.userId, e.userId)));
+  }
+
+  const newestPlacements = [...placements(match), r.entry];
+  const updates: Record<string, unknown> = {
+    turnNumber: r.entry.turnNumber,
+    towerState: r.towerState,
+    resourcePool: r.pool,
+    reserveState: r.reserveState,
+    placements: newestPlacements,
+    phase: r.finished ? "placement" : r.nextPhase,
+    currentTurnPlayerId: r.finished ? null : r.nextTurnPlayerId,
+    turnDeadline: r.finished ? null : r.nextDeadlineMs ? new Date(r.nextDeadlineMs) : null,
+  };
+  if (r.resourceCycle !== match.resourceCycle) {
+    updates.resourceCycle = r.resourceCycle;
+  }
+
+  await tx
+    .update(towerArenaMatches)
+    .set(updates)
+    .where(eq(towerArenaMatches.id, match.id));
+  await tx.insert(towerArenaTurns).values({
+    matchId: match.id,
+    userId: acting.userId,
+    seat: acting.seat,
+    turnNumber: r.entry.turnNumber,
+    resourceCycle: r.resourceCycle,
+    phase: "placement",
+    actionType: params.actionType,
+    blockShape: r.blockShape,
+    positionX: params.positionX,
+    rotation: params.rotation,
+    blockId: r.entry.blockId,
+    collapsed: r.collapsed,
+    towerDelta: { removedBlockIds: r.removedBlockIds, fromReserve: r.fromReserve },
+  });
+
+  // Server-authoritative analytics (fire-and-forget; never affects settlement).
+  if (params.actionType === "TIMEOUT") {
+    towerArenaTimeout({ distinctId: acting.userId, matchId: match.id, isAi: Boolean(match.isAi) });
+  } else if (params.actionType === "PLACE") {
+    towerArenaBlockPlaced({
+      distinctId: acting.userId,
+      matchId: match.id,
+      turnNumber: r.entry.turnNumber,
+      collapsed: r.collapsed,
+      isAi: Boolean(match.isAi),
+    });
+  }
+  if (r.collapsed) {
+    towerArenaCollapse({
+      distinctId: acting.userId,
+      matchId: match.id,
+      maxPlayers: match.maxPlayers,
+      isAi: Boolean(match.isAi),
+    });
+  }
+  for (const e of r.eliminations) {
+    towerArenaEliminated({
+      distinctId: e.userId,
+      matchId: match.id,
+      placement: e.placement,
+      reason: "collapse",
+      maxPlayers: match.maxPlayers,
+    });
+  }
+
+  // Push in-match realtime events. Light payloads only — authoritative
+  // details (winner / payout / collapse verdict) are re-fetched by clients.
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.BLOCK_PLACED, {
+    playerId: acting.userId,
+    turnNumber: r.entry.turnNumber,
+  });
+  if (r.collapsed) {
+    void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.COLLAPSE, {
+      playerId: acting.userId,
+    });
+  }
+  for (const e of r.eliminations) {
+    void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.PLAYER_ELIMINATED, {
+      playerId: e.userId,
+      placement: e.placement,
+      reason: "collapse",
+    });
+  }
+  if (r.refilled) {
+    void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESOURCE_REFILL, {
+      resourceCycle: r.resourceCycle,
+    });
+  }
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESOURCE_UPDATE, {
+    resourceCycle: r.resourceCycle,
+  });
+  if (!r.finished && r.nextTurnPlayerId) {
+    const deadline = r.nextDeadlineMs ? new Date(r.nextDeadlineMs).toISOString() : undefined;
+    if (r.nextPhase === "reserve") {
+      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
+        currentTurnPlayerId: r.nextTurnPlayerId,
+        turnDeadline: deadline,
+        resourceCycle: r.resourceCycle,
+      });
+    } else {
+      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
+        playerId: r.nextTurnPlayerId,
+        turnDeadline: deadline,
+      });
+    }
+  }
+
+  const placementValue = r.eliminations.length ? r.eliminations[0].placement : null;
+  if (r.finished) {
+    const freshMatch = await fetchMatchForUpdate(tx, match.id);
+    const freshPlayers = await fetchPlayers(tx, match.id);
+    await finishMatchTx(tx, freshMatch, freshPlayers);
+    return {
+      ok: true,
+      collapsed: r.collapsed,
+      eliminated,
+      matchFinished: true,
+      placementValue,
+    };
+  }
+
+  return {
+    ok: true,
+    collapsed: r.collapsed,
+    eliminated,
+    matchFinished: false,
+    placementValue,
+  };
+}
+
+/** Project an ORM match row into the pure resolver's snapshot shape. */
+function matchSnapshot(m: any): MatchSnapshot {
+  return {
+    id: m.id,
+    status: m.status,
+    phase: m.phase,
+    maxPlayers: m.maxPlayers,
+    resourceCycle: Number(m.resourceCycle || 0),
+    turnNumber: Number(m.turnNumber || 0),
+    currentTurnPlayerId: m.currentTurnPlayerId ?? null,
+    turnDeadline: m.turnDeadline ?? null,
+    resourcePool: parsePool(m.resourcePool),
+    towerState: Array.isArray(m.towerState) ? m.towerState : [],
+    reserveState: parseReserveMap(m.reserveState),
+    placements: parsePlacements(m.placements),
+  };
+}
+
+function toResolverPlayer(p: any): ResolverPlayer {
+  return {
+    userId: p.userId,
+    seat: p.seat,
+    status: p.status,
+    isAi: Boolean(p.isAi),
+    reserveUsesRemaining: Number(p.reserveUsesRemaining ?? 0),
+  };
+}
+
+// ── Finish + settlement (idempotent) ───────────────────────────────────
+//
+// Only one caller may settle: the FOR UPDATE lock + a conditional UPDATE
+// `status = 'active' → 'finished'` guard means the tokens are credited
+// only when THIS transaction is the one that flips the row. A retry that
+// arrives after settlement sees status already 'finished' and refunds
+// nothing.
+async function finishMatchTx(tx: any, match: any, players: any[]) {
+  // Recompute final rankings from player placement values (ascending).
+  const ranked = [...players]
+    .map((p) => ({
+      userId: p.userId,
+      seat: p.seat,
+      placement: isActive(p) ? 1 : Number(p.placement || 0),
+      payout: 0,
+      isAi: Boolean(p.isAi),
+    }))
+    .sort((a, b) => a.placement - b.placement);
+
+  const winner = ranked.find((r) => r.placement === 1) || null;
+  const isPaid = !match.isAi && match.wager > 0;
+
+  let prizePool = 0;
+  let houseFee = 0;
+  let pot = 0;
+  if (isPaid) {
+    const cfg = computePotPrize({ maxPlayers: match.maxPlayers, wager: match.wager });
+    pot = cfg.pot;
+    houseFee = cfg.houseFee;
+    prizePool = cfg.prizePool;
+    const byPlacement = payoutsByPlacement({
+      maxPlayers: match.maxPlayers,
+      wager: match.wager,
+      prizePool: cfg.prizePool,
+    });
+    ranked.forEach((r) => {
+      const pay = Math.min(
+        byPlacement[Math.max(0, r.placement - 1)] ?? 0,
+        prizePool,
+      );
+      r.payout = pay;
+    });
+  }
+
+  // The transition guard: only credit if we actually flip active→finished.
+  const [updated] = await tx
+    .update(towerArenaMatches)
+    .set({
+      status: "finished",
+      phase: "finished",
+      winnerId: winner?.userId ?? null,
+      finalRankings: ranked,
+      prizePool,
+      houseFee,
+      pot,
+      endedAt: new Date(),
+      currentTurnPlayerId: null,
+      turnDeadline: null,
+    })
+    .where(and(eq(towerArenaMatches.id, match.id), eq(towerArenaMatches.status, "active")))
+    .returning();
+
+  if (!updated) return { match, alreadyFinished: true };
+
+  // Credit paid human players (AI/free matches move no tokens).
+  if (isPaid) {
+    for (const r of ranked) {
+      if (r.isAi || r.payout <= 0) continue;
+      const humanResult = await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${r.payout}` })
+        .where(eq(users.clerkId, r.userId))
+        .returning({ id: users.id });
+      if (!humanResult) continue;
+
+      // Leaderboard counters — only for real paid participants.
+      applyLeaderboardCounters({
+        clerkId: r.userId,
+        game: "Tower Arena",
+        betAmount: match.wager,
+        payout: r.payout,
+        isPvpWin: r.placement === 1,
+      }).catch(() => {});
+    }
+  }
+
+  const finishDistinctId =
+    winner && !winner.isAi ? winner.userId : match.hostUserId || "system";
+  towerArenaFinished({
+    distinctId: finishDistinctId,
+    matchId: match.id,
+    maxPlayers: match.maxPlayers,
+    wager: match.wager,
+    isAi: Boolean(match.isAi),
+  });
+
+  // Realtime: the authoritative finale. Clients reconcile via get-match.
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
+    status: "finished",
+    winnerId: winner?.userId ?? null,
+    maxPlayers: match.maxPlayers,
+    finalRankings: ranked.map((r) => ({
+      userId: r.userId,
+      placement: r.placement,
+      payout: r.payout,
+    })),
+  });
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.MATCH_FINISHED, {
+    winnerId: winner?.userId ?? null,
+    maxPlayers: match.maxPlayers,
+  });
+
+  if (winner && isPaid && match.wager >= 1000) {
+    sendSystemNotificationEmail({
+      eventType: "bet_placed",
+      description: `Tower Arena finished (${match.maxPlayers} players, wager ${match.wager}); winner ${winner.userId} took ${Math.max(0, ranked[0]?.payout || 0)}.`,
+      metadata: { matchId: match.id, wager: match.wager, winnerId: winner.userId },
+    }).catch(() => {});
+  }
+
+  return { match, alreadyFinished: false };
+}
+
+// ── Resign / disconnect (idempotent, shared) ───────────────────────────
+
+/** Shared eliminator used by user resign and realtime disconnect settle. */
+export async function removeParticipant({
+  userId,
+  matchId,
+  reason = "resign",
+}: {
+  userId: string;
+  matchId: string;
+  reason?: "resign" | "disconnect";
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+
+    // Terminal already — idempotent no-op.
+    if (match.status === "finished" || match.status === "cancelled") {
+      return { match, alreadyTerminal: true };
+    }
+
+    const players = await fetchPlayers(tx, matchId);
+    const p = playerByUserId(players, userId);
+    if (!p) return { error: "Not a participant", status: 403 };
+
+    // Lobby yet to fill — refund the caller's escrowed wager and cancel
+    // the lobby (host leaves an unfilled lobby).
+    if (match.status === "waiting") {
+      if (p.userId === match.hostUserId) {
+        await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${match.wager}` })
+          .where(eq(users.clerkId, p.userId));
+        await tx
+          .update(towerArenaMatches)
+          .set({ status: "cancelled", phase: "cancelled", endedAt: new Date() })
+          .where(and(eq(towerArenaMatches.id, matchId), eq(towerArenaMatches.status, "waiting")));
+        const cancelled = await fetchMatchForUpdate(tx, matchId);
+        void relayTowerArenaLobbyUpdate(matchId, { event: "cancelled", wager: match.wager, maxPlayers: match.maxPlayers, playerCount: 0 });
+        return { match: cancelled, cancelled: true };
+      }
+      // A waiting non-host just leaves — refund + drop the seat.
+      await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} + ${match.wager}` })
+        .where(eq(users.clerkId, p.userId));
+      const others = await fetchPlayers(tx, matchId);
+      await tx.delete(towerArenaPlayers).where(eq(towerArenaPlayers.id, p.id));
+      void relayTowerArenaLobbyUpdate(matchId, { event: "left", wager: match.wager, maxPlayers: match.maxPlayers, playerCount: Math.max(0, others.length - 1) });
+      return { match, removed: true };
+    }
+
+    // Active match — only real (non-AI) players may resign.
+    if (match.phase !== "finished") {
+      if (p.isAi) return { error: "AI seat cannot resign", status: 403 };
+      const activeBefore = players.filter(isActive).length;
+      await tx
+        .update(towerArenaPlayers)
+        .set({
+          status: "eliminated",
+          eliminatedAt: new Date(),
+          placement: activeBefore,
+          reservedBlock: null,
+        })
+        .where(and(eq(towerArenaPlayers.matchId, matchId), eq(towerArenaPlayers.userId, userId)));
+
+      towerArenaEliminated({
+        distinctId: userId,
+        matchId,
+        placement: activeBefore,
+        reason,
+        maxPlayers: match.maxPlayers,
+      });
+      void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.PLAYER_ELIMINATED, {
+        playerId: userId,
+        placement: activeBefore,
+        reason,
+      });
+
+      const reserve = reserveMap(match);
+      if (reserve[userId]) reserve[userId] = null;
+
+      const activeAfter = activeBefore - 1;
+      if (activeAfter <= 1) {
+        const freshMatch = await fetchMatchForUpdate(tx, matchId);
+        const freshPlayers = await fetchPlayers(tx, matchId);
+        await finishMatchTx(tx, freshMatch, freshPlayers);
+        return { match: await fetchMatchForUpdate(tx, matchId), resigned: true, matchFinished: true };
+      }
+
+      // Refill pool + start a fresh reservation cycle.
+      const cycleAfter = Number(match.resourceCycle || 0) + 1;
+      const { pool } = newCycleState(match, cycleAfter);
+      const nextTurnId = nextActiveAfter(players, userId) || players.find(isActive)?.userId || null;
+      await tx
+        .update(towerArenaMatches)
+        .set({
+          phase: "reserve",
+          resourceCycle: cycleAfter,
+          resourcePool: pool,
+          reserveState: reserve,
+          currentTurnPlayerId: nextTurnId,
+          turnDeadline: nextTurnId ? new Date(Date.now() + RESERVE_WINDOW_MS) : null,
+        })
+        .where(eq(towerArenaMatches.id, matchId));
+      void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESOURCE_REFILL, {
+        resourceCycle: cycleAfter,
+      });
+      void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESOURCE_UPDATE, {
+        resourceCycle: cycleAfter,
+      });
+      void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
+        currentTurnPlayerId: nextTurnId,
+      });
+      await tx.insert(towerArenaTurns).values({
+        matchId,
+        userId,
+        seat: p.seat,
+        turnNumber: match.turnNumber,
+        resourceCycle: cycleAfter,
+        phase: "reserve",
+        actionType: "RESIGN",
+      });
+      return { match: await fetchMatchForUpdate(tx, matchId), resigned: true };
+    }
+
+    return { match, alreadyTerminal: true };
+  });
+}
+
+// ── Poll-driven auto-advance (reserve window + deterministic timeout) ──
+
+/**
+ * Advances a match when its current window has expired:
+ *   • reserve phase deadline → placement begins for the current turn.
+ *   • placement deadline → the current player gets a deterministic safe
+ *     fallback placement (never an instant elimination) — if that safe
+ *     move still collapses (precarious tower) the result is authoritative.
+ * Safe, pure policy: smallest available block ('short' > 'square'), placed
+ * centered with no rotation. Runs inside a transaction; a raced second poll
+ * is a no-op because the conditional update on phase/deadline rejects it.
+ */
+export async function advanceMatchOnPoll(matchId: string, userId?: string) {
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!ACTIVE_MATCH_STATES.has(match.status)) return { match };
+    const now = Date.now();
+
+    if (match.phase === "reserve" && match.turnDeadline) {
+      if (new Date(match.turnDeadline).getTime() > now) return { match };
+      // Reserve window over → placement begins for the current turn holder.
+      const nextTurnId = match.currentTurnPlayerId;
+      const [updated] = await tx
+        .update(towerArenaMatches)
+        .set({
+          phase: "placement",
+          turnDeadline: nextTurnId ? new Date(Date.now() + TURN_PLACEMENT_WINDOW_MS) : null,
+        })
+        .where(
+          and(
+            eq(towerArenaMatches.id, match.id),
+            eq(towerArenaMatches.status, "active"),
+            eq(towerArenaMatches.phase, "reserve"),
+          ),
+        )
+        .returning();
+      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
+        playerId: nextTurnId,
+        turnDeadline: updated?.turnDeadline ? new Date(updated.turnDeadline).toISOString() : undefined,
+      });
+      return { match: updated || match };
+    }
+
+    if (match.phase === "placement" && match.turnDeadline) {
+      if (new Date(match.turnDeadline).getTime() > now) return { match };
+      const players = await fetchPlayers(tx, matchId);
+      const cur = playerByUserId(players, match.currentTurnPlayerId);
+      if (!cur) {
+        const [updated] = await tx
+          .update(towerArenaMatches)
+          .set({ phase: "reserve", turnDeadline: new Date(Date.now() + RESERVE_WINDOW_MS) })
+          .where(and(eq(towerArenaMatches.id, match.id), eq(towerArenaMatches.status, "active")))
+          .returning();
+        void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
+          currentTurnPlayerId: null,
+          turnDeadline: updated?.turnDeadline ? new Date(updated.turnDeadline).toISOString() : undefined,
+        });
+        return { match: updated || match };
+      }
+
+      // Guarded conditional UPDATE only for the state we saw — a raced
+      // double-poll leaves phase 'placement' from the first poll and the
+      // second (matched 0 rows) becomes a no-op inside applyPlacement's
+      // own gate, which re-reads the row and refuses a stale turn.
+      const fallback = safeFallbackPlacement(match);
+      const [stillActive] = await tx
+        .update(towerArenaMatches)
+        .set({ phase: "placement", turnDeadline: new Date(Date.now() + TURN_PLACEMENT_WINDOW_MS) })
+        .where(
+          and(
+            eq(towerArenaMatches.id, match.id),
+            eq(towerArenaMatches.status, "active"),
+            eq(towerArenaMatches.phase, "placement"),
+            eq(towerArenaMatches.currentTurnPlayerId, match.currentTurnPlayerId),
+          ),
+        )
+        .returning();
+      if (!stillActive) return { match: await fetchMatchForUpdate(tx, matchId), raced: true };
+
+      const result = await applyPlacement(tx, match, players, cur, {
+        ...fallback,
+        actionType: "TIMEOUT",
+      });
+      if (result.error) return { match: await fetchMatchForUpdate(tx, matchId), error: result.error };
+      return { match: await fetchMatchForUpdate(tx, matchId), timedOut: true, ...result };
+    }
+
+    return { match };
+  });
+}
+
+/**
+ * Deterministic safe fallback: smallest shape, centered, no rotation.
+ * Delegates to the pure resolver so timeout and AI intents share one policy.
+ */
+export function safeFallbackPlacement(match: any): { shape: BlockShape; positionX: number; rotation: number } {
+  const intent = safeFallbackIntent(matchSnapshot(match));
+  return { shape: intent.shape, positionX: intent.positionX, rotation: intent.rotation };
+}
+
+// ── Listing ────────────────────────────────────────────────────────────
+
+/**
+ * Player display lookup keyed by clerkId — name + official icon key.
+ * Used by the lobby + match projections so only server-resolved names /
+ * icons reach the client (never user-supplied avatar URLs).
+ */
+async function userDisplayMap(
+  tx: any,
+  clerkIds: string[],
+): Promise<Map<string, { name: string; iconKey: string }>> {
+  const ids = [...new Set(clerkIds.filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ clerkId: users.clerkId, name: users.name, selectedIcon: users.selectedIcon })
+    .from(users)
+    .where(inArray(users.clerkId, ids));
+  const map = new Map<string, { name: string; iconKey: string }>();
+  for (const row of rows) {
+    map.set(row.clerkId, {
+      name: row.name || "Player",
+      iconKey: row.selectedIcon || DEFAULT_ICON_KEY,
+    });
+  }
+  return map;
+}
+
+async function enrichMatchPlayers(tx: any, players: any[]) {
+  const display = await userDisplayMap(
+    tx,
+    players.filter((p) => !p.isAi).map((p) => p.userId),
+  );
+  return players.map((p) => {
+    const d = p.isAi ? null : display.get(p.userId);
+    return {
+      userId: p.userId,
+      seat: p.seat,
+      status: p.status,
+      placement: p.placement,
+      isAi: p.isAi,
+      joinedAt: p.joinedAt,
+      eliminatedAt: p.eliminatedAt,
+      name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
+      iconKey: p.isAi ? DEFAULT_ICON_KEY : (d?.iconKey ?? DEFAULT_ICON_KEY),
+    };
+  });
+}
+
+/**
+ * Open waiting lobbies for the public lobby grid. Each entry carries the
+ * live seat count, host display info, and an estimated prize pool — all
+ * computed server-side. `excludeUserId` hides a lobby the caller already
+ * holds so the client's "your open lobby" banner doesn't double-list it.
+ */
+export async function listOpenTowerArenaMatches({
+  limit = 30,
+  excludeUserId,
+}: { limit?: number; excludeUserId?: string } = {}) {
+  const lobbyIds = await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: towerArenaMatches.id })
+      .from(towerArenaMatches)
+      .where(and(eq(towerArenaMatches.status, "waiting"), eq(towerArenaMatches.isAi, false)))
+      .orderBy(desc(towerArenaMatches.createdAt))
+      .limit(Math.max(1, Math.min(limit, 200)))
+      .for("update");
+    return rows.map((r) => r.id);
+  });
+  if (lobbyIds.length === 0) return [];
+
+  // Re-derive seat counts + owner display outside the locked txn.
+  const [matches, playerRows, userRows] = await Promise.all([
+    db
+      .select()
+      .from(towerArenaMatches)
+      .where(inArray(towerArenaMatches.id, lobbyIds)),
+    db
+      .select({ matchId: towerArenaPlayers.matchId, userId: towerArenaPlayers.userId, isAi: towerArenaPlayers.isAi })
+      .from(towerArenaPlayers)
+      .where(inArray(towerArenaPlayers.matchId, lobbyIds)),
+    db
+      .select({ clerkId: users.clerkId, name: users.name, selectedIcon: users.selectedIcon })
+      .from(users)
+      .where(
+        inArray(
+          users.clerkId,
+          lobbyIds.length
+            ? db
+                .select({ clerkId: towerArenaMatches.hostUserId })
+                .from(towerArenaMatches)
+                .where(inArray(towerArenaMatches.id, lobbyIds))
+            : [],
+        ),
+      ),
+  ]);
+
+  const countByMatch = new Map<string, number>();
+  for (const p of playerRows) {
+    countByMatch.set(p.matchId, (countByMatch.get(p.matchId) ?? 0) + 1);
+  }
+  const hostDisplay = new Map(userRows.map((u) => [u.clerkId, u]));
+  const excludeMyOpenLobby = excludeUserId
+    ? await (async () => {
+        const mine = await db
+          .select({ matchId: towerArenaPlayers.matchId })
+          .from(towerArenaPlayers)
+          .where(eq(towerArenaPlayers.userId, excludeUserId))
+          .limit(50);
+        return new Set(mine.map((m) => m.matchId));
+      })()
+    : null;
+
+  return matches
+    .filter((m) => !excludeMyOpenLobby || !excludeMyOpenLobby.has(m.id))
+    .map((m) => {
+      const cfg = computePotPrize({ maxPlayers: m.maxPlayers, wager: m.wager });
+      const host = hostDisplay.get(m.hostUserId);
+      return {
+        id: m.id,
+        hostUserId: m.hostUserId,
+        hostName: host?.name ?? "Player",
+        hostIconKey: host?.selectedIcon ?? DEFAULT_ICON_KEY,
+        wager: m.wager,
+        maxPlayers: m.maxPlayers,
+        playerCount: countByMatch.get(m.id) ?? 0,
+        status: m.status,
+        // Estimated prize pool (server-computed from centralized payout config).
+        pot: cfg.pot,
+        houseFee: cfg.houseFee,
+        prizePool: cfg.prizePool,
+        createdAt: m.createdAt,
+      };
+    });
+}
+
+/**
+ * Project a single match + its players for a participant, with server-
+ * resolved display names + icons and the viewer's private reserve. Used by
+ * `/api/tower-arena/get-match` (lobby wait-room + live match share the same
+ * projection).
+ */
+export async function getTowerArenaMatchProjection({ userId, matchId }: { userId: string; matchId: string }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  const match = await db
+    .select()
+    .from(towerArenaMatches)
+    .where(eq(towerArenaMatches.id, matchId))
+    .limit(1);
+  if (match.length === 0) return { error: "Match unavailable", status: 404 };
+  const [m] = match;
+
+  const playerRows = await db
+    .select()
+    .from(towerArenaPlayers)
+    .where(eq(towerArenaPlayers.matchId, m.id))
+    .orderBy(asc(towerArenaPlayers.seat));
+
+  const isParticipant = playerRows.some((p) => p.userId === userId);
+  if (!isParticipant) return { error: "Not a participant", status: 403 };
+
+  const display = await db.transaction((tx) => enrichMatchPlayers(tx, playerRows));
+  const reserveState =
+    m.reserveState && typeof m.reserveState === "object" && !Array.isArray(m.reserveState)
+      ? m.reserveState
+      : {};
+  const me = playerRows.find((p) => p.userId === userId);
+  return {
+    match: {
+      id: m.id,
+      status: m.status,
+      phase: m.phase,
+      wager: m.wager,
+      maxPlayers: m.maxPlayers,
+      isAi: m.isAi,
+      hostUserId: m.hostUserId,
+      resourceCycle: m.resourceCycle,
+      turnNumber: m.turnNumber,
+      currentTurnPlayerId: m.currentTurnPlayerId,
+      turnDeadline: m.turnDeadline,
+      resourcePool: m.resourcePool,
+      towerState: m.towerState,
+      placements: m.placements,
+      finalRankings: m.finalRankings,
+      winnerId: m.winnerId,
+      prizePool: m.prizePool,
+      houseFee: m.houseFee,
+      pot: m.pot,
+      createdAt: m.createdAt,
+      startedAt: m.startedAt,
+      endedAt: m.endedAt,
+    },
+    players: display,
+    me: {
+      userId,
+      seat: me?.seat ?? null,
+      isHost: m.hostUserId === userId,
+      isAi: Boolean(me?.isAi),
+      reserveUsesRemaining: me?.reserveUsesRemaining ?? 0,
+      reservedBlock: reserveState[userId] || null,
+    },
+  };
+}
+
+// ── History ────────────────────────────────────────────────────────────
+export async function listTowerArenaHistory({ userId, limit = 30 }: { userId: string; limit?: number }) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  // Any match the user is a player in, most recently created first, then
+  // de-duplicated by match id (a user has exactly one seat per match).
+  const rows = await db
+    .select({
+      id: towerArenaMatches.id,
+      wager: towerArenaMatches.wager,
+      maxPlayers: towerArenaMatches.maxPlayers,
+      winnerId: towerArenaMatches.winnerId,
+      prizePool: towerArenaMatches.prizePool,
+      finalRankings: towerArenaMatches.finalRankings,
+      status: towerArenaMatches.status,
+      endedAt: towerArenaMatches.endedAt,
+      createdAt: towerArenaMatches.createdAt,
+    })
+    .from(towerArenaMatches)
+    .innerJoin(towerArenaPlayers, eq(towerArenaPlayers.matchId, towerArenaMatches.id))
+    .where(eq(towerArenaPlayers.userId, userId))
+    .orderBy(desc(towerArenaMatches.createdAt))
+    .limit(limit);
+
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return r.status === "finished";
+  });
+}

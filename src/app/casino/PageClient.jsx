@@ -14,8 +14,7 @@ import Img7 from "../../images/chessimage.png";
 import Img10 from "../../images/kenoimage.png";
 import Img11 from "../../images/uno game div.webp";
 import Img12 from "../../images/rockpaperscissorsimage.png";
-import ImgDiceDuel from "../../images/dice-duel-card.webp";
-import Img14 from "../../images/connectfourimage.png";
+import Img14 from "../../images/four-in-a-row-card.png";
 import ImgLaneRush from "../../images/lanerushimage.png";
 import Img17 from "../../images/poolmastersimage.png";
 import Img18 from "../../images/hexduelimage.png";
@@ -23,6 +22,7 @@ import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
+import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
 import Image from "next/image";
@@ -176,20 +176,20 @@ function MainComponent() {
       nameKey: "games.rps_name",
     },
     {
-      name: "Dice Duel Arena",
-      href: "/casino/dice-duel",
-      leaderboardKey: "dice-duel",
-      image: ImgDiceDuel,
-      descriptionKey: "games.dice_duel_desc",
+      name: "Tower Arena",
+      href: "/casino/tower-arena",
+      leaderboardKey: "tower-arena",
+      image: ImgTowerArena,
+      descriptionKey: "games.tower_arena_desc",
     },
     {
-      name: "Connect Four",
-      href: "/casino/connect-four",
-      leaderboardKey: "connect-four",
+      name: "Four-In-A-Row",
+      href: "/casino/four-in-a-row",
+      leaderboardKey: "four-in-a-row",
       image: Img14,
       // Bigger board + gentler hover zoom so the full board stays visible.
       imageClassName: "group-hover:scale-[1.03]",
-      descriptionKey: "games.connect_four_desc",
+      descriptionKey: "games.four_in_a_row_desc",
     },
 
     {
@@ -258,10 +258,9 @@ function MainComponent() {
 
   const skillGameKeys = new Set([
     "dots-and-boxes",
-    "connect-four",
+    "four-in-a-row",
     "neon-flush",
     "poker",
-    "dice-duel",
     "chess",
     "rps",
     "pool-masters",
@@ -281,8 +280,7 @@ function MainComponent() {
     "pool-masters",
     "odds",
     "lane-runner",
-    "connect-four",
-    "dice-duel",
+    "four-in-a-row",
     "rps",
     "neon-flush",
     "keno",

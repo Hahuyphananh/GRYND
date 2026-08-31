@@ -22,8 +22,7 @@ import {
   kenoPvpMatches,
   laneRushDuelMatches,
   memoryGridMatches,
-  diceMatches,
-  connectFourGames,
+  fourInARowGames,
   laneRunnerGames,
   hexDuelGames,
   oddsGames,
@@ -99,8 +98,7 @@ export async function GET() {
       chess,
       kenoPvpRows,
       kenoRows,
-      diceRows,
-      connectFourRows,
+      fourInARowRows,
       laneRunnerRows,
       hexDuelRows,
       oddsRows,
@@ -226,35 +224,18 @@ export async function GET() {
           .where(eq(keno_games.user_id, uid))
           .limit(HISTORY_LIMIT),
       ),
-      safeQuery("dice", () =>
+      safeQuery("four-in-a-row", () =>
         db
           .select({
-            status: diceMatches.status,
-            winnerId: diceMatches.winnerId,
-            wager: diceMatches.wager,
-            prizePaid: diceMatches.prizePaid,
+            winnerClerkId: fourInARowGames.winnerClerkId,
+            betAmount: fourInARowGames.betAmount,
+            payout: fourInARowGames.payout,
           })
-          .from(diceMatches)
+          .from(fourInARowGames)
           .where(
             or(
-              eq(diceMatches.player1Id, clerkId),
-              eq(diceMatches.player2Id, clerkId),
-            ),
-          )
-          .limit(HISTORY_LIMIT),
-      ),
-      safeQuery("connect-four", () =>
-        db
-          .select({
-            winnerClerkId: connectFourGames.winnerClerkId,
-            betAmount: connectFourGames.betAmount,
-            payout: connectFourGames.payout,
-          })
-          .from(connectFourGames)
-          .where(
-            or(
-              eq(connectFourGames.hostClerkId, clerkId),
-              eq(connectFourGames.guestClerkId, clerkId),
+              eq(fourInARowGames.hostClerkId, clerkId),
+              eq(fourInARowGames.guestClerkId, clerkId),
             ),
           )
           .limit(HISTORY_LIMIT),
@@ -410,7 +391,7 @@ export async function GET() {
         return { type, amount, payout, result, tokenDiff: payout - amount };
       });
 
-    const connectFourNormalized = connectFourRows
+    const fourInARowNormalized = fourInARowRows
       .map((game) => {
         if (!game.winnerClerkId) return null; // ignore unfinished games
 
@@ -420,7 +401,7 @@ export async function GET() {
         const result = game.winnerClerkId === clerkId ? "won" : "lost";
 
         return {
-          type: "Connect Four",
+          type: "Four-In-A-Row",
           amount,
           payout,
           result,
@@ -428,27 +409,6 @@ export async function GET() {
         };
       })
       .filter(Boolean); // removes nulls);
-
-    const diceNormalized = diceRows
-      .map((game) => {
-        if (game.status !== "finished" && game.status !== "completed")
-          return null;
-        if (!game.winnerId) return null;
-
-        const amount = Number(game.wager || 0);
-        const payout = Number(game.prizePaid || 0);
-
-        const result = game.winnerId === clerkId ? "won" : "lost";
-
-        return {
-          type: "Dice Duel",
-          amount,
-          payout,
-          result,
-          tokenDiff: result === "won" ? payout - amount : -amount,
-        };
-      })
-      .filter(Boolean);
 
     //  Keno Duel (PvP) — finished matches only; winner determined by
     // the match's winnerId (a draw refunds both, so no winner column).
@@ -622,8 +582,7 @@ export async function GET() {
       ...normalize(chess, "Chess"),
       ...kenoPvpNormalized,
       ...normalize(kenoRows, "Keno"),
-      ...diceNormalized,
-      ...connectFourNormalized,
+      ...fourInARowNormalized,
       ...laneRushDuelNormalized,
       ...laneRunnerNormalized,
       ...hexDuelNormalized,

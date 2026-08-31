@@ -10,13 +10,13 @@ for (const adapter of [
   "createOrJoinRouletteMatch",
   "createOrJoinKenoMatch",
   "createOrJoinLaneRushMatch",
-  "createOrJoinConnectFourDestination",
+  "createOrJoinFourInARowDestination",
 ]) {
   test(`${adapter} is registered`, () => assert.match(worker, new RegExp(adapter)));
 }
 
 test("all supported game keys have adapters", () => {
-  for (const game of ["mines-pvp", "plinko-pvp", "blackjack-pvp", "roulette-pvp", "keno-pvp", "lane-rush-duel", "connect-four"]) {
+  for (const game of ["mines-pvp", "plinko-pvp", "blackjack-pvp", "roulette-pvp", "keno-pvp", "lane-rush-duel", "four-in-a-row"]) {
     assert.match(worker, new RegExp(`\\"${game}\\"`));
   }
 });

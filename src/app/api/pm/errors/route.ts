@@ -2,10 +2,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+type DbClient = ReturnType<typeof createClient>;
+
+// Lazily-create the client so a missing env var cannot crash the build or the
+// route. Without Supabase configured this internal endpoint just reports it.
+let _supabase: DbClient | null = null;
+function getSupabase(): DbClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  if (!_supabase) _supabase = createClient(url.trim().replace(/\/$/, ""), key);
+  return _supabase;
+}
 
 export async function GET(request: Request) {
   try {
@@ -15,6 +23,14 @@ export async function GET(request: Request) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
+      );
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Supabase is not configured" },
+        { status: 500 }
       );
     }
 

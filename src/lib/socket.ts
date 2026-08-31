@@ -41,10 +41,17 @@ export async function createSocketConnection(
   socketInstance = io(socketUrl, {
     autoConnect: true,
     transports: ["websocket", "polling"],
-    timeout: 15000,
+    // Connect timeout: fail fast on a bad network node instead of hanging.
+    // Real websocket handshakes complete in well under a second when healthy;
+    // 10s is plenty and prevents the UI from feeling frozen while we retry.
+    timeout: 10000,
     reconnection: true,
     reconnectionAttempts: 10,
+    // Start small (1s) and cap the backoff so recovery is snappy: with
+    // exponential growth the wait can otherwise stretch to tens of seconds
+    // after a blip, which looks like "the connection died" mid-game.
     reconnectionDelay: 1000,
+    reconnectionDelayMax: 4000,
     auth: {
       token,
     },

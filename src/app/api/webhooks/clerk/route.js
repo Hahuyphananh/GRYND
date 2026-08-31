@@ -11,6 +11,7 @@ import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
 // would bypass the shared pool's SSL config and connection limits.
 import { db } from "../../../../db";
 import { logError } from "../../../../lib/logError";
+import { grantAllOfficialIcons } from "../../../../lib/icons";
 
 export async function POST(req) {
   try {
@@ -39,7 +40,7 @@ export async function POST(req) {
           crypto.randomBytes(32).toString("hex"),
           12,
         );
-        await db
+        const insertedRows = await db
           .insert(users)
           .values({
             clerkId: id,
@@ -53,7 +54,17 @@ export async function POST(req) {
             gamesWon: 0,
             gamesLost: 0,
           })
-          .onConflictDoNothing();
+          .onConflictDoNothing()
+          .returning({ id: users.id });
+        // A brand-new local user owns the full free official icon catalog
+        // (default + all 12). Guarantees every account can access every icon
+        // in the picker regardless of whether it ever hits the sync-user
+        // fresh-account path. Idempotent + best-effort.
+        if (insertedRows?.length) {
+          await grantAllOfficialIcons(insertedRows[0].id).catch((err) =>
+            console.warn("[clerk-webhook] icon grant failed:", err),
+          );
+        }
         await db
           .insert(userAutomationState)
           .values({

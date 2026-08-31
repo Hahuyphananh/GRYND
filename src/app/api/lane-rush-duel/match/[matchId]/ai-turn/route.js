@@ -1,6 +1,6 @@
 // src/app/api/lane-rush-duel/match/[matchId]/ai-turn/route.js
 //
-// POST — execute the practice bot's turn (mirrors dice-duel's
+// POST — execute the practice bot's turn (mirrors the PvP ai-turn
 // /ai-turn pattern). The match page fires this when it's the bot's
 // turn; the server store runs `decideBotAction` and applies the move
 // through the same advance/resolve paths as a human. The bot picks

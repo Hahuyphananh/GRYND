@@ -288,9 +288,9 @@ export function scoreFromActions(actions, seat) {
 }
 
 // ── Bot identity for Test vs Bot practice matches ─────────────────
-// The same reserved clerkId-style id dice-duel uses (`AI_BOT`), so
-// practice opponents are recognisable everywhere without a schema
-// column. Bot matches are zero-stake: no escrow, no payout, no
+// A reserved clerkId-style id (`AI_BOT`), so practice opponents are
+// recognisable everywhere without a schema column. Bot matches are
+// zero-stake: no escrow, no payout, no
 // leaderboard stats — pure practice.
 export const BOT_USER_ID = "AI_BOT";
 

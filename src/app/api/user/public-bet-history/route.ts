@@ -13,9 +13,8 @@ import {
   chessGames,
   keno_games,
   kenoPvpMatches,
-  diceMatches,
   poolMatches,
-  connectFourGames,
+  fourInARowGames,
   memoryGridMatches,
 } from "../../../../db/schema";
 import { consumeRateLimit } from "../../../../lib/security/rateLimit";
@@ -113,9 +112,8 @@ export async function GET(req: NextRequest) {
       chess,
       kenoPvpRows,
       kenoRows,
-      diceRows,
       poolRows,
-      connectFourRows,
+      fourInARowRows,
       memoryGridRows,
     ] = await Promise.all([
       // Column projection: this is a PUBLIC endpoint (viewable by any user for
@@ -189,15 +187,6 @@ export async function GET(req: NextRequest) {
         created_at: keno_games.created_at,
       }).from(keno_games).where(eq(keno_games.user_id, uid)).limit(fetchLimit),
       db.select({
-        winnerId: diceMatches.winnerId,
-        wager: diceMatches.wager,
-        prizePaid: diceMatches.prizePaid,
-        endedAt: diceMatches.endedAt,
-        createdAt: diceMatches.createdAt,
-      }).from(diceMatches).where(
-        or(eq(diceMatches.player1Id, clerkId), eq(diceMatches.player2Id, clerkId))
-      ).limit(fetchLimit),
-      db.select({
         winnerId: poolMatches.winnerId,
         wager: poolMatches.wager,
         prizePaid: poolMatches.prizePaid,
@@ -207,13 +196,13 @@ export async function GET(req: NextRequest) {
         or(eq(poolMatches.player1Id, clerkId), eq(poolMatches.player2Id, clerkId))
       ).limit(fetchLimit),
       db.select({
-        winnerClerkId: connectFourGames.winnerClerkId,
-        betAmount: connectFourGames.betAmount,
-        payout: connectFourGames.payout,
-        endedAt: connectFourGames.endedAt,
-        createdAt: connectFourGames.createdAt,
-      }).from(connectFourGames).where(
-        or(eq(connectFourGames.hostClerkId, clerkId), eq(connectFourGames.guestClerkId, clerkId))
+        winnerClerkId: fourInARowGames.winnerClerkId,
+        betAmount: fourInARowGames.betAmount,
+        payout: fourInARowGames.payout,
+        endedAt: fourInARowGames.endedAt,
+        createdAt: fourInARowGames.createdAt,
+      }).from(fourInARowGames).where(
+        or(eq(fourInARowGames.hostClerkId, clerkId), eq(fourInARowGames.guestClerkId, clerkId))
       ).limit(fetchLimit),
       db.select({
         status: memoryGridMatches.status,
@@ -255,18 +244,6 @@ export async function GET(req: NextRequest) {
         };
       });
 
-    const diceFormatted = diceRows
-      .filter((g: any) => g.winnerId)
-      .map((game: any) => {
-        const amount = Number(game.wager ?? 0);
-        const payout = Number(game.prizePaid ?? 0);
-        const result = game.winnerId === clerkId ? "won" : "lost";
-        return {
-          type: "Dice Duel", date: game.endedAt || game.createdAt || new Date().toISOString(),
-          amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount,
-        };
-      });
-
     const poolFormatted = poolRows
       .filter((g: any) => g.winnerId)
       .map((game: any) => {
@@ -296,14 +273,14 @@ export async function GET(req: NextRequest) {
         };
       });
 
-    const connectFourFormatted = connectFourRows
+    const fourInARowFormatted = fourInARowRows
       .filter((g: any) => g.winnerClerkId)
       .map((game: any) => {
         const amount = Number(game.betAmount ?? 0);
         const payout = Number(game.payout ?? 0);
         const result = game.winnerClerkId === clerkId ? "won" : "lost";
         return {
-          type: "Connect Four", date: game.endedAt || game.createdAt || new Date().toISOString(),
+          type: "Four-In-A-Row", date: game.endedAt || game.createdAt || new Date().toISOString(),
           amount, payout, result, tokenDiff: result === "won" ? payout - amount : -amount,
         };
       });
@@ -319,9 +296,8 @@ export async function GET(req: NextRequest) {
   ...chess.map((b: any) => formatBet("Chess", b)),
       ...kenoPvpFormatted,
       ...kenoFormatted,
-      ...diceFormatted,
       ...poolFormatted,
-      ...connectFourFormatted,
+      ...fourInARowFormatted,
       ...memoryGridFormatted,
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

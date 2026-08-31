@@ -34,7 +34,7 @@ export async function GET() {
           COALESCE((SELECT COUNT(*) FROM keno_pvp_matches WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM uno_games       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM chess_games     WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM connect_four_games WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
+          COALESCE((SELECT COUNT(*) FROM four_in_a_row_games WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM lane_runner_games  WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM hex_duel_games     WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM dice_matches       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +

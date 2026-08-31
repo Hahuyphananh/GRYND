@@ -834,6 +834,20 @@
       "when": 1790100000000,
       "tag": "0129_register_official_icons",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1790900000000,
+      "tag": "0130_tower_arena",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1791000000000,
+      "tag": "0131_four_in_a_row",
+      "breakpoints": true
     }
   ]
 }

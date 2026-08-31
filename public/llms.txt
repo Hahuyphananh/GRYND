@@ -14,12 +14,11 @@ GRYND covers dozens of arcade and table games playable solo, against AI, or agai
 - [Crash Arena](https://www.grynd.mywire.org/games/crash-arena): Multiplayer cash-out racing game
 - [Crash](https://www.grynd.mywire.org/games/crash): Classic crash multiplier game
 - [Dice Flush](https://www.grynd.mywire.org/games/dice-flush): Dice-based skill game
-- [Dice Duel](https://www.grynd.mywire.org/games/dice-duel): Player-vs-player dice game
 - [Coin Flip](https://www.grynd.mywire.org/games/coin-flip): Fast coin-flip game, solo or PvP
 - [Keno](https://www.grynd.mywire.org/games/keno): Number-draw payout game
 - [RPS](https://www.grynd.mywire.org/games/rps): Rock-paper-scissors, solo or PvP
 - [Chess](https://www.grynd.mywire.org/games/chess): Chess against AI or other players
-- [Connect Four](https://www.grynd.mywire.org/games/connect-four): Connect Four, solo or PvP
+- [Four-In-A-Row](https://www.grynd.mywire.org/games/four-in-a-row): Four-In-A-Row, solo or PvP
 - [Dots & Boxes](https://www.grynd.mywire.org/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
 - [Pool Masters](https://www.grynd.mywire.org/games/pool-masters): Physics-based pool, solo or PvP
 - [Precision](https://www.grynd.mywire.org/games/precision): Aim-and-accuracy skill game, solo or PvP
