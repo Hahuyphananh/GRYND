@@ -3,6 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins
+// (status becomes active), auto-stops when it finishes or the user
+// quits. NavBar / Footer / modals stay OUTSIDE so nothing is recorded
+// until real gameplay starts.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/CreatorModeLayout";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../../../lib/gameAudio";
 import ReportModal from "../../../../../components/ReportModal";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
@@ -337,6 +344,16 @@ export default function DiceDuelMatchPage() {
     <div className="min-h-screen bg-[#050512] text-white p-4 md:p-8">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual game content is recorded — NavBar above and
+          modals below sit outside the shared CreatorModeHost recording
+          viewport. Recording auto-starts when the match becomes active
+          and stops when it finishes or the user quits. */}
+      <CreatorModeHost
+        autoStart={match?.status === "active"}
+        autoStop={match?.status === "finished" || match?.status === "cancelled"}
+        gameLabel="dice-duel"
+      >
+      <CreatorResponsiveLayout>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -561,6 +578,8 @@ export default function DiceDuelMatchPage() {
           ))}
         </div>
       </motion.div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
       {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

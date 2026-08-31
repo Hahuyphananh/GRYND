@@ -55,7 +55,7 @@ function normaliseMatch(match) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
-    // Player heads (displayName + profileImageUrl) so the lobby and
+    // Player heads (displayName + official iconKey) so the lobby and
     // match view can render proper names, not truncation. See
     // serverStore.js `enrichMatchesWithUsers` for the source.
     players: match.players ?? null,

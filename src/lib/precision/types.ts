@@ -33,7 +33,8 @@ export interface PrecisionPlayer {
   seat: PlayerSeat;
   userId: string;
   name: string;
-  profilePicture?: string | null;
+  /** Official Grynd icon key — never an arbitrary avatar URL. */
+  selectedIcon?: string | null;
   isReady: boolean;
   isConnected: boolean;
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
-import { isSafeProfilePictureUrl } from "../lib/security/media";
+import IconAvatar from "./IconAvatar";
 import {
   subscribeToBigWins,
   subscribeToChatMessages,
@@ -449,19 +449,15 @@ export default function ChatWidget() {
                       <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
                         <span className="flex items-center gap-3 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
                           {(() => {
-                            const avatarSrc = isSafeProfilePictureUrl(
-                              msg.profileImageUrl,
-                            )
-                              ? msg.profileImageUrl
-                              : "/default-avatar.png";
-
+                            // Official Grynd icon only — the legacy
+                            // profile_image_url snapshot is never rendered
+                            // as a live avatar (falls back to default).
                             return (
-                              <img
-                                src={avatarSrc}
-                                alt={`${msg.displayName || "Player"} profile`}
-                                className="h-9 w-9 rounded-full border-2 border-cyan-400/60 object-cover shadow-[0_0_12px_rgba(34,211,238,0.45)]"
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
+                              <IconAvatar
+                                iconKey={msg.iconKey}
+                                name={msg.displayName}
+                                size="h-9 w-9"
+                                className="border-2 border-cyan-400/60 shadow-[0_0_12px_rgba(34,211,238,0.45)]"
                               />
                             );
                           })()}

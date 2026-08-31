@@ -3,6 +3,19 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the actual game begins
+// (in_progress), auto-stops when it finishes or the user quits. The
+// waiting takeover stays OUTSIDE so nothing is recorded until real
+// gameplay starts.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../../components/creator-mode/CreatorModeLayout";
 import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
@@ -439,6 +452,94 @@ export default function ConnectFourGamePage() {
     return undefined;
   }, [game, replayCountdown, router]);
 
+  // ── Creator Mode bespoke portrait/landscape shell (shared recorder) ──
+  // Board-centric 9:16 presentation: compact header keeps the match info
+  // and turn timers readable, the board fills the main area, and the
+  // drop controls + Match Details stay pinned below. Same shell adapts to
+  // landscape/square via the shared layout primitives. Gameplay untouched.
+  const c4BoardNode = (
+    <div className="connect-four-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
+      {(game?.board || []).map((row: number[], rowIndex: number) =>
+        row.map((value, colIndex) => {
+          const isAnimatedCell =
+            fallingDisc?.row === rowIndex && fallingDisc?.col === colIndex;
+          const discValue = isAnimatedCell ? fallingDisc.value : value;
+          return (
+            <Disc
+              key={`${rowIndex}-${colIndex}`}
+              value={discValue}
+              className={isAnimatedCell ? "connect-four-fall" : ""}
+              style={
+                isAnimatedCell
+                  ? ({
+                      ["--drop-distance" as string]: `${(rowIndex + 1) * 66}px`,
+                    } as CSSProperties)
+                  : undefined
+              }
+            />
+          );
+        }),
+      )}
+    </div>
+  );
+  const c4DropControlsNode = (
+    <div className="connect-four-drop-controls grid grid-cols-7 gap-2">
+      {Array.from({ length: 7 }).map((_, col) => (
+        <button
+          key={`drop-${col}`}
+          onClick={() => playColumn(col)}
+          disabled={!canPlay || getDropRow(game?.board || [], col) < 0}
+          className="connect-four-drop-button"
+          title={`Drop in column ${col + 1}`}
+        >
+          ↓
+        </button>
+      ))}
+    </div>
+  );
+  const c4Shell = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-yellow-300">Connect Four</p>
+            <p className="truncate text-xs text-white/70">
+              {game?.hostName || "Host"} vs {game?.guestName || "Guest"} ·{" "}
+              {Number(game?.betAmount || 0).toFixed(2)} tokens
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${activeTimer <= 10 ? "bg-red-500/20 text-red-300" : "bg-green-500/15 text-green-300"}`}
+          >
+            ⏱ {activeTimer}s
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-white/80">
+            {game?.hostName || "Host"} · {hostTimer}s
+          </span>
+          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-white/80">
+            {game?.guestName || "Guest"} · {guestTimer}s
+          </span>
+        </div>
+      </ShellHeader>
+
+      <ShellMain className="flex-col justify-center">
+        <div className="w-full max-w-[560px] px-2">{c4BoardNode}</div>
+      </ShellMain>
+
+      <ShellAside>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
+          Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
+        </p>
+        {c4DropControlsNode}
+        <div className="mt-3 flex justify-center">
+          <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
+        </div>
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Unified full-screen waiting takeover */}
@@ -485,7 +586,16 @@ export default function ConnectFourGamePage() {
         )}
       </AnimatePresence>
 
-  <motion.div
+  {/* Only the actual game content is recorded — the waiting takeover
+      above stays outside the shared CreatorModeHost recording viewport.
+      Recording auto-starts when the game goes in_progress and stops when
+      it finishes/cancels or the user quits. */}
+  <CreatorModeHost
+    autoStart={game?.status === "in_progress"}
+    autoStop={game?.status === "finished" || game?.status === "cancelled"}
+    gameLabel="connect-four"
+  >
+  <CreatorView normal={<motion.div
   initial={{ opacity: 0, y: 8 }}
   animate={{ opacity: 1, y: 0 }}
   transition={{ duration: 0.35, ease: "easeOut" }}
@@ -616,19 +726,7 @@ export default function ConnectFourGamePage() {
               </div>
             </div>
 
-            <div className="connect-four-drop-controls mb-3 grid grid-cols-7 gap-2">
-              {Array.from({ length: 7 }).map((_, col) => (
-                <button
-                  key={`drop-${col}`}
-                  onClick={() => playColumn(col)}
-                  disabled={!canPlay || getDropRow(game?.board || [], col) < 0}
-                  className="connect-four-drop-button"
-                  title={`Drop in column ${col + 1}`}
-                >
-                  ↓
-                </button>
-              ))}
-            </div>
+            {c4DropControlsNode}
 
             {/* Emotes */}
             <div className="mb-3 flex justify-center">
@@ -641,30 +739,7 @@ export default function ConnectFourGamePage() {
               />
             </div>
 
-            <div className="connect-four-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
-              {(game?.board || []).map((row: number[], rowIndex: number) =>
-                row.map((value, colIndex) => {
-                  const isAnimatedCell =
-                    fallingDisc?.row === rowIndex &&
-                    fallingDisc?.col === colIndex;
-                  const discValue = isAnimatedCell ? fallingDisc.value : value;
-                  return (
-                    <Disc
-                      key={`${rowIndex}-${colIndex}`}
-                      value={discValue}
-                      className={isAnimatedCell ? "connect-four-fall" : ""}
-                      style={
-                        isAnimatedCell
-                          ? ({
-                              ["--drop-distance" as string]: `${(rowIndex + 1) * 66}px`,
-                            } as CSSProperties)
-                          : undefined
-                      }
-                    />
-                  );
-                }),
-              )}
-            </div>
+            {c4BoardNode}
           </div>
 
           <div
@@ -852,7 +927,11 @@ export default function ConnectFourGamePage() {
         )}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </motion.div>}
+      portrait={c4Shell}
+      landscape={c4Shell}
+    />
+    </CreatorModeHost>
     </>
   );
 }

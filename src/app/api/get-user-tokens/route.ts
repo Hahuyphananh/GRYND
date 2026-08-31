@@ -4,6 +4,11 @@ import { users } from "../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { computeEquippedStreakTitle } from "../../../lib/streakTitles";
+import {
+  DEFAULT_ICON_KEY,
+  isIconKey,
+} from "../../../lib/iconAssets";
+import { getIconByKey } from "../../../lib/icons";
 
 export async function POST(req: Request) {
   try {
@@ -25,7 +30,7 @@ export async function POST(req: Request) {
           balance: 0,
           name: null,
           email: null,
-          profilePicture: null,
+          selectedIcon: DEFAULT_ICON_KEY,
           profileAccent: null,
           profileBanner: null,
           avatarFrame: null,
@@ -42,7 +47,7 @@ export async function POST(req: Request) {
         balance: users.balance,
         name: users.name,
         email: users.email,
-        profilePicture: users.profilePicture,
+        selectedIcon: users.selectedIcon,
         profileAccent: users.profileAccent,
         profileBanner: users.profileBanner,
         avatarFrame: users.avatarFrame,
@@ -67,6 +72,17 @@ export async function POST(req: Request) {
 
     const user = userData[0];
 
+    // Official icon only — never a user-supplied URL. Hardens the stored
+    // value against NULL/malformed/disabled selections by falling back to the
+    // default. (A disabled icon can't be equipped, but guard anyway.)
+    let selectedIcon: string = isIconKey(user.selectedIcon)
+      ? user.selectedIcon
+      : DEFAULT_ICON_KEY;
+    if (selectedIcon !== DEFAULT_ICON_KEY) {
+      const catalog = await getIconByKey(selectedIcon);
+      if (!catalog) selectedIcon = DEFAULT_ICON_KEY;
+    }
+
     // Compute streak title
     const streakInfo = computeEquippedStreakTitle({
       selectedStreakType: user.selectedStreakType,
@@ -81,7 +97,7 @@ export async function POST(req: Request) {
           balance: user.balance,
           name: user.name,
           email: user.email,
-          profilePicture: user.profilePicture,
+          selectedIcon,
           profileAccent: user.profileAccent,
           profileBanner: user.profileBanner,
           avatarFrame: user.avatarFrame,

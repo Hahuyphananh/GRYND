@@ -1,0 +1,215 @@
+"use client";
+
+// src/components/creator-mode/CreatorModeLayout.jsx
+//
+// Shared Creator Mode visual layout. The goal is NOT to shrink the
+// desktop game into a tiny rectangle — it is a dedicated, responsive
+// game-presentation shell optimized for the selected recording aspect
+// ratio.
+//
+// Design:
+//   • <CreatorModeShell> is the only thing a game must mount to opt in.
+//     It controls the recording frame: it fills the frame exactly
+//     (w-full / h-full), is overflow-hidden (so captures are clean), and
+//     exposes `data-creator-layout={portrait|landscape|square}`.
+//   • It provides a layout context (useCreatorModeLayout) with the frame
+//     orientation + geometry so each game can arrange ITS OWN content —
+//     the shell does NOT force one identical layout on every game. Games
+//     compose <ShellHeader> / <ShellMain> / <ShellAside> the way that
+//     suits them, or lay content out entirely their own way.
+//   • Portrait (9:16) prefers a vertical column: compact header on top
+//     (branding + info), a large growing game area in the middle, and a
+//     pinned aside/controls at the bottom — prioritizing actual gameplay
+//     while keeping important info visible.
+//   • Landscape (16:9) and square (1:1) prefer a horizontal row with the
+//     game area growing and an aside on the side.
+//
+// The recording engine captures the provider's `data-creator-recording`
+// root; the shell renders INSIDE that root, so whatever a game arranges
+// here is exactly what gets recorded. When Creator Mode is off the
+// provider renders children directly and this shell never appears — the
+// normal desktop game is unchanged.
+//
+// No game rules, controls, wagers, or logic are touched by the shell — it
+// only arranges already-existing content.
+
+import React, { createContext, useContext, useMemo } from "react";
+import { useCreatorMode } from "../../lib/creator-mode/CreatorModeProvider";
+import { orientationOf } from "../../lib/creator-mode/layout";
+
+// ── Layout context ────────────────────────────────────────────────────
+
+const LayoutContext = createContext({
+  width: 0,
+  height: 0,
+  orientation: "square",
+  isPortrait: false,
+  isLandscape: false,
+  isSquare: true,
+});
+
+/**
+ * Read the recording frame's orientation/geometry so a game can arrange
+ * its content for the selected aspect ratio. Only meaningful when
+ * rendered under <CreatorModeShell /> (otherwise it returns the default).
+ */
+export function useCreatorModeLayout() {
+  return useContext(LayoutContext);
+}
+
+/**
+ * Wraps children in the layout context. <CreatorModeShell /> installs
+ * this automatically from the provider's selected dimensions; an
+ * explicit `dimensions` prop overrides those (for tests / static embeds).
+ */
+export function CreatorModeLayoutProvider({ dimensions, children }) {
+  const providerDims = useCreatorMode().dimensions || { width: 0, height: 0 };
+  const width = dimensions?.width || providerDims.width;
+  const height = dimensions?.height || providerDims.height;
+  const value = useMemo(() => {
+    const orientation = orientationOf(width, height);
+    return {
+      width,
+      height,
+      orientation,
+      isPortrait: orientation === "portrait",
+      isLandscape: orientation === "landscape",
+      isSquare: orientation === "square",
+    };
+  }, [width, height]);
+  return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>;
+}
+
+// ── Shell + primitives ────────────────────────────────────────────────
+
+/**
+ * The Creator Mode recording-frame shell. Fills the frame exactly and
+ * adapts its stacking direction to the selected aspect ratio:
+ *   • portrait  → flex-col (header / game / aside stack vertically)
+ *   • landscape → flex-row
+ *   • square    → flex-row
+ */
+export function CreatorModeShell({ dimensions = undefined, className = "", children }) {
+  return (
+    <CreatorModeLayoutProvider dimensions={dimensions}>
+      <ShellInner className={className}>{children}</ShellInner>
+    </CreatorModeLayoutProvider>
+  );
+}
+
+function ShellInner({ className = "", children }) {
+  const { isPortrait, orientation } = useCreatorModeLayout();
+  return (
+    <div
+      data-creator-layout={orientation}
+      className={`flex h-full w-full overflow-hidden ${
+        isPortrait ? "flex-col" : "flex-row"
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Compact branding / status bar. In portrait it tops the column. */
+export function ShellHeader({ className = "", children }) {
+  const { isPortrait } = useCreatorModeLayout();
+  return (
+    <div
+      data-creator-part="header"
+      className={`shrink-0 ${
+        isPortrait ? "w-full border-b border-[#00e5ff]/15 px-3 py-2" : ""
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** The growing gameplay area. Fill width/height as fits your game. */
+export function ShellMain({ className = "", children }) {
+  return (
+    <div
+      data-creator-part="main"
+      className={`relative flex min-h-0 min-w-0 flex-1 items-center justify-center ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A pinned region for secondary info/controls. In portrait it is a bottom
+ * strip (so it never covers the gameplay above); in landscape/square it is
+ * a right-hand column. Scrolls internally so it can hold more than fits.
+ */
+export function ShellAside({ className = "", children }) {
+  const { isPortrait } = useCreatorModeLayout();
+  return (
+    <div
+      data-creator-part="aside"
+      className={`shrink-0 overflow-y-auto ${
+        isPortrait
+          ? "max-h-[44%] w-full border-t border-[#00e5ff]/15 px-3 py-2"
+          : "h-full w-[300px] border-l border-[#00e5ff]/15 px-3 py-3"
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * <CreatorView> is the single per-game mount point for the shared visual
+ * layout. Games render it as the ONLY child of <CreatorModeHost /> so it
+ * sits UNDER the provider and can read the true selected dimensions:
+ *
+ *   <CreatorModeHost autoStart={gameStarted} autoStop={gameEnded} gameLabel="...">
+ *     <CreatorView normal={pageBody} portrait={portraitContent} landscape={landscapeContent} />
+ *   </CreatorModeHost>
+ *
+ * Behaviour:
+ *   • Creator mode OFF → renders `normal` byte-for-byte unchanged.
+ *   • Portrait (9:16) → renders `portrait` (or falls back to `landscape`,
+ *     then `normal`).
+ *   • Landscape / square → renders `landscape` (or falls back to `normal`).
+ *
+ * IMPORTANT: it must be a child of <CreatorModeHost /> (i.e. be mounted
+ * inside the provider). Do NOT call useCreatorMode from the page component
+ * above the host to pick a layout — that reads the default context and the
+ * creator shell would never show. This component exists precisely to move
+ * that decision under the provider.
+ */
+export function CreatorView({ normal, portrait, landscape }) {
+  const { isCreatorMode, dimensions } = useCreatorMode();
+  if (!isCreatorMode || !dimensions) return normal ?? null;
+  const orientation = orientationOf(dimensions.width, dimensions.height);
+  if (orientation === "portrait" && portrait) return portrait;
+  if (orientation !== "portrait" && landscape) return landscape;
+  return normal ?? null;
+}
+
+/**
+ * <CreatorResponsiveLayout> is the quick, uniform integration for games
+ * that don't need a bespoke portrait arrangement: when Creator Mode is on
+ * it drops the existing game content into the shared recording-frame shell
+ * (responsive to the selected aspect ratio — portrait stacks, landscape /
+ * square flow horizontally) and makes it scroll inside the frame so the
+ * full game stays readable and usable instead of being crushed into a tiny
+ * rectangle. When Creator Mode is off it returns `children` byte-for-byte
+ * unchanged.
+ *
+ * Works hand-in-hand with <CreatorView>/<CreatorModeHost>: mount it as the
+ * ONLY child of <CreatorModeHost /> so it reads the real provider context.
+ */
+export function CreatorResponsiveLayout({ children }) {
+  const { isCreatorMode } = useCreatorMode();
+  if (!isCreatorMode) return children;
+  return (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="items-start justify-start overflow-y-auto">
+        {children}
+      </ShellMain>
+    </CreatorModeShell>
+  );
+}

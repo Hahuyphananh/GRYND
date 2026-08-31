@@ -73,7 +73,7 @@ function normaliseMatch(match) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
-    // Player heads (displayName + profileImageUrl). Populated by
+    // Player heads (displayName + official iconKey). Populated by
     // enrichMatchesWithUsers below — the match view uses these to
     // render real names instead of truncation. Without this the
     // match view shows "user_xxxx…" after each commit bounce.

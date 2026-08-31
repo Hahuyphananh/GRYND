@@ -3,10 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { auditLog } from "../../../../lib/security/auditLog";
-import { isSafeProfilePicture } from "../../../../lib/security/media";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_PROFILE_PICTURE_LENGTH = 3_000_000;
+// NOTE: profile pictures are no longer accepted by this endpoint. Grynd
+// avatars are OFFICIAL icons only, equipped via /api/user/icon/select.
 export async function POST(request) {
   const sql = getNeonSql();
   const { userId } = await auth();
@@ -32,18 +32,12 @@ export async function POST(request) {
         maxLength: 128,
         default: null,
       },
-      profilePicture: {
-        type: "string",
-        required: false,
-        maxLength: MAX_PROFILE_PICTURE_LENGTH,
-        default: null,
-      },
     });
 
     if (!parsed.ok) return parsed.response;
 
     const currentRows = await sql`
-        SELECT name, email, profile_picture AS "profilePicture"
+        SELECT name, email
         FROM users
         WHERE clerk_id = ${userId}
         LIMIT 1
@@ -64,27 +58,8 @@ export async function POST(request) {
     const hasEmail = parsed.data.email !== null && parsed.data.email !== "";
     const hasPassword =
       parsed.data.password !== null && parsed.data.password !== "";
-    const hasProfilePicture = parsed.data.profilePicture !== null;
 
-    // File-upload hardening: the profile picture must be a real raster
-    // image (magic-byte verified data:image/png|jpeg|webp|gif|avif URL
-    // or an https:// URL). SVG, HTML, PHP/JSP polyglots, javascript:
-    // URLs and every other MIME are rejected before storage — a client
-    // can never store something that would execute when rendered.
-    if (hasProfilePicture) {
-      const picCheck = isSafeProfilePicture(parsed.data.profilePicture);
-      if (!picCheck.ok) {
-        return new Response(
-          JSON.stringify({ success: false, error: picCheck.error }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-    }
-
-    if (!hasName && !hasEmail && !hasPassword && !hasProfilePicture) {
+    if (!hasName && !hasEmail && !hasPassword) {
       return new Response(
         JSON.stringify({ success: false, error: "No profile fields provided" }),
         {
@@ -132,10 +107,6 @@ export async function POST(request) {
     const passwordHash = hasPassword
       ? await bcrypt.hash(parsed.data.password, 12)
       : null;
-    const profilePicture = hasProfilePicture
-      ? parsed.data.profilePicture
-      : currentUser.profilePicture;
-
     if (hasEmail && !EMAIL_REGEX.test(cleanEmail)) {
       return new Response(
         JSON.stringify({ success: false, error: "email has invalid format" }),
@@ -169,10 +140,9 @@ export async function POST(request) {
           password = CASE
             WHEN ${Boolean(passwordHash)} THEN ${passwordHash}
             ELSE password
-          END,
-          profile_picture = ${profilePicture || null}
+          END
       WHERE clerk_id = ${userId}
-      RETURNING name, email, profile_picture AS "profilePicture"
+      RETURNING name, email
     `;
 
     if (!updated.length) {
@@ -189,7 +159,6 @@ export async function POST(request) {
       userId,
       emailChangedTo: hasEmail ? cleanEmail : undefined,
       passwordUpdated: Boolean(passwordHash),
-      profilePictureUpdated: hasProfilePicture,
     });
 
     return new Response(

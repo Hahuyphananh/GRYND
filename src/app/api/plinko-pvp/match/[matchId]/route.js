@@ -103,7 +103,7 @@ function normaliseMatch(match, viewerUserId) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
-    // Player heads (displayName + profileImageUrl). Populated by
+    // Player heads (displayName + official iconKey). Populated by
     // enrichMatchesWithUsers. The match view uses these to render
     // real names instead of truncation. p1 == player1Id seat, p2 ==
     // player2Id seat — so the viewer (viewerSeat) can map directly.
@@ -195,7 +195,7 @@ export async function GET(req, { params }) {
     // on lookup failure (degrades to the player-N labels). The bug-fix
     // here is critical: previously, the API only returned
     // clerkIds, so the UI displayed "user_xxxx…" truncation. Now the
-    // client gets {displayName, profileImageUrl}.
+    // client gets {displayName, iconKey}.
     let enrichedMatch = match;
     try {
       const e = await enrichMatchesWithUsers(match);

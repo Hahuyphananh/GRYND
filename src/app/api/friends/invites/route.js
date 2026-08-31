@@ -40,7 +40,7 @@ export async function GET() {
     const meId = Number(current[0].id);
 
     const invites = await sql`
-      SELECT fi.id, fi.created_at, u.id AS sender_id, u.name AS sender_name, u.profile_picture AS sender_profile_picture
+      SELECT fi.id, fi.created_at, u.id AS sender_id, u.name AS sender_name, u.selected_icon AS sender_icon_key
       FROM friend_invites fi
       JOIN users u ON u.id = fi.sender_id
       WHERE fi.receiver_id = ${meId}

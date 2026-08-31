@@ -6,6 +6,7 @@ import { users } from "../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { logError } from "../../../lib/logError";
+import { grantDefaultIcon } from "../../../lib/icons";
 
 export async function POST(req: Request) {
   try {
@@ -55,7 +56,9 @@ export async function POST(req: Request) {
       email.split("@")[0] ||
       "Player";
 
-    const profilePicture = clerkUser.imageUrl || null;
+    // Grynd avatars are OFFICIAL icons only (users.selected_icon). Clerk's
+    // externally-hosted imageUrl is deliberately NOT copied into the Grynd
+    // profile system, so `clerkUser.imageUrl` never becomes a Grynd avatar.
 
     let rawPassword = crypto.randomBytes(32).toString("hex");
 
@@ -92,7 +95,6 @@ export async function POST(req: Request) {
           name: preferredName,
           email,
           password: passwordHash,
-          profilePicture,
         })
         .onConflictDoNothing({ target: users.clerkId })
         .returning();
@@ -172,6 +174,9 @@ export async function POST(req: Request) {
 }
 
 async function seedPlayerStats(user: { id: number; balance: string | null }) {
+  // New player owns the official default icon by default.
+  await grantDefaultIcon(user.id);
+
   await db.execute(sql`
     INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)
     VALUES (${user.id}, ${new Date().toISOString().slice(0, 10)}, ${user.balance ?? "1000.00"}, ${user.balance ?? "1000.00"})

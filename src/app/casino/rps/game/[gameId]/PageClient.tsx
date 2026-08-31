@@ -12,6 +12,12 @@ import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the actual RPS game begins
+// (matched/active), auto-stops when it finishes or the user quits.
+// NavBar / Footer stay OUTSIDE so nothing is recorded until gameplay.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/CreatorModeLayout";
 import Footer from "../../../../../components/Footer";
 import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
@@ -310,6 +316,16 @@ export default function RPSPvpGamePage() {
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual game content is recorded — NavBar / Footer stay
+          outside the shared CreatorModeHost recording viewport. Recording
+          auto-starts when the game is matched/active and stops when it
+          finishes or the user quits. */}
+      <CreatorModeHost
+        autoStart={status === "matched" || status === "active"}
+        autoStop={status === "finished" || status === "cancelled"}
+        gameLabel="rock-paper-scissors"
+      >
+      <CreatorResponsiveLayout>
       <div className="flex flex-col md:flex-row">
       {/* ── Left sidebar: rounds history (replaces the old lobby/bet panel) ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
@@ -568,6 +584,8 @@ export default function RPSPvpGamePage() {
         gameType="Rock Paper Scissors"
       />
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
       <Footer />
     </div>
   );

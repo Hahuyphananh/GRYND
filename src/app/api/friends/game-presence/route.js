@@ -55,7 +55,7 @@ export async function GET() {
       SELECT
         u.id AS friend_id,
         u.name,
-        u.profile_picture,
+        u.selected_icon AS icon_key,
         p.last_seen,
         p.status,
         p.current_game_id,
@@ -88,7 +88,7 @@ export async function GET() {
       const friendPayload = {
         id: row.friend_id,
         name: row.name,
-        profilePicture: row.profile_picture,
+        iconKey: row.icon_key,
         gameId: parsed.gameId,
       };
 

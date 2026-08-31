@@ -281,6 +281,11 @@ export const users = pgTable("users", {
   profileAccent: varchar("profile_accent", { length: 7 }),
   profileBanner: text("profile_banner"),
   avatarFrame: varchar("avatar_frame", { length: 40 }),
+  // Official Grynd icon the user has equipped. Resolved through the
+  // official icon catalog (src/lib/icons.ts) — never an arbitrary URL.
+  // Defaults to the official default icon key; NULL/invalid/disabled
+  // values fall back to the default at read time.
+  selectedIcon: varchar("selected_icon", { length: 120 }).default("default"),
   // Responsible-play setting: per-player daily loss limit (tokens).
   // Null = global default, 0 = warnings disabled, > 0 = custom threshold.
   dailyLossLimit: integer("daily_loss_limit"),
@@ -404,6 +409,48 @@ export const userSpecialTitles = pgTable(
   })
 );
 
+// OFFICIAL GRYND ICON CATALOG + OWNERSHIP
+// ==============================================================================
+// Mirrors the specialTitles ownership pattern: a catalog table, a
+// per-user ownership join table, and an equipped-item column on `users`.
+// Avatars are ALWAYS official icons resolved through this catalog — never
+// arbitrary user-provided URLs. `price_tokens` is reserved for a future
+// token-priced shop (purchases not implemented yet; NULL = not for sale).
+export const icons = pgTable("icons", {
+  id: serial("id").primaryKey(),
+  // Stable slug used to resolve the icon's official asset and to equip it.
+  key: varchar("key", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description").notNull().default(""),
+  // Official asset path (e.g. "/icons/default.webp"). Resolved only from
+  // this trusted catalog row — never from user input.
+  assetPath: text("asset_path").notNull(),
+  rarity: varchar("rarity", { length: 40 }).notNull().default("Common"),
+  // Reserved for the future token shop; not used for charging yet.
+  priceTokens: integer("price_tokens"),
+  enabled: boolean("enabled").notNull().default(true),
+  // Exactly the icon every user receives by default (the "official default").
+  isDefault: boolean("is_default").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const userIcons = pgTable(
+  "user_icons",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    iconKey: varchar("icon_key", { length: 120 }).notNull(),
+    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserIcon: index("user_icons_user_icon_idx").on(table.userId, table.iconKey),
+  })
+);
+
 export const streakTitles = pgTable("streak_titles", {
   id: serial("id").primaryKey(),
   days: integer("days").notNull().unique(),
@@ -445,6 +492,11 @@ export const chatMessages = pgTable(
     roomId: varchar("room_id", { length: 255 }).notNull(),
     clerkId: varchar("clerk_id", { length: 255 }).notNull(),
     displayName: varchar("display_name", { length: 255 }).notNull(),
+    // Official Grynd icon key for this sender's avatar. Null on legacy
+    // rows (before this column existed) — the client renders the default
+    // icon for those. The legacy `profile_image_url` snapshot is never
+    // used as a live avatar in the official icon system.
+    iconKey: text("icon_key"),
     profileImageUrl: text("profile_image_url"),
     content: text("content").notNull(),
     isDeleted: boolean("is_deleted").notNull().default(false),

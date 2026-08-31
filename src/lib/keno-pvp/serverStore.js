@@ -127,7 +127,8 @@ function summariseUsers(rows) {
     out[r.clerkId] = {
       id: r.clerkId,
       displayName: r.displayName || r.clerkId,
-      profileImageUrl: r.profileImageUrl || null,
+      // Official Grynd icon key only — never an arbitrary avatar URL.
+      iconKey: r.iconKey || "default",
     };
   }
   return out;
@@ -156,7 +157,7 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
       .select({
         clerkId: users.clerkId,
         displayName: users.name,
-        profileImageUrl: users.profilePicture,
+        iconKey: users.selectedIcon,
       })
       .from(users)
       .where(inArray(users.clerkId, Array.from(ids)));

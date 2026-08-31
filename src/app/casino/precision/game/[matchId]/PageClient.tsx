@@ -24,6 +24,13 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins
+// (leaves the waiting room), auto-stops when it finishes or the user
+// quits. The waiting room and Footer/modals stay OUTSIDE so nothing is
+// recorded until real gameplay starts.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
@@ -999,6 +1006,20 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual game content is recorded — the waiting room +
+          NavBar above and the Footer/modals below sit outside the shared
+          CreatorModeHost recording viewport. Recording auto-starts when
+          the match leaves the waiting room and stops when it finishes. */}
+      <CreatorModeHost
+        autoStart={
+          Boolean(state) &&
+          state.phase !== "waiting" &&
+          state.phase !== "finished"
+        }
+        autoStop={state?.phase === "finished"}
+        gameLabel="precision"
+      >
+      <CreatorResponsiveLayout>
       <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1335,6 +1356,8 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
           )}
         </AnimatePresence>
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
 
       <PrecisionResultPopup
         popup={endPopup}

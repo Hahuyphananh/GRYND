@@ -211,11 +211,7 @@ async function fetchRankedRows({
   const columns = await getLeaderboardColumns();
   const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
   const nameField = userIdentityField(columns, "name", "'Unknown'");
-  const profilePictureField = userIdentityField(
-    columns,
-    "profile_picture",
-    "NULL",
-  );
+  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   const meClause =
     clerkId && hasColumn(columns, "users", "clerk_id")
@@ -230,10 +226,10 @@ async function fetchRankedRows({
           ${clerkIdField} AS clerk_id,
           s.user_id,
           ${nameField} AS name,
-          ${profilePictureField} AS profile_picture,
+          ${iconKeyField} AS icon_key,
           json_build_object(
             'name', ${nameField},
-            'profile_picture', ${profilePictureField}
+            'icon_key', ${iconKeyField}
           ) AS "user",
           ${fields}
         FROM user_stats s

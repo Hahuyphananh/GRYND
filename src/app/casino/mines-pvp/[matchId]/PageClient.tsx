@@ -30,6 +30,13 @@ import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually begins
+// (leaves the waiting room), auto-stops when it finishes or the user
+// quits. The waiting/matchmaking takeover and Footer stay OUTSIDE so
+// nothing is recorded until real gameplay starts.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
@@ -1360,7 +1367,26 @@ export default function MinesPvpMatchPage({
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual game content is recorded — the matchmaking
+          takeover / NavBar above and the Footer + modals below sit
+          outside the shared CreatorModeHost recording viewport.
+          Recording auto-starts when the match leaves waiting and stops
+          when it finishes/cancels. */}
       <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+        <CreatorModeHost
+          autoStart={
+            Boolean(match) &&
+            match.status !== MATCH_STATUS.WAITING &&
+            match.status !== MATCH_STATUS.FINISHED &&
+            match.status !== MATCH_STATUS.CANCELLED
+          }
+          autoStop={
+            match?.status === MATCH_STATUS.FINISHED ||
+            match?.status === MATCH_STATUS.CANCELLED
+          }
+          gameLabel="mines-duel"
+        >
+        <CreatorResponsiveLayout>
         <motion.div
           initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1563,6 +1589,8 @@ export default function MinesPvpMatchPage({
             </button>
           </div>
         )}
+        </CreatorResponsiveLayout>
+        </CreatorModeHost>
 
         <Footer />
       </div>

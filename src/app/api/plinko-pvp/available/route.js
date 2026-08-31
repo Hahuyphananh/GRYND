@@ -26,7 +26,7 @@ export async function GET() {
           // Surface host display name so the lobby can render proper
           // player heads (e.g. "Host: Alice") instead of truncation.
           hostName: m.players?.p1?.displayName ?? m.player1Id,
-          hostProfileImageUrl: m.players?.p1?.profileImageUrl ?? null,
+          hostIconKey: m.players?.p1?.iconKey ?? null,
         })),
       },
     });

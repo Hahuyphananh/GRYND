@@ -4,6 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+// Shared Creator Mode foundation (admin-only). Recording auto-starts
+// when the balls are laid out (game begins), auto-stops when a winner is
+// declared or the user quits. NavBar / modals stay OUTSIDE the viewport.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
@@ -1263,43 +1274,11 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     .filter((b) => !balls.find((bb) => bb.number === b.n)?.pocketed)
     .map((b) => b.n);
 
-  return (
+
+  /* Creator Mode bespoke portrait: pool table large, player info on
+     top, shot / match controls pinned below. */
+  const creatorStatus = (
     <>
-      {/* Unified full-screen waiting takeover */}
-      {!started && (
-        <MatchWaiting
-          state="waiting"
-          gameName={aiMode ? "Pool vs AI" : "Pool Masters"}
-          subtitle="Waiting for the match to start…"
-          seats={[
-            { label: "You", name: "You", occupied: true },
-            { label: aiMode ? "AI" : "Opponent", occupied: false },
-          ]}
-        />
-      )}
-
-      <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
-      <NavigationBar currentPath="/casino" />
-
-      {/* ── Shot notification toasts ── */}
-      <div className="pointer-events-none fixed left-1/2 top-20 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
-        {notifications.map((n) => (
-          <div
-            key={n.id}
-            className={`animate-slide-down rounded-full px-5 py-2 text-sm font-bold shadow-2xl backdrop-blur-md ${
-              n.type === "pocket"
-                ? "bg-emerald-600/90 text-white"
-                : n.type === "foul"
-                  ? "bg-red-600/90 text-white"
-                  : "bg-yellow-500/90 text-black"
-            }`}
-          >
-            {n.message}
-          </div>
-        ))}
-      </div>
-
-      <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
         <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
   ? turn === owner
@@ -1313,7 +1292,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           {lastFoul ? `FOUL: ${lastFoul.replace(/^Foul: /, "")}` : status}
           {ballInHand ? " • Ball in hand" : ""}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
+        </>
+  );
+  const creatorScoreRow = (
+    <><div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 shadow-inner">
             <p className="relative font-bold">{myName}<EmoteBubble emote={myEmote} side="mine" /></p>
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
@@ -1324,8 +1306,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
           </div>
-        </div>
-        {/* ── Emotes ── */}
+        </div></>
+  );
+  const creatorEmotes = (
+    <>{/* ── Emotes ── */}
         {started && !winner && (
           <div className="mt-3 flex justify-center">
             <EmotePicker
@@ -1337,7 +1321,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             />
           </div>
         )}
-        {/* ── Resign button ── */}
+        </>
+  );
+  const creatorResign = (
+    <>{/* ── Resign button ── */}
         {started && !winner && (
           <div className="mt-3 flex flex-col items-center gap-2">
             <div className="flex justify-center">
@@ -1379,7 +1366,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           </div>
         )}
 
-        {/* ── Win / Loss popup modal ── */}
+        </>
+  );
+  const creatorPopup = (
+    <>{/* ── Win / Loss popup modal ── */}
         <AnimatePresence>
         {showWinLossPopup && gameOverMessage && (
           <motion.div
@@ -1468,7 +1458,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         )}
         </AnimatePresence>
 
-        {/* ── Shot history toggle & panel ── */}
+        </>
+  );
+  const creatorHistory = (
+    <>{/* ── Shot history toggle & panel ── */}
         <div className="mt-3">
           <button
             onClick={() => setShowHistory((p) => !p)}
@@ -1530,7 +1523,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           )}
         </div>
 
-        <div className="relative mt-4">
+        </>
+  );
+  const creatorTable = (
+    <><div className="relative mt-4">
           {/* ── Shot power meter ── */}
           {canShoot && pull > 0 && (
             <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-1">
@@ -1669,9 +1665,89 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
 shadow-[0_12px_40px_rgba(0,0,0,.75)]
 ${!canShoot ? "pointer-events-none" : ""}`}
             />
-        </div>
+        </div></>
+  );
+
+  const desktopContent = (
+    <>
+      <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
+      {creatorStatus}
+      {creatorScoreRow}
+      {creatorEmotes}
+      {creatorResign}
+      {creatorPopup}
+      {creatorHistory}
+      {creatorTable}
       </div>
-      {/* Report Modal */}
+    </>
+  );
+
+  const portraitContent = (
+    <CreatorModeShell className="bg-[#0b1324]">
+      <ShellHeader className="space-y-2">
+        {creatorStatus}
+        {creatorScoreRow}
+      </ShellHeader>
+      <ShellMain className="h-full items-start">
+        {creatorTable}
+      </ShellMain>
+      <ShellAside className="space-y-3">
+        {creatorEmotes}
+        {creatorResign}
+        {creatorHistory}
+      </ShellAside>
+      {creatorPopup}
+    </CreatorModeShell>
+  );
+
+  return (
+    <>
+      {/* Unified full-screen waiting takeover */}
+      {!started && (
+        <MatchWaiting
+          state="waiting"
+          gameName={aiMode ? "Pool vs AI" : "Pool Masters"}
+          subtitle="Waiting for the match to start…"
+          seats={[
+            { label: "You", name: "You", occupied: true },
+            { label: aiMode ? "AI" : "Opponent", occupied: false },
+          ]}
+        />
+      )}
+
+      <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
+      <NavigationBar currentPath="/casino" />
+
+      {/* ── Shot notification toasts ── */}
+      <div className="pointer-events-none fixed left-1/2 top-20 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
+        {notifications.map((n) => (
+          <div
+            key={n.id}
+            className={`animate-slide-down rounded-full px-5 py-2 text-sm font-bold shadow-2xl backdrop-blur-md ${
+              n.type === "pocket"
+                ? "bg-emerald-600/90 text-white"
+                : n.type === "foul"
+                  ? "bg-red-600/90 text-white"
+                  : "bg-yellow-500/90 text-black"
+            }`}
+          >
+            {n.message}
+          </div>
+        ))}
+      </div>
+
+            <CreatorModeHost
+        autoStart={balls.length > 0}
+        autoStop={Boolean(winner)}
+        gameLabel="pool-masters"
+      >
+        <CreatorView
+          normal={desktopContent}
+          portrait={portraitContent}
+          landscape={desktopContent}
+        />
+      </CreatorModeHost>
+{/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}

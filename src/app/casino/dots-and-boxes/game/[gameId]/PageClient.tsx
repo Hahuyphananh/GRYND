@@ -3,6 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the actual game begins
+// (in_progress), auto-stops when it finishes or the user quits. The
+// waiting takeover stays OUTSIDE so nothing is recorded until real
+// gameplay starts.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../../components/creator-mode/CreatorModeLayout";
 import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
@@ -501,6 +514,85 @@ const prefersReducedMotion = useReducedMotion();
 
   // ─── Render ─────────────────────────────────────────────────────────
 
+  // ── Creator Mode bespoke portrait/landscape shell (shared recorder) ──
+  // Board-centric 9:16 presentation: compact header keeps the turn timer
+  // and both scores readable, the board fills the main area, and the
+  // status/details stay pinned below. Same shell adapts to landscape /
+  // square via the shared layout primitives. Gameplay untouched.
+  const dbBoardNode = (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: 0.2, duration: 0.5 }}
+      className="w-full flex justify-center"
+    >
+      <DotsAndBoxesBoard
+        drawnH={drawnH}
+        drawnV={drawnV}
+        boxes={boxesForBoard}
+        boxOwners={boxOwnersForBoard}
+        player1Color="#f59e0b"
+        player2Color="#f97316"
+        interactive={isMyTurn && !drawing && !boardLocked}
+        onEdgeHClick={drawEdge.bind(null, "h")}
+        onEdgeVClick={drawEdge.bind(null, "v")}
+        edgeTooltipH={(row, col) =>
+          t("games.dots_and_boxes.edge_tooltip_h", { row, col })
+        }
+        edgeTooltipV={(row, col) =>
+          t("games.dots_and_boxes.edge_tooltip_v", { row, col })
+        }
+      />
+    </motion.div>
+  );
+  const dbShell = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Dots &amp; Boxes</p>
+            <p className="truncate text-xs text-white/70">
+              {game?.hostName || "Host"} vs {game?.guestName || "Guest"}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
+              timerUrgent ? "bg-red-500/20 text-red-300" : "bg-emerald-500/15 text-emerald-300"
+            }`}
+          >
+            ⏱ {remainingSeconds}s
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
+          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-amber-300">{game?.hostName || "Host"} · {scores.host}</span>
+          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-orange-300">{game?.guestName || "Guest"} · {scores.guest}</span>
+        </div>
+      </ShellHeader>
+
+      <ShellMain className="justify-center">{dbBoardNode}</ShellMain>
+
+      <ShellAside>
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-white/50">
+          Status · {statusText}
+        </p>
+        <p className="mb-2 text-xs text-white/70">
+          {isMyTurn
+            ? t("games.dots_and_boxes.your_turn")
+            : timerExpired
+              ? t("games.dots_and_boxes.time_expired")
+              : t("games.dots_and_boxes.opponent_thinking")}
+        </p>
+        <p className="text-[10px] uppercase tracking-widest text-white/40">
+          {game?.role === "host"
+            ? t("games.dots_and_boxes.role_host")
+            : game?.role === "guest"
+              ? t("games.dots_and_boxes.role_guest")
+              : ""}
+        </p>
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Unified full-screen waiting takeover */}
@@ -518,7 +610,16 @@ const prefersReducedMotion = useReducedMotion();
         />
       )}
 
-      <motion.div
+      {/* Only the actual game content is recorded — the waiting takeover
+          above stays outside the shared CreatorModeHost recording
+          viewport. Recording auto-starts when the game goes in_progress
+          and stops when it finishes/cancels or the user quits. */}
+      <CreatorModeHost
+        autoStart={game?.status === "in_progress"}
+        autoStop={game?.status === "finished" || game?.status === "cancelled"}
+        gameLabel="dots-and-boxes"
+      >
+      <CreatorView normal={<motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
@@ -626,30 +727,7 @@ const prefersReducedMotion = useReducedMotion();
               </div>
             )}
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
-              className="w-full flex justify-center"
-            >
-              <DotsAndBoxesBoard
-                drawnH={drawnH}
-                drawnV={drawnV}
-                boxes={boxesForBoard}
-                boxOwners={boxOwnersForBoard}
-                player1Color="#f59e0b"
-                player2Color="#f97316"
-                interactive={isMyTurn && !drawing && !boardLocked}
-                onEdgeHClick={drawEdge.bind(null, "h")}
-                onEdgeVClick={drawEdge.bind(null, "v")}
-                edgeTooltipH={(row, col) =>
-                  t("games.dots_and_boxes.edge_tooltip_h", { row, col })
-                }
-                edgeTooltipV={(row, col) =>
-                  t("games.dots_and_boxes.edge_tooltip_v", { row, col })
-                }
-              />
-            </motion.div>
+            {dbBoardNode}
           </div>
 
           {/* ─── Sidebar ───────────────────────────────────────────── */}
@@ -1061,7 +1139,11 @@ const prefersReducedMotion = useReducedMotion();
         reportedPlayerName={opponentName}
         gameType="Dots & Boxes"
       />
-      </motion.div>
+      </motion.div>}
+        portrait={dbShell}
+        landscape={dbShell}
+      />
+      </CreatorModeHost>
     </>
   );
 }
