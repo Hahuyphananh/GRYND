@@ -15,6 +15,7 @@ import {
 } from "@tabler/icons-react";
 import PlayerList from "./PlayerList";
 import PlayerSidebar from "./PlayerSidebar";
+import IconAvatar from "../IconAvatar";
 import PotDisplay from "./PotDisplay";
 import TableBalance from "./TableBalance";
 import RoundTimer from "./RoundTimer";
@@ -732,13 +733,16 @@ export default function ArenaTable({
                   className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-xs"
                 >
                   <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border shrink-0 ${
-                      p.isYou
-                        ? "bg-[#FFD700]/25 border-[#FFD700] text-[#FFD700]"
-                        : "bg-[#020617] border-yellow-500/30 text-yellow-400"
+                    className={`w-6 h-6 rounded-full overflow-hidden border shrink-0 ${
+                      p.isYou ? "border-[#FFD700]" : "border-yellow-500/30"
                     }`}
                   >
-                    {p.name?.charAt(0)?.toUpperCase() || "?"}
+                    <IconAvatar
+                      iconKey={p.iconKey}
+                      name={p.name}
+                      size="h-full w-full"
+                      showFrame={false}
+                    />
                   </span>
                   <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
                     {p.name}

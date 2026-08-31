@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, usePathname } from "next/navigation";
 import ReviewModal from "./ReviewModal";
+import IconAvatar from "../IconAvatar";
 
 interface Review {
   id: number;
@@ -13,6 +14,7 @@ interface Review {
   game: string | null;
   createdAt: string;
   username: string;
+  iconKey: string | null;
 }
 
 interface ReviewStats {
@@ -137,9 +139,12 @@ export default function ReviewWall({ limit = 9 }: { limit?: number }) {
               {r.title && <h3 className="mb-1 font-bold text-white">{r.title}</h3>}
               {r.body && <p className="text-sm leading-relaxed text-[#c9f7ff]/80">{r.body}</p>}
               <div className="mt-3 flex items-center gap-2 text-xs text-[#c9f7ff]/60">
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#00e5ff]/20 text-[10px] font-bold text-[#00e5ff]">
-                  {(r.username || "P").charAt(0).toUpperCase()}
-                </span>
+                <IconAvatar
+                  iconKey={r.iconKey}
+                  name={r.username}
+                  size="h-6 w-6"
+                  showFrame={false}
+                />
                 <span className="font-semibold text-[#c9f7ff]/80">{r.username || "Player"}</span>
                 <span className="ml-auto rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">
                   Verified player
