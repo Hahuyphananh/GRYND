@@ -13,7 +13,7 @@
 //   * compatible with the Grynd+ AvatarFrame system (frame prop = avatar_frame
 //     key); sizing/layout is controlled by the caller via `size` / `className`.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AvatarFrame from "./AvatarFrame";
 import {
   DEFAULT_ICON_KEY,
@@ -48,6 +48,15 @@ export default function IconAvatar({
   const effectiveKey = isIconKey(iconKey) ? iconKey : DEFAULT_ICON_KEY;
   const src = iconAssetUrl(effectiveKey);
   const [failed, setFailed] = useState(false);
+
+  // Reset the fallback whenever the resolved asset changes (e.g. the user
+  // equips a different icon). Otherwise a component that fell back to the
+  // letter avatar (missing default.webp, network blip) would stay stuck on
+  // the letter even after the new icon's file became available.
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
   const initial = (name || "U").charAt(0).toUpperCase();
 
   const avatarEl = failed ? (
