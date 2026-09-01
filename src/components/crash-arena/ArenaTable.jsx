@@ -633,7 +633,10 @@ export default function ArenaTable({
       )}
 
       {/* ═══ Game area — centered, square-ish 4:3 canvas + side panel ═══ */}
-      <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
+      {/* data-creator-stack: in the portrait (9:16) creator frame this stays
+          the phone-style stacked column (canvas first, sidebar below) via the
+          shared portrait-stacking CSS. Desktop + landscape/square unchanged. */}
+      <div data-creator-stack className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
         {/* Main game canvas — hosts CrashEngine. The 4:3 ratio matches
             CrashGraph's internal 800×600 coordinate space, so the canvas
             scales uniformly and stays centered on every screen size. */}
@@ -704,7 +707,7 @@ export default function ArenaTable({
       )}
 
       {/* ═══ Player list + wait list ═══ */}
-      <div className="flex flex-col lg:flex-row gap-4">
+      <div data-creator-stack className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1 px-4 py-3 rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 backdrop-blur-sm">
           <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 mb-3 text-center">
             Players &bull; {seatedCount}/{maxPlayers}

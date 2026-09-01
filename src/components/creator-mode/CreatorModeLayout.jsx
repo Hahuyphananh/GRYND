@@ -193,11 +193,13 @@ export function CreatorView({ normal, portrait, landscape }) {
  * <CreatorResponsiveLayout> is the quick, uniform integration for games
  * that don't need a bespoke portrait arrangement: when Creator Mode is on
  * it drops the existing game content into the shared recording-frame shell
- * (responsive to the selected aspect ratio — portrait stacks, landscape /
- * square flow horizontally) and makes it scroll inside the frame so the
- * full game stays readable and usable instead of being crushed into a tiny
- * rectangle. When Creator Mode is off it returns `children` byte-for-byte
- * unchanged.
+ * and the game page FILLS the frame edge-to-edge — full frame width and
+ * height (the shared `[data-creator-fill]` CSS overrides the page's
+ * desktop max-width / centering inside the shell), scrolling internally
+ * only when the content is taller than the frame. The game's own
+ * responsive layout arranges everything at the frame's size, so the game
+ * is never shrunk into a tiny rectangle. When Creator Mode is off it
+ * returns `children` byte-for-byte unchanged.
  *
  * Works hand-in-hand with <CreatorView>/<CreatorModeHost>: mount it as the
  * ONLY child of <CreatorModeHost /> so it reads the real provider context.
@@ -207,9 +209,12 @@ export function CreatorResponsiveLayout({ children }) {
   if (!isCreatorMode) return children;
   return (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="items-start justify-start overflow-y-auto">
+      <div
+        data-creator-fill
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
+      >
         {children}
-      </ShellMain>
+      </div>
     </CreatorModeShell>
   );
 }

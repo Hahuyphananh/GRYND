@@ -1703,7 +1703,11 @@ export default function RoulettePvpGamePage({ params }) {
         gameLabel="roulette"
       >
       <CreatorResponsiveLayout>
-      <div className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
+      {/* data-creator-stack-swap: in the portrait (9:16) creator frame this
+          flips to the phone-style stacked column (wheel + board first,
+          controls below) via the shared portrait-stacking CSS. Desktop and
+          landscape/square creator rendering are unchanged. */}
+      <div data-creator-stack data-creator-stack-swap className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
         {/* ── Left sidebar: PvP state + controls ─────────────────── */}
         <div className="flex w-full flex-shrink-0 flex-col items-start gap-3 sm:w-[280px] sm:gap-4">
           <h1 className="mt-2 w-full text-center text-2xl font-bold text-[#FFFF33] drop-shadow-[0_0_12px_rgba(255,255,51,0.6)] sm:text-3xl inline-flex items-center justify-center gap-2">

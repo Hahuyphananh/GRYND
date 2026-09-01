@@ -14,6 +14,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import { motion, AnimatePresence } from "framer-motion";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the player makes their first
+// throw, auto-stops when the match is over. No gameplay logic touched.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
@@ -147,7 +152,17 @@ export default function RPSPlayAiPage() {
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <div className="flex flex-col md:flex-row">
+      <CreatorModeHost
+        autoStart={phase !== "picking"}
+        autoStop={matchOver}
+        gameLabel="rock-paper-scissors-ai"
+      >
+      <CreatorResponsiveLayout>
+      {/* data-creator-stack-swap: in the portrait (9:16) creator frame this
+          flips to the phone-style stacked column (the duel first, rounds
+          history below) via the shared portrait-stacking CSS. Desktop and
+          landscape/square creator rendering are unchanged. */}
+      <div data-creator-stack data-creator-stack-swap className="flex flex-col md:flex-row">
       {/* ── Left sidebar: rounds history ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
         <div className="rounded-2xl border border-amber-700/60 bg-black/40 p-4 backdrop-blur-xl shadow-[0_0_25px_rgba(251,191,36,0.12)]">
@@ -361,6 +376,8 @@ export default function RPSPlayAiPage() {
         )}
       </motion.main>
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
       <Footer />
     </div>
   );
