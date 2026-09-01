@@ -110,6 +110,7 @@ type Player = {
   status: string;
   placement: number | null;
   isAi: boolean;
+  ready: boolean;
   name: string;
   iconKey: string;
 };
@@ -286,12 +287,18 @@ export default function TowerArenaMatchPage() {
   const [reserveTargetId, setReserveTargetId] = useState<string | null>(null);
   const [reserving, setReserving] = useState(false);
   const [placing, setPlacing] = useState(false);
+  // Ready gate
+  const [readyBusy, setReadyBusy] = useState(false);
   // Events
   const [collapseBanner, setCollapseBanner] = useState<any>(null);
   const [showResults, setShowResults] = useState(false);
   const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<string> | null>(null);
   const prevTowerLen = useRef<number | null>(null);
   const prevTurnUserId = useRef<string | null>(null);
+  // Always-fresh `load` for socket handlers (the effect registers listeners
+  // once per socket; a ref keeps them calling the LATEST render's load so
+  // `me`/state reads inside are never stale).
+  const loadRef = useRef<() => Promise<void>>(async () => {});
 
   const load = async () => {
     try {
@@ -305,13 +312,24 @@ export default function TowerArenaMatchPage() {
       }
       setMatch(data.match);
       setPlayers(data.players || []);
+      // The viewer's private projection (seat, ready flag, held reserve,
+      // reserve uses, status) — without it every "is it my turn / can I
+      // reserve / am I ready" check reads as false and the player can
+      // neither place nor reserve.
+      if (data.me) setMe(data.me);
 
       // Detect a fresh collapse (the tower thus shrinks below its previous
       // stable length) to trigger the elimination animation.
       const towerLen = Array.isArray(data.match?.towerState) ? data.match.towerState.length : 0;
       if (prevTowerLen.current !== null && prevTowerLen.current > towerLen && data.match?.status === "active") {
-        // Which player just got eliminated? Find the newly-eliminated one.
-        const elim = (data.players || []).find((p: any) => p.status === "eliminated");
+        // Which player just got eliminated? The most recently-eliminated one
+        // (the players array holds every eliminated seat in seat order).
+        const elim = (data.players || [])
+          .filter((p: any) => p.status === "eliminated")
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.eliminatedAt || 0).getTime() - new Date(a.eliminatedAt || 0).getTime(),
+          )[0];
         setCollapseBanner({ name: elim?.name || "A player", placement: elim?.placement });
         setCollapsedBlockIds(new Set(data.match.placements?.slice(-1)?.[0]?.removedBlockIds || []));
         playCrash();
@@ -344,6 +362,7 @@ export default function TowerArenaMatchPage() {
       // silent
     }
   };
+  loadRef.current = load;
 
   useEffect(() => {
     load();
@@ -364,7 +383,7 @@ export default function TowerArenaMatchPage() {
     if (!socket || !matchId) return;
     const matchRoom = `tower-arena:match:${matchId}`;
     const lobbyRoom = `tower-arena:lobby:${matchId}`;
-    const refresh = () => load();
+    const refresh = () => loadRef.current();
 
     const joinRooms = () => {
       socket.emit("join_room", { roomId: matchRoom });
@@ -435,6 +454,45 @@ export default function TowerArenaMatchPage() {
       setLeaving(false);
     }
   };
+
+  // Ready gate — toggle READY (click again to unready). The server decides
+  // when every player is ready and opens the 10s start countdown.
+  const toggleReady = async () => {
+    if (readyBusy) return;
+    setReadyBusy(true);
+    try {
+      await fetch("/api/tower-arena/ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId }),
+      });
+      loadRef.current();
+    } finally {
+      setReadyBusy(false);
+    }
+  };
+
+  // AI turns: when a bot holds the placement turn, ask the server to play it
+  // immediately instead of waiting for the 8s turn window to time out via
+  // the poll. This is what makes the tower visibly grow on the human's
+  // screen while "the bot is placing". Fires once per turn number.
+  const aiTurnFiredTurn = useRef<number | null>(null);
+  useEffect(() => {
+    if (!match || match.status !== "active") return;
+    if (match.phase !== "placement") return;
+    const holder = players.find((p) => p.userId === match.currentTurnPlayerId);
+    if (!holder?.isAi) return;
+    if (aiTurnFiredTurn.current === match.turnNumber) return;
+    aiTurnFiredTurn.current = match.turnNumber;
+    void fetch("/api/tower-arena/ai-turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId }),
+    }).catch(() => {
+      // Transient failure — the poll timeout fallback still resolves the bot.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match?.status, match?.phase, match?.currentTurnPlayerId, match?.turnNumber]);
 
   // ── Derivation for the active board ──────────────────────────────
   const isActive = match?.status === "active";
@@ -597,8 +655,23 @@ export default function TowerArenaMatchPage() {
     );
   }
 
-  // ── Waiting room ─────────────────────────────────────────────────
+  // ── Waiting room / ready gate ─────────────────────────────────────
+  // The match does NOT auto-start when the lobby fills. Every player must
+  // click READY (bots are always ready); once everyone is ready a 10-second
+  // countdown runs (phase "countdown", deadline in turnDeadline) and then
+  // the reserve phase opens with the resource pool visible.
   if (!isActive && !isFinished && match?.status === "waiting") {
+    const activeCount = players.filter((p) => p.status === "active").length;
+    const isLobbyFull = activeCount >= (match?.maxPlayers ?? 0);
+    const isCountdown = match?.phase === "countdown";
+    const isReadyPhase = match?.phase === "ready";
+    const iAmReady = Boolean(me?.ready);
+    // Derived from the server deadline so the very first paint is already
+    // accurate (the `countdown` hook re-renders us each tick anyway).
+    const countdownSeconds =
+      isCountdown && match?.turnDeadline
+        ? Math.max(0, Math.ceil((new Date(match.turnDeadline).getTime() - Date.now()) / 1000))
+        : null;
     return (
       <div className="min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6">
         <NavigationBar currentPath="/casino" />
@@ -612,37 +685,58 @@ export default function TowerArenaMatchPage() {
           </div>
           <div className="rounded-2xl border border-cyan-800 bg-black/30 p-6">
             <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3">
-              {seats.map((seat) => (
-                <div
-                  key={seat.seat}
-                  className={`flex flex-col items-center gap-2 rounded-xl border p-4 ${
-                    seat.player ? "border-cyan-500/40 bg-cyan-500/10" : "border-white/15 bg-black/40"
-                  }`}
-                >
-                  {seat.player ? (
-                    <>
-                      <IconAvatar iconKey={seat.player.iconKey} name={seat.player.name} size="h-12 w-12" />
-                      <p className="max-w-full truncate text-sm font-bold">
-                        {seat.player.name}
-                        {seat.isMe ? " (you)" : ""}
-                      </p>
-                      <div className="flex items-center gap-2 text-[10px] font-semibold">
-                        {seat.player.userId === match?.hostUserId && (
-                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-amber-300">HOST</span>
-                        )}
-                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-300">READY</span>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="animate-pulse py-4 text-sm font-semibold text-white/40">Waiting…</p>
-                  )}
-                </div>
-              ))}
+              {seats.map((seat) => {
+                const isReady = Boolean(seat.player && (seat.player.isAi || seat.player.ready));
+                return (
+                  <div
+                    key={seat.seat}
+                    className={`flex flex-col items-center gap-2 rounded-xl border p-4 ${
+                      seat.player ? "border-cyan-500/40 bg-cyan-500/10" : "border-white/15 bg-black/40"
+                    }`}
+                  >
+                    {seat.player ? (
+                      <>
+                        <IconAvatar iconKey={seat.player.iconKey} name={seat.player.name} size="h-12 w-12" />
+                        <p className="max-w-full truncate text-sm font-bold">
+                          {seat.player.name}
+                          {seat.isMe ? " (you)" : ""}
+                        </p>
+                        <div className="flex items-center gap-2 text-[10px] font-semibold">
+                          {seat.player.userId === match?.hostUserId && (
+                            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-amber-300">HOST</span>
+                          )}
+                          {seat.player.isAi ? (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/60">BOT</span>
+                          ) : null}
+                          <span
+                            className={`rounded-full px-2 py-0.5 ${
+                              isReady ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-white/50"
+                            }`}
+                          >
+                            {isReady ? "READY" : "NOT READY"}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="animate-pulse py-4 text-sm font-semibold text-white/40">Waiting…</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+
+            {/* Start countdown */}
+            {isCountdown && countdownSeconds !== null && (
+              <div className="mt-6 flex flex-col items-center rounded-xl border border-amber-500/40 bg-amber-950/30 px-6 py-4">
+                <p className="text-xs font-black uppercase tracking-widest text-amber-300">Game starts in</p>
+                <p className="mt-1 font-mono text-6xl font-black tabular-nums text-amber-300 drop-shadow-[0_0_20px_rgba(245,255,59,0.4)]">
+                  {countdownSeconds}
+                </p>
+              </div>
+            )}
+
             <div className="mt-6 text-center">
-              <span className="text-2xl font-black text-cyan-300">
-                {players.filter((p) => p.status === "active").length} / {match?.maxPlayers}
-              </span>
+              <span className="text-2xl font-black text-cyan-300">{activeCount} / {match?.maxPlayers}</span>
               <span className="ml-2 text-xs uppercase tracking-widest text-white/50">players</span>
             </div>
             <div className="mt-4 flex items-center justify-center gap-6 text-sm">
@@ -664,11 +758,40 @@ export default function TowerArenaMatchPage() {
               )}
             </div>
             <p className="mt-4 text-center text-xs text-white/50">
-              {players.filter((p) => p.status === "active").length < (match?.maxPlayers ?? 0)
-                ? "Waiting for more players to join before the match starts…"
-                : "Everyone’s here — the match is starting…"}
+              {!isLobbyFull
+                ? `Waiting for ${(match?.maxPlayers ?? 0) - activeCount} more player${(match?.maxPlayers ?? 0) - activeCount === 1 ? "" : "s"} to join…`
+                : isCountdown
+                  ? "All players ready — get set!"
+                  : isReadyPhase
+                    ? "Everyone’s here. Click READY to start — the match begins with a 10-second countdown once all players are ready."
+                    : "Waiting for more players to join before the ready-up phase…"}
             </p>
-            <div className="mt-6 flex items-center justify-center gap-2">
+
+            {/* Ready / unready toggle (humans only) */}
+            {!me?.isAi && (
+              <div className="mt-6 flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleReady}
+                  disabled={readyBusy}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-black uppercase tracking-wider transition disabled:opacity-50 ${
+                    iAmReady
+                      ? "border border-amber-500/60 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                      : "bg-emerald-500 text-black hover:brightness-110"
+                  }`}
+                >
+                  {readyBusy ? "…" : iAmReady ? (isCountdown ? "Not Ready — cancel" : "Not Ready") : "Ready"}
+                </button>
+                {isCountdown && iAmReady && (
+                  <p className="text-[11px] text-white/45">Click again to cancel the start.</p>
+                )}
+                {match?.isAi && !isCountdown && (
+                  <p className="text-[11px] text-white/45">Bots are always ready — click Ready when you’re set.</p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center justify-center gap-2">
               <button
                 onClick={leave}
                 disabled={leaving}
@@ -1017,6 +1140,42 @@ function Timer({ countdown, urgent, isActive }: { countdown: number; urgent: boo
 
 // ── Reserve panel ──────────────────────────────────────────────────────
 
+// Small 2D footprint glyph of a block shape — makes the pool pieces visible
+// ("the blocks are actually there") instead of only text labels.
+function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) {
+  const cells = footprintFor(shape, 0);
+  const minX = Math.min(...cells.map((c) => c[0]));
+  const minD = Math.min(...cells.map((c) => c[1]));
+  const maxX = Math.max(...cells.map((c) => c[0]));
+  const maxD = Math.max(...cells.map((c) => c[1]));
+  const w = maxX - minX + 1;
+  const h = maxD - minD + 1;
+  const cell = size / Math.max(w, h);
+  const color = BLOCK_PALETTE[BLOCK_SHAPES.indexOf(shape) % BLOCK_PALETTE.length];
+  return (
+    <svg
+      width={w * cell}
+      height={h * cell}
+      viewBox={`0 0 ${w * cell} ${h * cell}`}
+      className="shrink-0"
+      aria-hidden
+    >
+      {cells.map(([x, d], i) => (
+        <rect
+          key={i}
+          x={(x - minX) * cell}
+          y={(d - minD) * cell}
+          width={cell}
+          height={cell}
+          fill={color}
+          stroke="rgba(255,255,255,0.45)"
+          strokeWidth={0.6}
+        />
+      ))}
+    </svg>
+  );
+}
+
 function ReservePanel(props: any) {
   const {
     pools,
@@ -1029,15 +1188,18 @@ function ReservePanel(props: any) {
     busy,
     countdown,
   } = props;
-  // Aggregate by shape with count + represent a distinct reservable piece.
+  // Every pool piece is a distinct reservable block (each with its own id).
   const pieces = pools as { id: string; shape: BlockShape }[];
+  // Per-shape counts for the summary line.
+  const counts: Record<string, number> = {};
+  for (const p of pieces) counts[p.shape] = (counts[p.shape] || 0) + 1;
   return (
     <div className="mt-4 rounded-xl border border-cyan-700/40 bg-black/30 p-4">
       <div className="mb-2 flex items-center justify-between">
         <div>
           <p className="text-sm font-black text-cyan-200">Reserve a block</p>
           <p className="text-xs text-white/50">
-            Your reserved block becomes private — visible only to you.
+            Pick one block from the shared pool — it becomes private, visible only to you.
           </p>
         </div>
         <div className="rounded-lg bg-black/50 px-2 py-1 font-mono text-sm font-bold text-cyan-300">
@@ -1062,15 +1224,23 @@ function ReservePanel(props: any) {
               <button
                 key={p.id}
                 type="button"
+                title={`${SHAPE_NAME[p.shape]} block`}
                 onClick={() => setTargetId(targetId === p.id ? null : p.id)}
-                className={`rounded-lg border px-3 py-1.5 text-sm font-bold transition ${
+                className={`flex items-center justify-center rounded-lg border p-2 transition ${
                   targetId === p.id
-                    ? "border-cyan-400 bg-cyan-500/20 text-cyan-100"
-                    : "border-white/15 bg-white/[0.03] text-white/80 hover:border-cyan-500/40"
+                    ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_12px_rgba(0,229,255,0.35)]"
+                    : "border-white/15 bg-white/[0.03] hover:border-cyan-500/40"
                 }`}
               >
-                {SHAPE_LABEL[p.shape]} ×{/* each piece reservable */}
+                <BlockGlyph shape={p.shape} size={22} />
               </button>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/45">
+            {BLOCK_SHAPES.map((s) => (
+              <span key={s} className="inline-flex items-center gap-1">
+                <BlockGlyph shape={s} size={14} /> {counts[s] || 0}
+              </span>
             ))}
           </div>
           <button
