@@ -3,6 +3,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the match actually starts,
+// auto-stops when it ends or the user quits. Portrait 9:16 renders the
+// phone-style stacked arrangement; landscape/square reuse the desktop
+// grid. No gameplay logic touched.
+import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorModeShell,
+  CreatorView,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
 import IconAvatar from "../../../../../components/IconAvatar";
@@ -686,188 +699,293 @@ export default function TowerArenaMatchPage() {
     !myHeldReserve &&
     Number(me?.reserveUsesRemaining ?? 0) > 0;
 
-  return (
-    <div className="min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6">
-      <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-6xl">
-        {/* Top bar */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-800 bg-black/40 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <IconBuildingSkyscraper className="h-7 w-7 text-cyan-400" />
-            <div>
-              <h1 className="bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-xl font-black text-transparent">
+  // ── Creator Mode arrangement (normal rendering unchanged) ───────────
+  // The recording viewport wraps the LIVE board only — the waiting room
+  // and the results screen render before/after real gameplay, so nothing
+  // is recorded on them. Portrait (9:16) uses the phone-style stacked
+  // arrangement (compact header, tower centre stage, controls + players
+  // pinned below); landscape (16:9) / square (1:1) reuse the standard
+  // desktop grid inside the frame.
+
+  // Tower stage: isometric tower + collapse banner (no turn controls).
+  const towerInnerNode = (
+    <div
+      className="relative flex min-h-[340px] items-center justify-center overflow-hidden rounded-xl"
+      style={{
+        background:
+          "radial-gradient(circle at 50% 60%, rgba(0,229,255,0.10), transparent 60%), repeating-linear-gradient(45deg, rgba(0,229,255,0.02) 0 2px, transparent 2px 18px)",
+      }}
+    >
+      {/* StaticTower */}
+      <div className="w-full max-h-[420px]">
+        <TowerView tower={match?.towerState || []} ghost={ghostBlock} collapsedBlocks={collapsedBlockIds} />
+      </div>
+      {/* Collapse banner */}
+      <AnimatePresence>
+        {collapseBanner && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          >
+            <div className="rounded-2xl border-2 border-red-500/60 bg-red-950/80 px-8 py-6 text-center shadow-[0_0_40px_rgba(239,68,68,0.5)]">
+              <p className="text-2xl font-black text-red-300">{collapseBanner.name.toUpperCase()}</p>
+              <p className="mt-1 text-sm font-bold text-white">ELIMINATED</p>
+              <p className="mt-1 text-xs text-red-200">
+                {ordinal(collapseBanner.placement)} place
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
+  // Turn controls: reserve panel, placement controls, or the
+  // "opponent placing" commentary (exactly as in the normal layout).
+  const turnControlsNode = (
+    <>
+      {/* Reserve phase banner/controls */}
+      {isReservePhase && (
+        <ReservePanel
+          pools={match?.resourcePool || []}
+          canReserve={canReserve}
+          myHeldReserve={myHeldReserve}
+          reserveUsesRemaining={Number(me?.reserveUsesRemaining ?? 0)}
+          targetId={reserveTargetId}
+          setTargetId={setReserveTargetId}
+          onReserve={reserveBlock}
+          busy={reserving}
+          countdown={countdown}
+        />
+      )}
+
+      {/* Placement controls */}
+      {isMyTurn && !isReservePhase && (
+        <PlacementControls
+          selectedShape={selectedShape}
+          shapeCounts={shapeCounts}
+          rotation={rotation}
+          positionX={positionX}
+          myHeldReserve={myHeldReserve}
+          onSelect={selectShape}
+          onRotate={rotate}
+          onNudge={nudgeX}
+          onDrop={drop}
+          onUseReserve={useReserve}
+          placing={placing}
+        />
+      )}
+      {isActive && !isMyTurn && !isReservePhase && (
+        <p className="mt-4 text-center text-sm text-white/60">
+          {currentTurnName} is placing… {!turnHolder?.isAi && turnHolder?.userId !== me?.userId ? "(you may tap blocks to prep your next move)" : ""}
+        </p>
+      )}
+    </>
+  );
+
+  // Top bar (status strip).
+  const topBarNode = (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-800 bg-black/40 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <IconBuildingSkyscraper className="h-7 w-7 text-cyan-400" />
+        <div>
+          <h1 className="bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-xl font-black text-transparent">
+            Tower Arena
+          </h1>
+          <p className="text-[11px] uppercase tracking-widest text-white/50">
+            {match?.isAi ? "Free Play" : "PvP"} · Cycle {match?.resourceCycle} · Turn #{match?.turnNumber}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-4">
+        {isFinalDuel ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/15 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-300">
+            <IconTrophy size={14} /> Final Duel
+          </span>
+        ) : null}
+        <div className="text-right">
+          <p className="text-[11px] uppercase tracking-widest text-white/50">Current</p>
+          <p className="text-sm font-bold text-cyan-200">{isReservePhase ? "Reserve Phase" : currentTurnName}</p>
+        </div>
+        <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} />
+        <div className="text-right">
+          <p className="text-[11px] uppercase tracking-widest text-white/50">Players</p>
+          <p className="text-sm font-bold text-white">
+            {activePlayers.length} / {match?.maxPlayers}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Right: leaderboard + reserve visibility + resign.
+  const leaderboardNode = (
+    <div className="rounded-2xl border border-cyan-800 bg-black/40 p-4">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-cyan-300">
+        <IconTrophy className="h-4 w-4" /> Players
+      </h2>
+      <div className="space-y-2">
+        {players
+          .slice()
+          .sort((a, b) => a.seat - b.seat)
+          .map((p) => {
+            const eliminated = p.status === "eliminated";
+            return (
+              <div
+                key={p.userId}
+                className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 ${
+                  eliminated ? "border-white/10 bg-black/30 opacity-60" : 
+                  p.userId === match?.currentTurnPlayerId && isActive ? "border-cyan-500/60 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"
+                }`}
+              >
+                <IconAvatar iconKey={p.iconKey} name={p.name} size="h-9 w-9" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">
+                    {p.name}
+                    {p.userId === me?.userId ? " (you)" : ""}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/50">
+                    {eliminated
+                      ? `Eliminated · ${ordinal(p.placement)}`
+                      : isActive && p.userId === match?.currentTurnPlayerId
+                        ? "Placing…"
+                        : "Active"}
+                  </p>
+                </div>
+                <span className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-white/50">
+                  #{p.seat}
+                </span>
+              </div>
+            );
+          })}
+      </div>
+
+      {/* Reserve visibility */}
+      <div className="mt-4 rounded-xl border border-cyan-700/30 bg-black/30 p-3 text-xs">
+        <p className="mb-1 flex items-center gap-1.5 font-semibold text-cyan-200">
+          <IconLock size={13} /> Reserves
+        </p>
+        <p className="text-white/50">
+          {myHeldReserve ? (
+            <>
+              <span className="font-bold text-white">
+                You hold {SHAPE_NAME[myHeldReserve.shape]}
+              </span>{" "}
+              (private).
+            </>
+          ) : (
+            `${players.filter((p) => p.status === "active").length} active players · you have ${Number(me?.reserveUsesRemaining ?? 0)} use${
+              Number(me?.reserveUsesRemaining ?? 0) === 1 ? "" : "s"
+            } left`
+          )}
+        </p>
+      </div>
+
+      <button
+        onClick={leave}
+        disabled={leaving}
+        className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+      >
+        {leaving ? "Leaving…" : "Resign"}
+      </button>
+    </div>
+  );
+
+  // Normal / landscape / square game body (unchanged from before).
+  const pageBody = (
+    <div>
+      {topBarNode}
+      {/* Body: tower center + leaderboard right (desktop), stacked mobile */}
+      <div className="grid gap-4 lg:grid-cols-[1fr_290px]">
+        <div className="rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
+          {towerInnerNode}
+          {turnControlsNode}
+        </div>
+        <div>{leaderboardNode}</div>
+      </div>
+    </div>
+  );
+
+  // Portrait 9:16 creator arrangement — tower on stage filling most of
+  // the height, compact status header, controls + players pinned below.
+  const portraitContent = (
+    <CreatorModeShell className="bg-[#050512]">
+      <ShellHeader className="flex flex-col items-stretch gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <IconBuildingSkyscraper className="h-6 w-6 shrink-0 text-cyan-400" />
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-black tracking-tight text-cyan-100">
                 Tower Arena
               </h1>
-              <p className="text-[11px] uppercase tracking-widest text-white/50">
+              <p className="truncate text-[10px] uppercase tracking-widest text-white/50">
                 {match?.isAi ? "Free Play" : "PvP"} · Cycle {match?.resourceCycle} · Turn #{match?.turnNumber}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-2">
             {isFinalDuel ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/50 bg-amber-500/15 px-3 py-1 text-xs font-black uppercase tracking-widest text-amber-300">
-                <IconTrophy size={14} /> Final Duel
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-300">
+                <IconTrophy size={12} /> Final Duel
               </span>
             ) : null}
-            <div className="text-right">
-              <p className="text-[11px] uppercase tracking-widest text-white/50">Current</p>
-              <p className="text-sm font-bold text-cyan-200">{isReservePhase ? "Reserve Phase" : currentTurnName}</p>
-            </div>
             <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} />
-            <div className="text-right">
-              <p className="text-[11px] uppercase tracking-widest text-white/50">Players</p>
-              <p className="text-sm font-bold text-white">
-                {activePlayers.length} / {match?.maxPlayers}
-              </p>
-            </div>
           </div>
         </div>
+        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+          <span className="truncate text-cyan-200">
+            {isReservePhase ? "Reserve Phase" : `${currentTurnName} placing…`}
+          </span>
+          <span className="shrink-0 text-white/60">
+            {activePlayers.length} / {match?.maxPlayers} players
+          </span>
+        </div>
+      </ShellHeader>
 
-        {/* Body: tower center + leaderboard right (desktop), stacked mobile */}
-        <div className="grid gap-4 lg:grid-cols-[1fr_290px]">
-          {/* Center: tower + resources */}
+      <ShellMain className="flex-col items-center justify-start overflow-y-auto">
+        <div className="w-full max-w-[640px] px-3 py-2">
           <div className="rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
-            <div
-              className="relative flex min-h-[340px] items-center justify-center overflow-hidden rounded-xl"
-              style={{
-                background:
-                  "radial-gradient(circle at 50% 60%, rgba(0,229,255,0.10), transparent 60%), repeating-linear-gradient(45deg, rgba(0,229,255,0.02) 0 2px, transparent 2px 18px)",
-              }}
-            >
-              {/* StaticTower */}
-              <div className="w-full max-h-[420px]">
-                <TowerView tower={match?.towerState || []} ghost={ghostBlock} collapsedBlocks={collapsedBlockIds} />
-              </div>
-              {/* Collapse banner */}
-              <AnimatePresence>
-                {collapseBanner && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
-                  >
-                    <div className="rounded-2xl border-2 border-red-500/60 bg-red-950/80 px-8 py-6 text-center shadow-[0_0_40px_rgba(239,68,68,0.5)]">
-                      <p className="text-2xl font-black text-red-300">{collapseBanner.name.toUpperCase()}</p>
-                      <p className="mt-1 text-sm font-bold text-white">ELIMINATED</p>
-                      <p className="mt-1 text-xs text-red-200">
-                        {ordinal(collapseBanner.placement)} place
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Reserve phase banner/controls */}
-            {isReservePhase && (
-              <ReservePanel
-                pools={match?.resourcePool || []}
-                canReserve={canReserve}
-                myHeldReserve={myHeldReserve}
-                reserveUsesRemaining={Number(me?.reserveUsesRemaining ?? 0)}
-                targetId={reserveTargetId}
-                setTargetId={setReserveTargetId}
-                onReserve={reserveBlock}
-                busy={reserving}
-                countdown={countdown}
-              />
-            )}
-
-            {/* Placement controls */}
-            {isMyTurn && !isReservePhase && (
-              <PlacementControls
-                selectedShape={selectedShape}
-                shapeCounts={shapeCounts}
-                rotation={rotation}
-                positionX={positionX}
-                myHeldReserve={myHeldReserve}
-                onSelect={selectShape}
-                onRotate={rotate}
-                onNudge={nudgeX}
-                onDrop={drop}
-                onUseReserve={useReserve}
-                placing={placing}
-              />
-            )}
-            {isActive && !isMyTurn && !isReservePhase && (
-              <p className="mt-4 text-center text-sm text-white/60">
-                {currentTurnName} is placing… {!turnHolder?.isAi && turnHolder?.userId !== me?.userId ? "(you may tap blocks to prep your next move)" : ""}
-              </p>
-            )}
-          </div>
-
-          {/* Right: leaderboard */}
-          <div className="rounded-2xl border border-cyan-800 bg-black/40 p-4">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-cyan-300">
-              <IconTrophy className="h-4 w-4" /> Players
-            </h2>
-            <div className="space-y-2">
-              {players
-                .slice()
-                .sort((a, b) => a.seat - b.seat)
-                .map((p) => {
-                  const eliminated = p.status === "eliminated";
-                  return (
-                    <div
-                      key={p.userId}
-                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 ${
-                        eliminated ? "border-white/10 bg-black/30 opacity-60" : 
-                        p.userId === match?.currentTurnPlayerId && isActive ? "border-cyan-500/60 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"
-                      }`}
-                    >
-                      <IconAvatar iconKey={p.iconKey} name={p.name} size="h-9 w-9" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold">
-                          {p.name}
-                          {p.userId === me?.userId ? " (you)" : ""}
-                        </p>
-                        <p className="text-[10px] uppercase tracking-wider text-white/50">
-                          {eliminated
-                            ? `Eliminated · ${ordinal(p.placement)}`
-                            : isActive && p.userId === match?.currentTurnPlayerId
-                              ? "Placing…"
-                              : "Active"}
-                        </p>
-                      </div>
-                      <span className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-white/50">
-                        #{p.seat}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-
-            {/* Reserve visibility */}
-            <div className="mt-4 rounded-xl border border-cyan-700/30 bg-black/30 p-3 text-xs">
-              <p className="mb-1 flex items-center gap-1.5 font-semibold text-cyan-200">
-                <IconLock size={13} /> Reserves
-              </p>
-              <p className="text-white/50">
-                {myHeldReserve ? (
-                  <>
-                    <span className="font-bold text-white">
-                      You hold {SHAPE_NAME[myHeldReserve.shape]}
-                    </span>{" "}
-                    (private).
-                  </>
-                ) : (
-                  `${players.filter((p) => p.status === "active").length} active players · you have ${Number(me?.reserveUsesRemaining ?? 0)} use${
-                    Number(me?.reserveUsesRemaining ?? 0) === 1 ? "" : "s"
-                  } left`
-                )}
-              </p>
-            </div>
-
-            <button
-              onClick={leave}
-              disabled={leaving}
-              className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
-            >
-              {leaving ? "Leaving…" : "Resign"}
-            </button>
+            {towerInnerNode}
           </div>
         </div>
+      </ShellMain>
+
+      <ShellAside>
+        <div className="flex flex-col gap-2">
+          {turnControlsNode}
+          {leaderboardNode}
+        </div>
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) creator arrangement — reuse the
+  // standard grid inside the frame shell so it adapts responsively.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-[#050512]">
+      <ShellMain className="items-start justify-start overflow-y-auto">
+        {pageBody}
+      </ShellMain>
+    </CreatorModeShell>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6">
+      <NavigationBar currentPath="/casino" />
+      <div className="mx-auto mt-4 max-w-6xl">
+        <CreatorModeHost
+          autoStart={isActive}
+          autoStop={isFinished}
+          gameLabel="tower-arena"
+        >
+          <CreatorView
+            normal={pageBody}
+            portrait={portraitContent}
+            landscape={landscapeContent}
+          />
+        </CreatorModeHost>
       </div>
       <Footer />
     </div>

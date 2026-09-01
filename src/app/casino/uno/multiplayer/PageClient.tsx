@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the real hand begins, auto-stops
+// once the end popup shows. The create/join table lobby stays OUTSIDE so
+// nothing is recorded during matchmaking. No gameplay logic touched.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import NavigationBar from "../../../../components/navigation-bar";
@@ -1136,6 +1142,12 @@ export default function UnoMultiplayerPage() {
           {unoMultiMessage && <p className="mt-4 text-yellow-200 text-sm">{unoMultiMessage}</p>}
         </div>
       ) : (
+        <CreatorModeHost
+          autoStart={Boolean(game)}
+          autoStop={Boolean(endPopup)}
+          gameLabel="uno-multiplayer"
+        >
+        <CreatorResponsiveLayout>
         <div className="mb-16 flex w-full max-w-6xl items-stretch gap-4">
           {/* Board — compact, shifted left so the history panel has room */}
           <div className="relative flex min-w-0 flex-1 flex-col justify-between rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-4 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
@@ -1355,6 +1367,8 @@ export default function UnoMultiplayerPage() {
             </div>
           </aside>
         </div>
+        </CreatorResponsiveLayout>
+        </CreatorModeHost>
       )}
       <ReportModal
         isOpen={showReportModal && !!humanOpponent}

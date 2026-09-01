@@ -34,6 +34,11 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { AnimatePresence, motion } from "framer-motion";
 
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the player starts the test,
+// auto-stops once the summary shows. No gameplay logic touched.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
 import { useTranslation } from "../../../../hooks/useTranslation";
 import Footer from "../../../../components/Footer";
@@ -387,6 +392,16 @@ useEffect(() => {
     >
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual practice game is recorded — nav/footer sit
+          outside the shared CreatorModeHost recording viewport. Recording
+          auto-starts when the player starts the test and stops once the
+          summary shows. No gameplay logic touched. */}
+      <CreatorModeHost
+        autoStart={phase !== "idle"}
+        autoStop={phase === "finished"}
+        gameLabel="precision-test"
+      >
+      <CreatorResponsiveLayout>
       <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-fuchsia-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -480,6 +495,8 @@ useEffect(() => {
           )}
         </AnimatePresence>
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
 
       <Footer />
     </div>

@@ -20,6 +20,69 @@ body {
   }
 }
 
+/* ── Creator Mode portrait stacking ──────────────────────────────────
+   Games whose normal layout is side-by-side on desktop (roulette's
+   controls + wheel, rps's history + duel, crash-arena's table + sidebar)
+   render the phone-style stacked column inside the portrait (9:16)
+   recording frame. Scoped to the creator shell's data-creator-layout
+   attribute, so normal rendering — and landscape/square recordings —
+   stay byte-for-byte unchanged.
+
+   • [data-creator-stack]      → force column + phone-width centred
+   • [data-creator-stack-swap] → additionally put gameplay first
+     (last child on top) so the recorded video leads with the board. */
+[data-creator-layout="portrait"] [data-creator-stack] {
+  flex-direction: column !important;
+  width: 100% !important;
+  max-width: 460px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  align-items: center !important;
+}
+[data-creator-layout="portrait"] [data-creator-stack] > * {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex-shrink: 1 !important;
+}
+[data-creator-layout="portrait"] [data-creator-stack-swap] > :first-child {
+  order: 2 !important;
+}
+[data-creator-layout="portrait"] [data-creator-stack-swap] > :last-child {
+  order: 1 !important;
+}
+
+/* ── Creator Mode frame fill ─────────────────────────────────────────
+   <CreatorResponsiveLayout> drops the game page straight into the
+   recording frame. These rules make the game's page root fill the frame
+   edge-to-edge instead of keeping its desktop max-width + centering
+   (which left the game as a small centred strip inside a much bigger
+   frame). The root also stretches to the frame height so a page that is
+   shorter than one screenful still occupies the whole capture area.
+   Games marked [data-creator-stack] are exempt — they keep their
+   deliberate phone-width portrait column laid out by the rules above —
+   and so are position:fixed overlays/banners (turn chips, end-of-game
+   modals, toasts) so they keep their own compact sizing instead of being
+   stretched full-frame. Scoped to the creator shell, so normal rendering
+   is untouched. */
+[data-creator-layout]
+  [data-creator-fill]
+  > *:not([data-creator-stack]):not(.fixed) {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  min-height: 100% !important;
+}
+
+/* The landscape/square frame is a horizontal shell: the fill container
+   already grows to take all leftover space, but make sure the page root
+   inside it actually stretches to the frame's full height rather than
+   keeping its natural (often shorter) desktop height. */
+[data-creator-layout="landscape"] [data-creator-fill],
+[data-creator-layout="square"] [data-creator-fill] {
+  height: 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -326,7 +326,11 @@ export default function RPSPvpGamePage() {
         gameLabel="rock-paper-scissors"
       >
       <CreatorResponsiveLayout>
-      <div className="flex flex-col md:flex-row">
+      {/* data-creator-stack-swap: in the portrait (9:16) creator frame this
+          flips to the phone-style stacked column (the duel first, rounds
+          history below) via the shared portrait-stacking CSS. Desktop and
+          landscape/square creator rendering are unchanged. */}
+      <div data-creator-stack data-creator-stack-swap className="flex flex-col md:flex-row">
       {/* ── Left sidebar: rounds history (replaces the old lobby/bet panel) ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
         <div className="rounded-2xl border border-amber-700/60 bg-black/40 p-4 backdrop-blur-xl shadow-[0_0_25px_rgba(251,191,36,0.12)]">

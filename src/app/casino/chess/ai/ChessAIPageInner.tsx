@@ -5,6 +5,11 @@ import { Chess } from "chess.js";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
+// Shared Creator Mode foundation (admin-only): mounts the viewport
+// recorder + overlay and auto-starts when the AI battle is live, stops
+// once the game-over popup has been captured. No gameplay logic touched.
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
 import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
@@ -874,6 +879,13 @@ export default function ChessAIPageInner() {
     <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
       <NavigationBar currentPath="/casino" />
 
+      {/* Only the actual chess game (incl. the game-over popup) is
+          recorded — nav stays outside the shared CreatorModeHost
+          recording viewport. Recording auto-starts when the battle is
+          live and stops once the result popup has been captured. */}
+      <CreatorModeHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai">
+      <CreatorResponsiveLayout>
+
       {/* Turn Banner */}
       <AnimatePresence>
         {turnBanner && (
@@ -1241,6 +1253,8 @@ export default function ChessAIPageInner() {
           </div>
         </div>
       </div>
+      </CreatorResponsiveLayout>
+      </CreatorModeHost>
     </div>
   );
 }

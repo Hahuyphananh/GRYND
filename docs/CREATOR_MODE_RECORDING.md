@@ -149,6 +149,17 @@ selected recording aspect ratio (`src/components/creator-mode/`
   important info stays visible in the header, controls pinned below;
   nav/footer/unrelated casino UI are already outside the frame.
 
+Games that use the generic `<CreatorResponsiveLayout>` wrapper (blackjack,
+chess, uno, odds, …) instead of a bespoke arrangement still fill the frame
+edge-to-edge: the shared `[data-creator-fill]` CSS makes the game page root
+take the full frame width and height (overriding desktop `max-w-*` caps and
+`mx-auto` centering inside the shell) and scrolls internally when the
+content is taller than the frame — the game's own responsive layout arranges
+itself at the frame's size, so it is never shrunk into a tiny rectangle.
+Games opting into the phone-style portrait column keep it via
+`[data-creator-stack]`, and `position: fixed` overlays (turn chips, result
+modals) are exempt from the fill so they keep their compact sizing.
+
 Normal (non-Creator-Mode) rendering is byte-for-byte unchanged — the shell
 only mounts when Creator Mode is on. Plinko is the reference wiring: it
 renders the same gameplay components in both cases but re-arranges them
