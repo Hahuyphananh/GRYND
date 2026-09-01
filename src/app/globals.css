@@ -33,6 +33,12 @@ body {
      (last child on top) so the recorded video leads with the board. */
 [data-creator-layout="portrait"] [data-creator-stack] {
   flex-direction: column !important;
+  /* Grid-based desktop layouts (e.g. chess's board + sidebar grid) stack
+     to a single column too — harmless on flex layouts, where it is
+     ignored. Inside the phone-width frame (390px) `max-width: 460px`
+     simply resolves to the full frame width, so the column fills the
+     frame edge-to-edge. */
+  grid-template-columns: minmax(0, 1fr) !important;
   width: 100% !important;
   max-width: 460px !important;
   margin-left: auto !important;

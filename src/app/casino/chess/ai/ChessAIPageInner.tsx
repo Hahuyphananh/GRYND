@@ -1021,7 +1021,10 @@ export default function ChessAIPageInner() {
         </div>
 
         {/* MAIN */}
-        <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
+        {/* data-creator-stack: in the portrait (9:16) creator phone frame
+            this board + sidebar grid collapses to a single column so the
+            board keeps the full frame width. */}
+        <div data-creator-stack className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
           {/* BOARD AREA */}
           <div className="flex justify-center">
             <div className="w-full max-w-[660px]">

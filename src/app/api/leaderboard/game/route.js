@@ -1,29 +1,36 @@
+// app/api/leaderboard/game/route.js
+//
+// GET /api/leaderboard/game?game=chess&limit=50
+//
+// Ranks players by games won in a single game, computed directly from the
+// game tables (see GAME_LEADERBOARDS in src/lib/leaderboardQueries.js).
+// Same response shape as the other leaderboards: { items, me, game }.
 import { auth } from "@clerk/nextjs/server";
 import {
   clampLeaderboardLimit,
-  fetchWeeklyLeaderboard,
+  fetchGameLeaderboard,
+  normalizeGameKey,
   normalizeLeaderboardOffset,
-  normalizeWeeklyLeaderboardCategory,
 } from "../../../../lib/leaderboardQueries";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const category = normalizeWeeklyLeaderboardCategory(searchParams.get("category"));
+  const game = normalizeGameKey(searchParams.get("game"));
   const limit = clampLeaderboardLimit(searchParams.get("limit"));
   const offset = normalizeLeaderboardOffset(searchParams.get("offset"));
 
   try {
     const { userId } = await auth();
-    const cacheKey = CacheKeys.leaderboard.weekly(category, limit, offset);
+    const cacheKey = CacheKeys.leaderboard.game(game, limit, offset);
 
     const result = await cacheOrFetch(
       cacheKey,
       CacheTTL.leaderboard,
       () =>
-        fetchWeeklyLeaderboard({
-          category,
+        fetchGameLeaderboard({
+          game,
           limit,
           offset,
           clerkId: null, // Don't cache user-specific "me" data
@@ -37,18 +44,18 @@ export async function GET(request) {
       me = items.find((item) => item.clerk_id === userId) || null;
     }
 
-    return Response.json({ items, me, category, limit, offset }, {
+    return Response.json({ items, me, game, limit, offset }, {
       headers: {
         "Cache-Control": "public, s-maxage=30, stale-while-revalidate=15",
       },
     });
   } catch (error) {
-    console.error(" Failed to load weekly leaderboard:", error);
+    console.error(" Failed to load game leaderboard:", error);
     return Response.json(
       {
         items: [],
         me: null,
-        category,
+        game,
         limit,
         offset,
         error: "Unable to load leaderboard",

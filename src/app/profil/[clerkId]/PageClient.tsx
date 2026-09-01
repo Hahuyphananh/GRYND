@@ -10,6 +10,7 @@ import ReportModal from "../../../components/ReportModal";
 import AvatarFrame from "../../../components/AvatarFrame";
 import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
+import UserStatsTabs from "../../../components/UserStatsTabs";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 type PublicUser = {
@@ -37,6 +38,28 @@ type PublicUser = {
   selectedSpecialTitle: string | null;
   dailyStreakCurrent: number;
   dailyStreakBest: number;
+  // Leaderboard-style record (same shape the /classement boards read).
+  record: {
+    wins: number;
+    losses: number;
+    games: number;
+    winRate: number;
+    bestStreak: number;
+    currentStreak: number;
+    biggestWin: number;
+    favoriteGame: string;
+    pvpWins: number;
+    weeklyWins: number;
+    weeklyLosses: number;
+    weeklyWinRate: number;
+    weeklyBestStreak: number;
+    weeklyCurrentStreak: number;
+    weeklyBiggestWin: number;
+    dailyStreakCurrent: number;
+    dailyStreakBest: number;
+    weeklyStreakCurrent: number;
+    weeklyStreakBest: number;
+  };
 };
 
 export default function PublicProfilePage() {
@@ -98,10 +121,6 @@ export default function PublicProfilePage() {
     }
   };
 
-  const winRate =
-    profile && profile.gamesWon + profile.gamesLost > 0
-      ? ((profile.gamesWon / (profile.gamesWon + profile.gamesLost)) * 100).toFixed(1)
-      : "0.0";
 
   if (loading) {
     return (
@@ -208,62 +227,17 @@ export default function PublicProfilePage() {
           </div>
         </motion.div>
 
-        {/* ── STATS GRID ── */}
+        {/* ── STATS ── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8"
+          className="bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8"
         >
-          {[
-            { label: "Games Won", value: profile.gamesWon },
-            { label: "Games Lost", value: profile.gamesLost },
-            { label: "Win Rate", value: `${winRate}%` },
-            { label: "Total Wagered", value: Number(profile.totalWagered).toLocaleString() },
-            { label: "Total Won", value: Number(profile.totalWon).toLocaleString() },
-            { label: "Biggest Win", value: Number(profile.biggestWin).toLocaleString() },
-            { label: "PvP Wins", value: profile.pvpWins },
-            { label: "Best Streak", value: profile.bestStreak },
-            { label: "Daily Streak", value: `${profile.dailyStreakCurrent} days` },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4"
-            >
-              <p className="text-sm text-gray-300">{stat.label}</p>
-              <p className="text-xl font-bold text-white mt-1">{stat.value}</p>
-            </div>
-          ))}
-        </motion.div>
-
-        {/* ── STREAK INFO ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
-        >
-          <h2 className="text-xl text-[#00e5ff] mb-4">Streaks</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-4">
-              <p className="text-xs text-amber-300">Current Streak</p>
-              <p className="text-2xl font-bold text-white mt-1">
-                {profile.currentStreak}
-              </p>
-            </div>
-            <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-4">
-              <p className="text-xs text-amber-300">Best Streak</p>
-              <p className="text-2xl font-bold text-white mt-1">
-                {profile.bestStreak}
-              </p>
-            </div>
-            <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-4">
-              <p className="text-xs text-amber-300">Daily Streak</p>
-              <p className="text-2xl font-bold text-white mt-1">
-                {profile.dailyStreakCurrent} days
-              </p>
-            </div>
-          </div>
+          <h2 className="text-xl text-[#00e5ff] mb-4">Stats</h2>
+          {/* Tabbed stat panel — mirrors the /classement leaderboard
+              (record / weekly / streaks) instead of a flat grid. */}
+          <UserStatsTabs record={profile.record} />
         </motion.div>
 
         {/* ── BET HISTORY ── */}
