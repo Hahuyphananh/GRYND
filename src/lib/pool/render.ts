@@ -140,11 +140,13 @@ export function drawAimGuide(
   cue: Ball,
   aim: number,
   pull: number,
+  locked = false,
 ) {
   const dx = Math.cos(aim);
   const dy = Math.sin(aim);
   ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,.44)";
+  // Locked angle → green aim line so the player can see the angle is pinned.
+  ctx.strokeStyle = locked ? "rgba(74,222,128,.85)" : "rgba(255,255,255,.44)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(cue.x + dx * BALL_R, cue.y + dy * BALL_R);

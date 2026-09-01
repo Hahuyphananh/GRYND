@@ -20,9 +20,14 @@
 //   • Portrait (9:16) prefers a vertical column: compact header on top
 //     (branding + info), a large growing game area in the middle, and a
 //     pinned aside/controls at the bottom — prioritizing actual gameplay
-//     while keeping important info visible.
-//   • Landscape (16:9) and square (1:1) prefer a horizontal row with the
+//     while keeping important info visible.// • Landscape (16:9) and square (1:1) prefer a horizontal row with the
 //     game area growing and an aside on the side.
+//
+// Portrait (9:16) is the PHONE frame. <CreatorResponsiveLayout> renders
+// the game inside a phone-width viewport (390px) that is zoomed up to
+// fill the output frame edge-to-edge — so the game's own mobile-first
+// responsive styles take over and the recorded video looks like a real
+// phone screen at 1080×1920, never a shrunken desktop page.
 //
 // The recording engine captures the provider's `data-creator-recording`
 // root; the shell renders INSIDE that root, so whatever a game arranges
@@ -190,31 +195,80 @@ export function CreatorView({ normal, portrait, landscape }) {
 }
 
 /**
+ * Phone-width layout viewport for the portrait (9:16) recording frame.
+ * The game is laid out at a real phone width (so its mobile-first
+ * responsive styles — wrapping, stacked panels, touch-sized controls —
+ * are the ones that apply) and then `zoom`ed up to fill the output frame
+ * exactly. `zoom` re-lays-out the subtree at the scaled size, so text
+ * stays crisp in both the live frame and the composite-mode recording
+ * (unlike `transform: scale`, which rasterizes at the layout size and
+ * then upscales). Landscape/square frames keep the direct fill.
+ */
+export const PHONE_LAYOUT_WIDTH = 390;
+
+/**
  * <CreatorResponsiveLayout> is the quick, uniform integration for games
  * that don't need a bespoke portrait arrangement: when Creator Mode is on
  * it drops the existing game content into the shared recording-frame shell
- * and the game page FILLS the frame edge-to-edge — full frame width and
- * height (the shared `[data-creator-fill]` CSS overrides the page's
- * desktop max-width / centering inside the shell), scrolling internally
- * only when the content is taller than the frame. The game's own
- * responsive layout arranges everything at the frame's size, so the game
- * is never shrunk into a tiny rectangle. When Creator Mode is off it
- * returns `children` byte-for-byte unchanged.
+ * and the game page FILLS the frame edge-to-edge.
+ *
+ *   • Portrait (9:16) — the phone frame: the game is laid out at a real
+ *     phone width (390px) and zoomed up to fill the whole output frame
+ *     (1080×1920), so the game renders in phone mode — its own mobile
+ *     responsive layout — and fills the frame edge-to-edge like a real
+ *     phone screen. Scrolling stays internal when content is taller.
+ *   • Landscape/square — the game page fills the frame directly (full
+ *     width/height via the shared `[data-creator-fill]` CSS, which
+ *     overrides the page's desktop max-width / centering inside the
+ *     shell).
+ *
+ * The game is never shrunk into a tiny rectangle. When Creator Mode is
+ * off it returns `children` byte-for-byte unchanged.
  *
  * Works hand-in-hand with <CreatorView>/<CreatorModeHost>: mount it as the
  * ONLY child of <CreatorModeHost /> so it reads the real provider context.
  */
 export function CreatorResponsiveLayout({ children }) {
-  const { isCreatorMode } = useCreatorMode();
+  const { isCreatorMode, dimensions } = useCreatorMode();
   if (!isCreatorMode) return children;
+
+  // Portrait frames are the phone frame: lay the game out at a phone
+  // width and zoom it up so it fills the output edge-to-edge.
+  const isPortrait = Boolean(
+    dimensions && dimensions.height > dimensions.width,
+  );
+  const phoneScale =
+    isPortrait && dimensions.width > 0
+      ? dimensions.width / PHONE_LAYOUT_WIDTH
+      : 1;
+  const phoneHeight = isPortrait ? dimensions.height / phoneScale : 0;
+
+  const fill = (
+    <div
+      data-creator-fill
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
+    >
+      {children}
+    </div>
+  );
+
   return (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <div
-        data-creator-fill
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
-      >
-        {children}
-      </div>
+      {isPortrait ? (
+        <div
+          data-creator-phone
+          className="relative flex min-h-0 min-w-0 flex-col self-start"
+          style={{
+            width: PHONE_LAYOUT_WIDTH,
+            height: phoneHeight,
+            zoom: phoneScale,
+          }}
+        >
+          {fill}
+        </div>
+      ) : (
+        fill
+      )}
     </CreatorModeShell>
   );
 }

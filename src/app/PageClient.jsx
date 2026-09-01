@@ -70,6 +70,13 @@ function MainComponent() {
   const [milestoneBonus, setMilestoneBonus] = useState(0);
   const [milestoneTitle, setMilestoneTitle] = useState(null);
   const [showExpandedBadge, setShowExpandedBadge] = useState(false);
+  // Daily / weekly challenges widget.
+  const [showChallenges, setShowChallenges] = useState(false);
+  const [challengeTab, setChallengeTab] = useState("daily");
+  const [quests, setQuests] = useState({ daily: [], weekly: [] });
+  const [questsLoading, setQuestsLoading] = useState(false);
+  const [claimingQuestId, setClaimingQuestId] = useState(null);
+  const [questError, setQuestError] = useState(null);
   const [claimedDay, setClaimedDay] = useState(null);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -125,6 +132,102 @@ function MainComponent() {
     );
   };
 
+  const loadQuests = async () => {
+    if (!user || !isSignedIn) return;
+    setQuestsLoading(true);
+    setQuestError(null);
+    try {
+      const res = await fetch("/api/quests", { credentials: "include" });
+      const data = await res.json();
+      if (!data.success) {
+        setQuestError(data.error || "Failed to load quests");
+        return;
+      }
+      setQuests({
+        daily: Array.isArray(data.daily) ? data.daily : [],
+        weekly: Array.isArray(data.weekly) ? data.weekly : [],
+      });
+    } catch (err) {
+      console.error("[QUESTS_LOAD_ERROR]", err);
+      setQuestError("Failed to load quests");
+    } finally {
+      setQuestsLoading(false);
+    }
+  };
+
+  const claimQuest = async (questId) => {
+    if (claimingQuestId) return;
+    setClaimingQuestId(questId);
+    setQuestError(null);
+    try {
+      const res = await fetch("/api/quests/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ questId }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setQuestError(data.error || "Failed to claim quest");
+        return;
+      }
+      // Mark the quest claimed locally + credit the balance display.
+      setQuests((prev) => ({
+        daily: prev.daily.map((q) =>
+          q.id === questId ? { ...q, claimed: true } : q
+        ),
+        weekly: prev.weekly.map((q) =>
+          q.id === questId ? { ...q, claimed: true } : q
+        ),
+      }));
+      if (typeof data.reward === "number" && data.reward > 0) {
+        setUserTokens((prev) => (prev ?? 0) + data.reward);
+      }
+    } catch (err) {
+      console.error("[QUESTS_CLAIM_ERROR]", err);
+      setQuestError("Failed to claim quest");
+    } finally {
+      setClaimingQuestId(null);
+    }
+  };
+
+  const questTitle = (q) => {
+    const game = q.gameKey
+      ? t(`home.challenges.game_${q.gameKey}`)
+      : null;
+    const count = Number(q.target).toLocaleString();
+    const amount = Number(q.target).toLocaleString();
+    const x = Number(q.target);
+    switch (q.questType) {
+      case "play":
+        return game
+          ? t("home.challenges.play_game", { count, game })
+          : t("home.challenges.play_any", { count });
+      case "win":
+        return game
+          ? t("home.challenges.win_game", { count, game })
+          : t("home.challenges.win_any", { count });
+      case "wager":
+        return t("home.challenges.wager", { amount });
+      case "multiplier":
+        return t("home.challenges.multiplier", { x });
+      case "streak":
+        return t("home.challenges.streak", { count });
+      case "diversify":
+        return t("home.challenges.diversify", { count });
+      case "pvp":
+        return t("home.challenges.pvp", { count });
+      default:
+        return q.questType;
+    }
+  };
+
+  const questProgressPct = (q) => {
+    const target = Number(q.target);
+    if (!target) return 0;
+    return Math.min(100, Math.round((Number(q.progress) / target) * 100));
+  };
+
   const fetchRewardStatus = async () => {
     if (!user || !isSignedIn) return;
 
@@ -169,6 +272,12 @@ function MainComponent() {
       console.error("Failed to fetch reward status:", err);
     }
   };
+
+  // Load today's daily + weekly quests once signed in.
+  useEffect(() => {
+    if (isLoaded && isSignedIn) loadQuests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
 
   // ── Check Terms & Conditions acceptance ──
   useEffect(() => {
@@ -838,6 +947,138 @@ function MainComponent() {
                 <p className="mt-2 text-center text-amber-400 font-bold">
                   <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/><path d="M3 19h18"/></svg>
                   {t("home.streak.all_complete")}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {isSignedIn && (
+        <div className="fixed left-4 top-44 z-50">
+          <button
+            onClick={() => setShowChallenges(!showChallenges)}
+            className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-[#00e5ff]/40 px-3 py-2 text-sm text-[#00e5ff] backdrop-blur-sm hover:border-[#00e5ff] hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(0,229,255,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+          >
+            <span className="text-lg">
+              <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M7 3H4a2 2 0 00-2 2v0a4 4 0 005 3"/><path d="M17 3h3a2 2 0 012 2v0a4 4 0 01-5 3"/><path d="M12 4v5"/></svg>
+            </span>
+            <span className="font-bold">{t("home.challenges.title")}</span>
+            <span className="text-[10px] text-[#00e5ff]/50">
+              {showChallenges ? "▲" : "▼"}
+            </span>
+          </button>
+          {showChallenges && (
+            <div className="mt-1 w-64 rounded-xl border border-[#00e5ff]/30 bg-black/85 backdrop-blur-md p-3 text-xs text-cyan-100 shadow-[0_0_20px_rgba(0,229,255,0.2)]">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-bold text-[#00e5ff]">{t("home.challenges.title")}</span>
+              </div>
+              {/* Daily / Weekly tab switcher */}
+              <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                {["daily", "weekly"].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setChallengeTab(tab)}
+                    className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+                      challengeTab === tab
+                        ? "bg-[#00e5ff] text-[#041125]"
+                        : "text-[#00e5ff]/70 hover:text-[#00e5ff]"
+                    }`}
+                  >
+                    {tab === "daily"
+                      ? t("home.challenges.daily")
+                      : t("home.challenges.weekly")}
+                  </button>
+                ))}
+              </div>
+              {/* Quest list */}
+              {questError && (
+                <p className="mb-2 text-center text-[11px] text-red-300">{questError}</p>
+              )}
+              {questsLoading ? (
+                <div className="py-4 text-center text-[11px] text-[#00e5ff]/70">
+                  {t("ui.loading")}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {(challengeTab === "daily" ? quests.daily : quests.weekly)
+                    .length === 0 ? (
+                    <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-white/15 bg-white/5 px-3 py-5 text-center">
+                      <svg className="w-6 h-6 text-[#00e5ff]/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                      <p className="text-[11px] text-cyan-200/70">
+                        {challengeTab === "daily"
+                          ? t("home.challenges.empty_daily")
+                          : t("home.challenges.empty_weekly")}
+                      </p>
+                    </div>
+                  ) : (
+                    (challengeTab === "daily" ? quests.daily : quests.weekly).map(
+                      (q) => {
+                        const pct = questProgressPct(q);
+                        const done = Number(q.progress) >= Number(q.target);
+                        return (
+                          <div
+                            key={q.id}
+                            className={`rounded-lg border px-3 py-2 ${
+                              q.claimed
+                                ? "border-green-400/40 bg-green-900/20"
+                                : done
+                                  ? "border-[#f5ff3b]/50 bg-[#f5ff3b]/10"
+                                  : "border-white/10 bg-white/5"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold text-cyan-100 leading-snug">
+                                {questTitle(q)}
+                              </p>
+                              <span className="shrink-0 text-[11px] font-bold text-[#f5ff3b]">
+                                {Number(q.reward).toLocaleString()}
+                              </span>
+                            </div>
+                            {!q.claimed && (
+                              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    done
+                                      ? "bg-gradient-to-r from-[#f5ff3b] to-amber-400"
+                                      : "bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]"
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            )}
+                            <div className="mt-1.5 flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-cyan-200/60">
+                                {q.questType === "multiplier"
+                                  ? `${Number(q.progress).toFixed(1)}x / ${Number(q.target)}x`
+                                  : q.questType === "wager"
+                                    ? `${Number(q.progress).toLocaleString()} / ${Number(q.target).toLocaleString()}`
+                                    : `${Number(q.progress)} / ${Number(q.target)}`}
+                              </span>
+                              {done && !q.claimed ? (
+                                <button
+                                  onClick={() => claimQuest(q.id)}
+                                  disabled={!!claimingQuestId}
+                                  className="rounded-md bg-[#f5ff3b] px-2.5 py-1 text-[10px] font-bold text-[#041125] transition-all hover:bg-[#e8ff00] hover:scale-105 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+                                >
+                                  {claimingQuestId === q.id
+                                    ? "..."
+                                    : t("home.challenges.claim")}
+                                </button>
+                              ) : q.claimed ? (
+                                <span className="text-[10px] font-bold text-green-300">
+                                  ✓ {t("home.challenges.claimed")}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-cyan-200/40">
+                                  {pct}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      },
+                    )
+                  )}
+                </div>
               )}
             </div>
           )}

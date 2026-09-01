@@ -33,6 +33,7 @@ const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
   "/games": "nav.casino",
   "/classement": "nav.leaderboard",
+  "/battlepass": "nav.battlepass",
 };
 
 function NavigationBar({ currentPath }) {
@@ -354,7 +355,7 @@ function NavigationBar({ currentPath }) {
               animate="animate"
               className="hidden items-center space-x-4 md:flex"
             >
-              {["/", "/games", "/classement"].map((path) => (
+              {["/", "/games", "/classement", "/battlepass"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -652,7 +653,7 @@ function NavigationBar({ currentPath }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
-                {["/", "/games", "/classement"].map((path) => (
+                {["/", "/games", "/classement", "/battlepass"].map((path) => (
                   <Link
                     key={path}
                     href={path}

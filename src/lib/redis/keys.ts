@@ -38,6 +38,13 @@ export const CacheKeys = {
     dailyStreak: (type: string, limit: number, offset: number) =>
       `${PREFIX}:lb:daily-streak:${type}:${limit}:${offset}`,
 
+    /**
+     * Pattern for per-game leaderboard keys.
+     * grynd:lb:game:{game}:{limit}:{offset}
+     */
+    game: (game: string, limit: number, offset: number) =>
+      `${PREFIX}:lb:game:${game}:${limit}:${offset}`,
+
     /** Wildcard pattern for eviction */
     all: `${PREFIX}:lb:*`,
 

@@ -150,15 +150,29 @@ selected recording aspect ratio (`src/components/creator-mode/`
   nav/footer/unrelated casino UI are already outside the frame.
 
 Games that use the generic `<CreatorResponsiveLayout>` wrapper (blackjack,
-chess, uno, odds, …) instead of a bespoke arrangement still fill the frame
-edge-to-edge: the shared `[data-creator-fill]` CSS makes the game page root
-take the full frame width and height (overriding desktop `max-w-*` caps and
-`mx-auto` centering inside the shell) and scrolls internally when the
-content is taller than the frame — the game's own responsive layout arranges
-itself at the frame's size, so it is never shrunk into a tiny rectangle.
+chess-ai, uno, odds, …) instead of a bespoke arrangement fill the frame via
+two mechanisms, depending on orientation:
+
+- **Portrait (9:16) is the PHONE frame.** The game is laid out at a real
+  phone width (390px — `PHONE_LAYOUT_WIDTH`) and `zoom`ed up to fill the
+  whole output frame edge-to-edge (`data-creator-phone`). Because the game
+  sees a 390px-wide layout, its own mobile-first responsive styles take
+  over — wrapping, stacked panels, touch-sized controls — so the recorded
+  video looks like a real phone screen at 1080×1920, never a shrunken
+  desktop page in the middle of the frame. `zoom` (not `transform: scale`)
+  re-lays-out the subtree at the scaled size, so text stays crisp in both
+  the live frame and the composite-mode recording. The shared
+  `[data-creator-fill]` CSS still makes the game page root take the full
+  phone-viewport width and height (overriding desktop `max-w-*` caps and
+  `mx-auto` centering) and scrolls internally when the content is taller.
+- **Landscape (16:9) / square (1:1)** keep the direct full-frame fill: the
+  game page root fills the frame edge-to-edge via `[data-creator-fill]`.
+
 Games opting into the phone-style portrait column keep it via
-`[data-creator-stack]`, and `position: fixed` overlays (turn chips, result
-modals) are exempt from the fill so they keep their compact sizing.
+`[data-creator-stack]` (which also collapses grid-based desktop layouts,
+like chess's board + sidebar grid, to a single column), and `position:
+fixed` overlays (turn chips, result modals) are exempt from the fill so
+they keep their compact sizing.
 
 Normal (non-Creator-Mode) rendering is byte-for-byte unchanged — the shell
 only mounts when Creator Mode is on. Plinko is the reference wiring: it

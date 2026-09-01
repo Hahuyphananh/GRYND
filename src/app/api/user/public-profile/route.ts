@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { users } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { users, userStats } from "../../../../db/schema";
+import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
+import { getLevelFromXp } from "../../../../lib/battlepass";
 
 export async function GET(req: NextRequest) {
   try {
@@ -56,8 +57,32 @@ export async function GET(req: NextRequest) {
         selectedSpecialTitle: users.selectedSpecialTitle,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
+        // Leaderboard-style record — same columns the /classement boards
+        // read, so the public profile's stat tabs match the leaderboard.
+        record: {
+          wins: sql<number>`COALESCE(${userStats.wins}, 0)::int`,
+          losses: sql<number>`COALESCE(${userStats.losses}, 0)::int`,
+          games: sql<number>`COALESCE(${userStats.totalBets}, 0)::int`,
+          winRate: sql<number>`COALESCE(${userStats.winRate}, 0)::numeric`,
+          bestStreak: sql<number>`COALESCE(${userStats.bestStreak}, 0)::int`,
+          currentStreak: sql<number>`COALESCE(${userStats.currentStreak}, 0)::int`,
+          biggestWin: sql<number>`COALESCE(${userStats.biggestWin}, 0)::numeric`,
+          favoriteGame: sql<string>`COALESCE(${userStats.favoriteGame}, 'N/A')`,
+          pvpWins: sql<number>`COALESCE(${users.pvpWins}, 0)::int`,
+          weeklyWins: sql<number>`COALESCE(${userStats.weeklyWins}, 0)::int`,
+          weeklyLosses: sql<number>`COALESCE(${userStats.weeklyLosses}, 0)::int`,
+          weeklyWinRate: sql<number>`COALESCE(${userStats.weeklyWinRate}, 0)::numeric`,
+          weeklyBestStreak: sql<number>`COALESCE(${userStats.weeklyBestStreak}, 0)::int`,
+          weeklyCurrentStreak: sql<number>`COALESCE(${userStats.weeklyGameStreak}, 0)::int`,
+          weeklyBiggestWin: sql<number>`COALESCE(${userStats.weeklyBiggestWin}, 0)::numeric`,
+          dailyStreakCurrent: sql<number>`COALESCE(${userStats.dailyStreakCurrent}, 0)::int`,
+          dailyStreakBest: sql<number>`COALESCE(${userStats.dailyStreakBest}, 0)::int`,
+          weeklyStreakCurrent: sql<number>`COALESCE(${userStats.weeklyStreakCurrent}, 0)::int`,
+          weeklyStreakBest: sql<number>`COALESCE(${userStats.weeklyStreakBest}, 0)::int`,
+        },
       })
       .from(users)
+      .leftJoin(userStats, eq(userStats.userId, users.id))
       .where(eq(users.clerkId, clerkId))
       .limit(1);
 
@@ -78,9 +103,12 @@ export async function GET(req: NextRequest) {
       if (!catalog) safeIcon = DEFAULT_ICON_KEY;
     }
 
+    // Battlepass level is derived from XP (wagering + quests), not the
+    // possibly-stale stored level column.
+    const battlepassLevel = getLevelFromXp(Number(user.xp) || 0);
     return NextResponse.json({
       success: true,
-      user: { ...user, selectedIcon: safeIcon },
+      user: { ...user, level: battlepassLevel, selectedIcon: safeIcon },
     });
   } catch (error: any) {
     console.error("[PUBLIC_PROFILE_ERROR]", error);

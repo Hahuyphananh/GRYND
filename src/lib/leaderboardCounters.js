@@ -1,5 +1,7 @@
 import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
+import { updateQuestProgress } from "./quests";
+import { MAX_LEVEL, expForWager } from "./battlepass";
 
 let _sql = null;
 function getSql() {
@@ -24,6 +26,9 @@ export async function applyLeaderboardCounters({
   const win = Math.max(0, Math.floor(Number(payout) || 0));
   const multiplier = bet > 0 ? win / bet : 0;
   const isWin = win > bet;
+  // Battlepass EXP: 1 XP per 10 tokens wagered (0 for fun-mode bets,
+  // matching the bet > 0 guard below).
+  const betExp = expForWager(bet);
 
   if (!clerkId || bet <= 0) return;
 
@@ -40,7 +45,9 @@ export async function applyLeaderboardCounters({
           current_streak = CASE WHEN ${isWin} THEN current_streak + 1 ELSE 0 END,
           best_streak = GREATEST(best_streak, CASE WHEN ${isWin} THEN current_streak + 1 ELSE best_streak END),
           weekly_wins = weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
-          pvp_wins = pvp_wins + CASE WHEN ${isPvpWin} THEN 1 ELSE 0 END
+          pvp_wins = pvp_wins + CASE WHEN ${isPvpWin} THEN 1 ELSE 0 END,
+          xp = LEAST(2147483647, xp + ${betExp}),
+          level = LEAST(${MAX_LEVEL}, GREATEST(1, FLOOR((SQRT(21025 + 20 * (xp::bigint + ${betExp})) - 135) / 10)::int))
       WHERE clerk_id = ${clerkId}
       RETURNING id, level, xp
     )
@@ -129,4 +136,10 @@ export async function applyLeaderboardCounters({
   // Invalidate caches affected by this game settlement.
   // Fire-and-forget — don't block the settlement response on cache ops.
   invalidateOnGameSettlement(clerkId).catch(() => {});
+
+  // Daily/weekly quest progress — same fire-and-forget pattern. A quest
+  // can only advance on a real settled wager (bet > 0), matching the guard
+  // above.
+  updateQuestProgress({ clerkId, game, betAmount: bet, payout: win, isPvpWin })
+    .catch((err) => console.error("[quests] progress update failed:", err));
 }

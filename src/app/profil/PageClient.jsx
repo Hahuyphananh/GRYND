@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
@@ -14,16 +15,8 @@ import {
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
 import ChooseIconModal from "../../components/ChooseIconModal";
+import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
-
-const statsCards = [
-  { key: "totalBets", label: "Total Bets" },
-  { key: "totalWins", label: "Total Wins" },
-  { key: "totalLosses", label: "Total Losses" },
-  { key: "winRate", label: "Win Rate", suffix: "%" },
-  { key: "biggestWin", label: "Biggest Win", suffix: " tokens" },
-  { key: "favoriteGame", label: "Favorite Game" },
-];
 
 // Grynd+ chat color palette (matches the neon casino aesthetic).
 const CHAT_COLORS = [
@@ -1166,12 +1159,15 @@ rounded-xl p-6
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-[#00e5ff]">VIP Level</h2>
+            <h2 className="text-xl text-[#00e5ff]">Battlepass Level</h2>
             <div
               className="rounded-full px-3 py-1 bg-[#00e5ff] text-[#001933] 
 shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             >
               Level {stats?.currentLevel ?? 1}
+              {stats?.levelProgress?.maxLevel
+                ? ` / ${stats.levelProgress.maxLevel}`
+                : ""}
             </div>
           </div>
 
@@ -1183,13 +1179,22 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           </div>
           <div className="mt-2 flex justify-between text-sm text-gray-300">
             <span>
-              {Number(stats?.levelProgress?.prevLevelRequired ?? 0).toLocaleString()} wagered
+              {Number(stats?.levelProgress?.prevLevelRequired ?? 0).toLocaleString()} XP
             </span>
             <span>{levelProgressPercent.toFixed(2)}%</span>
             <span>
-              {Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} next level
+              {Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} XP next level
             </span>
           </div>
+          <div className="mt-3 text-xs text-[#7dd3fc]">
+            Earn XP by wagering tokens and completing quests.
+          </div>
+          <Link
+            href="/battlepass"
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[#f5ff3b] hover:text-yellow-300"
+          >
+            View Battlepass →
+          </Link>
         </div>
 
         <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
@@ -2140,17 +2145,9 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
           <h2 className="text-xl text-[#00e5ff] mb-4">User Statistics</h2>
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {statsCards.map((card) => (
-              <div key={card.key} className="rounded-lg border border-[#FFD700]/30 bg-white/5 p-4">
-                <p className="text-sm text-gray-300">{card.label}</p>
-                <p className="text-2xl font-bold text-white mt-1">
-                  {stats?.[card.key] ?? 0}
-                  {card.suffix || ""}
-                </p>
-              </div>
-            ))}
-          </div>
+          {/* Tabbed stat panel — mirrors the /classement leaderboard
+              (record / weekly / streaks) instead of a flat grid. */}
+          <UserStatsTabs record={stats?.record} />
         </div>
 
         <div
@@ -2421,7 +2418,9 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
               </svg>{" "}
               Level Up! You reached Level {levelUpModal.level}
             </p>
-            <p className="mt-2 text-gray-200">Bonus received: {levelUpModal.bonus} tokens</p>
+            <p className="mt-2 text-gray-200">
+              Keep wagering and completing quests — rewards unlock soon.
+            </p>
             <button
               onClick={() => setLevelUpModal(null)}
               className={

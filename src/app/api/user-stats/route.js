@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
-import { getLevelProgress, getUserLevel } from "../../../lib/vipLevels";
+import { getBattlepassProgress, getLevelFromXp } from "../../../lib/battlepass";
 import { getHighestTitle } from "../../../lib/titles";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
@@ -641,7 +641,7 @@ export async function GET() {
           referral_count,
           referral_earnings,
           total_wagered,
-          level
+          xp
         FROM users
         WHERE clerk_id = ${userId}
         LIMIT 1
@@ -651,21 +651,62 @@ export async function GET() {
       console.error("[user-stats] Failed to fetch user meta:", selectErr);
     }
 
-      const computedLevel = getUserLevel(totalWagered);
-      const progress = getLevelProgress(totalWagered);
-      const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
+    // Battlepass level comes from EXP (wagering + quest claims), NOT total
+    // wagered. The level/xp columns are maintained incrementally by
+    // applyLeaderboardCounters (per settled bet) and addExp (per quest
+    // claim); we only derive the display values here and must NOT
+    // overwrite level — that would clobber quest-earned progress.
+    const userXp = Math.max(0, Math.floor(Number(row?.xp) || 0));
+    const computedLevel = getLevelFromXp(userXp);
+    const progress = getBattlepassProgress(userXp);
+    const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
-    // Only update level / highest_title here. total_wagered is maintained
-    // incrementally by applyLeaderboardCounters and must NOT be overwritten.
+    // Titles still unlock by level — keep the highest unlocked title in
+    // sync with the battlepass level.
     try {
       await sql`
         UPDATE users
-        SET level = ${computedLevel},
-            highest_title = COALESCE(${computedHighestTitle}, highest_title)
+        SET highest_title = COALESCE(${computedHighestTitle}, highest_title)
         WHERE clerk_id = ${userId}
       `;
     } catch (updateErr) {
-      console.error("[user-stats] Failed to update user level:", updateErr);
+      console.error("[user-stats] Failed to update highest title:", updateErr);
+    }
+
+    // Leaderboard-style record — the exact columns the leaderboard boards
+    // read (user_stats + users), so the profile's stat tabs show the same
+    // data as the /classement leaderboards. pvp_wins lives on users only.
+    let record = null;
+    try {
+      const recordRows = await sql`
+        SELECT
+          COALESCE(s.wins, 0)::int AS wins,
+          COALESCE(s.losses, 0)::int AS losses,
+          COALESCE(s.total_bets, 0)::int AS games,
+          COALESCE(s.win_rate, 0)::numeric AS win_rate,
+          COALESCE(s.best_streak, 0)::int AS best_streak,
+          COALESCE(s.current_streak, 0)::int AS current_streak,
+          COALESCE(s.biggest_win, 0)::numeric AS biggest_win,
+          COALESCE(s.favorite_game, 'N/A') AS favorite_game,
+          COALESCE(u.pvp_wins, 0)::int AS pvp_wins,
+          COALESCE(s.weekly_wins, 0)::int AS weekly_wins,
+          COALESCE(s.weekly_losses, 0)::int AS weekly_losses,
+          COALESCE(s.weekly_win_rate, 0)::numeric AS weekly_win_rate,
+          COALESCE(s.weekly_best_streak, 0)::int AS weekly_best_streak,
+          COALESCE(s.weekly_game_streak, 0)::int AS weekly_current_streak,
+          COALESCE(s.weekly_biggest_win, 0)::numeric AS weekly_biggest_win,
+          COALESCE(s.daily_streak_current, 0)::int AS daily_streak_current,
+          COALESCE(s.daily_streak_best, 0)::int AS daily_streak_best,
+          COALESCE(s.weekly_streak_current, 0)::int AS weekly_streak_current,
+          COALESCE(s.weekly_streak_best, 0)::int AS weekly_streak_best
+        FROM user_stats s
+        INNER JOIN users u ON u.id = s.user_id
+        WHERE s.user_id = ${uid}
+        LIMIT 1
+      `;
+      record = recordRows[0] || null;
+    } catch (recordErr) {
+      console.error("[user-stats] Failed to fetch leaderboard record:", recordErr);
     }
 
       const statsResult = {
@@ -681,6 +722,9 @@ export async function GET() {
         totalWagered,
         currentLevel: computedLevel,
         levelProgress: progress,
+        // Same shape as the leaderboard boards — feeds the profile's
+        // tabbed stat panel (UserStatsTabs).
+        record,
       };
 
       return statsResult;

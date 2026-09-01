@@ -271,6 +271,9 @@ export default function Page() {
   const [winner, setWinner] = useState<PlayerTurn | null>(null);
   const [aim, setAim] = useState(0);
   const [pull, setPull] = useState(0);
+  // Two-phase aiming: phase 1 the pointer aims the cue (no power), a click
+  // locks the angle, phase 2 dragging charges power and release fires.
+  const [aimLocked, setAimLocked] = useState(false);
   const [started, setStarted] = useState(aiMode);
   const [myName, setMyName] = useState("Player 1");
   // Emotes — both players already join the pool room, so reuse it.
@@ -539,7 +542,7 @@ export default function Page() {
     const cue = balls.find((b) => b.number === 0);
     
     if (cue && !cue.pocketed && canShoot) {
-      drawAimGuide(x, cue, aim, pull);
+      drawAimGuide(x, cue, aim, pull, aimLocked);
       drawShotPreview(x, cue, aim, balls);
       drawBankPreview(x, cue, aim, balls, true);
     } else if (cue && !cue.pocketed && showRemoteAim) {
@@ -549,7 +552,7 @@ export default function Page() {
       drawBankPreview(x, cue, remoteAim!.angle, balls, false);
     }
     drawBalls(x, balls);
-  }, [balls, canShoot, aim, pull, owner, turn, remoteAim, showRemoteAim]);
+  }, [balls, canShoot, aim, pull, owner, turn, remoteAim, showRemoteAim, aimLocked]);
 
   useEffect(() => {
     if (!shotLock.current || isMoving(balls)) return;
@@ -709,6 +712,8 @@ export default function Page() {
 
 if (!aiMode && turnRef.current !== owner) return;
     settleInterpRef.current = null; // cancel any in-flight SETTLED interpolation
+    // A new aiming session starts fresh — unlock the previous locked angle.
+    setAimLocked(false);
     shotLock.current = true;
     localShotInProgressRef.current = true;
     remoteShotInProgressRef.current = false;
@@ -826,17 +831,22 @@ if (!aiMode && turnRef.current !== owner) return;
     if (!canShoot || turnRef.current !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
     const p = touchPoint(e, r);
-    setAim(Math.atan2(p.y - cue.y, p.x - cue.x));
+    const angle = Math.atan2(p.y - cue.y, p.x - cue.x);
+    // Phase 1: pointer aims the cue (no power yet). Phase 2: locked angle,
+    // dragging away from the stick only charges power.
+    if (!aimLocked) setAim(angle);
     if (dragRef.current) {
-      const nextPull = Math.min(
-        MAX_PULL,
-        Math.hypot(p.x - dragRef.current.x, p.y - dragRef.current.y)
-      );
-      setPull(nextPull);
+      const nextPull = aimLocked
+        ? Math.min(
+            MAX_PULL,
+            Math.hypot(p.x - dragRef.current.x, p.y - dragRef.current.y)
+          )
+        : 0;
+      if (aimLocked) setPull(nextPull);
       emitLiveState({
         sourceSeat: owner,
         turn,
-        aim: Math.atan2(p.y - cue.y, p.x - cue.x),
+        aim: aimLocked ? aim : angle,
         pull: nextPull,
         spinX: spin.x,
         spinY: spin.y,
@@ -846,9 +856,35 @@ if (!aiMode && turnRef.current !== owner) return;
       });
     }
   };
-  const onUp = () => {
-    if (dragRef.current && canShoot && turnRef.current === owner) fireShot(aim, pull);
+  // A release below this drag distance (px) counts as a click.
+  const LOCK_CLICK_EPSILON = 4;
+  const onUp = (e: any) => {
+    const leaving = e?.type === "mouseleave";
+    const hadDrag = !!dragRef.current;
     dragRef.current = null;
+    if (!canShoot || turnRef.current !== owner || !hadDrag) {
+      setPull(0);
+      return;
+    }
+    if (!aimLocked) {
+      // First click/release locks the angle — never fires a shot while aiming.
+      if (!leaving) setAimLocked(true);
+      setPull(0);
+      return;
+    }
+    // Locked: a real power drag launches the ball; a click unlocks so the
+    // player can re-aim. Leaving mid-drag behaves like a release.
+    if (leaving) {
+      if (pull >= LOCK_CLICK_EPSILON) fireShot(aim, pull);
+      setPull(0);
+      return;
+    }
+    if (pull < LOCK_CLICK_EPSILON) {
+      setAimLocked(false); // click again while locked → re-aim
+      setPull(0);
+      return;
+    }
+    fireShot(aim, pull);
     setPull(0);
   };
 
@@ -1548,6 +1584,23 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
               </div>
               <span className="text-xs font-bold text-white/80">
                 {Math.round((pull / MAX_PULL) * 100)}%
+              </span>
+            </div>
+          )}
+
+          {/* ── Aim lock status pill ── */}
+          {canShoot && (
+            <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-sm shadow-lg ${
+                  aimLocked
+                    ? "border-green-400/60 bg-green-900/70 text-green-300"
+                    : "border-white/20 bg-black/60 text-white/70"
+                }`}
+              >
+                {aimLocked
+                  ? "🔒 Angle locked — drag to set power, release to shoot"
+                  : "Aim with mouse — click to lock angle"}
               </span>
             </div>
           )}
