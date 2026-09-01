@@ -7,7 +7,12 @@ const withPWA = require("next-pwa")({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  turbopack: {},
+  turbopack: {
+    // Pin the workspace root to this directory. Without this, Next infers the
+    // root from stray lockfiles higher up the tree (e.g. C:\Users\client\package-lock.json)
+    // and resolves imports against the wrong copy of the project.
+    root: __dirname,
+  },
 
   webpack: (config) => {
     config.externals = [...config.externals, { canvas: "canvas" }];

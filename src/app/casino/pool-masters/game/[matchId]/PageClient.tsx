@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
@@ -11,9 +11,6 @@ import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeH
 import {
   CreatorView,
   CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
 } from "../../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
@@ -106,19 +103,76 @@ function setupBalls(): Ball[] {
     }
   return balls;
 }
-const touchPoint = (e: any, rect: DOMRect) =>
-  e.touches
-    ? {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
-      }
-    : { x: e.clientX - rect.left, y: e.clientY - rect.top };
+const touchPoint = (e: any, rect: DOMRect, rotated: boolean) => {
+  const vx = e.touches ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+  const vy = e.touches ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+  if (!rotated) return { x: vx, y: vy };
+  // The canvas is rotated 90° clockwise (vertical table). `rect` is its
+  // axis-aligned bounding box: rect.width is the canvas's CSS height,
+  // rect.height is its CSS width. Un-rotate the pointer to table space.
+  return {
+    x: (vy * TABLE_W) / rect.height,
+    y: ((rect.width - vx) * TABLE_H) / rect.width,
+  };
+};
 
 const isTeamBall = (n: number, team: Team) =>
   team === "solids" ? n >= 1 && n <= 7 : n >= 9 && n <= 15;
 
 const teamHasBalls = (balls: Ball[], team: Team) =>
   !!team && balls.some((b) => !b.pocketed && !b.animatingPocket && isTeamBall(b.number, team));
+
+/**
+ * Fits the rotated (vertical) pool table inside its container while
+ * preserving the table's aspect ratio and filling as much space as
+ * possible. The 900×500 canvas is rotated 90° so it reads as a 500×900
+ * vertical table — almost exactly the 9:16 creator frame, so it fills
+ * edge-to-edge. Measured with offsetWidth/offsetHeight so the Creator
+ * Mode frame's CSS scale (which scales the display, not the layout) does
+ * not distort the fit.
+ */
+function FitStage({
+  tableW,
+  tableH,
+  children,
+}: {
+  tableW: number;
+  tableH: number;
+  children: (w: number, h: number) => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const fitW = size.w > 0 && size.h > 0 ? Math.min(size.w, size.h * (tableH / tableW)) : 0;
+  const fitH = fitW > 0 ? (fitW * tableW) / tableH : 0;
+
+  return (
+    <div ref={ref} className="relative h-full w-full">
+      {fitW > 0 && fitH > 0 && (
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={{ width: fitW, height: fitH, transform: "translate(-50%, -50%)" }}
+        >
+          {children(fitW, fitH)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function planAiShot(balls: Ball[], aiTeam: Team, openTable: boolean) {
   const cue = balls.find((b) => b.number === 0 && !b.pocketed);
@@ -203,6 +257,18 @@ export default function Page() {
   const resigningRef = useRef(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
+  const [isPortrait, setIsPortrait] = useState(false);
+
+  // Real-phone portrait detection: rotates the pool table to a vertical
+  // layout so the horizontal table fills the phone screen. (The Creator
+  // Mode portrait frame rotates unconditionally via `portraitContent`.)
+  useEffect(() => {
+    const mq = window.matchMedia("(orientation: portrait)");
+    const update = () => setIsPortrait(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Keep userIdRef in sync so the socket handler never captures a stale user
   useEffect(() => {
@@ -823,14 +889,14 @@ if (!aiMode && turnRef.current !== owner) return;
   const onDown = (e: any) => {
     if (winner || !canShoot || turnRef.current !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
-    const p = touchPoint(e, r);
+    const p = touchPoint(e, r, e.currentTarget.dataset.rotated === "1");
     dragRef.current = p;
   };
   const onMove = (e: any) => {
     const cue = balls.find((b) => b.number === 0);
     if (!canShoot || turnRef.current !== owner) return;
     const r = e.currentTarget.getBoundingClientRect();
-    const p = touchPoint(e, r);
+    const p = touchPoint(e, r, e.currentTarget.dataset.rotated === "1");
     const angle = Math.atan2(p.y - cue.y, p.x - cue.x);
     // Phase 1: pointer aims the cue (no power yet). Phase 2: locked angle,
     // dragging away from the stick only charges power.
@@ -1561,164 +1627,362 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
 
         </>
   );
-  const creatorTable = (
-    <><div className="relative mt-4">
-          {/* ── Shot power meter ── */}
-          {canShoot && pull > 0 && (
-            <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-1">
-              <div className="h-40 w-4 overflow-hidden rounded-full border border-white/20 bg-black/50">
-                <div
-                  className="w-full transition-all duration-75"
-                  style={{
-                    height: `${Math.min(100, (pull / MAX_PULL) * 100)}%`,
-                    marginTop: `${100 - Math.min(100, (pull / MAX_PULL) * 100)}%`,
-                    background:
-                      pull / MAX_PULL < 0.33
-                        ? "linear-gradient(to top, #22c55e, #4ade80)"
-                        : pull / MAX_PULL < 0.66
-                          ? "linear-gradient(to top, #eab308, #facc15)"
-                          : "linear-gradient(to top, #ef4444, #f87171)",
-                    borderRadius: "9999px",
-                  }}
-                />
-              </div>
-              <span className="text-xs font-bold text-white/80">
-                {Math.round((pull / MAX_PULL) * 100)}%
-              </span>
-            </div>
-          )}
-
-          {/* ── Aim lock status pill ── */}
-          {canShoot && (
-            <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-sm shadow-lg ${
-                  aimLocked
-                    ? "border-green-400/60 bg-green-900/70 text-green-300"
-                    : "border-white/20 bg-black/60 text-white/70"
-                }`}
-              >
-                {aimLocked
-                  ? "🔒 Angle locked — drag to set power, release to shoot"
-                  : "Aim with mouse — click to lock angle"}
-              </span>
-            </div>
-          )}
-
-          {/* ── Spin control ── */}
-          {canShoot && turn === owner && (
+  /* ── Shared table overlays (used by desktop + rotated portrait) ── */
+  const powerMeterOverlay = (
+    <>
+      {canShoot && pull > 0 && (
+        <div className="absolute right-3 top-1/2 z-10 flex -translate-y-1/2 flex-col items-center gap-1">
+          <div className="h-40 w-4 overflow-hidden rounded-full border border-white/20 bg-black/50">
             <div
-              className="absolute bottom-3 left-3 z-10 select-none rounded-full border-2 border-white/30 bg-black/55 p-1 shadow-lg backdrop-blur-sm"
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const r = rect.width / 2 - 4;
-                const sx = Math.max(-1, Math.min(1, (e.clientX - cx) / r));
-                const sy = Math.max(-1, Math.min(1, (e.clientY - cy) / r));
-                setSpin({ x: sx, y: -sy }); // negate y: down = draw = negative
+              className="w-full transition-all duration-75"
+              style={{
+                height: `${Math.min(100, (pull / MAX_PULL) * 100)}%`,
+                marginTop: `${100 - Math.min(100, (pull / MAX_PULL) * 100)}%`,
+                background:
+                  pull / MAX_PULL < 0.33
+                    ? "linear-gradient(to top, #22c55e, #4ade80)"
+                    : pull / MAX_PULL < 0.66
+                      ? "linear-gradient(to top, #eab308, #facc15)"
+                      : "linear-gradient(to top, #ef4444, #f87171)",
+                borderRadius: "9999px",
               }}
-              onMouseMove={(e) => {
-                if (e.buttons !== 1) return;
-                e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const r = rect.width / 2 - 4;
-                const sx = Math.max(-1, Math.min(1, (e.clientX - cx) / r));
-                const sy = Math.max(-1, Math.min(1, (e.clientY - cy) / r));
-                setSpin({ x: sx, y: -sy });
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                const t = e.touches[0];
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const r = rect.width / 2 - 4;
-                const sx = Math.max(-1, Math.min(1, (t.clientX - cx) / r));
-                const sy = Math.max(-1, Math.min(1, (t.clientY - cy) / r));
-                setSpin({ x: sx, y: -sy });
-              }}
-              onTouchMove={(e) => {
-                e.stopPropagation();
-                const t = e.touches[0];
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const r = rect.width / 2 - 4;
-                const sx = Math.max(-1, Math.min(1, (t.clientX - cx) / r));
-                const sy = Math.max(-1, Math.min(1, (t.clientY - cy) / r));
-                setSpin({ x: sx, y: -sy });
-              }}
-            >
-              {/* Outer circle with tick marks */}
-              <svg width={52} height={52} viewBox="0 0 52 52">
-                <circle cx={26} cy={26} r={24} fill="#1a472a" stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
-                {/* Crosshair lines */}
-                <line x1={26} y1={4} x2={26} y2={48} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
-                <line x1={4} y1={26} x2={48} y2={26} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
-                {/* Labels */}
-                <text x={26} y={10} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
-                  FOLLOW
-                </text>
-                <text x={26} y={49} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
-                  DRAW
-                </text>
-                <text x={7} y={27.5} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
-                  L
-                </text>
-                <text x={44} y={27.5} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
-                  R
-                </text>
-                {/* Spin dot */}
-                <circle
-                  cx={26 + spin.x * 20}
-                  cy={26 - spin.y * 20}
-                  r={5}
-                  fill="#f5f5f5"
-                  stroke="rgba(0,0,0,0.6)"
-                  strokeWidth={1}
-                />
-                {/* Center dot */}
-                <circle cx={26} cy={26} r={1.5} fill="rgba(255,255,255,0.2)" />
-              </svg>
-            </div>
-          )}
+            />
+          </div>
+          <span className="text-xs font-bold text-white/80">
+            {Math.round((pull / MAX_PULL) * 100)}%
+          </span>
+        </div>
+      )}
+    </>
+  );
 
-          {/* ── Opponent aim visor ── */}
-          {showOpponentVisor && turn !== owner && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-gradient-to-b from-black/60 via-transparent to-black/60 pointer-events-none">
-              <div className="absolute top-6 left-1/2 -translate-x-1/2 animate-pulse rounded-full border border-yellow-400/40 bg-yellow-500/10 px-6 py-2 backdrop-blur-md">
-                <span className="text-sm font-bold text-yellow-300 drop-shadow-lg">
-                  <span className="inline-flex items-center gap-1.5"><IconTarget size={14} /> {oppName} is aiming...</span>
-                </span>
-              </div>
-              {/* Crosshair corners */}
-              <div className="absolute top-8 left-8 h-8 w-8 border-t-2 border-l-2 border-yellow-400/30 rounded-tl" />
-              <div className="absolute top-8 right-8 h-8 w-8 border-t-2 border-r-2 border-yellow-400/30 rounded-tr" />
-              <div className="absolute bottom-8 left-8 h-8 w-8 border-b-2 border-l-2 border-yellow-400/30 rounded-bl" />
-              <div className="absolute bottom-8 right-8 h-8 w-8 border-b-2 border-r-2 border-yellow-400/30 rounded-br" />
-            </div>
-          )}
+  const aimPillOverlay = (
+    <>
+      {canShoot && (
+        <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
+          <span
+            className={`rounded-full border px-3 py-1 text-xs font-semibold backdrop-blur-sm shadow-lg ${
+              aimLocked
+                ? "border-green-400/60 bg-green-900/70 text-green-300"
+                : "border-white/20 bg-black/60 text-white/70"
+            }`}
+          >
+            {aimLocked
+              ? "🔒 Angle locked — drag to set power, release to shoot"
+              : "Aim with mouse — click to lock angle"}
+          </span>
+        </div>
+      )}
+    </>
+  );
 
-          <canvas
-            ref={canvasRef}
-            width={TABLE_W}
-            height={TABLE_H}
-            onMouseDown={onDown}
-            onMouseMove={onMove}
-            onMouseUp={onUp}
-            onMouseLeave={onUp}
-            onTouchStart={onDown}
-            onTouchMove={onMove}
-            onTouchEnd={onUp}
-              className={`w-full touch-none rounded-2xl border border-black bg-[#111]
+  const spinControlOverlay = (
+    <>
+      {canShoot && turn === owner && (
+        <div
+          className="absolute bottom-3 left-3 z-10 select-none rounded-full border-2 border-white/30 bg-black/55 p-1 shadow-lg backdrop-blur-sm"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const r = rect.width / 2 - 4;
+            const sx = Math.max(-1, Math.min(1, (e.clientX - cx) / r));
+            const sy = Math.max(-1, Math.min(1, (e.clientY - cy) / r));
+            setSpin({ x: sx, y: -sy }); // negate y: down = draw = negative
+          }}
+          onMouseMove={(e) => {
+            if (e.buttons !== 1) return;
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const r = rect.width / 2 - 4;
+            const sx = Math.max(-1, Math.min(1, (e.clientX - cx) / r));
+            const sy = Math.max(-1, Math.min(1, (e.clientY - cy) / r));
+            setSpin({ x: sx, y: -sy });
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            const t = e.touches[0];
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const r = rect.width / 2 - 4;
+            const sx = Math.max(-1, Math.min(1, (t.clientX - cx) / r));
+            const sy = Math.max(-1, Math.min(1, (t.clientY - cy) / r));
+            setSpin({ x: sx, y: -sy });
+          }}
+          onTouchMove={(e) => {
+            e.stopPropagation();
+            const t = e.touches[0];
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const r = rect.width / 2 - 4;
+            const sx = Math.max(-1, Math.min(1, (t.clientX - cx) / r));
+            const sy = Math.max(-1, Math.min(1, (t.clientY - cy) / r));
+            setSpin({ x: sx, y: -sy });
+          }}
+        >
+          {/* Outer circle with tick marks */}
+          <svg width={52} height={52} viewBox="0 0 52 52">
+            <circle cx={26} cy={26} r={24} fill="#1a472a" stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
+            {/* Crosshair lines */}
+            <line x1={26} y1={4} x2={26} y2={48} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+            <line x1={4} y1={26} x2={48} y2={26} stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+            {/* Labels */}
+            <text x={26} y={10} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+              FOLLOW
+            </text>
+            <text x={26} y={49} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+              DRAW
+            </text>
+            <text x={7} y={27.5} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+              L
+            </text>
+            <text x={44} y={27.5} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={5} fontFamily="Arial">
+              R
+            </text>
+            {/* Spin dot */}
+            <circle
+              cx={26 + spin.x * 20}
+              cy={26 - spin.y * 20}
+              r={5}
+              fill="#f5f5f5"
+              stroke="rgba(0,0,0,0.6)"
+              strokeWidth={1}
+            />
+            {/* Center dot */}
+            <circle cx={26} cy={26} r={1.5} fill="rgba(255,255,255,0.2)" />
+          </svg>
+        </div>
+      )}
+    </>
+  );
+
+  const visorOverlay = (
+    <>
+      {showOpponentVisor && turn !== owner && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-gradient-to-b from-black/60 via-transparent to-black/60 pointer-events-none">
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 animate-pulse rounded-full border border-yellow-400/40 bg-yellow-500/10 px-6 py-2 backdrop-blur-md">
+            <span className="text-sm font-bold text-yellow-300 drop-shadow-lg">
+              <span className="inline-flex items-center gap-1.5"><IconTarget size={14} /> {oppName} is aiming...</span>
+            </span>
+          </div>
+          {/* Crosshair corners */}
+          <div className="absolute top-8 left-8 h-8 w-8 border-t-2 border-l-2 border-yellow-400/30 rounded-tl" />
+          <div className="absolute top-8 right-8 h-8 w-8 border-t-2 border-r-2 border-yellow-400/30 rounded-tr" />
+          <div className="absolute bottom-8 left-8 h-8 w-8 border-b-2 border-l-2 border-yellow-400/30 rounded-bl" />
+          <div className="absolute bottom-8 right-8 h-8 w-8 border-b-2 border-r-2 border-yellow-400/30 rounded-br" />
+        </div>
+      )}
+    </>
+  );
+
+  const poolCanvas = (rotated: boolean, w?: number, h?: number) => (
+    <canvas
+      ref={canvasRef}
+      width={TABLE_W}
+      height={TABLE_H}
+      onMouseDown={onDown}
+      onMouseMove={onMove}
+      onMouseUp={onUp}
+      onMouseLeave={onUp}
+      onTouchStart={onDown}
+      onTouchMove={onMove}
+      onTouchEnd={onUp}
+      data-rotated={rotated ? "1" : "0"}
+      className={`${rotated ? "" : "w-full "}touch-none rounded-2xl border border-black bg-[#111]
 shadow-[0_12px_40px_rgba(0,0,0,.75)]
 ${!canShoot ? "pointer-events-none" : ""}`}
-            />
-        </div></>
+      style={rotated ? { width: h ?? 0, height: w ?? 0, transform: "rotate(90deg)" } : undefined}
+    />
+  );
+
+  const creatorTable = (
+    <div className="relative mt-4">
+      {powerMeterOverlay}
+      {aimPillOverlay}
+      {spinControlOverlay}
+      {visorOverlay}
+      {poolCanvas(false)}
+    </div>
+  );
+
+  // ── Rotated (vertical) table for portrait screens / the 9:16 creator
+  //    frame. The 900×500 canvas is turned 90° clockwise so it reads as a
+  //    500×900 vertical table that fills the frame edge-to-edge; pointer
+  //    input is un-rotated via `data-rotated` (see touchPoint). Overlays
+  //    stay upright on top of the visual table box. ──
+  const rotatedTableStage = (w: number, h: number) => (
+    <>
+      {powerMeterOverlay}
+      {aimPillOverlay}
+      {spinControlOverlay}
+      {visorOverlay}
+      {poolCanvas(true, w, h)}
+    </>
+  );
+
+  // Compact status / score overlays for the portrait stage.
+  const portraitStatus = (
+    <div className="flex flex-col items-center gap-1">
+      <div className="text-center text-sm font-black text-yellow-300 drop-shadow sm:text-base">
+        {started
+          ? turn === owner
+            ? "Your turn."
+            : `${oppName} is shooting...`
+          : "Waiting for match start..."}
+      </div>
+      <div
+        className={`rounded-lg border px-3 py-0.5 text-center text-[11px] font-bold ${
+          lastFoul ? "border-red-300 bg-red-700/85 text-white" : "border-white/10 bg-black/45 text-slate-100"
+        }`}
+      >
+        {lastFoul ? `FOUL: ${lastFoul.replace(/^Foul: /, "")}` : status}
+        {ballInHand ? " • Ball in hand" : ""}
+      </div>
+    </div>
+  );
+
+  const portraitScoreRow = (
+    <div className="grid w-full grid-cols-2 gap-2">
+      <div className="rounded-lg border border-white/10 bg-[#1f1f1f]/85 px-2 py-1">
+        <p className="relative truncate text-xs font-bold">
+          {myName}
+          <EmoteBubble emote={myEmote} side="mine" />
+        </p>
+        <p className="truncate text-[10px] text-cyan-100">
+          {myTeam ?? "unassigned"} • Balls: {myRemaining.join(", ") || "—"}
+        </p>
+      </div>
+      <div className="rounded-lg border border-white/10 bg-[#1f1f1f]/85 px-2 py-1 text-right">
+        <p className="relative truncate text-xs font-bold">
+          {oppName}
+          <EmoteBubble emote={incomingEmote} />
+        </p>
+        <p className="truncate text-[10px] text-cyan-100">
+          {oppTeam ?? "unassigned"} • Balls: {oppRemaining.join(", ") || "—"}
+        </p>
+      </div>
+    </div>
+  );
+
+  // Compact controls for the portrait stage.
+  const portraitResign = (
+    <div className="flex flex-col items-center gap-0.5">
+      {started && !winner && (
+        !showResignConfirm ? (
+          <button
+            onClick={() => setShowResignConfirm(true)}
+            disabled={resigning}
+            className="rounded-lg border border-red-500/40 bg-red-900/40 px-4 py-1.5 text-xs font-semibold text-red-300 transition-all hover:bg-red-900/60 hover:text-red-200"
+          >
+            {resigning ? "Resigning..." : "Resign"}
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleResign}
+              disabled={resigning}
+              className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-red-600 disabled:opacity-60"
+            >
+              {resigning ? "Resigning..." : "Confirm"}
+            </button>
+            <button
+              onClick={() => setShowResignConfirm(false)}
+              disabled={resigning}
+              className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/70 transition-all hover:bg-white/20"
+            >
+              Cancel
+            </button>
+          </div>
+        )
+      )}
+      {!aiMode && (
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="text-[10px] text-slate-500 underline underline-offset-4 transition hover:text-red-400"
+        >
+          Report Player
+        </button>
+      )}
+    </div>
+  );
+
+  const portraitHistory = (
+    <div className="relative">
+      <button
+        onClick={() => setShowHistory((p) => !p)}
+        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
+      >
+        <IconNotebook size={13} /> History ({shotHistory.length}) {showHistory ? "▲" : "▼"}
+      </button>
+      {showHistory && (
+        <div className="absolute bottom-full left-1/2 mb-2 max-h-48 w-80 -translate-x-1/2 overflow-y-auto rounded-lg border border-white/10 bg-black/80 p-2 text-[11px] shadow-2xl backdrop-blur-sm">
+          {shotHistory.length === 0 ? (
+            <p className="text-center text-white/30 italic">No shots yet.</p>
+          ) : (
+            <div className="flex flex-col-reverse gap-1.5">
+              {shotHistory.map((entry, i) => {
+                const pocketedStr =
+                  entry.pocketedNumbers.length > 0
+                    ? ` pocketed [${entry.pocketedNumbers.join(", ")}]`
+                    : "";
+                const foulStr = entry.foul
+                  ? ` · FOUL${entry.foulMessage ? `: ${entry.foulMessage.replace(/^Foul: /, "")}` : ""}` + (entry.ballInHand ? ", ball in hand" : "")
+                  : "";
+                const winStr = entry.winner ? " WIN" : "";
+                return (
+                  <div
+                    key={i}
+                    className={`rounded-md px-3 py-2 leading-relaxed ${
+                      entry.foul
+                        ? "border border-red-500/20 bg-red-900/25"
+                        : "border border-white/5 bg-white/5"
+                    }`}
+                  >
+                    <span className="font-bold text-white/80">#{entry.turnNumber}{" "}</span>
+                    <span className={`font-semibold ${entry.seat === owner ? "text-cyan-300" : "text-orange-300"}`}>
+                      {entry.playerName}
+                    </span>
+                    {pocketedStr && <span className="text-emerald-300">{pocketedStr}</span>}
+                    {foulStr && <span className="text-red-300">{foulStr}</span>}
+                    {winStr && <span className="text-yellow-300">{winStr}</span>}
+                    {!pocketedStr && !foulStr && !winStr && <span className="text-white/40"> missed</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // Portrait stage: the vertical table fills the whole frame; status/score
+  // sit on top, controls at the bottom — everything stays inside the frame.
+  const portraitStage = (
+    <div className="relative h-full w-full overflow-hidden">
+      <FitStage tableW={TABLE_W} tableH={TABLE_H}>
+        {(w, h) => rotatedTableStage(w, h)}
+      </FitStage>
+      {/* top: status + score */}
+      <div className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex flex-col items-center gap-1.5 p-1.5 sm:p-2">
+        {portraitStatus}
+        {portraitScoreRow}
+      </div>
+      {/* bottom: emotes / resign / history */}
+      <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-1.5 p-2">
+        {creatorEmotes}
+        <div className="flex items-center justify-center gap-2">
+          {portraitResign}
+          {portraitHistory}
+        </div>
+      </div>
+      {creatorPopup}
+    </div>
   );
 
   const desktopContent = (
@@ -1737,20 +2001,16 @@ ${!canShoot ? "pointer-events-none" : ""}`}
 
   const portraitContent = (
     <CreatorModeShell className="bg-[#0b1324]">
-      <ShellHeader className="space-y-2">
-        {creatorStatus}
-        {creatorScoreRow}
-      </ShellHeader>
-      <ShellMain className="h-full items-start">
-        {creatorTable}
-      </ShellMain>
-      <ShellAside className="space-y-3">
-        {creatorEmotes}
-        {creatorResign}
-        {creatorHistory}
-      </ShellAside>
-      {creatorPopup}
+      {portraitStage}
     </CreatorModeShell>
+  );
+
+  // Real-phone portrait (creator mode off): same vertical table filling the
+  // screen under the app navbar.
+  const mobilePortraitContent = (
+    <div className="relative mx-auto h-[calc(100dvh-6.5rem)] w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0b1324]/60">
+      {portraitStage}
+    </div>
   );
 
   return (
@@ -1799,7 +2059,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
         gameLabel="pool-masters"
       >
         <CreatorView
-          normal={desktopContent}
+          normal={isPortrait ? mobilePortraitContent : desktopContent}
           portrait={portraitContent}
           landscape={desktopContent}
         />

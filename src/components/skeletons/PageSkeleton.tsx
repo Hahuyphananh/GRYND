@@ -52,7 +52,7 @@ function NavSkeleton() {
         src="/images/navbar-logo.png"
         alt=""
         draggable={false}
-        className="h-[72px] w-auto object-contain sm:h-[84px]"
+        className="h-[84px] w-auto object-contain sm:h-[92px]"
       />
       <div className="hidden items-center gap-5 md:flex">
         {Array.from({ length: 4 }, (_, i) => (

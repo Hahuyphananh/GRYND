@@ -36,7 +36,7 @@ const NAV_TRANSLATION_KEYS = {
   "/battlepass": "nav.battlepass",
 };
 
-function NavigationBar({ currentPath }) {
+function NavigationBar({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
   const { language, setLanguage } = useLanguage();
@@ -316,16 +316,29 @@ function NavigationBar({ currentPath }) {
 
   return (
     <>
+      {/* The navbar renders fully visible on mount (initial={false}) — no
+          fade-up entrance. It lives inside every page's client component,
+          so an opacity-0 start made the whole bar (logo included) vanish
+          for ~300ms on each navigation and after the splash screen on a
+          hard refresh. Skipping the entrance keeps the logo on screen
+          from the first paint, every time. */}
       <motion.nav
-        initial={navVariant.initial}
+        initial={false}
         animate={navVariant.animate}
         transition={navVariant.transition}
         data-no-translate="true"
         className="fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
       >
-        <UIPro01NavShell className="mx-auto max-w-7xl px-3 sm:px-4">
+        {/* max-w-[1440px] gives the fully-loaded navbar (logo + 7 links +
+            install + avatar + tokens + sign-out ≈1390px) room to breathe on
+            wide screens; the old max-w-7xl (1280px) capped it and forced
+            the logo/right side to be squeezed. */}
+        <UIPro01NavShell className="mx-auto max-w-[1440px] px-3 sm:px-4">
           <div className="flex h-24 items-center justify-between gap-2">
-            <Link href="/" className="flex items-center">
+            {/* shrink-0: the navbar flex row must never squeeze the logo —
+                at laptop widths (≈768–1100px) it collapsed to 0px wide and
+                the logo vanished entirely. */}
+            <Link href="/" className="flex shrink-0 items-center">
               {/* Plain <img> with the public URL (not the webpack import).
                   An imported .png resolves to a structured object at runtime,
                   which a plain <img> cannot render (src becomes "[object
@@ -343,9 +356,9 @@ function NavigationBar({ currentPath }) {
               <img
                 src="/images/navbar-logo.png"
                 alt="GRYND Logo"
-                width={84}
-                height={87}
-                className="h-[72px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[84px]"
+                width={92}
+                height={95}
+                className="h-[84px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[92px]"
               />
             </Link>
 
@@ -373,6 +386,7 @@ function NavigationBar({ currentPath }) {
               ))}
               <motion.div
                 key="/contact"
+                className="hidden 2xl:flex"
                 initial={itemVariant.initial}
                 animate={itemVariant.animate}
                 transition={itemVariant.transition}
@@ -389,6 +403,7 @@ function NavigationBar({ currentPath }) {
               </motion.div>
               <motion.div
                 key="/shop"
+                className="hidden 2xl:flex"
                 initial={itemVariant.initial}
                 animate={itemVariant.animate}
                 transition={itemVariant.transition}
@@ -405,6 +420,7 @@ function NavigationBar({ currentPath }) {
               </motion.div>
               <motion.div
                 key="/faq"
+                className="hidden 2xl:flex"
                 initial={itemVariant.initial}
                 animate={itemVariant.animate}
                 transition={itemVariant.transition}
@@ -422,6 +438,7 @@ function NavigationBar({ currentPath }) {
               {isAdmin && isSignedIn && (
                 <motion.div
                   key="/admin"
+                  className="hidden 2xl:flex"
                   initial={itemVariant.initial}
                   animate={itemVariant.animate}
                   transition={itemVariant.transition}
@@ -439,11 +456,14 @@ function NavigationBar({ currentPath }) {
               )}
             </motion.div>
 
-            <div className="flex items-center gap-2 sm:gap-4">
+            {/* shrink-0: the right-side cluster must never be squeezed off
+                the viewport edge (the sign-out button was getting clipped
+                on laptop widths when signed in). */}
+            <div className="flex shrink-0 items-center gap-2 sm:gap-4">
               {canInstall && (
                 <button
                   onClick={install}
-                  className="hidden sm:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
+                  className="hidden 2xl:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
                 >
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
@@ -544,7 +564,10 @@ function NavigationBar({ currentPath }) {
                         </span>
                       </div>
                     </Link>
-                    <div className="rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-3 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
+                    {/* Tokens chip only on very wide screens — at laptop
+                        widths it pushed the right cluster off the viewport
+                        (balance stays reachable via the hamburger menu). */}
+                    <div className="hidden 2xl:flex rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-3 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
                       <span className="mr-1 text-[10px] uppercase tracking-[0.2em] text-[#7dd3fc]">
                         Tokens
                       </span>
@@ -562,7 +585,7 @@ function NavigationBar({ currentPath }) {
                   </div>
                   <button
                     onClick={() => setMobileMenuOpen((v) => !v)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] lg:hidden"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] 2xl:hidden"
                     aria-label="Toggle menu"
                   >
                     <IconMenu size={20} />

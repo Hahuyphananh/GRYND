@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
@@ -53,6 +53,29 @@ export default function BattlepassPageClient() {
     load();
   }, []);
 
+  // Horizontal battlepass track — refs + auto-centering on the current level.
+  const trackRef = useRef(null);
+  const currentCellRef = useRef(null);
+
+  const scrollTrack = (delta) => {
+    trackRef.current?.scrollBy({ left: delta, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    if (!pass) return;
+    const track = trackRef.current;
+    const cell = currentCellRef.current;
+    if (!track || !cell) return;
+    // Wait a tick for layout, then center the player's current level.
+    const id = setTimeout(() => {
+      track.scrollTo({
+        left: cell.offsetLeft - (track.clientWidth - cell.offsetWidth) / 2,
+        behavior: "smooth",
+      });
+    }, 80);
+    return () => clearTimeout(id);
+  }, [pass]);
+
   const level = pass?.level ?? 1;
   const progressPercent = pass?.progressPercent ?? 0;
   const isMaxed = level >= (pass?.maxLevel ?? 100);
@@ -62,7 +85,7 @@ export default function BattlepassPageClient() {
       <InteractiveCasinoBg />
       <NavigationBar />
 
-      <main className="relative z-10 mx-auto max-w-3xl px-4 pb-20 pt-28">
+      <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-28">
         {/* Header */}
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#00e5ff]/40 bg-[#0b224f]/85 shadow-[0_0_24px_rgba(0,229,255,0.25)]">
@@ -179,16 +202,40 @@ export default function BattlepassPageClient() {
               </Link>
             </div>
 
-            {/* Level track */}
-            <div className="mt-6 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6">
-              <h2 className="text-lg font-semibold text-[#00e5ff]">
-                Level track & rewards
-              </h2>
-              <p className="mt-1 text-xs text-[#7dd3fc]">
-                Each level needs more XP than the last — 150 XP to reach level
-                2, growing by 10 XP per level. Rewards get rarer as you
-                climb.
-              </p>
+            {/* Level track — horizontal battlepass, Brawl-Stars style */}
+            <div className="mt-6 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-5 sm:p-6">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#00e5ff]">
+                    Level track & rewards
+                  </h2>
+                  <p className="mt-1 text-xs text-[#7dd3fc]">
+                    Rewards sit on a horizontal track — scroll sideways through
+                    all {pass.maxLevel} levels. Each level needs more XP than
+                    the last, and rewards get rarer as you climb.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => scrollTrack(-420)}
+                    aria-label="Scroll track left"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-xl leading-none text-[#00e5ff] transition hover:bg-[#00e5ff]/25"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollTrack(420)}
+                    aria-label="Scroll track right"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-xl leading-none text-[#00e5ff] transition hover:bg-[#00e5ff]/25"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+
+              {/* Legend */}
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 border-b border-white/10 pb-4">
                 {Object.entries(REWARD_TYPES).map(([key, meta]) => (
                   <span
@@ -207,110 +254,111 @@ export default function BattlepassPageClient() {
                   Icons & cosmetics (soon)
                 </span>
               </div>
-              <div className="mt-5 space-y-1.5">
-                {pass.levels.map((lvl) => {
-                  const unlocked = lvl.level <= level;
-                  const isCurrent = lvl.level === level;
-                  return (
-                    <div
-                      key={lvl.level}
-                      className={`flex items-center gap-3 rounded-lg border p-2.5 ${
-                        isCurrent
-                          ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 shadow-[0_0_14px_rgba(245,255,59,0.15)]"
-                          : unlocked
-                            ? "border-[#00e5ff]/20 bg-[#00e5ff]/5"
-                            : "border-white/5 bg-transparent opacity-60"
-                      }`}
-                    >
+
+              {/* ── The battlepass div: one horizontal, scrollable track ── */}
+              <div className="relative mt-5">
+                {/* path line through the level badges */}
+                <div className="pointer-events-none absolute left-0 right-0 top-[34px] h-0.5 bg-gradient-to-r from-transparent via-[#00e5ff]/35 to-transparent" />
+                <div
+                  ref={trackRef}
+                  className="flex snap-x gap-2 overflow-x-auto pb-3 pt-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-white/5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#00e5ff]/40"
+                >
+                  {pass.levels.map((lvl) => {
+                    const unlocked = lvl.level <= level;
+                    const isCurrent = lvl.level === level;
+                    return (
                       <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
+                        key={lvl.level}
+                        ref={isCurrent ? currentCellRef : undefined}
+                        className={`relative flex w-[150px] shrink-0 snap-start flex-col items-center rounded-xl border p-2.5 text-center transition ${
                           isCurrent
-                            ? "border-[#f5ff3b] bg-[#f5ff3b] text-[#050b1e]"
+                            ? "border-[#f5ff3b]/70 bg-[#f5ff3b]/10 shadow-[0_0_18px_rgba(245,255,59,0.2)]"
                             : unlocked
-                              ? "border-[#00e5ff]/60 bg-[#00e5ff]/15 text-[#00e5ff]"
-                              : "border-white/15 bg-white/5 text-[#9dd8ff]"
+                              ? "border-[#00e5ff]/25 bg-[#00e5ff]/5"
+                              : "border-white/5 bg-white/[0.03] opacity-60"
                         }`}
                       >
-                        {lvl.level}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2">
-                          <span
-                            className={`text-sm font-medium ${unlocked ? "text-white" : "text-[#9dd8ff]"}`}
-                          >
-                            {unlocked && !isCurrent
-                              ? "Unlocked"
-                              : isCurrent
-                                ? "Current level"
-                                : `Level ${lvl.level}`}
-                          </span>
-                          {lvl.title && (
-                            <span
-                              className="text-xs font-semibold"
-                              style={{
-                                color:
-                                  RARITY_COLORS[lvl.title.rarity] ||
-                                  "#f5c542",
-                              }}
-                            >
-                              ★ Unlocks title: {lvl.title.title}
-                            </span>
-                          )}
+                        {/* Level badge */}
+                        <div
+                          className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold ${
+                            isCurrent
+                              ? "border-[#f5ff3b] bg-[#f5ff3b] text-[#050b1e] shadow-[0_0_14px_rgba(245,255,59,0.5)]"
+                              : unlocked
+                                ? "border-[#00e5ff]/60 bg-[#00e5ff]/15 text-[#00e5ff]"
+                                : "border-white/15 bg-white/5 text-[#9dd8ff]"
+                          }`}
+                        >
+                          {lvl.level}
                         </div>
-                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-[#7dd3fc]">
-                          <span>
-                            Reach {formatNumber(lvl.xpRequired)} XP
-                            {lvl.level > 1 &&
-                              lvl.level < pass.maxLevel &&
-                              ` · ${formatNumber(lvl.xpForNext)} XP for the next`}
+                        {/* Current-level marker */}
+                        {isCurrent && (
+                          <span className="absolute left-1/2 top-0 z-20 -translate-x-1/2 rounded-full border border-[#f5ff3b]/70 bg-[#050b1e] px-1.5 py-px text-[9px] font-black tracking-wider text-[#f5ff3b] shadow-[0_0_10px_rgba(245,255,59,0.4)]">
+                            YOU
                           </span>
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        {lvl.rewards?.length > 0 ? (
-                          <div className="flex flex-col items-end gap-1">
-                            {lvl.rewards.map((reward, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-1.5"
-                              >
-                                <span
-                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                  style={{
-                                    background:
-                                      reward.type === "color" && reward.value
-                                        ? reward.value
-                                        : rewardColor(reward),
-                                    boxShadow: `0 0 6px ${
-                                      reward.type === "color" && reward.value
-                                        ? reward.value
-                                        : rewardColor(reward)
-                                    }`,
-                                  }}
-                                />
-                                <div className="text-right">
-                                  <div
-                                    className="text-xs font-semibold"
+                        )}
+
+                        {/* Rewards */}
+                        <div className="mt-2 flex w-full flex-col gap-1.5">
+                          {lvl.rewards?.length > 0 ? (
+                            lvl.rewards.map((reward, i) => (
+                              <div key={i}>
+                                <div className="flex items-center justify-center gap-1">
+                                  <span
+                                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                    style={{
+                                      background:
+                                        reward.type === "color" && reward.value
+                                          ? reward.value
+                                          : rewardColor(reward),
+                                      boxShadow: `0 0 6px ${
+                                        reward.type === "color" && reward.value
+                                          ? reward.value
+                                          : rewardColor(reward)
+                                      }`,
+                                    }}
+                                  />
+                                  <span
+                                    className="text-[11px] font-semibold leading-tight"
                                     style={{ color: rewardColor(reward) }}
                                   >
                                     {reward.name}
-                                  </div>
-                                  <div className="text-[10px] text-[#7dd3fc]">
-                                    {reward.desc}
-                                  </div>
+                                  </span>
+                                </div>
+                                <div className="text-[9px] leading-tight text-[#7dd3fc]">
+                                  {reward.desc}
                                 </div>
                               </div>
-                            ))}
+                            ))
+                          ) : (
+                            <span className="mx-auto rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] uppercase leading-snug tracking-wider text-[#9dd8ff]">
+                              Icons &<br />cosmetics soon
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Title unlock */}
+                        {lvl.title && (
+                          <div className="mt-1.5 w-full border-t border-white/10 pt-1">
+                            <span
+                              className="text-[9px] font-semibold leading-tight"
+                              style={{
+                                color:
+                                  RARITY_COLORS[lvl.title.rarity] || "#f5c542",
+                              }}
+                            >
+                              ★ {lvl.title.title}
+                            </span>
                           </div>
-                        ) : (
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-wider text-[#9dd8ff]">
-                            Icons & cosmetics soon
-                          </span>
                         )}
+
+                        {/* XP requirement */}
+                        <div className="mt-1.5 text-[9px] text-[#7dd3fc]/70">
+                          Reach {formatNumber(lvl.xpRequired)} XP
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </>

@@ -29,7 +29,7 @@ const isPublicRoute = createRouteMatcher([
   "/games",
   "/sync",
   "/thank-you",
-  "/Classement",
+  "/classement",
   "/profil(.*)",
   "/casino/blackjack(.*)",
   "/casino/roulette(.*)",
@@ -99,6 +99,7 @@ const isPublicRoute = createRouteMatcher([
   "/reviews",
   "/faq",
   "/shop",
+  "/battlepass",
 ]);
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [

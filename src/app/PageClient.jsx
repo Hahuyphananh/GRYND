@@ -34,6 +34,10 @@ import {
 } from "../components/uipro";
 import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
+import {
+  REWARD_RARITIES,
+  REWARD_TYPES,
+} from "../lib/battlepassRewards";
 
 function MainComponent() {
   const router = useRouter();
@@ -78,6 +82,11 @@ function MainComponent() {
   const [claimingQuestId, setClaimingQuestId] = useState(null);
   const [questError, setQuestError] = useState(null);
   const [claimedDay, setClaimedDay] = useState(null);
+  // Battlepass widget — level, next reward and progress toward it.
+  const [showBattlepass, setShowBattlepass] = useState(false);
+  const [battlepass, setBattlepass] = useState(null);
+  const [battlepassLoading, setBattlepassLoading] = useState(false);
+  const [battlepassError, setBattlepassError] = useState(null);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
@@ -191,6 +200,28 @@ function MainComponent() {
     }
   };
 
+  const loadBattlepass = async () => {
+    if (!user || !isSignedIn) return;
+    setBattlepassLoading(true);
+    setBattlepassError(null);
+    try {
+      const res = await fetch("/api/battlepass", {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setBattlepassError(data.error || "Failed to load battlepass");
+        return;
+      }
+      setBattlepass(data.pass);
+    } catch (err) {
+      console.error("[BATTLEPASS_LOAD_ERROR]", err);
+      setBattlepassError("Failed to load battlepass");
+    } finally {
+      setBattlepassLoading(false);
+    }
+  };
+
   const questTitle = (q) => {
     const game = q.gameKey
       ? t(`home.challenges.game_${q.gameKey}`)
@@ -276,6 +307,12 @@ function MainComponent() {
   // Load today's daily + weekly quests once signed in.
   useEffect(() => {
     if (isLoaded && isSignedIn) loadQuests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
+
+  // Load the battlepass widget data once signed in.
+  useEffect(() => {
+    if (isLoaded && isSignedIn) loadBattlepass();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
@@ -550,6 +587,23 @@ function MainComponent() {
   const showNotification = (message, type = "info") => {
     setNotification({ message, type });
   };
+
+  // Derived battlepass widget values — the next reward is the first reward
+  // of the upcoming level (reserved-empty levels show "soon").
+  const battlepassLevel = battlepass?.level ?? 1;
+  const battlepassMaxed = battlepass
+    ? battlepass.level >= battlepass.maxLevel
+    : false;
+  const nextBattlepassLevel =
+    battlepass?.levels?.find((l) => l.level === battlepassLevel + 1) || null;
+  const nextBattlepassReward = nextBattlepassLevel?.rewards?.[0] || null;
+  const nextRewardColor = nextBattlepassReward
+    ? nextBattlepassReward.type === "color" && nextBattlepassReward.value
+      ? nextBattlepassReward.value
+      : REWARD_RARITIES[nextBattlepassReward.rarity] ||
+        REWARD_TYPES[nextBattlepassReward.type]?.color ||
+        "#9ca3af"
+    : "#9ca3af";
 
   return (
     <div className="relative min-h-screen cyberpunk-grid pb-32 md:pb-0">
@@ -1082,6 +1136,151 @@ function MainComponent() {
               )}
             </div>
           )}
+        </div>
+      )}
+      {/* Battlepass widget — same pill pattern as the daily streak and
+          quests widgets, but anchored on the right side and tooltip-style:
+          it opens on hover (and on tap for touch devices). Shows the
+          player's level, progress toward the next one, the next reward,
+          and a link to the full battlepass page. */}
+      {isSignedIn && (
+        <div
+          className="fixed right-4 top-20 z-50"
+          onMouseEnter={() => setShowBattlepass(true)}
+          onMouseLeave={() => setShowBattlepass(false)}
+        >
+          <div className="relative">
+            <button
+              onClick={() => setShowBattlepass(!showBattlepass)}
+              aria-expanded={showBattlepass}
+              className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-[#f5ff3b]/40 px-3 py-2 text-sm text-[#f5ff3b] backdrop-blur-sm hover:border-[#f5ff3b] hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(245,255,59,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+            >
+              <span className="text-lg">
+                <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
+              </span>
+              <span className="font-bold">{t("nav.battlepass")}</span>
+              {battlepass && (
+                <span className="hidden sm:inline text-xs text-[#f5ff3b]/70">
+                  Lv {battlepass.level}
+                </span>
+              )}
+              <span className="text-[10px] text-[#f5ff3b]/50">
+                {showBattlepass ? "▲" : "▼"}
+              </span>
+            </button>
+            {/* pt-2 (not mt-2) keeps the gap between the pill and the
+                panel inside the hoverable area, so moving the cursor
+                down into the panel doesn't close it. */}
+            {showBattlepass && (
+              <div className="absolute right-0 w-64 pt-2">
+                <div className="rounded-xl border border-[#f5ff3b]/30 bg-black/85 backdrop-blur-md p-3 text-xs text-amber-100 shadow-[0_0_20px_rgba(245,255,59,0.2)]">
+                {battlepassLoading ? (
+                  <div className="py-4 text-center text-[11px] text-[#f5ff3b]/70">
+                    {t("ui.loading")}
+                  </div>
+                ) : battlepassError ? (
+                  <p className="py-4 text-center text-[11px] text-red-300">
+                    {battlepassError}
+                  </p>
+                ) : battlepass ? (
+                  <>
+                    {/* Level + total XP */}
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="font-bold text-[#f5ff3b]">
+                        {t("nav.battlepass")}
+                      </span>
+                      <span className="font-bold text-[#f5ff3b]">
+                        Level {battlepass.level}
+                      </span>
+                    </div>
+
+                    {/* Progress toward the next level */}
+                    <div className="mb-1 flex justify-between text-[10px] text-amber-200/70">
+                      <span>
+                        {battlepassMaxed
+                          ? "Max level reached"
+                          : `Progress to level ${Math.min(
+                              battlepass.maxLevel,
+                              battlepass.level + 1,
+                            )}`}
+                      </span>
+                      <span>
+                        {battlepassMaxed
+                          ? "100%"
+                          : `${battlepass.progressPercent}%`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#f5ff3b] to-amber-400 transition-all duration-500"
+                        style={{
+                          width: `${
+                            battlepassMaxed ? 100 : battlepass.progressPercent
+                          }%`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Total XP + XP needed for the next level */}
+                    <div className="mt-1.5 flex justify-between text-[10px] text-amber-200/60">
+                      <span>{Number(battlepass.xp).toLocaleString()} XP total</span>
+                      <span>
+                        {battlepassMaxed
+                          ? "Max level"
+                          : `${Number(battlepass.remainingToNext).toLocaleString()} XP to level ${
+                              battlepass.level + 1
+                            }`}
+                      </span>
+                    </div>
+
+                    {/* Next reward */}
+                    <div className="mt-2 rounded-lg border border-[#f5ff3b]/20 bg-white/5 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-wider text-amber-200/60">
+                        Next reward
+                      </p>
+                      {battlepassMaxed ? (
+                        <p className="mt-0.5 font-semibold text-[#f5ff3b]">
+                          Max level reached — all rewards unlocked!
+                        </p>
+                      ) : nextBattlepassReward ? (
+                        <div className="mt-1 flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{
+                              background: nextRewardColor,
+                              boxShadow: `0 0 6px ${nextRewardColor}`,
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-[11px] font-semibold text-white">
+                              {nextBattlepassReward.name}
+                            </p>
+                            <p className="truncate text-[10px] text-amber-200/60">
+                              {nextBattlepassReward.desc}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-0.5 text-[11px] text-amber-200/70">
+                          Icons & cosmetics soon
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Link to the full battlepass page */}
+                    <Link
+                      href="/battlepass"
+                      onClick={() => setShowBattlepass(false)}
+                      className="mt-2 block rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/15 px-3 py-2 text-center text-[11px] font-bold text-[#f5ff3b] transition-all hover:bg-[#f5ff3b]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+                    >
+                      Open Battlepass →
+                    </Link>
+                  </>
+                ) : null}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {isSignedIn && !dailyRewardCooldown && (

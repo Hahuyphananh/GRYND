@@ -53,6 +53,7 @@ import {
   type RecordingResult,
   type RecordingState,
 } from "./types";
+import { getAudioTapStream } from "./audioTap";
 
 // ── Feature detection / codec support ─────────────────────────────────
 
@@ -66,14 +67,18 @@ export function isViewportRecordingSupported(): boolean {
   );
 }
 
-/** Pick the best supported MediaRecorder mime type (graceful fallback). */
+/** Pick the best supported MediaRecorder mime type (graceful fallback).
+ *  MP4 (H.264 + AAC) is preferred — it plays everywhere and is what
+ *  creators want to share — with WebM (VP9/VP8 + Opus) as the fallback
+ *  for browsers that only record WebM (e.g. Firefox). */
 export function pickMimeType(): string {
   if (typeof MediaRecorder === "undefined") return "";
   const candidates = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4",
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm",
-    "video/mp4",
   ];
   for (const candidate of candidates) {
     try {
@@ -438,6 +443,20 @@ export class CreatorRecorder {
         this.stream = this.output.captureStream(
           this.sourceMode === "canvas" ? 30 : Math.min(30, Math.round(1000 / this.frameIntervalMs)),
         );
+        // Add the game's audio: every game routes its Web Audio sounds
+        // through the shared context tap, so this one track carries all
+        // sound effects. The track is page-wide and shared — we only
+        // borrow it (never stop it; see releaseResources/finalize).
+        const audioStream = getAudioTapStream();
+        if (audioStream) {
+          try {
+            audioStream
+              .getAudioTracks()
+              .forEach((track) => this.stream?.addTrack(track));
+          } catch {
+            // audio is best-effort — video-only recording is still fine
+          }
+        }
         this.recorder = mimeType
           ? new MediaRecorder(this.stream, { mimeType })
           : new MediaRecorder(this.stream);
@@ -582,7 +601,10 @@ export class CreatorRecorder {
       }
     }
     if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop());
+      // Stop only the tracks WE created (the canvas capture). The audio
+      // track is the shared page-wide audio tap — stopping it would kill
+      // sound for the rest of the session.
+      this.stream.getVideoTracks().forEach((t) => t.stop());
       this.stream = null;
     }
     this.recorder = null;
@@ -636,7 +658,9 @@ export class CreatorRecorder {
       this.onStateChange?.("error");
     }
 
-    this.stream?.getTracks().forEach((t) => t.stop());
+    // Stop only the video track (ours). The audio track is the shared
+    // page-wide tap — leaving it running lets the next recording reuse it.
+    this.stream?.getVideoTracks().forEach((t) => t.stop());
     this.stream = null;
     this.recorder = null;
     this.chunks = [];
