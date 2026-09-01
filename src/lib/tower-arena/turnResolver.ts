@@ -48,6 +48,8 @@ export interface ResolverPlayer {
   status: string;
   isAi: boolean;
   reserveUsesRemaining: number;
+  /** Pre-game ready flag (bots are always ready). */
+  ready?: boolean;
 }
 
 /** Reserve bookkeeping keyed by userId. */
@@ -150,6 +152,18 @@ export function parsePool(raw: unknown): ResourcePiece[] {
 
 export function parsePlacements(raw: unknown): PlacementEntry[] {
   return Array.isArray(raw) ? (raw as PlacementEntry[]) : [];
+}
+
+/**
+ * Pre-game ready gate: every ACTIVE participant must have clicked READY
+ * before the 10s start countdown may begin. AI seats are always ready
+ * (they have no click), so a human-vs-bot free-play match only needs the
+ * human to ready up. An empty roster can never be "all ready".
+ */
+export function isReadyGateMet(players: ResolverPlayer[]): boolean {
+  const active = players.filter(isActivePlayer);
+  if (active.length === 0) return false;
+  return active.every((p) => p.isAi || Boolean(p.ready));
 }
 
 /**

@@ -809,6 +809,9 @@ export const towerArenaPlayers = pgTable(
     status: varchar("status", { length: 20 }).notNull().default("active"),
     placement: integer("placement"),
     isAi: boolean("is_ai").notNull().default(false),
+    // Pre-game ready gate: every player must click READY (bots are always
+    // ready) before the 10s start countdown begins.
+    ready: boolean("ready").notNull().default(false),
     reserveUsesRemaining: integer("reserve_uses_remaining").notNull().default(2),
     reservedBlock: jsonb("reserved_block"),
     joinedAt: timestamp("joined_at").notNull().defaultNow(),

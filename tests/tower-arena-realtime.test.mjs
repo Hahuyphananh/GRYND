@@ -28,6 +28,7 @@ import { buildResourcePool } from "../src/lib/tower-arena/engine.ts";
 import {
   resolvePlacement,
   safeFallbackIntent,
+  isReadyGateMet,
   MAX_RESERVE_USES,
 } from "../src/lib/tower-arena/turnResolver.ts";
 import { TOWER_ARENA_EVENTS } from "../src/lib/tower-arena/realtimeRelay.ts";
@@ -169,6 +170,47 @@ test("realtime event names are defined and cover the spec's events", () => {
   for (const name of expected) {
     assert.ok(eventValues.includes(name), `event defined: ${name}`);
   }
+});
+
+// ── Ready gate (pre-game) ─────────────────────────────────────────────
+
+test("ready gate: every human must ready up; AI seats are always ready", () => {
+  const human = (ready) => ({
+    userId: "u1",
+    seat: 1,
+    status: "active",
+    isAi: false,
+    reserveUsesRemaining: MAX_RESERVE_USES,
+    ready,
+  });
+  const bot = {
+    userId: "AI_BOT_2",
+    seat: 2,
+    status: "active",
+    isAi: true,
+    reserveUsesRemaining: MAX_RESERVE_USES,
+    ready: true,
+  };
+
+  // All humans ready → gate met.
+  assert.equal(isReadyGateMet([human(true), human(true)]), true);
+  // One human not ready → gate not met.
+  assert.equal(isReadyGateMet([human(true), human(false)]), false);
+  assert.equal(isReadyGateMet([human(false), human(false)]), false);
+  // Empty roster is never "all ready".
+  assert.equal(isReadyGateMet([]), false);
+  // Bots count as ready without a click (human-vs-bot free play).
+  assert.equal(isReadyGateMet([human(true), bot]), true);
+  assert.equal(isReadyGateMet([human(false), bot]), false);
+  // Eliminated players do not participate in the gate.
+  assert.equal(
+    isReadyGateMet([
+      { ...human(false), status: "eliminated" },
+      human(true),
+      bot,
+    ]),
+    true,
+  );
 });
 
 // ── Two clients ────────────────────────────────────────────────────────

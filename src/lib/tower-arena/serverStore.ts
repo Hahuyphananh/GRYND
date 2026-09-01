@@ -69,6 +69,7 @@ import {
 import {
   resolvePlacement,
   safeFallbackIntent,
+  isReadyGateMet,
   parseReserveMap,
   parsePool,
   parsePlacements,
@@ -81,6 +82,14 @@ import {
 // ── Tunables (re-exported so callers share one source of truth) ────────
 
 export { TURN_PLACEMENT_WINDOW_MS, RESERVE_WINDOW_MS, MAX_RESERVE_USES } from "./turnResolver";
+
+// Pre-game ready gate: once every player has clicked READY (AI seats are
+// always ready) the match enters a 10-second start countdown before play
+// begins. The deadline is stored in `turnDeadline` while `status` stays
+// "waiting" (phase "countdown"), then `advanceMatchOnPoll` flips the
+// match to active (reserve phase + fresh resource pool).
+export const READY_COUNTDOWN_MS = 10_000;
+
 export const TOWER_ARENA_LOCK_NAMESPACE = 90_131; // arbitrary game namespace
 
 const ACTIVE_MATCH_STATES = new Set(["active"]);
@@ -301,8 +310,10 @@ async function createLobbyTx(tx: any, userId: string, wager: number, maxPlayers:
 
 /**
  * Free-play human-vs-AI match. No tokens move; `maxPlayers - 1` bot
- * seats are added and the match starts immediately. reuses the full
- * turn/collapse/reserve state machine (bots place via playAiTurn).
+ * seats are added but the match does NOT start yet — the human lands in
+ * the ready room and clicks READY (bots are always ready), which opens
+ * the 10s start countdown. Reuses the full turn/collapse/reserve state
+ * machine (bots place via playAiTurn).
  */
 export async function createAiTowerArenaMatch({
   userId,
@@ -324,7 +335,9 @@ export async function createAiTowerArenaMatch({
         wager: 0,
         maxPlayers: m,
         status: "waiting",
-        phase: "waiting",
+        // Lobby is "full" the moment it is created (the bot seats exist),
+        // so it opens directly in the ready gate.
+        phase: "ready",
         isAi: true,
       })
       .returning();
@@ -335,6 +348,7 @@ export async function createAiTowerArenaMatch({
       seat: 1,
       status: "active",
       isAi: false,
+      ready: false,
       reserveUsesRemaining: MAX_RESERVE_USES,
     });
     for (let seat = 2; seat <= m; seat += 1) {
@@ -344,12 +358,12 @@ export async function createAiTowerArenaMatch({
         seat,
         status: "active",
         isAi: true,
+        ready: true,
         reserveUsesRemaining: MAX_RESERVE_USES,
       });
     }
 
-    const started = await startMatchTx(tx, match.id, { finalMaxPlayers: m });
-    return { match: started, joined: true, started: true };
+    return { match, joined: true, started: false };
   });
 }
 
@@ -402,17 +416,135 @@ async function joinLobbyTx(tx: any, match: any, userId: string) {
       seat: nextSeat,
       status: "active",
       isAi: false,
+      ready: false,
       reserveUsesRemaining: MAX_RESERVE_USES,
     })
     .returning();
 
   let updated = match;
+  let becameReady = false;
   if (nextSeat >= match.maxPlayers) {
-    updated = await startMatchTx(tx, match.id, {
-      finalMaxPlayers: match.maxPlayers,
-    });
+    // Lobby is full — do NOT auto-start. Move to the ready gate so every
+    // player clicks READY; the match starts after the 10s countdown.
+    const [u] = await tx
+      .update(towerArenaMatches)
+      .set({ phase: "ready" })
+      .where(
+        and(
+          eq(towerArenaMatches.id, match.id),
+          eq(towerArenaMatches.status, "waiting"),
+          eq(towerArenaMatches.phase, "waiting"),
+        ),
+      )
+      .returning();
+    if (u) {
+      updated = u;
+      becameReady = true;
+    }
   }
-  return { match: updated, joined: true, started: nextSeat >= match.maxPlayers, player };
+
+  // Defensive: if the filled lobby somehow already has every player ready
+  // (e.g. an AI bot seat was added), open the start countdown immediately.
+  const after = await fetchPlayers(tx, match.id);
+  if (becameReady && isReadyGateMet(after)) {
+    await tx
+      .update(towerArenaMatches)
+      .set({ phase: "countdown", turnDeadline: new Date(Date.now() + READY_COUNTDOWN_MS) })
+      .where(and(eq(towerArenaMatches.id, match.id), eq(towerArenaMatches.status, "waiting")));
+    updated = await fetchMatchForUpdate(tx, match.id);
+  }
+
+  return { match: updated, joined: true, started: false, player };
+}
+
+// ── Ready gate ─────────────────────────────────────────────────────────
+//
+// Every ACTIVE player must click READY before the match may start; clicking
+// again unreadies (which cancels a running countdown). Once the lobby is
+// full and every player is ready, the match enters a 10-second start
+// countdown (status stays "waiting", phase "countdown", deadline in
+// `turnDeadline`); `advanceMatchOnPoll` flips it to active when the
+// deadline passes. AI seats are always ready.
+
+export async function toggleTowerArenaReady({
+  userId,
+  matchId,
+}: {
+  userId: string;
+  matchId: string;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (match.status !== "waiting") {
+      return { error: "Match has already started", status: 409 };
+    }
+    const players = await fetchPlayers(tx, matchId);
+    const p = playerByUserId(players, userId);
+    if (!p) return { error: "Not a participant", status: 403 };
+    if (p.isAi) return { error: "AI seats are always ready", status: 403 };
+
+    const nextReady = !Boolean(p.ready);
+    await tx
+      .update(towerArenaPlayers)
+      .set({ ready: nextReady })
+      .where(and(eq(towerArenaPlayers.matchId, matchId), eq(towerArenaPlayers.userId, userId)));
+
+    const after = await fetchPlayers(tx, matchId);
+    let phase = match.phase;
+    let deadline = match.turnDeadline;
+    let countdownStarted = false;
+    let countdownCancelled = false;
+    if (nextReady && isReadyGateMet(after) && after.length >= match.maxPlayers) {
+      // Everyone (incl. the just-readied player) is ready and the lobby is
+      // full → begin the 10-second start countdown.
+      phase = "countdown";
+      deadline = new Date(Date.now() + READY_COUNTDOWN_MS);
+      countdownStarted = true;
+    } else if (!nextReady && phase === "countdown") {
+      // A player unreadied mid-countdown → abort the start.
+      phase = "ready";
+      deadline = null;
+      countdownCancelled = true;
+    } else if (!nextReady && phase !== "countdown" && match.maxPlayers > 0 && after.length >= match.maxPlayers) {
+      phase = "ready";
+    }
+
+    if (phase !== match.phase || deadline !== match.turnDeadline) {
+      await tx
+        .update(towerArenaMatches)
+        .set({ phase, turnDeadline: deadline })
+        .where(eq(towerArenaMatches.id, matchId));
+    }
+
+    const playerCount = after.length;
+    // Instant refresh for every seat in the lobby (and the public grid).
+    void relayTowerArenaLobbyUpdate(matchId, {
+      event: countdownStarted ? "countdown" : countdownCancelled ? "countdown-cancelled" : nextReady ? "ready" : "unready",
+      wager: match.wager,
+      maxPlayers: match.maxPlayers,
+      playerCount,
+      ready: nextReady,
+      phase,
+    });
+    if (countdownStarted) {
+      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
+        status: "waiting",
+        phase: "countdown",
+        turnDeadline: deadline ? new Date(deadline).toISOString() : null,
+      });
+    }
+
+    return {
+      ok: true,
+      ready: nextReady,
+      countdownStarted,
+      countdownCancelled,
+      phase,
+      playerCount,
+    };
+  });
 }
 
 /**
@@ -978,6 +1110,14 @@ export async function removeParticipant({
         .where(eq(users.clerkId, p.userId));
       const others = await fetchPlayers(tx, matchId);
       await tx.delete(towerArenaPlayers).where(eq(towerArenaPlayers.id, p.id));
+      // Leaving a ready / counting-down lobby reopens it (and cancels any
+      // pending start countdown) — the remaining players can't start short.
+      if (match.phase === "ready" || match.phase === "countdown") {
+        await tx
+          .update(towerArenaMatches)
+          .set({ phase: "waiting", turnDeadline: null })
+          .where(and(eq(towerArenaMatches.id, matchId), eq(towerArenaMatches.status, "waiting")));
+      }
       void relayTowerArenaLobbyUpdate(matchId, { event: "left", wager: match.wager, maxPlayers: match.maxPlayers, playerCount: Math.max(0, others.length - 1) });
       return { match, removed: true };
     }
@@ -1076,8 +1216,68 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
   return db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
-    if (!ACTIVE_MATCH_STATES.has(match.status)) return { match };
     const now = Date.now();
+
+    // Pre-game (status still "waiting"): ready gate + 10s start countdown.
+    if (match.status === "waiting") {
+      if (match.phase === "countdown") {
+        const players = await fetchPlayers(tx, matchId);
+        // Someone unreadied / left mid-countdown → abort the start.
+        if (!isReadyGateMet(players)) {
+          await tx
+            .update(towerArenaMatches)
+            .set({ phase: "ready", turnDeadline: null })
+            .where(
+              and(
+                eq(towerArenaMatches.id, match.id),
+                eq(towerArenaMatches.status, "waiting"),
+                eq(towerArenaMatches.phase, "countdown"),
+              ),
+            );
+          void relayTowerArenaLobbyUpdate(match.id, {
+            event: "countdown-cancelled",
+            wager: match.wager,
+            maxPlayers: match.maxPlayers,
+            playerCount: players.length,
+            phase: "ready",
+          });
+          return { match: await fetchMatchForUpdate(tx, matchId), countdownCancelled: true };
+        }
+        if (match.turnDeadline && new Date(match.turnDeadline).getTime() > now) return { match };
+        // Countdown finished → the match really starts (reserve phase + pool).
+        const started = await startMatchTx(tx, match.id, { finalMaxPlayers: match.maxPlayers });
+        return { match: started, started: true };
+      }
+      if (match.phase === "ready") {
+        // Defensive: the ready toggle usually opens the countdown, but if a
+        // race or a lost relay left a full+all-ready lobby stuck in "ready",
+        // start the countdown here so the game can never deadlock.
+        const players = await fetchPlayers(tx, matchId);
+        if (isReadyGateMet(players) && players.length >= match.maxPlayers) {
+          await tx
+            .update(towerArenaMatches)
+            .set({ phase: "countdown", turnDeadline: new Date(Date.now() + READY_COUNTDOWN_MS) })
+            .where(
+              and(
+                eq(towerArenaMatches.id, match.id),
+                eq(towerArenaMatches.status, "waiting"),
+                eq(towerArenaMatches.phase, "ready"),
+              ),
+            );
+          void relayTowerArenaLobbyUpdate(match.id, {
+            event: "countdown",
+            wager: match.wager,
+            maxPlayers: match.maxPlayers,
+            playerCount: players.length,
+            phase: "countdown",
+          });
+          return { match: await fetchMatchForUpdate(tx, matchId), countdownStarted: true };
+        }
+      }
+      return { match };
+    }
+
+    if (!ACTIVE_MATCH_STATES.has(match.status)) return { match };
 
     if (match.phase === "reserve" && match.turnDeadline) {
       if (new Date(match.turnDeadline).getTime() > now) return { match };
@@ -1201,6 +1401,7 @@ async function enrichMatchPlayers(tx: any, players: any[]) {
       status: p.status,
       placement: p.placement,
       isAi: p.isAi,
+      ready: Boolean(p.ready),
       joinedAt: p.joinedAt,
       eliminatedAt: p.eliminatedAt,
       name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
@@ -1275,6 +1476,9 @@ export async function listOpenTowerArenaMatches({
 
   return matches
     .filter((m) => !excludeMyOpenLobby || !excludeMyOpenLobby.has(m.id))
+    // A full lobby sitting in the ready gate / start countdown has no open
+    // seats, so it must not appear as a joinable row in the public grid.
+    .filter((m) => (countByMatch.get(m.id) ?? 0) < m.maxPlayers)
     .map((m) => {
       const cfg = computePotPrize({ maxPlayers: m.maxPlayers, wager: m.wager });
       const host = hostDisplay.get(m.hostUserId);
@@ -1358,6 +1562,8 @@ export async function getTowerArenaMatchProjection({ userId, matchId }: { userId
       seat: me?.seat ?? null,
       isHost: m.hostUserId === userId,
       isAi: Boolean(me?.isAi),
+      ready: Boolean(me?.ready),
+      status: me?.status ?? "active",
       reserveUsesRemaining: me?.reserveUsesRemaining ?? 0,
       reservedBlock: reserveState[userId] || null,
     },
