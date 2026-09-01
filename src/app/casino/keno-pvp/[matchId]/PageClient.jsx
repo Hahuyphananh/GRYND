@@ -29,6 +29,10 @@ import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 // shared CreatorModeHost recording viewport.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+import {
+  getSharedAudioContext,
+  getSharedOutputNode,
+} from "../../../../lib/creator-mode/audioTap";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -96,7 +100,6 @@ export default function KenoPvpMatchPage({ params }) {
   const lastStatusRef = useRef(null);
   const bannerTimerRef = useRef(null);
   const lastRoundRef = useRef(null);
-  const audioCtxRef = useRef(null);
   const flashTimerRef = useRef(null);
   const resultTimerRef = useRef(null);
   const confettiFiredRef = useRef(false);
@@ -287,12 +290,8 @@ export default function KenoPvpMatchPage({ params }) {
   // one). Best-effort — never breaks the game if audio is unavailable.
   const playTileTick = useCallback(() => {
     try {
-      if (typeof window === "undefined") return;
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") ctx.resume();
+      const ctx = getSharedAudioContext();
+      if (!ctx) return;
       if (ctx.state !== "running") return;
       const t = ctx.currentTime;
       const osc = ctx.createOscillator();
@@ -303,7 +302,7 @@ export default function KenoPvpMatchPage({ params }) {
       gain.gain.setValueAtTime(0.0001, t);
       gain.gain.exponentialRampToValueAtTime(0.12, t + 0.005);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-      osc.connect(gain).connect(ctx.destination);
+      osc.connect(gain).connect(getSharedOutputNode() || ctx.destination);
       osc.start(t);
       osc.stop(t + 0.1);
     } catch {
@@ -311,13 +310,13 @@ export default function KenoPvpMatchPage({ params }) {
     }
   }, []);
 
-  // Unlock the audio context on the first user gesture (autoplay policy).
+  // Unlock the shared audio context on the first user gesture
+  // (autoplay policy) — the same one playTileTick routes through.
   useEffect(() => {
     const unlock = () => {
       try {
-        if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-          audioCtxRef.current.resume();
-        }
+        const ctx = getSharedAudioContext();
+        if (ctx && ctx.state === "suspended") ctx.resume();
       } catch {
         // ignore
       }

@@ -1,24 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { isAudioMuted } from "./audioSettings";
+import { getSharedAudioContext, getSharedOutputNode } from "./creator-mode/audioTap";
 
-// ── Singleton AudioContext (created lazily; one per page) ──────────────
-
-let _ctx: AudioContext | null = null;
+// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
+// game's sounds route through it so Creator Mode recordings capture the
+// audio. Mute gating lives in getSharedAudioContext.
 function getCtx(): AudioContext | null {
-  if (typeof window === "undefined") return null;
-  // Global mute gate — overrides the per-page enabled toggle.
-  if (isAudioMuted()) return null;
-  if (!_ctx) {
-    try {
-      _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    } catch {
-      return null;
-    }
-  }
-  if (_ctx.state === "suspended") _ctx.resume();
-  return _ctx;
+  return getSharedAudioContext();
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -38,7 +27,7 @@ function playTone(
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(volume, ctx.currentTime);
   if (rampDown) gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(getSharedOutputNode() || ctx.destination);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + duration);
 }
@@ -60,7 +49,7 @@ function playNoise(duration: number, volume = 0.08) {
   filter.type = "lowpass";
   filter.frequency.value = 3000;
 
-  source.connect(filter).connect(gain).connect(ctx.destination);
+  source.connect(filter).connect(gain).connect(getSharedOutputNode() || ctx.destination);
   source.start(ctx.currentTime);
   source.stop(ctx.currentTime + duration);
 }
@@ -84,7 +73,7 @@ function playSweep(startFreq: number, endFreq: number, duration: number, volume 
   osc.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + duration);
   gain.gain.setValueAtTime(volume, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(getSharedOutputNode() || ctx.destination);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + duration);
 }

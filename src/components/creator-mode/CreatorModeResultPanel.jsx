@@ -15,8 +15,9 @@
 //     the game is still live)
 //
 // The recording stays 100% local: no upload, no database, no external
-// service. WebM is preferred because it records natively in-browser —
-// no FFmpeg-style transcoding dependency is added.
+// service. MP4 (H.264 + AAC) is preferred when the browser can record it
+// (Chrome/Safari); browsers that only record WebM (Firefox) fall back
+// gracefully — no FFmpeg-style transcoding dependency is added.
 
 import React, { useRef, useState } from "react";
 
@@ -128,11 +129,11 @@ export default function CreatorModeResultPanel({
         {/* Video preview with play/pause */}
         <VideoPreview url={result.url} />
 
-        {/* Local-format note (WebM preferred — no transcoding added) */}
+        {/* Local-format note (MP4 preferred — no transcoding added) */}
         <p className="mt-2 text-[10px] leading-relaxed text-[#6aa4d8]">
-          {format === "WEBM"
-            ? "WebM — recorded natively in your browser. Plays in most apps; convert only if a target platform requires it."
-            : `Recorded as ${format} (your browser's supported fallback).`}
+          {format === "MP4"
+            ? "MP4 (H.264 + AAC) — plays everywhere: Windows, Mac, phones, YouTube, Discord."
+            : "WebM (VP9/Opus) — this browser only records WebM; plays in most apps."}
         </p>
 
         {/* Actions */}

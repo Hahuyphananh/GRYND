@@ -20,6 +20,10 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { getDropRow } from "../../../../../lib/fourInARow";
+import {
+  getSharedAudioContext,
+  getSharedOutputNode,
+} from "../../../../../lib/creator-mode/audioTap";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
@@ -38,12 +42,12 @@ const REPLAY_WINDOW_SECONDS = 20;
 const CONFETTI_COLORS = ["#facc15", "#4ade80", "#60a5fa", "#f472b6", "#f97316"];
 
 function playUiTone(type: "drop" | "win" = "drop") {
-  if (typeof window === "undefined") return;
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const ctx = getSharedAudioContext();
+  if (!ctx) return;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(getSharedOutputNode() || ctx.destination);
   const settings =
     type === "win"
       ? { freq: 640, duration: 0.18 }

@@ -20,26 +20,14 @@
 
 // ── Singleton AudioContext (lazy, shared across page) ──────────────────
 
-import { isAudioMuted } from "./audioSettings";
+import { getSharedAudioContext, getSharedOutputNode } from "./creator-mode/audioTap";
 
-let _ctx: AudioContext | null = null;
+// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
+// game's sounds route through it so Creator Mode recordings capture the
+// audio. Mute gating + the resume-on-gesture handler live in
+// getSharedAudioContext.
 function getCtx(): AudioContext | null {
-  if (typeof window === "undefined") return null;
-  // Global mute gate — silences every game's sounds at once.
-  if (isAudioMuted()) return null;
-  if (!_ctx) {
-    try {
-      _ctx = new (window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext)();
-    } catch {
-      return null;
-    }
-  }
-  // Browsers gate audio until a user gesture has fired. The shared
-  // click/keydown handler at the bottom of this file nudges it live.
-  if (_ctx.state === "suspended") _ctx.resume();
-  return _ctx;
+  return getSharedAudioContext();
 }
 
 // ── Tone primitive ─────────────────────────────────────────────────────
@@ -60,7 +48,7 @@ function playTone(
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(volume, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-  osc.connect(gain).connect(ctx.destination);
+  osc.connect(gain).connect(getSharedOutputNode() || ctx.destination);
   osc.start(t);
   osc.stop(t + duration);
 }

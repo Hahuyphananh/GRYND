@@ -22,7 +22,7 @@
 //
 // Renders nothing when creator mode is off, so normal users never see it.
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCreatorMode } from "../../lib/creator-mode/CreatorModeProvider";
 import CreatorModeResultPanel from "./CreatorModeResultPanel";
@@ -49,7 +49,25 @@ export default function CreatorModeOverlay() {
     discard,
     download,
     startCreatorRecording,
+    stopCreatorRecording,
   } = useCreatorMode();
+
+  // "Stop & save": stop the capture, then download the finished MP4/WebM
+  // as soon as the recorder finalises it. The result panel still appears
+  // afterwards (preview + re-download + discard).
+  const [pendingDownload, setPendingDownload] = useState(false);
+
+  useEffect(() => {
+    if (pendingDownload && state === "stopped" && lastResult) {
+      setPendingDownload(false);
+      download();
+    }
+  }, [pendingDownload, state, lastResult, download]);
+
+  const stopAndSave = () => {
+    setPendingDownload(true);
+    stopCreatorRecording();
+  };
 
   if (!isCreatorMode) return null;
 
@@ -77,6 +95,17 @@ export default function CreatorModeOverlay() {
             </span>
           </div>
         </div>
+      )}
+
+      {/* Stop & save — the one interactive control during recording. */}
+      {state === "recording" && (
+        <button
+          onClick={stopAndSave}
+          className="fixed bottom-14 right-4 z-[60] flex items-center gap-1.5 rounded-full border border-red-400/60 bg-red-600/90 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-[0_0_16px_rgba(239,68,68,0.5)] transition hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+          ⏹ Stop & save
+        </button>
       )}
 
       {/* Tiny non-interactive status pill (armed / preparing / REC / error). */}

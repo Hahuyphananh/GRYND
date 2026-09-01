@@ -20,18 +20,17 @@ import { rewardsForLevel } from "../../../lib/battlepassRewards";
 export async function GET() {
   try {
     const { userId } = await auth();
-    if (!userId) {
-      return Response.json(
-        { success: false, error: "Not authenticated" },
-        { status: 401 },
-      );
+    // The battlepass page is public (middleware allows it), so anonymous
+    // visitors get a fresh level-1 / 0-XP pass and only signed-in users
+    // read their real progress from the DB.
+    let xp = 0;
+    if (userId) {
+      const sql = getNeonSql();
+      const rows = await sql`
+        SELECT xp FROM users WHERE clerk_id = ${userId} LIMIT 1
+      `;
+      xp = Math.max(0, Math.floor(Number(rows[0]?.xp) || 0));
     }
-
-    const sql = getNeonSql();
-    const rows = await sql`
-      SELECT xp FROM users WHERE clerk_id = ${userId} LIMIT 1
-    `;
-    const xp = Math.max(0, Math.floor(Number(rows[0]?.xp) || 0));
     const progress = getBattlepassProgress(xp);
 
     const titleByLevel = new Map(
