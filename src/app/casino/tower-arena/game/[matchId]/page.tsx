@@ -10,7 +10,7 @@ export async function generateMetadata({
   const shortId = matchId.length > 10 ? matchId.slice(0, 8) : matchId;
   return {
     title: `Tower Arena #${shortId} | GRYND`,
-    description: `Live Tower Arena match #${shortId} on GRYND. Build the tower, avoid the collapse, and be the last player standing.`,
+    description: `Live Tower Arena match #${shortId} on GRYND. Drop blocks onto a tiny floating platform, build the tower, and don't let yours fall into the void.`,
   };
 }
 

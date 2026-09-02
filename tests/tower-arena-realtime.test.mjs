@@ -24,7 +24,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildResourcePool } from "../src/lib/tower-arena/engine.ts";
+import { buildResourcePool, simulatePlacement } from "../src/lib/tower-arena/engine.ts";
 import {
   resolvePlacement,
   safeFallbackIntent,
@@ -50,9 +50,39 @@ function stable() {
   return { shape: "square", positionX: 2, rotation: 0, actionType: "PLACE" };
 }
 
-/** A square slammed to the grid edge — deterministically collapses. */
-function topple() {
-  return { shape: "square", positionX: 0, rotation: 0, actionType: "PLACE" };
+/** Tallest column height at `col` (0 when empty). */
+function heightAt(tower, col) {
+  let h = 0;
+  for (const b of tower || []) for (const c of b.cells || []) if (c.x === col) h = Math.max(h, c.z);
+  return h;
+}
+
+/** A tower with a single 1-cell pillar of `n` cubes at column 0. */
+function pillarTower(n = 2) {
+  let t = [];
+  for (let i = 1; i <= n; i += 1) {
+    t = simulatePlacement(t, {
+      shape: "short",
+      x: 0,
+      rotation: 0,
+      blockId: `pre:${i}`,
+      placedByUserId: "u1",
+      turnNumber: i,
+    }).tower;
+  }
+  return t;
+}
+
+/**
+ * Deterministic drive intent: grow a 1-cell pillar at column 0 until it is
+ * tall enough, then drop a 3-wide I onto it. An I needs ceil(3/2)=2 touching
+ * cells; the single pillar cell cannot support it, so it tips into the void
+ * and the dropper is eliminated — matches the old "topple" contract.
+ */
+function topple(state) {
+  return heightAt(state.towerState, 0) >= 1
+    ? { shape: "I", positionX: 0, rotation: 0, actionType: "PLACE" }
+    : { shape: "short", positionX: 0, rotation: 0, actionType: "PLACE" };
 }
 
 function snapshot(opts = {}) {
@@ -139,7 +169,7 @@ function driveSixClients() {
       guards += 1;
     }
 
-    const res = ok(resolvePlacement(state, plist, topple(), actor));
+    const res = ok(resolvePlacement(state, plist, topple(state), actor));
     for (const e of res.eliminations) eliminations.push({ userId: e.userId, placement: e.placement });
     ({ players: plist, state } = applyResolved(state, plist, res));
     if (res.finished) {
@@ -345,10 +375,11 @@ test("placement after timer expiry uses deterministic fallback, not instant elim
 
 test("placement after elimination: the eliminated player can no longer act", () => {
   const state = snapshot({ maxPlayers: 3 });
+  state.towerState = pillarTower(2);
   const plist = makePlayers(["u1", "u2", "u3"]);
 
-  // u1 topples → eliminated (placement 3), match continues with 2 active.
-  const r = ok(resolvePlacement(state, plist, topple(), "u1"));
+  // u1's block tips into the void → eliminated (placement 3), 2 active left.
+  const r = ok(resolvePlacement(state, plist, topple(state), "u1"));
   assert.equal(r.eliminations[0].userId, "u1");
   assert.equal(r.finished, false);
   assert.equal(r.activeRemaining, 2);
@@ -392,8 +423,9 @@ test("resource refill happens on pool-emptied while sessions stay connected — 
 
 test("match completion: finished clears turn/deadline and keeps a single winner", () => {
   const state = snapshot({ maxPlayers: 2 });
+  state.towerState = pillarTower(2);
   const plist = makePlayers(["u1", "u2"]);
-  const res = ok(resolvePlacement(state, plist, topple(), "u1"));
+  const res = ok(resolvePlacement(state, plist, topple(state), "u1"));
   assert.equal(res.finished, true);
   assert.equal(res.nextTurnPlayerId, null);
   assert.equal(res.nextDeadlineMs, null);

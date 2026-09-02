@@ -172,7 +172,7 @@ export default function TowerArenaLobbyPage() {
   return (
     <PvpLobbyPage
       title="Tower Arena"
-      subtitle="Shared Tower Survival — for 2 to 6 players. Place blocks, avoid the collapse, and outlast every rival."
+      subtitle="Shared 2D Tower Survival — for 2 to 6 players. Drop blocks from the sky onto a tiny floating platform and outlast every rival."
       icon={
         <IconBuildingSkyscraper className="h-9 w-9 flex-shrink-0 text-cyan-400 drop-shadow-[0_0_12px_rgba(34,211,238,0.6)] sm:h-10 sm:w-10" />
       }
@@ -181,35 +181,46 @@ export default function TowerArenaLobbyPage() {
         title: "How to Play",
         sections: [
           {
-            heading: "Shared tower survival",
+            heading: "Drop & stack",
             body: (
               <>
                 Tower Arena is a competitive survival game for{" "}
-                <b>2–6 players</b>. Everyone places into one shared tower.
-                If your placement makes it collapse, you’re eliminated — then
-                the tower is recovered to its highest stable portion and play
-                continues. The last player standing wins.
+                <b>2–6 players</b>. The board is a 2D line: everyone builds
+                one shared tower on a small floating platform with open sky
+                around it. On your turn, pick a block (the shared pool, or
+                your reserved one) and <b>drop it from the sky</b> — aim it
+                at the top of the board, rotate with R, then click to let it
+                fall. Blocks are slightly slippery: an off-balance landing
+                slips a little before it settles.
               </>
             ),
           },
           {
-            heading: "Blocks & reserve",
+            heading: "The void",
             body: (
               <>
-                Players pick a block from the shared pool. Each round you may{" "}
-                <b>reserve</b> one block (limited uses) so it becomes private.
-                The pool refills when a player is eliminated or runs empty — the
-                tower is never reset.
+                The platform floats in a bottomless void with <b>no side
+                walls</b> — you can aim anywhere, even off the platform. A
+                block only stays if enough of its base touches what’s below
+                and its center of mass — plus whatever is stacked on it —
+                sits over the support. A bad landing tips: it can knock
+                blocks off the tower in the shock. <b>Whenever a block falls
+                into the void, the player whose turn it was is eliminated</b>
+                — and the game continues with whatever tower remains, even
+                if that means an empty platform.
               </>
             ),
           },
           {
-            heading: "Turn order",
+            heading: "Limited blocks & reserve",
             body: (
               <>
-                The starting player is randomized; turns then rotate
-                sequentially, skipping eliminated players. The server owns
-                every deadline and applies a safe fallback placement on timeout.
+                The <b>shared pool holds a limited number of blocks</b> —
+                when it runs dry or someone falls, it refills so the match
+                keeps moving. Each round you may <b>reserve</b> one block
+                (limited uses) so it becomes private — and it shows up as an
+                option on your next drop. The tower is never reset: it always
+                continues in the state the last drop left it in.
               </>
             ),
           },
@@ -217,8 +228,9 @@ export default function TowerArenaLobbyPage() {
             heading: "Win & payout",
             body: (
               <>
-                Final placement follows elimination order. The prize pool is
-                the combined wagers minus the house rake, split by placement.
+                Final placement follows elimination order — the last player
+                standing wins. The prize pool is the combined wagers minus
+                the house rake, split by placement.
               </>
             ),
           },

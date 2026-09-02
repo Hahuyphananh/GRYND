@@ -41,8 +41,7 @@ import { DEFAULT_ICON_KEY } from "../iconAssets";
 import {
   buildResourcePool,
   BLOCK_SHAPES,
-  fitsInGrid,
-  footprintFor,
+  dropInBounds,
   type BlockShape,
   type ResourcePiece,
   type TowerState,
@@ -94,6 +93,77 @@ export const TOWER_ARENA_LOCK_NAMESPACE = 90_131; // arbitrary game namespace
 
 const ACTIVE_MATCH_STATES = new Set(["active"]);
 const OPEN_MATCH_STATES = new Set(["waiting", "active"]);
+
+// ── Free-play pause ─────────────────────────────────────────────────────
+//
+// Human-vs-AI free-play matches can be paused (a wager match never can). The
+// flag lives inside the match's `reserveState` JSONB under a reserved key —
+// reserve logic only ever indexes by userId, so a sentinel key is invisible
+// to every other path and needs no schema migration. While paused the turn
+// engine is frozen: the poll no-ops, bots don't act, and the turn deadline
+// is refreshed on resume so pausing never burns anyone's window.
+const PAUSE_KEY = "__paused__";
+
+function pauseMeta(match: any): { paused?: boolean; pausedAt?: string } | null {
+  const m = reserveMap(match)[PAUSE_KEY];
+  return m && typeof m === "object" ? (m as { paused?: boolean; pausedAt?: string }) : null;
+}
+
+export function matchIsPaused(match: any): boolean {
+  return Boolean(pauseMeta(match)?.paused);
+}
+
+/**
+ * Toggle free-play pause for a human-vs-AI match. Only active participants
+ * of an AI match may pause; resuming hands the current phase a fresh full
+ * window so the pause never burns a turn.
+ */
+export async function toggleMatchPause({
+  userId,
+  matchId,
+  paused,
+}: {
+  userId: string;
+  matchId: string;
+  paused: boolean;
+}) {
+  if (!userId) return { error: "Unauthorized", status: 401 };
+  return db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!match.isAi) return { error: "Only free-play matches can be paused", status: 400 };
+    if (!ACTIVE_MATCH_STATES.has(match.status)) return { error: "Match is not active", status: 400 };
+    const players = await fetchPlayers(tx, matchId);
+    const p = playerByUserId(players, userId);
+    if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
+
+    const reserve = reserveMap(match);
+    const nextReserve: Record<string, any> = { ...reserve };
+    let turnDeadline: Date | null = match.turnDeadline;
+    if (paused) {
+      nextReserve[PAUSE_KEY] = {
+        paused: true,
+        pausedAt: new Date().toISOString(),
+      };
+    } else {
+      if (!pauseMeta(match)?.paused) return { error: "Match is not paused", status: 409 };
+      delete nextReserve[PAUSE_KEY];
+      const win = match.phase === "reserve" ? RESERVE_WINDOW_MS : TURN_PLACEMENT_WINDOW_MS;
+      turnDeadline = new Date(Date.now() + win);
+    }
+
+    await tx
+      .update(towerArenaMatches)
+      .set({ reserveState: nextReserve, turnDeadline })
+      .where(eq(towerArenaMatches.id, matchId));
+
+    void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
+      paused,
+      status: match.status,
+    });
+    return { ok: true, paused };
+  });
+}
 
 // ── Small helpers ──────────────────────────────────────────────────────
 
@@ -379,6 +449,7 @@ export async function playAiTurn({ matchId }: { matchId: string }) {
     if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "placement") {
       return { error: "Not in placement phase", status: 400 };
     }
+    if (matchIsPaused(match)) return { error: "Match is paused", status: 409 };
     const players = await fetchPlayers(tx, matchId);
     const cur = playerByUserId(players, match.currentTurnPlayerId);
     if (!cur) return { error: "No active turn", status: 400 };
@@ -628,6 +699,7 @@ export async function reserveBlock({
     if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "reserve") {
       return { error: "Not in reserve phase", status: 400 };
     }
+    if (matchIsPaused(match)) return { error: "Match is paused", status: 409 };
     const players = await fetchPlayers(tx, matchId);
     const p = playerByUserId(players, userId);
     if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
@@ -711,6 +783,7 @@ export async function submitPlacement({
     if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "placement") {
       return { error: "Not in placement phase", status: 400 };
     }
+    if (matchIsPaused(match)) return { error: "Match is paused", status: 409 };
     if (TURN_PLACEMENT_WINDOW_MS > 0 && match.turnDeadline) {
       const dl = new Date(match.turnDeadline).getTime();
       if (dl <= Date.now()) {
@@ -728,9 +801,10 @@ export async function submitPlacement({
     const p = playerByUserId(players, userId);
     if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
 
-    // Grid-bounds validation before mutating anything.
-    const extent = footprintFor(v.shape, v.rotation);
-    if (!fitsInGrid(extent, v.x, 0)) {
+    // Drop-aim validation before mutating anything: there are NO side walls —
+    // any aim inside the drop range is legal, including fully into the void
+    // beside the platform (which resolves to a void fall and elimination).
+    if (!dropInBounds(v.shape, v.rotation, v.x)) {
       return { error: "Placement out of bounds", status: 400 };
     }
 
@@ -1279,6 +1353,10 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
 
     if (!ACTIVE_MATCH_STATES.has(match.status)) return { match };
 
+    // Free-play pause: the turn engine is frozen — no phase transitions, no
+    // timeouts, no bot moves — until the human resumes.
+    if (matchIsPaused(match)) return { match, paused: true };
+
     if (match.phase === "reserve" && match.turnDeadline) {
       if (new Date(match.turnDeadline).getTime() > now) return { match };
       // Reserve window over → placement begins for the current turn holder.
@@ -1531,6 +1609,9 @@ export async function getTowerArenaMatchProjection({ userId, matchId }: { userId
       ? m.reserveState
       : {};
   const me = playerRows.find((p) => p.userId === userId);
+  const paused = Boolean(
+    m.reserveState && typeof m.reserveState === "object" && (m.reserveState as any)[PAUSE_KEY]?.paused,
+  );
   return {
     match: {
       id: m.id,
@@ -1539,6 +1620,7 @@ export async function getTowerArenaMatchProjection({ userId, matchId }: { userId
       wager: m.wager,
       maxPlayers: m.maxPlayers,
       isAi: m.isAi,
+      paused,
       hostUserId: m.hostUserId,
       resourceCycle: m.resourceCycle,
       turnNumber: m.turnNumber,
