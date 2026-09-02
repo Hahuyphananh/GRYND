@@ -82,10 +82,13 @@ function driveIntent(state) {
 }
 
 function apply(state, players, res) {
+  // Mirrors the store: eliminated players immediately persist their assigned
+  // placement (the resolver skips taken slots on later eliminations).
   return {
-    players: players.map((p) =>
-      res.eliminations.some((e) => e.userId === p.userId) ? { ...p, status: "eliminated" } : p,
-    ),
+    players: players.map((p) => {
+      const e = res.eliminations.find((x) => x.userId === p.userId);
+      return e ? { ...p, status: "eliminated", placement: e.placement } : p;
+    }),
     state: {
       ...state,
       currentTurnPlayerId: res.nextTurnPlayerId,

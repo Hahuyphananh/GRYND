@@ -122,11 +122,12 @@ function step(state, plist, intent, actor) {
 }
 
 function applyResolved(state, plist, res) {
-  const pl = plist.map((p) =>
-    res.eliminations.some((e) => e.userId === p.userId)
-      ? { ...p, status: "eliminated" }
-      : p,
-  );
+  // Mirrors the store: eliminated players immediately persist their assigned
+  // placement (the resolver skips taken slots on later eliminations).
+  const pl = plist.map((p) => {
+    const e = res.eliminations.find((x) => x.userId === p.userId);
+    return e ? { ...p, status: "eliminated", placement: e.placement } : p;
+  });
   return {
     players: pl,
     state: {

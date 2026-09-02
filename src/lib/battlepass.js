@@ -12,6 +12,7 @@
 // inside a single UPDATE).
 
 import { getNeonSql } from "../db/neon";
+import { grantBattlepassBanners } from "./banners";
 
 export const MAX_LEVEL = 100;
 
@@ -75,9 +76,9 @@ export function expForQuest(reward = 0) {
 let _sql = null;
 function getSql() {
   if (_sql) return _sql;
-  if (!process.env.DATABASE_URL) {
+  if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
     throw new Error(
-      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
+      "DATABASE_URL or POSTGRES_URL is not set. Set one in your runtime environment (for example, .env.local for local development).",
     );
   }
   _sql = getNeonSql();
@@ -108,5 +109,13 @@ export async function addExp(userId, amount) {
     RETURNING level, xp
   `;
 
-  return rows[0] || null;
+  const result = rows[0] || null;
+  if (result) {
+    // Reconciliation is idempotent and also repairs rewards for users whose
+    // XP was already above a newly-added reward level.
+    await grantBattlepassBanners(userId, result.level).catch((error) => {
+      console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
+    });
+  }
+  return result;
 }

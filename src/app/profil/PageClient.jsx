@@ -15,6 +15,8 @@ import {
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
 import ChooseIconModal from "../../components/ChooseIconModal";
+import ChooseBannerModal from "../../components/ChooseBannerModal";
+import ProfileBanner from "../../components/ProfileBanner";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 
@@ -42,14 +44,13 @@ export default function ProfilePage() {
     email: "",
     selectedIcon: "",
     profileAccent: null,
-    profileBanner: null,
+    selectedBanner: null,
     avatarFrame: null,
   });
-  // Unsaved profile customization (accent / banner / frame) — saved via
+  // Unsaved profile customization (accent / frame) — saved via
   // /api/user/profile-customization (Grynd+ perk).
   const [cosmetics, setCosmetics] = useState({
     accent: DEFAULT_PROFILE_ACCENT,
-    banner: "",
     frame: null,
   });
   const [cosmeticsMsg, setCosmeticsMsg] = useState(null);
@@ -192,6 +193,7 @@ export default function ProfilePage() {
   });
   // Official icon picker modal (owned Grynd icons only).
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+  const [isBannerPickerOpen, setIsBannerPickerOpen] = useState(false);
 
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
@@ -305,14 +307,13 @@ export default function ProfilePage() {
       const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
       const selectedIcon = tokensData.data.selectedIcon || "";
       const profileAccent = tokensData.data.profileAccent || null;
-      const profileBanner = tokensData.data.profileBanner || null;
+      const selectedBanner = tokensData.data.selectedBanner || null;
       const avatarFrame = tokensData.data.avatarFrame || null;
-      setProfileInfo({ name, email, selectedIcon, profileAccent, profileBanner, avatarFrame });
+      setProfileInfo({ name, email, selectedIcon, profileAccent, selectedBanner, avatarFrame });
       setEditForm((prev) => ({ ...prev, name, email }));
       // Sync the customization pickers with the saved values.
       setCosmetics({
         accent: profileAccent || DEFAULT_PROFILE_ACCENT,
-        banner: profileBanner || "",
         frame: avatarFrame || null,
       });
     }
@@ -730,7 +731,6 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           profileAccent: cosmetics.accent,
-          profileBanner: cosmetics.banner.trim() || null,
           avatarFrame: cosmetics.frame,
         }),
       });
@@ -1052,7 +1052,7 @@ export default function ProfilePage() {
         <div className="grid gap-8 md:grid-cols-2">
           <div
             className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${
-              profileInfo.profileBanner ? "pt-24" : ""
+              profileInfo.selectedBanner ? "pt-24" : ""
             }`}
             style={
               profileInfo.profileAccent
@@ -1063,14 +1063,11 @@ export default function ProfilePage() {
                 : undefined
             }
           >
-            {/* Grynd+ profile banner */}
-            {profileInfo.profileBanner && (
-              <div
-                className="absolute inset-x-0 top-0 h-16 rounded-t-xl bg-cover bg-center"
-                style={{ backgroundImage: `url("${profileInfo.profileBanner}")` }}
-                aria-hidden="true"
-              />
-            )}
+            <ProfileBanner
+              bannerKey={profileInfo.selectedBanner}
+              className="absolute inset-x-0 top-0"
+              heightClass="h-16"
+            />
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
               <button
@@ -1306,8 +1303,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           {membership?.active ? (
             <>
               <p className="mb-4 text-sm text-gray-300">
-                Accent color, banner, and avatar frame — Grynd+ perk. Shown on your
-                profile card.
+                Accent color and avatar frame — Grynd+ perks. Shown on your profile card.
               </p>
 
               <p className="mb-2 text-sm font-semibold text-sky-300">Accent color</p>
@@ -1345,27 +1341,6 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-none"
                 />
               </div>
-
-              <p className="mb-2 text-sm font-semibold text-sky-300">Banner image</p>
-              <input
-                type="text"
-                value={cosmetics.banner}
-                onChange={(e) => setCosmetics((c) => ({ ...c, banner: e.target.value }))}
-                placeholder="https://… (raster image URL)"
-                aria-label="Profile banner image URL"
-                className="mb-2 w-full rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:border-sky-400 focus:outline-none"
-              />
-              {cosmetics.banner ? (
-                <div
-                  className="mb-4 h-16 rounded-lg border border-white/20 bg-cover bg-center"
-                  style={{ backgroundImage: `url("${cosmetics.banner}")` }}
-                  aria-hidden="true"
-                />
-              ) : (
-                <p className="mb-4 text-xs text-white/40">
-                  No banner set — the card shows the default background.
-                </p>
-              )}
 
               <p className="mb-2 text-sm font-semibold text-sky-300">Avatar frame</p>
               <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -1418,6 +1393,33 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               .
             </p>
           )}
+        </div>
+
+        <div className="mt-8 rounded-xl border border-cyan-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl text-cyan-300">Profile Banner</h2>
+              <p className="mt-1 text-sm text-gray-300">
+                Equip an official banner unlocked through the Battlepass.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsBannerPickerOpen(true)}
+              className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
+            >
+              Choose banner
+            </button>
+          </div>
+          <div className="mt-4 overflow-hidden rounded-lg border border-white/10 bg-[#08142f]">
+            {profileInfo.selectedBanner ? (
+              <ProfileBanner bannerKey={profileInfo.selectedBanner} heightClass="h-16 sm:h-20" />
+            ) : (
+              <div className="flex h-16 items-center justify-center text-sm text-white/45 sm:h-20">
+                No banner equipped
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Responsible Play — per-player daily loss limit */}
@@ -2433,6 +2435,15 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
           </div>
         </div>
       )}
+
+      <ChooseBannerModal
+        open={isBannerPickerOpen}
+        onClose={() => setIsBannerPickerOpen(false)}
+        currentBannerKey={profileInfo.selectedBanner}
+        onEquipped={(bannerKey) =>
+          setProfileInfo((prev) => ({ ...prev, selectedBanner: bannerKey }))
+        }
+      />
 
       {/* Official Grynd icon picker — owned icons only, no uploads. */}
       <ChooseIconModal

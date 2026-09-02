@@ -16,6 +16,7 @@ import {
 } from "../../../lib/battlepass";
 import { TITLE_MILESTONES } from "../../../lib/titles";
 import { rewardsForLevel } from "../../../lib/battlepassRewards";
+import { grantBattlepassBanners } from "../../../lib/banners";
 
 export async function GET() {
   try {
@@ -24,12 +25,24 @@ export async function GET() {
     // visitors get a fresh level-1 / 0-XP pass and only signed-in users
     // read their real progress from the DB.
     let xp = 0;
+    let dbUserId = null;
+    let ownedBannerKeys = new Set();
     if (userId) {
       const sql = getNeonSql();
       const rows = await sql`
-        SELECT xp FROM users WHERE clerk_id = ${userId} LIMIT 1
+        SELECT id, xp FROM users WHERE clerk_id = ${userId} LIMIT 1
       `;
+      dbUserId = rows[0]?.id ?? null;
       xp = Math.max(0, Math.floor(Number(rows[0]?.xp) || 0));
+      if (dbUserId) {
+        await grantBattlepassBanners(dbUserId, getBattlepassProgress(xp).level).catch((error) => {
+          console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
+        });
+        const ownedRows = await sql`
+          SELECT banner_key FROM user_banners WHERE user_id = ${dbUserId}
+        `;
+        ownedBannerKeys = new Set(ownedRows.map((row) => row.banner_key));
+      }
     }
     const progress = getBattlepassProgress(xp);
 
@@ -43,9 +56,13 @@ export async function GET() {
         xpRequired: expToReachLevel(level),
         xpForNext: expForNextLevel(level),
         title: titleByLevel.get(level) || null,
-        // Battlepass rewards for this level. Empty array = reserved slot
-        // for future image-based rewards (icons, frames, cosmetics).
-        rewards: rewardsForLevel(level),
+        // Battlepass rewards for this level. Empty array = reserved slot.
+        rewards: rewardsForLevel(level).map((reward) => ({
+          ...reward,
+          claimed: reward.type === "banner" && dbUserId
+            ? ownedBannerKeys.has(reward.key)
+            : false,
+        })),
       });
     }
 

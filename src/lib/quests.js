@@ -4,9 +4,9 @@ import { addExp, expForQuest } from "./battlepass";
 let _sql = null;
 function getSql() {
   if (_sql) return _sql;
-  if (!process.env.DATABASE_URL) {
+  if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
     throw new Error(
-      "DATABASE_URL is not set. Set it in your runtime environment (for example, Vercel Project Settings > Environment Variables).",
+      "DATABASE_URL or POSTGRES_URL is not set. Set one in your runtime environment (for example, .env.local for local development).",
     );
   }
   _sql = getNeonSql();

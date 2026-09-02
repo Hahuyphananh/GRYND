@@ -5,6 +5,7 @@ import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
+import { resolveSelectedBannerKey } from "../../../../lib/banners";
 import { getLevelFromXp } from "../../../../lib/battlepass";
 
 export async function GET(req: NextRequest) {
@@ -31,14 +32,13 @@ export async function GET(req: NextRequest) {
 
     const [user] = await db
       .select({
-        id: users.id,
         clerkId: users.clerkId,
         name: users.name,
         selectedIcon: users.selectedIcon,
         // Grynd+ cosmetics — public by design (that's the point of showing
         // them off). Cosmetic display data only.
         profileAccent: users.profileAccent,
-        profileBanner: users.profileBanner,
+        selectedBanner: users.selectedBanner,
         avatarFrame: users.avatarFrame,
         level: users.level,
         xp: users.xp,
@@ -103,12 +103,19 @@ export async function GET(req: NextRequest) {
       if (!catalog) safeIcon = DEFAULT_ICON_KEY;
     }
 
+    const selectedBanner = await resolveSelectedBannerKey(clerkId);
+
     // Battlepass level is derived from XP (wagering + quests), not the
     // possibly-stale stored level column.
     const battlepassLevel = getLevelFromXp(Number(user.xp) || 0);
     return NextResponse.json({
       success: true,
-      user: { ...user, level: battlepassLevel, selectedIcon: safeIcon },
+      user: {
+        ...user,
+        level: battlepassLevel,
+        selectedIcon: safeIcon,
+        selectedBanner,
+      },
     });
   } catch (error: any) {
     console.error("[PUBLIC_PROFILE_ERROR]", error);
