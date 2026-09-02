@@ -54,6 +54,21 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // Legacy solo Crash URLs. The old page-level redirect() only fired at
+      // render time, so /games/crash (rewritten to /casino/crash) answered
+      // 200 "Crash | GRYND" and client-navigated away — a soft redirect that
+      // crawlers re-fetch forever. Config-level 308s fix that. `/games/crash`
+      // must be listed BEFORE the /casino/:path* catch-all so it matches.
+      {
+        source: "/games/crash",
+        destination: "/games/crash-arena",
+        permanent: true,
+      },
+      {
+        source: "/casino/crash",
+        destination: "/games/crash-arena",
+        permanent: true,
+      },
       // Legacy yahtzee URLs (both old and new prefix) land on Dice Flush.
       {
         source: "/casino/yahtzee",
