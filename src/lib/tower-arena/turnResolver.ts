@@ -1,63 +1,51 @@
 // src/lib/tower-arena/turnResolver.ts
 //
-// Pure, deterministic Tower Arena turn-resolution logic. This is the game
-// ENGINE's decision layer: given the current server-owned match snapshot and
-// a player's intents (block shape / anchor / rotation), it returns the full
-// next-state transition — which resource was consumed, whether it came from
-// the shared pool or a reservation, whether the tower collapsed, who was
-// eliminated, the placement value, exactly how the pool refills, whose turn
-// is next, whether the match is finished — WITHOUT touching a database.
-//
-// `serverStore` is the only caller and is responsible for persisting these
-// outcomes inside a transaction. Keeping this pure (no DB, no Math.random,
-// no client state) makes every rule in the spec unit-testable and guarantees
-// identical inputs always produce identical outcomes.
-//
-// Nomenclature to avoid confusion:
-//   * `actionType` — who initiated the placement: "PLACE" (human),
-//     "AI", or "TIMEOUT" (deterministic fallback). It is recorded for audit
-//     but NEVER changes the resolved geometry (a timeout still ages the tower
-//     the exact same way a voluntary placement of the same block would).
-//   * The two resource sources are "pool" (shared) and "reserve" (private).
+// Pure, deterministic Tower Arena turn resolution. The game is a stable
+// Tetris-like stacker: every placement uses the shared pool, blocks stay fixed,
+// and a placement over the ceiling eliminates its player and trims the tower.
 
 import {
   BLOCK_SHAPES,
   centerXFor,
   dropInBounds,
-  footprintFor,
   findSafeDrop,
   refillResourcePool,
   simulatePlacement,
   takeFromPool,
   buildResourcePool,
+  trimTowerAfterElimination,
   type BlockShape,
   type ResourcePiece,
   type TowerState,
 } from "./engine";
 
-// Players (and bots) get a relaxed turn window — at least a minute to aim
-// and drop. The reserve window matches so the resource pick stays unhurried.
 export const TURN_PLACEMENT_WINDOW_MS = 60_000;
+// Kept as compatibility exports for older store callers; active games no
+// longer enter a reserve phase or expose reserve controls.
 export const RESERVE_WINDOW_MS = 60_000;
+export const AI_RESERVE_WINDOW_MS = 10_000;
+export const AI_TURN_PLACEMENT_WINDOW_MS = 60_000;
 export const MAX_RESERVE_USES = 2;
 
-// ── Snapshots/types decoupled from the ORM ─────────────────────────────
+// How long a bot's placement turn lasts. Bots don't need the full 60s
+// human window; a short "thinking" beat lets every viewer see the bot's
+// planned-placement ghost before the block pops into the tower. The server
+// enforces this window (polls no-op until it passes), so the placeholder is
+// visible on every client, not just the one that fires /ai-turn.
+export const BOT_THINK_MS = 700;
 
-/** Server snapshot of one active participant (whatever the store projects). */
 export interface ResolverPlayer {
   userId: string;
   seat: number;
   status: string;
   isAi: boolean;
   reserveUsesRemaining: number;
-  /** Pre-game ready flag (bots are always ready). */
+  placement?: number;
   ready?: boolean;
 }
 
-/** Reserve bookkeeping keyed by userId. */
 export type ReserveMap = Record<string, { blockId: string; shape: BlockShape } | null>;
 
-/** Placement audit entry (mirrors the persisted placements array). */
 export interface PlacementEntry {
   turnNumber: number;
   userId: string;
@@ -69,11 +57,8 @@ export interface PlacementEntry {
   fromReserve: boolean;
   collapsed: boolean;
   removedBlockIds: string[];
-  /** Leftmost column the block actually settled on (after any slip). */
   resolvedX: number;
-  /** Resolved cells of the dropped block (empty on a full void miss). */
   placedCells: Array<{ x: number; depth: number; z: number }>;
-  /** Every block that fell this placement (shed stacks incl. the dropper's). */
   removedBlocks: Array<{ id: string; cells: Array<{ x: number; depth: number; z: number }> }>;
   actionType: string;
   at: string;
@@ -107,7 +92,6 @@ export type ResolveResult = ResolveFailure | ResolveSuccess;
 
 export interface EliminationOutcome {
   userId: string;
-  /** Placement value (1 = winner … N). Assigned at elimination time. */
   placement: number;
 }
 
@@ -118,185 +102,121 @@ export interface ResolvedPlacement {
   stable: boolean;
   collapsed: boolean;
   removedBlockIds: string[];
-  /** Full tower after placement + any collapse recovery (never "reset"). */
   towerState: TowerState;
-  /** Remaining shared pool after this placement + optional refill. */
   pool: ResourcePiece[];
   reserveState: ReserveMap;
-  /** True when the pool (re)filled this transition (elimination or empty). */
   refilled: boolean;
   resourceCycle: number;
-  /** Eliminations that resulted from THIS placement (collapse). */
   eliminations: EliminationOutcome[];
-  /** True once only one active player remains (match should finish). */
   finished: boolean;
-  /** Active (surviving) participant count after the placement. */
   activeRemaining: number;
-  /** Whose turn is next (null when target is waiting/finishing). */
   nextTurnPlayerId: string | null;
-  /** Epoch-ms deadline for the next window. */
   nextDeadlineMs: number | null;
-  nextPhase: "placement" | "reserve";
+  nextPhase: "placement";
 }
-
-// ── Small, pure helpers exported for tests ─────────────────────────────
 
 export function isActivePlayer(p: ResolverPlayer): boolean {
   return p?.status === "active";
 }
 
-export function parseReserveMap(raw: unknown): ReserveMap {
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as ReserveMap;
+export function activeStanding(
+  players: ResolverPlayer[],
+  tower: Array<{ placedByUserId?: string }> | null | undefined,
+  userId: string,
+): number {
+  const active = players.filter(isActivePlayer);
+  if (active.length === 0) return 1;
+  const byBlocks = new Map<string, number>();
+  for (const block of tower || []) {
+    if (block?.placedByUserId) byBlocks.set(block.placedByUserId, (byBlocks.get(block.placedByUserId) || 0) + 1);
   }
-  return {};
+  if ((byBlocks.get(userId) || 0) <= 0) return active.length;
+  const sorted = [...active].sort((a, b) => {
+    const da = byBlocks.get(a.userId) || 0;
+    const db = byBlocks.get(b.userId) || 0;
+    return db !== da ? db - da : a.seat - b.seat;
+  });
+  const index = sorted.findIndex((p) => p.userId === userId);
+  return index < 0 ? active.length : index + 1;
+}
+
+export function parseReserveMap(raw: unknown): ReserveMap {
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as ReserveMap : {};
 }
 
 export function parsePool(raw: unknown): ResourcePiece[] {
-  // Copy so takeFromPool (which splices in place) never mutates the caller's
-  // stored snapshot — the resolver is strictly pure for race-safe replay.
   return Array.isArray(raw) ? (raw as ResourcePiece[]).slice() : [];
 }
 
 export function parsePlacements(raw: unknown): PlacementEntry[] {
-  return Array.isArray(raw) ? (raw as PlacementEntry[]) : [];
+  return Array.isArray(raw) ? raw as PlacementEntry[] : [];
 }
 
-/**
- * Pre-game ready gate: every ACTIVE participant must have clicked READY
- * before the 10s start countdown may begin. AI seats are always ready
- * (they have no click), so a human-vs-bot free-play match only needs the
- * human to ready up. An empty roster can never be "all ready".
- */
 export function isReadyGateMet(players: ResolverPlayer[]): boolean {
   const active = players.filter(isActivePlayer);
-  if (active.length === 0) return false;
-  return active.every((p) => p.isAi || Boolean(p.ready));
+  return active.length > 0 && active.every((p) => p.isAi || Boolean(p.ready));
 }
 
-/**
- * Next active seat strictly after `afterUserId`, wrapping around and
- * skipping eliminated players. Returns null when nobody else remains.
- */
 export function nextActiveAfter(players: ResolverPlayer[], afterUserId: string): string | null {
   const active = players.filter(isActivePlayer).map((p) => p.userId);
   if (active.length <= 1) return null;
-  const idx = active.indexOf(afterUserId);
-  if (idx === -1) return null;
-  return active[(idx + 1) % active.length];
+  const index = active.indexOf(afterUserId);
+  return index < 0 ? null : active[(index + 1) % active.length];
 }
 
 export function playerByUserId(players: ResolverPlayer[], userId: string): ResolverPlayer | null {
-  for (const p of players) if (p.userId === userId) return p;
-  return null;
+  return players.find((p) => p.userId === userId) || null;
 }
 
-/**
- * Deterministic safe fallback intent: finds the gentlest drop that will NOT
- * fall into the void (smallest shape first, centered then fanning outward,
- * both rotations) — held reservation shapes first, then the shared pool.
- * Only when every option is doomed does it settle for the smallest available
- * shape centered (the fall is then unavoidable and resolves like any drop).
- */
 export function safeFallbackIntent(snapshot: MatchSnapshot): PlacementIntent {
-  const reserve = parseReserveMap(snapshot.reserveState);
   const pool = parsePool(snapshot.resourcePool);
-  const held = reserve[snapshot.currentTurnPlayerId ?? ""];
-  const tower = Array.isArray(snapshot.towerState) ? snapshot.towerState : [];
-
   const available: BlockShape[] = [];
-  const pushShape = (s: BlockShape) => {
-    if (!available.includes(s)) available.push(s);
-  };
-  if (held) pushShape(held.shape);
-  for (const p of pool) pushShape(p.shape);
-
-  const safe = findSafeDrop(tower, available);
+  for (const piece of pool) if (!available.includes(piece.shape)) available.push(piece.shape);
+  const safe = findSafeDrop(snapshot.towerState || [], available);
   if (safe) return { shape: safe.shape, positionX: safe.x, rotation: safe.rotation, actionType: "TIMEOUT" };
-
-  let shape: BlockShape = "short";
-  const byOrder: BlockShape[] = ["short", "square", "I", "T", "L"];
-  for (const s of byOrder) {
-    if (available.includes(s)) {
-      shape = s;
-      break;
-    }
-  }
+  const shape = (["short", "square", "I", "T", "L"] as BlockShape[]).find((s) => available.includes(s)) || "short";
   return { shape, positionX: centerXFor(shape, 0), rotation: 0, actionType: "TIMEOUT" };
 }
 
-/**
- * Raise a fresh deterministic pool for a new cycle (used when refilling on an
- * elimination): a full replacement pool, seeded by matchId + cycle.
- */
 export function freshPoolForCycle(maxPlayers: number, matchId: string, cycle: number): ResourcePiece[] {
   return buildResourcePool(maxPlayers, `${matchId}:cycle:${cycle}`);
 }
 
-/** Reset reserve bookkeeping to a clean cycle (everyone loses their hold). */
 export function clearReserves(reserve: ReserveMap): ReserveMap {
   const next: ReserveMap = {};
-  for (const k of Object.keys(reserve)) next[k] = null;
+  for (const key of Object.keys(reserve)) next[key] = null;
   return next;
 }
 
-// ── The core transition ────────────────────────────────────────────────
+function priorCeilingEliminations(placements: PlacementEntry[]): number {
+  return placements.filter((entry) => Boolean(entry.collapsed)).length;
+}
 
-/**
- * Resolve one legal placement against the CURRENT snapshot. Does not
- * validate turn ownership / phase / actor (the store does authz); it assumes
- * the acting player is the current active holder and it mutates nothing.
- *
- * Returns a fully-specified next state. The caller persists it and shields the
- * match JSONB/CUwith FOR UPDATE semantics against concurrency.
- */
 export function resolvePlacement(
   snapshot: MatchSnapshot,
   players: ResolverPlayer[],
   intent: PlacementIntent,
   actingUserId: string,
+  windows?: { reserveWindowMs?: number; placementWindowMs?: number },
 ): ResolveResult {
+  const placementWindowMs = windows?.placementWindowMs ?? TURN_PLACEMENT_WINDOW_MS;
   const pool = parsePool(snapshot.resourcePool);
-  const reserve = parseReserveMap(snapshot.reserveState);
   const tower = Array.isArray(snapshot.towerState) ? snapshot.towerState : [];
   const placements = parsePlacements(snapshot.placements);
   const rotation = Number.isInteger(intent.rotation) ? intent.rotation : 0;
 
-  // Basic geometry sanity (aim bounds) — the store also checks this but keep
-  // the resolver self-contained so direct callers can't produce a wild drop.
-  // There are no side walls: any aim inside dropRangeFor (including fully
-  // into the void beside the platform) is legal and resolves to a collapse;
-  // only absurdly out-of-range aims are rejected up front.
-  if (!dropInBounds(intent.shape, rotation, intent.positionX)) {
-    const failure: ResolveFailure = { ok: false, error: "Placement out of bounds", status: 400 };
-    return failure;
+  if (!BLOCK_SHAPES.includes(intent.shape) || !dropInBounds(intent.shape, rotation, intent.positionX)) {
+    return { ok: false, error: "Placement out of bounds", status: 400 };
   }
 
   const activePlayers = players.filter(isActivePlayer);
-
-  // Resolve the resource source. A held reservation with the SAME shape is
-  // used first (consuming the hold, not the pool, and costing no extra use).
-  // A hold with a DIFFERENT shape is skipped — the player draws from the pool
-  // and their (mismatched) hold stays until used or the cycle clears.
-  let blockShape = intent.shape;
-  let fromReserve = false;
-  const held = reserve[actingUserId];
-  if (held && held.shape === intent.shape) {
-    blockShape = held.shape;
-    fromReserve = true;
-    reserve[actingUserId] = null;
-  } else if (!held || held.shape !== intent.shape) {
-    const taken = takeFromPool(pool, blockShape);
-    if (!taken.piece) {
-      const failure: ResolveFailure = { ok: false, error: `${blockShape} block is not available`, status: 409 };
-      return failure;
-    }
-  }
+  const taken = takeFromPool(pool, intent.shape);
+  if (!taken.piece) return { ok: false, error: `${intent.shape} block is not available`, status: 409 };
 
   const turnNumber = snapshot.turnNumber + 1;
   const blockId = `b:${turnNumber}`;
   const sim = simulatePlacement(tower, {
-    shape: blockShape,
+    shape: intent.shape,
     x: intent.positionX,
     rotation,
     blockId,
@@ -304,86 +224,83 @@ export function resolvePlacement(
     turnNumber,
   });
 
+  let nextTower = sim.tower;
+  let removedBlockIds = sim.removedBlockIds.slice();
+  let removedBlocks = (sim.fallenBlocks || []).map((block) => ({ id: block.id, cells: block.cells }));
+  const eliminations: EliminationOutcome[] = [];
+
+  if (sim.collapsed) {
+    const alreadyTaken = new Set<number>();
+    for (const player of players) {
+      if (player.status !== "active" && Number.isInteger(player.placement)) alreadyTaken.add(player.placement as number);
+    }
+    let placement = snapshot.maxPlayers;
+    while (placement > 1 && alreadyTaken.has(placement)) placement -= 1;
+    eliminations.push({ userId: actingUserId, placement });
+
+    const trim = trimTowerAfterElimination(tower, priorCeilingEliminations(placements) + 1);
+    nextTower = trim.tower;
+    removedBlockIds = [...new Set([...removedBlockIds, ...trim.removedBlockIds])];
+    const oldById = new Map(tower.map((block) => [block.id, block]));
+    removedBlocks = [
+      ...removedBlocks,
+      ...trim.removedBlockIds.map((id) => oldById.get(id)).filter(Boolean).map((block) => ({ id: block!.id, cells: block!.cells })),
+    ];
+  }
+
+  let nextCycle = snapshot.resourceCycle;
+  let nextPool = taken.pool;
+  let refilled = false;
+  if (eliminations.length > 0 || nextPool.length === 0) {
+    nextCycle += 1;
+    nextPool = eliminations.length > 0
+      ? freshPoolForCycle(snapshot.maxPlayers, snapshot.id, nextCycle)
+      : refillResourcePool(nextPool, snapshot.maxPlayers, `${snapshot.id}:cycle:${nextCycle}`);
+    refilled = true;
+  }
+
+  const activeRemaining = activePlayers.length - eliminations.length;
+  const finished = activeRemaining <= 1;
+  const nextTurnPlayerId = finished ? null : nextActiveAfter(activePlayers, actingUserId);
+  // The next holder's window depends on who holds it: humans keep the full
+  // placement window, bots get a short think window so their planned
+  // placement is visible to every viewer before it resolves.
+  const nextHolder = nextTurnPlayerId
+    ? activePlayers.find((p) => p.userId === nextTurnPlayerId)
+    : null;
+  const nextDeadlineMs = nextTurnPlayerId
+    ? Date.now() + (nextHolder?.isAi ? BOT_THINK_MS : placementWindowMs)
+    : null;
   const entry: PlacementEntry = {
     turnNumber,
     userId: actingUserId,
     seat: playerByUserId(activePlayers, actingUserId)?.seat ?? 0,
-    shape: blockShape,
+    shape: intent.shape,
     positionX: intent.positionX,
     rotation,
     blockId,
-    fromReserve,
+    fromReserve: false,
     collapsed: sim.collapsed,
-    removedBlockIds: sim.removedBlockIds,
+    removedBlockIds,
     resolvedX: sim.placedBlock?.x ?? intent.positionX,
     placedCells: sim.placedBlock?.cells ?? [],
-    removedBlocks: (sim.fallenBlocks || []).map((f) => ({ id: f.id, cells: f.cells })),
+    removedBlocks,
     actionType: intent.actionType,
     at: new Date().toISOString(),
   };
 
-  // Determine eliminations + the surviving count.
-  const eliminations: EliminationOutcome[] = [];
-  let activeRemaining = activePlayers.length;
-  if (sim.collapsed) {
-    // The responsible player drops to the LAST unassigned placement (the
-    // number of active participants BEFORE this turn). Subsequent players
-    // tighten the field, so later eliminations get earlier (higher finish)
-    // placements — matching "final placement = elimination order".
-    const placementValue = activeRemaining;
-    eliminations.push({ userId: actingUserId, placement: placementValue });
-    activeRemaining -= 1;
-  }
-
-  // Refill policy:
-  //   * elimination  → full replacement pool (fresh cycle)
-  //   * pool empties → non-empty append (fresh cycle pieces added)
-  // Never rebuild the tower — it continues in its stable post-fall state.
-  let nextPool = pool;
-  let nextCycle = snapshot.resourceCycle;
-  let refilled = false;
-  if (eliminations.length > 0 || pool.length === 0) {
-    nextCycle += 1;
-    if (eliminations.length > 0) {
-      nextPool = freshPoolForCycle(snapshot.maxPlayers, snapshot.id, nextCycle);
-    } else {
-      nextPool = refillResourcePool(pool, snapshot.maxPlayers, `${snapshot.id}:cycle:${nextCycle}`);
-    }
-    refilled = true;
-    // A fresh cycle clears every reservation.
-    for (const k of Object.keys(reserve)) reserve[k] = null;
-  }
-
-  const finished = activeRemaining <= 1;
-
-  // Next actor + phase.
-  let nextPhase: "placement" | "reserve" = "placement";
-  let nextTurnPlayerId: string | null = null;
-  let nextDeadlineMs: number | null = null;
-  if (!finished) {
-    nextTurnPlayerId = nextActiveAfter(activePlayers, actingUserId);
-    if (refilled) {
-      // Fresh resource cycle → every remaining player may reserve first.
-      nextPhase = "reserve";
-      if (nextTurnPlayerId) nextDeadlineMs = Date.now() + RESERVE_WINDOW_MS;
-    } else {
-      nextPhase = "placement";
-      if (nextTurnPlayerId) nextDeadlineMs = Date.now() + TURN_PLACEMENT_WINDOW_MS;
-    }
-  }
-
-  const success: ResolveSuccess = {
+  return {
     ok: true,
     resolved: {
-      blockShape,
-      fromReserve,
+      blockShape: intent.shape,
+      fromReserve: false,
       entry,
       stable: sim.stable,
       collapsed: sim.collapsed,
-      removedBlockIds: sim.removedBlockIds,
-      towerState: sim.tower,
+      removedBlockIds,
+      towerState: nextTower,
       pool: nextPool,
-      reserveState: reserve,
+      reserveState: {},
       refilled,
       resourceCycle: nextCycle,
       eliminations,
@@ -391,11 +308,9 @@ export function resolvePlacement(
       activeRemaining,
       nextTurnPlayerId,
       nextDeadlineMs,
-      nextPhase,
+      nextPhase: "placement",
     },
   };
-  return success;
 }
 
-// Re-exported shape guard so the resolver stays self-contained for tests.
-export { BLOCK_SHAPES, footprintFor, centerXFor };
+export { BLOCK_SHAPES, centerXFor };

@@ -2,6 +2,7 @@ import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
 import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
+import { grantBattlepassBanners } from "./banners";
 
 let _sql = null;
 function getSql() {
@@ -32,7 +33,7 @@ export async function applyLeaderboardCounters({
 
   if (!clerkId || bet <= 0) return;
 
-  await getSql()`
+  const counterRows = await getSql()`
     WITH updated_user AS (
       UPDATE users
       SET total_wagered = total_wagered + ${bet},
@@ -119,7 +120,16 @@ export async function applyLeaderboardCounters({
       weekly_win_rate = ROUND(((user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END)::numeric / NULLIF(user_stats.weekly_wins + user_stats.weekly_losses + 1, 0)) * 100, 2),
       weekly_level_gain = GREATEST(0, EXCLUDED.level - user_stats.level + user_stats.weekly_level_gain),
       updated_at = NOW()
+    RETURNING user_id AS id, level, xp
   `;
+
+  const updatedLevel = Number(counterRows[0]?.level || 1);
+  const updatedUserId = counterRows[0]?.id;
+  if (updatedUserId) {
+    await grantBattlepassBanners(updatedUserId, updatedLevel).catch((error) => {
+      console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
+    });
+  }
 
   if (multiplier >= 10) {
     await getSql()`

@@ -59,6 +59,16 @@ function clampPlayers(n: number): number {
 }
 
 /**
+ * How many placements receive a payout (weight > 0) for a seat count.
+ * Drives free-play result popups: with no tokens at stake a player "wins"
+ * by finishing in a slot that would pay in the equivalent paid game.
+ */
+export function paidPlacementsFor(maxPlayers: number): number {
+  const weights = PAYOUT_WEIGHTS[clampPlayers(maxPlayers)] ?? [];
+  return weights.filter((w) => w > 0).length;
+}
+
+/**
  * Integer token payout for every placement (1-indexed array; element 0 is
  * placement 1 = winner). Payouts sum exactly to `prizePool`. Works for
  * 2–6 players.

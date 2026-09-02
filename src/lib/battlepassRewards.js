@@ -1,12 +1,10 @@
 // src/lib/battlepassRewards.js
 //
 // Per-level battlepass rewards. Small rewards early, rare rewards at the
-// end. Image-based rewards (profile icons, avatar frames, banners, game
-// cosmetics) are intentionally NOT included yet — those levels are left
-// reserved-empty so they can be added later.
+// end. Official image-based rewards reference stable catalog keys.
 //
-// Reserved-empty levels (icons & cosmetics coming soon):
-//   3, 6, 9, 13, 17, 22, 27, 31, 36, 42, 49, 56, 61, 67, 73, 81, 86, 93, 97
+// Reserved-empty levels (future icons, frames, banners, and other cosmetics):
+//   6, 9, 13, 17, 22, 27, 31, 36, 42, 49, 56, 61, 67, 73, 81, 86, 93, 97
 
 // Reward type metadata (label + accent color used in the UI legend).
 export const REWARD_TYPES = {
@@ -17,6 +15,7 @@ export const REWARD_TYPES = {
   shield: { label: "Streak Shield", color: "#38bdf8" },
   refund: { label: "Loss Refund", color: "#f472b6" },
   grynd: { label: "Grynd+ Days", color: "#a78bfa" },
+  banner: { label: "Profile Banner", color: "#22d3ee" },
 };
 
 // Reward rarity colors (matches the title rarity ladder).
@@ -34,6 +33,7 @@ export const REWARD_RARITIES = {
 const REWARDS = [
   [1, [{ type: "color", name: "Cyan Glow", desc: "Unlock the cyan name glow", value: "#00e5ff", rarity: "Common" }]],
   [2, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
+  [3, [{ type: "banner", key: "neon-grid", name: "Neon Grid", desc: "Unlock the Neon Grid profile banner", rarity: "Common" }]],
   [4, [{ type: "title", name: "Pass Starter", desc: "Battlepass-exclusive title", rarity: "Common" }]],
   [5, [{ type: "color", name: "Lime Glow", desc: "Unlock the lime name glow", value: "#a3e635", rarity: "Common" }]],
   [7, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
@@ -118,7 +118,7 @@ const REWARDS = [
   ]],
 ];
 
-export const RESERVED_LEVELS = [3, 6, 9, 13, 17, 22, 27, 31, 36, 42, 49, 56, 61, 67, 73, 81, 86, 93, 97];
+export const RESERVED_LEVELS = [6, 9, 13, 17, 22, 27, 31, 36, 42, 49, 56, 61, 67, 73, 81, 86, 93, 97];
 
 // Build the 100-entry track: { level, rewards: [] } — empty array = reserved.
 export const BATTLEPASS_REWARDS = (() => {

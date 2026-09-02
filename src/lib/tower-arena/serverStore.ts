@@ -15,14 +15,11 @@
 // resign / disconnect / timer packet can never pay a player twice.
 //
 // State machine:
-//   waiting → active {phase: reserve → placement} → finished | cancelled
-//   reserve : every active player may reserve one block this cycle (max 2
-//             uses/match) within a bounded window; the tower is unaffected.
-//   placement: currentTurnPlayerId places; a collapse eliminates them,
-//             the pool refills and a fresh reserve cycle opens, and the
-//             highest stable tower portion is retained (engine trims it).
-//             If the pool empties without an elimination it refills too,
-//             again WITHOUT rebuilding the tower.
+//   waiting → active {phase: placement} → finished | cancelled
+//   placement: currentTurnPlayerId places; a ceiling breach eliminates them,
+//             trims the tower, and advances directly to the next player.
+//             If the pool empties or a player is eliminated it refills without
+//             rebuilding the tower.
 //   finish   : reached when only one player remains (or the match is
 //             resigned to that point). Payouts by placement, summing
 //             exactly to the prize pool.
@@ -49,9 +46,13 @@ import {
 import {
   TURN_PLACEMENT_WINDOW_MS,
   RESERVE_WINDOW_MS,
+  AI_TURN_PLACEMENT_WINDOW_MS,
+  AI_RESERVE_WINDOW_MS,
   MAX_RESERVE_USES,
+  BOT_THINK_MS,
+  activeStanding,
 } from "./turnResolver";
-import { computePotPrize, payoutsByPlacement } from "./payout";
+import { computePotPrize, payoutsByPlacement, paidPlacementsFor } from "./payout";
 import {
   towerArenaStarted,
   towerArenaBlockPlaced,
@@ -80,7 +81,14 @@ import {
 
 // ── Tunables (re-exported so callers share one source of truth) ────────
 
-export { TURN_PLACEMENT_WINDOW_MS, RESERVE_WINDOW_MS, MAX_RESERVE_USES } from "./turnResolver";
+export {
+  TURN_PLACEMENT_WINDOW_MS,
+  RESERVE_WINDOW_MS,
+  AI_TURN_PLACEMENT_WINDOW_MS,
+  AI_RESERVE_WINDOW_MS,
+  MAX_RESERVE_USES,
+  BOT_THINK_MS,
+} from "./turnResolver";
 
 // Pre-game ready gate: once every player has clicked READY (AI seats are
 // always ready) the match enters a 10-second start countdown before play
@@ -102,6 +110,21 @@ const OPEN_MATCH_STATES = new Set(["waiting", "active"]);
 // to every other path and needs no schema migration. While paused the turn
 // engine is frozen: the poll no-ops, bots don't act, and the turn deadline
 // is refreshed on resume so pausing never burns anyone's window.
+// ── Per-match turn windows ─────────────────────────────────────────────
+//
+// Free-play (human-vs-AI) matches run on a snappier cadence than paid PvP:
+// the reserve window is short (a quick pick or skip) and bots place
+// immediately (advanceMatchOnPoll auto-plays them), so the game never
+// stalls 60s on a bot. Humans still get the full placement window to aim.
+
+function reserveWindowMs(match: any): number {
+  return Boolean(match?.isAi) ? AI_RESERVE_WINDOW_MS : RESERVE_WINDOW_MS;
+}
+
+function placementWindowMs(match: any): number {
+  return Boolean(match?.isAi) ? AI_TURN_PLACEMENT_WINDOW_MS : TURN_PLACEMENT_WINDOW_MS;
+}
+
 const PAUSE_KEY = "__paused__";
 
 function pauseMeta(match: any): { paused?: boolean; pausedAt?: string } | null {
@@ -135,10 +158,8 @@ export async function toggleMatchPause({
     if (!ACTIVE_MATCH_STATES.has(match.status)) return { error: "Match is not active", status: 400 };
     const players = await fetchPlayers(tx, matchId);
     const p = playerByUserId(players, userId);
-    if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
-
-    const reserve = reserveMap(match);
-    const nextReserve: Record<string, any> = { ...reserve };
+    if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };  const reserve = reserveMap(match);
+      const nextReserve: Record<string, any> = { ...reserve };
     let turnDeadline: Date | null = match.turnDeadline;
     if (paused) {
       nextReserve[PAUSE_KEY] = {
@@ -148,7 +169,10 @@ export async function toggleMatchPause({
     } else {
       if (!pauseMeta(match)?.paused) return { error: "Match is not paused", status: 409 };
       delete nextReserve[PAUSE_KEY];
-      const win = match.phase === "reserve" ? RESERVE_WINDOW_MS : TURN_PLACEMENT_WINDOW_MS;
+      // Resume hands the current holder a fresh full window — but a bot
+      // holder only gets its short think window (the human's ghost beat).
+      const holder = playerByUserId(players, match.currentTurnPlayerId);
+      const win = holder?.isAi ? BOT_THINK_MS : placementWindowMs(match);
       turnDeadline = new Date(Date.now() + win);
     }
 
@@ -382,8 +406,8 @@ async function createLobbyTx(tx: any, userId: string, wager: number, maxPlayers:
  * Free-play human-vs-AI match. No tokens move; `maxPlayers - 1` bot
  * seats are added but the match does NOT start yet — the human lands in
  * the ready room and clicks READY (bots are always ready), which opens
- * the 10s start countdown. Reuses the full turn/collapse/reserve state
- * machine (bots place via playAiTurn).
+ * the 10s start countdown. Uses the placement-only stacker (bots place via
+ * playAiTurn).
  */
 export async function createAiTowerArenaMatch({
   userId,
@@ -454,6 +478,13 @@ export async function playAiTurn({ matchId }: { matchId: string }) {
     const cur = playerByUserId(players, match.currentTurnPlayerId);
     if (!cur) return { error: "No active turn", status: 400 };
     if (!cur.isAi) return { error: "Not an AI turn", status: 403 };
+    // Respect the bot's short think window: the /ai-turn request (fired by
+    // every viewer after BOT_THINK_MS) must not resolve the bot early — the
+    // poll backstop resolves it the moment the window passes.
+    if (match.turnDeadline) {
+      const dl = new Date(match.turnDeadline).getTime();
+      if (dl > Date.now()) return { error: "Bot is still planning its placement", status: 409 };
+    }
     const fallback = safeFallbackPlacement(match);
     const result = await applyPlacement(tx, match, players, cur, {
       ...fallback,
@@ -620,23 +651,27 @@ export async function toggleTowerArenaReady({
 
 /**
  * Flip a full waiting match into active play: pick a randomized starting
- * player, open resource cycle 1's reserve phase, and build the pool.
+ * player, open placement, and build the pool.
  */
 async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?: number }) {
   const match = await fetchMatchForUpdate(tx, matchId);
   const players = await fetchPlayers(tx, matchId);
   const startId = pickStartId(players);
+  const startPlayer = players.find((p) => p.userId === startId);
+  // If the randomized starting seat is a bot, it gets the short think window
+  // (viewers see its planned-placement ghost); humans keep the full window.
+  const startWin = startPlayer?.isAi ? BOT_THINK_MS : placementWindowMs(match);
 
   const { pool } = newCycleState(match, 1);
   await tx
     .update(towerArenaMatches)
     .set({
       status: "active",
-      phase: "reserve",
+      phase: "placement",
       resourceCycle: 1,
       turnNumber: 0,
       currentTurnPlayerId: startId,
-      turnDeadline: new Date(Date.now() + RESERVE_WINDOW_MS),
+      turnDeadline: new Date(Date.now() + startWin),
       resourcePool: pool,
       towerState: [] as TowerState,
       reserveState: {},
@@ -654,31 +689,28 @@ async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?:
     isAi: Boolean(match.isAi),
   });
 
-  const reserveDeadline = new Date(Date.now() + RESERVE_WINDOW_MS);
+  const placementDeadline = new Date(Date.now() + startWin);
   void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
     status: "active",
-    phase: "reserve",
+    phase: "placement",
     currentTurnPlayerId: startId,
-    turnDeadline: reserveDeadline.toISOString(),
+    turnDeadline: placementDeadline.toISOString(),
     resourceCycle: 1,
     turnNumber: 0,
   });
-  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
-    currentTurnPlayerId: startId,
-    turnDeadline: reserveDeadline.toISOString(),
-    resourceCycle: 1,
+  void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
+    playerId: startId,
+    turnDeadline: placementDeadline.toISOString(),
   });
 
   return fetchMatchForUpdate(tx, matchId);
 }
 
-// ── Reserve ────────────────────────────────────────────────────────────
+// ── Legacy reserve endpoint ────────────────────────────────────────────
 //
-// During a reserve phase each ACTIVE player may reserve one available
-// block (removed from the shared pool and set aside privately). Reserving
-// consumes one of the player's MAX_RESERVE_USES. Reserve contents are held
-// in match.reserveState (keyed by userId) and are only revealed to the
-// owning player when a match is projected for a viewer.
+// Reserve was intentionally removed from active gameplay. Keep this export
+// temporarily so an old route/deployment fails closed instead of mutating
+// match state.
 
 export async function reserveBlock({
   userId,
@@ -690,61 +722,9 @@ export async function reserveBlock({
   blockId: string;
 }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
-  if (!blockId || typeof blockId !== "string") {
-    return { error: "blockId is required", status: 400 };
-  }
-  return db.transaction(async (tx) => {
-    const match = await fetchMatchForUpdate(tx, matchId);
-    if (!match) return { error: "Match not found", status: 404 };
-    if (!ACTIVE_MATCH_STATES.has(match.status) || match.phase !== "reserve") {
-      return { error: "Not in reserve phase", status: 400 };
-    }
-    if (matchIsPaused(match)) return { error: "Match is paused", status: 409 };
-    const players = await fetchPlayers(tx, matchId);
-    const p = playerByUserId(players, userId);
-    if (!p || !isActive(p)) return { error: "Not an active participant", status: 403 };
-
-    if (Number(p.reserveUsesRemaining) <= 0) {
-      return { error: "No reserve uses remaining", status: 400 };
-    }
-    const reserve = reserveMap(match);
-    if (reserve[userId]) {
-      return { error: "You already hold a reserved block this cycle", status: 409 };
-    }
-
-    const pool = poolPieces(match);
-    const idx = pool.findIndex((piece) => piece.id === String(blockId));
-    if (idx === -1) {
-      return { error: "Block is no longer available", status: 409 };
-    }
-    const [piece] = pool.splice(idx, 1);
-
-    reserve[userId] = { blockId: piece.id, shape: piece.shape };
-    await tx
-      .update(towerArenaPlayers)
-      .set({
-        reserveUsesRemaining: sql`${towerArenaPlayers.reserveUsesRemaining} - 1`,
-        reservedBlock: piece,
-      })
-      .where(and(eq(towerArenaPlayers.matchId, matchId), eq(towerArenaPlayers.userId, userId)));
-    await tx
-      .update(towerArenaMatches)
-      .set({ resourcePool: pool, reserveState: reserve })
-      .where(eq(towerArenaMatches.id, matchId));
-    await tx.insert(towerArenaTurns).values({
-      matchId,
-      userId,
-      seat: p.seat,
-      turnNumber: match.turnNumber,
-      resourceCycle: match.resourceCycle,
-      phase: "reserve",
-      actionType: "RESERVE",
-      blockShape: piece.shape,
-      blockId: piece.id,
-    });
-
-    return { ok: true, reserved: { blockId: piece.id, shape: piece.shape } };
-  });
+  void matchId;
+  void blockId;
+  return { error: "Reserve logic has been removed", status: 410 };
 }
 
 // ── Placement ──────────────────────────────────────────────────────────
@@ -841,7 +821,10 @@ async function applyPlacement(
     positionX: params.positionX,
     rotation: params.rotation,
     actionType: params.actionType,
-  }, acting.userId);
+  }, acting.userId, {
+    reserveWindowMs: reserveWindowMs(match),
+    placementWindowMs: placementWindowMs(match),
+  });
   if (!("resolved" in result)) return { error: result.error, status: result.status };
   const r = result.resolved;
   const eliminated = r.eliminations.length > 0;
@@ -947,18 +930,10 @@ async function applyPlacement(
   });
   if (!r.finished && r.nextTurnPlayerId) {
     const deadline = r.nextDeadlineMs ? new Date(r.nextDeadlineMs).toISOString() : undefined;
-    if (r.nextPhase === "reserve") {
-      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
-        currentTurnPlayerId: r.nextTurnPlayerId,
-        turnDeadline: deadline,
-        resourceCycle: r.resourceCycle,
-      });
-    } else {
-      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
-        playerId: r.nextTurnPlayerId,
-        turnDeadline: deadline,
-      });
-    }
+    void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
+      playerId: r.nextTurnPlayerId,
+      turnDeadline: deadline,
+    });
   }
 
   const placementValue = r.eliminations.length ? r.eliminations[0].placement : null;
@@ -1009,6 +984,7 @@ function toResolverPlayer(p: any): ResolverPlayer {
     status: p.status,
     isAi: Boolean(p.isAi),
     reserveUsesRemaining: Number(p.reserveUsesRemaining ?? 0),
+    placement: p.placement != null ? Number(p.placement) : undefined,
   };
 }
 
@@ -1020,14 +996,25 @@ function toResolverPlayer(p: any): ResolverPlayer {
 // arrives after settlement sees status already 'finished' and refunds
 // nothing.
 async function finishMatchTx(tx: any, match: any, players: any[]) {
+  // The final survivor takes the best placement still free (normally 1 — but
+  // a mid-match resignation can claim an in-order slot, e.g. a 2nd-place
+  // resigner keeps 2nd, so the survivor takes the smallest unclaimed one).
+  const taken = new Set<number>();
+  for (const p of players) {
+    if (p.status !== "active" && Number.isInteger(p.placement)) taken.add(Number(p.placement));
+  }
+  let survivorPlacement = 1;
+  while (taken.has(survivorPlacement)) survivorPlacement += 1;
+
   // Recompute final rankings from player placement values (ascending).
   const ranked = [...players]
     .map((p) => ({
       userId: p.userId,
       seat: p.seat,
-      placement: isActive(p) ? 1 : Number(p.placement || 0),
+      placement: isActive(p) ? survivorPlacement : Number(p.placement || 0),
       payout: 0,
       isAi: Boolean(p.isAi),
+      isWinner: false,
     }))
     .sort((a, b) => a.placement - b.placement);
 
@@ -1055,6 +1042,13 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
       r.payout = pay;
     });
   }
+
+  // Win/lose verdict per player (drives the result popups): paid matches win
+  // on profit (payout > wager); free-play wins on placement in the paid slots.
+  const paidSlots = paidPlacementsFor(match.maxPlayers);
+  ranked.forEach((r) => {
+    r.isWinner = match.isAi ? r.placement <= paidSlots : r.payout > match.wager;
+  });
 
   // The transition guard: only credit if we actually flip active→finished.
   const [updated] = await tx
@@ -1117,6 +1111,7 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
       userId: r.userId,
       placement: r.placement,
       payout: r.payout,
+      isWinner: r.isWinner,
     })),
   });
   void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.MATCH_FINISHED, {
@@ -1200,12 +1195,22 @@ export async function removeParticipant({
     if (match.phase !== "finished") {
       if (p.isAi) return { error: "AI seat cannot resign", status: 403 };
       const activeBefore = players.filter(isActive).length;
+      // Resignation placement = the player's CURRENT standing among the
+      // active roster (blocks they hold in the tower), NOT always last: a
+      // player who resigns while in 2nd place keeps 2nd (and its payout),
+      // while someone who never contributed ranks last. Depends on how many
+      // players are in the match and where the resigner sits at the time.
+      // A resigner can NEVER take 1st place — resigning means you give up the
+      // win (2-player: resigning always loses your money, per spec); the best
+      // a resigner can hold is the place they currently stand at, capped at
+      // 2nd, so the true survivor keeps 1st.
+      const placement = Math.max(2, activeStanding(players, match.towerState, userId));
       await tx
         .update(towerArenaPlayers)
         .set({
           status: "eliminated",
           eliminatedAt: new Date(),
-          placement: activeBefore,
+          placement,
           reservedBlock: null,
         })
         .where(and(eq(towerArenaPlayers.matchId, matchId), eq(towerArenaPlayers.userId, userId)));
@@ -1213,15 +1218,34 @@ export async function removeParticipant({
       towerArenaEliminated({
         distinctId: userId,
         matchId,
-        placement: activeBefore,
+        placement,
         reason,
         maxPlayers: match.maxPlayers,
       });
       void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.PLAYER_ELIMINATED, {
         playerId: userId,
-        placement: activeBefore,
+        placement,
         reason,
       });
+
+      // The resigner's payout is fully determined by their placement — the
+      // client shows the win/lose popup immediately from these values.
+      const resignCfg =
+        !match.isAi && match.wager > 0
+          ? computePotPrize({ maxPlayers: match.maxPlayers, wager: match.wager })
+          : null;
+      const resignPayouts = resignCfg
+        ? payoutsByPlacement({
+            maxPlayers: match.maxPlayers,
+            wager: match.wager,
+            prizePool: resignCfg.prizePool,
+          })
+        : null;
+      const payout = resignPayouts ? (resignPayouts[Math.max(0, placement - 1)] ?? 0) : 0;
+      const net = payout - match.wager;
+      const isWinner = match.isAi
+        ? placement <= paidPlacementsFor(match.maxPlayers)
+        : payout > match.wager;
 
       const reserve = reserveMap(match);
       if (reserve[userId]) reserve[userId] = null;
@@ -1231,22 +1255,34 @@ export async function removeParticipant({
         const freshMatch = await fetchMatchForUpdate(tx, matchId);
         const freshPlayers = await fetchPlayers(tx, matchId);
         await finishMatchTx(tx, freshMatch, freshPlayers);
-        return { match: await fetchMatchForUpdate(tx, matchId), resigned: true, matchFinished: true };
+        return {
+          match: await fetchMatchForUpdate(tx, matchId),
+          resigned: true,
+          matchFinished: true,
+          placement,
+          payout,
+          net,
+          isWinner,
+        };
       }
 
-      // Refill pool + start a fresh reservation cycle.
+      // Refill the pool and continue directly with the next placement turn.
       const cycleAfter = Number(match.resourceCycle || 0) + 1;
       const { pool } = newCycleState(match, cycleAfter);
       const nextTurnId = nextActiveAfter(players, userId) || players.find(isActive)?.userId || null;
+      // The next holder's window depends on who holds it (bot think beat vs
+      // full human window) — keeps the planned-placement ghost visible.
+      const nextHolder = players.find((p) => p.userId === nextTurnId);
+      const nextWin = nextHolder?.isAi ? BOT_THINK_MS : placementWindowMs(match);
       await tx
         .update(towerArenaMatches)
         .set({
-          phase: "reserve",
+          phase: "placement",
           resourceCycle: cycleAfter,
           resourcePool: pool,
           reserveState: reserve,
           currentTurnPlayerId: nextTurnId,
-          turnDeadline: nextTurnId ? new Date(Date.now() + RESERVE_WINDOW_MS) : null,
+          turnDeadline: nextTurnId ? new Date(Date.now() + nextWin) : null,
         })
         .where(eq(towerArenaMatches.id, matchId));
       void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESOURCE_REFILL, {
@@ -1255,8 +1291,8 @@ export async function removeParticipant({
       void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESOURCE_UPDATE, {
         resourceCycle: cycleAfter,
       });
-      void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
-        currentTurnPlayerId: nextTurnId,
+      void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.TURN_STARTED, {
+        playerId: nextTurnId,
       });
       await tx.insert(towerArenaTurns).values({
         matchId,
@@ -1264,22 +1300,28 @@ export async function removeParticipant({
         seat: p.seat,
         turnNumber: match.turnNumber,
         resourceCycle: cycleAfter,
-        phase: "reserve",
+        phase: "placement",
         actionType: "RESIGN",
       });
-      return { match: await fetchMatchForUpdate(tx, matchId), resigned: true };
+      return {
+        match: await fetchMatchForUpdate(tx, matchId),
+        resigned: true,
+        placement,
+        payout,
+        net,
+        isWinner,
+      };
     }
 
     return { match, alreadyTerminal: true };
   });
 }
 
-// ── Poll-driven auto-advance (reserve window + deterministic timeout) ──
+// ── Poll-driven auto-advance (deterministic timeout) ──
 
 /**
- * Advances a match when its current window has expired:
- *   • reserve phase deadline → placement begins for the current turn.
- *   • placement deadline → the current player gets a deterministic safe
+ * Advances a match when its placement window has expired. The current player
+ * gets a deterministic safe
  *     fallback placement (never an instant elimination) — if that safe
  *     move still collapses (precarious tower) the result is authoritative.
  * Safe, pure policy: smallest available block ('short' > 'square'), placed
@@ -1357,47 +1399,29 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
     // timeouts, no bot moves — until the human resumes.
     if (matchIsPaused(match)) return { match, paused: true };
 
-    if (match.phase === "reserve" && match.turnDeadline) {
-      if (new Date(match.turnDeadline).getTime() > now) return { match };
-      // Reserve window over → placement begins for the current turn holder.
-      const nextTurnId = match.currentTurnPlayerId;
-      const [updated] = await tx
-        .update(towerArenaMatches)
-        .set({
-          phase: "placement",
-          turnDeadline: nextTurnId ? new Date(Date.now() + TURN_PLACEMENT_WINDOW_MS) : null,
-        })
-        .where(
-          and(
-            eq(towerArenaMatches.id, match.id),
-            eq(towerArenaMatches.status, "active"),
-            eq(towerArenaMatches.phase, "reserve"),
-          ),
-        )
-        .returning();
-      void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
-        playerId: nextTurnId,
-        turnDeadline: updated?.turnDeadline ? new Date(updated.turnDeadline).toISOString() : undefined,
-      });
-      return { match: updated || match };
-    }
-
-    if (match.phase === "placement" && match.turnDeadline) {
-      if (new Date(match.turnDeadline).getTime() > now) return { match };
+    if (match.phase === "placement") {
       const players = await fetchPlayers(tx, matchId);
       const cur = playerByUserId(players, match.currentTurnPlayerId);
       if (!cur) {
         const [updated] = await tx
           .update(towerArenaMatches)
-          .set({ phase: "reserve", turnDeadline: new Date(Date.now() + RESERVE_WINDOW_MS) })
+          .set({ phase: "placement", turnDeadline: null, currentTurnPlayerId: null })
           .where(and(eq(towerArenaMatches.id, match.id), eq(towerArenaMatches.status, "active")))
           .returning();
-        void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.RESERVE_PHASE, {
-          currentTurnPlayerId: null,
-          turnDeadline: updated?.turnDeadline ? new Date(updated.turnDeadline).toISOString() : undefined,
-        });
         return { match: updated || match };
       }
+
+      const deadlineMs = match.turnDeadline ? new Date(match.turnDeadline).getTime() : 0;
+      const botTurn = Boolean(cur.isAi);
+      // Bots place on a SHORT think window (BOT_THINK_MS) instead of
+      // immediately, so every viewer sees the bot's planned-placement ghost
+      // before the block pops into the tower. The client fires /ai-turn once
+      // the window passes; this poll is the authoritative backstop. Humans
+      // still get their full window and are only resolved by the timeout
+      // fallback once it expires. (A bot with no deadline at all — defensive
+      // — acts immediately rather than stalling.)
+      const expired = (deadlineMs > 0 && deadlineMs <= now) || (botTurn && deadlineMs <= 0);
+      if (!expired) return { match };
 
       // Guarded conditional UPDATE only for the state we saw — a raced
       // double-poll leaves phase 'placement' from the first poll and the
@@ -1406,7 +1430,7 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
       const fallback = safeFallbackPlacement(match);
       const [stillActive] = await tx
         .update(towerArenaMatches)
-        .set({ phase: "placement", turnDeadline: new Date(Date.now() + TURN_PLACEMENT_WINDOW_MS) })
+        .set({ phase: "placement", turnDeadline: new Date(Date.now() + placementWindowMs(match)) })
         .where(
           and(
             eq(towerArenaMatches.id, match.id),
@@ -1420,10 +1444,15 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
 
       const result = await applyPlacement(tx, match, players, cur, {
         ...fallback,
-        actionType: "TIMEOUT",
+        actionType: botTurn ? "AI" : "TIMEOUT",
       });
       if (result.error) return { match: await fetchMatchForUpdate(tx, matchId), error: result.error };
-      return { match: await fetchMatchForUpdate(tx, matchId), timedOut: true, ...result };
+      return {
+        match: await fetchMatchForUpdate(tx, matchId),
+        timedOut: !botTurn,
+        botPlayed: botTurn,
+        ...result,
+      };
     }
 
     return { match };

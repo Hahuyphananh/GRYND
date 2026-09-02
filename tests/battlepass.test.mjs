@@ -111,15 +111,41 @@ test("reward track covers exactly levels 1-100 with reserved slots", () => {
   }
 });
 
-test("rewards contain no image-based types and valid fields", () => {
-  const IMAGE_TYPES = ["icon", "frame", "banner", "cosmetic", "avatar"];
+test("rewards contain valid fields and only official banner image rewards", () => {
+  const supportedTypes = new Set([
+    "color",
+    "title",
+    "xp_boost",
+    "quest_boost",
+    "shield",
+    "refund",
+    "grynd",
+    "banner",
+  ]);
   for (const entry of BATTLEPASS_REWARDS) {
     for (const reward of entry.rewards) {
-      assert.ok(!IMAGE_TYPES.includes(reward.type), `image reward at level ${entry.level}`);
+      assert.ok(supportedTypes.has(reward.type), `unsupported reward at level ${entry.level}`);
       assert.ok(reward.type && reward.name && reward.desc, `incomplete reward at level ${entry.level}`);
       assert.ok(reward.rarity, `missing rarity at level ${entry.level}`);
+      if (reward.type === "banner") {
+        assert.equal(typeof reward.key, "string");
+        assert.match(reward.key, /^[a-z0-9][a-z0-9._-]{0,119}$/);
+        assert.ok(!reward.key.includes("/"), "banner reward must use a stable key");
+      }
     }
   }
+});
+
+test("level 3 contains the official Neon Grid banner reward", () => {
+  assert.deepEqual(rewardsForLevel(3), [
+    {
+      type: "banner",
+      key: "neon-grid",
+      name: "Neon Grid",
+      desc: "Unlock the Neon Grid profile banner",
+      rarity: "Common",
+    },
+  ]);
 });
 
 test("rewards escalate: no high rarity in early levels, capstone at 100", () => {

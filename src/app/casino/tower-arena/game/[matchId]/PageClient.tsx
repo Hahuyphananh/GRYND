@@ -27,7 +27,6 @@ import {
   IconRotate,
   IconArrowsLeftRight,
   IconHandStop,
-  IconLock,
   IconTrophy,
   IconPlayerPause,
   IconPlayerPlay,
@@ -43,13 +42,28 @@ import {
   blockCells,
   centerXFor,
   dropRangeFor,
+  CEILING_HEIGHT,
   simulatePlacement,
+  findSafeDrop,
   BLOCK_SHAPES,
   GRID_WIDTH,
   type BlockShape,
 } from "../../../../../lib/tower-arena/engine";
 
 // ── Game meta ──────────────────────────────────────────────────────────
+
+// Client-side mirror of the server's BOT_THINK_MS: how long we wait before
+// asking the server to resolve a bot's turn. Must be a hair longer than the
+// server window so the /ai-turn request lands after the bot's deadline (the
+// server's poll backstop resolves it if this ever fires late).
+const BOT_PLAN_DELAY_MS = 1_000;
+
+// Socket room_event name used to preview a human opponent's live aim. The
+// realtime server relays it to the match room, stamping the sender's
+// authenticated userId (so only the real turn holder's aim can be shown).
+const AIM_UPDATE_EVENT = "tower_arena_aim_update";
+// How long a received aim preview stays valid without a fresh heartbeat.
+const AIM_TTL_MS = 5_000;
 
 const SHAPE_LABEL: Record<BlockShape, string> = {
   I: "I",
@@ -151,16 +165,13 @@ function cancelAnimationFrameScheduler() {
 
 // ── 2D side-view tower renderer ────────────────────────────────────────
 //
-// The board is a line: a small floor at the BOTTOM of the stage and open
-// sky above it. Blocks are dropped from the top of the stage, fall with
-// gravity, and settle on the tower (or tip off their support and fall
-// through the floor). The view auto-scales with the tower: as it grows the
-// world "zooms out" so the whole tower + the drop zone above it stay
-// visible and the floor line stays pinned at the bottom.
+// The board is a wider floor with a visible hard ceiling. Blocks fall from
+// the top, land on the highest support below their footprint, and remain fixed.
+// The existing stage, responsive layout, and visual branding are preserved.
 
 // Sky band reserved above the tower top (world cells) — blocks drop from up
 // here every turn.
-const SKY_CELLS = 7;
+const SKY_CELLS = 5;
 
 // Faint dust drifting in the sky — deterministic fixed offsets so SSR +
 // client renders never differ. Positions are computed relative to the tower
@@ -184,13 +195,15 @@ function TowerScene({
   falling,
   cursor,
   impact,
+  remoteAiming,
   onStageClick,
 }: {
   tower: any[];
-  ghost?: { cells: any[]; willFall: boolean } | null;
+  ghost?: { cells: any[]; willFall: boolean; remote?: boolean; label?: string } | null;
   falling?: { cells: any[]; extra: any[]; willFall: boolean; slideDx: number; key: number } | null;
   cursor?: { shape: BlockShape; x: number; rotation: number; danger: boolean } | null;
   impact?: number;
+  remoteAiming?: string | null;
   onStageClick?: () => void;
 }) {
   // The stage grows with the tower: floor at the bottom, SKY_CELLS of open
@@ -202,18 +215,12 @@ function TowerScene({
     ...(falling?.extra || []),
   ];
   const maxZ = allCells.reduce((m, c: any) => Math.max(m, c.z), 0);
-  const viewH = Math.max(12, maxZ + SKY_CELLS);
+  const viewH = Math.max(CEILING_HEIGHT + SKY_CELLS, maxZ + SKY_CELLS);
   const yFor = (z: number) => viewH - z; // z=0 → bottom edge, taller z → up
   const cellY = (z: number) => yFor(z + 1);
+  const ceilingY = yFor(CEILING_HEIGHT + 1);
   const X_MIN = -1.4;
   const X_MAX = GRID_WIDTH + 1.4;
-
-  // A doomed drop falls to the floor line and dissolves INTO the void right
-  // there — it never falls out of the stage (nothing leaves the div).
-  const fallingZ = falling
-    ? (falling.cells || []).reduce((m: number, c: any) => Math.min(m, c.z), Infinity)
-    : 0;
-  const fallDropTarget = Number.isFinite(fallingZ) ? fallingZ + 0.5 : 2;
 
   const sortedBlocks = (tower || [])
     .slice()
@@ -291,6 +298,40 @@ function TowerScene({
         />
       ))}
 
+      {/* Hard ceiling: a placement whose top crosses this line eliminates
+          the player, while every block below it remains fixed. Drawn bright
+          and layered so it always reads against the sky — the game is
+          decided at this line. */}
+      <line
+        x1={0}
+        y1={ceilingY}
+        x2={GRID_WIDTH}
+        y2={ceilingY}
+        stroke="rgba(255,207,90,0.28)"
+        strokeWidth={0.34}
+      />
+      <line
+        x1={0}
+        y1={ceilingY}
+        x2={GRID_WIDTH}
+        y2={ceilingY}
+        stroke="#ffcf5a"
+        strokeWidth={0.11}
+        strokeDasharray="0.3 0.16"
+        opacity={0.95}
+      />
+      <text
+        x={X_MAX - 0.15}
+        y={ceilingY + 0.18}
+        fontSize={0.4}
+        fill="#ffcf5a"
+        fontWeight={900}
+        letterSpacing={0.03}
+        textAnchor="end"
+      >
+        CEILING
+      </text>
+
       {/* Column guide lines over the floor span */}
       {Array.from({ length: GRID_WIDTH + 1 }, (_, i) => (
         <line
@@ -359,7 +400,9 @@ function TowerScene({
         ));
       })}
 
-      {/* Ghost preview of the selected block — red when the drop would fall */}
+      {/* Ghost preview of the selected block — red when the drop would fall.
+          Remote ghosts (a bot's planned placement, shown on every viewer's
+          board) render in cyan with the bot's name above. */}
       {ghost &&
         (ghost.cells || []).map((c: any, i: number) => (
           <rect
@@ -368,14 +411,30 @@ function TowerScene({
             y={cellY(c.z) + 0.03}
             width={0.94}
             height={0.94}
-            fill={ghost.willFall ? "#ff4d6d" : "#ffffff"}
-            opacity={ghost.willFall ? 0.4 : 0.2}
-            stroke={ghost.willFall ? "#ff8fa3" : "#ffffff"}
-            strokeWidth={0.045}
+            fill={ghost.willFall ? "#ff4d6d" : ghost.remote ? "#67e8f9" : "#ffffff"}
+            opacity={ghost.willFall ? 0.4 : ghost.remote ? 0.4 : 0.2}
+            stroke={ghost.willFall ? "#ff8fa3" : ghost.remote ? "#a5f3fc" : "#ffffff"}
+            strokeWidth={ghost.remote ? 0.06 : 0.045}
+            strokeDasharray={ghost.remote ? "0.12 0.09" : undefined}
             rx={0.06}
           />
         ))}
-      {ghost?.willFall && ghost.cells.length > 0 && (
+      {ghost?.label && ghost.cells.length > 0 && (
+        <text
+          x={(ghostMinX + ghostMaxX + 1) / 2}
+          y={yFor(ghostMaxZ + 1.9)}
+          textAnchor="middle"
+          fontSize={0.46}
+          fill="#a5f3fc"
+          stroke="#04222e"
+          strokeWidth={0.03}
+          fontWeight={900}
+          letterSpacing={0.04}
+        >
+          {ghost.label}
+        </text>
+      )}
+      {ghost?.willFall && !ghost.remote && ghost.cells.length > 0 && (
         <text
           x={(ghostMinX + ghostMaxX + 1) / 2}
           y={yFor(ghostMaxZ + 1.9)}
@@ -391,12 +450,48 @@ function TowerScene({
         </text>
       )}
 
-      {/* Falling drop animation — the block plummets from the top of the
-          stage (spawned above the world, just offscreen) to its landing
-          spot, slipping sideways (slideDx) into its final seat; a stable
-          landing bounces once (contact), and doomed drops fall to the floor
-          line and dissolve into the void — nothing leaves the stage.
-          Blocks shocked off the tower (extra) tumble in place and vanish. */}
+      {/* Generic drop indicator — a human opponent holds the turn but their
+          live aim preview isn't here yet (they haven't picked a block). A
+          pulsing outline in the sky band + their name reads as "about to
+          drop". */}
+      {remoteAiming && !ghost && (
+        <g>
+          <motion.rect
+            x={GRID_WIDTH / 2 - 0.75}
+            y={yFor(Math.max(2, maxZ + SKY_CELLS - 1.5))}
+            width={1.5}
+            height={1.5}
+            fill="rgba(103,232,249,0.08)"
+            stroke="#67e8f9"
+            strokeWidth={0.07}
+            strokeDasharray="0.14 0.1"
+            rx={0.12}
+            initial={false}
+            animate={{ opacity: [0.3, 0.85, 0.3], scale: [0.92, 1.06, 0.92] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            style={{ transformBox: "fill-box", transformOrigin: "center" }}
+          />
+          <text
+            x={GRID_WIDTH / 2}
+            y={yFor(Math.max(2, maxZ + SKY_CELLS - 1.5)) - 0.5}
+            textAnchor="middle"
+            fontSize={0.42}
+            fill="#a5f3fc"
+            stroke="#04222e"
+            strokeWidth={0.03}
+            fontWeight={900}
+            letterSpacing={0.03}
+          >
+            {remoteAiming} is aiming…
+          </text>
+        </g>
+      )}
+
+      {/* Pop-in animation — the block no longer falls from the sky; it
+          appears with a springy pop right where it lands. A stable drop pops
+          in and stays (the tower block is revealed beneath it); a doomed
+          drop pops in red above the ceiling, holds, then fades. Blocks
+          shocked off the tower (extra) tumble in place and vanish. */}
       {falling && (
         <>
           {falling.extra.length > 0 && (
@@ -404,7 +499,7 @@ function TowerScene({
               key={`shock-${falling.key}`}
               initial={{ y: 0, opacity: 1 }}
               animate={{ y: 3.4, opacity: 0 }}
-              transition={{ delay: 0.42, duration: 0.55, ease: "easeIn" }}
+              transition={{ delay: 0.35, duration: 0.5, ease: "easeIn" }}
             >
               {(falling.extra || []).map((c: any, i: number) => (
                 <rect
@@ -423,18 +518,25 @@ function TowerScene({
             </motion.g>
           )}
           <motion.g
-            key={`fall-${falling.key}`}
-            initial={{ y: -viewH, x: falling.slideDx, opacity: 1 }}
+            key={`pop-${falling.key}`}
+            initial={{ scale: 0.2, opacity: 0 }}
             animate={
               falling.willFall
-                ? { y: [0, fallDropTarget], x: [0, 0], opacity: [1, 1, 0, 0] }
-                : { y: [0, -0.35, 0], x: [0, 0, 0], opacity: 1 }
+                ? { scale: 1, opacity: [1, 1, 0], y: 0 }
+                : { scale: 1, opacity: 1, y: 0 }
             }
             transition={
               falling.willFall
-                ? { duration: 1.15, ease: "easeIn", times: [0, 0.6, 0.78, 1] }
-                : { duration: 0.62, ease: ["easeIn", "easeOut", "easeOut"], times: [0, 0.86, 1] }
+                ? {
+                    scale: { type: "spring", stiffness: 620, damping: 20 },
+                    opacity: { duration: 1.05, times: [0, 0.68, 1], ease: "easeIn" },
+                  }
+                : {
+                    scale: { type: "spring", stiffness: 460, damping: 14 },
+                    opacity: { duration: 0.1 },
+                  }
             }
+            style={{ transformBox: "fill-box", transformOrigin: "center" }}
           >
             {(falling.cells || []).map((c: any, i: number) => (
               <rect
@@ -444,7 +546,7 @@ function TowerScene({
                 width={0.94}
                 height={0.94}
                 fill={falling.willFall ? "#ff4d6d" : "#a7f3d0"}
-                opacity={0.92}
+                opacity={0.94}
                 stroke="rgba(255,255,255,0.65)"
                 strokeWidth={0.04}
                 rx={0.06}
@@ -507,10 +609,16 @@ export default function TowerArenaMatchPage() {
   const [selectedShape, setSelectedShape] = useState<BlockShape | null>(null);
   const [rotation, setRotation] = useState(0);
   const [positionX, setPositionX] = useState(2);
-  // Reserve UI
-  const [reserveTargetId, setReserveTargetId] = useState<string | null>(null);
-  const [reserving, setReserving] = useState(false);
   const [placing, setPlacing] = useState(false);
+  // Live aim preview of the human opponent currently holding the turn (from
+  // their room_event broadcasts). Rendered as a labeled ghost while fresh.
+  const [opponentAim, setOpponentAim] = useState<{
+    userId: string;
+    shape: BlockShape;
+    positionX: number;
+    rotation: number;
+  } | null>(null);
+  const aimTtlTimer = useRef<number | null>(null);
   // Ready gate
   const [readyBusy, setReadyBusy] = useState(false);
   // Free-play pause
@@ -518,6 +626,12 @@ export default function TowerArenaMatchPage() {
   // Events
   const [collapseBanner, setCollapseBanner] = useState<any>(null);
   const [showResults, setShowResults] = useState(false);
+  // Win/lose result popup — dismissed to reveal the full results view.
+  const [resultPopupDismissed, setResultPopupDismissed] = useState(false);
+  // Mid-match resignation outcome — placement + payout are decided the moment
+  // the player resigns, so their win/lose popup appears immediately.
+  const [resignResult, setResignResult] = useState<any>(null);
+  const [resignBusy, setResignBusy] = useState(false);
   const [fallingBlock, setFallingBlock] = useState<{
     cells: any[]; // the dropped block's final cells (server-resolved)
     extra: any[]; // shed blocks' cells, pre-collapse positions (contact shock)
@@ -543,10 +657,8 @@ export default function TowerArenaMatchPage() {
   // `me`/state reads inside are never stale).
   const loadRef = useRef<() => Promise<void>>(async () => {});
 
-  // Convenience: a dropped block that fully missed the floor resolves with
-  // EMPTY cells (the engine's "fell into the void" marker). For animation we
-  // still need visible cells, so synthesize them above the tower at the aim
-  // column — the block visibly tumbles straight down into the abyss.
+  // A ceiling-breaching block is not persisted in the tower. For the short
+  // elimination animation, synthesize its visible cells from the placement.
   const visibleCellsFor = (shape: BlockShape, x: number, rotation: number, fallbackZ: number) => {
     const az = Math.max(1, fallbackZ);
     return blockCells(shape, rotation).map(([rx, rz]) => ({
@@ -583,7 +695,7 @@ export default function TowerArenaMatchPage() {
       setHiddenBlockIds([]);
       // Contact + shock: the stage shakes when the drop (or collapse) lands.
       setImpactKey((k) => k + 1);
-    }, willFall ? 1250 : 780);
+    }, willFall ? 1150 : 700);
   };
 
   const load = async () => {
@@ -598,35 +710,31 @@ export default function TowerArenaMatchPage() {
       }
       setMatch(data.match);
       setPlayers(data.players || []);
-      // The viewer's private projection (seat, ready flag, held reserve,
-      // reserve uses, status) — without it every "is it my turn / can I
-      // reserve / am I ready" check reads as false and the player can
-      // neither place nor reserve.
+      // The viewer's private projection supplies seat, ready, and status for
+      // turn authorization and the ready gate.
       if (data.me) setMe(data.me);
 
-      // Detect a fresh void fall: the placements log grew and its newest
-      // entry is a collapsed drop → the dropping player is eliminated.
+      // Detect a fresh ceiling-breach: the placements log grew and its
+      // newest entry is a collapsed drop → the dropping player is eliminated
+      // (shown as a popup on every viewer's board). Runs on active AND just-
+      // finished matches so the final elimination still announces itself.
       const plLen = Array.isArray(data.match?.placements) ? data.match.placements.length : 0;
-      if (
-        prevPlacementsLen.current !== null &&
-        plLen > prevPlacementsLen.current &&
-        data.match?.status === "active"
-      ) {
+      if (prevPlacementsLen.current !== null && plLen > prevPlacementsLen.current) {
         const last = data.match.placements[plLen - 1];
         if (last?.collapsed) {
           const elim = (data.players || []).find((p: any) => p.userId === last.userId);
           setCollapseBanner({ name: elim?.name || "A player", placement: elim?.placement ?? null });
           playCrash();
           if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
-          bannerTimer.current = window.setTimeout(() => setCollapseBanner(null), 2600);
+          bannerTimer.current = window.setTimeout(() => setCollapseBanner(null), 3200);
         }
-      // Animate EVERY drop from the sky — bots' and other players' blocks
-      // included — skipping the one we already animated at submit time.
-      if (last && last.blockId !== ownAnimBlockId.current) {
-        animateDrop(last);
-      } else if (last) {
-        ownAnimBlockId.current = null;
-      }
+        // Animate EVERY drop with the pop — bots' and other players' blocks
+        // included — skipping the one we already animated at submit time.
+        if (last && last.blockId !== ownAnimBlockId.current) {
+          animateDrop(last);
+        } else if (last) {
+          ownAnimBlockId.current = null;
+        }
       }
       prevPlacementsLen.current = plLen;
 
@@ -635,6 +743,10 @@ export default function TowerArenaMatchPage() {
       const isMine = Boolean(turnId && me?.userId && turnId === me.userId);
       if (prevTurnUserId.current !== null && prevTurnUserId.current !== turnId && data.match?.status === "active") {
         playTurnSwitch(isMine);
+      }
+      // The previous holder's aim preview is stale once the turn moves on.
+      if (prevTurnUserId.current !== null && prevTurnUserId.current !== turnId) {
+        setOpponentAim(null);
       }
       prevTurnUserId.current = turnId;
 
@@ -685,7 +797,6 @@ export default function TowerArenaMatchPage() {
       "tower_arena_state",
       "tower_arena_turn_started",
       "tower_arena_resource_update",
-      "tower_arena_reserve_phase",
       "tower_arena_block_placed",
       "tower_arena_collapse",
       "tower_arena_player_eliminated",
@@ -695,6 +806,28 @@ export default function TowerArenaMatchPage() {
     ];
     EVENT_NAMES.forEach((name) => socket.on(name, refresh));
 
+    // Live aim previews from the current human turn holder — light payload,
+    // updated directly (no authoritative refetch needed). Expires after a
+    // missed-heartbeat TTL so a disconnected aimer's ghost never sticks.
+    const onAimUpdate = (data: any) => {
+      if (!data?.userId) return;
+      if (data.clearing) {
+        setOpponentAim(null);
+        return;
+      }
+      const shape = String(data.shape || "") as BlockShape;
+      if (!BLOCK_SHAPES.includes(shape)) return;
+      setOpponentAim({
+        userId: data.userId,
+        shape,
+        positionX: Math.trunc(Number(data.positionX) || 0),
+        rotation: Math.trunc(Number(data.rotation) || 0),
+      });
+      if (aimTtlTimer.current) window.clearTimeout(aimTtlTimer.current);
+      aimTtlTimer.current = window.setTimeout(() => setOpponentAim(null), AIM_TTL_MS);
+    };
+    socket.on(AIM_UPDATE_EVENT, onAimUpdate);
+
     // Fires on first connect AND every auto-reconnect; re-establishes room
     // membership (Socket.IO drops rooms server-side on disconnect) and pulls
     // the fresh authoritative snapshot immediately.
@@ -703,19 +836,22 @@ export default function TowerArenaMatchPage() {
 
     return () => {
       EVENT_NAMES.forEach((name) => socket.off(name, refresh));
+      socket.off(AIM_UPDATE_EVENT, onAimUpdate);
       socket.off("connect", joinRooms);
       socket.off("connect", refresh);
+      if (aimTtlTimer.current) window.clearTimeout(aimTtlTimer.current);
       socket.emit("leave_room", { roomId: lobbyRoom });
       socket.emit("leave_room", { roomId: matchRoom });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, matchId]);
 
-  // Audio for finish
+  // Audio for finish — win/lose follows the player's ACTUAL result (e.g. a
+  // 2nd-place finisher in a 6-player game won), not just placement 1.
   useEffect(() => {
     if (match?.status === "finished") {
-      const won = match.winnerId === me?.userId;
-      if (won) playVictory();
+      const mine = (match.finalRankings || []).find((r: any) => r.userId === me?.userId);
+      if (mine?.isWinner) playVictory();
       else playDefeat();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,6 +860,37 @@ export default function TowerArenaMatchPage() {
   const isFinished = match?.status === "finished";
   const activePlayers = players.filter((p) => p.status === "active");
   const isFinalDuel = isFinished ? false : activePlayers.length === 2;
+
+  // ── Result derivation (finish + mid-match resign) ────────────────────
+  // The viewer's own result from the authoritative final rankings (placement,
+  // payout, and the server-computed win/lose verdict) for the result popup.
+  const myFinalResult = useMemo(() => {
+    if (!isFinished || !match) return null;
+    const mine = (match.finalRankings || []).find((r: any) => r.userId === me?.userId);
+    if (!mine) return null;
+    return {
+      placement: mine.placement,
+      payout: Number(mine.payout || 0),
+      net: Number(mine.payout || 0) - Number(match.wager || 0),
+      // Server-computed verdict; legacy finished records fall back to 1st.
+      isWinner: mine.isWinner != null ? Boolean(mine.isWinner) : mine.placement === 1,
+      wager: Number(match.wager || 0),
+      isAi: Boolean(match.isAi),
+    };
+  }, [isFinished, match, me]);
+
+  // Per-player game stats for the popup — blocks placed (stable drops),
+  // blocks still held in the tower, and collapses caused — from the server
+  // placement log + tower state.
+  const myStats = useMemo(() => {
+    const mine = me?.userId;
+    const entries = (match?.placements || []).filter((e: any) => e.userId === mine);
+    return {
+      blocksPlaced: entries.filter((e: any) => !e.collapsed).length,
+      towerBlocks: (match?.towerState || []).filter((b: any) => b.placedByUserId === mine).length,
+      collapses: entries.filter((e: any) => e.collapsed).length,
+    };
+  }, [match, me]);
 
   useEffect(() => {
     if (isFinished && !showResults) setShowResults(true);
@@ -734,6 +901,8 @@ export default function TowerArenaMatchPage() {
     return () => {
       if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
       if (fallTimer.current) window.clearTimeout(fallTimer.current);
+      if (aiTurnTimer.current) window.clearTimeout(aiTurnTimer.current);
+      if (aimTtlTimer.current) window.clearTimeout(aimTtlTimer.current);
     };
   }, []);
 
@@ -750,6 +919,42 @@ export default function TowerArenaMatchPage() {
       else setLeaving(false);
     } catch {
       setLeaving(false);
+    }
+  };
+
+  // In-game resign: the server eliminates the player at their CURRENT place
+  // (based on how many players are in the match and where they stand), and
+  // the win/lose popup appears immediately with the placement-based payout.
+  const resign = async () => {
+    if (resignBusy || !isActive) return;
+    setResignBusy(true);
+    try {
+      const res = await fetch("/api/tower-arena/resign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        if (data.matchFinished || data.placement == null) {
+          // The match ended (e.g. 2 players) or raced to a terminal state —
+          // the finish flow derives the popup from the final rankings.
+          await loadRef.current();
+        } else {
+          setResignResult({
+            placement: data.placement,
+            payout: Number(data.payout || 0),
+            net: Number(data.net || 0),
+            isWinner: Boolean(data.isWinner),
+            wager: Number(match?.wager || 0),
+            isAi: Boolean(match?.isAi),
+          });
+          if (data.isWinner) playVictory();
+          else playDefeat();
+        }
+      }
+    } finally {
+      setResignBusy(false);
     }
   };
 
@@ -771,10 +976,12 @@ export default function TowerArenaMatchPage() {
   };
 
   // AI turns: when a bot holds the placement turn, ask the server to play it
-  // immediately instead of waiting for the 60s turn window to time out via
-  // the poll. This is what makes the tower visibly grow on the human's
-  // screen while "the bot is placing". Fires once per turn number.
+  // once the bot's short think window (BOT_THINK_MS) passes — the delay is
+  // what lets every viewer see the bot's planned-placement ghost before the
+  // block pops in. Fires once per turn number; the server's poll backstop
+  // resolves the bot if this fires late.
   const aiTurnFiredTurn = useRef<number | null>(null);
+  const aiTurnTimer = useRef<number | null>(null);
   useEffect(() => {
     if (!match || match.status !== "active") return;
     if (match.phase !== "placement") return;
@@ -783,23 +990,25 @@ export default function TowerArenaMatchPage() {
     if (!holder?.isAi) return;
     if (aiTurnFiredTurn.current === match.turnNumber) return;
     aiTurnFiredTurn.current = match.turnNumber;
-    void fetch("/api/tower-arena/ai-turn", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ matchId }),
-    }).catch(() => {
-      // Transient failure — the poll timeout fallback still resolves the bot.
-    });
+    if (aiTurnTimer.current) window.clearTimeout(aiTurnTimer.current);
+    aiTurnTimer.current = window.setTimeout(() => {
+      void fetch("/api/tower-arena/ai-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId }),
+      }).catch(() => {
+        // Transient failure (e.g. the poll already resolved the bot) — the
+        // next get-match refetch reconciles.
+      });
+    }, BOT_PLAN_DELAY_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match?.status, match?.phase, match?.currentTurnPlayerId, match?.turnNumber, match?.paused]);
 
   // ── Derivation for the active board ──────────────────────────────
   const isActive = match?.status === "active";
   const isPaused = Boolean(match?.paused);
-  const phase = match?.phase; // "reserve" | "placement"
+  const phase = match?.phase; // "placement"
   const isMyTurn = isActive && !isPaused && phase === "placement" && match?.currentTurnPlayerId === me?.userId && me?.status !== "eliminated";
-
-  const myHeldReserve = me?.reservedBlock || null; // { blockId, shape }
 
   const shapeCounts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -812,11 +1021,8 @@ export default function TowerArenaMatchPage() {
     [match?.resourcePool],
   );
 
-  // Ghost preview: run the FULL placement outcome client-side (deterministic
-  // — the same pure engine the server resolves) so the landing shows where
-  // the block actually settles after its slippery slip, and WILL FALL warns
-  // about BOTH a doomed drop and a contact-shock shed (weight tipping a
-  // leaning stack into the void).
+  // Ghost preview uses the same deterministic placement math as the server.
+  // It turns red when the block would cross the hard ceiling.
   const ghostBlock = useMemo(() => {
     if (!isMyTurn || !selectedShape) return null;
     const tower = match?.towerState || [];
@@ -833,8 +1039,91 @@ export default function TowerArenaMatchPage() {
       out.placedBlock && out.placedBlock.cells.length > 0
         ? out.placedBlock.cells
         : visibleCellsFor(selectedShape, positionX, rotation, maxZ + 2);
-    return { cells, willFall: out.collapsed, slideDx: positionX - out.finalX };
+    return { cells, willFall: out.collapsed, slideDx: 0 };
   }, [isMyTurn, selectedShape, rotation, positionX, match, me]);
+
+  // Remote ghost: when another player holds the placement turn, every viewer
+  // sees where they are about to place.
+  //   • Bots — the intent is fully deterministic (the server plays
+  //     safeFallbackIntent: findSafeDrop, else the smallest available shape
+  //     centered), so we run the exact same policy locally and render the
+  //     planned cells until the server resolves the drop.
+  //   • Humans — their client broadcasts its live aim (shape / column /
+  //     rotation) over the match room; we render the last fresh broadcast.
+  const remoteGhost = useMemo(() => {
+    if (!isActive || isPaused || phase !== "placement") return null;
+    const holder = players.find((p) => p.userId === match?.currentTurnPlayerId);
+    if (!holder || holder.userId === me?.userId) return null;
+    const tower = match?.towerState || [];
+    const maxZ = tower.reduce((m: number, b: any) => Math.max(m, ...(b.cells || []).map((c: any) => c.z)), 0);
+
+    let shape: BlockShape;
+    let x: number;
+    let rotation: number;
+    if (holder.isAi) {
+      const available: BlockShape[] = [];
+      for (const piece of match?.resourcePool || []) {
+        if (piece?.shape && !available.includes(piece.shape)) available.push(piece.shape);
+      }
+      const intent = findSafeDrop(tower, available);
+      if (intent) {
+        shape = intent.shape;
+        x = intent.x;
+        rotation = intent.rotation;
+      } else {
+        shape =
+          (["short", "square", "I", "T", "L"] as BlockShape[]).find((s) => available.includes(s)) || "short";
+        x = centerXFor(shape, 0);
+        rotation = 0;
+      }
+    } else {
+      // Human opponent — only when we've received their fresh live aim.
+      const aim = opponentAim;
+      if (!aim || aim.userId !== holder.userId) return null;
+      shape = aim.shape;
+      x = aim.positionX;
+      rotation = aim.rotation;
+    }
+
+    const out = simulatePlacement(tower, {
+      shape,
+      x,
+      rotation,
+      blockId: "remote-ghost",
+      placedByUserId: holder.userId,
+      turnNumber: (match?.turnNumber || 0) + 1,
+    });
+    const cells =
+      out.placedBlock && out.placedBlock.cells.length > 0
+        ? out.placedBlock.cells
+        : visibleCellsFor(shape, x, rotation, maxZ + 2);
+    return { cells, willFall: out.collapsed, remote: true, label: holder.name };
+  }, [isActive, isPaused, phase, players, match, me, opponentAim]);
+
+  // Generic drop indicator: while a HUMAN opponent holds the turn and their
+  // live aim preview isn't visible yet (they haven't picked a block), a
+  // pulsing marker + their name reads as "about to drop".
+  const humanOpponentAiming = useMemo(() => {
+    if (!isActive || isPaused || phase !== "placement") return null;
+    const holder = players.find((p) => p.userId === match?.currentTurnPlayerId);
+    if (!holder || holder.isAi || holder.userId === me?.userId) return null;
+    return holder.name;
+  }, [isActive, isPaused, phase, players, match, me]);
+
+  // Aim heartbeat: while we're aiming, keep opponents' live preview fresh
+  // even when we're parked on a fixed column (they show our last-known aim).
+  useEffect(() => {
+    if (!isMyTurn || !selectedShape || !socket) return;
+    const id = setInterval(() => {
+      socket.emit("room_event", {
+        roomId: `tower-arena:match:${matchId}`,
+        event: AIM_UPDATE_EVENT,
+        payload: { shape: selectedShape, positionX, rotation },
+      });
+    }, 1_500);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMyTurn, selectedShape, socket, matchId, positionX, rotation]);
 
   const countdown = useServerCountdown(match?.turnDeadline ?? null);
   const countdownUrgent = isActive && !isPaused && countdown <= 3.5;
@@ -865,27 +1154,45 @@ export default function TowerArenaMatchPage() {
     return Math.max(minX, Math.min(x, maxX));
   };
 
+  // Broadcast our current aim so human opponents see (live) where we're
+  // about to place — the human equivalent of the bot's planned-placement
+  // ghost. The realtime server stamps our userId and fans it out to the
+  // match room; receivers only render it while we're the current holder.
+  const emitAim = (shape: BlockShape, x: number, rot: number) => {
+    if (!socket || !isMyTurn) return;
+    socket.emit("room_event", {
+      roomId: `tower-arena:match:${matchId}`,
+      event: AIM_UPDATE_EVENT,
+      payload: { shape, positionX: x, rotation: rot },
+    });
+  };
+
   const selectShape = (shape: BlockShape) => {
+    const x = centerXFor(shape, 0);
     setSelectedShape(shape);
     setRotation(0);
-    setPositionX(centerXFor(shape, 0));
+    setPositionX(x);
+    emitAim(shape, x, 0);
   };
 
   const rotate = () => {
     if (!selectedShape) return;
     const nr = (rotation + 1) % 4;
+    const nx = clampX(selectedShape, nr, positionX);
     setRotation(nr);
-    setPositionX(clampX(selectedShape, nr, positionX));
+    setPositionX(nx);
+    emitAim(selectedShape, nx, nr);
   };
 
   const nudgeX = (dir: number) => {
     if (!selectedShape) return;
-    setPositionX(clampX(selectedShape, rotation, positionX + dir));
+    const nx = clampX(selectedShape, rotation, positionX + dir);
+    setPositionX(nx);
+    emitAim(selectedShape, nx, rotation);
   };
 
-  // Core submit — takes explicit shape/rotation/x so the reserved-block path
-  // (which currently re-renders) never reads stale state. The server consumes
-  // a held reservation whenever the placed shape matches the reserved shape.
+  // Core submit — takes explicit shape/rotation/x so the server resolves the
+  // exact intent against the authoritative pool and tower.
   const place = async (shape: BlockShape, x: number, rot: number) => {
     if (!isMyTurn || placing) return;
     setPlacing(true);
@@ -900,6 +1207,12 @@ export default function TowerArenaMatchPage() {
       setSelectedShape(null);
       setRotation(0);
       setPositionX(2);
+      // Tell opponents the preview is over — the resolved pop replaces it.
+      socket?.emit("room_event", {
+        roomId: `tower-arena:match:${matchId}`,
+        event: AIM_UPDATE_EVENT,
+        payload: { clearing: true },
+      });
       load();
     }
     setPlacing(false);
@@ -938,25 +1251,8 @@ export default function TowerArenaMatchPage() {
       setHiddenBlockIds([]);
       // The landing (or collapse) hits the tower — contact shock.
       setImpactKey((k) => k + 1);
-    }, willFall ? 1250 : 780);
+    }, willFall ? 1150 : 700);
     await place(selectedShape, positionX, rotation);
-  };
-
-  const reserveBlock = async () => {
-    if (reserving || !reserveTargetId || isPaused) return;
-    setReserving(true);
-    try {
-      const res = await fetch("/api/tower-arena/reserve-block", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId, blockId: reserveTargetId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.ok) setReserveTargetId(null);
-      load();
-    } finally {
-      setReserving(false);
-    }
   };
 
   // Keyboard controls — fruit-merge aim: ◀ ▶ (or A/D) move the cursor at
@@ -1008,8 +1304,7 @@ export default function TowerArenaMatchPage() {
   // ── Waiting room / ready gate ─────────────────────────────────────
   // The match does NOT auto-start when the lobby fills. Every player must
   // click READY (bots are always ready); once everyone is ready a 10-second
-  // countdown runs (phase "countdown", deadline in turnDeadline) and then
-  // the reserve phase opens with the resource pool visible.
+  // countdown runs before the placement-only game begins.
   if (!isActive && !isFinished && match?.status === "waiting") {
     const activeCount = players.filter((p) => p.status === "active").length;
     const isLobbyFull = activeCount >= (match?.maxPlayers ?? 0);
@@ -1159,21 +1454,25 @@ export default function TowerArenaMatchPage() {
 
   // ── Results ──────────────────────────────────────────────────────
   if (isFinished && showResults) {
-    return <ResultsView match={match} players={players} meUserId={me?.userId} onBack={() => router.replace("/casino/tower-arena")} />;
+    return (
+      <>
+        <ResultsView match={match} players={players} meUserId={me?.userId} onBack={() => router.replace("/casino/tower-arena")} />
+        {!resultPopupDismissed && myFinalResult && (
+          <ResultPopup
+            result={myFinalResult}
+            stats={myStats}
+            onDismiss={() => setResultPopupDismissed(true)}
+            onBack={() => router.replace("/casino/tower-arena")}
+          />
+        )}
+      </>
+    );
   }
 
   // ── Live board ───────────────────────────────────────────────────
   const turnHolder = players.find((p) => p.userId === match?.currentTurnPlayerId);
   const currentTurnName = me?.userId === turnHolder?.userId ? "You" : (turnHolder?.name ?? "…");
-  const isReservePhase = isActive && phase === "reserve";
-  const canReserve =
-    isReservePhase &&
-    !isPaused &&
-    me?.status !== "eliminated" &&
-    !myHeldReserve &&
-    Number(me?.reserveUsesRemaining ?? 0) > 0;
-
-  // Tower stage: 2D side-view tower + void, aim cursor at the top (click the
+  // Tower stage: stable 2D stack, aim cursor at the top (click the
   // stage to drop), ghost preview + drop/shock animation.
   const aiming = Boolean(isMyTurn && selectedShape);
   const towerInnerNode = (
@@ -1191,10 +1490,11 @@ export default function TowerArenaMatchPage() {
       <div className="mx-auto h-full w-full max-w-[560px]">
         <TowerScene
           tower={(match?.towerState || []).filter((b: any) => !hiddenBlockIds.includes(b.id))}
-          ghost={ghostBlock}
+          ghost={isMyTurn ? ghostBlock : remoteGhost}
           falling={fallingBlock}
           cursor={aiming && ghostBlock ? { shape: selectedShape as BlockShape, x: positionX, rotation, danger: ghostBlock.willFall } : null}
           impact={impactKey}
+          remoteAiming={remoteGhost ? null : humanOpponentAiming}
           onStageClick={aiming ? () => void drop() : undefined}
         />
       </div>
@@ -1207,21 +1507,24 @@ export default function TowerArenaMatchPage() {
           </p>
         </div>
       )}
-      {/* Void-fall banner */}
+      {/* Ceiling-breach elimination popup — announces to the other players
+          that this player hit the top of the tower and is out. */}
       <AnimatePresence>
         {collapseBanner && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0, scale: 0.7, y: 14 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 420, damping: 24 }}
             className="pointer-events-none absolute inset-0 flex items-center justify-center"
           >
-            <div className="rounded-2xl border-2 border-red-500/60 bg-red-950/80 px-8 py-6 text-center shadow-[0_0_40px_rgba(239,68,68,0.5)]">
-              <p className="text-2xl font-black text-red-300">{collapseBanner.name.toUpperCase()}</p>
-              <p className="mt-1 text-sm font-bold text-white">ELIMINATED</p>
-              <p className="mt-1 text-xs text-red-200">
-                Their block fell into the void
-                {collapseBanner.placement ? ` · ${ordinal(collapseBanner.placement)} place` : ""}
+            <div className="max-w-[90%] rounded-2xl border-2 border-red-500/60 bg-red-950/85 px-8 py-6 text-center shadow-[0_0_40px_rgba(239,68,68,0.5)]">
+              <p className="text-xl font-black text-red-300 sm:text-2xl">{collapseBanner.name}</p>
+              <p className="mt-1 text-sm font-bold text-white sm:text-base">
+                has reached the top of the tower!
+              </p>
+              <p className="mt-1.5 text-xs font-semibold text-red-200">
+                Eliminated · {ordinal(collapseBanner.placement ?? 0)} place
               </p>
             </div>
           </motion.div>
@@ -1248,35 +1551,16 @@ export default function TowerArenaMatchPage() {
     </div>
   );
 
-  // Turn controls: reserve panel, placement controls, or the
-  // "opponent dropping" commentary.
+  // Turn controls: placement controls or the "opponent dropping" commentary.
   const turnControlsNode = (
     <>
-      {/* Reserve phase banner/controls */}
-      {isReservePhase && (
-        <ReservePanel
-          pools={match?.resourcePool || []}
-          canReserve={canReserve}
-          myHeldReserve={myHeldReserve}
-          reserveUsesRemaining={Number(me?.reserveUsesRemaining ?? 0)}
-          targetId={reserveTargetId}
-          setTargetId={setReserveTargetId}
-          onReserve={reserveBlock}
-          busy={reserving}
-          countdown={countdown}
-          paused={isPaused}
-        />
-      )}
-
-      {/* Placement controls */}
-      {isMyTurn && !isReservePhase && (
+      {isMyTurn && (
         <PlacementControls
           selectedShape={selectedShape}
           shapeCounts={shapeCounts}
           poolTotal={poolTotal}
           rotation={rotation}
           positionX={positionX}
-          myHeldReserve={myHeldReserve}
           onSelect={selectShape}
           onRotate={rotate}
           onNudge={nudgeX}
@@ -1284,7 +1568,7 @@ export default function TowerArenaMatchPage() {
           placing={placing}
         />
       )}
-      {isActive && !isMyTurn && !isReservePhase && (
+      {isActive && !isMyTurn && (
         <p className="mt-4 text-center text-sm text-white/60">
           {currentTurnName} is dropping… {!turnHolder?.isAi && turnHolder?.userId !== me?.userId ? "(watch the tower — every block changes the balance)" : ""}
         </p>
@@ -1314,7 +1598,7 @@ export default function TowerArenaMatchPage() {
         ) : null}
         <div className="text-right">
           <p className="text-[11px] uppercase tracking-widest text-white/50">Current</p>
-          <p className="text-sm font-bold text-cyan-200">{isReservePhase ? "Reserve Phase" : currentTurnName}</p>
+          <p className="text-sm font-bold text-cyan-200">          {currentTurnName}</p>
         </div>
         {match?.isAi && isActive ? (
           <PauseChip paused={isPaused} busy={pauseBusy} onToggle={togglePause} />
@@ -1330,7 +1614,7 @@ export default function TowerArenaMatchPage() {
     </div>
   );
 
-  // Right: leaderboard + reserve visibility + resign.
+  // Right: leaderboard + resign.
   const leaderboardNode = (
     <div className="rounded-2xl border border-cyan-800 bg-black/40 p-4">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-cyan-300">
@@ -1372,33 +1656,12 @@ export default function TowerArenaMatchPage() {
           })}
       </div>
 
-      {/* Reserve visibility */}
-      <div className="mt-4 rounded-xl border border-cyan-700/30 bg-black/30 p-3 text-xs">
-        <p className="mb-1 flex items-center gap-1.5 font-semibold text-cyan-200">
-          <IconLock size={13} /> Reserves
-        </p>
-        <p className="text-white/50">
-          {myHeldReserve ? (
-            <>
-              <span className="font-bold text-white">
-                You hold {SHAPE_NAME[myHeldReserve.shape]}
-              </span>{" "}
-              (private).
-            </>
-          ) : (
-            `${players.filter((p) => p.status === "active").length} active players · you have ${Number(me?.reserveUsesRemaining ?? 0)} use${
-              Number(me?.reserveUsesRemaining ?? 0) === 1 ? "" : "s"
-            } left`
-          )}
-        </p>
-      </div>
-
       <button
-        onClick={leave}
-        disabled={leaving}
+        onClick={resign}
+        disabled={resignBusy || !isActive}
         className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
       >
-        {leaving ? "Leaving…" : "Resign"}
+        {resignBusy ? "Resigning…" : "Resign"}
       </button>
     </div>
   );
@@ -1449,7 +1712,7 @@ export default function TowerArenaMatchPage() {
         </div>
         <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
           <span className="truncate text-cyan-200">
-            {isReservePhase ? "Reserve Phase" : `${currentTurnName} dropping…`}
+            {`${currentTurnName} dropping…`}
           </span>
           <span className="shrink-0 text-white/60">
             {activePlayers.length} / {match?.maxPlayers} players
@@ -1501,6 +1764,16 @@ export default function TowerArenaMatchPage() {
         </CreatorModeHost>
       </div>
       <Footer />
+      {/* Mid-match resign result popup (over the live board as a spectator) */}
+      {resignResult && (
+        <ResultPopup
+          result={resignResult}
+          stats={myStats}
+          dismissLabel="Watch game"
+          onDismiss={() => setResignResult(null)}
+          onBack={() => router.replace("/casino/tower-arena")}
+        />
+      )}
     </div>
   );
 }
@@ -1561,8 +1834,6 @@ function PauseChip({ paused, busy, onToggle }: { paused: boolean; busy: boolean;
   );
 }
 
-// ── Reserve panel ──────────────────────────────────────────────────────
-
 // Small side-view glyph of a block shape — makes the pool pieces visible
 // ("the blocks are actually there") instead of only text labels.
 function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) {
@@ -1598,98 +1869,6 @@ function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) 
   );
 }
 
-function ReservePanel(props: any) {
-  const {
-    pools,
-    canReserve,
-    myHeldReserve,
-    reserveUsesRemaining,
-    targetId,
-    setTargetId,
-    onReserve,
-    busy,
-    countdown,
-    paused = false,
-  } = props;
-  // Every pool piece is a distinct reservable block (each with its own id).
-  const pieces = pools as { id: string; shape: BlockShape }[];
-  // Per-shape counts for the summary line.
-  const counts: Record<string, number> = {};
-  for (const p of pieces) counts[p.shape] = (counts[p.shape] || 0) + 1;
-  if (paused) {
-    return (
-      <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
-        <p className="text-sm font-black text-amber-300">Reserve paused</p>
-        <p className="mt-1 text-xs text-white/60">
-          The match is paused — the resource window resumes when you do.
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div className="mt-4 rounded-xl border border-cyan-700/40 bg-black/30 p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-black text-cyan-200">Reserve a block</p>
-          <p className="text-xs text-white/50">
-            Pick one block from the shared pool — it becomes private, visible only to you (limited uses).
-          </p>
-        </div>
-        <div className="rounded-lg bg-black/50 px-2 py-1 font-mono text-sm font-bold text-cyan-300">
-          {fmtCountdown(countdown)}
-        </div>
-      </div>
-
-      {myHeldReserve ? (
-        <p className="rounded-lg border border-emerald-500/40 bg-emerald-950/30 px-3 py-2 text-sm font-bold text-emerald-200">
-          You hold {SHAPE_NAME[myHeldReserve.shape]} in your reserve.
-        </p>
-      ) : !canReserve ? (
-        <p className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/50">
-          {Number(reserveUsesRemaining) <= 0
-            ? "No reserve uses remaining this match."
-            : "The reserve window is open but you cannot reserve right now."}
-        </p>
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-2">
-            {pieces.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                title={`${SHAPE_NAME[p.shape]} block`}
-                onClick={() => setTargetId(targetId === p.id ? null : p.id)}
-                className={`flex items-center justify-center rounded-lg border p-2 transition ${
-                  targetId === p.id
-                    ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_12px_rgba(0,229,255,0.35)]"
-                    : "border-white/15 bg-white/[0.03] hover:border-cyan-500/40"
-                }`}
-              >
-                <BlockGlyph shape={p.shape} size={22} />
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/45">
-            {BLOCK_SHAPES.map((s) => (
-              <span key={s} className="inline-flex items-center gap-1">
-                <BlockGlyph shape={s} size={14} /> {counts[s] || 0}
-              </span>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={onReserve}
-            disabled={!targetId || busy}
-            className="mt-3 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-black transition hover:brightness-110 disabled:opacity-50"
-          >
-            {busy ? "Reserving…" : "Reserve selected"}
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ── Placement controls ─────────────────────────────────────────────────
 
 function PlacementControls(props: any) {
@@ -1699,7 +1878,6 @@ function PlacementControls(props: any) {
     poolTotal,
     rotation,
     positionX,
-    myHeldReserve,
     onSelect,
     onRotate,
     onNudge,
@@ -1707,8 +1885,7 @@ function PlacementControls(props: any) {
     placing,
   } = props;
 
-  const reserveShape: BlockShape | null = myHeldReserve?.shape ?? null;
-  const available = BLOCK_SHAPES.filter((s) => (shapeCounts[s] || 0) > 0 || s === reserveShape);
+  const available = BLOCK_SHAPES.filter((s) => (shapeCounts[s] || 0) > 0);
 
   return (
     <div className="mt-4 rounded-xl border border-cyan-700/40 bg-black/30 p-4">
@@ -1716,38 +1893,16 @@ function PlacementControls(props: any) {
         Choose a block to drop — it appears at the top of the tower.
       </p>
 
-      {/* Block chooser: the shared pool (limited resource) + your private
-          reserved block as a first-class option. Selecting either enters
-          aim mode: ◀ ▶ / A-D aim, R rotates 90°, click or ↵ drops. */}
+      {/* Block chooser: selecting a shape enters aim mode. */}
       <div className="flex flex-wrap items-center gap-2">
-        {reserveShape && (
-          <button
-            key={`res-${reserveShape}`}
-            type="button"
-            onClick={() => onSelect(reserveShape)}
-            disabled={placing}
-            className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
-              selectedShape === reserveShape
-                ? "border-emerald-400 bg-emerald-500/25 text-emerald-100 shadow-[0_0_14px_rgba(16,185,129,0.35)]"
-                : "border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:border-emerald-400/70"
-            } disabled:opacity-50`}
-            title={`Your reserved ${SHAPE_NAME[reserveShape]}`}
-          >
-            <IconLock size={13} className="mr-1 inline" />
-            <span className="mr-1">{SHAPE_LABEL[reserveShape]}</span>
-            <span className="text-emerald-300/60">reserved</span>
-          </button>
-        )}
-        {available
-          .filter((s) => s !== reserveShape || !reserveShape || shapeCounts[s] > 0)
-          .map((s) => (
+        {available.map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => onSelect(s)}
               disabled={placing}
               className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
-                selectedShape === s && s !== reserveShape
+                selectedShape === s
                   ? "border-cyan-400 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(0,229,255,0.3)]"
                   : "border-white/15 bg-white/[0.03] text-white/80 hover:border-cyan-500/40"
               } disabled:opacity-50`}
@@ -1763,12 +1918,8 @@ function PlacementControls(props: any) {
 
       {selectedShape ? (
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <p className="text-sm font-semibold text-white">
-            {selectedShape === reserveShape ? (
-              <span className="text-emerald-300">Reserved {SHAPE_NAME[selectedShape]}</span>
-            ) : (
-              SHAPE_NAME[selectedShape]
-            )}{" "}
+          <p className="text-sm font-semibold text-white">            {SHAPE_NAME[selectedShape]}{" "}
+
             · aim {positionX} · rot {rotation * 90}°
           </p>
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -1794,8 +1945,8 @@ function PlacementControls(props: any) {
       ) : (
         <p className="mt-3 text-sm text-white/50">
           Pick a block and it hovers at the top of the board — aim it, rotate with R, then click the
-          stage (or press Enter) to drop it from the sky. The blocks are slightly slippery: a bad
-          landing slips, tips, and tumbles into the void…
+          stage (or press Enter) to drop it. Blocks remain fixed after they land; exceeding the
+          ceiling eliminates the current player.
         </p>
       )}
     </div>
@@ -1821,7 +1972,8 @@ function ResultsView({ match, players, meUserId, onBack }: any) {
             {ranked.map((r: any, i: number) => {
               const p = players.find((x: any) => x.userId === r.userId);
               const net = Number(r.payout || 0) - Number(match?.wager || 0);
-              const isWinner = r.placement === 1;
+              // Server-computed win/lose verdict (falls back for old records).
+              const isWinner = r.isWinner != null ? Boolean(r.isWinner) : r.placement === 1;
               return (
                 <div
                   key={r.userId}
@@ -1879,4 +2031,119 @@ function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
+
+// ── Result popup (win / lose) ──────────────────────────────────────────
+//
+// Shown to each player with THEIR OWN result: placement, game stats and the
+// profit/loss. Paid matches show the money (win = payout beats the wager);
+// free-play shows placement + stats only. Used both on match finish and when
+// a player resigns mid-match (their placement + payout are already decided).
+
+function ResultPopup({
+  result,
+  stats,
+  onDismiss,
+  onBack,
+  dismissLabel = "View Results",
+}: {
+  result: any;
+  stats?: { blocksPlaced: number; towerBlocks: number; collapses: number };
+  onDismiss?: () => void;
+  onBack: () => void;
+  dismissLabel?: string;
+}) {
+  const { placement, payout, net, isWinner, isAi, wager } = result;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <motion.div
+        initial={{ scale: 0.7, opacity: 0, y: 24 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 260, damping: 20 }}
+        className={`w-full max-w-md rounded-3xl border-2 p-6 text-center shadow-2xl ${
+          isWinner
+            ? "border-amber-400/70 bg-gradient-to-b from-[#2a1d05] to-[#120c02] shadow-[0_0_60px_rgba(251,191,36,0.25)]"
+            : "border-red-500/60 bg-gradient-to-b from-[#2a0707] to-[#120303]"
+        }`}
+      >
+        {isWinner ? (
+          <IconTrophy className="mx-auto h-14 w-14 text-amber-400 drop-shadow-[0_0_16px_rgba(251,191,36,0.6)]" />
+        ) : (
+          <IconX className="mx-auto h-14 w-14 text-red-400" />
+        )}
+        <h1
+          className={`mt-3 text-4xl font-black tracking-tight ${
+            isWinner ? "text-amber-300" : "text-red-300"
+          }`}
+        >
+          {isWinner ? "YOU WIN!" : "YOU LOSE"}
+        </h1>
+        <p className="mt-1 text-sm font-semibold text-white/70">{ordinal(placement)} place</p>
+
+        {/* Game stats */}
+        <div className="mt-5 grid grid-cols-3 gap-2 text-center">
+          <Stat label="Blocks placed" value={stats?.blocksPlaced ?? 0} />
+          <Stat label="Blocks in tower" value={stats?.towerBlocks ?? 0} />
+          <Stat label="Collapses" value={stats?.collapses ?? 0} />
+        </div>
+
+        {/* Money result */}
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+          {isAi ? (
+            <p className="text-sm font-semibold text-white/60">Free play — no tokens at stake</p>
+          ) : (
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-white/60">Wager</span>
+                <span className="font-semibold text-yellow-300">{Number(wager || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/60">Payout</span>
+                <span className="font-semibold text-cyan-300">{Number(payout || 0).toLocaleString()}</span>
+              </div>
+              <div
+                className={`flex justify-between border-t border-white/10 pt-1 text-base font-black ${
+                  Number(net) >= 0 ? "text-emerald-300" : "text-red-300"
+                }`}
+              >
+                <span>{Number(net) > 0 ? "Profit" : "Lost"}</span>
+                <span>
+                  {Number(net) > 0 ? "+" : ""}
+                  {Number(net).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex gap-2">
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="flex-1 rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-bold text-white/80 transition hover:bg-white/10"
+            >
+              {dismissLabel}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex-1 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-black text-black transition hover:brightness-110"
+          >
+            Back to Lobby
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/30 px-2 py-3">
+      <p className="text-xl font-black text-white">{value}</p>
+      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">{label}</p>
+    </div>
+  );
 }

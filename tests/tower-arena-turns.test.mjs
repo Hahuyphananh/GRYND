@@ -34,10 +34,14 @@ import {
   resolvePlacement,
   safeFallbackIntent,
   nextActiveAfter,
+  activeStanding,
   MAX_RESERVE_USES,
   parseReserveMap,
   TURN_PLACEMENT_WINDOW_MS,
   RESERVE_WINDOW_MS,
+  AI_RESERVE_WINDOW_MS,
+  AI_TURN_PLACEMENT_WINDOW_MS,
+  BOT_THINK_MS,
 } from "../src/lib/tower-arena/turnResolver.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -485,4 +489,113 @@ test("parseReserveMap tolerates junk and passes through records", () => {
   assert.deepEqual(parseReserveMap({ a: { blockId: "x", shape: "short" } }), {
     a: { blockId: "x", shape: "short" },
   });
+});
+
+// ── Resignation placement + per-match windows ──────────────────────────
+
+test("a resignation holds the resigner's placement; later eliminations skip taken slots", () => {
+  // 6-player match where u2 already resigned in 2nd place (standing-based
+  // resignation placement). u1 now collapses → takes the worst FREE slot,
+  // so the final rankings stay a clean 1..6 bijection.
+  const roster = players(["u1", "u2", "u3", "u4", "u5", "u6"]).map((p) =>
+    p.userId === "u2" ? { ...p, status: "eliminated", placement: 2 } : p,
+  );
+  const snap = snapshot({ maxPlayers: 6, pool: buildResourcePool(6, "m1:cycle:1") });
+  snap.towerState = pillarTower(2);
+  const resolved = okResult(resolvePlacement(snap, roster, topplePlacement(), "u1"));
+  assert.equal(resolved.collapsed, true);
+  assert.equal(resolved.eliminations.length, 1);
+  assert.equal(resolved.eliminations[0].placement, 6, "worst free placement (2 already taken)");
+  assert.equal(resolved.activeRemaining, 4);
+});
+
+test("activeStanding ranks by blocks held in the tower (ties by earlier seat)", () => {
+  // Tower: u2 built 3 blocks, u1 built 2, u3 none → standings 1st / 2nd / last.
+  let tower = [];
+  for (let i = 0; i < 3; i += 1) {
+    tower = simulatePlacement(tower, {
+      shape: "short", x: 0, rotation: 0, blockId: `a${i}`, placedByUserId: "u2", turnNumber: i + 1,
+    }).tower;
+  }
+  for (let i = 0; i < 2; i += 1) {
+    tower = simulatePlacement(tower, {
+      shape: "short", x: 2, rotation: 0, blockId: `b${i}`, placedByUserId: "u1", turnNumber: 10 + i,
+    }).tower;
+  }
+  const roster = players(["u1", "u2", "u3"]);
+  assert.equal(activeStanding(roster, tower, "u2"), 1);
+  assert.equal(activeStanding(roster, tower, "u1"), 2);
+  assert.equal(activeStanding(roster, tower, "u3"), 3, "never contributed → last place");
+  assert.equal(activeStanding(roster, null, "u1"), 3, "empty tower → last place (no cheese)");
+
+  // Eliminated players are excluded from the standing roster.
+  const withElim = markEliminated(roster, "u3");
+  assert.equal(activeStanding(withElim, tower, "u2"), 1);
+
+  // Tie-break: equal blocks → earlier seat ranks higher.
+  let tieTower = [];
+  for (let i = 0; i < 2; i += 1) {
+    tieTower = simulatePlacement(tieTower, {
+      shape: "short", x: 0, rotation: 0, blockId: `c${i}`, placedByUserId: "u1", turnNumber: 20 + i,
+    }).tower;
+    tieTower = simulatePlacement(tieTower, {
+      shape: "short", x: 2, rotation: 0, blockId: `d${i}`, placedByUserId: "u2", turnNumber: 30 + i,
+    }).tower;
+  }
+  assert.equal(activeStanding(roster, tieTower, "u1"), 1, "earlier seat wins the tie");
+  assert.equal(activeStanding(roster, tieTower, "u2"), 2);
+});
+
+test("free-play (AI) matches get a short reserve window so bots never stall", () => {
+  assert.ok(AI_RESERVE_WINDOW_MS < RESERVE_WINDOW_MS, "AI reserve window is shorter than PvP");
+});
+
+test("resolvePlacement honors per-match (AI) turn windows", () => {
+  const snap = snapshot({ maxPlayers: 2 });
+  const before = Date.now();
+  const resolved = okResult(
+    resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1", {
+      reserveWindowMs: AI_RESERVE_WINDOW_MS,
+      placementWindowMs: AI_TURN_PLACEMENT_WINDOW_MS,
+    }),
+  );
+  assert.ok(resolved.nextDeadlineMs != null, "next turn has a deadline");
+  // No refill on a stable placement → the next window is the placement one.
+  const expected = before + AI_TURN_PLACEMENT_WINDOW_MS;
+  assert.ok(
+    Math.abs(resolved.nextDeadlineMs - expected) < 1000,
+    `AI placement window applied (got ${resolved.nextDeadlineMs - before}ms)`,
+  );
+});
+
+test("the turn after a bot gets the short think window; humans keep the full window", () => {
+  const roster = [
+    { userId: "u1", seat: 1, status: "active", isAi: false, reserveUsesRemaining: MAX_RESERVE_USES },
+    { userId: "AI_BOT_2", seat: 2, status: "active", isAi: true, reserveUsesRemaining: MAX_RESERVE_USES },
+  ];
+  const snap = snapshot({ maxPlayers: 2 });
+
+  // u1 (human) places → the next holder is the bot → short think window, so
+  // viewers see the bot's planned-placement ghost before it acts.
+  const before = Date.now();
+  const r1 = okResult(resolvePlacement(snap, roster, stablePlacement(), "u1"));
+  assert.equal(r1.nextTurnPlayerId, "AI_BOT_2");
+  assert.ok(
+    Math.abs(r1.nextDeadlineMs - (before + BOT_THINK_MS)) < 1000,
+    `bot think window applied (got ${r1.nextDeadlineMs - before}ms)`,
+  );
+
+  // The bot places → the next holder is the human → full placement window.
+  const snap2 = {
+    ...snap,
+    towerState: r1.towerState,
+    turnNumber: r1.entry.turnNumber,
+    currentTurnPlayerId: "AI_BOT_2",
+  };
+  const r2 = okResult(resolvePlacement(snap2, roster, stablePlacement(), "AI_BOT_2"));
+  assert.equal(r2.nextTurnPlayerId, "u1");
+  assert.ok(
+    Math.abs(r2.nextDeadlineMs - (Date.now() + TURN_PLACEMENT_WINDOW_MS)) < 1000,
+    `human keeps the full window (got ${r2.nextDeadlineMs - Date.now()}ms)`,
+  );
 });

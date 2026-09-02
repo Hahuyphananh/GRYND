@@ -279,7 +279,10 @@ export const users = pgTable("users", {
   // Only writable by active members — enforced in
   // /api/user/profile-customization. Null = default styling.
   profileAccent: varchar("profile_accent", { length: 7 }),
+  // Legacy arbitrary URL field retained for compatibility only. Official
+  // profile banners use selectedBanner + the banners/userBanners catalogs.
   profileBanner: text("profile_banner"),
+  selectedBanner: varchar("selected_banner", { length: 120 }),
   avatarFrame: varchar("avatar_frame", { length: 40 }),
   // Official Grynd icon the user has equipped. Resolved through the
   // official icon catalog (src/lib/icons.ts) — never an arbitrary URL.
@@ -449,6 +452,41 @@ export const userIcons = pgTable(
   (table) => ({
     uniqUserIcon: index("user_icons_user_icon_idx").on(table.userId, table.iconKey),
   })
+);
+
+// OFFICIAL GRYND PROFILE BANNER CATALOG + OWNERSHIP
+// Banner keys are stable public cosmetic identifiers. Asset paths are trusted
+// catalog data and are never accepted from clients.
+export const banners = pgTable("banners", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description").notNull().default(""),
+  assetPath: text("asset_path").notNull(),
+  rarity: varchar("rarity", { length: 40 }).notNull().default("Common"),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const userBanners = pgTable(
+  "user_banners",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bannerKey: varchar("banner_key", { length: 120 }).notNull(),
+    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserBanner: unique("user_banners_user_banner_unique").on(
+      table.userId,
+      table.bannerKey,
+    ),
+    userBannerIdx: index("user_banners_user_idx").on(table.userId, table.bannerKey),
+  }),
 );
 
 export const streakTitles = pgTable("streak_titles", {

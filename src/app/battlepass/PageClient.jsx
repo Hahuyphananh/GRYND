@@ -10,6 +10,7 @@ import {
   REWARD_RARITIES,
   REWARD_TYPES,
 } from "../../lib/battlepassRewards";
+import { bannerAssetUrl } from "../../lib/bannerAssets";
 
 function formatNumber(n) {
   return Number(n || 0).toLocaleString();
@@ -30,6 +31,7 @@ export default function BattlepassPageClient() {
   const [pass, setPass] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [failedBannerRewards, setFailedBannerRewards] = useState({});
 
   useEffect(() => {
     const load = async () => {
@@ -251,7 +253,7 @@ export default function BattlepassPageClient() {
                 ))}
                 <span className="flex items-center gap-1.5 text-[11px] text-[#9dd8ff]">
                   <span className="h-2 w-2 rounded-full bg-white/40" />
-                  Icons & cosmetics (soon)
+                  Official cosmetics
                 </span>
               </div>
 
@@ -324,14 +326,39 @@ export default function BattlepassPageClient() {
                                     {reward.name}
                                   </span>
                                 </div>
+                                {reward.type === "banner" && (
+                                  <div className="mt-1 aspect-[3/1] w-full overflow-hidden rounded border border-white/10 bg-[#08142f]">
+                                    {bannerAssetUrl(reward.key) && !failedBannerRewards[reward.key] ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={bannerAssetUrl(reward.key)}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                        onError={() =>
+                                          setFailedBannerRewards((previous) => ({
+                                            ...previous,
+                                            [reward.key]: true,
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="flex h-full items-center justify-center text-[8px] text-white/40">
+                                        Artwork coming soon
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="text-[9px] leading-tight text-[#7dd3fc]">
                                   {reward.desc}
                                 </div>
+                                {reward.type === "banner" && reward.claimed && (
+                                  <div className="text-[9px] font-semibold text-emerald-300">Unlocked</div>
+                                )}
                               </div>
                             ))
                           ) : (
                             <span className="mx-auto rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] uppercase leading-snug tracking-wider text-[#9dd8ff]">
-                              Icons &<br />cosmetics soon
+                              Official<br />cosmetics
                             </span>
                           )}
                         </div>

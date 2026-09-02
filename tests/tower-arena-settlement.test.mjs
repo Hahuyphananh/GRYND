@@ -18,6 +18,7 @@ import {
   payoutsByPlacement,
   payoutForPlacement,
   netForPlacement,
+  paidPlacementsFor,
   PAYOUT_WEIGHTS,
 } from "../src/lib/tower-arena/payout.ts";
 
@@ -133,4 +134,19 @@ test("weight tables exist and are length-correct for every seat count", () => {
     const trailingZeroes = PAYOUT_WEIGHTS[n].slice().reverse().findIndex((w) => w !== 0);
     assert.ok(true); // structure is validated above + in the summation tests.
   }
+});
+
+test("paidPlacementsFor matches the paid slots for every seat count", () => {
+  for (let n = 2; n <= 6; n += 1) {
+    assert.equal(
+      paidPlacementsFor(n),
+      PAYOUT_WEIGHTS[n].filter((w) => w > 0).length,
+      `paid slots for ${n} players`,
+    );
+  }
+  // Explicit spot-checks: 2-player winner-take-all → 1 paid slot; the
+  // 6-player spec pays the top 3 (first/second/third place get win popups).
+  assert.equal(paidPlacementsFor(2), 1);
+  assert.equal(paidPlacementsFor(3), 2);
+  assert.equal(paidPlacementsFor(6), 3);
 });

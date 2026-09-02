@@ -1,15 +1,12 @@
 // src/app/api/user/profile-customization/route.ts
 //
-// POST — set the caller's Grynd+ profile customization (accent color, banner,
-// avatar frame). A Grynd+ membership perk.
+// POST — set the caller's Grynd+ profile customization (accent color and
+// avatar frame). Official profile banners use the separate owned-banner API.
 //
 // Security:
 //   * auth-required,
 //   * membership-gated: only active members can customize their profile,
 //   * accent is strictly validated as a #RRGGBB hex value,
-//   * banner is validated with the same image hardening as profile pictures
-//     (magic-byte checked raster data:/https: URLs only — no SVG/HTML/PHP
-//     polyglots, no javascript: URLs),
 //   * frame is a whitelist key from src/lib/profileCosmetics.ts,
 //   * passing null for a field clears it (back to default styling).
 //     Unknown fields are ignored; invalid values reject the whole request so
@@ -21,7 +18,6 @@ import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
 import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
-import { isSafeProfilePicture } from "../../../../lib/security/media";
 import {
   HEX_COLOR_REGEX,
   isAvatarFrameKey,
@@ -51,6 +47,15 @@ export async function POST(req: Request) {
 
   const set: Record<string, unknown> = {};
 
+  // Arbitrary banner URLs were part of the legacy Grynd+ flow. Official
+  // banners are selected through /api/user/banner/select only.
+  if (Object.prototype.hasOwnProperty.call(body, "profileBanner")) {
+    return NextResponse.json(
+      { success: false, error: "Use the official banner picker." },
+      { status: 400 },
+    );
+  }
+
   // Accent color — #RRGGBB hex (or null to clear).
   if (Object.prototype.hasOwnProperty.call(body, "profileAccent")) {
     const accent = body.profileAccent;
@@ -64,26 +69,6 @@ export async function POST(req: Request) {
       set.profileAccent = accent.trim();
     } else {
       set.profileAccent = null;
-    }
-  }
-
-  // Banner image — validated exactly like profile pictures.
-  if (Object.prototype.hasOwnProperty.call(body, "profileBanner")) {
-    const banner = body.profileBanner;
-    if (banner !== null) {
-      if (typeof banner !== "string" || banner.trim().length === 0) {
-        return NextResponse.json(
-          { success: false, error: "Banner must be an image URL." },
-          { status: 400 }
-        );
-      }
-      const check = isSafeProfilePicture(banner.trim());
-      if (!check.ok) {
-        return NextResponse.json({ success: false, error: check.error }, { status: 400 });
-      }
-      set.profileBanner = banner.trim();
-    } else {
-      set.profileBanner = null;
     }
   }
 

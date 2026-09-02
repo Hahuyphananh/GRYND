@@ -9,6 +9,7 @@ import {
   isIconKey,
 } from "../../../lib/iconAssets";
 import { getIconByKey } from "../../../lib/icons";
+import { resolveSelectedBannerKey } from "../../../lib/banners";
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
           email: null,
           selectedIcon: DEFAULT_ICON_KEY,
           profileAccent: null,
-          profileBanner: null,
+          selectedBanner: null,
           avatarFrame: null,
           streakTitle: null,
           selectedStreakType: null,
@@ -49,7 +50,6 @@ export async function POST(req: Request) {
         email: users.email,
         selectedIcon: users.selectedIcon,
         profileAccent: users.profileAccent,
-        profileBanner: users.profileBanner,
         avatarFrame: users.avatarFrame,
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
@@ -83,6 +83,8 @@ export async function POST(req: Request) {
       if (!catalog) selectedIcon = DEFAULT_ICON_KEY;
     }
 
+    const selectedBanner = await resolveSelectedBannerKey(clerkId);
+
     // Compute streak title
     const streakInfo = computeEquippedStreakTitle({
       selectedStreakType: user.selectedStreakType,
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
           email: user.email,
           selectedIcon,
           profileAccent: user.profileAccent,
-          profileBanner: user.profileBanner,
+          selectedBanner,
           avatarFrame: user.avatarFrame,
           streakTitle: streakInfo.title,
           selectedStreakType: user.selectedStreakType,

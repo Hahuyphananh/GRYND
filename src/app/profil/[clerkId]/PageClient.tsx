@@ -12,14 +12,14 @@ import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
 import UserStatsTabs from "../../../components/UserStatsTabs";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
+import ProfileBanner from "../../../components/ProfileBanner";
 
 type PublicUser = {
-  id: number;
   clerkId: string;
   name: string;
   selectedIcon: string | null;
   profileAccent: string | null;
-  profileBanner: string | null;
+  selectedBanner: string | null;
   avatarFrame: string | null;
   level: number;
   xp: number;
@@ -180,7 +180,7 @@ export default function PublicProfilePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
           className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8 ${
-            profile.profileBanner ? "pt-28" : ""
+            profile.selectedBanner ? "pt-28" : ""
           }`}
           style={
             profile.profileAccent
@@ -191,14 +191,11 @@ export default function PublicProfilePage() {
               : undefined
           }
         >
-          {/* Grynd+ profile banner */}
-          {profile.profileBanner && (
-            <div
-              className="absolute inset-x-0 top-0 h-20 rounded-t-xl bg-cover bg-center"
-              style={{ backgroundImage: `url("${profile.profileBanner}")` }}
-              aria-hidden="true"
-            />
-          )}
+          <ProfileBanner
+            bannerKey={profile.selectedBanner}
+            className="absolute inset-x-0 top-0"
+            heightClass="h-20"
+          />
           <div className="flex items-center gap-4">
             <AvatarFrame frame={profile.avatarFrame}>
               <IconAvatar
