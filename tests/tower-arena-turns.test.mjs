@@ -6,13 +6,13 @@
  * resolves). Because the resolver is dependency-free, every rule in the spec
  * is unit-tested here without a database:
  *
- *   • valid / invalid placement (out of bounds, unavailable shape)
+ *   • valid / invalid drop (out of aim bounds, unavailable shape)
  *   • wrong player / wrong phase (authz lives in the store, but the guard
  *     helpers + next-turn determination are verified)
- *   • timeout fallback (safeFallbackIntent)
+ *   • timeout fallback (safeFallbackIntent — picks a stable drop when one exists)
  *   • resource consumption (shared pool) + reserve usage
  *   • resource refill (elimination-always, else on empty) — never resets tower
- *   • collapse + tower recovery to highest stable portion
+ *   • void-fall (block tips off support) → elimination + tower preserved
  *   • elimination (placement values) + final player / match finish
  *   • turn order stability (eliminated players skipped)
  *   • duplicate requests / race-safety (pure multiple applications never
@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 
 import {
   buildResourcePool,
-  centerDepthFor,
+  simulatePlacement,
   GRID_WIDTH,
 } from "../src/lib/tower-arena/engine.ts";
 import {
@@ -36,6 +36,8 @@ import {
   nextActiveAfter,
   MAX_RESERVE_USES,
   parseReserveMap,
+  TURN_PLACEMENT_WINDOW_MS,
+  RESERVE_WINDOW_MS,
 } from "../src/lib/tower-arena/turnResolver.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -57,8 +59,8 @@ function markEliminated(list, id) {
 }
 
 /**
- * Build a snapshot with a fully deterministic pool whose FIRST piece is the
- * given `firstShape` (so tests can reason about consumption deterministically).
+ * Build a snapshot with a fully deterministic pool whose composition is
+ * guaranteed by the pool builder (each cycle contains every shape).
  */
 function snapshot(opts, overrides = {}) {
   const maxPlayers = opts.maxPlayers ?? 2;
@@ -82,15 +84,38 @@ function snapshot(opts, overrides = {}) {
   };
 }
 
-/** A stable placement: `square` centered, which never collapses on an empty tower. */
-function stablePlacement(x = 2) {
-  const d = centerDepthFor("square", 0);
-  return { shape: "square", positionX: x, rotation: 0, actionType: "PLACE" };
+/**
+ * A stable placement: 2-wide `square` at x=2, which lands flat on the floor
+ * line and never tips while building a flat column (cols 2–3 grow evenly).
+ */
+function stablePlacement() {
+  return { shape: "square", positionX: 2, rotation: 0, actionType: "PLACE" };
 }
 
-/** An intentionally toppling placement: square slammed to the grid edge. */
+/**
+ * A deterministic void-fall placement: drop a 3-wide `I` onto a 1-cell
+ * pillar at column 0. Requires the tower under column 0 to be non-empty
+ * (see `pillarTower`). An I needs ceil(3/2)=2 touching cells; the single
+ * pillar cell cannot support it, so it tips into the void.
+ */
 function topplePlacement() {
-  return { shape: "square", positionX: 0, rotation: 0, actionType: "PLACE" };
+  return { shape: "I", positionX: 0, rotation: 0, actionType: "PLACE" };
+}
+
+/** A tower with a single 1-cell pillar of `n` cubes at column 0. */
+function pillarTower(n = 2, seed = "b", by = "u1") {
+  let t = [];
+  for (let i = 1; i <= n; i += 1) {
+    t = simulatePlacement(t, {
+      shape: "short",
+      x: 0,
+      rotation: 0,
+      blockId: `${seed}:${i}`,
+      placedByUserId: by,
+      turnNumber: i,
+    }).tower;
+  }
+  return t;
 }
 
 function shapeCounts(pieces) {
@@ -112,9 +137,9 @@ test("valid placement consumes exactly one shared-pool block and advances the tu
   const pool = buildResourcePool(2, "m1:cycle:1");
   const squareCount = pool.filter((p) => p.shape === "square").length;
   const snap = snapshot({ maxPlayers: 2, pool });
-  const players3 = players(["u1", "u2"]);
+  const players2 = players(["u1", "u2"]);
 
-  const resolved = okResult(resolvePlacement(snap, players3, stablePlacement(), "u1"));
+  const resolved = okResult(resolvePlacement(snap, players2, stablePlacement(), "u1"));
 
   assert.equal(resolved.collapsed, false);
   assert.equal(resolved.fromReserve, false);
@@ -123,7 +148,7 @@ test("valid placement consumes exactly one shared-pool block and advances the tu
   // Tower gained exactly one block (the freshly placed square).
   assert.equal(resolved.towerState.length, 1);
   assert.equal(resolved.placements === undefined, true);
-  assert.equal(resolved.nextTurnPlayerId, "u1" === "u2" ? "u1" : "u2");
+  assert.equal(resolved.nextTurnPlayerId, "u2");
 });
 
 test("shared pool decremented by exactly one piece of the placed shape", () => {
@@ -144,17 +169,17 @@ test("null pool / empty pool resolves an unavailable-shape failure", () => {
   assert.equal(r.error.includes("not available"), true);
 });
 
-test("out-of-bounds placement is rejected (never mutates pool or tower)", () => {
+test("out-of-bounds drop aim is rejected (never mutates pool or tower)", () => {
   const pool = buildResourcePool(2, "m1:cycle:1");
   const before = pool.length;
   const r = resolvePlacement(
     snapshot({ maxPlayers: 2, pool }),
     players(["u1", "u2"]),
-    { shape: "square", positionX: GRID_WIDTH, rotation: 0, actionType: "PLACE" },
+    { shape: "square", positionX: GRID_WIDTH + 5, rotation: 0, actionType: "PLACE" },
     "u1",
   );
   assert.equal("resolved" in r, false);
-  assert.equal(r.status === 400 || r.status === 409, true);
+  assert.equal(r.error.includes("bounds"), true, "rejected as out of bounds");
   assert.equal(pool.length, before, "pool untouched on invalid placement");
 });
 
@@ -217,9 +242,10 @@ test("nextActiveAfter wraps around and skips eliminated players", () => {
   assert.equal(nextActiveAfter(solo, "u1"), null);
 });
 
-test("a collapse eliminates the responsible player and assigns the placement", () => {
+test("a void fall eliminates the responsible player and assigns the placement", () => {
+  const tower = pillarTower(2);
   const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 3 }), players(["u1", "u2", "u3"]), topplePlacement(), "u1"),
+    resolvePlacement(snapshot({ maxPlayers: 3 }, { towerState: tower }), players(["u1", "u2", "u3"]), topplePlacement(), "u1"),
   );
   assert.equal(resolved.collapsed, true);
   assert.equal(resolved.eliminations.length, 1);
@@ -228,14 +254,15 @@ test("a collapse eliminates the responsible player and assigns the placement", (
   assert.equal(resolved.eliminations[0].placement, 3);
   assert.equal(resolved.activeRemaining, 2);
   assert.equal(resolved.finished, false);
-  // Recovery keeps a stable (possibly smaller) tower — never empty-reset w/ guarantee of 1 stable.
-  assert.equal(Array.isArray(resolved.towerState), true);
+  // The tower is PRESERVED — a void fall removes nothing from the stack.
+  assert.deepEqual(resolved.towerState, tower, "tower unchanged by the void fall");
 });
 
 test("eliminating the second-to-last player finishes the match (final player)", () => {
-  // 2 players: the responsible player's collapse leaves exactly 1 → finished.
+  // 2 players: the responsible player's void fall leaves exactly 1 → finished.
+  const tower = pillarTower(2);
   const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 2 }), players(["u1", "u2"]), topplePlacement(), "u1"),
+    resolvePlacement(snapshot({ maxPlayers: 2 }, { towerState: tower }), players(["u1", "u2"]), topplePlacement(), "u1"),
   );
   assert.equal(resolved.collapsed, true);
   assert.equal(resolved.eliminations.length, 1);
@@ -246,8 +273,9 @@ test("eliminating the second-to-last player finishes the match (final player)", 
 });
 
 test("a finish leaves no next turn or deadline", () => {
+  const tower = pillarTower(2);
   const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 2 }), players(["u1", "u2"]), topplePlacement(), "u1"),
+    resolvePlacement(snapshot({ maxPlayers: 2 }, { towerState: tower }), players(["u1", "u2"]), topplePlacement(), "u1"),
   );
   assert.equal(resolved.finished, true);
   assert.equal(resolved.nextTurnPlayerId, null);
@@ -255,59 +283,36 @@ test("a finish leaves no next turn or deadline", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Tower recovery
+// Tower preservation
 // ═══════════════════════════════════════════════════════════════════
 
-test("collapse recovers to a stable tower and never resets to empty when a base exists", () => {
-  // Build a stable base by stacking centered squares until the tower's height
-  // ceiling (engine MAX_ABSOLUTE_HEIGHT) guarantees the next placement topples.
+test("even flat play grows the tower forever — there is NO ceiling", () => {
   let tower = [];
-  let collapse = null;
-  const ample = () => buildResourcePool(2, `m:cycle:1`);
-  for (let i = 1; i <= 16; i += 1) {
-    const r = resolvePlacement(
-      { ...snapshot({ maxPlayers: 2, pool: ample() }), towerState: tower, turnNumber: i - 1, currentTurnPlayerId: "u1" },
-      players(["u1", "u2"]),
-      stablePlacement(),
-      "u1",
-    );
-    const resolved = r.resolved;
-    if (resolved.collapsed) {
-      collapse = resolved;
-      break;
-    }
-    tower = resolved.towerState;
-  }
-  assert.ok(collapse, "a tower eventually topples past its ceiling");
-  assert.equal(collapse.collapsed, true);
-  // The stable base (lowest blocks) survives recovery.
-  assert.ok(collapse.towerState.some((b) => b.shape === "square"), "base retained");
-  assert.ok(collapse.towerState.length <= tower.length + 1, "recovery trims, never grows");
-});
-
-test("resource refill never resets the tower (elimination keeps stable base)", () => {
-  // Build a tall stable tower, then force a ceiling collapse.
-  let tower = [];
-  let collapse = null;
-  for (let i = 1; i <= 16; i += 1) {
-    const snap = snapshot({ maxPlayers: 4, pool: buildResourcePool(4, `m:cycle:1`) });
+  for (let i = 1; i <= 40; i += 1) {
+    const snap = snapshot({ maxPlayers: 2, pool: buildResourcePool(2, `m:cycle:1`) });
     snap.towerState = tower;
     snap.turnNumber = i - 1;
     snap.currentTurnPlayerId = "u1";
-    const r = resolvePlacement(snap, players(["u1", "u2", "u3", "u4"]), stablePlacement(), "u1");
+    const r = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
+    assert.equal("resolved" in r, true, `turn ${i} resolves`);
     const resolved = r.resolved;
-    if (resolved.collapsed) {
-      collapse = resolved;
-      break;
-    }
+    assert.equal(resolved.collapsed, false, `safe square ${i} never tips (no ceiling)`);
     tower = resolved.towerState;
   }
-  assert.ok(collapse, "reached a collapsible height");
-  assert.equal(collapse.collapsed, true);
-  assert.equal(collapse.eliminations.length, 1, "elimination refills the pool");
-  assert.ok(collapse.resourceCycle > 1, "cycle incremented on elimination");
-  assert.equal(collapse.refilled, true, "elimination refills the pool");
-  assert.ok(collapse.towerState.length > 0, "tower kept its stable portion");
+  assert.equal(tower.length, 40, "the tower keeps stacking past any old height limit");
+});
+
+test("resource refill never resets the tower (void fall keeps the stable stack)", () => {
+  const tower = pillarTower(4, "pre");
+  const snap = snapshot({ maxPlayers: 4, pool: buildResourcePool(4, `m:cycle:1`) });
+  snap.towerState = tower;
+  const resolved = okResult(resolvePlacement(snap, players(["u1", "u2", "u3", "u4"]), topplePlacement(), "u1"));
+  assert.equal(resolved.collapsed, true);
+  assert.equal(resolved.eliminations.length, 1, "void fall eliminates the dropper");
+  assert.ok(resolved.resourceCycle > 1, "cycle incremented on elimination");
+  assert.equal(resolved.refilled, true, "elimination refills the pool");
+  assert.ok(resolved.towerState.length > 0, "tower kept its stable portion");
+  assert.deepEqual(resolved.towerState, tower, "tower identical before refill");
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -318,28 +323,37 @@ test("pool refills when it empties (no elimination), without resetting the tower
   // Pool with a single piece → one placement empties it → refill.
   const onePiecePool = [{ id: "p:0", shape: "square" }];
   const snap = snapshot({ maxPlayers: 2, pool: onePiecePool.slice() });
-  snap.towerState = [{ shape: "square", id: "b:0", rotation: 0, x: 2, depth: 0, cells: [], placedByUserId: "u1", turnNumber: 0 }];
+  snap.towerState = pillarTower(1, "pre");
   const resolved = okResult(resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1"));
   assert.equal(resolved.refilled, true, "empty pool refilled");
   assert.ok(resolved.pool.length > 0, "pool no longer empty");
-  assert.equal(resolved.towerState.length >= 1, true, "tower retained through refill");
+  assert.equal(resolved.towerState.length >= 2, true, "tower retained through refill");
 });
 
 // ═══════════════════════════════════════════════════════════════════
 // Timeout fallback
 // ═══════════════════════════════════════════════════════════════════
 
-test("timeout fallback picks the smallest available shape placed centered (no instant elimination)", () => {
+test("timeout fallback picks a stable drop when one exists (no instant elimination)", () => {
   const pool = buildResourcePool(2, "m1:cycle:1");
   const intent = safeFallbackIntent(snapshot({ maxPlayers: 2, pool }));
   assert.equal(intent.actionType, "TIMEOUT");
-  assert.equal(["short", "square"].includes(intent.shape), true, "chooses a small safe shape");
+  assert.equal(["short", "square", "I", "L"].includes(intent.shape), true);
   const resolved = okResult(resolvePlacement(snapshot({ maxPlayers: 2, pool }), players(["u1", "u2"]), intent, "u1"));
-  // On an empty tower a centered small block never collapses.
+  // On an empty board every drop settles on the floor line.
   assert.equal(resolved.collapsed, false);
-  assert.equal(resolved.turnNumber === undefined, true || resolved.entry.turnNumber === 1);
   assert.equal(resolved.entry.turnNumber, 1);
   assert.equal(resolved.entry.actionType, "TIMEOUT", "timeout recorded");
+});
+
+test("timeout fallback stays safe on a jagged tower when the pool allows it", () => {
+  const tower = pillarTower(2, "pre");
+  const pool = buildResourcePool(2, "m1:cycle:1");
+  const state = snapshot({ maxPlayers: 2, pool });
+  state.towerState = tower;
+  const intent = safeFallbackIntent(state);
+  const resolved = okResult(resolvePlacement(state, players(["u1", "u2"]), intent, "u1"));
+  assert.equal(resolved.collapsed, false, "fallback chose a block that balances on the pillar");
 });
 
 test("timeout prefers a held safe reservation when present", () => {
@@ -353,24 +367,21 @@ test("timeout prefers a held safe reservation when present", () => {
 // Duplicate requests / race-conditions
 // ═══════════════════════════════════════════════════════════════════
 
-test("a duplicate placement against the SAME snapshot is rejected (shape gone / idempotent guard)", () => {
-  // Place a shape that the pool has exactly one of, so replaying the same
-  // snapshot after the first resolve finds it gone → unavailable failure.
+test("a duplicate placement against the SAME snapshot is deterministic and non-double-consuming", () => {
   const pool = buildResourcePool(2, "m1:cycle:1");
   const snap = snapshot({ maxPlayers: 2, pool });
 
   const first = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
   assert.equal("resolved" in first, true);
 
-  // Replaying the STALE snapshot: u1's reserve state has not advanced, so
-  // resolvePlacement is still deterministic, but re-applying to the SAME
-  // unmutated snapshot twice yields the same (non-double-consuming) outcome
-  // — proving pure idempotence. The store additionally gates replays via the
-  // FOR UPDATE row lock + conditional phase update (see store tests).
+  // Replaying the STALE snapshot resolves to the same outcome — pure
+  // idempotence. The store additionally gates replays via its FOR UPDATE row
+  // lock + conditional phase update (see store tests).
   const second = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
   assert.equal("resolved" in second, true);
-  // Both resolves consumed exactly one 'square' from the ORIGINAL pool array
-  // (mutated copy), never a shared global pool.
+  assert.deepEqual(first.resolved.towerState, second.resolved.towerState);
+  assert.deepEqual(first.resolved.pool, second.resolved.pool);
+  assert.equal(pool.length, buildResourcePool(2, "m1:cycle:1").length, "original pool array never mutated");
 });
 
 test("concurrent reserve + placement on the same snapshot cannot double-consume (pure copy semantics)", () => {
@@ -378,10 +389,6 @@ test("concurrent reserve + placement on the same snapshot cannot double-consume 
   const originalLength = pool.length;
   const shared = snapshot({ maxPlayers: 2, pool });
 
-  // resolvePlacement mutates a COPY of the pool (takeFromPool splices its
-  // argument), so the original snapshot's pool is never mutated →
-  // two concurrent resolves each see the same clean input and the store's
-  // serialized transaction resolves them in order.
   const a = resolvePlacement(shared, players(["u1", "u2"]), stablePlacement(), "u1").resolved;
   assert.ok(a.pool.length === originalLength - 1);
   assert.equal(pool.length, originalLength, "original pool unmutated by resolver");
@@ -411,4 +418,71 @@ test("repeat applications advance turnNumber monotonically", () => {
     assert.ok(cur, "turn always advances while >1 remain");
   }
   assert.deepEqual(turns, [1, 2, 3, 4, 5]);
+});
+
+// ── Turn window + no-side-walls aims ──────────────────────────────────
+
+test("placement and reserve windows are at least 60 seconds", () => {
+  assert.ok(TURN_PLACEMENT_WINDOW_MS >= 60000, "placement window ≥ 60s");
+  assert.ok(RESERVE_WINDOW_MS >= 60000, "reserve window ≥ 60s");
+});
+
+test("aiming fully beside the platform is legal and resolves as a void fall (no walls)", () => {
+  // x=5 with a 2-wide block puts both columns over the void — previously
+  // rejected as out of bounds, now a legal aim that collapses the dropper.
+  const pool = buildResourcePool(2, "m1:cycle:1");
+  const before = pool.length;
+  const r = resolvePlacement(
+    snapshot({ maxPlayers: 3, pool }),
+    players(["u1", "u2", "u3"]),
+    { shape: "square", positionX: GRID_WIDTH, rotation: 0, actionType: "PLACE" },
+    "u1",
+  );
+  const res = okResult(r);
+  assert.equal(res.collapsed, true, "full miss = void fall");
+  assert.equal(res.entry.removedBlockIds.length, 1);
+  assert.equal(res.entry.placedCells.length, 0, "no resolved cells on a full miss");
+  assert.equal(res.entry.resolvedX, GRID_WIDTH);
+  assert.equal(res.finished, false, "more players remain — match continues");
+  // Elimination refills the pool to a fresh cycle (never resets the tower).
+  assert.equal(res.refilled, true, "a fresh reserve cycle opens after the void fall");
+  assert.equal(res.resourceCycle, 2);
+});
+
+test("entry records the resolved placement incl. slips and contact-shock sheds", () => {
+  // Jenga: floor beam + brick overhanging its edge; the drop's beam tips the
+  // brick — both fall together and the entry carries both blocks' cells so
+  // every viewer animates the same shock.
+  const u = players(["u1", "u2", "u3"]);
+  const snap = snapshot({ maxPlayers: 3 });
+  let b1 = okResult(resolvePlacement(snap, u, { shape: "I", positionX: 0, rotation: 0, actionType: "PLACE" }, "u1"));
+  snap.towerState = b1.towerState;
+  snap.turnNumber = b1.entry.turnNumber;
+  snap.currentTurnPlayerId = "u2";
+  snap.phase = "placement";
+  snap.resourcePool = buildResourcePool(3, "m1:cycle:1");
+  let b2 = okResult(resolvePlacement(snap, u, { shape: "L", positionX: 2, rotation: 1, actionType: "PLACE" }, "u2"));
+  assert.equal(b2.collapsed, false);
+  snap.towerState = b2.towerState;
+  snap.turnNumber = b2.entry.turnNumber;
+  snap.currentTurnPlayerId = "u3";
+  snap.phase = "placement";
+  snap.resourcePool = buildResourcePool(3, "m1:cycle:1");
+  const drop = okResult(resolvePlacement(snap, u, { shape: "I", positionX: 2, rotation: 0, actionType: "PLACE" }, "u3"));
+  assert.equal(drop.collapsed, true, "beam on the brick's far end tips it");
+  assert.equal(drop.removedBlockIds.length, 2, "brick + dropped beam fell together");
+  assert.equal(drop.entry.removedBlocks.length, 2, "entry carries both fallen blocks");
+  assert.ok(drop.entry.removedBlocks.every((b) => (b.cells || []).length > 0), "fallen blocks keep their cells for animation");
+  assert.equal(drop.entry.resolvedX, 2, "no slip here — resolved as aimed");
+  assert.equal(drop.entry.placedCells.length, 3, "the dropped beam's cells are recorded");
+});
+
+// ── parseReserveMap stays a plain passthrough ─────────────────────────
+
+test("parseReserveMap tolerates junk and passes through records", () => {
+  assert.deepEqual(parseReserveMap(null), {});
+  assert.deepEqual(parseReserveMap([1, 2]), {});
+  assert.deepEqual(parseReserveMap({ a: { blockId: "x", shape: "short" } }), {
+    a: { blockId: "x", shape: "short" },
+  });
 });

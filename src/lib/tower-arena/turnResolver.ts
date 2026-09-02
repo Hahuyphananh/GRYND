@@ -22,10 +22,10 @@
 
 import {
   BLOCK_SHAPES,
-  centerDepthFor,
   centerXFor,
-  fitsInGrid,
+  dropInBounds,
   footprintFor,
+  findSafeDrop,
   refillResourcePool,
   simulatePlacement,
   takeFromPool,
@@ -35,8 +35,10 @@ import {
   type TowerState,
 } from "./engine";
 
-export const TURN_PLACEMENT_WINDOW_MS = 8000;
-export const RESERVE_WINDOW_MS = 8000;
+// Players (and bots) get a relaxed turn window — at least a minute to aim
+// and drop. The reserve window matches so the resource pick stays unhurried.
+export const TURN_PLACEMENT_WINDOW_MS = 60_000;
+export const RESERVE_WINDOW_MS = 60_000;
 export const MAX_RESERVE_USES = 2;
 
 // ── Snapshots/types decoupled from the ORM ─────────────────────────────
@@ -67,6 +69,12 @@ export interface PlacementEntry {
   fromReserve: boolean;
   collapsed: boolean;
   removedBlockIds: string[];
+  /** Leftmost column the block actually settled on (after any slip). */
+  resolvedX: number;
+  /** Resolved cells of the dropped block (empty on a full void miss). */
+  placedCells: Array<{ x: number; depth: number; z: number }>;
+  /** Every block that fell this placement (shed stacks incl. the dropper's). */
+  removedBlocks: Array<{ id: string; cells: Array<{ x: number; depth: number; z: number }> }>;
   actionType: string;
   at: string;
 }
@@ -183,23 +191,35 @@ export function playerByUserId(players: ResolverPlayer[], userId: string): Resol
   return null;
 }
 
-/** Deterministic safe fallback intent: smallest available shape, centered. */
+/**
+ * Deterministic safe fallback intent: finds the gentlest drop that will NOT
+ * fall into the void (smallest shape first, centered then fanning outward,
+ * both rotations) — held reservation shapes first, then the shared pool.
+ * Only when every option is doomed does it settle for the smallest available
+ * shape centered (the fall is then unavoidable and resolves like any drop).
+ */
 export function safeFallbackIntent(snapshot: MatchSnapshot): PlacementIntent {
   const reserve = parseReserveMap(snapshot.reserveState);
   const pool = parsePool(snapshot.resourcePool);
   const held = reserve[snapshot.currentTurnPlayerId ?? ""];
+  const tower = Array.isArray(snapshot.towerState) ? snapshot.towerState : [];
+
+  const available: BlockShape[] = [];
+  const pushShape = (s: BlockShape) => {
+    if (!available.includes(s)) available.push(s);
+  };
+  if (held) pushShape(held.shape);
+  for (const p of pool) pushShape(p.shape);
+
+  const safe = findSafeDrop(tower, available);
+  if (safe) return { shape: safe.shape, positionX: safe.x, rotation: safe.rotation, actionType: "TIMEOUT" };
 
   let shape: BlockShape = "short";
-  if (held) {
-    shape = held.shape === "short" || held.shape === "square" ? held.shape : "short";
-  } else {
-    const byOrder: BlockShape[] = ["short", "square", "I", "T", "L"];
-    const available = pool.map((p) => p.shape);
-    for (const s of byOrder) {
-      if (available.includes(s)) {
-        shape = s;
-        break;
-      }
+  const byOrder: BlockShape[] = ["short", "square", "I", "T", "L"];
+  for (const s of byOrder) {
+    if (available.includes(s)) {
+      shape = s;
+      break;
     }
   }
   return { shape, positionX: centerXFor(shape, 0), rotation: 0, actionType: "TIMEOUT" };
@@ -242,10 +262,12 @@ export function resolvePlacement(
   const placements = parsePlacements(snapshot.placements);
   const rotation = Number.isInteger(intent.rotation) ? intent.rotation : 0;
 
-  // Basic geometry sanity (bounds) — the store also checks this but keep the
-  // resolver self-contained so direct callers can't produce an OOB block.
-  const extent = footprintFor(intent.shape, rotation);
-  if (!fitsInGrid(extent, intent.positionX, 0)) {
+  // Basic geometry sanity (aim bounds) — the store also checks this but keep
+  // the resolver self-contained so direct callers can't produce a wild drop.
+  // There are no side walls: any aim inside dropRangeFor (including fully
+  // into the void beside the platform) is legal and resolves to a collapse;
+  // only absurdly out-of-range aims are rejected up front.
+  if (!dropInBounds(intent.shape, rotation, intent.positionX)) {
     const failure: ResolveFailure = { ok: false, error: "Placement out of bounds", status: 400 };
     return failure;
   }
@@ -276,7 +298,6 @@ export function resolvePlacement(
   const sim = simulatePlacement(tower, {
     shape: blockShape,
     x: intent.positionX,
-    depth: centerDepthFor(blockShape, rotation),
     rotation,
     blockId,
     placedByUserId: actingUserId,
@@ -294,6 +315,9 @@ export function resolvePlacement(
     fromReserve,
     collapsed: sim.collapsed,
     removedBlockIds: sim.removedBlockIds,
+    resolvedX: sim.placedBlock?.x ?? intent.positionX,
+    placedCells: sim.placedBlock?.cells ?? [],
+    removedBlocks: (sim.fallenBlocks || []).map((f) => ({ id: f.id, cells: f.cells })),
     actionType: intent.actionType,
     at: new Date().toISOString(),
   };
@@ -314,7 +338,7 @@ export function resolvePlacement(
   // Refill policy:
   //   * elimination  → full replacement pool (fresh cycle)
   //   * pool empties → non-empty append (fresh cycle pieces added)
-  // Never rebuild the tower.
+  // Never rebuild the tower — it continues in its stable post-fall state.
   let nextPool = pool;
   let nextCycle = snapshot.resourceCycle;
   let refilled = false;
@@ -374,4 +398,4 @@ export function resolvePlacement(
 }
 
 // Re-exported shape guard so the resolver stays self-contained for tests.
-export { BLOCK_SHAPES, footprintFor };
+export { BLOCK_SHAPES, footprintFor, centerXFor };

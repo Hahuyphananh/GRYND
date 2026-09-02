@@ -29,6 +29,8 @@ import {
   IconHandStop,
   IconLock,
   IconTrophy,
+  IconPlayerPause,
+  IconPlayerPlay,
 } from "@tabler/icons-react";
 import {
   playTurnSwitch,
@@ -38,13 +40,12 @@ import {
   playDefeat,
 } from "../../../../../lib/gameAudio";
 import {
-  applyPlacementBlock,
-  centerDepthFor,
-  footprintFor,
-  fitsInGrid,
-  GRID_WIDTH,
-  GRID_DEPTH,
+  blockCells,
+  centerXFor,
+  dropRangeFor,
+  simulatePlacement,
   BLOCK_SHAPES,
+  GRID_WIDTH,
   type BlockShape,
 } from "../../../../../lib/tower-arena/engine";
 
@@ -59,9 +60,9 @@ const SHAPE_LABEL: Record<BlockShape, string> = {
 };
 
 const SHAPE_NAME: Record<BlockShape, string> = {
-  I: "Long",
-  L: "L",
-  T: "T",
+  I: "Beam",
+  L: "Spire",
+  T: "Post",
   square: "Square",
   short: "Short",
 };
@@ -95,6 +96,7 @@ type Match = {
   turnNumber: number;
   currentTurnPlayerId: string | null;
   turnDeadline: string | null;
+  paused: boolean;
   resourcePool: { id: string; shape: BlockShape }[];
   towerState: any[];
   placements: any[];
@@ -118,7 +120,7 @@ type Player = {
 // ── Countdown hook ─────────────────────────────────────────────────────
 
 function useServerCountdown(deadline: string | null, tickMs = 100) {
-  const [left, setLeft] = useState(8);
+  const [left, setLeft] = useState(60);
   useEffect(() => {
     if (!deadline) return;
     const dl = new Date(deadline).getTime();
@@ -147,120 +149,342 @@ function cancelAnimationFrameScheduler() {
   }
 }
 
-// ── Isometric tower renderer ───────────────────────────────────────────
+// ── 2D side-view tower renderer ────────────────────────────────────────
+//
+// The board is a line: a small floor at the BOTTOM of the stage and open
+// sky above it. Blocks are dropped from the top of the stage, fall with
+// gravity, and settle on the tower (or tip off their support and fall
+// through the floor). The view auto-scales with the tower: as it grows the
+// world "zooms out" so the whole tower + the drop zone above it stay
+// visible and the floor line stays pinned at the bottom.
 
-const TILE_W = 40;
-const TILE_H = 20;
-const COL_H = 16;
+// Sky band reserved above the tower top (world cells) — blocks drop from up
+// here every turn.
+const SKY_CELLS = 7;
 
-function isoCell(x: number, depth: number, z: number): [number, number] {
-  // Camera from the front-bottom; x increases right, depth increases left-down.
-  const sx = (x - depth) * (TILE_W / 2);
-  const sy = (depth + x) * (TILE_H / 2) - z * COL_H;
-  return [sx, sy];
-}
+// Faint dust drifting in the sky — deterministic fixed offsets so SSR +
+// client renders never differ. Positions are computed relative to the tower
+// top so they stay in the sky band as the scene scales.
+const SKY_DUST: Array<[number, number, number]> = [
+  [0.3, 0.25, 0.35],
+  [1.7, 0.55, 0.22],
+  [3.1, 0.3, 0.3],
+  [4.4, 0.6, 0.2],
+  [0.9, 0.8, 0.16],
+  [2.6, 0.72, 0.18],
+  [5.2, 0.4, 0.14],
+  [-0.6, 0.5, 0.12],
+  [6.2, 0.65, 0.1],
+  [4.0, 0.9, 0.12],
+];
 
-function isoDiamondPoints(x: number, depth: number, z: number, cellSize = 1): string {
-  const [cx, cy] = isoCell(x, depth, z);
-  const w = (TILE_W / 2) * cellSize;
-  const h = (TILE_H / 2) * cellSize;
-  return `${cx},${cy - h} ${cx + w},${cy} ${cx},${cy + h} ${cx - w},${cy}`;
-}
+function TowerScene({
+  tower,
+  ghost,
+  falling,
+  cursor,
+  impact,
+  onStageClick,
+}: {
+  tower: any[];
+  ghost?: { cells: any[]; willFall: boolean } | null;
+  falling?: { cells: any[]; extra: any[]; willFall: boolean; slideDx: number; key: number } | null;
+  cursor?: { shape: BlockShape; x: number; rotation: number; danger: boolean } | null;
+  impact?: number;
+  onStageClick?: () => void;
+}) {
+  // The stage grows with the tower: floor at the bottom, SKY_CELLS of open
+  // sky above the highest block (blocks spawn from the top of that band).
+  // Falling/shed cells are included so the animation band covers them too.
+  const allCells = [
+    ...(tower || []).flatMap((b: any) => b.cells || []),
+    ...(falling?.cells || []),
+    ...(falling?.extra || []),
+  ];
+  const maxZ = allCells.reduce((m, c: any) => Math.max(m, c.z), 0);
+  const viewH = Math.max(12, maxZ + SKY_CELLS);
+  const yFor = (z: number) => viewH - z; // z=0 → bottom edge, taller z → up
+  const cellY = (z: number) => yFor(z + 1);
+  const X_MIN = -1.4;
+  const X_MAX = GRID_WIDTH + 1.4;
 
-function buildHeightMap(tower: any[]): number[][] {
-  const h: number[][] = Array.from({ length: GRID_WIDTH }, () =>
-    new Array<number>(GRID_DEPTH).fill(0),
-  );
-  for (const b of tower || []) {
-    for (const c of b.cells || []) {
-      h[c.x][c.depth] = Math.max(h[c.x][c.depth], c.z);
-    }
-  }
-  return h;
-}
+  // A doomed drop falls to the floor line and dissolves INTO the void right
+  // there — it never falls out of the stage (nothing leaves the div).
+  const fallingZ = falling
+    ? (falling.cells || []).reduce((m: number, c: any) => Math.min(m, c.z), Infinity)
+    : 0;
+  const fallDropTarget = Number.isFinite(fallingZ) ? fallingZ + 0.5 : 2;
 
-// The towerView takes the tower + an optional ghost block and renders an
-// isometric SVG. Each block is colored by a stable index based on its id hash.
-function TowerView({ tower, ghost, collapsedBlocks }: { tower: any[]; ghost?: any; collapsedBlocks?: Set<string> }) {
-  const rows: { key: string; points: string; fill: string; opacity: number; stroke: string }[] = [];
+  const sortedBlocks = (tower || [])
+    .slice()
+    .sort((a, b) => (a.turnNumber || 0) - (b.turnNumber || 0));
 
-  // Floor
-  for (let x = 0; x < GRID_WIDTH; x += 1) {
-    for (let d = 0; d < GRID_DEPTH; d += 1) {
-      rows.push({
-        key: `f${x}-${d}`,
-        points: isoDiamondPoints(x, d, 0),
-        fill: "#071626",
-        opacity: 1,
-        stroke: "#0e2a44",
-      });
-    }
-  }
-
-  // Blocks (painter's order: far rows first, then higher up drawn last so the
-  // silhouette reads top-first).
-  const sortedBlocks = (tower || []).slice().sort((a, b) => {
-    const aMax = Math.max(...a.cells.map((c: any) => c.x + c.depth));
-    const bMax = Math.max(...b.cells.map((c: any) => c.x + c.depth));
-    return aMax - bMax;
-  });
-
-  sortedBlocks.forEach((b, i) => {
-    const color = BLOCK_PALETTE[i % BLOCK_PALETTE.length];
-    const isCollapsed = collapsedBlocks?.has(b.id);
-    const zOff = isCollapsed ? 24 : 0; // lift falling blocks during animation
-    for (const c of b.cells || []) {
-      rows.push({
-        key: `${b.id}-${c.x}-${c.depth}-${c.z}`,
-        points: isoDiamondPoints(c.x, c.depth, c.z + zOff),
-        fill: color,
-        opacity: isCollapsed ? 0.5 : 0.95,
-        stroke: "rgba(255,255,255,0.5)",
-      });
-    }
-  });
-
-  // Ghost preview of the selected block
-  if (ghost) {
-    const ghostColor = "#ffffff";
-    for (const c of ghost.cells || []) {
-      rows.push({
-        key: `g${c.x}-${c.depth}-${c.z}`,
-        points: isoDiamondPoints(c.x, c.depth, c.z),
-        fill: ghostColor,
-        opacity: 0.22,
-        stroke: "#ffffff",
-      });
-    }
+  // Ghost bounds (for the danger label)
+  let ghostMinX = Infinity;
+  let ghostMaxX = -Infinity;
+  let ghostMaxZ = 0;
+  for (const c of ghost?.cells || []) {
+    ghostMinX = Math.min(ghostMinX, c.x);
+    ghostMaxX = Math.max(ghostMaxX, c.x);
+    ghostMaxZ = Math.max(ghostMaxZ, c.z);
   }
 
-  // Compute bounds for centering.
-  const allXs = rows.map((r) => r.points);
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const pts of allXs) {
-    for (const pair of pts.split(" ")) {
-      if (!pair) continue;
-      const [px, py] = pair.split(",").map(Number);
-      minX = Math.min(minX, px);
-      maxX = Math.max(maxX, px);
-      minY = Math.min(minY, py);
-      maxY = Math.max(maxY, py);
-    }
-  }
-  const pad = 30;
-  const width = maxX - minX + pad * 2;
-  const height = maxY - minY + pad * 2;
+  // Aim cursor: the selected block hovering at the top of the stage, ready
+  // to drop (fruit-merge style). Positioned in the sky band above the tower.
+  const cursorCells =
+    cursor && cursor.shape
+      ? blockCells(cursor.shape, cursor.rotation).map(([rx, rz]) => ({
+          x: cursor.x + rx,
+          depth: 0,
+          z: Math.max(2, maxZ + SKY_CELLS - 2) + rz,
+        }))
+      : [];
+  const cursorZ0 = cursorCells.reduce((m: number, c: any) => Math.min(m, c.z), Infinity);
+  const cursorCenterX =
+    cursorCells.length > 0
+      ? (Math.min(...cursorCells.map((c: any) => c.x)) + Math.max(...cursorCells.map((c: any) => c.x)) + 1) / 2
+      : 0;
+  const guideBottomZ = Math.max(2, ghostMaxZ + 1);
 
+  // y is bottom-aligned: the floor line always sits on the bottom edge of
+  // the stage, no matter how the container's aspect ratio differs.
   return (
-    <svg
-      viewBox={`${minX - pad} ${minY - pad} ${width} ${height}`}
-      className="h-full w-full max-w-full select-none"
-      preserveAspectRatio="xMidYMid meet"
+    <motion.div
+      className="h-full w-full"
+      animate={{ x: impact ? [0, -3, 3, -2, 2, 0] : 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
     >
-      {rows.map((r) => (
-        <polygon key={r.key} points={r.points} fill={r.fill} opacity={r.opacity} stroke={r.stroke} strokeWidth={1} />
+      <svg
+        viewBox={`${X_MIN} 0 ${X_MAX - X_MIN} ${viewH}`}
+        className={onStageClick ? "h-full w-full cursor-pointer select-none" : "h-full w-full select-none"}
+        preserveAspectRatio="xMidYMax meet"
+        onClick={onStageClick}
+      >
+      <defs>
+        <linearGradient id="ta-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0a0f24" />
+          <stop offset="60%" stopColor="#070a18" />
+          <stop offset="100%" stopColor="#04060f" />
+        </linearGradient>
+        <linearGradient id="ta-platform" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#2dd4bf" />
+          <stop offset="35%" stopColor="#0e7490" />
+          <stop offset="100%" stopColor="#134e4a" />
+        </linearGradient>
+        <radialGradient id="ta-glow" cx="0.5" cy="0.97" r="0.55">
+          <stop offset="0%" stopColor="rgba(45,212,191,0.12)" />
+          <stop offset="100%" stopColor="rgba(45,212,191,0)" />
+        </radialGradient>
+      </defs>
+
+      {/* Open sky filling the stage (the floor line sits at the very bottom) */}
+      <rect x={X_MIN} y={0} width={X_MAX - X_MIN} height={viewH} fill="url(#ta-sky)" />
+      <rect x={X_MIN} y={viewH - 3.2} width={X_MAX - X_MIN} height={3.2} fill="url(#ta-glow)" />
+      {SKY_DUST.map(([fx, fy, o], i) => (
+        <circle
+          key={i}
+          cx={X_MIN + 0.3 + fx * 0.8}
+          cy={yFor(maxZ + 0.6 + fy * (SKY_CELLS - 1.2))}
+          r={0.05}
+          fill="#5eead4"
+          opacity={o}
+        />
       ))}
+
+      {/* Column guide lines over the floor span */}
+      {Array.from({ length: GRID_WIDTH + 1 }, (_, i) => (
+        <line
+          key={`g${i}`}
+          x1={i}
+          y1={yFor(1)}
+          x2={i}
+          y2={yFor(Math.min(viewH - 0.4, Math.max(3, maxZ + 2.5)))}
+          stroke="rgba(45,212,191,0.10)"
+          strokeWidth={0.02}
+        />
+      ))}
+
+      {/* The floor line (z 0..1) — a thin platform pinned to the bottom of
+          the stage; the bright top edge reads as THE LINE blocks stand on */}
+      <rect
+        x={0}
+        y={yFor(1)}
+        width={GRID_WIDTH}
+        height={1}
+        fill="url(#ta-platform)"
+        stroke="rgba(94,234,212,0.85)"
+        strokeWidth={0.06}
+        rx={0.08}
+      />
+      <line
+        x1={0}
+        y1={yFor(1)}
+        x2={GRID_WIDTH}
+        y2={yFor(1)}
+        stroke="#9dfff0"
+        strokeWidth={0.1}
+        opacity={0.95}
+      />
+      {Array.from({ length: GRID_WIDTH - 1 }, (_, i) => (
+        <line
+          key={`t${i}`}
+          x1={i + 1}
+          y1={yFor(1.04)}
+          x2={i + 1}
+          y2={yFor(0.96)}
+          stroke="rgba(1,22,30,0.7)"
+          strokeWidth={0.05}
+        />
+      ))}
+      {/* Cliff edge glow where the platform meets the void below */}
+      <line x1={0} y1={yFor(1.05)} x2={0} y2={yFor(1.8)} stroke="rgba(94,234,212,0.2)" strokeWidth={0.05} />
+      <line x1={GRID_WIDTH} y1={yFor(1.05)} x2={GRID_WIDTH} y2={yFor(1.8)} stroke="rgba(94,234,212,0.2)" strokeWidth={0.05} />
+
+      {/* Tower blocks (oldest first so newer blocks paint above) */}
+      {sortedBlocks.map((b, i) => {
+        const color = BLOCK_PALETTE[i % BLOCK_PALETTE.length];
+        return (b.cells || []).map((c: any) => (
+          <rect
+            key={`${b.id}-${c.x}:${c.z}`}
+            x={c.x + 0.03}
+            y={cellY(c.z) + 0.03}
+            width={0.94}
+            height={0.94}
+            fill={color}
+            opacity={0.95}
+            stroke="rgba(255,255,255,0.35)"
+            strokeWidth={0.04}
+            rx={0.06}
+          />
+        ));
+      })}
+
+      {/* Ghost preview of the selected block — red when the drop would fall */}
+      {ghost &&
+        (ghost.cells || []).map((c: any, i: number) => (
+          <rect
+            key={`g${i}`}
+            x={c.x + 0.03}
+            y={cellY(c.z) + 0.03}
+            width={0.94}
+            height={0.94}
+            fill={ghost.willFall ? "#ff4d6d" : "#ffffff"}
+            opacity={ghost.willFall ? 0.4 : 0.2}
+            stroke={ghost.willFall ? "#ff8fa3" : "#ffffff"}
+            strokeWidth={0.045}
+            rx={0.06}
+          />
+        ))}
+      {ghost?.willFall && ghost.cells.length > 0 && (
+        <text
+          x={(ghostMinX + ghostMaxX + 1) / 2}
+          y={yFor(ghostMaxZ + 1.9)}
+          textAnchor="middle"
+          fontSize={0.52}
+          fill="#ff8fa3"
+          stroke="#3b0312"
+          strokeWidth={0.03}
+          fontWeight={900}
+          letterSpacing={0.04}
+        >
+          WILL FALL
+        </text>
+      )}
+
+      {/* Falling drop animation — the block plummets from the top of the
+          stage (spawned above the world, just offscreen) to its landing
+          spot, slipping sideways (slideDx) into its final seat; a stable
+          landing bounces once (contact), and doomed drops fall to the floor
+          line and dissolve into the void — nothing leaves the stage.
+          Blocks shocked off the tower (extra) tumble in place and vanish. */}
+      {falling && (
+        <>
+          {falling.extra.length > 0 && (
+            <motion.g
+              key={`shock-${falling.key}`}
+              initial={{ y: 0, opacity: 1 }}
+              animate={{ y: 3.4, opacity: 0 }}
+              transition={{ delay: 0.42, duration: 0.55, ease: "easeIn" }}
+            >
+              {(falling.extra || []).map((c: any, i: number) => (
+                <rect
+                  key={i}
+                  x={c.x + 0.03}
+                  y={cellY(c.z) + 0.03}
+                  width={0.94}
+                  height={0.94}
+                  fill="#ff9f43"
+                  opacity={0.9}
+                  stroke="rgba(255,255,255,0.5)"
+                  strokeWidth={0.04}
+                  rx={0.06}
+                />
+              ))}
+            </motion.g>
+          )}
+          <motion.g
+            key={`fall-${falling.key}`}
+            initial={{ y: -viewH, x: falling.slideDx, opacity: 1 }}
+            animate={
+              falling.willFall
+                ? { y: [0, fallDropTarget], x: [0, 0], opacity: [1, 1, 0, 0] }
+                : { y: [0, -0.35, 0], x: [0, 0, 0], opacity: 1 }
+            }
+            transition={
+              falling.willFall
+                ? { duration: 1.15, ease: "easeIn", times: [0, 0.6, 0.78, 1] }
+                : { duration: 0.62, ease: ["easeIn", "easeOut", "easeOut"], times: [0, 0.86, 1] }
+            }
+          >
+            {(falling.cells || []).map((c: any, i: number) => (
+              <rect
+                key={i}
+                x={c.x + 0.03}
+                y={cellY(c.z) + 0.03}
+                width={0.94}
+                height={0.94}
+                fill={falling.willFall ? "#ff4d6d" : "#a7f3d0"}
+                opacity={0.92}
+                stroke="rgba(255,255,255,0.65)"
+                strokeWidth={0.04}
+                rx={0.06}
+              />
+            ))}
+          </motion.g>
+        </>
+      )}
+
+      {/* Aim cursor at the top of the stage + drop guide line (fruit-merge
+          feel): move left/right, R rotates, click/Enter drops from here. */}
+      {cursorCells.length > 0 && (
+        <>
+          <line
+            x1={cursorCenterX}
+            y1={yFor(cursorZ0 - 0.4)}
+            x2={cursorCenterX}
+            y2={yFor(guideBottomZ)}
+            stroke={cursor?.danger ? "rgba(255,77,109,0.35)" : "rgba(148,233,255,0.28)"}
+            strokeWidth={0.045}
+            strokeDasharray="0.18 0.18"
+          />
+          {cursorCells.map((c: any, i: number) => (
+            <rect
+              key={`cur${i}`}
+              x={c.x + 0.03}
+              y={cellY(c.z) + 0.03}
+              width={0.94}
+              height={0.94}
+              fill={cursor?.danger ? "#ff4d6d" : "#67e8f9"}
+              opacity={0.75}
+              stroke="#ffffff"
+              strokeWidth={0.05}
+              rx={0.08}
+            />
+          ))}
+        </>
+      )}
     </svg>
+    </motion.div>
   );
 }
 
@@ -289,16 +513,78 @@ export default function TowerArenaMatchPage() {
   const [placing, setPlacing] = useState(false);
   // Ready gate
   const [readyBusy, setReadyBusy] = useState(false);
+  // Free-play pause
+  const [pauseBusy, setPauseBusy] = useState(false);
   // Events
   const [collapseBanner, setCollapseBanner] = useState<any>(null);
   const [showResults, setShowResults] = useState(false);
-  const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<string> | null>(null);
-  const prevTowerLen = useRef<number | null>(null);
+  const [fallingBlock, setFallingBlock] = useState<{
+    cells: any[]; // the dropped block's final cells (server-resolved)
+    extra: any[]; // shed blocks' cells, pre-collapse positions (contact shock)
+    willFall: boolean;
+    slideDx: number; // aim column → resolved column (the slippery slip)
+    key: number;
+  } | null>(null);
+  // Bump to play the impact shake on the stage when a drop lands (contact).
+  const [impactKey, setImpactKey] = useState(0);
+  // Blocks hidden from the tower render while the sky-drop animation plays
+  // (the dropped block + any shocked blocks that shed this placement).
+  const [hiddenBlockIds, setHiddenBlockIds] = useState<string[]>([]);
+  // blockId of the drop this client animated optimistically at submit time;
+  // used to skip re-animating it when the authoritative refresh arrives.
+  const ownAnimBlockId = useRef<string | null>(null);
+  const fallingKey = useRef(0);
+  const fallTimer = useRef<number | null>(null);
+  const bannerTimer = useRef<number | null>(null);
+  const prevPlacementsLen = useRef<number | null>(null);
   const prevTurnUserId = useRef<string | null>(null);
   // Always-fresh `load` for socket handlers (the effect registers listeners
   // once per socket; a ref keeps them calling the LATEST render's load so
   // `me`/state reads inside are never stale).
   const loadRef = useRef<() => Promise<void>>(async () => {});
+
+  // Convenience: a dropped block that fully missed the floor resolves with
+  // EMPTY cells (the engine's "fell into the void" marker). For animation we
+  // still need visible cells, so synthesize them above the tower at the aim
+  // column — the block visibly tumbles straight down into the abyss.
+  const visibleCellsFor = (shape: BlockShape, x: number, rotation: number, fallbackZ: number) => {
+    const az = Math.max(1, fallbackZ);
+    return blockCells(shape, rotation).map(([rx, rz]) => ({
+      x: x + rx,
+      depth: 0,
+      z: az + rz,
+    }));
+  };
+
+  // Play the drop-from-the-sky animation for a placement (local or remote).
+  // `entry` is the server-persisted placement log: it carries the FINAL
+  // resolved cells (incl. any slip) and the shed blocks' cells, so every
+  // viewer — bots included — sees the exact same fall from the top of the
+  // stage, the same slippery slip, and the same contact-shock shed.
+  const animateDrop = (entry: any) => {
+    const maxZ = (match?.towerState ?? []).reduce(
+      (m: number, b: any) => Math.max(m, ...(b.cells || []).map((c: any) => c.z)),
+      0,
+    );
+    const cells = Array.isArray(entry.placedCells) && entry.placedCells.length > 0
+      ? entry.placedCells
+      : visibleCellsFor(entry.shape, entry.positionX, entry.rotation ?? 0, maxZ + 2);
+    const slideDx = (entry.positionX ?? 0) - (entry.resolvedX ?? entry.positionX ?? 0);
+    const extra = (entry.removedBlocks || [])
+      .filter((r: any) => r.id !== entry.blockId)
+      .flatMap((r: any) => r.cells || []);
+    const willFall = Boolean(entry.collapsed);
+    setHiddenBlockIds(willFall ? (entry.removedBlockIds || [entry.blockId]).slice() : [entry.blockId]);
+    fallingKey.current += 1;
+    setFallingBlock({ cells, extra, willFall, slideDx, key: fallingKey.current });
+    if (fallTimer.current) window.clearTimeout(fallTimer.current);
+    fallTimer.current = window.setTimeout(() => {
+      setFallingBlock(null);
+      setHiddenBlockIds([]);
+      // Contact + shock: the stage shakes when the drop (or collapse) lands.
+      setImpactKey((k) => k + 1);
+    }, willFall ? 1250 : 780);
+  };
 
   const load = async () => {
     try {
@@ -318,27 +604,31 @@ export default function TowerArenaMatchPage() {
       // neither place nor reserve.
       if (data.me) setMe(data.me);
 
-      // Detect a fresh collapse (the tower thus shrinks below its previous
-      // stable length) to trigger the elimination animation.
-      const towerLen = Array.isArray(data.match?.towerState) ? data.match.towerState.length : 0;
-      if (prevTowerLen.current !== null && prevTowerLen.current > towerLen && data.match?.status === "active") {
-        // Which player just got eliminated? The most recently-eliminated one
-        // (the players array holds every eliminated seat in seat order).
-        const elim = (data.players || [])
-          .filter((p: any) => p.status === "eliminated")
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.eliminatedAt || 0).getTime() - new Date(a.eliminatedAt || 0).getTime(),
-          )[0];
-        setCollapseBanner({ name: elim?.name || "A player", placement: elim?.placement });
-        setCollapsedBlockIds(new Set(data.match.placements?.slice(-1)?.[0]?.removedBlockIds || []));
-        playCrash();
-        setTimeout(() => {
-          setCollapseBanner(null);
-          setCollapsedBlockIds(null);
-        }, 2400);
+      // Detect a fresh void fall: the placements log grew and its newest
+      // entry is a collapsed drop → the dropping player is eliminated.
+      const plLen = Array.isArray(data.match?.placements) ? data.match.placements.length : 0;
+      if (
+        prevPlacementsLen.current !== null &&
+        plLen > prevPlacementsLen.current &&
+        data.match?.status === "active"
+      ) {
+        const last = data.match.placements[plLen - 1];
+        if (last?.collapsed) {
+          const elim = (data.players || []).find((p: any) => p.userId === last.userId);
+          setCollapseBanner({ name: elim?.name || "A player", placement: elim?.placement ?? null });
+          playCrash();
+          if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
+          bannerTimer.current = window.setTimeout(() => setCollapseBanner(null), 2600);
+        }
+      // Animate EVERY drop from the sky — bots' and other players' blocks
+      // included — skipping the one we already animated at submit time.
+      if (last && last.blockId !== ownAnimBlockId.current) {
+        animateDrop(last);
+      } else if (last) {
+        ownAnimBlockId.current = null;
       }
-      prevTowerLen.current = towerLen;
+      }
+      prevPlacementsLen.current = plLen;
 
       // Turn-switch chime when the turn holder changes on an active match.
       const turnId = data.match?.currentTurnPlayerId ?? null;
@@ -439,6 +729,14 @@ export default function TowerArenaMatchPage() {
     if (isFinished && !showResults) setShowResults(true);
   }, [isFinished, showResults]);
 
+  // Cleanup timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
+      if (fallTimer.current) window.clearTimeout(fallTimer.current);
+    };
+  }, []);
+
   const leave = async () => {
     setLeaving(true);
     try {
@@ -473,13 +771,14 @@ export default function TowerArenaMatchPage() {
   };
 
   // AI turns: when a bot holds the placement turn, ask the server to play it
-  // immediately instead of waiting for the 8s turn window to time out via
+  // immediately instead of waiting for the 60s turn window to time out via
   // the poll. This is what makes the tower visibly grow on the human's
   // screen while "the bot is placing". Fires once per turn number.
   const aiTurnFiredTurn = useRef<number | null>(null);
   useEffect(() => {
     if (!match || match.status !== "active") return;
     if (match.phase !== "placement") return;
+    if (match.paused) return; // nothing moves while paused
     const holder = players.find((p) => p.userId === match.currentTurnPlayerId);
     if (!holder?.isAi) return;
     if (aiTurnFiredTurn.current === match.turnNumber) return;
@@ -492,12 +791,13 @@ export default function TowerArenaMatchPage() {
       // Transient failure — the poll timeout fallback still resolves the bot.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [match?.status, match?.phase, match?.currentTurnPlayerId, match?.turnNumber]);
+  }, [match?.status, match?.phase, match?.currentTurnPlayerId, match?.turnNumber, match?.paused]);
 
   // ── Derivation for the active board ──────────────────────────────
   const isActive = match?.status === "active";
+  const isPaused = Boolean(match?.paused);
   const phase = match?.phase; // "reserve" | "placement"
-  const isMyTurn = isActive && phase === "placement" && match?.currentTurnPlayerId === me?.userId && me?.status !== "eliminated";
+  const isMyTurn = isActive && !isPaused && phase === "placement" && match?.currentTurnPlayerId === me?.userId && me?.status !== "eliminated";
 
   const myHeldReserve = me?.reservedBlock || null; // { blockId, shape }
 
@@ -507,40 +807,68 @@ export default function TowerArenaMatchPage() {
     return c;
   }, [match?.resourcePool]);
 
+  const poolTotal = useMemo(
+    () => (match?.resourcePool || []).length,
+    [match?.resourcePool],
+  );
+
+  // Ghost preview: run the FULL placement outcome client-side (deterministic
+  // — the same pure engine the server resolves) so the landing shows where
+  // the block actually settles after its slippery slip, and WILL FALL warns
+  // about BOTH a doomed drop and a contact-shock shed (weight tipping a
+  // leaning stack into the void).
   const ghostBlock = useMemo(() => {
-    if (!isMyTurn || !selectedShape) return undefined;
-    const extent = footprintFor(selectedShape, rotation);
-    if (!fitsInGrid(extent, positionX, 0)) return undefined;
-    try {
-      return applyPlacementBlock(match.towerState || [], {
-        shape: selectedShape,
-        x: positionX,
-        depth: centerDepthFor(selectedShape, rotation),
-        rotation,
-        blockId: "ghost",
-        placedByUserId: me?.userId,
-        turnNumber: match.turnNumber + 1,
-      });
-    } catch {
-      return undefined;
-    }
+    if (!isMyTurn || !selectedShape) return null;
+    const tower = match?.towerState || [];
+    const out = simulatePlacement(tower, {
+      shape: selectedShape,
+      x: positionX,
+      rotation,
+      blockId: "ghost",
+      placedByUserId: me?.userId,
+      turnNumber: (match?.turnNumber || 0) + 1,
+    });
+    const maxZ = tower.reduce((m: number, b: any) => Math.max(m, ...(b.cells || []).map((c: any) => c.z)), 0);
+    const cells =
+      out.placedBlock && out.placedBlock.cells.length > 0
+        ? out.placedBlock.cells
+        : visibleCellsFor(selectedShape, positionX, rotation, maxZ + 2);
+    return { cells, willFall: out.collapsed, slideDx: positionX - out.finalX };
   }, [isMyTurn, selectedShape, rotation, positionX, match, me]);
 
   const countdown = useServerCountdown(match?.turnDeadline ?? null);
-  const countdownUrgent = isActive && countdown <= 3.5;
+  const countdownUrgent = isActive && !isPaused && countdown <= 3.5;
+
+  // ── Free-play pause ──────────────────────────────────────────────
+  // Only human-vs-AI matches can pause. The server freezes the turn engine
+  // while paused and hands back a fresh window on resume, so the deadline
+  // never burns a turn.
+  const togglePause = async () => {
+    if (pauseBusy || !match?.isAi || !isActive) return;
+    setPauseBusy(true);
+    try {
+      await fetch("/api/tower-arena/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId, paused: !isPaused }),
+      });
+      loadRef.current();
+    } finally {
+      setPauseBusy(false);
+    }
+  };
 
   // ── Handlers ─────────────────────────────────────────────────────
 
   const clampX = (shape: BlockShape, rot: number, x: number) => {
-    const extent = footprintFor(shape, rot);
-    const maxX = GRID_WIDTH - Math.max(...extent.map(([a]) => a)) - 1;
-    return Math.max(0, Math.min(x, maxX));
+    const { minX, maxX } = dropRangeFor(shape, rot);
+    return Math.max(minX, Math.min(x, maxX));
   };
 
   const selectShape = (shape: BlockShape) => {
     setSelectedShape(shape);
     setRotation(0);
-    setPositionX(clampX(shape, 0, Math.floor(GRID_WIDTH / 2)));
+    setPositionX(centerXFor(shape, 0));
   };
 
   const rotate = () => {
@@ -577,13 +905,45 @@ export default function TowerArenaMatchPage() {
     setPlacing(false);
   };
 
+  // Drop the block from the sky: run the full engine outcome locally (same
+  // deterministic math the server resolves) so the animation shows the slip,
+  // the landing, and any contact-shock shed IMMEDIATELY — then submit. The
+  // authoritative refresh skips re-animating this block (ownAnimBlockId).
   const drop = async () => {
-    if (!isMyTurn || !selectedShape) return;
+    if (!isMyTurn || !selectedShape || placing) return;
+    const tower = match?.towerState || [];
+    const blockId = `b:${(match?.turnNumber || 0) + 1}`;
+    const out = simulatePlacement(tower, {
+      shape: selectedShape,
+      x: positionX,
+      rotation,
+      blockId,
+      placedByUserId: me?.userId,
+      turnNumber: (match?.turnNumber || 0) + 1,
+    });
+    const maxZ = tower.reduce((m: number, b: any) => Math.max(m, ...(b.cells || []).map((c: any) => c.z)), 0);
+    const cells =
+      out.placedBlock && out.placedBlock.cells.length > 0
+        ? out.placedBlock.cells
+        : visibleCellsFor(selectedShape, positionX, rotation, maxZ + 2);
+    const extra = (out.fallenBlocks || []).filter((b: any) => b.id !== blockId).flatMap((b: any) => b.cells || []);
+    const willFall = out.collapsed;
+    ownAnimBlockId.current = blockId;
+    setHiddenBlockIds(willFall ? out.removedBlockIds.slice() : [blockId]);
+    fallingKey.current += 1;
+    setFallingBlock({ cells, extra, willFall, slideDx: positionX - out.finalX, key: fallingKey.current });
+    if (fallTimer.current) window.clearTimeout(fallTimer.current);
+    fallTimer.current = window.setTimeout(() => {
+      setFallingBlock(null);
+      setHiddenBlockIds([]);
+      // The landing (or collapse) hits the tower — contact shock.
+      setImpactKey((k) => k + 1);
+    }, willFall ? 1250 : 780);
     await place(selectedShape, positionX, rotation);
   };
 
   const reserveBlock = async () => {
-    if (reserving || !reserveTargetId) return;
+    if (reserving || !reserveTargetId || isPaused) return;
     setReserving(true);
     try {
       const res = await fetch("/api/tower-arena/reserve-block", {
@@ -599,31 +959,21 @@ export default function TowerArenaMatchPage() {
     }
   };
 
-  const useReserve = async () => {
-    if (!isMyTurn || !myHeldReserve || placing) return;
-    // Visual preview, then submit with explicit args (independent of the
-    // pending re-render so the hold is always placed).
-    const rot = 0;
-    const x = clampX(myHeldReserve.shape, 0, Math.floor(GRID_WIDTH / 2));
-    setSelectedShape(myHeldReserve.shape);
-    setRotation(rot);
-    setPositionX(x);
-    await place(myHeldReserve.shape, x, rot);
-  };
-
-  // Keyboard controls
+  // Keyboard controls — fruit-merge aim: ◀ ▶ (or A/D) move the cursor at
+  // the top of the board, R rotates 90°, Enter/Space/▲ drops.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!isMyTurn || !selectedShape) return;
-      if (e.key === "ArrowLeft") { e.preventDefault(); nudgeX(-1); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); nudgeX(1); }
-      else if (e.key.toLowerCase() === "r" || e.key.toLowerCase() === " ") { e.preventDefault(); rotate(); }
-      else if (e.key === "Enter" || e.key === "ArrowUp") { e.preventDefault(); drop(); }
+      if (!isMyTurn || !selectedShape || placing) return;
+      const k = e.key.toLowerCase();
+      if (e.key === "ArrowLeft" || k === "a") { e.preventDefault(); nudgeX(-1); }
+      else if (e.key === "ArrowRight" || k === "d") { e.preventDefault(); nudgeX(1); }
+      else if (k === "r" || k === " ") { e.preventDefault(); rotate(); }
+      else if (e.key === "Enter" || e.key === "ArrowUp") { e.preventDefault(); void drop(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMyTurn, selectedShape]);
+  }, [isMyTurn, selectedShape, placing]);
 
   const seats = useMemo(
     () =>
@@ -681,7 +1031,7 @@ export default function TowerArenaMatchPage() {
             <h1 className="mt-3 bg-gradient-to-r from-cyan-300 to-cyan-500 bg-clip-text text-3xl font-black text-transparent">
               Tower Arena
             </h1>
-            <p className="mt-1 text-sm text-white/60">Shared Tower Survival</p>
+            <p className="mt-1 text-sm text-white/60">Drop blocks onto a tiny floating platform — don't let yours fall into the void.</p>
           </div>
           <div className="rounded-2xl border border-cyan-800 bg-black/30 p-6">
             <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3">
@@ -818,32 +1168,46 @@ export default function TowerArenaMatchPage() {
   const isReservePhase = isActive && phase === "reserve";
   const canReserve =
     isReservePhase &&
+    !isPaused &&
     me?.status !== "eliminated" &&
     !myHeldReserve &&
     Number(me?.reserveUsesRemaining ?? 0) > 0;
 
-  // ── Creator Mode arrangement (normal rendering unchanged) ───────────
-  // The recording viewport wraps the LIVE board only — the waiting room
-  // and the results screen render before/after real gameplay, so nothing
-  // is recorded on them. Portrait (9:16) uses the phone-style stacked
-  // arrangement (compact header, tower centre stage, controls + players
-  // pinned below); landscape (16:9) / square (1:1) reuse the standard
-  // desktop grid inside the frame.
-
-  // Tower stage: isometric tower + collapse banner (no turn controls).
+  // Tower stage: 2D side-view tower + void, aim cursor at the top (click the
+  // stage to drop), ghost preview + drop/shock animation.
+  const aiming = Boolean(isMyTurn && selectedShape);
   const towerInnerNode = (
+    // Fixed-height stage: the floor line renders pinned to its bottom edge.
     <div
-      className="relative flex min-h-[340px] items-center justify-center overflow-hidden rounded-xl"
+      className="relative flex h-[380px] items-center justify-center overflow-hidden rounded-xl sm:h-[420px]"
       style={{
         background:
-          "radial-gradient(circle at 50% 60%, rgba(0,229,255,0.10), transparent 60%), repeating-linear-gradient(45deg, rgba(0,229,255,0.02) 0 2px, transparent 2px 18px)",
+          "radial-gradient(circle at 50% 95%, rgba(45,212,191,0.08), transparent 60%), linear-gradient(#070916, #010205)",
       }}
     >
-      {/* StaticTower */}
-      <div className="w-full max-h-[420px]">
-        <TowerView tower={match?.towerState || []} ghost={ghostBlock} collapsedBlocks={collapsedBlockIds} />
+      {/* The svg fills the stage exactly (h-full) and is width-capped so the
+          small floor line never spans the whole screen. Clicking the stage
+          drops the aimed block from where the cursor sits (fruit-merge). */}
+      <div className="mx-auto h-full w-full max-w-[560px]">
+        <TowerScene
+          tower={(match?.towerState || []).filter((b: any) => !hiddenBlockIds.includes(b.id))}
+          ghost={ghostBlock}
+          falling={fallingBlock}
+          cursor={aiming && ghostBlock ? { shape: selectedShape as BlockShape, x: positionX, rotation, danger: ghostBlock.willFall } : null}
+          impact={impactKey}
+          onStageClick={aiming ? () => void drop() : undefined}
+        />
       </div>
-      {/* Collapse banner */}
+      {/* Aim hint strip (own placement turn only) */}
+      {aiming && (
+        <div className="pointer-events-none absolute left-0 right-0 top-2 flex justify-center">
+          <p className="rounded-full border border-cyan-400/30 bg-black/60 px-3 py-1 text-[11px] font-bold text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.25)]">
+            ◀ ▶ aim · <span className="font-black">R</span> rotate · click /
+            <span className="font-black">↵</span> to drop
+          </p>
+        </div>
+      )}
+      {/* Void-fall banner */}
       <AnimatePresence>
         {collapseBanner && (
           <motion.div
@@ -856,17 +1220,36 @@ export default function TowerArenaMatchPage() {
               <p className="text-2xl font-black text-red-300">{collapseBanner.name.toUpperCase()}</p>
               <p className="mt-1 text-sm font-bold text-white">ELIMINATED</p>
               <p className="mt-1 text-xs text-red-200">
-                {ordinal(collapseBanner.placement)} place
+                Their block fell into the void
+                {collapseBanner.placement ? ` · ${ordinal(collapseBanner.placement)} place` : ""}
               </p>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Free-play pause overlay — the stage freezes until resumed */}
+      {isPaused && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/75 backdrop-blur-[2px]">
+          <p className="text-2xl font-black uppercase tracking-[0.35em] text-amber-300">Paused</p>
+          <p className="max-w-[260px] text-center text-xs text-white/60">
+            Free-play match paused — the tower and timer are frozen until you resume.
+          </p>
+          <button
+            type="button"
+            onClick={togglePause}
+            disabled={pauseBusy}
+            className="rounded-lg bg-amber-500 px-5 py-2 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-50"
+          >
+            {pauseBusy ? "…" : "Resume"}
+          </button>
+        </div>
+      )}
     </div>
   );
 
   // Turn controls: reserve panel, placement controls, or the
-  // "opponent placing" commentary (exactly as in the normal layout).
+  // "opponent dropping" commentary.
   const turnControlsNode = (
     <>
       {/* Reserve phase banner/controls */}
@@ -881,6 +1264,7 @@ export default function TowerArenaMatchPage() {
           onReserve={reserveBlock}
           busy={reserving}
           countdown={countdown}
+          paused={isPaused}
         />
       )}
 
@@ -889,6 +1273,7 @@ export default function TowerArenaMatchPage() {
         <PlacementControls
           selectedShape={selectedShape}
           shapeCounts={shapeCounts}
+          poolTotal={poolTotal}
           rotation={rotation}
           positionX={positionX}
           myHeldReserve={myHeldReserve}
@@ -896,13 +1281,12 @@ export default function TowerArenaMatchPage() {
           onRotate={rotate}
           onNudge={nudgeX}
           onDrop={drop}
-          onUseReserve={useReserve}
           placing={placing}
         />
       )}
       {isActive && !isMyTurn && !isReservePhase && (
         <p className="mt-4 text-center text-sm text-white/60">
-          {currentTurnName} is placing… {!turnHolder?.isAi && turnHolder?.userId !== me?.userId ? "(you may tap blocks to prep your next move)" : ""}
+          {currentTurnName} is dropping… {!turnHolder?.isAi && turnHolder?.userId !== me?.userId ? "(watch the tower — every block changes the balance)" : ""}
         </p>
       )}
     </>
@@ -932,7 +1316,10 @@ export default function TowerArenaMatchPage() {
           <p className="text-[11px] uppercase tracking-widest text-white/50">Current</p>
           <p className="text-sm font-bold text-cyan-200">{isReservePhase ? "Reserve Phase" : currentTurnName}</p>
         </div>
-        <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} />
+        {match?.isAi && isActive ? (
+          <PauseChip paused={isPaused} busy={pauseBusy} onToggle={togglePause} />
+        ) : null}
+        <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
         <div className="text-right">
           <p className="text-[11px] uppercase tracking-widest text-white/50">Players</p>
           <p className="text-sm font-bold text-white">
@@ -973,7 +1360,7 @@ export default function TowerArenaMatchPage() {
                     {eliminated
                       ? `Eliminated · ${ordinal(p.placement)}`
                       : isActive && p.userId === match?.currentTurnPlayerId
-                        ? "Placing…"
+                        ? "Dropping…"
                         : "Active"}
                   </p>
                 </div>
@@ -1016,7 +1403,7 @@ export default function TowerArenaMatchPage() {
     </div>
   );
 
-  // Normal / landscape / square game body (unchanged from before).
+  // Desktop / landscape / square game body.
   const pageBody = (
     <div>
       {topBarNode}
@@ -1054,12 +1441,15 @@ export default function TowerArenaMatchPage() {
                 <IconTrophy size={12} /> Final Duel
               </span>
             ) : null}
-            <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} />
+            {match?.isAi && isActive ? (
+              <PauseChip paused={isPaused} busy={pauseBusy} onToggle={togglePause} />
+            ) : null}
+            <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
           </div>
         </div>
         <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
           <span className="truncate text-cyan-200">
-            {isReservePhase ? "Reserve Phase" : `${currentTurnName} placing…`}
+            {isReservePhase ? "Reserve Phase" : `${currentTurnName} dropping…`}
           </span>
           <span className="shrink-0 text-white/60">
             {activePlayers.length} / {match?.maxPlayers} players
@@ -1117,9 +1507,23 @@ export default function TowerArenaMatchPage() {
 
 // ── Timer ──────────────────────────────────────────────────────────────
 
-function Timer({ countdown, urgent, isActive }: { countdown: number; urgent: boolean; isActive: boolean }) {
+function fmtCountdown(secs: number): string {
+  const s = Math.max(0, Math.ceil(secs));
+  if (s >= 60) return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return `${s}s`;
+}
+
+function Timer({ countdown, urgent, isActive, paused }: { countdown: number; urgent: boolean; isActive: boolean; paused?: boolean }) {
   const seconds = Math.max(0, Math.ceil(countdown));
   const tenths = Math.max(0, Math.floor((countdown - seconds + 1) * 10));
+  if (paused) {
+    return (
+      <div className="flex animate-pulse flex-col items-center rounded-xl border border-amber-500/60 bg-amber-500/15 px-3 py-1">
+        <span className="text-[10px] uppercase tracking-widest text-white/50">Timer</span>
+        <span className="font-mono text-xl font-black tabular-nums text-amber-300">PAUSED</span>
+      </div>
+    );
+  }
   return (
     <div
       className={`flex flex-col items-center rounded-xl border px-3 py-1 ${
@@ -1132,24 +1536,41 @@ function Timer({ countdown, urgent, isActive }: { countdown: number; urgent: boo
           urgent ? "animate-pulse text-red-300" : "text-cyan-200"
         }`}
       >
-        {urgent ? `${seconds}.${tenths}` : `${Math.max(0, Math.ceil(countdown))}:00`}
+        {urgent && isActive ? `${seconds}.${tenths}` : fmtCountdown(seconds)}
       </span>
     </div>
   );
 }
 
+// Free-play pause toggle (vs-AI matches only).
+function PauseChip({ paused, busy, onToggle }: { paused: boolean; busy: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={busy}
+      className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-black uppercase tracking-widest transition disabled:opacity-50 ${
+        paused
+          ? "border-amber-500/60 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+          : "border-cyan-700/40 bg-black/40 text-cyan-200 hover:border-cyan-500/50"
+      }`}
+    >
+      {paused ? <IconPlayerPlay size={14} /> : <IconPlayerPause size={14} />}
+      {busy ? "…" : paused ? "Resume" : "Pause"}
+    </button>
+  );
+}
+
 // ── Reserve panel ──────────────────────────────────────────────────────
 
-// Small 2D footprint glyph of a block shape — makes the pool pieces visible
+// Small side-view glyph of a block shape — makes the pool pieces visible
 // ("the blocks are actually there") instead of only text labels.
 function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) {
-  const cells = footprintFor(shape, 0);
-  const minX = Math.min(...cells.map((c) => c[0]));
-  const minD = Math.min(...cells.map((c) => c[1]));
-  const maxX = Math.max(...cells.map((c) => c[0]));
-  const maxD = Math.max(...cells.map((c) => c[1]));
-  const w = maxX - minX + 1;
-  const h = maxD - minD + 1;
+  const cells = blockCells(shape, 0);
+  const maxZ = Math.max(...cells.map(([, z]) => z));
+  const maxX = Math.max(...cells.map(([x]) => x));
+  const w = maxX + 1;
+  const h = maxZ + 1;
   const cell = size / Math.max(w, h);
   const color = BLOCK_PALETTE[BLOCK_SHAPES.indexOf(shape) % BLOCK_PALETTE.length];
   return (
@@ -1160,16 +1581,17 @@ function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) 
       className="shrink-0"
       aria-hidden
     >
-      {cells.map(([x, d], i) => (
+      {cells.map(([x, z], i) => (
         <rect
           key={i}
-          x={(x - minX) * cell}
-          y={(d - minD) * cell}
-          width={cell}
-          height={cell}
+          x={x * cell + 0.4}
+          y={(h - 1 - z) * cell + 0.4}
+          width={cell - 0.8}
+          height={cell - 0.8}
           fill={color}
           stroke="rgba(255,255,255,0.45)"
           strokeWidth={0.6}
+          rx={1}
         />
       ))}
     </svg>
@@ -1187,23 +1609,34 @@ function ReservePanel(props: any) {
     onReserve,
     busy,
     countdown,
+    paused = false,
   } = props;
   // Every pool piece is a distinct reservable block (each with its own id).
   const pieces = pools as { id: string; shape: BlockShape }[];
   // Per-shape counts for the summary line.
   const counts: Record<string, number> = {};
   for (const p of pieces) counts[p.shape] = (counts[p.shape] || 0) + 1;
+  if (paused) {
+    return (
+      <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+        <p className="text-sm font-black text-amber-300">Reserve paused</p>
+        <p className="mt-1 text-xs text-white/60">
+          The match is paused — the resource window resumes when you do.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="mt-4 rounded-xl border border-cyan-700/40 bg-black/30 p-4">
       <div className="mb-2 flex items-center justify-between">
         <div>
           <p className="text-sm font-black text-cyan-200">Reserve a block</p>
           <p className="text-xs text-white/50">
-            Pick one block from the shared pool — it becomes private, visible only to you.
+            Pick one block from the shared pool — it becomes private, visible only to you (limited uses).
           </p>
         </div>
         <div className="rounded-lg bg-black/50 px-2 py-1 font-mono text-sm font-bold text-cyan-300">
-          {Math.max(0, Math.ceil(countdown))}s
+          {fmtCountdown(countdown)}
         </div>
       </div>
 
@@ -1263,6 +1696,7 @@ function PlacementControls(props: any) {
   const {
     selectedShape,
     shapeCounts,
+    poolTotal,
     rotation,
     positionX,
     myHeldReserve,
@@ -1270,61 +1704,81 @@ function PlacementControls(props: any) {
     onRotate,
     onNudge,
     onDrop,
-    onUseReserve,
     placing,
   } = props;
 
-  const available = (BLOCK_SHAPES).filter((s) => (shapeCounts[s] || 0) > 0);
+  const reserveShape: BlockShape | null = myHeldReserve?.shape ?? null;
+  const available = BLOCK_SHAPES.filter((s) => (shapeCounts[s] || 0) > 0 || s === reserveShape);
 
   return (
     <div className="mt-4 rounded-xl border border-cyan-700/40 bg-black/30 p-4">
-      {/* Reserves */}
-      {myHeldReserve && (
-        <div className="mb-3 flex items-center gap-3 rounded-lg border border-emerald-500/40 bg-emerald-950/20 px-3 py-2">
-          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Your Reserve</span>
-          <button
-            type="button"
-            onClick={onUseReserve}
-            disabled={placing}
-            className="rounded border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-1 text-sm font-bold text-emerald-200 hover:bg-emerald-500/25"
-          >
-            Use {SHAPE_LABEL[myHeldReserve.shape]}
-          </button>
-        </div>
-      )}
+      <p className="mb-2 text-xs font-semibold text-white/70">
+        Choose a block to drop — it appears at the top of the tower.
+      </p>
 
+      {/* Block chooser: the shared pool (limited resource) + your private
+          reserved block as a first-class option. Selecting either enters
+          aim mode: ◀ ▶ / A-D aim, R rotates 90°, click or ↵ drops. */}
       <div className="flex flex-wrap items-center gap-2">
-        {available.map((s) => (
+        {reserveShape && (
           <button
-            key={s}
+            key={`res-${reserveShape}`}
             type="button"
-            onClick={() => onSelect(s)}
+            onClick={() => onSelect(reserveShape)}
             disabled={placing}
             className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
-              selectedShape === s
-                ? "border-cyan-400 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(0,229,255,0.3)]"
-                : "border-white/15 bg-white/[0.03] text-white/80 hover:border-cyan-500/40"
+              selectedShape === reserveShape
+                ? "border-emerald-400 bg-emerald-500/25 text-emerald-100 shadow-[0_0_14px_rgba(16,185,129,0.35)]"
+                : "border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:border-emerald-400/70"
             } disabled:opacity-50`}
+            title={`Your reserved ${SHAPE_NAME[reserveShape]}`}
           >
-            <span className="mr-1">{SHAPE_LABEL[s]}</span>
-            <span className="text-white/40">×{shapeCounts[s]}</span>
+            <IconLock size={13} className="mr-1 inline" />
+            <span className="mr-1">{SHAPE_LABEL[reserveShape]}</span>
+            <span className="text-emerald-300/60">reserved</span>
           </button>
-        ))}
+        )}
+        {available
+          .filter((s) => s !== reserveShape || !reserveShape || shapeCounts[s] > 0)
+          .map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onSelect(s)}
+              disabled={placing}
+              className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                selectedShape === s && s !== reserveShape
+                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(0,229,255,0.3)]"
+                  : "border-white/15 bg-white/[0.03] text-white/80 hover:border-cyan-500/40"
+              } disabled:opacity-50`}
+            >
+              <span className="mr-1">{SHAPE_LABEL[s]}</span>
+              <span className="text-white/40">×{shapeCounts[s] || 0}</span>
+            </button>
+          ))}
+        <span className="ml-auto rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-cyan-200/80">
+          {poolTotal} blocks left
+        </span>
       </div>
 
       {selectedShape ? (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <p className="text-sm font-semibold text-white">
-            {SHAPE_NAME[selectedShape]} · x{positionX} · rot {rotation * 90}°
+            {selectedShape === reserveShape ? (
+              <span className="text-emerald-300">Reserved {SHAPE_NAME[selectedShape]}</span>
+            ) : (
+              SHAPE_NAME[selectedShape]
+            )}{" "}
+            · aim {positionX} · rot {rotation * 90}°
           </p>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => onNudge(-1)} className="controlBtn" aria-label="Move left">
+            <button type="button" onClick={() => onNudge(-1)} className="controlBtn" aria-label="Aim left">
               <IconArrowsLeftRight className="h-4 w-4 scale-x-[-1]" />
             </button>
-            <button type="button" onClick={() => onNudge(1)} className="controlBtn" aria-label="Move right">
+            <button type="button" onClick={() => onNudge(1)} className="controlBtn" aria-label="Aim right">
               <IconArrowsLeftRight className="h-4 w-4" />
             </button>
-            <button type="button" onClick={onRotate} className="controlBtn" aria-label="Rotate">
+            <button type="button" onClick={onRotate} className="controlBtn" aria-label="Rotate 90°">
               <IconRotate className="h-4 w-4" />
             </button>
             <button
@@ -1338,7 +1792,11 @@ function PlacementControls(props: any) {
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-white/50">Select a block above, then position it on the tower and drop.</p>
+        <p className="mt-3 text-sm text-white/50">
+          Pick a block and it hovers at the top of the board — aim it, rotate with R, then click the
+          stage (or press Enter) to drop it from the sky. The blocks are slightly slippery: a bad
+          landing slips, tips, and tumbles into the void…
+        </p>
       )}
     </div>
   );
