@@ -695,6 +695,17 @@ export default function ChessGamePage() {
       ? gameData?.blackPlayerName
       : gameData?.whitePlayerName;
 
+  const myPrestigeBadge =
+    activeColor === "white"
+      ? gameData?.whitePlayerPrestigeBadge
+      : gameData?.blackPlayerPrestigeBadge;
+
+  const opponentPrestigeBadge =
+    activeColor === "white"
+      ? gameData?.blackPlayerPrestigeBadge
+      : gameData?.whitePlayerPrestigeBadge;
+
+
   const myClock =
     activeColor === "white"
       ? gameData?.whiteTimeRemaining
@@ -731,6 +742,11 @@ export default function ChessGamePage() {
                 <div className="flex items-center gap-2">
                   <span className="relative font-bold text-cyan-300">
                     {opponentName || "Opponent"}
+                    {opponentPrestigeBadge && (
+                      <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
+                        {opponentPrestigeBadge}
+                      </span>
+                    )}
                     {incomingEmote && (
                       <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]">
                         {incomingEmote.value}
@@ -793,6 +809,11 @@ export default function ChessGamePage() {
                 <div className="flex items-center gap-2">
                   <span className="relative font-bold text-fuchsia-300">
                     {myName || "You"}
+                    {myPrestigeBadge && (
+                      <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
+                        {myPrestigeBadge}
+                      </span>
+                    )}
                     {myEmote && (
                       <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.35)]">
                         {myEmote.value}

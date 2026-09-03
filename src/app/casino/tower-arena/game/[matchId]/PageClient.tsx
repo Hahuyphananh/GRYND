@@ -118,9 +118,7 @@ type Match = {
   createdAt: string;
   startedAt: string | null;
   endedAt: string | null;
-};
-
-type Player = {
+};type Player = {
   userId: string;
   seat: number;
   status: string;
@@ -129,6 +127,7 @@ type Player = {
   ready: boolean;
   name: string;
   iconKey: string;
+  prestigeBadge?: string | null;
 };
 
 // ── Countdown hook ─────────────────────────────────────────────────────
@@ -1634,11 +1633,15 @@ export default function TowerArenaMatchPage() {
                   p.userId === match?.currentTurnPlayerId && isActive ? "border-cyan-500/60 bg-cyan-500/10" : "border-white/10 bg-white/[0.03]"
                 }`}
               >
-                <IconAvatar iconKey={p.iconKey} name={p.name} size="h-9 w-9" />
-                <div className="min-w-0 flex-1">
+                <IconAvatar iconKey={p.iconKey} name={p.name} size="h-9 w-9" />                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">
                     {p.name}
                     {p.userId === me?.userId ? " (you)" : ""}
+                    {p.prestigeBadge && (
+                      <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
+                        {p.prestigeBadge}
+                      </span>
+                    )}
                   </p>
                   <p className="text-[10px] uppercase tracking-wider text-white/50">
                     {eliminated
@@ -1986,11 +1989,16 @@ function ResultsView({ match, players, meUserId, onBack }: any) {
                     {ordinal(r.placement)}
                   </div>
                   <IconAvatar iconKey={p?.iconKey} name={p?.name} size="h-11 w-11" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">
+                  <div className="min-w-0 flex-1">                    <p className="truncate text-sm font-bold">
                       {p?.name}
                       {r.userId === meUserId ? " (you)" : ""}
+                      {p?.prestigeBadge && (
+                        <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
+                          {p.prestigeBadge}
+                        </span>
+                      )}
                     </p>
+
                     <p className="text-[10px] uppercase tracking-wider text-white/50">
                       {isWinner ? "Survivor" : "Eliminated"} · Seat #{r.seat}
                     </p>

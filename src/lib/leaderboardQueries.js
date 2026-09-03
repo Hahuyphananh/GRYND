@@ -1,4 +1,5 @@
 import { getNeonSql } from "../db/neon";
+import { resolvePrestigeBadge } from "./prestige";
 
 let _sql = null;
 function getSql() {
@@ -328,6 +329,23 @@ export function normalizeWeeklyLeaderboardCategory(value) {
   return WEEKLY_CATEGORIES.includes(value) ? value : "wins";
 }
 
+/**
+ * Server-authoritative prestige badge decoration for a leaderboard row.
+ * The raw prestige columns never leave this module — only the resolved
+ * label (or nothing) is returned, so a client can never render an unearned
+ * badge. Shared by every board (stats boards + per-game boards).
+ */
+function decoratePrestigeBadge(item) {
+  if (!item) return item;
+  const { xp, prestige_level, show_prestige_badge, ...rest } = item;
+  const badge = resolvePrestigeBadge({
+    xp,
+    prestigeLevel: prestige_level,
+    showPrestigeBadge: show_prestige_badge,
+  });
+  return badge ? { ...rest, prestigeBadge: badge } : rest;
+}
+
 async function fetchRankedRows({
   fields,
   orderBy,
@@ -340,6 +358,19 @@ async function fetchRankedRows({
   const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
   const nameField = userIdentityField(columns, "name", "'Unknown'");
   const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  // Prestige badge inputs — guarded by the introspection so boards keep
+  // working on databases that predate migration 0137.
+  const xpField = userIdentityField(columns, "xp", "0");
+  const prestigeLevelField = userIdentityField(
+    columns,
+    "prestige_level",
+    "0",
+  );
+  const showPrestigeBadgeField = userIdentityField(
+    columns,
+    "show_prestige_badge",
+    "false",
+  );
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   const meClause =
     clerkId && hasColumn(columns, "users", "clerk_id")
@@ -355,6 +386,9 @@ async function fetchRankedRows({
           s.user_id,
           ${nameField} AS name,
           ${iconKeyField} AS icon_key,
+          ${xpField} AS xp,
+          ${prestigeLevelField} AS prestige_level,
+          ${showPrestigeBadgeField} AS show_prestige_badge,
           json_build_object(
             'name', ${nameField},
             'icon_key', ${iconKeyField}
@@ -381,8 +415,10 @@ async function fetchRankedRows({
   const row = result?.[0];
 
   return {
-    items: row?.items ?? [],
-    me: row?.me ?? null,
+    items: Array.isArray(row?.items)
+      ? row.items.map(decoratePrestigeBadge)
+      : [],
+    me: row?.me ? decoratePrestigeBadge(row.me) : null,
   };
 }
 
@@ -632,6 +668,17 @@ export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
   const columns = await getLeaderboardColumns();
   const nameField = userIdentityField(columns, "name", "'Unknown'");
   const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  const xpField = userIdentityField(columns, "xp", "0");
+  const prestigeLevelField = userIdentityField(
+    columns,
+    "prestige_level",
+    "0",
+  );
+  const showPrestigeBadgeField = userIdentityField(
+    columns,
+    "show_prestige_badge",
+    "false",
+  );
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   const meClause =
     clerkId && hasColumn(columns, "users", "clerk_id")
@@ -649,6 +696,9 @@ export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
           played.clerk_id,
           ${nameField} AS name,
           ${iconKeyField} AS icon_key,
+          ${xpField} AS xp,
+          ${prestigeLevelField} AS prestige_level,
+          ${showPrestigeBadgeField} AS show_prestige_badge,
           json_build_object(
             'name', ${nameField},
             'icon_key', ${iconKeyField}
@@ -680,8 +730,10 @@ export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
 
   const row = result?.[0];
   return {
-    items: row?.items ?? [],
-    me: row?.me ?? null,
+    items: Array.isArray(row?.items)
+      ? row.items.map(decoratePrestigeBadge)
+      : [],
+    me: row?.me ? decoratePrestigeBadge(row.me) : null,
   };
 }
 

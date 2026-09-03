@@ -11,6 +11,7 @@ import {
 } from "../../../../../lib/odds";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../../lib/prestige";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -116,6 +117,21 @@ export async function POST(req: Request) {
           betAmount: game.wager,
           payout: 0,
           isPvpWin: false,
+        }).catch(() => {});
+
+        // Permanent Prestige — competitive forfeit settlement: winner +1,
+        // forfeiter -1. Idempotent on the game id via the journal.
+        applyPrestigeResult({
+          clerkId: winnerId,
+          outcome: "win",
+          source: "odds-pvp",
+          sourceId: String(gameId),
+        }).catch(() => {});
+        applyPrestigeResult({
+          clerkId: forfeiterId,
+          outcome: "loss",
+          source: "odds-pvp",
+          sourceId: String(gameId),
         }).catch(() => {});
 
         return {
@@ -272,6 +288,21 @@ export async function POST(req: Request) {
             betAmount: game.wager,
             payout: 0,
             isPvpWin: false,
+          }).catch(() => {});
+
+          // Permanent Prestige — competitive round-win settlement:
+          // winner +1, loser -1. Idempotent on the game id.
+          applyPrestigeResult({
+            clerkId: winnerId!,
+            outcome: "win",
+            source: "odds-pvp",
+            sourceId: String(gameId),
+          }).catch(() => {});
+          applyPrestigeResult({
+            clerkId: loserId!,
+            outcome: "loss",
+            source: "odds-pvp",
+            sourceId: String(gameId),
           }).catch(() => {});
         } else {
           // Exact tie after all rounds — refund BOTH stakes, no winner.

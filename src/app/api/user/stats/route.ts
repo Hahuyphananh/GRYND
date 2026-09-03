@@ -3,6 +3,7 @@ import { db } from "../../../../db";
 import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getLevelFromXp } from "../../../../lib/battlepass";
+import { getPrestigeStatus } from "../../../../lib/prestige";
 
 export async function GET() {
   const { userId } = await auth();
@@ -14,6 +15,8 @@ export async function GET() {
       name: users.name,
       level: users.level,
       xp: users.xp,
+      prestigeLevel: users.prestigeLevel,
+      prestigeNetWins: users.prestigeNetWins,
       totalWagered: users.totalWagered,
       totalWon: users.totalWon,
       biggestWin: users.biggestWin,
@@ -41,8 +44,22 @@ export async function GET() {
 
   if (!row) return Response.json({ error: "User not found" }, { status: 404 });
   // Battlepass level is derived from XP (wagering + quests), not the
-  // possibly-stale stored level column.
+  // possibly-stale stored level column. Prestige read-shape mirrors the
+  // battlepass endpoint so every consumer sees one consistent contract.
+  const prestige = getPrestigeStatus({
+    prestigeLevel: row.prestigeLevel,
+    prestigeNetWins: row.prestigeNetWins,
+    xp: Number(row.xp) || 0,
+  });
   return Response.json({
-    userStats: { ...row, level: getLevelFromXp(Number(row.xp) || 0) },
+    userStats: {
+      ...row,
+      level: getLevelFromXp(Number(row.xp) || 0),
+      prestige: prestige.prestige,
+      prestigeNetWins: prestige.prestigeNetWins,
+      nextPrestigeRequirement: prestige.nextPrestigeRequirement,
+      prestigeProgressPercent: prestige.prestigeProgressPercent,
+      prestigeUnlocked: prestige.prestigeUnlocked,
+    },
   });
 }

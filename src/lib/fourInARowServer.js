@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { fourInARowGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
+import { applyPrestigeResult } from "./prestige";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
 const DEFAULT_MOVE_TIME_SECONDS = 60;
@@ -102,6 +103,29 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
       payout,
       isPvpWin: true,
     });
+
+    // Permanent Prestige — competitive PvP finish (draws refund above and
+    // four-in-a-row has no AI mode, so every paid finish counts).
+    const prestigeLoserId =
+      locked.hostClerkId === winnerClerkId
+        ? locked.guestClerkId
+        : locked.hostClerkId;
+    await applyPrestigeResult({
+      tx,
+      clerkId: winnerClerkId,
+      outcome: "win",
+      source: "four-in-a-row",
+      sourceId: String(gameId),
+    }).catch(() => {});
+    if (prestigeLoserId) {
+      await applyPrestigeResult({
+        tx,
+        clerkId: prestigeLoserId,
+        outcome: "loss",
+        source: "four-in-a-row",
+        sourceId: String(gameId),
+      }).catch(() => {});
+    }
 
     await tx
       .update(fourInARowGames)

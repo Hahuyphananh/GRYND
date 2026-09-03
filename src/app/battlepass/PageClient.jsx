@@ -32,6 +32,8 @@ export default function BattlepassPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [failedBannerRewards, setFailedBannerRewards] = useState({});
+  // Prestige tier that just unlocked and is being celebrated (null = none).
+  const [prestigeCelebrated, setPrestigeCelebrated] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -78,6 +80,30 @@ export default function BattlepassPageClient() {
     return () => clearTimeout(id);
   }, [pass]);
 
+  // Prestige-advancement celebration. The tier number always comes from the
+  // server response (/api/battlepass) — the client can never fabricate it.
+  // A localStorage watermark suppresses the modal until the prestige level
+  // actually increases: first visits only seed the watermark, so the modal
+  // never pops merely because the page loaded.
+  useEffect(() => {
+    if (!pass) return;
+    const level = Math.max(0, Number(pass.prestige) || 0);
+    const unlocked = Boolean(pass.prestigeUnlocked);
+    const STORAGE_KEY = "grynd.prestige.celebrated.v1";
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const seen = raw ? Math.max(0, Number(JSON.parse(raw)) || 0) : 0;
+      if (unlocked && level >= 1 && level > seen) {
+        setPrestigeCelebrated(level);
+      }
+      // Persist every observed level so a later higher tier triggers the
+      // modal exactly once per advancement.
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(level));
+    } catch {
+      // Storage unavailable — skip the celebration; never crash the page.
+    }
+  }, [pass]);
+
   const level = pass?.level ?? 1;
   const progressPercent = pass?.progressPercent ?? 0;
   const isMaxed = level >= (pass?.maxLevel ?? 100);
@@ -121,49 +147,116 @@ export default function BattlepassPageClient() {
           </div>
         ) : (
           <>
-            {/* Current status */}
-            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.2em] text-[#7dd3fc]">
-                    Current level
+            {/* Current status — Level-100 players see the permanent Prestige track */}
+            {pass.prestigeUnlocked ? (
+              <div className="rounded-xl border border-violet-400/40 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(139,92,246,0.25)]">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.2em]">
+                      <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/15 px-2.5 py-0.5 tracking-[0.2em] text-[#f5ff3b]">
+                        Level 100
+                      </span>
+                      <span className="rounded-full border border-violet-400/60 bg-violet-500/15 px-2.5 py-0.5 tracking-[0.2em] text-violet-300">
+                        Prestige unlocked
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-baseline gap-2">
+                      <span className="text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
+                        Prestige {pass.prestige}
+                      </span>
+                      {pass.prestige >= pass.maxPrestige && (
+                        <span className="rounded-full border border-violet-400/70 bg-violet-500/20 px-2.5 py-0.5 text-xs font-bold text-violet-200">
+                          Max Prestige
+                        </span>
+                      )}
+                    </div>
+                    {pass.prestige < pass.maxPrestige ? (
+                      <div className="mt-1 text-sm text-[#9dd8ff]">
+                        {formatNumber(pass.prestigeNetWins)} /{" "}
+                        {formatNumber(pass.nextPrestigeRequirement)} Net Wins
+                        toward Prestige {pass.prestige + 1}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-sm text-[#9dd8ff]">
+                        {formatNumber(pass.prestigeNetWins)} Net Wins — every
+                        tier cleared
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-1 flex items-baseline gap-2">
-                    <span className="text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
-                      {level}
-                    </span>
-                    <span className="text-sm text-[#7dd3fc]">
-                      / {pass.maxLevel}
-                    </span>
+                  <div className="rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-4 py-1.5 text-sm font-semibold text-[#f5ff3b]">
+                    {formatNumber(pass.xp)} XP total
                   </div>
                 </div>
-                <div className="rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-4 py-1.5 text-sm font-semibold text-[#f5ff3b]">
-                  {formatNumber(pass.xp)} XP total
-                </div>
-              </div>
 
-              <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-500 transition-all duration-500"
-                  style={{ width: `${isMaxed ? 100 : progressPercent}%` }}
-                />
-              </div>
-              <div className="mt-2 flex justify-between text-sm text-gray-300">
-                <span>
-                  {isMaxed
-                    ? "Max level reached!"
-                    : `${formatNumber(pass.xp - pass.currentLevelXp)} / ${formatNumber(pass.nextLevelXp - pass.currentLevelXp)} XP to level ${level + 1}`}
-                </span>
-                <span>{isMaxed ? "100%" : `${progressPercent}%`}</span>
-              </div>
-              {!isMaxed && (
-                <div className="mt-1 text-xs text-[#7dd3fc]">
-                  {formatNumber(pass.remainingToNext)} XP remaining to level{" "}
-                  {level + 1} · Reach {formatNumber(pass.nextLevelRequired)}{" "}
-                  XP total
+                <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-[#00e5ff] transition-all duration-500"
+                    style={{ width: `${pass.prestigeProgressPercent}%` }}
+                  />
                 </div>
-              )}
-            </div>
+                <div className="mt-2 flex justify-between text-sm text-gray-300">
+                  <span>
+                    {pass.prestige < pass.maxPrestige
+                      ? `${formatNumber(Math.max(0, pass.nextPrestigeRequirement - pass.prestigeNetWins))} Net Wins to Prestige ${pass.prestige + 1}`
+                      : "Maximum Prestige reached"}
+                  </span>
+                  <span>
+                    {pass.prestige < pass.maxPrestige
+                      ? `${pass.prestigeProgressPercent}%`
+                      : "100%"}
+                  </span>
+                </div>
+                <div className="mt-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-xs leading-relaxed text-[#7dd3fc]">
+                  Level 100 is permanent — there is no seasonal reset and
+                  Prestige never rolls back. A loss lowers your current
+                  Net-Win progress but can never remove an earned Prestige.
+                  Your existing rewards, titles, and cosmetics stay yours.
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.2em] text-[#7dd3fc]">
+                      Current level
+                    </div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-4xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)]">
+                        {level}
+                      </span>
+                      <span className="text-sm text-[#7dd3fc]">
+                        / {pass.maxLevel}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-4 py-1.5 text-sm font-semibold text-[#f5ff3b]">
+                    {formatNumber(pass.xp)} XP total
+                  </div>
+                </div>
+
+                <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-500 transition-all duration-500"
+                    style={{ width: `${isMaxed ? 100 : progressPercent}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex justify-between text-sm text-gray-300">
+                  <span>
+                    {isMaxed
+                      ? "Max level reached!"
+                      : `${formatNumber(pass.xp - pass.currentLevelXp)} / ${formatNumber(pass.nextLevelXp - pass.currentLevelXp)} XP to level ${level + 1}`}
+                  </span>
+                  <span>{isMaxed ? "100%" : `${progressPercent}%`}</span>
+                </div>
+                {!isMaxed && (
+                  <div className="mt-1 text-xs text-[#7dd3fc]">
+                    {formatNumber(pass.remainingToNext)} XP remaining to level{" "}
+                    {level + 1} · Reach {formatNumber(pass.nextLevelRequired)}{" "}
+                    XP total
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* How to earn XP */}
             <div className="mt-6 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6">
@@ -391,6 +484,45 @@ export default function BattlepassPageClient() {
           </>
         )}
       </main>
+
+      {/* Prestige-advancement celebration — fires only when the server-
+          reported tier increased since the last visit (see watermark above). */}
+      {prestigeCelebrated !== null && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Prestige ${prestigeCelebrated} unlocked`}
+        >
+          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-violet-400/50 bg-[#0b224f] p-8 text-center shadow-[0_0_60px_rgba(139,92,246,0.45)]">
+            <div className="pointer-events-none absolute -top-10 left-1/2 h-32 w-32 -translate-x-1/2 rounded-full bg-violet-500/25 blur-2xl" />
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-300/60 bg-violet-500/20 text-2xl shadow-[0_0_18px_rgba(139,92,246,0.5)]">
+              👑
+            </div>
+            <div className="text-xs uppercase tracking-[0.35em] text-violet-300">
+              Prestige
+            </div>
+            <div className="mt-1 text-6xl font-black text-[#f5ff3b] drop-shadow-[0_0_18px_rgba(245,255,59,0.6)]">
+              {prestigeCelebrated}
+            </div>
+            <div className="mt-1 text-lg font-bold tracking-[0.3em] text-white">
+              UNLOCKED
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-[#9dd8ff]">
+              You reached a new permanent Prestige tier. Keep competing to
+              climb further — Prestige never resets and an earned tier can
+              never be lost.
+            </p>
+            <button
+              type="button"
+              onClick={() => setPrestigeCelebrated(null)}
+              className="mt-5 w-full rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/15 px-4 py-2.5 font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            >
+              Claim it
+            </button>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>

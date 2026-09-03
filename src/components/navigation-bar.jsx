@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useUser, useAuth } from "@clerk/nextjs";
+import { usePathname } from "next/navigation";
 import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
 import AddFundsModal from "./AddFundsModal";
@@ -42,6 +43,7 @@ function NavigationBar({ currentPath = "" }) {
   const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
+  const pathname = usePathname();
   const shouldReduceMotion = useReducedMotion();
   const [balance, setBalance] = useState(null);
   // Today's net (responsible-play) — powers the home-page chip next to the
@@ -53,8 +55,15 @@ function NavigationBar({ currentPath = "" }) {
     selectedIcon: "",
     selectedTitle: "",
     streakTitle: null,
+    // Server-resolved prestige badge (null unless equipped + earned) plus
+    // the raw prestige tier for the global unlock notice.
+    prestigeBadge: null,
+    prestige: 0,
+    prestigeUnlocked: false,
   });
   const [error, setError] = useState(null);
+  // Prestige tier being celebrated by the global in-app notice (null = none).
+  const [prestigeNotice, setPrestigeNotice] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -181,6 +190,15 @@ function NavigationBar({ currentPath = "" }) {
                     ...prev,
                     selectedTitle: meta.selectedTitle,
                     streakTitle: meta.streakTitle || prev.streakTitle,
+                    prestigeBadge: meta.prestigeBadge ?? prev.prestigeBadge,
+                    prestige:
+                      typeof meta.prestige === "number"
+                        ? meta.prestige
+                        : prev.prestige,
+                    prestigeUnlocked:
+                      typeof meta.prestigeUnlocked === "boolean"
+                        ? meta.prestigeUnlocked
+                        : prev.prestigeUnlocked,
                   }));
               }
             } catch {}
@@ -188,6 +206,9 @@ function NavigationBar({ currentPath = "" }) {
             let nextLevel = null;
             let nextTitle = "";
             let nextStreak = null;
+            let nextPrestige = 0;
+            let nextPrestigeUnlocked = false;
+            let nextPrestigeBadge = null;
             try {
               const statsRes = await fetch("/api/user-stats");
               const statsData = await statsRes.json();
@@ -200,11 +221,17 @@ function NavigationBar({ currentPath = "" }) {
               });
               const titlesData = await titlesRes.json();
               if (titlesData.success) {
+                // The equipped-title chip shows the Prestige badge first —
+                // always the server-resolved string, never client text.
                 nextTitle =
+                  titlesData.prestigeBadge ||
                   titlesData.selectedSpecialTitle ||
                   titlesData.selectedTitle ||
                   "";
                 nextStreak = titlesData.streakTitle || null;
+                nextPrestige = Number(titlesData.prestige) || 0;
+                nextPrestigeUnlocked = Boolean(titlesData.prestigeUnlocked);
+                nextPrestigeBadge = titlesData.prestigeBadge || null;
               }
             } catch {}
 
@@ -213,6 +240,10 @@ function NavigationBar({ currentPath = "" }) {
               ...prev,
               selectedTitle: nextTitle || prev.selectedTitle,
               streakTitle: nextStreak || prev.streakTitle,
+              prestigeBadge: nextPrestigeBadge ?? prev.prestigeBadge,
+              prestige: nextPrestige || prev.prestige,
+              prestigeUnlocked:
+                nextPrestigeUnlocked || prev.prestigeUnlocked,
             }));
 
             // Store the cache regardless of partial failures; next reload
@@ -228,6 +259,9 @@ function NavigationBar({ currentPath = "" }) {
                   level: nextLevel,
                   selectedTitle: nextTitle,
                   streakTitle: nextStreak,
+                  prestige: nextPrestige,
+                  prestigeUnlocked: nextPrestigeUnlocked,
+                  prestigeBadge: nextPrestigeBadge,
                 }),
               );
             } catch {}
@@ -313,6 +347,31 @@ function NavigationBar({ currentPath = "" }) {
 
   const isCasinoPath =
     currentPath.startsWith("/casino") || currentPath.startsWith("/games");
+
+  // In-app "Prestige unlocked" notice — an app-wide notification surface
+  // alongside the Battle Pass page modal. Fires once per tier-up on any page
+  // except /battlepass (that page shows its own larger modal). The tier
+  // always comes from the server (/api/titles via fetchBalance); the shared
+  // localStorage watermark means an advancement is celebrated exactly once
+  // app-wide, and the client can never fabricate the tier.
+  useEffect(() => {
+    if (!profile.prestigeUnlocked || profile.prestige < 1) return;
+    if (pathname && pathname.startsWith("/battlepass")) return;
+    const STORAGE_KEY = "grynd.prestige.celebrated.v1";
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const seen = raw ? Math.max(0, Number(JSON.parse(raw)) || 0) : 0;
+      if (profile.prestige > seen) {
+        setPrestigeNotice(profile.prestige);
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(profile.prestige),
+        );
+      }
+    } catch {
+      // Storage unavailable — skip the notice; never crash the page.
+    }
+  }, [pathname, profile.prestige, profile.prestigeUnlocked]);
 
   return (
     <>
@@ -551,8 +610,16 @@ function NavigationBar({ currentPath = "" }) {
                             t("nav.user_fallback")}
                           {isAdmin && <AdminBadge />}
                         </span>
-                        <span className="text-[10px] text-[#f5ff3b]">
-                          {profile?.selectedTitle || "No title equipped"}
+                        <span
+                          className={`text-[10px] ${
+                            profile?.prestigeBadge
+                              ? "text-violet-300"
+                              : "text-[#f5ff3b]"
+                          }`}
+                        >
+                          {profile?.prestigeBadge ||
+                            profile?.selectedTitle ||
+                            "No title equipped"}
                         </span>
                         {profile?.streakTitle && (
                           <span className="text-[10px] text-amber-400">
@@ -645,7 +712,15 @@ function NavigationBar({ currentPath = "" }) {
                   />
                   <div>
                     <div className="text-[#c9f7ff] text-sm flex items-center gap-1.5">{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
-                    <div className="text-xs text-[#f5ff3b]">{profile?.selectedTitle}</div>
+                    <div
+                      className={`text-xs ${
+                        profile?.prestigeBadge
+                          ? "text-violet-300"
+                          : "text-[#f5ff3b]"
+                      }`}
+                    >
+                      {profile?.prestigeBadge || profile?.selectedTitle}
+                    </div>
                     {profile?.streakTitle && (
                       <div className="text-xs text-amber-400">
                         <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
@@ -767,6 +842,45 @@ function NavigationBar({ currentPath = "" }) {
         onClose={() => setShowAddFunds(false)}
         onSuccess={setBalance}
       />
+
+      {/* Global "Prestige unlocked" notice — dismissed once per tier-up. */}
+      {prestigeNotice !== null && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed right-4 top-24 z-[95] w-[330px] max-w-[calc(100vw-2rem)] rounded-xl border border-violet-400/50 bg-[#0b224f]/95 p-4 shadow-[0_0_40px_rgba(139,92,246,0.45)] backdrop-blur"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-300/60 bg-violet-500/20 text-lg">
+              👑
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-[0.25em] text-violet-300">
+                Prestige {prestigeNotice} unlocked
+              </p>
+              <p className="mt-0.5 text-sm text-[#9dd8ff]">
+                You reached a new permanent Prestige tier. It never resets
+                and can never be lost.
+              </p>
+              <Link
+                href="/battlepass"
+                onClick={() => setPrestigeNotice(null)}
+                className="mt-2 inline-flex rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/15 px-3 py-1.5 text-xs font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25"
+              >
+                View Battlepass
+              </Link>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => setPrestigeNotice(null)}
+              className="text-white/50 transition hover:text-white"
+            >
+              <IconX size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

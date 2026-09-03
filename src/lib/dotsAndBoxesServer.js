@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { dotsAndBoxesGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
+import { applyPrestigeResult } from "./prestige";
 import {
   TURN_SECONDS as DEFAULT_MOVE_TIME_SECONDS,
   determineResult,
@@ -113,6 +114,29 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
         payout,
         isPvpWin: true,
       });
+
+      // Permanent Prestige — competitive PvP finish (AI matches are free
+      // play and draws refund above).
+      const prestigeLoserId =
+        locked.hostClerkId === winnerClerkId
+          ? locked.guestClerkId
+          : locked.hostClerkId;
+      await applyPrestigeResult({
+        tx,
+        clerkId: winnerClerkId,
+        outcome: "win",
+        source: "dots-and-boxes",
+        sourceId: String(gameId),
+      }).catch(() => {});
+      if (prestigeLoserId) {
+        await applyPrestigeResult({
+          tx,
+          clerkId: prestigeLoserId,
+          outcome: "loss",
+          source: "dots-and-boxes",
+          sourceId: String(gameId),
+        }).catch(() => {});
+      }
     }
 
     await tx

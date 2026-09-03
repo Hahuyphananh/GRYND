@@ -43,7 +43,7 @@ import { CreatorResponsiveLayout } from "../../../components/creator-mode/Creato
 
 
 type LobbyRoom = { id: string; wager: number; status: string };
-type Player = { userId: string; name: string; isAI?: boolean };
+type Player = { userId: string; name: string; isAI?: boolean; prestigeBadge?: string | null };
 type GameState = {
   id: string;
   players: Player[];
@@ -976,6 +976,11 @@ export default function DiceFlushPage() {
       <div className="flex items-center gap-2">
         <div className="relative rounded-full bg-[#f87171]/20 border border-[#f87171]/30 px-3 py-1 text-sm font-black text-[#f87171]">
           {opponent?.name || "OPPONENT"}
+          {opponent?.prestigeBadge && (
+            <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
+              {opponent.prestigeBadge}
+            </span>
+          )}
           <EmoteBubble emote={incomingEmote} />
         </div>
         <motion.div
@@ -1386,7 +1391,14 @@ export default function DiceFlushPage() {
                 >
                   {/* Your score */}
                   <div className="text-center">
-                    <div className="text-xs font-bold uppercase text-gray-400">{you?.name || "You"}</div>
+                    <div className="text-xs font-bold uppercase text-gray-400">
+                      {you?.name || "You"}
+                      {you?.prestigeBadge && (
+                        <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
+                          {you.prestigeBadge}
+                        </span>
+                      )}
+                    </div>
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
@@ -1404,7 +1416,14 @@ export default function DiceFlushPage() {
 
                   {/* Opponent score */}
                   <div className="text-center">
-                    <div className="text-xs font-bold uppercase text-gray-400">{opponent?.name || "Opponent"}</div>
+                    <div className="text-xs font-bold uppercase text-gray-400">
+                      {opponent?.name || "Opponent"}
+                      {opponent?.prestigeBadge && (
+                        <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
+                          {opponent.prestigeBadge}
+                        </span>
+                      )}
+                    </div>
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}

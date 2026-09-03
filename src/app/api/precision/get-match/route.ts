@@ -6,11 +6,55 @@
 // immediately after a host creates a lobby.
 
 import { NextRequest, NextResponse } from "next/server";
+import { eq, inArray } from "drizzle-orm";
+import { db } from "../../../../db/client";
+import { users } from "../../../../db/schema";
+import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import {
   precisionLobbyStore,
   precisionMatchStore,
 } from "../../../../lib/precision/serverStore";
 import type { PrecisionState } from "../../../../lib/precision/types";
+
+/**
+ * Server-authoritative prestige badge decoration for the players in a
+ * precision state payload. Only the resolved label (or nothing) leaves
+ * the server; raw prestige columns never reach the client.
+ */
+async function decoratePlayerBadges<T extends { userId: string }>(
+  players: T[],
+): Promise<(T & { prestigeBadge: string | null })[]> {
+  const humanIds = players
+    .filter((p) => p.userId && p.userId !== "opponent")
+    .map((p) => p.userId);
+  if (humanIds.length === 0) {
+    return players.map((p) => ({ ...p, prestigeBadge: null }));
+  }
+  const rows = await db
+    .select({
+      clerkId: users.clerkId,
+      xp: users.xp,
+      prestigeLevel: users.prestigeLevel,
+      showPrestigeBadge: users.showPrestigeBadge,
+    })
+    .from(users)
+    .where(inArray(users.clerkId, humanIds));
+  const badgeByUser = new Map<string, string | null>();
+  for (const row of rows) {
+    badgeByUser.set(
+      String(row.clerkId),
+      resolvePrestigeBadge({
+        xp: row.xp,
+        prestigeLevel: row.prestigeLevel,
+        showPrestigeBadge: row.showPrestigeBadge,
+      }),
+    );
+  }
+  return players.map((p) => ({
+    ...p,
+    prestigeBadge: badgeByUser.get(String(p.userId)) ?? null,
+  }));
+}
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +66,15 @@ export async function GET(req: NextRequest) {
       { success: false, match: null, error: "Missing matchId." },
       { status: 400 },
     );
-  }
-
-  const match = precisionMatchStore.get(matchId);
+  }  const match = precisionMatchStore.get(matchId);
   if (match) {
-    return NextResponse.json({ success: true, match });
+    return NextResponse.json({
+      success: true,
+      match: {
+        ...match,
+        players: await decoratePlayerBadges(match.players ?? []),
+      },
+    });
   }
 
   const lobby = precisionLobbyStore.get(matchId);
@@ -37,8 +85,7 @@ export async function GET(req: NextRequest) {
     const waitingState: PrecisionState = {
       matchId,
       phase: "waiting",
-      wager: lobby.wager,
-      players: [
+      wager: lobby.wager,      players: await decoratePlayerBadges([
         {
           seat: 1,
           userId: lobby.hostUserId,
@@ -46,7 +93,8 @@ export async function GET(req: NextRequest) {
           isReady: true,
           isConnected: true,
         },
-      ],
+      ]),
+
       turn: 1,
       score: { seat1: 0, seat2: 0 },
       currentRound: 1,

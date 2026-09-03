@@ -4,6 +4,7 @@ import { chessGames, users } from "../../../../db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../lib/prestige";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -135,6 +136,21 @@ export async function POST(req) {
           game: "Chess",
           betAmount: Number(lockedGame.betAmount),
           payout: 0,
+        }).catch(() => {});
+
+        // Permanent Prestige — competitive forfeit (opponent left): the
+        // remaining player wins and the leaver records the loss.
+        applyPrestigeResult({
+          clerkId: opponentId,
+          outcome: "win",
+          source: "chess",
+          sourceId: String(gameId),
+        }).catch(() => {});
+        applyPrestigeResult({
+          clerkId: userId,
+          outcome: "loss",
+          source: "chess",
+          sourceId: String(gameId),
         }).catch(() => {});
 
         // Record big win if winnerPayout >= 1 million tokens

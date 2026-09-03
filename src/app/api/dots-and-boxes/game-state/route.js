@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { db } from "../../../../db/client";
-import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import { db } from "../../../../db/client";import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import { resolvePrestigeBadge } from "../../../../lib/prestige";
+
 import {
   ensureState,
   remainingEdges,
@@ -47,9 +48,7 @@ export async function GET(req) {
     // edge for the current player before returning state.
     const game = await settleAutoMoveIfNeeded(fetched);
 
-    const role = getPlayerRole(game, userId) || "spectator";
-
-    const [hostName, guestName] = await Promise.all([
+    const role = getPlayerRole(game, userId) || "spectator";    const [hostName, guestName, hostBadge, guestBadge] = await Promise.all([
       db
         .select({ name: users.name })
         .from(users)
@@ -63,6 +62,44 @@ export async function GET(req) {
             .where(eq(users.clerkId, game.guestClerkId))
             .limit(1)
             .then((rows) => rows[0]?.name || null)
+        : null,
+      db
+        .select({
+          xp: users.xp,
+          prestigeLevel: users.prestigeLevel,
+          showPrestigeBadge: users.showPrestigeBadge,
+        })
+        .from(users)
+        .where(eq(users.clerkId, game.hostClerkId))
+        .limit(1)
+        .then((rows) =>
+          rows[0]
+            ? resolvePrestigeBadge({
+                xp: rows[0].xp,
+                prestigeLevel: rows[0].prestigeLevel,
+                showPrestigeBadge: rows[0].showPrestigeBadge,
+              })
+            : null,
+        ),
+      game.guestClerkId
+        ? db
+            .select({
+              xp: users.xp,
+              prestigeLevel: users.prestigeLevel,
+              showPrestigeBadge: users.showPrestigeBadge,
+            })
+            .from(users)
+            .where(eq(users.clerkId, game.guestClerkId))
+            .limit(1)
+            .then((rows) =>
+              rows[0]
+                ? resolvePrestigeBadge({
+                    xp: rows[0].xp,
+                    prestigeLevel: rows[0].prestigeLevel,
+                    showPrestigeBadge: rows[0].showPrestigeBadge,
+                  })
+                : null,
+            )
         : null,
     ]);
 
@@ -80,9 +117,11 @@ export async function GET(req) {
       data: {
         ...game,
         gameState,
-        role,
-        hostName: hostName || "Host",
+        role,        hostName: hostName || "Host",
         guestName: guestName || "Guest",
+        hostPrestigeBadge: hostBadge || null,
+        guestPrestigeBadge: guestBadge || null,
+
         remainingEdges: remaining,
         timerSeconds,
         moveDeadlineAt,

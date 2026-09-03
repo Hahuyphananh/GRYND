@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
+import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import removeAccents from "remove-accents";
 
 export async function POST(request) {
@@ -55,7 +56,8 @@ export async function POST(request) {
     const queryString = normalized;
 
     const found = await sql`
-  SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best
+  SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best,
+    xp, prestige_level, show_prestige_badge
   FROM users
   WHERE REPLACE(LOWER(search_name), ' ', '') LIKE '%' || ${queryString} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
@@ -65,7 +67,7 @@ export async function POST(request) {
 
     const users = found ?? [];
 
-    // Compute streak titles for each user
+    // Compute streak titles + server-resolved prestige badges for each user
     const usersWithStreak = users.map((u) => {
       const streakInfo = computeEquippedStreakTitle({
         selectedStreakType: u.selected_streak_type,
@@ -75,6 +77,11 @@ export async function POST(request) {
       return {
         ...u,
         streakTitle: streakInfo.title,
+        prestigeBadge: resolvePrestigeBadge({
+          xp: u.xp,
+          prestigeLevel: u.prestige_level,
+          showPrestigeBadge: u.show_prestige_badge,
+        }),
       };
     });
 

@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { eq, sql } from "drizzle-orm";
 import { poolMatches, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../lib/prestige";
 import { logError } from "../../../../lib/logError";
 
 export async function POST(req: Request) {
@@ -125,6 +126,25 @@ export async function POST(req: Request) {
         betAmount: wager,
         payout,
         isPvpWin: isPvp,
+      }).catch(() => {});
+    }
+
+    // Permanent Prestige — competitive PvP finish (AI mode excluded):
+    // the remaining player wins and the resigning player records a loss.
+    if (!isAi && winnerId) {
+      applyPrestigeResult({
+        clerkId: String(winnerId),
+        outcome: "win",
+        source: "pool",
+        sourceId: String(matchId),
+      }).catch(() => {});
+    }
+    if (!isAi && loserId) {
+      applyPrestigeResult({
+        clerkId: String(loserId),
+        outcome: "loss",
+        source: "pool",
+        sourceId: String(matchId),
       }).catch(() => {});
     }
 

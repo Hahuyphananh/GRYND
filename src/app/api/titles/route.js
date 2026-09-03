@@ -13,6 +13,10 @@ import {
   getStreakTitle,
   getAllStreakTitles,
 } from "../../../lib/streakTitles";
+import {
+  getPrestigeStatus,
+  resolvePrestigeBadge,
+} from "../../../lib/prestige";
 
 export async function GET() {
   const { userId } = await auth();
@@ -32,6 +36,9 @@ export async function GET() {
       where: eq(users.clerkId, userId),
       columns: {
         level: true,
+        xp: true,
+        prestigeLevel: true,
+        showPrestigeBadge: true,
         selectedTitle: true,
         highestTitle: true,
         selectedSpecialTitle: true,
@@ -69,10 +76,27 @@ export async function GET() {
     const equippedStreak = computeEquippedStreakTitle(dbUser);
     const streakTitle = equippedStreak.title;
 
+    // Server-resolved Prestige state — used by the navbar for the badge
+    // chip and the global "Prestige unlocked" notice. The badge text is
+    // always derived here from the real columns, never from the client.
+    const prestigeStatus = getPrestigeStatus({
+      prestigeLevel: Number(dbUser.prestigeLevel) || 0,
+      prestigeNetWins: 0,
+      xp: Number(dbUser.xp) || 0,
+    });
+    const prestigeBadge = resolvePrestigeBadge({
+      xp: Number(dbUser.xp) || 0,
+      prestigeLevel: Number(dbUser.prestigeLevel) || 0,
+      showPrestigeBadge: Boolean(dbUser.showPrestigeBadge),
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
         level,
+        prestige: prestigeStatus.prestige,
+        prestigeUnlocked: prestigeStatus.prestigeUnlocked,
+        prestigeBadge,
         unlockedTitles,
         selectedTitle: dbUser.selectedTitle || null,
         highestTitle: dbUser.highestTitle || computedHighest?.title || null,
