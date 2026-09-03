@@ -55,3 +55,25 @@ next-env.d.ts
 /[0-9]*
 .env*
 .aider*
+
+# --- Secret hygiene (from secret audit) ---
+# Real env files at any depth are banned; only *.example placeholders may be
+# committed. realtime-server/.env was tracked in the past -> remove it with:
+#   git rm --cached realtime-server/.env
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Key material / credential files (public *.pub keys are fine to share)
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.key
+**/*.keystore
+**/*.jks
+**/*.p8
+**/serviceAccount*.json
+**/credentials*.json
+**/google-services.json
+**/GoogleService-Info.plist

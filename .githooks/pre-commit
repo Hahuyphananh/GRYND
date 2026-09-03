@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# ============================================================================
+# pre-commit hook: block secrets from being committed
+#
+# Scans staged files and content for API keys, tokens, passwords, private
+# keys, and banned env/credential file names. On a match it aborts the
+# commit and lists the offending file.
+#
+# Install for every collaborator (one-time, per clone):
+#     git config core.hooksPath .githooks
+#
+# Deliberate bypass (use only when you know what you are doing):
+#     git commit --no-verify
+#
+# NOTE: a hook only protects NEW commits. It does NOT scrub history that is
+# already pushed. Past leaks must be removed with git-filter-repo / BFG and
+# the associated keys rotated.
+# ============================================================================
+set -u
+
+RED=$'\033[31m'
+BOLD=$'\033[1m'
+NC=$'\033[0m'
+FAILED=0
+
+# ---- 1) Banned file names (staged adds / copies / modifications) ----------
+# Env files (unless *.example), private-key material, credential JSONs.
+BANNED_NAMES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env($|\.)|\.pem$|\.p12$|\.pfx$|\.key$|\.keystore$|\.jks$|\.p8$|serviceAccount[^/]*\.json$|credentials?[^/]*\.json$|google-services\.json$|GoogleService-Info\.plist$' | grep -vE '\.example($|\.)' || true)
+
+if [ -n "$BANNED_NAMES" ]; then
+    FAILED=1
+    echo "${RED}${BOLD}Blocked:${NC} commit adds/modifies files that look like secrets:" >&2
+    echo "$BANNED_NAMES" | sed 's/^/    - /' >&2
+    echo "    If this is intentional (e.g. a *.example template), rename the file" >&2
+    echo "    so it ends in .example or force with: git commit --no-verify" >&2
+fi
+
+# ---- 2) Secret patterns in staged content ----------------------------------
+# High-confidence token shapes (provider-prefixed keys, private keys, webhooks).
+STRONG='(AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}|(sk|rk|pk)_(live|test)_[0-9A-Za-z]{16,}|whsec_[A-Za-z0-9+/=_-]{12,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|npm_[A-Za-z0-9]{30,}|shp(at|ss|ca)_[a-fA-F0-9]{20,}|hooks\.slack\.com/services/T[0-9A-Z]+/B[0-9A-Z]+|discord(app)?\.com/api/webhooks/[0-9]+/|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|npg_[A-Za-z0-9]{16,})'
+
+# Secret-looking variable assignments, e.g. CLERK_SECRET_KEY=sk_test_...
+KEYWORDS_RE='(API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|DATABASE_URL|REDIS_URL|CLERK|WEBHOOK|SIGNING|JWT|SESSION|SUPABASE|STRIPE|OPENAI|ANTHROPIC|TWILIO|SENDGRID|MAPBOX|ALGOLIA)'
+# Values that are clearly placeholders or references to other variables.
+PLACEHOLDER='your_|xxxx|example|changeme|dummy|placeholder|<|>|process\.env|\$\{'
+
+mask() {
+    local m=$1
+    if [ ${#m} -le 12 ]; then echo "$m"; else echo "${m:0:6}...${m: -4}"; fi
+}
+
+current_file=""
+while IFS= read -r line; do
+    case "$line" in
+        "diff --git a/"*)
+            # extract the b/ path (may be quoted)
+            current_file=${line#diff --git a/}
+            current_file=${current_file#* b/}
+            current_file=${current_file%\"}
+            current_file=${current_file#\"}
+            ;;
+        "+++ "*|"--- "*|"index "*|"new file "*|"deleted file "*)
+            : ;;
+        +*)
+            content=${line:1}
+            [ -z "$content" ] && continue
+            # strong token shapes
+            m=$(printf '%s\n' "$content" | grep -oE "$STRONG" | head -1 || true)
+            if [ -n "$m" ]; then
+                FAILED=1
+                echo "${RED}${BOLD}Blocked:${NC} possible secret in ${current_file}:" >&2
+                echo "    $(mask "$m")  (line: $(printf '%s' "$content" | cut -c1-160))" >&2
+                continue
+            fi
+            # KEY = long-value assignments
+            if printf '%s\n' "$content" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*["'"'"']?[^[:space:]"'"'"']{16,}'; then
+                key=$(printf '%s\n' "$content" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*).*/\1/')
+                val=$(printf '%s\n' "$content" | sed -E 's/^[^=]*=[[:space:]]*["'"'"']?([^[:space:]"'"'"']*).*/\1/')
+                shopt -s nocasematch
+                if [[ "$key" =~ $KEYWORDS_RE ]] && ! [[ "$key" =~ ^(NEXT_PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_) ]] && ! [[ "$val" =~ $PLACEHOLDER ]] && ! [[ "$val" =~ \$ ]] && [ ${#val} -ge 16 ]; then
+                    FAILED=1
+                    echo "${RED}${BOLD}Blocked:${NC} possible secret value for $key in ${current_file}:" >&2
+                    echo "    $(mask "$val")  (line: $(printf '%s' "$content" | cut -c1-160))" >&2
+                fi
+                shopt -u nocasematch
+            fi
+            ;;
+    esac
+done < <(git diff --cached --no-color -U0)
+
+if [ "$FAILED" -ne 0 ]; then
+    echo >&2
+    echo "${BOLD}Commit aborted.${NC} Remove the secrets (move them to an untracked" >&2
+    echo ".env / your secrets manager) and stage the fixed files again." >&2
+    echo "Only bypass with: git commit --no-verify" >&2
+    exit 1
+fi
+
+exit 0
