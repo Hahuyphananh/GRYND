@@ -5,7 +5,11 @@ import { db } from "../../../../db/client";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-import { chessGames, chessMoves, users } from "../../../../db/schema";
+import { chessGames, chessMoves, users } from "../../../../db/schema";import {
+  applyPrestigeResult,
+  resolvePrestigeBadge,
+} from "../../../../lib/prestige";
+
 
 const HOUSE_EDGE_PERCENT = 10;
 
@@ -41,9 +45,53 @@ async function resolveDisplayName(playerId) {
     .select({ name: users.name })
     .from(users)
     .where(eq(users.id, numericId))
+    .limit(1);  return byNumericId?.name ?? null;
+}
+
+async function resolvePrestigeBadgeForPlayer(playerId) {
+  if (!playerId) return null;
+
+  const normalizedId = String(playerId);
+  const [byClerk] = await db
+    .select({
+      xp: users.xp,
+      prestigeLevel: users.prestigeLevel,
+      showPrestigeBadge: users.showPrestigeBadge,
+    })
+    .from(users)
+    .where(eq(users.clerkId, normalizedId))
     .limit(1);
 
-  return byNumericId?.name ?? null;
+  if (byClerk) {
+    return resolvePrestigeBadge({
+      xp: byClerk.xp,
+      prestigeLevel: byClerk.prestigeLevel,
+      showPrestigeBadge: byClerk.showPrestigeBadge,
+    });
+  }
+
+  const numericId = Number(normalizedId);
+  if (!Number.isInteger(numericId) || numericId <= 0) {
+    return null;
+  }
+
+  const [byNumericId] = await db
+    .select({
+      xp: users.xp,
+      prestigeLevel: users.prestigeLevel,
+      showPrestigeBadge: users.showPrestigeBadge,
+    })
+    .from(users)
+    .where(eq(users.id, numericId))
+    .limit(1);
+
+  return byNumericId
+    ? resolvePrestigeBadge({
+        xp: byNumericId.xp,
+        prestigeLevel: byNumericId.prestigeLevel,
+        showPrestigeBadge: byNumericId.showPrestigeBadge,
+      })
+    : null;
 }
 
 function computeClocks(game, moves) {
@@ -145,6 +193,31 @@ async function settleTimeoutIfNeeded(game, clocks) {
         and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),
       );
 
+      // Permanent Prestige — competitive clock-timeout finish (chess vs AI
+      // is free play and never earns Prestige).
+      if (!lockedGame.isAiGame && lockedWinnerId) {
+        const prestigeLoserId =
+          lockedGame.playerWhiteId === lockedWinnerId
+            ? lockedGame.playerBlackId
+            : lockedGame.playerWhiteId;
+        await applyPrestigeResult({
+          tx,
+          clerkId: lockedWinnerId,
+          outcome: "win",
+          source: "chess",
+          sourceId: String(game.id),
+        }).catch(() => {});
+        if (prestigeLoserId) {
+          await applyPrestigeResult({
+            tx,
+            clerkId: prestigeLoserId,
+            outcome: "loss",
+            source: "chess",
+            sourceId: String(game.id),
+          }).catch(() => {});
+        }
+      }
+
     // Fetch the updated game state
     const [after] = await tx
       .select()
@@ -198,12 +271,12 @@ export async function GET(req) {
 
     let clocks = computeClocks(game, moves);
     game = await settleTimeoutIfNeeded(game, clocks);
-    clocks = computeClocks(game, moves);
-
-    const lastMove = moves[moves.length - 1] || null;
-    const [whiteName, blackName] = await Promise.all([
+    clocks = computeClocks(game, moves);    const lastMove = moves[moves.length - 1] || null;
+    const [whiteName, blackName, whiteBadge, blackBadge] = await Promise.all([
       resolveDisplayName(game.playerWhiteId),
       resolveDisplayName(game.playerBlackId),
+      resolvePrestigeBadgeForPlayer(game.playerWhiteId),
+      resolvePrestigeBadgeForPlayer(game.playerBlackId),
     ]);
 
     return NextResponse.json({
@@ -218,10 +291,11 @@ export async function GET(req) {
         blackTimeRemaining: clocks.blackTimeRemaining,
         activeTurn: clocks.activeTurn,
         whitePlayerId: game.playerWhiteId,
-        blackPlayerId: game.playerBlackId,
-        whitePlayerName: whiteName || "White",
+        blackPlayerId: game.playerBlackId,        whitePlayerName: whiteName || "White",
         blackPlayerName:
           blackName || (game.isAiGame ? "Chess AI" : "Waiting..."),
+        whitePlayerPrestigeBadge: whiteBadge,
+        blackPlayerPrestigeBadge: blackBadge,
         viewerRole,
         winnerId: game.winnerId,
         result: game.result,

@@ -7,6 +7,10 @@ import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
 import { resolveSelectedBannerKey } from "../../../../lib/banners";
 import { getLevelFromXp } from "../../../../lib/battlepass";
+import {
+  getPrestigeStatus,
+  resolvePrestigeBadge,
+} from "../../../../lib/prestige";
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,6 +46,9 @@ export async function GET(req: NextRequest) {
         avatarFrame: users.avatarFrame,
         level: users.level,
         xp: users.xp,
+        prestigeLevel: users.prestigeLevel,
+        prestigeNetWins: users.prestigeNetWins,
+        showPrestigeBadge: users.showPrestigeBadge,
         gamesWon: users.gamesWon,
         gamesLost: users.gamesLost,
         totalWagered: users.totalWagered,
@@ -108,13 +115,35 @@ export async function GET(req: NextRequest) {
     // Battlepass level is derived from XP (wagering + quests), not the
     // possibly-stale stored level column.
     const battlepassLevel = getLevelFromXp(Number(user.xp) || 0);
+    // Permanent Prestige — read-only exposure of the server-maintained
+    // prestige columns. Prestige state can never be set through this or any
+    // other client-facing API.
+    const prestige = getPrestigeStatus({
+      prestigeLevel: user.prestigeLevel,
+      prestigeNetWins: user.prestigeNetWins,
+      xp: Number(user.xp) || 0,
+    });
+    // Server-resolved "Prestige N" badge — only present when the player
+    // equipped it AND genuinely earned it (Level 100 + prestige >= 1).
+    const prestigeBadge = resolvePrestigeBadge({
+      xp: Number(user.xp) || 0,
+      prestigeLevel: user.prestigeLevel,
+      showPrestigeBadge: user.showPrestigeBadge,
+    });
+    const { prestigeLevel, prestigeNetWins, ...safeUser } = user;
     return NextResponse.json({
       success: true,
       user: {
-        ...user,
+        ...safeUser,
         level: battlepassLevel,
         selectedIcon: safeIcon,
         selectedBanner,
+        prestige: prestige.prestige,
+        prestigeNetWins: prestige.prestigeNetWins,
+        nextPrestigeRequirement: prestige.nextPrestigeRequirement,
+        prestigeProgressPercent: prestige.prestigeProgressPercent,
+        prestigeUnlocked: prestige.prestigeUnlocked,
+        prestigeBadge,
       },
     });
   } catch (error: any) {

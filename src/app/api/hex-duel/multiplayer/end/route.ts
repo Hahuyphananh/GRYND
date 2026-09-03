@@ -5,6 +5,7 @@ import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
 import { recordBigWinIfNeeded } from "../../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../../lib/prestige";
 import { logError } from "../../../../../lib/logError";
 
 const PAYOUT_MULTIPLIER = 1.9;
@@ -187,6 +188,29 @@ export async function POST(req: Request) {
           multiplier: PAYOUT_MULTIPLIER,
         }).catch(() => {});
       }
+
+      // Permanent Prestige — competitive PvP finish. Both seats settle
+      // here so the win/loss pair is recorded exactly once regardless of
+      // who calls /end first; the later caller hits the already-completed
+      // path above and the prestige_results journal makes it a no-op.
+      const prestigeWinnerId =
+        winner === "player1" ? game.player1Id : game.player2Id;
+      const prestigeLoserId =
+        winner === "player1" ? game.player2Id : game.player1Id;
+      await applyPrestigeResult({
+        tx,
+        clerkId: prestigeWinnerId,
+        outcome: "win",
+        source: "hex-duel",
+        sourceId: String(game.id),
+      }).catch(() => {});
+      await applyPrestigeResult({
+        tx,
+        clerkId: prestigeLoserId,
+        outcome: "loss",
+        source: "hex-duel",
+        sourceId: String(game.id),
+      }).catch(() => {});
 
       return {
         alreadyProcessed: false,

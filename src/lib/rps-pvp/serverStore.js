@@ -8,6 +8,7 @@
 import { db } from "../../db/client";
 import { rpsPvpGames, users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { applyPrestigeResult } from "../prestige";
 import { eq, sql } from "drizzle-orm";
 
 // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
@@ -93,5 +94,21 @@ export function recordForfeitStats(result) {
     game: "rps-pvp",
     betAmount: Number(result.game.betAmount),
     payout: 0,
+  }).catch(() => {});
+
+  // Permanent Prestige — competitive forfeit: the opponent wins and the
+  // forfeiter records a loss. Keyed on the match id, so replaying the
+  // forfeit (disconnect + poll, double submit) can never double-count.
+  applyPrestigeResult({
+    clerkId: result.winnerId,
+    outcome: "win",
+    source: "rps-pvp",
+    sourceId: String(result.game.id),
+  }).catch(() => {});
+  applyPrestigeResult({
+    clerkId: result.forfeiterId,
+    outcome: "loss",
+    source: "rps-pvp",
+    sourceId: String(result.game.id),
   }).catch(() => {});
 }

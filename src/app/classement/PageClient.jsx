@@ -416,6 +416,11 @@ export default function LeaderboardPage() {
                           >
                             {item.user?.name || item.name}
                           </Link>
+                          {item.prestigeBadge && (
+                            <span className="ml-2 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">
+                              {item.prestigeBadge}
+                            </span>
+                          )}
                         </div>
                         {/* W-L record line — weekly/all-time boards and the
                             streak tabs all return the mini stats. */}

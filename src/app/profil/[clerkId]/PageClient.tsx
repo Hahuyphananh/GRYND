@@ -36,6 +36,7 @@ type PublicUser = {
   selectedTitle: string | null;
   highestTitle: string | null;
   selectedSpecialTitle: string | null;
+  prestigeBadge: string | null;
   dailyStreakCurrent: number;
   dailyStreakBest: number;
   // Leaderboard-style record (same shape the /classement boards read).
@@ -208,9 +209,19 @@ export default function PublicProfilePage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{profile.name}</h1>
-                {(profile.selectedSpecialTitle || profile.selectedTitle) && (
-                  <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
-                    {profile.selectedSpecialTitle || profile.selectedTitle}
+                {(profile.prestigeBadge ||
+                  profile.selectedSpecialTitle ||
+                  profile.selectedTitle) && (
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs ${
+                      profile.prestigeBadge
+                        ? "border-violet-400/70 bg-violet-500/15 text-violet-300"
+                        : "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 text-[#f5ff3b]"
+                    }`}
+                  >
+                    {profile.prestigeBadge ||
+                      profile.selectedSpecialTitle ||
+                      profile.selectedTitle}
                   </span>
                 )}
               </div>

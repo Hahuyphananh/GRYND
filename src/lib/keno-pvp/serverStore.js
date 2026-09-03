@@ -31,6 +31,7 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
+import { applyPrestigeResult } from "../prestige";
 import { kenoPvpMatches, kenoPvpRounds, users } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorKenoQueued, mirrorKenoTransition } from "./canonicalLifecycle";
@@ -768,6 +769,26 @@ async function recordPvPResult(tx, match, winnerId, result) {
       totalWagered: sql`${users.totalWagered} + ${Number(match.stakeAmount)}`,
     })
     .where(eq(users.clerkId, loserId));
+
+  // Permanent Prestige — server-authoritative PvP hook. This runs on the
+  // same guarded single-execution path as the stats above (the match flips
+  // to `finished` once inside this transaction) and the prestige_results
+  // journal keyed by (user, source, source_id) makes a duplicate or
+  // concurrent settlement of this match a no-op.
+  await applyPrestigeResult({
+    tx,
+    clerkId: winnerId,
+    outcome: "win",
+    source: "keno-pvp",
+    sourceId: String(match.id),
+  }).catch(() => {});
+  await applyPrestigeResult({
+    tx,
+    clerkId: loserId,
+    outcome: "loss",
+    source: "keno-pvp",
+    sourceId: String(match.id),
+  }).catch(() => {});
 }
 
 // ── catchBall (the main action) ───────────────────────────────────────

@@ -17,6 +17,7 @@ import {
 import { TITLE_MILESTONES } from "../../../lib/titles";
 import { rewardsForLevel } from "../../../lib/battlepassRewards";
 import { grantBattlepassBanners } from "../../../lib/banners";
+import { getPrestigeStatus } from "../../../lib/prestige";
 
 export async function GET() {
   try {
@@ -26,14 +27,21 @@ export async function GET() {
     // read their real progress from the DB.
     let xp = 0;
     let dbUserId = null;
+    let prestigeLevel = 0;
+    let prestigeNetWins = 0;
     let ownedBannerKeys = new Set();
     if (userId) {
       const sql = getNeonSql();
       const rows = await sql`
-        SELECT id, xp FROM users WHERE clerk_id = ${userId} LIMIT 1
+        SELECT id, xp, prestige_level, prestige_net_wins
+          FROM users
+         WHERE clerk_id = ${userId}
+         LIMIT 1
       `;
       dbUserId = rows[0]?.id ?? null;
       xp = Math.max(0, Math.floor(Number(rows[0]?.xp) || 0));
+      prestigeLevel = Math.max(0, Math.floor(Number(rows[0]?.prestige_level) || 0));
+      prestigeNetWins = Math.max(0, Math.floor(Number(rows[0]?.prestige_net_wins) || 0));
       if (dbUserId) {
         await grantBattlepassBanners(dbUserId, getBattlepassProgress(xp).level).catch((error) => {
           console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
@@ -45,6 +53,15 @@ export async function GET() {
       }
     }
     const progress = getBattlepassProgress(xp);
+
+    // Permanent Prestige (post-Level-100 progression). Read-only exposure —
+    // Prestige is only ever written server-side by authoritative settlement
+    // via src/lib/prestige.js.
+    const prestigeStatus = getPrestigeStatus({
+      prestigeLevel,
+      prestigeNetWins,
+      xp,
+    });
 
     const titleByLevel = new Map(
       TITLE_MILESTONES.map((m) => [m.level, m]),
@@ -66,7 +83,14 @@ export async function GET() {
       });
     }
 
-    return Response.json({ success: true, pass: { ...progress, levels } });
+    return Response.json({
+      success: true,
+      pass: {
+        ...progress,
+        ...prestigeStatus,
+        levels,
+      },
+    });
   } catch (err) {
     console.error("[BATTLEPASS_ERROR]", err);
     return Response.json(

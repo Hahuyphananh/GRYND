@@ -4,6 +4,7 @@ import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../../lib/prestige";
 
 export async function POST(req: Request) {
   try {
@@ -89,6 +90,21 @@ export async function POST(req: Request) {
         betAmount: game.wager,
         payout: 0,
         isPvpWin: false,
+      }).catch(() => {});
+
+      // Permanent Prestige — competitive forfeit settlement: winner +1,
+      // forfeiter -1. Idempotent on the game id via the journal.
+      applyPrestigeResult({
+        clerkId: winnerId!,
+        outcome: "win",
+        source: "odds-pvp",
+        sourceId: String(gameId),
+      }).catch(() => {});
+      applyPrestigeResult({
+        clerkId: userId,
+        outcome: "loss",
+        source: "odds-pvp",
+        sourceId: String(gameId),
       }).catch(() => {});
 
       return { winner, payout, winnerId };

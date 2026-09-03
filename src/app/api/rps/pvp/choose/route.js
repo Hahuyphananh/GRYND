@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../../lib/prestige";
 import { eq, sql } from "drizzle-orm";
 
 // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
@@ -156,6 +157,29 @@ export async function POST(req) {
           .update(users)
           .set({ balance: sql`${users.balance} + ${winnerPayout}` })
           .where(eq(users.clerkId, winnerId));
+
+        // Permanent Prestige — competitive best-of-7 finish: the match
+        // winner earns +1 and the opponent records a -1 loss.
+        const prestigeLoserId =
+          updatedGame.player1Id === winnerId
+            ? updatedGame.player2Id
+            : updatedGame.player1Id;
+        await applyPrestigeResult({
+          tx,
+          clerkId: winnerId,
+          outcome: "win",
+          source: "rps-pvp",
+          sourceId: String(parsedGameId),
+        }).catch(() => {});
+        if (prestigeLoserId) {
+          await applyPrestigeResult({
+            tx,
+            clerkId: prestigeLoserId,
+            outcome: "loss",
+            source: "rps-pvp",
+            sourceId: String(parsedGameId),
+          }).catch(() => {});
+        }
 
         const [finished] = await tx
           .update(rpsPvpGames)

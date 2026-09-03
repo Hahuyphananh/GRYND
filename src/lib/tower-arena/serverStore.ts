@@ -32,7 +32,7 @@ import {
   towerArenaTurns,
   users,
 } from "../../db/schema";
-import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { applyLeaderboardCounters } from "../leaderboardCounters";import { applyPrestigeResult, resolvePrestigeBadge } from "../prestige";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
 import {
@@ -1092,6 +1092,23 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
     }
   }
 
+  // Permanent Prestige — paid competitive finish: first place earns +1
+  // and every other human participant records a -1 loss (AI / free-play
+  // matches move no Prestige). Idempotent on the match id via the
+  // prestige_results journal.
+  if (isPaid) {
+    for (const r of ranked) {
+      if (r.isAi) continue;
+      applyPrestigeResult({
+        tx,
+        clerkId: r.userId,
+        outcome: r.placement === 1 ? "win" : "loss",
+        source: "tower-arena",
+        sourceId: String(match.id),
+      }).catch(() => {});
+    }
+  }
+
   const finishDistinctId =
     winner && !winner.isAi ? winner.userId : match.hostUserId || "system";
   towerArenaFinished({
@@ -1474,22 +1491,33 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
  * Player display lookup keyed by clerkId — name + official icon key.
  * Used by the lobby + match projections so only server-resolved names /
  * icons reach the client (never user-supplied avatar URLs).
- */
-async function userDisplayMap(
+ */async function userDisplayMap(
   tx: any,
   clerkIds: string[],
-): Promise<Map<string, { name: string; iconKey: string }>> {
+): Promise<Map<string, { name: string; iconKey: string; prestigeBadge: string | null }>> {
   const ids = [...new Set(clerkIds.filter(Boolean))];
   if (ids.length === 0) return new Map();
   const rows = await tx
-    .select({ clerkId: users.clerkId, name: users.name, selectedIcon: users.selectedIcon })
+    .select({
+      clerkId: users.clerkId,
+      name: users.name,
+      selectedIcon: users.selectedIcon,
+      xp: users.xp,
+      prestigeLevel: users.prestigeLevel,
+      showPrestigeBadge: users.showPrestigeBadge,
+    })
     .from(users)
     .where(inArray(users.clerkId, ids));
-  const map = new Map<string, { name: string; iconKey: string }>();
+  const map = new Map<string, { name: string; iconKey: string; prestigeBadge: string | null }>();
   for (const row of rows) {
     map.set(row.clerkId, {
       name: row.name || "Player",
       iconKey: row.selectedIcon || DEFAULT_ICON_KEY,
+      prestigeBadge: resolvePrestigeBadge({
+        xp: row.xp,
+        prestigeLevel: row.prestigeLevel,
+        showPrestigeBadge: row.showPrestigeBadge,
+      }),
     });
   }
   return map;
@@ -1510,12 +1538,13 @@ async function enrichMatchPlayers(tx: any, players: any[]) {
       isAi: p.isAi,
       ready: Boolean(p.ready),
       joinedAt: p.joinedAt,
-      eliminatedAt: p.eliminatedAt,
-      name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
+      eliminatedAt: p.eliminatedAt,      name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
       iconKey: p.isAi ? DEFAULT_ICON_KEY : (d?.iconKey ?? DEFAULT_ICON_KEY),
+      prestigeBadge: p.isAi ? null : (d?.prestigeBadge ?? null),
     };
   });
 }
+
 
 /**
  * Open waiting lobbies for the public lobby grid. Each entry carries the

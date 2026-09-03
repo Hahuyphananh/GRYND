@@ -253,6 +253,20 @@ export const users = pgTable("users", {
   totalWon: bigint("total_won", { mode: "number" }).default(0).notNull(),
   level: integer("level").default(1).notNull(),
   xp: integer("xp").default(0).notNull(),
+  // Permanent Prestige progression layered on the permanent Battle Pass
+  // (Level 1-100). Only server-authoritative game results write these —
+  // see src/lib/prestige.js and migration 0136. `prestige_level` is
+  // monotonic (losses can reduce net-win progress, never a tier);
+  // `prestige_net_wins` is the current tier's progress, clamped >= 0 and
+  // reset to 0 when the next tier's requirement is met. Both are gated to
+  // players who have reached the permanent Level 100 cap.
+  prestigeLevel: integer("prestige_level").default(0).notNull(),
+  prestigeNetWins: integer("prestige_net_wins").default(0).notNull(),
+  // Equip preference: show the "Prestige N" badge instead of the normal
+  // title. This is only a preference — the displayed N is always derived
+  // server-side from prestige_level (see resolvePrestigeBadge in
+  // src/lib/prestige.js), so an unearned badge can never be shown.
+  showPrestigeBadge: boolean("show_prestige_badge").notNull().default(false),
   biggestWin: integer("biggest_win").default(0).notNull(),
   bestMultiplier: numeric("best_multiplier", { precision: 10, scale: 4 }).default("0").notNull(),
   currentStreak: integer("current_streak").default(0).notNull(),
@@ -519,6 +533,39 @@ export const userSecretStats = pgTable("user_secret_stats", {
   loginDays: integer("login_days").notNull().default(0),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// PERMANENT PRESTIGE — IDEMPOTENCY JOURNAL
+// ==============================================================================
+// Server-side journal of authoritative match results that flowed through the
+// Prestige hook (src/lib/prestige.js). (user_id, source, source_id) is unique
+// so a duplicate / replayed / concurrent settlement of the same match can
+// never apply Prestige progress twice. Written only from server settlement
+// code; the client can never insert rows here.
+export const prestigeResults = pgTable("prestige_results", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // Game key that produced the result, e.g. "mines-pvp".
+  source: varchar("source", { length: 64 }).notNull(),
+  // Authoritative match/game id in that game's own table.
+  sourceId: varchar("source_id", { length: 128 }).notNull(),
+  // Authoritative outcome: "win" | "loss" | "draw".
+  outcome: varchar("outcome", { length: 8 }).notNull(),
+  // Applied net-win delta for this event (+1 / -1 / 0 when ineligible, draw,
+  // or maxed). Stored for auditability of the journal row.
+  delta: integer("delta").default(0).notNull(),
+  prestigeLevelAfter: integer("prestige_level_after").default(0).notNull(),
+  prestigeNetWinsAfter: integer("prestige_net_wins_after").default(0).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqPrestigeEvent: unique("prestige_results_unique_event").on(
+    table.userId,
+    table.source,
+    table.sourceId,
+  ),
+  userPrestigeIdx: index("prestige_results_user_idx").on(table.userId, table.createdAt),
+}));
 
 export const chatRoomTypeEnum = pgEnum("chat_room_type", ["global", "game"]);
 

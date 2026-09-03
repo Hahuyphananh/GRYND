@@ -5,6 +5,7 @@ import { db } from "../../../../db/client";
 import { chatMessages, specialTitles, tokenSubscriptions, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
+import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { sanitizeString } from "../../../../lib/security/validation";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
@@ -96,6 +97,9 @@ export async function GET(req) {
         dailyStreakBest: users.dailyStreakBest,
         chatColor: users.chatColor,
         premiumStatus: tokenSubscriptions.status,
+        xp: users.xp,
+        prestigeLevel: users.prestigeLevel,
+        showPrestigeBadge: users.showPrestigeBadge,
       })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
@@ -130,9 +134,15 @@ export async function GET(req) {
 
       const regularTitle = msg.selectedTitle;
 
-      // Build equippedTitle: primary title only (special or regular title)
-      // Streak title is returned as a separate field for its own badge
-      const primaryTitle = specialTitle || regularTitle || null;
+      // Build equippedTitle: primary title only. An equipped Prestige badge
+      // (resolved server-side — never client text) outranks special/regular
+      // titles. Streak title stays a separate field for its own badge.
+      const prestigeBadge = resolvePrestigeBadge({
+        xp: msg.xp,
+        prestigeLevel: msg.prestigeLevel,
+        showPrestigeBadge: msg.showPrestigeBadge,
+      });
+      const primaryTitle = prestigeBadge || specialTitle || regularTitle || null;
       const premium = Boolean(msg.premiumStatus);
 
       // Remove extra fields we added for computation
@@ -141,6 +151,9 @@ export async function GET(req) {
         dailyStreakCurrent,
         dailyStreakBest,
         premiumStatus,
+        xp,
+        prestigeLevel,
+        showPrestigeBadge,
         ...cleanMsg
       } = msg;
       return {
@@ -204,6 +217,9 @@ export async function POST(req) {
         dailyStreakBest: users.dailyStreakBest,
         chatColor: users.chatColor,
         balance: users.balance,
+        xp: users.xp,
+        prestigeLevel: users.prestigeLevel,
+        showPrestigeBadge: users.showPrestigeBadge,
       })
       .from(users)
       .where(eq(users.clerkId, userId))
@@ -234,7 +250,14 @@ export async function POST(req) {
       dailyStreakBest: appUser?.dailyStreakBest,
     }).title;
 
-    const primaryTitle = specialTitleRow?.name || selectedTitle;
+    // An equipped Prestige badge (resolved server-side) outranks the
+    // special / regular titles; streak title stays separate.
+    const prestigeBadge = resolvePrestigeBadge({
+      xp: appUser?.xp,
+      prestigeLevel: appUser?.prestigeLevel,
+      showPrestigeBadge: appUser?.showPrestigeBadge,
+    });
+    const primaryTitle = prestigeBadge || specialTitleRow?.name || selectedTitle;
     // Streak title is separate — primary title goes into equippedTitle
     const equippedTitle = primaryTitle;
 

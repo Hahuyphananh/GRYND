@@ -39,6 +39,7 @@ import { db } from "../../db/client";
 import { users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { recordBigWinIfNeeded } from "../bigWins";
+import { applyPrestigeResult } from "../prestige";
 import { precisionMatchStore } from "./serverStore";
 import type { PlayerSeat } from "./types";
 
@@ -346,6 +347,29 @@ export async function processMatchFinishedPayout(
     payout: 0,
   }).catch((err) => {
     console.error("[precision] leaderboard (loser) failed:", err);
+  });
+
+  // Permanent Prestige — server-authoritative PvP hook. AI matches never
+  // reach this point (isAiGame short-circuits above), and the
+  // precisionPaidOutMatches guard means a match pays out only once, so
+  // this can never double-apply. Fire-and-forget like the leaderboard
+  // side-effects above; the prestige_results journal keeps the event
+  // idempotent regardless.
+  applyPrestigeResult({
+    clerkId: winnerPlayer.userId,
+    outcome: "win",
+    source: "precision",
+    sourceId: matchId,
+  }).catch((err) => {
+    console.error("[precision] prestige (winner) failed:", err);
+  });
+  applyPrestigeResult({
+    clerkId: loserPlayer.userId,
+    outcome: "loss",
+    source: "precision",
+    sourceId: matchId,
+  }).catch((err) => {
+    console.error("[precision] prestige (loser) failed:", err);
   });
 
   if (payout >= 1_000_000) {

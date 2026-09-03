@@ -1,14 +1,24 @@
 import { auth } from "@clerk/nextjs/server";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { users } from "../../../../db/schema";
-import { unoRoomStore } from "../../../../lib/unoRoomStore";
+import { users } from "../../../../db/schema";import { unoRoomStore } from "../../../../lib/unoRoomStore";
+import { resolvePrestigeBadge } from "../../../../lib/prestige";
 
 const MAX_SEATS = 6;
-const HOUSE_EDGE_PERCENT = 5;
-
-function getStore() {
+const HOUSE_EDGE_PERCENT = 5;function getStore() {
   return unoRoomStore;
+}
+
+// Server-resolved prestige badge for a users row — raw prestige columns
+// never leave the server; only the label (or null) is stored on the
+// in-memory player object so every room payload carries it automatically.
+function prestigeBadgeForUser(user) {
+  if (!user) return null;
+  return resolvePrestigeBadge({
+    xp: user.xp,
+    prestigeLevel: user.prestigeLevel,
+    showPrestigeBadge: user.showPrestigeBadge,
+  });
 }
 
 function tableSummary(room) {
@@ -249,15 +259,16 @@ function serializeGameForUser(room, userId) {
     mode: "table",
     role: meId,
     mySeatIndex: me?.seatIndex ?? null,
-    playerHand: meId ? active.hands[meId] || [] : [],
-    handCounts: active.players.map((p) => ({
+    playerHand: meId ? active.hands[meId] || [] : [],    handCounts: active.players.map((p) => ({
       playerId: p.id,
       seatIndex: p.seatIndex,
       name: p.name,
       type: p.type,
       count: (active.hands[p.id] || []).length,
       isHost: Boolean(p.isHost),
+      prestigeBadge: p.prestigeBadge ?? null,
     })),
+
     topCard: active.discardPile[active.discardPile.length - 1] || null,
     currentColor: active.currentColor,
     turnPlayerId: turnPlayer?.id || null,
@@ -428,8 +439,7 @@ export async function POST(request) {
 
   if (action === "create") {
     const settings = sanitizeSettings(body?.settings || {});
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const hostPlayer = {
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase();    const hostPlayer = {
       id: `${user.id}-host`,
       userId: user.id,
       name: user.name,
@@ -437,6 +447,7 @@ export async function POST(request) {
       seatIndex: null,
       isHost: true,
       skipNextRound: false,
+      prestigeBadge: prestigeBadgeForUser(user),
     };
 
     const room = {
@@ -536,8 +547,7 @@ export async function POST(request) {
 
     if (existing) {
       existing.seatIndex = seatIndex;
-    } else {
-      room.players.push({
+    } else {      room.players.push({
         id: `${user.id}-${Date.now()}`,
         userId: user.id,
         name: user.name,
@@ -545,6 +555,7 @@ export async function POST(request) {
         seatIndex,
         isHost: false,
         skipNextRound: false,
+        prestigeBadge: prestigeBadgeForUser(user),
       });
     }
 

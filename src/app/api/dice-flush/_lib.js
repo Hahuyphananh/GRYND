@@ -4,6 +4,7 @@ import { db } from "../../../db/client";
 import { users, diceFlushActions, diceFlushPlayers, diceFlushRooms } from "../../../db/schema";
 import { autoBankIfExpired, checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../lib/prestige";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
   return {
@@ -103,6 +104,32 @@ export async function settleIfEnded(tx, roomRow, state) {
           betAmount: betAmountForCounters,
           payout: 0,
         }).catch(() => {});
+      }
+    }
+  }
+
+  // Permanent Prestige — competitive (non-AI) finish: the match winner
+  // earns +1 and every other human player records a -1 loss. Idempotent
+  // on the room id via the prestige_results journal.
+  if (!isAiMatch) {
+    await applyPrestigeResult({
+      tx,
+      clerkId: ended.winnerId,
+      outcome: "win",
+      source: "dice-flush",
+      sourceId: String(roomRow.id),
+    }).catch(() => {});
+    if (state.players) {
+      for (const p of state.players) {
+        if (p.userId !== ended.winnerId && !p.isAI) {
+          await applyPrestigeResult({
+            tx,
+            clerkId: p.userId,
+            outcome: "loss",
+            source: "dice-flush",
+            sourceId: String(roomRow.id),
+          }).catch(() => {});
+        }
       }
     }
   }

@@ -5,6 +5,7 @@ import { oddsGames, users } from "../../../../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
+import { applyPrestigeResult } from "../../../../../lib/prestige";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -135,6 +136,21 @@ async function forfeitPlayer(
       betAmount: wager,
       payout: 0,
       isPvpWin: false,
+    }).catch(() => {});
+
+    // Permanent Prestige — competitive forfeit settlement: winner +1,
+    // forfeiter -1. Idempotent on the game id via the journal.
+    applyPrestigeResult({
+      clerkId: winnerId,
+      outcome: "win",
+      source: "odds-pvp",
+      sourceId: String(gameId),
+    }).catch(() => {});
+    applyPrestigeResult({
+      clerkId: forfeiterId,
+      outcome: "loss",
+      source: "odds-pvp",
+      sourceId: String(gameId),
     }).catch(() => {});
   });
 }

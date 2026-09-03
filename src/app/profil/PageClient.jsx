@@ -79,6 +79,19 @@ export default function ProfilePage() {
     allStreakTitles: [],
   });
 
+  // Prestige badge equip state — resolved server-side by
+  // /api/user/prestige-badge. `display` is null unless the badge is both
+  // equipped AND genuinely earned (Level 100 + prestige >= 1), so an
+  // unearned badge can never be rendered.
+  const [prestigeBadge, setPrestigeBadge] = useState({
+    loading: true,
+    enabled: false,
+    display: null,
+    prestige: 0,
+    prestigeUnlocked: false,
+    error: null,
+  });
+
   const [membership, setMembership] = useState(null);
   const [chatColor, setChatColor] = useState("#00e5ff");
   const [chatColorMsg, setChatColorMsg] = useState(null);
@@ -283,6 +296,60 @@ export default function ProfilePage() {
       await loadTitles();
       window.dispatchEvent(new Event("titleUpdated"));
       window.dispatchEvent(new Event("profileUpdated"));
+    }
+  };
+
+  const loadPrestigeBadge = async () => {
+    try {
+      const response = await fetch("/api/user/prestige-badge", {
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPrestigeBadge({
+          loading: false,
+          enabled: Boolean(data.badge?.enabled),
+          display: data.badge?.display || null,
+          prestige: data.badge?.prestige || 0,
+          prestigeUnlocked: Boolean(data.badge?.prestigeUnlocked),
+          error: null,
+        });
+      } else {
+        setPrestigeBadge((prev) => ({ ...prev, loading: false }));
+      }
+    } catch (err) {
+      console.error("[LOAD_PRESTIGE_BADGE_ERROR]", err);
+      setPrestigeBadge((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Equip / unequip the Prestige badge. The server only stores a boolean
+  // preference and re-derives the display text from the real prestige
+  // level — this page never sends or renders a client-claimed tier.
+  const handleEquipPrestigeBadge = async (enabled) => {
+    const response = await fetch("/api/user/prestige-badge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ enabled }),
+    });
+    const data = await response.json();
+    if (response.ok && data.success) {
+      setPrestigeBadge({
+        loading: false,
+        enabled: Boolean(data.badge?.enabled),
+        display: data.badge?.display || null,
+        prestige: data.badge?.prestige || 0,
+        prestigeUnlocked: Boolean(data.badge?.prestigeUnlocked),
+        error: null,
+      });
+      window.dispatchEvent(new Event("titleUpdated"));
+      window.dispatchEvent(new Event("profileUpdated"));
+    } else {
+      setPrestigeBadge((prev) => ({
+        ...prev,
+        error: data?.error || "Could not update your badge",
+      }));
     }
   };
 
@@ -637,6 +704,7 @@ export default function ProfilePage() {
           loadStreakTitles(),
           loadMembership(),
           loadLossLimit(),
+          loadPrestigeBadge(),
           loadFriends(),
           loadFriendPresence(),
           loadFriendInvites(),
@@ -681,6 +749,7 @@ export default function ProfilePage() {
       loadSpecialTitles();
       loadVipTitles();
       loadStreakTitles();
+      loadPrestigeBadge();
     };
 
     window.addEventListener("titleUpdated", refreshTitles);
@@ -1114,9 +1183,19 @@ export default function ProfilePage() {
                       {membership.title || "GRYND+ Elite"}
                     </span>
                   )}
-                  {(specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle) && (
-                    <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
-                      {specialTitles.selectedSpecialTitleName || titleMeta.selectedTitle}
+                  {(prestigeBadge.display ||
+                    specialTitles.selectedSpecialTitleName ||
+                    titleMeta.selectedTitle) && (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs ${
+                        prestigeBadge.display
+                          ? "border-violet-400/70 bg-violet-500/15 text-violet-300"
+                          : "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 text-[#f5ff3b]"
+                      }`}
+                    >
+                      {prestigeBadge.display ||
+                        specialTitles.selectedSpecialTitleName ||
+                        titleMeta.selectedTitle}
                     </span>
                   )}
                 </div>
@@ -1560,6 +1639,16 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                     <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                   </svg>
                 </button>
+                <button
+                  onClick={() => setTitlesView("prestige")}
+                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                    titlesView === "prestige"
+                      ? "bg-violet-500 text-white"
+                      : "bg-white/10 text-gray-300"
+                  }`}
+                >
+                  👑 Prestige
+                </button>
               </div>
 
               {titlesView === "special" && (
@@ -1772,6 +1861,63 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   })}
                 </div>
               )}
+
+              {titlesView === "prestige" && (
+                <div className="rounded-lg border border-violet-400/35 bg-violet-500/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-violet-300/50 bg-violet-500/15 text-2xl">
+                      👑
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-violet-300">
+                        Prestige badge
+                      </p>
+                      <p className="text-lg font-bold text-white">
+                        {prestigeBadge.display ||
+                          `Prestige ${prestigeBadge.prestige}`}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-300">
+                    Show your permanent Prestige tier next to your name
+                    instead of a normal title. The tier always comes from
+                    your real server progress — you can only ever display
+                    the Prestige you actually earned, and your existing
+                    titles stay available whenever you switch back.
+                  </p>
+                  {prestigeBadge.prestigeUnlocked ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={prestigeBadge.loading}
+                        onClick={() =>
+                          handleEquipPrestigeBadge(!prestigeBadge.enabled)
+                        }
+                        className="rounded-lg border border-violet-300/60 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35 disabled:opacity-50"
+                      >
+                        {prestigeBadge.enabled
+                          ? "Click to hide the Prestige badge"
+                          : "Display Prestige badge"}
+                      </button>
+                      {prestigeBadge.enabled && (
+                        <span className="rounded-full border border-yellow-300/70 bg-yellow-300/10 px-2.5 py-0.5 text-xs font-semibold text-yellow-200">
+                          Equipped
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
+                      🔒 Prestige unlocks at Level 100 — keep climbing the
+                      Battle Pass to earn your first Prestige tier.
+                    </p>
+                  )}
+                  {prestigeBadge.error && (
+                    <p className="mt-2 text-xs text-red-400">
+                      {prestigeBadge.error}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1959,7 +2105,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                       size="h-10 w-10"
                     />
                     <div className="flex-1">
-                      <span>{friend.name}</span>
+                      <span className="flex flex-wrap items-center gap-x-1.5">
+                        {friend.name}
+                        {friend.prestigeBadge && (
+                          <span className="rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300">
+                            {friend.prestigeBadge}
+                          </span>
+                        )}
+                      </span>
                       {friend.streakTitle && (
                         <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
                           <svg

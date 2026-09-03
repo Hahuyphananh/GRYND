@@ -7,6 +7,7 @@ import { db } from "../../../../db/client";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
+import { applyPrestigeResult } from "../../../../lib/prestige";
 
 const HOUSE_EDGE_PERCENT = 10;
 
@@ -141,6 +142,31 @@ export async function POST(req) {
             result: isDraw ? "draw" : "win",
           })
           .where(eq(chessGames.id, normalizedGameId));
+
+        // Permanent Prestige — competitive PvP finish. Draws and AI
+        // matches never move Prestige (chess vs AI is free play).
+        if (!isDraw && !lockedGame.isAiGame && winnerId) {
+          const prestigeLoserId =
+            lockedGame.playerWhiteId === winnerId
+              ? lockedGame.playerBlackId
+              : lockedGame.playerWhiteId;
+          await applyPrestigeResult({
+            tx,
+            clerkId: winnerId,
+            outcome: "win",
+            source: "chess",
+            sourceId: String(normalizedGameId),
+          }).catch(() => {});
+          if (prestigeLoserId) {
+            await applyPrestigeResult({
+              tx,
+              clerkId: prestigeLoserId,
+              outcome: "loss",
+              source: "chess",
+              sourceId: String(normalizedGameId),
+            }).catch(() => {});
+          }
+        }
       });
     }
 
