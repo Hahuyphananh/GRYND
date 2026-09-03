@@ -74,7 +74,7 @@ import {
   BLACKJACK_PVP_MATCH_UPDATED,
   blackjackPvpMatchRoom,
 } from "../../../../lib/blackjack-pvp/rooms";
-import EmotePicker from "../../../../components/game/EmotePicker";
+import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
 
 // ── Types ────────────────────────────────────────────────────────────
 type Card = { suit: string; value: string };
@@ -1885,7 +1885,7 @@ function GameTableCenter({
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
                   className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base normal-case tracking-normal shadow-[0_0_18px_rgba(0,229,255,.3)]"
                 >
-                  {myEmote.value}
+                  <EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" />
                 </motion.span>
               )}
             </AnimatePresence>
@@ -1936,7 +1936,7 @@ function GameTableCenter({
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
                   className="absolute bottom-full right-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base normal-case tracking-normal shadow-[0_0_18px_rgba(255,60,172,.35)]"
                 >
-                  {incomingEmote.value}
+                  <EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" />
                 </motion.span>
               )}
             </AnimatePresence>

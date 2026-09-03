@@ -7,6 +7,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { logError } from "../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../lib/icons";
+import { reconcileEmoteState } from "../../../lib/emotes";
 
 export async function POST(req: Request) {
   try {
@@ -177,6 +178,14 @@ async function seedPlayerStats(user: { id: number; balance: string | null }) {
   // New player owns the official default icon + the full official catalog
   // (every enabled icon — migration 0129 backfills pre-existing accounts).
   await grantAllOfficialIcons(user.id);
+
+  // New player also auto-owns the 8 FREE animated emotes with the default
+  // loadout seeded (reconcileEmoteState is idempotent and only seeds on the
+  // first free grant). Best-effort so an emote-system hiccup never blocks
+  // account sync (the picker re-reconciles on first read anyway).
+  await reconcileEmoteState(user.id).catch((err) =>
+    console.warn("[sync-user] emote grant failed:", err),
+  );
 
   await db.execute(sql`
     INSERT INTO user_secret_stats (user_id, day_key, day_start_balance, last_known_balance)

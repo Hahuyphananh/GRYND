@@ -17,6 +17,7 @@ import {
 import { TITLE_MILESTONES } from "../../../lib/titles";
 import { rewardsForLevel } from "../../../lib/battlepassRewards";
 import { grantBattlepassBanners } from "../../../lib/banners";
+import { grantBattlepassEmotes } from "../../../lib/emotes";
 import { getPrestigeStatus } from "../../../lib/prestige";
 
 export async function GET() {
@@ -30,6 +31,7 @@ export async function GET() {
     let prestigeLevel = 0;
     let prestigeNetWins = 0;
     let ownedBannerKeys = new Set();
+    let ownedEmoteKeys = new Set();
     if (userId) {
       const sql = getNeonSql();
       const rows = await sql`
@@ -43,13 +45,23 @@ export async function GET() {
       prestigeLevel = Math.max(0, Math.floor(Number(rows[0]?.prestige_level) || 0));
       prestigeNetWins = Math.max(0, Math.floor(Number(rows[0]?.prestige_net_wins) || 0));
       if (dbUserId) {
+        // Idempotent reward reconciliation — also repairs rewards for users
+        // whose XP was already above a newly-added reward level. Refreshing
+        // the page / reconnecting never duplicates ownership.
         await grantBattlepassBanners(dbUserId, getBattlepassProgress(xp).level).catch((error) => {
           console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
+        });
+        await grantBattlepassEmotes(dbUserId, getBattlepassProgress(xp).level).catch((error) => {
+          console.error("[BATTLEPASS_EMOTE_GRANT_ERROR]", error);
         });
         const ownedRows = await sql`
           SELECT banner_key FROM user_banners WHERE user_id = ${dbUserId}
         `;
         ownedBannerKeys = new Set(ownedRows.map((row) => row.banner_key));
+        const ownedEmoteRows = await sql`
+          SELECT emote_key FROM user_emotes WHERE user_id = ${dbUserId}
+        `;
+        ownedEmoteKeys = new Set(ownedEmoteRows.map((row) => row.emote_key));
       }
     }
     const progress = getBattlepassProgress(xp);
@@ -78,7 +90,9 @@ export async function GET() {
           ...reward,
           claimed: reward.type === "banner" && dbUserId
             ? ownedBannerKeys.has(reward.key)
-            : false,
+            : reward.type === "emote" && dbUserId
+              ? ownedEmoteKeys.has(reward.key)
+              : false,
         })),
       });
     }

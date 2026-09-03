@@ -12,6 +12,7 @@ import { sendWelcomeEmail } from "../../../../lib/emails/welcome";
 import { db } from "../../../../db";
 import { logError } from "../../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../../lib/icons";
+import { reconcileEmoteState } from "../../../../lib/emotes";
 
 export async function POST(req) {
   try {
@@ -61,8 +62,15 @@ export async function POST(req) {
         // in the picker regardless of whether it ever hits the sync-user
         // fresh-account path. Idempotent + best-effort.
         if (insertedRows?.length) {
-          await grantAllOfficialIcons(insertedRows[0].id).catch((err) =>
+          const newUserId = insertedRows[0].id;
+          await grantAllOfficialIcons(newUserId).catch((err) =>
             console.warn("[clerk-webhook] icon grant failed:", err),
+          );
+          // New accounts also auto-own the 8 FREE animated emotes and get the
+          // default loadout seeded (reconcileEmoteState seeds only on the
+          // very first free grant — idempotent + safe to run repeatedly).
+          await reconcileEmoteState(newUserId).catch((err) =>
+            console.warn("[clerk-webhook] emote grant failed:", err),
           );
         }
         await db

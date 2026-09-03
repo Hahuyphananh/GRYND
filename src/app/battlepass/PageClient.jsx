@@ -11,6 +11,7 @@ import {
   REWARD_TYPES,
 } from "../../lib/battlepassRewards";
 import { bannerAssetUrl } from "../../lib/bannerAssets";
+import { emoteAssetUrl } from "../../lib/emoteAssets";
 
 function formatNumber(n) {
   return Number(n || 0).toLocaleString();
@@ -32,6 +33,7 @@ export default function BattlepassPageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [failedBannerRewards, setFailedBannerRewards] = useState({});
+  const [failedEmoteRewards, setFailedEmoteRewards] = useState({});
   // Prestige tier that just unlocked and is being celebrated (null = none).
   const [prestigeCelebrated, setPrestigeCelebrated] = useState(null);
 
@@ -441,10 +443,34 @@ export default function BattlepassPageClient() {
                                     )}
                                   </div>
                                 )}
+                                {reward.type === "emote" && (
+                                  <div className="mt-1 flex h-12 items-center justify-center overflow-hidden rounded border border-white/10 bg-[#08142f]">
+                                    {emoteAssetUrl(reward.key) && !failedEmoteRewards[reward.key] ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={emoteAssetUrl(reward.key)}
+                                        alt=""
+                                        className="h-10 w-10 object-contain"
+                                        loading="lazy"
+                                        onError={() =>
+                                          setFailedEmoteRewards((previous) => ({
+                                            ...previous,
+                                            [reward.key]: true,
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="text-[8px] text-white/40">Artwork coming soon</span>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="text-[9px] leading-tight text-[#7dd3fc]">
                                   {reward.desc}
                                 </div>
                                 {reward.type === "banner" && reward.claimed && (
+                                  <div className="text-[9px] font-semibold text-emerald-300">Unlocked</div>
+                                )}
+                                {reward.type === "emote" && reward.claimed && (
                                   <div className="text-[9px] font-semibold text-emerald-300">Unlocked</div>
                                 )}
                               </div>

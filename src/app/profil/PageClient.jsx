@@ -16,6 +16,8 @@ import {
 import IconAvatar from "../../components/IconAvatar";
 import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseBannerModal from "../../components/ChooseBannerModal";
+import ChooseEmotesModal from "../../components/ChooseEmotesModal";
+import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import ProfileBanner from "../../components/ProfileBanner";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
@@ -207,6 +209,8 @@ export default function ProfilePage() {
   // Official icon picker modal (owned Grynd icons only).
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [isBannerPickerOpen, setIsBannerPickerOpen] = useState(false);
+  // In-game emote loadout manager (owned animated emotes, max 9).
+  const [isEmotesManagerOpen, setIsEmotesManagerOpen] = useState(false);
 
   const [friendSearch, setFriendSearch] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
@@ -1501,6 +1505,28 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           </div>
         </div>
 
+        {/* Emotes — in-game animated emote loadout (up to 9 equipped).
+            GG + NICE MOVE stay permanently available in games and are never
+            part of this loadout. Managed through ChooseEmotesModal. */}
+        <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#18071f]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.12)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl text-fuchsia-300">Emotes</h2>
+              <p className="mt-1 text-sm text-gray-300">
+                Choose up to 9 animated emotes to use in games. GG and NICE MOVE are always available.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEmotesManagerOpen(true)}
+              className="rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18071f]"
+            >
+              Manage emotes
+            </button>
+          </div>
+          <EmoteLoadoutStrip onChange={setIsEmotesManagerOpen} />
+        </div>
+
         {/* Responsible Play — per-player daily loss limit */}
         <div className="mt-8 rounded-xl border border-amber-400/35 bg-[#1d1605]/85 p-6 shadow-[0_0_24px_rgba(245,255,59,0.12)]">
           <h2 className="text-xl text-amber-300">Responsible Play</h2>
@@ -2606,6 +2632,12 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         onEquipped={(iconKey) =>
           setProfileInfo((prev) => ({ ...prev, selectedIcon: iconKey }))
         }
+      />
+
+      {/* In-game emote loadout manager — equipped animated emotes (max 9). */}
+      <ChooseEmotesModal
+        open={isEmotesManagerOpen}
+        onClose={() => setIsEmotesManagerOpen(false)}
       />
       <Footer />
     </div>

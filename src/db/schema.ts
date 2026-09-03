@@ -303,6 +303,17 @@ export const users = pgTable("users", {
   // Defaults to the official default icon key; NULL/invalid/disabled
   // values fall back to the default at read time.
   selectedIcon: varchar("selected_icon", { length: 120 }).default("default"),
+  // Persistent in-game emote loadout: an ORDERED array of equipped emote
+  // keys (max 9, no duplicates, animated catalog emotes only — GG and
+  // NICE MOVE are permanent system emotes and are never stored here).
+  // Server-authoritative: written only through src/lib/emotes.ts after
+  // validating catalog + ownership; NULL/empty falls back to the 8 free
+  // emotes when a user first receives them (migration 0138 seeds legacy
+  // accounts).
+  equippedEmotes: jsonb("equipped_emotes")
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   // Responsible-play setting: per-player daily loss limit (tokens).
   // Null = global default, 0 = warnings disabled, > 0 = custom threshold.
   dailyLossLimit: integer("daily_loss_limit"),
@@ -500,6 +511,49 @@ export const userBanners = pgTable(
       table.bannerKey,
     ),
     userBannerIdx: index("user_banners_user_idx").on(table.userId, table.bannerKey),
+  }),
+);
+
+// OFFICIAL GRYND ANIMATED EMOTE CATALOG + OWNERSHIP + LOADOUT
+// ==============================================================================
+// Same architecture as the official banners: a catalog table, a per-user
+// ownership join table, and an ordered loadout column on `users`. Emote keys
+// are stable public cosmetic identifiers; asset paths are trusted catalog
+// data and are never accepted from clients. GG / NICE MOVE are permanent
+// text system emotes (not in this catalog) and stay out of the 9-slot
+// loadout.
+export const emotes = pgTable("emotes", {
+  id: serial("id").primaryKey(),
+  // Stable slug used to resolve the emote's official asset and to equip it.
+  key: varchar("key", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description").notNull().default(""),
+  // Official asset path (e.g. "/emotes/laugh.webp"). Resolved only from
+  // this trusted catalog row — never from user input.
+  assetPath: text("asset_path").notNull(),
+  rarity: varchar("rarity", { length: 40 }).notNull().default("Common"),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const userEmotes = pgTable(
+  "user_emotes",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoteKey: varchar("emote_key", { length: 120 }).notNull(),
+    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserEmote: unique("user_emotes_user_emote_unique").on(
+      table.userId,
+      table.emoteKey,
+    ),
+    userEmoteIdx: index("user_emotes_user_idx").on(table.userId, table.emoteKey),
   }),
 );
 

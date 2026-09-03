@@ -4,7 +4,9 @@
 // end. Official image-based rewards reference stable catalog keys.
 //
 // Reserved-empty levels (future icons, frames, banners, and other cosmetics):
-//   6, 9, 13, 17, 22, 27, 31, 36, 42, 49, 56, 61, 67, 73, 81, 86, 93, 97
+//   9, 17, 27, 36, 49, 61, 67, 73, 86, 93, 97
+// (6, 13, 22, 31, 42, 56 and 81 used to be reserved-empty too, but now hold
+// the official animated emote rewards — the 7 Battle Pass Noto emotes.)
 
 // Reward type metadata (label + accent color used in the UI legend).
 export const REWARD_TYPES = {
@@ -16,6 +18,7 @@ export const REWARD_TYPES = {
   refund: { label: "Loss Refund", color: "#f472b6" },
   grynd: { label: "Grynd+ Days", color: "#a78bfa" },
   banner: { label: "Profile Banner", color: "#22d3ee" },
+  emote: { label: "Animated Emote", color: "#22d3ee" },
 };
 
 // Reward rarity colors (matches the title rarity ladder).
@@ -36,11 +39,13 @@ const REWARDS = [
   [3, [{ type: "banner", key: "neon-grid", name: "Neon Grid", desc: "Unlock the Neon Grid profile banner", rarity: "Common" }]],
   [4, [{ type: "title", name: "Pass Starter", desc: "Battlepass-exclusive title", rarity: "Common" }]],
   [5, [{ type: "color", name: "Lime Glow", desc: "Unlock the lime name glow", value: "#a3e635", rarity: "Common" }]],
+  [6, [{ type: "emote", key: "hype", name: "Hype Emote", desc: "Unlock the animated Hype emote for in-game use", rarity: "Common" }]],
   [7, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
   [8, [{ type: "color", name: "Violet Glow", desc: "Unlock the violet name glow", value: "#a78bfa", rarity: "Common" }]],
   [10, [{ type: "title", name: "Token Shuffler", desc: "Battlepass-exclusive title", rarity: "Common" }]],
   [11, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [12, [{ type: "color", name: "Rose Glow", desc: "Unlock the rose name glow", value: "#f472b6", rarity: "Common" }]],
+  [13, [{ type: "emote", key: "victory", name: "Victory Emote", desc: "Unlock the animated Victory emote for in-game use", rarity: "Bronze" }]],
   [14, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 3 quest claims pay double", value: 3, rarity: "Common" }]],
   [15, [{ type: "color", name: "Amber Glow", desc: "Unlock the amber name glow", value: "#fbbf24", rarity: "Common" }]],
   [16, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
@@ -48,6 +53,7 @@ const REWARDS = [
   [19, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 500 tokens", value: 500, rarity: "Common" }]],
   [20, [{ type: "color", name: "Emerald Glow", desc: "Unlock the emerald name glow", value: "#34d399", rarity: "Common" }]],
   [21, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
+  [22, [{ type: "emote", key: "party", name: "Party Emote", desc: "Unlock the animated Party emote for in-game use", rarity: "Bronze" }]],
   [23, [{ type: "color", name: "Crimson Glow", desc: "Unlock the crimson name glow", value: "#f87171", rarity: "Common" }]],
   [24, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
   [25, [{ type: "title", name: "Wager Warrior", desc: "Battlepass-exclusive title", rarity: "Bronze" }]],
@@ -55,6 +61,7 @@ const REWARDS = [
   [28, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 3 quest claims pay double", value: 3, rarity: "Common" }]],
   [29, [{ type: "color", name: "Magenta Glow", desc: "Unlock the magenta name glow", value: "#e879f9", rarity: "Common" }]],
   [30, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
+  [31, [{ type: "emote", key: "skull", name: "Skull Emote", desc: "Unlock the animated Skull emote for in-game use", rarity: "Silver" }]],
   [32, [{ type: "color", name: "Ocean Glow", desc: "Unlock the ocean name glow", value: "#2dd4bf", rarity: "Common" }]],
   [33, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 750 tokens", value: 750, rarity: "Common" }]],
   [34, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
@@ -64,6 +71,7 @@ const REWARDS = [
   [39, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [40, [{ type: "color", name: "Platinum Glow", desc: "Unlock the platinum name glow", value: "#e2e8f0", rarity: "Common" }]],
   [41, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 48h", value: { multiplier: 2, hours: 48 }, rarity: "Bronze" }]],
+  [42, [{ type: "emote", key: "thumbsup", name: "Thumbs Up Emote", desc: "Unlock the animated Thumbs Up emote for in-game use", rarity: "Silver" }]],
   [43, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 1,000 tokens", value: 1000, rarity: "Bronze" }]],
   [44, [{ type: "title", name: "Pass Raider", desc: "Battlepass-exclusive title", rarity: "Silver" }]],
   [45, [{ type: "color", name: "Ruby Glow", desc: "Unlock the ruby name glow", value: "#fb7185", rarity: "Common" }]],
@@ -76,6 +84,7 @@ const REWARDS = [
   [53, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 1,500 tokens", value: 1500, rarity: "Bronze" }]],
   [54, [{ type: "xp_boost", name: "3× XP Boost", desc: "Triple battlepass XP for 24h", value: { multiplier: 3, hours: 24 }, rarity: "Silver" }]],
   [55, [{ type: "color", name: "Sunfire Glow", desc: "Unlock the sunfire name glow", value: "#fb923c", rarity: "Common" }]],
+  [56, [{ type: "emote", key: "clap", name: "Clap Emote", desc: "Unlock the animated Clap emote for in-game use", rarity: "Gold" }]],
   [57, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 5 quest claims pay double", value: 5, rarity: "Bronze" }]],
   [58, [{ type: "title", name: "Lucky Gambit", desc: "Battlepass-exclusive title", rarity: "Gold" }]],
   [59, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
@@ -97,6 +106,7 @@ const REWARDS = [
   [78, [{ type: "color", name: "Nebula Glow", desc: "Unlock the nebula name glow", value: "#c084fc", rarity: "Common" }]],
   [79, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [80, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 2,500 tokens", value: 2500, rarity: "Gold" }]],
+  [81, [{ type: "emote", key: "star", name: "Star Emote", desc: "Unlock the animated Star emote for in-game use", rarity: "Elite" }]],
   [82, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 7 quest claims pay double", value: 7, rarity: "Gold" }]],
   [83, [{ type: "title", name: "Aurora Master", desc: "Battlepass-exclusive title", rarity: "Mythic" }]],
   [84, [{ type: "xp_boost", name: "3× XP Boost", desc: "Triple battlepass XP for 72h", value: { multiplier: 3, hours: 72 }, rarity: "Gold" }]],
@@ -118,7 +128,7 @@ const REWARDS = [
   ]],
 ];
 
-export const RESERVED_LEVELS = [6, 9, 13, 17, 22, 27, 31, 36, 42, 49, 56, 61, 67, 73, 81, 86, 93, 97];
+export const RESERVED_LEVELS = [9, 17, 27, 36, 49, 61, 67, 73, 86, 93, 97];
 
 // Build the 100-entry track: { level, rewards: [] } — empty array = reserved.
 export const BATTLEPASS_REWARDS = (() => {

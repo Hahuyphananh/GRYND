@@ -13,6 +13,7 @@
 
 import { getNeonSql } from "../db/neon";
 import { grantBattlepassBanners } from "./banners";
+import { grantBattlepassEmotes } from "./emotes";
 
 export const MAX_LEVEL = 100;
 
@@ -112,9 +113,13 @@ export async function addExp(userId, amount) {
   const result = rows[0] || null;
   if (result) {
     // Reconciliation is idempotent and also repairs rewards for users whose
-    // XP was already above a newly-added reward level.
+    // XP was already above a newly-added reward level. Banner rewards first,
+    // then the animated emote rewards — both are no-ops once owned.
     await grantBattlepassBanners(userId, result.level).catch((error) => {
       console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
+    });
+    await grantBattlepassEmotes(userId, result.level).catch((error) => {
+      console.error("[BATTLEPASS_EMOTE_GRANT_ERROR]", error);
     });
   }
   return result;

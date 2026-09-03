@@ -78,7 +78,7 @@ import {
   AlertIcon,
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
-import EmotePicker from "../../../../components/game/EmotePicker";
+import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually begins
 // (leaves the waiting room / is playable), auto-stops when it ends or
@@ -1877,7 +1877,7 @@ export default function RoulettePvpGamePage({ params }) {
                         : "border-yellow-300/30 bg-yellow-300/10 text-yellow-200"
                     }`}
                   >
-                    {myEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.3)]">{myEmote.value}</span>}
+                    {myEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.3)]"><EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" /></span>}
                     <span>You</span>
                     {displayMyBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
@@ -1892,7 +1892,7 @@ export default function RoulettePvpGamePage({ params }) {
                         : "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
                     }`}
                   >
-                    {incomingEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]">{incomingEmote.value}</span>}
+                    {incomingEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]"><EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" /></span>}
                     <span>Opp</span>
                     {displayOppBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
