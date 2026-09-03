@@ -8,7 +8,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
-import EmotePicker from "../../../../components/game/EmotePicker";
+import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
 // Self-contained Creator Mode (admin-only) presentation layer.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import {
@@ -749,7 +749,7 @@ export default function ChessGamePage() {
                     )}
                     {incomingEmote && (
                       <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]">
-                        {incomingEmote.value}
+                        <EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" />
                       </span>
                     )}
                   </span>
@@ -816,7 +816,7 @@ export default function ChessGamePage() {
                     )}
                     {myEmote && (
                       <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.35)]">
-                        {myEmote.value}
+                        <EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" />
                       </span>
                     )}
                   </span>

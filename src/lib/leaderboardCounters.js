@@ -3,6 +3,7 @@ import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidat
 import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
 import { grantBattlepassBanners } from "./banners";
+import { grantBattlepassEmotes } from "./emotes";
 
 let _sql = null;
 function getSql() {
@@ -128,6 +129,10 @@ export async function applyLeaderboardCounters({
   if (updatedUserId) {
     await grantBattlepassBanners(updatedUserId, updatedLevel).catch((error) => {
       console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
+    });
+    // Animated emote Battle Pass rewards are reconciled on the same path.
+    await grantBattlepassEmotes(updatedUserId, updatedLevel).catch((error) => {
+      console.error("[BATTLEPASS_EMOTE_GRANT_ERROR]", error);
     });
   }
 
