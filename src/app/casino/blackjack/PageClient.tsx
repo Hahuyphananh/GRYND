@@ -29,6 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -203,7 +204,7 @@ export default function BlackjackPvpLobbyPage() {
   // interpolation, so we don't pass any.
   const { t } = useTranslation();
 
-  const [stake, setStake] = useState(50);
+  const [stake, setStake] = useDefaultWager("blackjack", 50);
   const [availableMatches, setAvailableMatches] = useState<{ id: number; player1Id: string; stakeAmount: number; createdAt: string }[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);

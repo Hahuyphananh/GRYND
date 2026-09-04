@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
@@ -53,7 +54,7 @@ export default function UnoGamePage() {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [betAmount, setBetAmount] = useState(100);
+  const [betAmount, setBetAmount] = useDefaultWager("uno", 100);
   const [tokens, setTokens] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pendingCard, setPendingCard] = useState(null);

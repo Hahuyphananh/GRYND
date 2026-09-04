@@ -20,6 +20,7 @@
 // PvP skill games.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -80,7 +81,7 @@ export default function MemoryGridLobbyPage() {
   const { socket } = useSocket();
 
   // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useState<number>(50);
+  const [stake, setStake] = useDefaultWager("memory-grid", 50);
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(

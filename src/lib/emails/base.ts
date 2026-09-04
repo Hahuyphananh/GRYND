@@ -1,6 +1,11 @@
 import { resend } from "../resend";
 import { db } from "../../db/index";
-import { emailEvents } from "../../db/schema";
+import {
+  emailEvents,
+  users,
+  DEFAULT_NOTIFICATION_PREFS,
+  type NotificationPrefs,
+} from "../../db/schema";
 import { and, eq, gte } from "drizzle-orm";
 
 /** Maximum time (ms) to wait for a DB query before skipping it */
@@ -110,6 +115,39 @@ export async function sendEmailSafely({
     }
   } catch (dbErr) {
     console.warn("[sendEmailSafely] Marketing rate-limit check failed (non-blocking):", (dbErr as Error).message);
+  }
+
+  // ── Per-user notification preference (marketing-style mail only) ────
+  // Security and transactional mail (OTP codes, payments, alerts) is never
+  // gated — only these opt-out marketing types respect the preference.
+  const PREF_BY_TYPE: Record<string, keyof NotificationPrefs> = {
+    progression: "progress",
+    loss_streak: "progress",
+    big_win: "progress",
+    daily_reward: "daily",
+    weekly_summary: "summary",
+    inactivity_reactivation: "promotions",
+  };
+  const prefKey = PREF_BY_TYPE[type];
+  if (prefKey && user.clerkId) {
+    try {
+      const prefRow = await withTimeout(
+        db.query.users.findFirst({
+          where: eq(users.clerkId, user.clerkId),
+          columns: { notificationPrefs: true },
+        }),
+        DB_TIMEOUT_MS,
+      );
+      const prefs = { ...DEFAULT_NOTIFICATION_PREFS, ...(prefRow?.notificationPrefs ?? {}) };
+      if (prefs[prefKey] === false) {
+        return { skipped: true, reason: "notification_pref_off" };
+      }
+    } catch (dbErr) {
+      console.warn(
+        "[sendEmailSafely] Notification-pref check failed (non-blocking, sending):",
+        (dbErr as Error).message,
+      );
+    }
   }
 
   // ── Send email (always, regardless of DB state) ───────────────

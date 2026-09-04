@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
@@ -10,7 +11,7 @@ const WAGER_OPTIONS = [10, 25, 50, 100];
 export default function PoolLobbyPage() {
   const router = useRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
-  const [wager, setWager] = useState(10);
+  const [wager, setWager] = useDefaultWager("pool-masters", 10);
   const [loading, setLoading] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

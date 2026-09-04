@@ -26,6 +26,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -110,7 +111,7 @@ export default function MinesPvpLobbyPage() {
   const { socket } = useSocket();
 
   // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useState<number>(50);
+  const [stake, setStake] = useDefaultWager("mines", 50);
   const [minesCount, setMinesCount] = useState<number>(3);
 
   // ── Lobby state ───────────────────────────────────────────────────

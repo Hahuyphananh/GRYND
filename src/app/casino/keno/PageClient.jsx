@@ -23,6 +23,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -62,7 +63,7 @@ export default function KenoLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  const [stake, setStake] = useState(50);
+  const [stake, setStake] = useDefaultWager("keno", 50);
   const [availableMatches, setAvailableMatches] = useState([]);
   const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);

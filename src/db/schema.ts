@@ -232,6 +232,29 @@ export const MAINTENANCE_MODE_OFF = "false";
 export const MAINTENANCE_MODE_ON = "true";
 
 // USERS TABLE
+/**
+ * Email notification preferences. Only marketing-style messages are gated
+ * on these — security alerts and transactional mail (payments, OTP codes)
+ * are always sent. All keys default to true (opt-out model).
+ */
+export type NotificationPrefs = {
+  /** Offers, new-game announcements, comeback promos (inactivity emails). */
+  promotions: boolean;
+  /** Daily reward reminders. */
+  daily: boolean;
+  /** Weekly win/loss summaries. */
+  summary: boolean;
+  /** Level-ups, big wins, streak encouragement. */
+  progress: boolean;
+};
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  promotions: true,
+  daily: true,
+  summary: true,
+  progress: true,
+};
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   clerkId: varchar("clerk_id", { length: 255 }).notNull().unique(),
@@ -317,6 +340,28 @@ export const users = pgTable("users", {
   // Responsible-play setting: per-player daily loss limit (tokens).
   // Null = global default, 0 = warnings disabled, > 0 = custom threshold.
   dailyLossLimit: integer("daily_loss_limit"),
+  // Self-hosted email-OTP second factor for regular accounts (the same
+  // mechanism the admin gate uses). When true, the middleware requires a
+  // recent second-factor verification (Clerk factor or our signed
+  // user_mfa cookie) on every app page. Written only through
+  // /api/user/security/mfa/* after an OTP verify.
+  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+  // Email notification preferences (marketing-style messages only —
+  // security/transactional mail is never gated). All default to true so
+  // existing behavior is unchanged. Written through /api/user/notification-preferences.
+  notificationPrefs: jsonb("notification_prefs")
+    .$type<NotificationPrefs>()
+    .notNull()
+    .default(
+      sql`'{"promotions":true,"daily":true,"summary":true,"progress":true}'::jsonb`,
+    ),
+  // Per-game default wager (tokens), keyed by game key. An empty map (or a
+  // missing key) means the game's built-in default. Written through
+  // /api/user/default-wagers; consumed by src/hooks/useDefaultWager.js.
+  defaultWagers: jsonb("default_wagers")
+    .$type<Record<string, number>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),

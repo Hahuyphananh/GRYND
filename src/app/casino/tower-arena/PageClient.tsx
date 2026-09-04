@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
@@ -13,7 +14,7 @@ const PLAYER_COUNT_OPTIONS = [2, 3, 4, 5, 6];
 
 export default function TowerArenaLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
-  const [wager, setWager] = useState(10);
+  const [wager, setWager] = useDefaultWager("tower-arena", 10);
   const [maxPlayers, setMaxPlayers] = useState(6);
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState<number | null>(null);

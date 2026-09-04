@@ -9,7 +9,12 @@ import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
-import { ADMIN_MFA_COOKIE, verifyAdminMfaToken } from "./lib/auth/adminMfa";
+import {
+  ADMIN_MFA_COOKIE,
+  USER_MFA_COOKIE,
+  verifyAdminMfaToken,
+  verifyUserMfaToken,
+} from "./lib/auth/adminMfa";
 import { db } from "./db";
 import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
@@ -49,12 +54,14 @@ const isPublicRoute = createRouteMatcher([
   "/access-denied",
   "/complete-profile",
   "/maintenance",
+  "/mfa-required",
   "/casino/poker/multi(.*)",
   "/casino/four-in-a-row(.*)",
   "/casino/dots-and-boxes(.*)",
   "/casino/lane-runner(.*)",
   "/casino/tower-arena(.*)",
   "/profile(.*)",
+  "/settings(.*)",
   "/casino/pool-masters(.*)",
   "/casino/hex-duel(.*)",
   "/casino/dice-flush(.*)",
@@ -150,6 +157,92 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
 ];
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * User-level MFA gate (Settings → Account Security). When a signed-in user
+ * has the self-hosted email-OTP second factor enabled, every app page (public
+ * included — wagering pages are public routes) requires a recent second-
+ * factor verification: a Clerk factor, our signed user_mfa cookie, or an
+ * admin_mfa cookie (so an admin with both flows enabled never bounces
+ * between two MFA pages). Fail-open: if the flag can't be resolved, the
+ * request passes — a DB/Redis hiccup must never lock players out.
+ */
+async function userMfaGate(
+  req: NextRequest,
+  pathname: string,
+  authFn: () => Promise<{
+    userId: string | null;
+    factorVerificationAge: [number, number] | null;
+  }>,
+  authInfo?: { userId: string | null; factorVerificationAge: [number, number] | null },
+) {
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/sign-up") ||
+    pathname === "/mfa-required" ||
+    pathname === "/complete-profile" ||
+    pathname === "/access-denied" ||
+    pathname === "/maintenance" ||
+    pathname === "/admin/mfa-required"
+  ) {
+    return null;
+  }
+
+  let userId = authInfo?.userId ?? null;
+  let factorVerificationAge = authInfo?.factorVerificationAge ?? null;
+  if (!userId) {
+    try {
+      const a = await authFn();
+      userId = a.userId ?? null;
+      factorVerificationAge = a.factorVerificationAge ?? null;
+    } catch {
+      return null;
+    }
+  }
+  if (!userId) return null;
+
+  let enabled = false;
+  try {
+    const cached = await cacheGet<boolean>(CacheKeys.userMfa(userId));
+    if (cached === null || cached === undefined) {
+      const user = await withTimeout(
+        db.query.users
+          .findFirst({
+            where: eq(users.clerkId, userId),
+            columns: { mfaEnabled: true },
+          })
+          .then((row) => row ?? null),
+        1500,
+        null,
+      );
+      enabled = Boolean(user?.mfaEnabled);
+      await cacheSet(CacheKeys.userMfa(userId), enabled, CacheTTL.userMfa).catch(() => {});
+    } else {
+      enabled = cached === true;
+    }
+  } catch {
+    return null; // fail open
+  }
+  if (!enabled) return null;
+
+  const adminToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
+  const userToken = req.cookies.get(USER_MFA_COOKIE)?.value;
+  const satisfied =
+    hasRecentMfa(factorVerificationAge) ||
+    (await verifyUserMfaToken(userToken, userId)) ||
+    (await verifyAdminMfaToken(adminToken, userId));
+  if (satisfied) return null;
+
+  auditLog("user_mfa_required_redirect", {
+    userId,
+    ip: getClientIp(req),
+    path: pathname,
+  });
+  const redirectUrl = new URL("/mfa-required", req.url);
+  redirectUrl.searchParams.set("redirect_url", pathname);
+  return applySecurityHeaders(NextResponse.redirect(redirectUrl));
+}
 
 /**
  * Resolve a promise but fail open (return `fallback`) if it doesn't settle
@@ -379,6 +472,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   }
 
   if (isPublicRoute(req)) {
+    // User-level MFA runs even on public pages (casino pages are public
+    // routes but wagering on them must stay protected). auth() here is the
+    // same call protected routes already make.
+    const mfaGate = await userMfaGate(req, pathname, auth);
+    if (mfaGate) return mfaGate;
     return applySecurityHeaders(NextResponse.next());
   }
 
@@ -485,9 +583,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     pathname.startsWith("/api/admin")
   ) {
     const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
+    const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
     if (
       !hasRecentMfa(factorVerificationAge) &&
-      !(await verifyAdminMfaToken(adminMfaToken, userId))
+      !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
+      !(await verifyUserMfaToken(userMfaToken, userId))
     ) {
       if (pathname.startsWith("/api/admin")) {
         auditLog("admin_mfa_required", { userId, ip, path: pathname });
@@ -504,6 +604,14 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       );
     }
   }
+
+  // User-level MFA gate for protected app routes (reuses the auth result
+  // fetched above — no second auth() call).
+  const mfaGate = await userMfaGate(req, pathname, auth, {
+    userId,
+    factorVerificationAge,
+  });
+  if (mfaGate) return mfaGate;
 
   return applySecurityHeaders(NextResponse.next());
 };

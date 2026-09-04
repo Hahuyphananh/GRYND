@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { useDefaultWager } from "../../../../hooks/useDefaultWager";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -13,7 +14,7 @@ export default function HexDuelMultiplayerPage() {
   const [games, setGames] = useState<any[]>([]);
   const [liveGames, setLiveGames] = useState<any[]>([]);
   const [spectatorCounts, setSpectatorCounts] = useState<Record<number, number>>({});
-  const [wager, setWager] = useState(50);
+  const [wager, setWager] = useDefaultWager("hex-duel", 50);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

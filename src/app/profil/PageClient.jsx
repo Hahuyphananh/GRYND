@@ -111,72 +111,6 @@ export default function ProfilePage() {
     }
   };
 
-  // Responsible play — per-player daily loss limit (null = global default,
-  // 0 = off, number = custom threshold in tokens).
-  const [lossLimit, setLossLimit] = useState(null);
-  const [lossLimitMode, setLossLimitMode] = useState("default");
-  const [lossLimitDraft, setLossLimitDraft] = useState("");
-  const [lossLimitSaving, setLossLimitSaving] = useState(false);
-  const [lossLimitMsg, setLossLimitMsg] = useState(null);
-  const loadLossLimit = async () => {
-    try {
-      const response = await fetch("/api/user/daily-loss-limit", {
-        credentials: "include",
-      });
-      const data = await response.json();
-      if (response.ok && data?.success) {
-        setLossLimit(data.limit ?? null);
-        if (data.limit === 0) setLossLimitMode("off");
-        else if (typeof data.limit === "number" && data.limit > 0) {
-          setLossLimitMode("custom");
-          setLossLimitDraft(String(data.limit));
-        } else setLossLimitMode("default");
-      }
-    } catch (err) {
-      console.error("[LOAD_LOSS_LIMIT_ERROR]", err);
-    }
-  };
-  const saveLossLimit = async () => {
-    setLossLimitSaving(true);
-    setLossLimitMsg(null);
-    try {
-      let limit = null; // default
-      if (lossLimitMode === "off") limit = 0;
-      else if (lossLimitMode === "custom") {
-        const n = Number(lossLimitDraft);
-        if (!Number.isInteger(n) || n <= 0) {
-          setLossLimitMsg({ ok: false, text: "Enter a whole number of tokens above 0." });
-          return;
-        }
-        limit = n;
-      }
-      const response = await fetch("/api/user/daily-loss-limit", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit }),
-      });
-      const data = await response.json();
-      if (response.ok && data?.success) {
-        setLossLimit(limit);
-        setLossLimitMsg({
-          ok: true,
-          text:
-            limit === null
-              ? "Using the global default warning."
-              : limit === 0
-                ? "Warnings disabled."
-                : `Warn me when I'm down ${limit.toLocaleString()} tokens in a day.`,
-        });
-      } else {
-        setLossLimitMsg({ ok: false, text: data?.error || "Failed to save." });
-      }
-    } catch {
-      setLossLimitMsg({ ok: false, text: "Failed to save — try again." });
-    } finally {
-      setLossLimitSaving(false);
-    }
-  };
 
   const [titlesView, setTitlesView] = useState("special");
   const [titlesOpen, setTitlesOpen] = useState(false); // collapsed by default so the profile stays compact
@@ -707,7 +641,6 @@ export default function ProfilePage() {
           loadVipTitles(),
           loadStreakTitles(),
           loadMembership(),
-          loadLossLimit(),
           loadPrestigeBadge(),
           loadFriends(),
           loadFriendPresence(),
@@ -1143,11 +1076,19 @@ export default function ProfilePage() {
             />
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
-              <button
-                onClick={() => {
-                  setEditStatus("");
-                  setIsEditOpen(true);
-                }}
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-1 text-sm font-medium text-[#9dd8ff] hover:bg-[#00e5ff]/25 hover:text-[#00e5ff]"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  Settings
+                </Link>
+                <button
+                  onClick={() => {
+                    setEditStatus("");
+                    setIsEditOpen(true);
+                  }}
                 className={
                   cyberButton +
                   " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
@@ -1155,6 +1096,7 @@ export default function ProfilePage() {
               >
                 Edit Profile
               </button>
+              </div>
             </div>
             <div className="mb-3 flex items-center gap-3">
               {/* Clicking your own avatar opens the official icon picker.
@@ -1525,85 +1467,6 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             </button>
           </div>
           <EmoteLoadoutStrip onChange={setIsEmotesManagerOpen} />
-        </div>
-
-        {/* Responsible Play — per-player daily loss limit */}
-        <div className="mt-8 rounded-xl border border-amber-400/35 bg-[#1d1605]/85 p-6 shadow-[0_0_24px_rgba(245,255,59,0.12)]">
-          <h2 className="text-xl text-amber-300">Responsible Play</h2>
-          <p className="mb-4 mt-1 text-sm text-gray-300">
-            Set your own daily loss limit. When you're down more than this in
-            one day, the casino lobby will warn you before you keep playing —
-            it never blocks you.
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            {[
-              { key: "default", label: "Global default (50k)" },
-              { key: "off", label: "Warnings off" },
-              { key: "custom", label: "Custom" },
-            ].map((opt) => (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => setLossLimitMode(opt.key)}
-                className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                  lossLimitMode === opt.key
-                    ? "border-amber-400 bg-amber-500/20 text-amber-200"
-                    : "border-gray-600 bg-gray-800/40 text-gray-400 hover:border-amber-500/50 hover:text-amber-200"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          {lossLimitMode === "custom" && (
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <label className="flex flex-col gap-1 text-xs font-semibold text-amber-200">
-                Daily loss limit (tokens)
-                <input
-                  type="number"
-                  min={1}
-                  value={lossLimitDraft}
-                  onChange={(e) => setLossLimitDraft(e.target.value)}
-                  className="w-44 rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-sm text-white outline-none focus:border-amber-400"
-                  aria-label="Custom daily loss limit in tokens"
-                />
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {[5000, 10000, 25000, 50000].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setLossLimitDraft(String(v))}
-                    className="rounded-full border border-gray-600 bg-gray-800/40 px-2.5 py-1 text-[11px] font-bold text-gray-300 transition hover:border-amber-500/50 hover:text-amber-200"
-                  >
-                    {v.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={saveLossLimit}
-              disabled={lossLimitSaving}
-              className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-5 py-2 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-60"
-            >
-              {lossLimitSaving ? "Saving…" : "Save limit"}
-            </button>
-            {lossLimitMsg && (
-              <span
-                className={`text-sm ${
-                  lossLimitMsg.ok ? "text-emerald-300" : "text-red-300"
-                }`}
-              >
-                {lossLimitMsg.text}
-              </span>
-            )}
-          </div>
         </div>
 
         <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
@@ -208,7 +209,7 @@ function WagerModal({
   multiplayerGames: Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>;
   multiplayerLoading: boolean;
 }) {
-  const [wager, setWager] = useState(50);
+  const [wager, setWager] = useDefaultWager("hex-duel", 50);
   const [playForFun, setPlayForFun] = useState(false);
   const [queueMode, setQueueMode] = useState<"ai" | "multiplayer">("ai");
   const [showRules, setShowRules] = useState(false);
