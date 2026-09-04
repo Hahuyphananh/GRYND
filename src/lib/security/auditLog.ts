@@ -1,6 +1,16 @@
 type AuditPayload = Record<string, unknown>;
 
-const MASKED_KEYS = ["password", "token", "secret", "apiKey", "authorization"];
+const MASKED_KEYS = [
+  "password",
+  "token",
+  "secret",
+  "apiKey",
+  "authorization",
+  // Email addresses are personal data — audit entries must never become a
+  // second plaintext copy of a user's email in console/log sinks.
+  "email",
+  "mail",
+];
 
 function maskValue(key: string, value: unknown) {
   const lowerKey = key.toLowerCase();

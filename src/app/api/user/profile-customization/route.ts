@@ -9,8 +9,8 @@
 //   * accent is strictly validated as a #RRGGBB hex value,
 //   * frame is a whitelist key from src/lib/profileCosmetics.ts,
 //   * passing null for a field clears it (back to default styling).
-//     Unknown fields are ignored; invalid values reject the whole request so
-//     partial/broken states can never be persisted.
+//     Unknown fields are rejected by the allowlist; invalid values reject the
+//     whole request so partial/broken states can never be persisted.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -22,6 +22,7 @@ import {
   HEX_COLOR_REGEX,
   isAvatarFrameKey,
 } from "../../../../lib/profileCosmetics";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export const runtime = "nodejs";
 
@@ -38,54 +39,47 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json().catch(() => ({}));
-  } catch {
-    body = {};
-  }
+  // Strict allowlist: only `profileAccent` and `avatarFrame` are accepted
+  // (each a value, or null to clear). Anything else — profileBanner,
+  // isAdmin, balance, another user's id — is rejected as an unexpected
+  // field instead of being silently ignored.
+  const parsed = await parseAndValidateJson(req, {
+    profileAccent: {
+      type: "string",
+      required: false,
+      nullable: true,
+      omitIfMissing: true,
+      maxLength: 7,
+      pattern: HEX_COLOR_REGEX,
+    },
+    avatarFrame: {
+      type: "string",
+      required: false,
+      nullable: true,
+      omitIfMissing: true,
+      maxLength: 40,
+    },
+  });
+  if (!parsed.ok) return parsed.response;
 
   const set: Record<string, unknown> = {};
 
-  // Arbitrary banner URLs were part of the legacy Grynd+ flow. Official
-  // banners are selected through /api/user/banner/select only.
-  if (Object.prototype.hasOwnProperty.call(body, "profileBanner")) {
-    return NextResponse.json(
-      { success: false, error: "Use the official banner picker." },
-      { status: 400 },
-    );
+  // Accent color — #RRGGBB hex (already format-checked by the schema; null
+  // clears it). Official banners come from the owned-banner picker only.
+  if ("profileAccent" in parsed.data) {
+    set.profileAccent = parsed.data.profileAccent;
   }
 
-  // Accent color — #RRGGBB hex (or null to clear).
-  if (Object.prototype.hasOwnProperty.call(body, "profileAccent")) {
-    const accent = body.profileAccent;
-    if (accent !== null) {
-      if (typeof accent !== "string" || !HEX_COLOR_REGEX.test(accent.trim())) {
-        return NextResponse.json(
-          { success: false, error: "Accent color must be a hex value like #00e5ff." },
-          { status: 400 }
-        );
-      }
-      set.profileAccent = accent.trim();
-    } else {
-      set.profileAccent = null;
+  // Avatar frame — whitelist key against the cosmetics catalog (null clears).
+  if ("avatarFrame" in parsed.data) {
+    const frame = parsed.data.avatarFrame;
+    if (frame !== null && !isAvatarFrameKey(frame)) {
+      return NextResponse.json(
+        { success: false, error: "Unknown avatar frame." },
+        { status: 400 }
+      );
     }
-  }
-
-  // Avatar frame — whitelist key (or null to clear).
-  if (Object.prototype.hasOwnProperty.call(body, "avatarFrame")) {
-    const frame = body.avatarFrame;
-    if (frame !== null) {
-      if (typeof frame !== "string" || !isAvatarFrameKey(frame)) {
-        return NextResponse.json(
-          { success: false, error: "Unknown avatar frame." },
-          { status: 400 }
-        );
-      }
-      set.avatarFrame = frame;
-    } else {
-      set.avatarFrame = null;
-    }
+    set.avatarFrame = frame;
   }
 
   if (Object.keys(set).length === 0) {

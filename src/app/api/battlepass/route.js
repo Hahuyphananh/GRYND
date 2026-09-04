@@ -16,8 +16,6 @@ import {
 } from "../../../lib/battlepass";
 import { TITLE_MILESTONES } from "../../../lib/titles";
 import { rewardsForLevel } from "../../../lib/battlepassRewards";
-import { grantBattlepassBanners } from "../../../lib/banners";
-import { grantBattlepassEmotes } from "../../../lib/emotes";
 import { getPrestigeStatus } from "../../../lib/prestige";
 
 export async function GET() {
@@ -45,15 +43,11 @@ export async function GET() {
       prestigeLevel = Math.max(0, Math.floor(Number(rows[0]?.prestige_level) || 0));
       prestigeNetWins = Math.max(0, Math.floor(Number(rows[0]?.prestige_net_wins) || 0));
       if (dbUserId) {
-        // Idempotent reward reconciliation — also repairs rewards for users
-        // whose XP was already above a newly-added reward level. Refreshing
-        // the page / reconnecting never duplicates ownership.
-        await grantBattlepassBanners(dbUserId, getBattlepassProgress(xp).level).catch((error) => {
-          console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
-        });
-        await grantBattlepassEmotes(dbUserId, getBattlepassProgress(xp).level).catch((error) => {
-          console.error("[BATTLEPASS_EMOTE_GRANT_ERROR]", error);
-        });
+        // Rewards are NEVER auto-granted — the player claims them on the
+        // battlepass page (POST /api/battlepass/claim). We only read
+        // existing ownership so previously-unlocked rewards (e.g. from the
+        // old auto-grant era) still show as "Unlocked" and are never
+        // revoked.
         const ownedRows = await sql`
           SELECT banner_key FROM user_banners WHERE user_id = ${dbUserId}
         `;
@@ -79,21 +73,32 @@ export async function GET() {
       TITLE_MILESTONES.map((m) => [m.level, m]),
     );
     const levels = [];
+    let unclaimedCount = 0;
     for (let level = 1; level <= MAX_LEVEL; level++) {
+      const reached = level <= progress.level;
+      const rewards = rewardsForLevel(level).map((reward) => {
+        const isBanner = reward.type === "banner";
+        const isEmote = reward.type === "emote";
+        const owned =
+          isBanner && dbUserId
+            ? ownedBannerKeys.has(reward.key)
+            : isEmote && dbUserId
+              ? ownedEmoteKeys.has(reward.key)
+              : false;
+        // Claimable = the level is reached, the reward is an ownership-
+        // tracked cosmetic (banner/emote), and it isn't owned yet.
+        const claimable =
+          !owned && reached && (isBanner || isEmote) && Boolean(reward.key);
+        if (claimable) unclaimedCount += 1;
+        return { ...reward, claimed: owned, claimable };
+      });
       levels.push({
         level,
         xpRequired: expToReachLevel(level),
         xpForNext: expForNextLevel(level),
         title: titleByLevel.get(level) || null,
         // Battlepass rewards for this level. Empty array = reserved slot.
-        rewards: rewardsForLevel(level).map((reward) => ({
-          ...reward,
-          claimed: reward.type === "banner" && dbUserId
-            ? ownedBannerKeys.has(reward.key)
-            : reward.type === "emote" && dbUserId
-              ? ownedEmoteKeys.has(reward.key)
-              : false,
-        })),
+        rewards,
       });
     }
 
@@ -103,6 +108,9 @@ export async function GET() {
         ...progress,
         ...prestigeStatus,
         levels,
+        // Number of banner/emote rewards the player has reached but not
+        // yet claimed — drives the navbar nudge + "rewards ready" chip.
+        unclaimedCount,
       },
     });
   } catch (err) {

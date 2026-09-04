@@ -77,3 +77,6 @@ next-env.d.ts
 **/credentials*.json
 **/google-services.json
 **/GoogleService-Info.plist
+
+# Load-test session tokens (one per VU)
+load-test/tokens.csv

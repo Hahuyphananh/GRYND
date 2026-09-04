@@ -1,11 +1,12 @@
 /**
  * Tower Arena — engine + payout unit tests.
  *
- * Pure-function tests for the deterministic 2D line-tower engine and the
+ * Pure-function tests for the deterministic 2D ceiling-tower engine and the
  * centralized placement payout math in `src/lib/tower-arena/`. These are
  * the contracts the server-authoritative state machine depends on, so
- * determinism, drop physics (support / balance / void, no height ceiling)
- * and payout bounds are tested explicitly.
+ * determinism, drop resolution (blocks settle on the highest support under
+ * their footprint), the hard ceiling elimination rule, tower trimming after
+ * an elimination, and payout bounds are tested explicitly.
  *
  * Run:  node --import tsx --test tests/tower-arena-engine.test.mjs
  */
@@ -15,6 +16,7 @@ import assert from "node:assert/strict";
 
 import {
   GRID_WIDTH,
+  CEILING_HEIGHT,
   BLOCK_SHAPES,
   BLOCK_DIMS,
   BLOCK_FOOTPRINTS,
@@ -33,6 +35,7 @@ import {
   simulatePlacement,
   applyPlacementBlock,
   findSafeDrop,
+  trimTowerAfterElimination,
   buildResourcePool,
   takeFromPool,
   refillResourcePool,
@@ -49,13 +52,20 @@ import {
 // Block definitions + grid
 // ═══════════════════════════════════════════════════════════════════
 
-test("every block shape is a solid rectangle of integer cells (none too big)", () => {
+test("the floor and ceiling grew to fit the bigger shapes", () => {
+  assert.equal(GRID_WIDTH, 16);
+  assert.equal(CEILING_HEIGHT, 24);
+  // Every shape (incl. the 4-wide long beam) fits the line and leaves room.
+  for (const s of BLOCK_SHAPES) {
+    assert.ok(BLOCK_DIMS[s].w <= GRID_WIDTH - 1, `${s} width ${BLOCK_DIMS[s].w} leaves floor room`);
+    assert.ok(BLOCK_DIMS[s].h <= CEILING_HEIGHT, `${s} height ${BLOCK_DIMS[s].h} fits under the ceiling`);
+  }
+});
+
+test("every block shape is a solid rectangle of integer cells", () => {
   for (const s of BLOCK_SHAPES) {
     const { w, h } = BLOCK_DIMS[s];
     assert.ok(w >= 1 && h >= 1, `${s} is at least 1×1`);
-    assert.ok(w <= GRID_WIDTH, `${s} width ${w} fits the line`);
-    // Blocks stay small: the widest spans just over half the floor.
-    assert.ok(w <= GRID_WIDTH - 1, `${s} leaves room on the floor (w=${w})`);
     assert.equal(blockCells(s, 0).length, w * h, `${s} has w*h cells`);
     assert.ok(
       blockCells(s, 0).every(([x, z]) => Number.isInteger(x) && Number.isInteger(z)),
@@ -63,8 +73,11 @@ test("every block shape is a solid rectangle of integer cells (none too big)", (
     );
     assert.equal(BLOCK_FOOTPRINTS[s].length, w * h, `${s} legacy footprint agrees`);
   }
-  // Block variety: widths differ (wide = risky, narrow = safe).
-  assert.ok(new Set(BLOCK_SHAPES.map((s) => BLOCK_DIMS[s].w)).size >= 3, "width variety");
+  // Variety: at least four distinct widths exist (narrow = safe, wide = risky).
+  assert.ok(new Set(BLOCK_SHAPES.map((s) => BLOCK_DIMS[s].w)).size >= 4, "width variety");
+  // The two new larger shapes are actually in the shipped pool.
+  assert.equal(BLOCK_DIMS.long.w, 4, "long beam spans 4 columns");
+  assert.equal(BLOCK_DIMS.big.w * BLOCK_DIMS.big.h, 6, "big block is 3×2");
 });
 
 test("rotations flip width/height (0/2 = as-is, 1/3 = transposed)", () => {
@@ -85,148 +98,26 @@ test("rotations flip width/height (0/2 = as-is, 1/3 = transposed)", () => {
       assert.equal(footprintFor(s, rot).length, blockCells(s, rot).length);
     }
   }
+  // The vertical long beam is 1 wide and 4 tall.
+  assert.equal(blockWidth("long", 1), 1);
+  assert.equal(blockHeight("long", 1), 4);
 });
 
-test("aim range has NO side walls — every aim is legal, incl. fully into the void", () => {
+test("aim range is clamped to the floor: columns 0 … GRID_WIDTH − width", () => {
   for (const s of BLOCK_SHAPES) {
-    for (let rot = 0; rot < 4; rot += 1) {
+    for (let rot = 0; rot < 2; rot += 1) {
       const w = blockWidth(s, rot);
       const { minX, maxX } = dropRangeFor(s, rot);
-      // The block may be aimed anywhere across the stage — left and right
-      // of the platform — so a mis-aim can drop it straight into the void.
-      assert.equal(minX, -(w), `${s} may aim fully left of the platform`);
-      assert.equal(maxX, GRID_WIDTH, `${s} may aim fully right of the platform`);
+      assert.equal(minX, 0, `${s} may not aim left of the platform`);
+      assert.equal(maxX, GRID_WIDTH - w, `${s} rightmost legal aim leaves the block on`);
       for (let x = minX; x <= maxX; x += 1) {
         assert.equal(dropInBounds(s, rot, x), true, `${s} rot${rot} x=${x} legal`);
       }
-      // Only absurd aims outside the whole stage are rejected.
-      assert.equal(dropInBounds(s, rot, minX - 1), false, `${s} beyond-stage-left rejected`);
-      assert.equal(dropInBounds(s, rot, maxX + 1), false, `${s} beyond-stage-right rejected`);
+      assert.equal(dropInBounds(s, rot, minX - 1), false, `${s} beyond-floor-left rejected`);
+      assert.equal(dropInBounds(s, rot, maxX + 1), false, `${s} beyond-floor-right rejected`);
+      assert.equal(dropInBounds(s, rot, 0.5), false, `${s} non-integer aim rejected`);
     }
   }
-});
-
-// ── Slippery landing + contact/shock ────────────────────────────────────
-
-test("a beam aimed half-off the floor slips one cell into a stable seat", () => {
-  // 3-wide I at x=-2 touches only column 0 (1 support < 2) — too thin, but
-  // the floor edge is right there: it slips +1 onto columns 0-1 and lands.
-  const res = simulatePlacement([], {
-    shape: "I",
-    x: -2,
-    rotation: 0,
-    blockId: "b:1",
-    placedByUserId: "u1",
-    turnNumber: 1,
-  });
-  assert.equal(res.collapsed, false, "slippery beam finds a stable seat");
-  assert.equal(res.slid, true, "it slipped sideways");
-  assert.equal(res.finalX, -1, "it slipped one column toward the floor");
-  assert.equal(res.placedBlock.x, -1);
-  assert.equal(isStable(res.tower), true);
-});
-
-test("slips stay at the landing height — a beam on a 1-cell pillar tips off, not to the floor", () => {
-  // Pillar at col 0 (2 cubes). The beam lands ON the pillar top spanning
-  // -1..1 at z=3; slipping sideways at z=3 finds no support, so it tips
-  // into the void (never slides DOWN beside the pillar onto the floor).
-  const t = buildTower([
-    ["short", 0],
-    ["short", 0],
-  ]);
-  const res = simulatePlacement(t, {
-    shape: "I",
-    x: 0,
-    rotation: 0,
-    blockId: "b:3",
-    placedByUserId: "u2",
-    turnNumber: 3,
-  });
-  assert.equal(res.collapsed, true, "beam tips off the skinny pillar");
-  assert.equal(res.slid, false, "no same-height seat exists");
-  assert.deepEqual(res.tower, t, "landing fall leaves the tower untouched");
-});
-
-test("a full-miss drop beside the platform falls into the void (legal aim, no walls)", () => {
-  // x=5 with a 2-wide block → columns 5 and 6 over the void: nothing to
-  // land on, no slip can save it (there is no floor to slip toward the
-  // block is beside the platform, not on an edge).
-  const block = applyPlacementBlock([], {
-    shape: "square",
-    x: GRID_WIDTH,
-    rotation: 0,
-    blockId: "b:1",
-    placedByUserId: "u1",
-    turnNumber: 1,
-  });
-  assert.equal(block.cells.length, 0, "no in-bounds cells resolved");
-  assert.equal(wouldFall(block, []), true, "miss = fall into the void");
-  const res = simulatePlacement([], {
-    shape: "square",
-    x: GRID_WIDTH,
-    rotation: 0,
-    blockId: "b:1",
-    placedByUserId: "u1",
-    turnNumber: 1,
-  });
-  assert.equal(res.collapsed, true, "full miss resolves as a void fall");
-  assert.equal(res.placedBlock.cells.length, 0);
-  assert.deepEqual(res.tower, [], "tower unchanged, no reset");
-});
-
-test("contact + shock: a beam dropped on a Jenga brick's far end tips the brick — both fall", () => {
-  // Floor beam at cols 0-2, then a flat L brick set at cols 2-3 — it
-  // overhangs the beam's right edge by one cell (classic Jenga, legal).
-  // Dropping a 3-wide beam onto the brick's FAR end (cols 2-4) shifts the
-  // brick's load centroid past its support → the brick + the new beam tip
-  // into the void together. The tower continues with the floor beam.
-  let t = buildTower([["I", 0]]); // floor beam, cols 0-2
-  const brick = simulatePlacement(t, { shape: "L", x: 2, rotation: 1, blockId: "b:2", placedByUserId: "u1", turnNumber: 2 });
-  assert.equal(brick.collapsed, false, "the Jenga brick balances on the beam edge");
-  t = brick.tower;
-  const drop = simulatePlacement(t, { shape: "I", x: 2, rotation: 0, blockId: "b:3", placedByUserId: "u2", turnNumber: 3 });
-  assert.equal(drop.collapsed, true, "the brick tips under the new block's weight");
-  assert.ok(drop.removedBlockIds.includes("b:2"), "the shocked brick fell");
-  assert.ok(drop.removedBlockIds.includes("b:3"), "the dropper's block fell with it");
-  assert.equal(drop.tower.length, 1, "the tower continues with the stable floor beam");
-  assert.equal(isStable(drop.tower), true);
-});
-
-test("a stack leaning off the platform can take down the ENTIRE tower — game continues on the empty floor", () => {
-  // Two beams stacked progressively off the right edge (the second and third
-  // overhang the platform); dropping the third pushes the whole column's
-  // load past the floor edge → everything falls, leaving an empty floor.
-  let t = buildTower([["I", 3]]); // cols 3-5, overhanging one cell right
-  const b2 = simulatePlacement(t, { shape: "I", x: 4, rotation: 0, blockId: "b:2", placedByUserId: "u1", turnNumber: 2 });
-  assert.equal(b2.collapsed, false, "second beam balances on the first");
-  t = b2.tower;
-  const wipe = simulatePlacement(t, { shape: "I", x: 4, rotation: 0, blockId: "b:3", placedByUserId: "u2", turnNumber: 3 });
-  assert.equal(wipe.collapsed, true, "the leaning stack sheds");
-  assert.equal(wipe.removedBlockIds.length, 3, "every block — incl. the base — fell");
-  assert.equal(wipe.tower.length, 0, "the entire tower fell into the void");
-  assert.equal(isStable(wipe.tower), true, "an empty floor is stable");
-});
-
-test("the safe-drop search avoids contact-shock sheds (not just own balance)", () => {
-  // Jenga setup: a beam dropped on the brick's far end is individually
-  // balanced but sheds the brick — findSafeDrop must refuse it.
-  let t = buildTower([["I", 0]]);
-  const brick = simulatePlacement(t, { shape: "L", x: 2, rotation: 1, blockId: "b:2", placedByUserId: "u1", turnNumber: 2 });
-  t = brick.tower;
-  // A beam at the brick's far end would not keep; verify directly.
-  const bad = simulatePlacement(t, { shape: "I", x: 2, rotation: 0, blockId: "probe", placedByUserId: "", turnNumber: 0 });
-  assert.equal(bad.collapsed, true, "the edge beam is unsafe");
-  const safe = findSafeDrop(t, ["I", "L", "short", "square", "T"]);
-  assert.ok(safe, "a safe drop still exists");
-  const out = simulatePlacement(t, {
-    shape: safe.shape,
-    x: safe.x,
-    rotation: safe.rotation,
-    blockId: "probe",
-    placedByUserId: "",
-    turnNumber: 0,
-  });
-  assert.equal(out.collapsed, false, `chosen ${safe.shape}@${safe.x} does not shed the tower`);
 });
 
 test("centering helpers keep the block fully on the floor line", () => {
@@ -236,68 +127,13 @@ test("centering helpers keep the block fully on the floor line", () => {
       assert.equal(centerDepthFor(s, rot), 0);
       assert.equal(fitsInGrid(blockCells(s, rot), x, 0), true, `${s} rot${rot}`);
       const { maxX } = footprintExtent(s, rot);
-      assert.ok(maxX < GRID_WIDTH, `${s} rot${rot} maxX ${maxX} < 6`);
+      assert.ok(maxX < GRID_WIDTH, `${s} rot${rot} maxX ${maxX} < ${GRID_WIDTH}`);
     }
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Determinism
-// ═══════════════════════════════════════════════════════════════════
-
-test("simulatePlacement is deterministic for identical inputs", () => {
-  const params = {
-    shape: "square",
-    x: 2,
-    rotation: 0,
-    blockId: "b:1",
-    placedByUserId: "u1",
-    turnNumber: 1,
-  };
-  const a = simulatePlacement([], params);
-  const b = simulatePlacement([], params);
-  assert.deepEqual(a, b);
-  assert.equal(a.stable, true);
-  assert.equal(b.collapsed, false);
-});
-
-test("buildResourcePool is deterministic for the same nonce and scales with players", () => {
-  const a1 = buildResourcePool(2, "m1:cycle:1");
-  const a2 = buildResourcePool(2, "m1:cycle:1");
-  assert.deepEqual(a1, a2, "same nonce → same pool");
-  const p6 = buildResourcePool(6, "m1:cycle:1");
-  assert.ok(p6.length > a1.length, "6 players get more resources than 2");
-  assert.ok(
-    p6.every((p) => BLOCK_SHAPES.includes(p.shape)),
-    "pool pieces use known shapes",
-  );
-});
-
-test("takeFromPool removes exactly one piece of the requested shape", () => {
-  const pool = buildResourcePool(4, "nonce");
-  const count = pool.filter((p) => p.shape === "square").length;
-  const { pool: after, piece } = takeFromPool(pool, "square");
-  assert.ok(piece, "a square was available");
-  assert.equal(piece.shape, "square");
-  const afterCount = after.filter((p) => p.shape === "square").length;
-  assert.equal(afterCount, count - 1);
-  // Asking for a shape not present returns null and leaves pool intact.
-  const empty = takeFromPool([], "I");
-  assert.equal(empty.piece, null);
-  assert.deepEqual(empty.pool, []);
-});
-
-test("refillResourcePool appends fresh pieces without touching existing ones", () => {
-  const base = buildResourcePool(3, "x");
-  const before = base.length;
-  const refilled = refillResourcePool(base, 3, "y");
-  assert.ok(refilled.length > before, "pool grew");
-  // Every original piece is still present (no mutation).
-  for (const p of base) assert.ok(refilled.some((r) => r.id === p.id));
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// Drop physics — support, balance, void (no height ceiling)
+// Drop resolution — settle on the highest support, hard ceiling
 // ═══════════════════════════════════════════════════════════════════
 
 /** Build a tower by simulating safe placements onto an empty board. */
@@ -321,7 +157,6 @@ function buildTower(placements) {
 
 test("an empty tower and a floor-level block are stable", () => {
   assert.equal(isStable([]), true);
-  // A single square at the very edge still rests fully on the floor line.
   const square = simulatePlacement([], {
     shape: "square",
     x: 0,
@@ -330,52 +165,21 @@ test("an empty tower and a floor-level block are stable", () => {
     placedByUserId: "u1",
     turnNumber: 1,
   });
-  assert.equal(square.collapsed, false, "on the floor line nothing tips");
+  assert.equal(square.collapsed, false);
   assert.equal(isStable(square.tower), true);
+  // The first block rests on the floor line at z=1.
+  assert.equal(square.placedBlock.z, 1);
+  assert.equal(square.placedBlock.cells.length, 2);
 });
 
-test("stacked centered blocks grow a stable tower", () => {
-  let t = [];
-  for (let i = 1; i <= 5; i += 1) {
-    const res = simulatePlacement(t, {
-      shape: "square",
-      x: 2,
-      rotation: 0,
-      blockId: `b:${i}`,
-      placedByUserId: "u1",
-      turnNumber: i,
-    });
-    assert.equal(res.collapsed, false, `level ${i} did not tip`);
-    t = res.tower;
-  }
-  assert.equal(isStable(t), true);
-});
-
-test("a short 1×1 cube balances on a single pillar", () => {
-  const t = buildTower([
+test("a block settles on the highest support under its footprint", () => {
+  // Pillar of two shorts at col 2; col 0 holds a floor-level cube.
+  let t = buildTower([
     ["short", 2],
     ["short", 2],
-    ["short", 2],
+    ["short", 0],
   ]);
-  const res = simulatePlacement(t, {
-    shape: "short",
-    x: 2,
-    rotation: 0,
-    blockId: "b:4",
-    placedByUserId: "u1",
-    turnNumber: 4,
-  });
-  assert.equal(res.collapsed, false, "a unit cube always settles on the column below");
-});
-
-test("a narrow 2-wide brick balanced on a single pillar cell stays (one-cell overhang)", () => {
-  // Pillar at col 2 only → a square landing there touches just col 2, its
-  // center-of-mass still sits within the overhang allowance.
-  const t = buildTower([
-    ["short", 2],
-    ["short", 2],
-    ["short", 2],
-  ]);
+  // A square landing across cols 1-2 must rest on the taller pillar (z=3).
   const res = simulatePlacement(t, {
     shape: "square",
     x: 1,
@@ -384,90 +188,221 @@ test("a narrow 2-wide brick balanced on a single pillar cell stays (one-cell ove
     placedByUserId: "u1",
     turnNumber: 4,
   });
-  assert.equal(res.collapsed, false, "2-wide block peching on a 1-cell pillar balances");
-});
-
-test("a wide block on a narrow pillar tips into the void (support too narrow)", () => {
-  // 3-wide I dropped so its only support is a 1-cell pillar: needs ceil(3/2)=2.
-  const t = buildTower([
-    ["short", 0],
-    ["short", 0],
-  ]);
-  const res = simulatePlacement(t, {
-    shape: "I",
-    x: 0,
+  assert.equal(res.collapsed, false);
+  assert.equal(res.placedBlock.z, 3, "sits on the 2-high pillar, not the floor");
+  // A cube dropped onto an empty column still lands on the floor (z=1).
+  const low = simulatePlacement(t, {
+    shape: "short",
+    x: 6,
     rotation: 0,
-    blockId: "b:3",
-    placedByUserId: "u2",
-    turnNumber: 3,
+    blockId: "b:5",
+    placedByUserId: "u1",
+    turnNumber: 5,
   });
-  assert.equal(res.collapsed, true, "3-wide block cannot balance on one pillar cell");
-  assert.equal(res.removedBlockIds.join(","), "b:3", "the fallen block is reported");
-  // The tower is UNCHANGED — nothing is trimmed, nothing is reset.
-  assert.equal(res.tower.length, t.length, "tower unchanged by a void fall");
-  assert.deepEqual(res.tower, t, "same blocks, same order");
+  assert.equal(low.placedBlock.z, 1, "empty column → floor level");
   assert.equal(isStable(res.tower), true);
 });
 
-test("a 3-wide beam balanced on a 2-cell support stays", () => {
-  const t = buildTower([
-    ["short", 1],
-    ["short", 2],
-  ]);
-  const res = simulatePlacement(t, {
-    shape: "I",
-    x: 0,
-    rotation: 0,
-    blockId: "b:3",
-    placedByUserId: "u2",
-    turnNumber: 3,
-  });
-  assert.equal(res.collapsed, false, "beam across two equal pillars balances");
-});
-
-test("a miss entirely into the void is flagged (no in-bounds column under the block)", () => {
-  // x=5 with a 2-wide block → columns 5 and 6: col 6 is over the void, so
-  // resolving at x=5 would still overlap; use an aim fully off the floor for
-  // the engine-level miss check.
-  const block = applyPlacementBlock([], {
-    shape: "square",
-    x: GRID_WIDTH, // fully right of the platform
-    rotation: 0,
-    blockId: "b:1",
-    placedByUserId: "u1",
-    turnNumber: 1,
-  });
-  assert.equal(block.cells.length, 0, "no in-bounds cells resolved");
-  assert.equal(wouldFall(block, []), true, "miss = fall into the void");
-});
-
-test("there is NO height ceiling — an even tower can grow indefinitely", () => {
-  // Regression: a perfect even spire must NEVER topple on its own; the only
-  // way out is a risky drop, not an invisible height limit.
+test("stacked centered blocks grow a stable tower to the ceiling line", () => {
   let t = [];
-  for (let i = 1; i <= 40; i += 1) {
+  // 24 unit cubes in one column reach exactly the ceiling (z=24) and are fine.
+  for (let i = 1; i <= CEILING_HEIGHT; i += 1) {
     const res = simulatePlacement(t, {
-      shape: "square",
+      shape: "short",
       x: 2,
       rotation: 0,
       blockId: `b:${i}`,
       placedByUserId: "u1",
       turnNumber: i,
     });
-    assert.equal(res.collapsed, false, `stacked square ${i} settles (no ceiling)`);
+    assert.equal(res.collapsed, false, `cube ${i} settles at/below the ceiling`);
     t = res.tower;
   }
-  assert.equal(t.length, 40, "the tower keeps growing past any old ceiling");
+  assert.equal(t.length, CEILING_HEIGHT);
   assert.equal(isStable(t), true);
 });
 
-test("findSafeDrop returns a stable placement when one exists", () => {
+test("a placement whose top crosses the ceiling is a collapse — the tower keeps the rest", () => {
+  // Column at x=2 already reaches the ceiling (z=24); one more cube would sit
+  // at z=25 → its top crosses the ceiling → the dropper is eliminated.
+  let t = [];
+  for (let i = 1; i <= CEILING_HEIGHT; i += 1) {
+    t = simulatePlacement(t, {
+      shape: "short",
+      x: 2,
+      rotation: 0,
+      blockId: `b:${i}`,
+      placedByUserId: "u1",
+      turnNumber: i,
+    }).tower;
+  }
+  const doomed = simulatePlacement(t, {
+    shape: "short",
+    x: 2,
+    rotation: 0,
+    blockId: "b:x",
+    placedByUserId: "u2",
+    turnNumber: CEILING_HEIGHT + 1,
+  });
+  assert.equal(doomed.collapsed, true, "crossing the ceiling eliminates the placer");
+  assert.equal(doomed.stable, false);
+  assert.deepEqual(doomed.removedBlockIds, ["b:x"], "only the doomed block is reported");
+  assert.deepEqual(doomed.tower, t, "the standing tower is untouched");
+  assert.equal(isStable(doomed.tower), true);
+});
+
+test("the same ceiling rule applies to the taller shapes (long beam vertical = 4 tall)", () => {
+  // Stack vertical long beams (1×4) in one column: the kth beam tops out at
+  // z = 4k. Six fit (top 24 = exactly the ceiling line); the seventh (top
+  // 28) crosses it and collapses.
+  let t = [];
+  for (let i = 1; i <= 6; i += 1) {
+    const res = simulatePlacement(t, {
+      shape: "long",
+      x: 5,
+      rotation: 1,
+      blockId: `b:${i}`,
+      placedByUserId: "u1",
+      turnNumber: i,
+    });
+    assert.equal(res.collapsed, false, `beam ${i} tops at ${4 * i} — at/below the ceiling`);
+    t = res.tower;
+  }
+  const doomed = simulatePlacement(t, {
+    shape: "long",
+    x: 5,
+    rotation: 1,
+    blockId: "b:7",
+    placedByUserId: "u2",
+    turnNumber: 7,
+  });
+  assert.equal(doomed.collapsed, true, "vertical beam past the ceiling collapses");
+  assert.deepEqual(doomed.tower, t, "the standing tower is untouched");
+});
+
+test("aiming fully off the floor is rejected up front (out of bounds = no block)", () => {
+  const block = applyPlacementBlock([], {
+    shape: "square",
+    x: GRID_WIDTH - 1, // 2-wide square would spill past column 15
+    rotation: 0,
+    blockId: "b:1",
+    placedByUserId: "u1",
+    turnNumber: 1,
+  });
+  assert.equal(block.cells.length, 0, "no in-bounds cells resolved");
+  assert.equal(wouldFall(block, []), true);
+  const res = simulatePlacement([], {
+    shape: "square",
+    x: GRID_WIDTH - 1,
+    rotation: 0,
+    blockId: "b:1",
+    placedByUserId: "u1",
+    turnNumber: 1,
+  });
+  assert.equal(res.collapsed, true, "an impossible aim resolves as a void fall");
+  assert.deepEqual(res.tower, [], "tower unchanged");
+});
+
+test("overlapping blocks are never stable (duplicate cells are rejected)", () => {
+  let t = buildTower([["short", 3]]);
+  // Force an overlapping duplicate by hand — isStable must call it out.
+  const dup = { ...t[0], id: "b:dup", placedByUserId: "u2", turnNumber: 2, cells: [...t[0].cells] };
+  assert.equal(isStable([t[0], dup]), false, "duplicate cell occupancy is unstable");
+  assert.equal(isStable(t), true);
+});
+
+test("wouldFall flags blocks that are empty, above the ceiling, or overlapping", () => {
+  let t = buildTower([
+    ["short", 3],
+    ["short", 3],
+  ]);
+  // A block floating above the ceiling.
+  const above = {
+    ...t[1],
+    id: "b:up",
+    cells: t[1].cells.map((c) => ({ ...c, z: CEILING_HEIGHT + 2 })),
+  };
+  assert.equal(wouldFall(above, [t[0]]), true, "above the ceiling falls");
+  // A block with no resolved cells falls.
+  assert.equal(wouldFall({ ...t[0], id: "b:empty", cells: [] }, []), true, "empty cells fall");
+  // A healthy block resting on the base does not fall (compared against the
+  // tower WITHOUT itself — overlap with its own cells is not a fall).
+  assert.equal(wouldFall(t[1], [t[0]]), false);
+  // Cloning it on top of the same cell (overlap) does fall.
+  assert.equal(wouldFall(t[1], [t[0], t[1]]), true, "duplicate occupancy falls");
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Elimination trimming
+// ═══════════════════════════════════════════════════════════════════
+
+test("first elimination keeps the bottom half of the tower and rebases it", () => {
+  let t = [];
+  for (let i = 1; i <= 10; i += 1) {
+    t = simulatePlacement(t, {
+      shape: "short",
+      x: 0,
+      rotation: 0,
+      blockId: `b:${i}`,
+      placedByUserId: "u1",
+      turnNumber: i,
+    }).tower;
+  }
+  const { tower, removedBlockIds } = trimTowerAfterElimination(t, 1);
+  assert.equal(removedBlockIds.length, 5, "top half removed");
+  assert.equal(tower.length, 5, "bottom half retained");
+  assert.equal(Math.min(...tower.map((b) => b.cells[0].z)), 1, "retained cells rebased to the floor");
+  assert.equal(isStable(tower), true);
+});
+
+test("later eliminations keep the top quarter of the current tower", () => {
+  let t = [];
+  for (let i = 1; i <= 8; i += 1) {
+    t = simulatePlacement(t, {
+      shape: "short",
+      x: 1,
+      rotation: 0,
+      blockId: `b:${i}`,
+      placedByUserId: "u1",
+      turnNumber: i,
+    }).tower;
+  }
+  const { tower, removedBlockIds } = trimTowerAfterElimination(t, 3);
+  // Keep z ≥ ceil(8 × 0.75) = 6 → the top three cells survive the trim.
+  assert.equal(removedBlockIds.length, 5, "lower five removed");
+  assert.equal(tower.length, 3, "top quarter retained");
+  assert.equal(Math.min(...tower.map((b) => b.cells[0].z)), 1, "rebased to the floor");
+  assert.equal(isStable(tower), true);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Determinism + safe-drop search + resource pools
+// ═══════════════════════════════════════════════════════════════════
+
+test("simulatePlacement is deterministic for identical inputs", () => {
+  const params = {
+    shape: "square",
+    x: 2,
+    rotation: 0,
+    blockId: "b:1",
+    placedByUserId: "u1",
+    turnNumber: 1,
+  };
+  const a = simulatePlacement([], params);
+  const b = simulatePlacement([], params);
+  assert.deepEqual(a, b);
+  assert.equal(a.stable, true);
+  assert.equal(b.collapsed, false);
+});
+
+test("findSafeDrop prefers the smallest available shape, centered", () => {
   const t = buildTower([
     ["short", 0],
     ["short", 0],
   ]);
-  const safe = findSafeDrop(t, ["I", "T", "short"]);
-  assert.ok(safe, "a safe drop exists on this tower");
+  const safe = findSafeDrop(t, ["long", "big", "short", "square"]);
+  assert.ok(safe, "a safe drop exists");
+  assert.equal(safe.shape, "short", "smallest safe shape wins");
   const probe = applyPlacementBlock(t, {
     shape: safe.shape,
     x: safe.x,
@@ -479,24 +414,73 @@ test("findSafeDrop returns a stable placement when one exists", () => {
   assert.equal(wouldFall(probe, t), false, `chosen ${safe.shape}@${safe.x} is stable`);
 });
 
-test("rotation transposes a flat beam into a tall spire (still no ceiling)", () => {
-  // A rotated I = 1×3 spire: single-column support is enough (min width 1),
-  // and nothing caps how high it can reach.
+test("findSafeDrop refuses any shape that would cross the ceiling", () => {
+  // Fill the floor to z=23 everywhere — only a 1-cell block still fits
+  // (z=24), so with only the 3×2 big block available nothing is safe.
   let t = [];
-  for (let i = 1; i <= 6; i += 1) {
-    const r = simulatePlacement(t, {
-      shape: "I",
-      x: 2,
-      rotation: 1,
-      blockId: `b:${i}`,
-      placedByUserId: "u1",
-      turnNumber: i,
-    });
-    assert.equal(r.collapsed, false, `spire section ${i} settles`);
-    t = r.tower;
+  for (let layer = 0; layer < 23; layer += 1) {
+    for (let x = 0; x < GRID_WIDTH; x += 1) {
+      t = simulatePlacement(t, {
+        shape: "short",
+        x,
+        rotation: 0,
+        blockId: `b:${layer}:${x}`,
+        placedByUserId: "u1",
+        turnNumber: t.length + 1,
+      }).tower;
+    }
   }
-  // 6 sections × 3 cells = 18 tall, stable.
-  assert.equal(isStable(t), true);
+  assert.equal(findSafeDrop(t, ["big"]), null, "big block cannot fit under the ceiling");
+  // A short cube still fits at z=24.
+  const safe = findSafeDrop(t, ["big", "short"]);
+  assert.equal(safe.shape, "short");
+  const probe = simulatePlacement(t, {
+    shape: "short",
+    x: safe.x,
+    rotation: 0,
+    blockId: "probe",
+    placedByUserId: "",
+    turnNumber: 0,
+  });
+  assert.equal(probe.collapsed, false, "ceiling-level short cube is stable");
+});
+
+test("buildResourcePool is deterministic for the same nonce and scales with players", () => {
+  const a1 = buildResourcePool(2, "m1:cycle:1");
+  const a2 = buildResourcePool(2, "m1:cycle:1");
+  assert.deepEqual(a1, a2, "same nonce → same pool");
+  const p6 = buildResourcePool(6, "m1:cycle:1");
+  assert.ok(p6.length > a1.length, "6 players get more resources than 2");
+  assert.ok(
+    p6.every((p) => BLOCK_SHAPES.includes(p.shape)),
+    "pool pieces use known shapes",
+  );
+  // The pool includes the newly added large shapes too.
+  assert.ok(a1.some((p) => p.shape === "long"), "long beams appear in pools");
+  assert.ok(a1.some((p) => p.shape === "big"), "big blocks appear in pools");
+});
+
+test("takeFromPool removes exactly one piece of the requested shape", () => {
+  const pool = buildResourcePool(4, "nonce");
+  const count = pool.filter((p) => p.shape === "square").length;
+  const { pool: after, piece } = takeFromPool(pool, "square");
+  assert.ok(piece, "a square was available");
+  assert.equal(piece.shape, "square");
+  const afterCount = after.filter((p) => p.shape === "square").length;
+  assert.equal(afterCount, count - 1);
+  // Asking for a shape not present returns null and leaves pool intact.
+  const empty = takeFromPool([], "I");
+  assert.equal(empty.piece, null);
+  assert.deepEqual(empty.pool, []);
+});
+
+test("refillResourcePool appends fresh pieces without touching existing ones", () => {
+  const base = buildResourcePool(3, "x");
+  const before = base.length;
+  const refilled = refillResourcePool(base, 3, "y");
+  assert.ok(refilled.length > before, "pool grew");
+  // Every original piece is still present (no mutation).
+  for (const p of base) assert.ok(refilled.some((r) => r.id === p.id));
 });
 
 // ═══════════════════════════════════════════════════════════════════

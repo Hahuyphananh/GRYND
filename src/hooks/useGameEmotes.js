@@ -52,14 +52,19 @@ export default function useGameEmotes({ socket, roomId, eventName, selfId }) {
 
   const sendEmote = useCallback(
     (emote) => {
-      if (!socket || !roomId || !eventName) return;
+      // LOCAL-FIRST: the sender's own bubble is shown unconditionally, so
+      // clicking an emote always pops it on your name even when the socket
+      // isn't connected/joined yet (e.g. the room id is set a tick after the
+      // picker mounts). The broadcast below is then best-effort — if we
+      // can't emit now, the next successful send will carry it.
       setMyEmote(emote);
+      window.setTimeout(() => setMyEmote(null), EMOTE_CLEAR_MS);
+      if (!socket || !roomId || !eventName) return;
       socket.emit("room_event", {
         roomId,
         event: eventName,
         payload: { emote, senderId: selfId },
       });
-      window.setTimeout(() => setMyEmote(null), EMOTE_CLEAR_MS);
     },
     [socket, roomId, eventName, selfId]
   );

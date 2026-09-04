@@ -1,0 +1,119 @@
+# Grynd read-mix load test (S2 in docs/load-testing.md).
+# Read-heavy feeds: leaderboards (Redis-cached, recompute on purge), bet
+# history (21 fan-out queries), user stats, crash-arena polling, recent games.
+#
+# Token-frugal by design: total VUs ≈ arrivals below (~85). Each VU loops its
+# flow ~40x, so request volume stays high without minting thousands of
+# session tokens. Needs >= ~100 rows in ../tokens.csv (duplicates OK for
+# read-only flows).
+#
+# Usage:
+#   set -a; source load-test/.env.local; set +a
+#   npx artillery run load-test/scenarios/read-mix.yml
+config:
+  target: "{{ $processEnv.BASE_URL }}"
+  phases:
+    - name: ramp
+      duration: 30
+      arrivalRate: 0.5
+      rampTo: 1
+    - name: sustained
+      duration: 60
+      arrivalRate: 1
+  payload:
+    - path: ../tokens.csv
+      fields:
+        - cookie
+      order: sequence
+      skipHeader: false
+  defaults:
+    headers:
+      Content-Type: application/json
+      Cookie: "{{ cookie }}"
+  # Starting budgets — p95 ms and max error %. Fail the run if exceeded.
+  ensure:
+    p95: 800
+    maxErrorRate: 5
+
+scenarios:
+  - name: "leaderboard: all-time"
+    weight: 20
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/leaderboard/all-time?category=wins&limit=20&offset=0"
+            - get:
+                url: "/api/leaderboard/all-time?category=best_streak&limit=20&offset=0"
+            - think: 1
+
+  - name: "leaderboard: weekly"
+    weight: 10
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/leaderboard/weekly?category=wins&limit=20&offset=0"
+            - think: 1
+
+  - name: "leaderboard: per-game"
+    weight: 10
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/leaderboard/game?game=chess&limit=20&offset=0"
+            - think: 1
+
+  - name: "bet history (21 fan-out queries)"
+    weight: 15
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/get-bet-history"
+            - think: 2
+
+  - name: "user stats"
+    weight: 10
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/user-stats"
+            - think: 1
+
+  - name: "crash-arena lobby poll"
+    weight: 20
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/crash-arena/tables?mode=lobby"
+            - think: 2
+
+  - name: "crash-arena table detail"
+    weight: 5
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/crash-arena/tables"
+            - think: 3
+
+  - name: "recent games feed"
+    weight: 10
+    flow:
+      - loop:
+          count: 40
+          over:
+            - get:
+                url: "/api/get-recent-games"
+            - think: 1

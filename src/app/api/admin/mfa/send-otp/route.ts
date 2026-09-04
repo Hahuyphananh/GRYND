@@ -47,7 +47,12 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.sent) {
-    console.error("[admin/mfa/send-otp] Failed to send code:", result);
+    // Reason-only: never log the send result object wholesale — provider
+    // error payloads can echo the recipient email address.
+    console.error(
+      "[admin/mfa/send-otp] Failed to send code:",
+      result?.skipped ? result?.reason || "skipped" : "send failed",
+    );
     return NextResponse.json(
       { success: false, error: "Failed to send the code. Please try again." },
       { status: 500 },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
@@ -36,28 +36,58 @@ export default function BattlepassPageClient() {
   const [failedEmoteRewards, setFailedEmoteRewards] = useState({});
   // Prestige tier that just unlocked and is being celebrated (null = none).
   const [prestigeCelebrated, setPrestigeCelebrated] = useState(null);
+  // Per-reward claim state — rewards are NEVER auto-granted; the player
+  // clicks "Claim" on each reached banner/emote reward.
+  const [claimingKey, setClaimingKey] = useState(null);
+  const [claimError, setClaimError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/battlepass");
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok || !data.success) {
+        setError(data.error || "Could not load the battlepass.");
+      } else {
+        setPass(data.pass);
+      }
+    } catch {
+      setError("Could not load the battlepass.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/battlepass");
-        const text = await res.text();
-        const data = text ? JSON.parse(text) : {};
-        if (!res.ok || !data.success) {
-          setError(data.error || "Could not load the battlepass.");
-        } else {
-          setPass(data.pass);
-        }
-      } catch {
-        setError("Could not load the battlepass.");
-      } finally {
-        setLoading(false);
-      }
-    };
     load();
-  }, []);
+  }, [load]);
+
+  const claimReward = async (reward) => {
+    if (claimingKey) return;
+    const key = `${reward.type}:${reward.key}`;
+    setClaimingKey(key);
+    setClaimError(null);
+    try {
+      const res = await fetch("/api/battlepass/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: reward.type, key: reward.key }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setClaimError(data.error || "Could not claim this reward.");
+        return;
+      }
+      // Refresh the pass so the claimed reward flips to "Unlocked".
+      await load();
+    } catch {
+      setClaimError("Could not claim this reward.");
+    } finally {
+      setClaimingKey(null);
+    }
+  };
 
   // Horizontal battlepass track — refs + auto-centering on the current level.
   const trackRef = useRef(null);
@@ -217,6 +247,19 @@ export default function BattlepassPageClient() {
               </div>
             ) : (
               <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]">
+                {pass.unclaimedCount > 0 && (
+                  <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-2">
+                    <span className="text-sm font-semibold text-[#f5ff3b]">
+                      🎁 {pass.unclaimedCount} reward
+                      {pass.unclaimedCount === 1 ? "" : "s"} ready to claim
+                    </span>
+                  </div>
+                )}
+                {claimError && (
+                  <p className="mb-3 text-xs font-medium text-red-300">
+                    {claimError}
+                  </p>
+                )}
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-xs uppercase tracking-[0.2em] text-[#7dd3fc]">
@@ -467,12 +510,31 @@ export default function BattlepassPageClient() {
                                 <div className="text-[9px] leading-tight text-[#7dd3fc]">
                                   {reward.desc}
                                 </div>
-                                {reward.type === "banner" && reward.claimed && (
-                                  <div className="text-[9px] font-semibold text-emerald-300">Unlocked</div>
-                                )}
-                                {reward.type === "emote" && reward.claimed && (
-                                  <div className="text-[9px] font-semibold text-emerald-300">Unlocked</div>
-                                )}
+                                {(reward.type === "banner" ||
+                                  reward.type === "emote") &&
+                                  reward.claimed && (
+                                    <div className="text-[9px] font-semibold text-emerald-300">
+                                      Unlocked
+                                    </div>
+                                  )}
+                                {(reward.type === "banner" ||
+                                  reward.type === "emote") &&
+                                  reward.claimable && (
+                                    <button
+                                      type="button"
+                                      onClick={() => claimReward(reward)}
+                                      disabled={
+                                        claimingKey ===
+                                        `${reward.type}:${reward.key}`
+                                      }
+                                      className="mt-1 w-full rounded-md border border-[#f5ff3b]/60 bg-[#f5ff3b]/15 px-2 py-1 text-[10px] font-bold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/30 disabled:opacity-50"
+                                    >
+                                      {claimingKey ===
+                                      `${reward.type}:${reward.key}`
+                                        ? "Claiming…"
+                                        : "Claim"}
+                                    </button>
+                                  )}
                               </div>
                             ))
                           ) : (

@@ -71,6 +71,8 @@ const SHAPE_LABEL: Record<BlockShape, string> = {
   T: "T",
   square: "▪",
   short: "▮",
+  long: "▬",
+  big: "█",
 };
 
 const SHAPE_NAME: Record<BlockShape, string> = {
@@ -79,18 +81,22 @@ const SHAPE_NAME: Record<BlockShape, string> = {
   T: "Post",
   square: "Square",
   short: "Short",
+  long: "Long Beam",
+  big: "Big Block",
 };
 
-const BLOCK_PALETTE = [
-  "#00e5ff",
-  "#f5ff3b",
-  "#ff5c8a",
-  "#7cf29c",
-  "#ff9f43",
-  "#a78bfa",
-  "#38bdf8",
-  "#f472b6",
-];
+// Per-shape color identity (fill + bright edge). Each shape family keeps one
+// hue so players can read the piece type at a glance; the cell renderer adds
+// a top gloss + bottom bevel on top of these.
+const SHAPE_COLORS: Record<BlockShape, { fill: string; edge: string }> = {
+  short: { fill: "#a5f3fc", edge: "#e0fcff" },   // ice
+  square: { fill: "#f5ff3b", edge: "#ffffd1" },  // neon
+  I: { fill: "#00e5ff", edge: "#9df6ff" },       // cyan beam
+  L: { fill: "#ff5c8a", edge: "#ffb8cd" },       // rose spire
+  T: { fill: "#a78bfa", edge: "#d9ccff" },       // violet post
+  long: { fill: "#7cf29c", edge: "#c9ffe1" },    // mint slab
+  big: { fill: "#ff9f43", edge: "#ffdcb0" },     // amber block
+};
 
 // ── Types (mirror the get-match projection) ───────────────────────────
 
@@ -381,21 +387,42 @@ function TowerScene({
       <line x1={GRID_WIDTH} y1={yFor(1.05)} x2={GRID_WIDTH} y2={yFor(1.8)} stroke="rgba(94,234,212,0.2)" strokeWidth={0.05} />
 
       {/* Tower blocks (oldest first so newer blocks paint above) */}
-      {sortedBlocks.map((b, i) => {
-        const color = BLOCK_PALETTE[i % BLOCK_PALETTE.length];
+      {sortedBlocks.map((b) => {
+        const style = SHAPE_COLORS[b.shape as BlockShape] ?? SHAPE_COLORS.short;
         return (b.cells || []).map((c: any) => (
-          <rect
-            key={`${b.id}-${c.x}:${c.z}`}
-            x={c.x + 0.03}
-            y={cellY(c.z) + 0.03}
-            width={0.94}
-            height={0.94}
-            fill={color}
-            opacity={0.95}
-            stroke="rgba(255,255,255,0.35)"
-            strokeWidth={0.04}
-            rx={0.06}
-          />
+          <g key={`${b.id}-${c.x}:${c.z}`}>
+            <rect
+              x={c.x + 0.02}
+              y={cellY(c.z) + 0.02}
+              width={0.96}
+              height={0.96}
+              fill={style.fill}
+              opacity={0.97}
+              stroke={style.edge}
+              strokeWidth={0.05}
+              rx={0.09}
+            />
+            {/* Top gloss — the light edge of each cell */}
+            <rect
+              x={c.x + 0.11}
+              y={cellY(c.z) + 0.11}
+              width={0.78}
+              height={0.22}
+              rx={0.08}
+              fill="#ffffff"
+              opacity={0.22}
+            />
+            {/* Bottom bevel — grounds each cell */}
+            <rect
+              x={c.x + 0.11}
+              y={cellY(c.z) + 0.79}
+              width={0.78}
+              height={0.13}
+              rx={0.05}
+              fill="#000000"
+              opacity={0.18}
+            />
+          </g>
         ));
       })}
 
@@ -1071,7 +1098,7 @@ export default function TowerArenaMatchPage() {
         rotation = intent.rotation;
       } else {
         shape =
-          (["short", "square", "I", "T", "L"] as BlockShape[]).find((s) => available.includes(s)) || "short";
+          (["short", "square", "I", "L", "T", "big", "long"] as BlockShape[]).find((s) => available.includes(s)) || "short";
         x = centerXFor(shape, 0);
         rotation = 0;
       }
@@ -1477,7 +1504,7 @@ export default function TowerArenaMatchPage() {
   const towerInnerNode = (
     // Fixed-height stage: the floor line renders pinned to its bottom edge.
     <div
-      className="relative flex h-[380px] items-center justify-center overflow-hidden rounded-xl sm:h-[420px]"
+      className="relative flex h-[460px] items-center justify-center overflow-hidden rounded-xl sm:h-[540px]"
       style={{
         background:
           "radial-gradient(circle at 50% 95%, rgba(45,212,191,0.08), transparent 60%), linear-gradient(#070916, #010205)",
@@ -1486,7 +1513,7 @@ export default function TowerArenaMatchPage() {
       {/* The svg fills the stage exactly (h-full) and is width-capped so the
           small floor line never spans the whole screen. Clicking the stage
           drops the aimed block from where the cursor sits (fruit-merge). */}
-      <div className="mx-auto h-full w-full max-w-[560px]">
+      <div className="mx-auto h-full w-full max-w-[700px]">
         <TowerScene
           tower={(match?.towerState || []).filter((b: any) => !hiddenBlockIds.includes(b.id))}
           ghost={isMyTurn ? ghostBlock : remoteGhost}
@@ -1613,7 +1640,14 @@ export default function TowerArenaMatchPage() {
     </div>
   );
 
-  // Right: leaderboard + resign.
+  // Out-of-the-running spectators: a player eliminated mid-match (ceiling
+  // breach or resignation) stays in the game as a spectator — no auto-kick,
+  // no auto-redirect — until they click Return to Lobby. Active players who
+  // want out still use Resign.
+  const iAmEliminated = Boolean(isActive && me?.status === "eliminated");
+  const backToLobby = () => router.replace("/casino/tower-arena");
+
+  // Right: leaderboard + resign / return-to-lobby.
   const leaderboardNode = (
     <div className="rounded-2xl border border-cyan-800 bg-black/40 p-4">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-cyan-300">
@@ -1659,13 +1693,27 @@ export default function TowerArenaMatchPage() {
           })}
       </div>
 
-      <button
-        onClick={resign}
-        disabled={resignBusy || !isActive}
-        className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
-      >
-        {resignBusy ? "Resigning…" : "Resign"}
-      </button>
+      {iAmEliminated ? (
+        <>
+          <button
+            onClick={backToLobby}
+            className="mt-4 w-full rounded-lg border border-cyan-400/60 bg-cyan-500/20 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-cyan-100 shadow-[0_0_16px_rgba(0,229,255,0.15)] transition hover:bg-cyan-500/30"
+          >
+            Return to Lobby
+          </button>
+          <p className="mt-2 text-center text-[10px] text-white/45">
+            You're out — watch the rest of the game or head back to the lobby.
+          </p>
+        </>
+      ) : (
+        <button
+          onClick={resign}
+          disabled={resignBusy || !isActive}
+          className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+        >
+          {resignBusy ? "Resigning…" : "Resign"}
+        </button>
+      )}
     </div>
   );
 
@@ -1723,8 +1771,7 @@ export default function TowerArenaMatchPage() {
         </div>
       </ShellHeader>
 
-      <ShellMain className="flex-col items-center justify-start overflow-y-auto">
-        <div className="w-full max-w-[640px] px-3 py-2">
+      <ShellMain className="flex-col items-center justify-start overflow-y-auto">          <div className="w-full max-w-[860px] px-3 py-2">
           <div className="rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
             {towerInnerNode}
           </div>
@@ -1846,7 +1893,7 @@ function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) 
   const w = maxX + 1;
   const h = maxZ + 1;
   const cell = size / Math.max(w, h);
-  const color = BLOCK_PALETTE[BLOCK_SHAPES.indexOf(shape) % BLOCK_PALETTE.length];
+  const style = SHAPE_COLORS[shape] ?? SHAPE_COLORS.short;
   return (
     <svg
       width={w * cell}
@@ -1862,8 +1909,8 @@ function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) 
           y={(h - 1 - z) * cell + 0.4}
           width={cell - 0.8}
           height={cell - 0.8}
-          fill={color}
-          stroke="rgba(255,255,255,0.45)"
+          fill={style.fill}
+          stroke={style.edge}
           strokeWidth={0.6}
           rx={1}
         />

@@ -107,6 +107,9 @@ export default function ConnectFourGamePage() {
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [showReportModal, setShowReportModal] = useState(false);
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
+  // Local clock — drives the ready-takeover countdown (server deadlines
+  // remain the source of truth; this only renders).
+  const [now, setNow] = useState<number>(() => Date.now());
   const prevStatusTextRef = useRef<string | null>(null);
 
   useGamePresence({
@@ -212,15 +215,25 @@ export default function ConnectFourGamePage() {
   }, [game?.isAiGame, game?.status, game?.currentTurn, game?.guestDiscsUsed, game?.hostDiscsUsed, gameId]);
 
   useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     fetchState();
     // Socket room ("match:updated") pushes opponent moves instantly; this
     // HTTP poll is a reconnect/consistency safety net. Turn pacing comes
-    // from server deadlines + the clock tick, never from the poll rate, so
-    // 5s is safe and keeps match-time DB reads minimal.
-    const interval = setInterval(fetchState, 5000);
+    // from server deadlines + the clock tick, never from the poll rate.
+    // Poll faster while matchmaking so the ready takeover (3s window)
+    // renders promptly on both sides, then settle at 5s during play.
+    const delay =
+      game?.status === "waiting" || game?.status === "ready" ? 1500 : 5000;
+    const interval = setInterval(fetchState, delay);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId]);
+  }, [gameId, game?.status]);
 
   useEffect(() => {
     if (!socket) return;
@@ -333,6 +346,12 @@ export default function ConnectFourGamePage() {
     Math.min(REPLAY_WINDOW_SECONDS, Number(game?.replayTimeRemaining || 0)),
   );
   const showResultPopup = game?.status === "finished" && !game?.nextGameId;
+
+  // Wager chip shown on the takeover seats (AI/free games wager nothing).
+  const seatWagerLabel =
+    game?.isAiGame || Number(game?.betAmount || 0) === 0
+      ? "Free play"
+      : `${Number(game?.betAmount || 0).toFixed(2)} tokens`;
 
   const playColumn = async (column: number) => {
     if (!canPlay || loadingMove) return;
@@ -546,17 +565,61 @@ export default function ConnectFourGamePage() {
 
   return (
     <>
-      {/* Unified full-screen waiting takeover */}
-      {game?.status === "waiting" && (
+      {/* Unified full-screen takeover — matchmaking, then the brief
+          "Match found!" countdown once the opponent joins */}
+      {(game?.status === "waiting" || game?.status === "ready") && (
         <MatchWaiting
-          state="waiting"
+          state={game.status === "ready" ? "ready" : "waiting"}
           gameName="Four-In-A-Row"
-          subtitle="Waiting for an opponent to join…"
+          subtitle={
+            game.status === "ready"
+              ? "Match found! Both players are in — starting in a few seconds…"
+              : "Waiting for an opponent to join… the game starts the moment they do."
+          }
           seats={[
-            { label: "You", name: "You", occupied: true },
-            { label: "Opponent", occupied: false },
+            // Real username + wager on the occupied seat — same avatar +
+            // wager treatment as the other casino match views. Once the
+            // opponent joins (ready) both seats fill with real names.
+            {
+              label: "You",
+              name:
+                game?.role === "host"
+                  ? game?.hostName || "You"
+                  : game?.guestName || "You",
+              occupied: true,
+              wager: seatWagerLabel,
+            },
+            game.status === "ready"
+              ? {
+                  label: "Opponent",
+                  name:
+                    game?.role === "host"
+                      ? game?.guestName || "Opponent"
+                      : game?.hostName || "Opponent",
+                  occupied: true,
+                  wager: seatWagerLabel,
+                }
+              : { label: "Opponent", occupied: false },
           ]}
-          onLeave={() => router.push("/casino/four-in-a-row")}
+          countdown={
+            game.status === "ready"
+              ? Math.max(
+                  0,
+                  Math.ceil(
+                    ((game.readyDeadlineAt
+                      ? new Date(game.readyDeadlineAt).getTime()
+                      : Date.now()) -
+                      now) /
+                      1000,
+                  ),
+                )
+              : null
+          }
+          onLeave={
+            game.status === "waiting"
+              ? () => router.push("/casino/four-in-a-row")
+              : null
+          }
         />
       )}
 

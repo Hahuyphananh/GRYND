@@ -755,7 +755,23 @@ function PlayerCard({
       `}
     >
       <div className="flex items-center justify-between mb-3">
-        <span className="relative text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>{label}<EmoteBubble emote={emoteBubble} side={emoteSide ?? "incoming"} /></span>
+        {/* Player name chip — initial avatar + username, with the emote
+            bubble anchored to the name so emotes "pop" on the sender's
+            name (same treatment as mines / memory-grid / keno). */}
+        <span className="relative flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>
+          <span
+            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+              isBlue
+                ? "border-cyan-300/40 bg-cyan-400/15"
+                : "border-red-400/40 bg-red-500/15"
+            }`}
+            style={{ color }}
+          >
+            {(label || "?").charAt(0).toUpperCase()}
+          </span>
+          <span className="truncate">{label}</span>
+          <EmoteBubble emote={emoteBubble} side={emoteSide ?? "incoming"} />
+        </span>
         <div className="flex items-center gap-2">
           {/* Chess clock display */}
           <span

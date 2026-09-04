@@ -4,10 +4,10 @@ import { users } from "../../../db/schema";
 import { eq } from "drizzle-orm";
 import { cacheDelete } from "../../../lib/redis/cache";
 import { CacheKeys } from "../../../lib/redis/keys";
+import { parseAndValidateJson } from "../../../lib/security/validation";
 
 export async function POST(req) {
   const { userId } = await auth();
-  const { birthDate } = await req.json();
 
   if (!userId) {
     return new Response(
@@ -18,13 +18,28 @@ export async function POST(req) {
     );
   }
 
-  // Calculate age
-  const age = Math.floor(
-    (Date.now() - new Date(birthDate).getTime()) /
-      (365.25 * 24 * 60 * 60 * 1000),
-  );
+  // Strict allowlist: only `birthDate` may be sent. A yyyy-mm-dd string is
+  // enforced BEFORE the age math, so an unparseable date can no longer slide
+  // through as NaN and silently skip the 18+ gate.
+  const parsed = await parseAndValidateJson(req, {
+    birthDate: {
+      type: "string",
+      required: true,
+      maxLength: 40,
+      pattern: /^\d{4}-\d{2}-\d{2}$/,
+    },
+  });
+  if (!parsed.ok) return parsed.response;
 
-  if (age < 18) {
+  const birthDate = parsed.data.birthDate;
+
+  // Calculate age
+  const birthMs = Date.parse(birthDate);
+  const age = Number.isFinite(birthMs)
+    ? Math.floor((Date.now() - birthMs) / (365.25 * 24 * 60 * 60 * 1000))
+    : NaN;
+
+  if (!Number.isFinite(age) || age < 18 || age > 120) {
     return new Response(
       JSON.stringify({ success: false, error: "Must be 18+" }),
       {

@@ -18,7 +18,7 @@ import {
   primaryKey,
   unique,
 } from "drizzle-orm/pg-core";
-import { relations, sql } from "drizzle-orm";
+import { relations, sql, desc } from "drizzle-orm";
 
 // CANONICAL MATCH LIFECYCLE — platform-wide queue and match state.
 // This is intentionally independent from game-specific match tables so those
@@ -650,25 +650,39 @@ export const chatMessages = pgTable(
 );
 
 // GAMES TABLES
-export const rouletteGames = pgTable("roulette_games", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  result: varchar("result", { length: 10 }).notNull(),
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const rouletteGames = pgTable(
+  "roulette_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    result: varchar("result", { length: 10 }).notNull(),
+    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("roulette_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
-export const crashGames = pgTable("crash_games", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  cashedOutAt: numeric("cashed_out_at", { precision: 10, scale: 2 }),
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  result: varchar("result", { length: 10 }).default("pending").notNull(),
-  status: varchar("status", { length: 20 }).default("active").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const crashGames = pgTable(
+  "crash_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    cashedOutAt: numeric("cashed_out_at", { precision: 10, scale: 2 }),
+    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+    result: varchar("result", { length: 10 }).default("pending").notNull(),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("crash_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
 export const pokerGames = pgTable("poker_games", {
   id: serial("id").primaryKey(),
@@ -745,26 +759,40 @@ export const pokerPlayerPositions = pgTable("poker_player_positions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const blackjackGames = pgTable("blackjack_games", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  result: varchar("result", { length: 10 }).notNull(),
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const blackjackGames = pgTable(
+  "blackjack_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    result: varchar("result", { length: 10 }).notNull(),
+    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("blackjack_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
-export const minesGames = pgTable("mines_games", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  tilesRevealed: integer("tiles_revealed").default(0),
-  minesCount: integer("mines_count").default(0),
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  result: varchar("result", { length: 10 }).default("pending").notNull(),
-  status: varchar("status", { length: 20 }).default("active").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const minesGames = pgTable(
+  "mines_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    tilesRevealed: integer("tiles_revealed").default(0),
+    minesCount: integer("mines_count").default(0),
+    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+    result: varchar("result", { length: 10 }).default("pending").notNull(),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("mines_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
 export const laneRunnerGames = pgTable("lane_runner_games", {
   id: serial("id").primaryKey(),
@@ -784,16 +812,23 @@ export const laneRunnerGames = pgTable("lane_runner_games", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const plinkoGames = pgTable("plinko_games", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id", { length: 255 }).notNull(),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  resultMultiplier: varchar("result_multiplier", { length: 255 }).notNull(), // changed from numeric to varchar
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  result: varchar("result", { length: 10 }).default("pending").notNull(),
-  status: varchar("status", { length: 20 }).default("active").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const plinkoGames = pgTable(
+  "plinko_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    resultMultiplier: varchar("result_multiplier", { length: 255 }).notNull(), // changed from numeric to varchar
+    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+    result: varchar("result", { length: 10 }).default("pending").notNull(),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("plinko_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
 export const chessGames = pgTable("chess_games", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -1063,44 +1098,58 @@ export const poolPlayerStats = pgTable("pool_player_stats", {
   bestStreak: integer("best_streak").default(0),
 });
 
-export const unoGames = pgTable("uno_games", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  player2Id: integer("player2_id"),
-  betAmount: text("bet_amount").notNull(), // stored as string to match other tables
-  pot: text("pot").notNull(), // total pot
-  result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'
-  payout: text("payout").notNull(), // string format of number
+export const unoGames = pgTable(
+  "uno_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull(),
+    player2Id: integer("player2_id"),
+    betAmount: text("bet_amount").notNull(), // stored as string to match other tables
+    pot: text("pot").notNull(), // total pot
+    result: text("result").notNull(), // 'win' | 'lose' | 'draw' | 'pending'
+    payout: text("payout").notNull(), // string format of number
 
-  //  existing AI game fields
-  playerHand: json("player_hand").default("[]").notNull(),
-  aiHand: json("ai_hand").default("[]").notNull(),
+    //  existing AI game fields
+    playerHand: json("player_hand").default("[]").notNull(),
+    aiHand: json("ai_hand").default("[]").notNull(),
 
-  //  new online multiplayer fields
-  player1Hand: json("player1_hand").default("[]").notNull(),
-  player2Hand: json("player2_hand").default("[]").notNull(),
+    //  new online multiplayer fields
+    player1Hand: json("player1_hand").default("[]").notNull(),
+    player2Hand: json("player2_hand").default("[]").notNull(),
 
-  deck: json("deck").notNull(),
-  discardPile: json("discard_pile").notNull(),
-  turn: text("turn").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
-  currentColor: text("current_color"),
-  topCard: json("top_card"),
-  status: text("status").default("waiting").notNull(), // 'waiting' | 'active' | 'finished'
+    deck: json("deck").notNull(),
+    discardPile: json("discard_pile").notNull(),
+    turn: text("turn").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
+    currentColor: text("current_color"),
+    topCard: json("top_card"),
+    status: text("status").default("waiting").notNull(), // 'waiting' | 'active' | 'finished'
 
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  winner: text("winner").default("pending").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
-});
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    winner: text("winner").default("pending").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("uno_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
-export const rpsGames = pgTable("rps_games", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id", { length: 255 }).notNull(),
-  betAmount: numeric("bet_amount").notNull(),
-  choice: varchar("choice", { length: 20 }).notNull(), // rock, paper, scissors
-  aiChoice: varchar("ai_choice", { length: 20 }).notNull(),
-  result: varchar("result", { length: 20 }).notNull(), // win, lose, draw
-  payout: numeric("payout").default("0"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const rpsGames = pgTable(
+  "rps_games",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    betAmount: numeric("bet_amount").notNull(),
+    choice: varchar("choice", { length: 20 }).notNull(), // rock, paper, scissors
+    aiChoice: varchar("ai_choice", { length: 20 }).notNull(),
+    result: varchar("result", { length: 20 }).notNull(), // win, lose, draw
+    payout: numeric("payout").default("0"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("rps_games_user_idx").on(table.userId, desc(table.createdAt)),
+  })
+);
 
 export const rpsPvpStatusEnum = pgEnum("rps_pvp_status", [
   "active",
@@ -1142,18 +1191,25 @@ export const rpsPvpGames = pgTable(
   })
 );
 
-export const keno_games = pgTable("keno_games", {
-  id: serial("id").primaryKey(),
-  user_id: integer("user_id").notNull(),
-  bet_amount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-  numbers_picked: jsonb("numbers_picked").notNull(), // store array of numbers as JSON
-  numbers_drawn: jsonb("numbers_drawn").notNull(),
-  hits: integer("hits").notNull(),
-  payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-  multiplier: numeric("multiplier", { precision: 5, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
-});
+export const keno_games = pgTable(
+  "keno_games",
+  {
+    id: serial("id").primaryKey(),
+    user_id: integer("user_id").notNull(),
+    bet_amount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
+    numbers_picked: jsonb("numbers_picked").notNull(), // store array of numbers as JSON
+    numbers_drawn: jsonb("numbers_drawn").notNull(),
+    hits: integer("hits").notNull(),
+    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
+    multiplier: numeric("multiplier", { precision: 5, scale: 2 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    created_at: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // Per-user history lookups (bet history / daily-loss guard).
+    userIdx: index("keno_games_user_idx").on(table.user_id, desc(table.created_at)),
+  })
+);
 
 export const fourInARowGames = pgTable(
   "four_in_a_row_games",
@@ -1175,6 +1231,7 @@ export const fourInARowGames = pgTable(
     result: varchar("result", { length: 30 }),
     payout: numeric("payout", { precision: 10, scale: 2 }),
     moveDeadlineAt: timestamp("move_deadline_at"),
+    readyDeadlineAt: timestamp("ready_deadline_at"),
     timerSeconds: integer("timer_seconds").notNull().default(60),
     hostReplayDecision: varchar("host_replay_decision", { length: 10 }),
     guestReplayDecision: varchar("guest_replay_decision", { length: 10 }),
@@ -2148,6 +2205,7 @@ export const dotsAndBoxesGames = pgTable(
     result: varchar("result", { length: 30 }),
     payout: numeric("payout", { precision: 10, scale: 2 }),
     moveDeadlineAt: timestamp("move_deadline_at"),
+    readyDeadlineAt: timestamp("ready_deadline_at"),
     timerSeconds: integer("timer_seconds").notNull().default(20),
     isAiGame: boolean("is_ai_game").notNull().default(false),
     startedAt: timestamp("started_at"),

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { isAdmin } from "../../../../lib/auth/isAdmin";
 import { getNeonSql } from "../../../../db/neon";
+import { decryptFieldSafe } from "../../../../lib/security/fieldEncryption";
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -60,7 +61,13 @@ export async function GET(req: NextRequest) {
       `;
     }
 
-    return NextResponse.json({ success: true, reports });
+    // Report `details` is encrypted at rest — decrypt for the dashboard.
+    const decrypted = (reports || []).map((r: any) => ({
+      ...r,
+      details: decryptFieldSafe(r.details),
+    }));
+
+    return NextResponse.json({ success: true, reports: decrypted });
   } catch (err: any) {
     console.error("[admin/reports] Failed:", err);
     return NextResponse.json(

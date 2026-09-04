@@ -255,9 +255,25 @@ test("the 7 Battle Pass emotes sit at the specified reserved cosmetic levels", (
 
 test("emote rewards reuse the existing Battle Pass system (no second pass)", () => {
   assert.match(battlepassRewards, /emote: \{ label: "Animated Emote"/);
-  assert.match(battlepassLib, /grantBattlepassEmotes\(userId, result\.level\)/);
-  assert.match(battlepassRoute, /grantBattlepassEmotes\(dbUserId/);
-  assert.match(leaderboardCounters, /grantBattlepassEmotes\(updatedUserId, updatedLevel\)/);
+  // Rewards are NEVER auto-granted anymore — the player claims them on
+  // the battlepass page, and the claim endpoint grants exactly one emote.
+  assert.doesNotMatch(
+    battlepassLib,
+    /grantBattlepassEmotes\(userId, result\.level\)/,
+    "XP credit must not auto-grant battlepass emotes",
+  );
+  assert.doesNotMatch(
+    leaderboardCounters,
+    /grantBattlepassEmotes\(updatedUserId, updatedLevel\)/,
+    "settlement must not auto-grant battlepass emotes",
+  );
+  assert.doesNotMatch(
+    battlepassRoute,
+    /grantBattlepassEmotes\(/,
+    "battlepass GET must not auto-grant rewards",
+  );
+  const claimRoute = read("src/app/api/battlepass/claim/route.js");
+  assert.match(claimRoute, /unlockEmote\(dbUserId, key\)/);
   // grantBattlepassEmotes only ever grants ownership — it never auto-equips.
   const grantFn = emotesLib.slice(
     emotesLib.indexOf("export async function grantBattlepassEmotes"),
@@ -270,8 +286,10 @@ test("emote rewards reuse the existing Battle Pass system (no second pass)", () 
 test("battle pass rewards report claimed from user_emotes (idempotent page refresh)", () => {
   assert.match(battlepassRoute, /ownedEmoteKeys/);
   assert.match(battlepassRoute, /SELECT emote_key FROM user_emotes WHERE user_id/);
-  assert.match(battlepassRoute, /reward\.type === "emote" && dbUserId/);
+  assert.match(battlepassRoute, /isEmote && dbUserId/);
   assert.match(battlepassRoute, /ownedEmoteKeys\.has\(reward\.key\)/);
+  // Reached-but-unowned rewards surface as claimable — never auto-granted.
+  assert.match(battlepassRoute, /claimable/);
 });
 
 // ═════════════════════════════════════════════════════════════════════

@@ -3,6 +3,7 @@ import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import { READY_WINDOW_MS } from "../../../../lib/dotsAndBoxesServer";
 
 export async function POST(req) {
   try {
@@ -68,9 +69,11 @@ export async function POST(req) {
         .update(dotsAndBoxesGames)
         .set({
           guestClerkId: userId,
-          status: "in_progress",
-          startedAt: new Date(),
-          moveDeadlineAt: new Date(Date.now() + 10 * 1000),
+          // Both players present — enter the brief "Match found!" ready
+          // window; advanceReadyIfNeeded flips to in_progress (and sets
+          // the first move deadline) once readyDeadlineAt passes.
+          status: "ready",
+          readyDeadlineAt: new Date(Date.now() + READY_WINDOW_MS),
         })
         .where(
           and(

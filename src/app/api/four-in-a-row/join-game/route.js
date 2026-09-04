@@ -3,10 +3,7 @@ import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { fourInARowGames, users } from "../../../../db/schema";
-import {
-  getGameMoveSeconds,
-  nextMoveDeadline,
-} from "../../../../lib/fourInARowServer";
+import { READY_WINDOW_MS } from "../../../../lib/fourInARowServer";
 
 export async function POST(req) {
   try {
@@ -72,10 +69,11 @@ export async function POST(req) {
         .update(fourInARowGames)
         .set({
           guestClerkId: userId,
-          status: "in_progress",
-          startedAt: new Date(),
-          currentTurn: "host",
-          moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(game)),
+          // Both players present — enter the brief "Match found!" ready
+          // window; advanceReadyIfNeeded flips to in_progress (and sets
+          // the first move deadline) once readyDeadlineAt passes.
+          status: "ready",
+          readyDeadlineAt: new Date(Date.now() + READY_WINDOW_MS),
         })
         .where(
           and(

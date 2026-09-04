@@ -11,8 +11,10 @@ const ui = fs.readFileSync("src/components/lobby/PlatformQuickQueue.jsx", "utf8"
 test("Dots and Boxes adapter preserves native two-step lobby flow", () => {
   assert.match(adapter, /dotsAndBoxesGames/);
   assert.match(adapter, /guestClerkId/);
-  assert.match(adapter, /status: "in_progress"/);
-  assert.match(adapter, /moveDeadlineAt/);
+  // Joining enters the brief ready window ("Match found!") instead of
+  // flipping straight to in_progress.
+  assert.match(adapter, /status: "ready"/);
+  assert.match(adapter, /readyDeadlineAt/);
   assert.match(store, /settleDotsAndBoxesGame/);
 });
 

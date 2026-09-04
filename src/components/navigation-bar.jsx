@@ -13,6 +13,7 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
+import BattlepassClaimBadge from "./BattlepassClaimBadge";
 import SoundToggle from "./SoundToggle";
 import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
 import IconAvatar from "./IconAvatar";
@@ -440,6 +441,8 @@ function NavigationBar({ currentPath = "" }) {
                     className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {t(NAV_TRANSLATION_KEYS[path])}
+                    {/* Unclaimed-reward nudge — count pill + one-time toast */}
+                    {path === "/battlepass" && <BattlepassClaimBadge />}
                   </Link>
                 </motion.div>
               ))}

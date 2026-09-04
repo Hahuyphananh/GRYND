@@ -174,7 +174,7 @@ export function safeFallbackIntent(snapshot: MatchSnapshot): PlacementIntent {
   for (const piece of pool) if (!available.includes(piece.shape)) available.push(piece.shape);
   const safe = findSafeDrop(snapshot.towerState || [], available);
   if (safe) return { shape: safe.shape, positionX: safe.x, rotation: safe.rotation, actionType: "TIMEOUT" };
-  const shape = (["short", "square", "I", "T", "L"] as BlockShape[]).find((s) => available.includes(s)) || "short";
+  const shape = (["short", "square", "I", "L", "T", "big", "long"] as BlockShape[]).find((s) => available.includes(s)) || "short";
   return { shape, positionX: centerXFor(shape, 0), rotation: 0, actionType: "TIMEOUT" };
 }
 

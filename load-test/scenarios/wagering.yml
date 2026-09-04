@@ -1,0 +1,83 @@
+# Grynd wagering load test (S1 in docs/load-testing.md).
+# The money path: every VU creates a Crash Arena table and buys in, which
+# exercises the atomic conditional balance debit on `users` + the
+# crash_arena_players / crash_arena_transactions inserts.
+#
+# Token-frugal: total VUs ≈ arrivals below (~40). Each VU runs 5 wager
+# cycles, so each token spends ~250 tokens (5 x 25 buy-in) — fund test
+# accounts accordingly (new accounts start with 1,000). Needs >= ~50 rows
+# in ../tokens.csv; do NOT duplicate tokens here (same user creating many
+# tables triggers per-user anti-spam closeouts).
+#
+# Usage:
+#   set -a; source load-test/.env.local; set +a
+#   npx artillery run load-test/scenarios/wagering.yml
+config:
+  target: "{{ $processEnv.BASE_URL }}"
+  phases:
+    - name: ramp
+      duration: 30
+      arrivalRate: 0.25
+      rampTo: 0.5
+    - name: sustained
+      duration: 60
+      arrivalRate: 0.5
+  payload:
+    - path: ../tokens.csv
+      fields:
+        - cookie
+      order: sequence
+      skipHeader: false
+  defaults:
+    headers:
+      Content-Type: application/json
+      Cookie: "{{ cookie }}"
+  # Wagers must be fast; validation 4xx are expected only when a round is
+  # already running for the user (see plan doc S3) — not on this path.
+  ensure:
+    p95: 700
+    maxErrorRate: 2
+
+scenarios:
+  - name: "wager: create table + buy-in"
+    flow:
+      - loop:
+          count: 5
+          over:
+            # POST /api/crash-arena/create { wager } — table row + stale cleanup
+            - post:
+                url: "/api/crash-arena/create"
+                json:
+                  wager: 5
+                capture:
+                  - json: "$.data.tableId"
+                    as: tableId
+            # POST /api/crash-arena/join { tableId, buyInAmount } — atomic
+            # balance debit (`balance >= buyIn` guard) + player row +
+            # BUY_IN transaction. Min buy-in = 5x wager for Crash Arena.
+            - think: 1
+            - post:
+                url: "/api/crash-arena/join"
+                json:
+                  tableId: "{{ tableId }}"
+                  buyInAmount: 25
+            - think: 2
+
+  - name: "wager: join an existing waiting table"
+    flow:
+      - loop:
+          count: 5
+          over:
+            # Find a waiting seeded table from the lobby, then buy in.
+            - get:
+                url: "/api/crash-arena/tables?mode=lobby"
+                capture:
+                  - json: "$.data[0].id"
+                    as: tableId
+            - think: 1
+            - post:
+                url: "/api/crash-arena/join"
+                json:
+                  tableId: "{{ tableId }}"
+                  buyInAmount: 25
+            - think: 2

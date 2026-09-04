@@ -2,8 +2,6 @@ import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
 import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
-import { grantBattlepassBanners } from "./banners";
-import { grantBattlepassEmotes } from "./emotes";
 
 let _sql = null;
 function getSql() {
@@ -124,17 +122,8 @@ export async function applyLeaderboardCounters({
     RETURNING user_id AS id, level, xp
   `;
 
-  const updatedLevel = Number(counterRows[0]?.level || 1);
-  const updatedUserId = counterRows[0]?.id;
-  if (updatedUserId) {
-    await grantBattlepassBanners(updatedUserId, updatedLevel).catch((error) => {
-      console.error("[BATTLEPASS_BANNER_GRANT_ERROR]", error);
-    });
-    // Animated emote Battle Pass rewards are reconciled on the same path.
-    await grantBattlepassEmotes(updatedUserId, updatedLevel).catch((error) => {
-      console.error("[BATTLEPASS_EMOTE_GRANT_ERROR]", error);
-    });
-  }
+  // Battlepass rewards are NOT auto-granted on settlement — the player
+  // claims them on the battlepass page once they reach the level.
 
   if (multiplier >= 10) {
     await getSql()`

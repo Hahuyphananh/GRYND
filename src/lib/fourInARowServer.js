@@ -8,6 +8,13 @@ const HOUSE_EDGE_MULTIPLIER = 1.9;
 const DEFAULT_MOVE_TIME_SECONDS = 60;
 const REPLAY_DECISION_SECONDS = 20;
 
+// Brief "Match found!" takeover window between the opponent joining and
+// the first move (mirrors blackjack-pvp's READY_WINDOW_MS). During it the
+// game sits in status "ready" and both pages show the takeover countdown;
+// advanceReadyIfNeeded (called from the game-state route) flips it to
+// in_progress once the deadline passes.
+export const READY_WINDOW_MS = 3000;
+
 export async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
   const [row] = await db
@@ -170,6 +177,49 @@ export function computeMoveTimeRemaining(deadline) {
   if (!deadline) return 0;
   const endsAt = new Date(deadline).getTime();
   return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+}
+
+/**
+ * Auto-advance the brief ready window into the first move. Poll-driven
+ * (the game-state route calls this on every fetch), row-locked and
+ * idempotent: only the ready → in_progress transition ever happens, and
+ * the first move deadline is set here so play starts immediately after
+ * the countdown on both pages.
+ */
+export async function advanceReadyIfNeeded(game) {
+  if (!game || game.status !== "ready" || !game.readyDeadlineAt) return game;
+  if (new Date(game.readyDeadlineAt).getTime() > Date.now()) return game;
+
+  await db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select()
+      .from(fourInARowGames)
+      .where(eq(fourInARowGames.id, game.id))
+      .for("update");
+    if (!locked || locked.status !== "ready") return;
+    const deadline = locked.readyDeadlineAt
+      ? new Date(locked.readyDeadlineAt).getTime()
+      : 0;
+    if (!deadline || deadline > Date.now()) return;
+
+    await tx
+      .update(fourInARowGames)
+      .set({
+        status: "in_progress",
+        currentTurn: "host",
+        startedAt: new Date(),
+        moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(locked)),
+        readyDeadlineAt: null,
+      })
+      .where(eq(fourInARowGames.id, game.id));
+  });
+
+  const [updated] = await db
+    .select()
+    .from(fourInARowGames)
+    .where(eq(fourInARowGames.id, game.id))
+    .limit(1);
+  return updated || game;
 }
 
 export function getGameMoveSeconds(game) {

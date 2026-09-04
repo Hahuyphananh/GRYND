@@ -16,6 +16,13 @@ import {
 const HOUSE_EDGE_MULTIPLIER = 1.9;
 export const DOTS_AND_BOXES_AI_ID = "AI_BOT";
 
+// Brief "Match found!" takeover window between the opponent joining and
+// the first move (mirrors blackjack-pvp's READY_WINDOW_MS). During it the
+// game sits in status "ready" and both pages show the takeover countdown;
+// advanceReadyIfNeeded (called from the game-state route) flips it to
+// in_progress once the deadline passes.
+export const READY_WINDOW_MS = 3000;
+
 export function isDotsAndBoxesAiGame(game) {
   return Boolean(game?.isAiGame) && game?.guestClerkId === DOTS_AND_BOXES_AI_ID;
 }
@@ -35,6 +42,48 @@ export function computeMoveTimeRemaining(deadline) {
   const endsAt = new Date(deadline).getTime();
   if (!Number.isFinite(endsAt)) return 0;
   return Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+}
+
+/**
+ * Auto-advance the brief ready window into the first move. Poll-driven
+ * (the game-state route calls this on every fetch), row-locked and
+ * idempotent: only the ready → in_progress transition ever happens, and
+ * the first move deadline is set here so play starts immediately after
+ * the countdown on both pages.
+ */
+export async function advanceReadyIfNeeded(game) {
+  if (!game || game.status !== "ready" || !game.readyDeadlineAt) return game;
+  if (new Date(game.readyDeadlineAt).getTime() > Date.now()) return game;
+
+  await db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select()
+      .from(dotsAndBoxesGames)
+      .where(eq(dotsAndBoxesGames.id, game.id))
+      .for("update");
+    if (!locked || locked.status !== "ready") return;
+    const deadline = locked.readyDeadlineAt
+      ? new Date(locked.readyDeadlineAt).getTime()
+      : 0;
+    if (!deadline || deadline > Date.now()) return;
+
+    await tx
+      .update(dotsAndBoxesGames)
+      .set({
+        status: "in_progress",
+        startedAt: new Date(),
+        moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(locked)),
+        readyDeadlineAt: null,
+      })
+      .where(eq(dotsAndBoxesGames.id, game.id));
+  });
+
+  const [updated] = await db
+    .select()
+    .from(dotsAndBoxesGames)
+    .where(eq(dotsAndBoxesGames.id, game.id))
+    .limit(1);
+  return updated || game;
 }
 
 export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {

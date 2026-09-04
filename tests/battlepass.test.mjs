@@ -121,6 +121,7 @@ test("rewards contain valid fields and only official banner image rewards", () =
     "refund",
     "grynd",
     "banner",
+    "emote",
   ]);
   for (const entry of BATTLEPASS_REWARDS) {
     for (const reward of entry.rewards) {

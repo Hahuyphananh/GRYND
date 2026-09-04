@@ -14,6 +14,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,25 +47,23 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { limit?: unknown };
-  try {
-    body = await req.json().catch(() => ({}));
-  } catch {
-    body = {};
-  }
+  // Strict allowlist: only `limit` is accepted (null → global default,
+  // 0 → warnings off, whole number → custom threshold). Unknown fields are
+  // rejected rather than silently dropped.
+  const parsed = await parseAndValidateJson(req, {
+    limit: {
+      type: "number",
+      required: false,
+      nullable: true,
+      integer: true,
+      min: 0,
+      max: MAX_LIMIT,
+      default: null,
+    },
+  });
+  if (!parsed.ok) return parsed.response;
 
-  // null → global default; 0 → warnings off; number → custom threshold.
-  let limit: number | null = null;
-  if (body?.limit !== null && body?.limit !== undefined) {
-    const n = Number(body.limit);
-    if (!Number.isInteger(n) || n < 0 || n > MAX_LIMIT) {
-      return NextResponse.json(
-        { success: false, error: `Limit must be a whole number between 0 and ${MAX_LIMIT.toLocaleString()}, or cleared.` },
-        { status: 400 }
-      );
-    }
-    limit = n;
-  }
+  const limit = parsed.data.limit;
 
   await db
     .update(users)

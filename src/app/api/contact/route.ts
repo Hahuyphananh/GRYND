@@ -9,6 +9,8 @@ import { getNeonSql } from "../../../db/neon";
 import { ensureContactTables } from "../../../lib/contact/ensureTables";
 import { sendContactNotificationEmail } from "../../../lib/emails/contact";
 import { notifyAdmins } from "../../../lib/adminNotify";
+import { parseAndValidateJson } from "../../../lib/security/validation";
+import { encryptField } from "../../../lib/security/fieldEncryption";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,52 +27,41 @@ const EMAIL_REGEX = /^[^\s@"<>]+@[^\s@"<>]+\.[^\s@"<>]+$/;
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => null);
-    const { email, name, message } = body ?? {};
+    // Strict allowlist: only email / name / message may be sent. Any other
+    // field (userId, isAdmin, messageId, ...) is rejected, not ignored.
+    const parsed = await parseAndValidateJson(request, {
+      email: {
+        type: "string",
+        required: true,
+        maxLength: 254,
+        pattern: EMAIL_REGEX,
+      },
+      name: { type: "string", required: false, maxLength: 120, default: null },
+      message: { type: "string", required: true, minLength: 1, maxLength: 5000 },
+    });
+    if (!parsed.ok) return parsed.response;
 
-    if (!email || !message) {
-      return NextResponse.json(
-        { success: false, error: "Email and message are required." },
-        { status: 400 },
-      );
-    }
-
-    if (typeof email !== "string" || typeof message !== "string") {
-      return NextResponse.json(
-        { success: false, error: "Invalid field types." },
-        { status: 400 },
-      );
-    }
-
-    // Basic email format validation — must be a real-looking address (name@domain.tld)
-    if (!EMAIL_REGEX.test(email.trim())) {
-      return NextResponse.json(
-        { success: false, error: "Please enter a valid email address (e.g. name@example.com)." },
-        { status: 400 },
-      );
-    }
-
-    if (message.trim().length > 5000) {
-      return NextResponse.json(
-        { success: false, error: "Message too long (max 5000 characters)." },
-        { status: 400 },
-      );
-    }
+    const email = parsed.data.email;
+    const name = parsed.data.name;
+    const message = parsed.data.message;
 
     const sql = getNeonSql();
     await ensureContactTables(sql);
 
+    // The free-text message is encrypted at rest (AES-256-GCM) — a raw DB
+    // dump exposes no message content. email/name stay plaintext because the
+    // admin inbox and reply routing need them.
     await sql`
       INSERT INTO contact_messages (name, email, message)
-      VALUES (${name?.trim() || null}, ${email.trim()}, ${message.trim()})
+      VALUES (${name}, ${email}, ${encryptField(message)})
     `;
 
     // Notify the admin inbox (best-effort — the message is already stored,
     // so an email failure must not fail the user's submission).
     sendContactNotificationEmail({
-      name: name?.trim() || null,
-      email: email.trim(),
-      message: message.trim(),
+      name,
+      email,
+      message,
     }).catch((err) => {
       console.error("[api/contact] admin notification failed:", err);
     });

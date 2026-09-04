@@ -10,7 +10,10 @@ const ui = fs.readFileSync("src/components/lobby/PlatformQuickQueue.jsx", "utf8"
 test("Four-In-A-Row adapter uses native game storage and join semantics", () => {
   assert.match(adapter, /fourInARowGames/);
   assert.match(adapter, /guestClerkId/);
-  assert.match(adapter, /status: \"in_progress\"/);
+  // Joining enters the brief ready window ("Match found!") instead of
+  // flipping straight to in_progress.
+  assert.match(adapter, /status: "ready"/);
+  assert.match(adapter, /readyDeadlineAt/);
 });
 
 test("Four-In-A-Row is a selectable Quick Queue game", () => {

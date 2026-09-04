@@ -1,7 +1,7 @@
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { fourInARowGames, users } from "../db/schema";
-import { getGameMoveSeconds, nextMoveDeadline } from "./fourInARowServer";
+import { READY_WINDOW_MS } from "./fourInARowServer";
 
 export async function createOrJoinFourInARowDestination({ userId, betAmount = 10, timerSeconds = 60 }) {
   const stake = Number(betAmount);
@@ -19,7 +19,13 @@ export async function createOrJoinFourInARowDestination({ userId, betAmount = 10
     if (open) {
       const [funded] = await tx.update(users).set({ balance: sql`${users.balance} - ${open.betAmount}` }).where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${open.betAmount}`)).returning({ balance: users.balance });
       if (!funded) return { error: "Insufficient balance", status: 400 };
-      const [joined] = await tx.update(fourInARowGames).set({ guestClerkId: userId, status: "in_progress", startedAt: new Date(), currentTurn: "host", moveDeadlineAt: nextMoveDeadline(getGameMoveSeconds(open)) }).where(and(eq(fourInARowGames.id, open.id), eq(fourInARowGames.status, "waiting"), isNull(fourInARowGames.guestClerkId))).returning();
+      const [joined] = await tx.update(fourInARowGames).set({
+        guestClerkId: userId,
+        // Both players present — brief "Match found!" ready window;
+        // advanceReadyIfNeeded flips to in_progress once it passes.
+        status: "ready",
+        readyDeadlineAt: new Date(Date.now() + READY_WINDOW_MS),
+      }).where(and(eq(fourInARowGames.id, open.id), eq(fourInARowGames.status, "waiting"), isNull(fourInARowGames.guestClerkId))).returning();
       if (!joined) return { error: "Game is no longer available", status: 409 };
       return { match: joined, joined: true };
     }

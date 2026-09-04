@@ -9,7 +9,8 @@
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx ./src/db/migrate.ts",
-    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/emotes.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs",
+    "backfill:field-encryption": "node --import tsx scripts/backfill-field-encryption.mjs",
+    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/emotes.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs tests/field-encryption.test.mjs",
     "test:icons": "node scripts/check-tabler-icons.mjs",
     "test:icon-system": "node --import tsx --test tests/iconAssets.test.mjs tests/icons-db.test.mjs",
     "test:emotes": "node --import tsx --test tests/emotes.test.mjs",
@@ -35,7 +36,9 @@
     "test:plinko-pvp-ai": "node --import tsx --test tests/plinko-pvp-ai.test.mjs",
     "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
-    "test:crash-poker-engine": "node --test tests/crash-poker-engine.test.mjs"
+    "test:crash-poker-engine": "node --test tests/crash-poker-engine.test.mjs",
+    "loadtest:read-mix": "artillery run load-test/scenarios/read-mix.yml",
+    "loadtest:wagering": "artillery run load-test/scenarios/wagering.yml"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",
@@ -96,6 +99,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.1.2",
     "@types/ws": "^8.18.1",
+    "artillery": "^2.0.21",
     "autoprefixer": "^10.0.1",
     "axe-core": "^4.13.0",
     "drizzle-kit": "^0.31.10",

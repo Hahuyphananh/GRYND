@@ -1210,6 +1210,12 @@ export async function removeParticipant({
 
     // Active match — only real (non-AI) players may resign.
     if (match.phase !== "finished") {
+      // Already out (ceiling breach or an earlier resignation): leaving or a
+      // disconnect is a no-op — their placement/payout were decided when they
+      // were eliminated, and the match continues for the remaining players.
+      // (Without this guard, an eliminated spectator dropping off would re-run
+      // the resignation math and could end the match prematurely.)
+      if (p.status === "eliminated") return { match, alreadyTerminal: true };
       if (p.isAi) return { error: "AI seat cannot resign", status: 403 };
       const activeBefore = players.filter(isActive).length;
       // Resignation placement = the player's CURRENT standing among the

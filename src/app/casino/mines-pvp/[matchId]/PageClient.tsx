@@ -182,6 +182,91 @@ function CrossIcon({ className = "" }: { className?: string }) {
   );
 }
 
+type PlayerSeatProps = {
+  isMe: boolean;
+  name: string;
+  tiles: number;
+  wagerLabel: string;
+  thinking: boolean;
+  isWinner: boolean;
+  emote: { kind?: string; value?: string; key?: string } | null;
+  emoteSide: "mine" | "incoming";
+};
+
+// Per-player seat card: username + wager + tiles clicked, with a live
+// turn/winner state. The emote bubble is anchored to the player's name
+// (relative span) so an emote "pops" on the sender's name — the pattern
+// shared by the RPS / keno-pvp / pool match views.
+function PlayerSeat({
+  isMe,
+  name,
+  tiles,
+  wagerLabel,
+  thinking,
+  isWinner,
+  emote,
+  emoteSide,
+}: PlayerSeatProps) {
+  const border = isMe
+    ? "border-cyan-300/25 bg-cyan-500/[0.06]"
+    : "border-fuchsia-300/25 bg-fuchsia-500/[0.06]";
+  const ring = thinking
+    ? isMe
+      ? "ring-1 ring-cyan-300/60 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
+      : "ring-1 ring-fuchsia-300/60 shadow-[0_0_14px_rgba(255,79,216,0.25)]"
+    : "";
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2.5 transition-all ${border} ${ring}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="relative flex min-w-0 items-center gap-2">
+          <span
+            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border text-xs font-black ${
+              isMe
+                ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-200"
+                : "border-fuchsia-300/40 bg-fuchsia-400/15 text-fuchsia-200"
+            }`}
+          >
+            {(name || "?").charAt(0).toUpperCase()}
+          </span>
+          <span className="truncate text-sm font-bold text-white/90">
+            {name}
+          </span>
+          {/* Emote pops above the sender's name */}
+          <EmoteBubble emote={emote} side={emoteSide} />
+        </span>
+        {thinking && (
+          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
+            <span
+              className={`h-1.5 w-1.5 animate-pulse rounded-full ${
+                isMe ? "bg-cyan-300" : "bg-fuchsia-300"
+              }`}
+            />
+            {isMe ? "Your turn" : "Picking"}
+          </span>
+        )}
+        {isWinner && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-yellow-300/40 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-yellow-200">
+            <IconTrophy size={11} className="text-yellow-300" />
+            Winner
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex items-center gap-3 text-[11px] text-white/55">
+        <span className="inline-flex items-center gap-1 font-semibold text-yellow-200/80">
+          <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
+          {wagerLabel}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <IconDiamondFilled size={11} className="text-cyan-300" />
+          Tiles: <b className="text-white/85">{tiles}</b>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function LoadingDotsIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -249,6 +334,16 @@ type PickEntry = {
   flag?: boolean;
 };
 
+// Enriched player summary — added server-side by enrichMatchWithPlayers
+// (users.name + selectedIcon per seat). `missing` marks a seat whose
+// users row wasn't found (the client falls back to seat labels).
+type PlayerSummary = {
+  id: string;
+  displayName: string;
+  iconKey: string;
+  missing?: boolean;
+};
+
 type MatchRow = {
   id: number;
   player1Id: string;
@@ -292,6 +387,12 @@ type MatchRow = {
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
+  // Player summaries (usernames/icons) — enriched server-side by
+  // enrichMatchWithPlayers; null until the /match route fills them in.
+  players: {
+    p1: PlayerSummary | null;
+    p2: PlayerSummary | null;
+  } | null;
 };
 
 // ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ─────
@@ -1041,7 +1142,6 @@ export default function MinesPvpMatchPage({
         >
           <span className="font-bold text-base sm:text-lg">
             Your turn. Pick a tile
-            <EmoteBubble emote={myEmote} side="mine" />
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
@@ -1062,7 +1162,6 @@ export default function MinesPvpMatchPage({
       >
         <span className="font-bold text-base sm:text-lg">
           {isAi ? "GRYND AI is picking…" : "Opponent is picking…"}
-          <EmoteBubble emote={incomingEmote} />
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/30 px-3 py-1 text-sm font-bold text-fuchsia-100">
           <ClockIcon className="w-4 h-4" />
@@ -1329,6 +1428,31 @@ export default function MinesPvpMatchPage({
     match.player1Id === myUserId &&
     !cancelling;
 
+  // ── Player seat info (usernames + stats for the header cards) ─────
+  const p1Summary = match.players?.p1 ?? null;
+  const p2Summary = match.players?.p2 ?? null;
+  const mySummary = isPlayer1 ? p1Summary : p2Summary;
+  const oppSummary = isPlayer1 ? p2Summary : p1Summary;
+  const myDisplayName = mySummary?.displayName || "You";
+  const opponentDisplayName = isAi
+    ? "GRYND AI"
+    : oppSummary?.displayName || "Opponent";
+  const inPickState =
+    match.status === MATCH_STATUS.P1_TURN ||
+    match.status === MATCH_STATUS.P2_TURN;
+  const mySeatClerkId = isPlayer1 ? match.player1Id : match.player2Id;
+  const oppSeatClerkId = isPlayer1 ? match.player2Id : match.player1Id;
+  const meWon =
+    match.status === MATCH_STATUS.FINISHED &&
+    Boolean(match.winnerId) &&
+    match.winnerId === mySeatClerkId;
+  const oppWon =
+    match.status === MATCH_STATUS.FINISHED &&
+    Boolean(match.winnerId) &&
+    !meWon &&
+    Boolean(oppSeatClerkId);
+  const wagerLabel = isAi ? "Free play" : `${stake.toLocaleString()} tokens`;
+
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -1346,14 +1470,27 @@ export default function MinesPvpMatchPage({
                 ? "Free practice against the GRYND AI — the board starts in a moment."
                 : `Your ${stake.toLocaleString()} stake is escrowed. Someone with the same stake will join shortly.`
           }
-          seats={
-            match.status === MATCH_STATUS.WAITING
-              ? [
-                  { label: "You", name: "You", occupied: true },
-                  { label: isAi ? "GRYND AI" : "Opponent", occupied: false },
-                ]
-              : []
-          }
+          seats={[
+            // Real username + wager on both seats once the opponent has
+            // joined — the ready takeover flips their seat from open to
+            // occupied (same treatment as the in-game seat cards).
+            match.status === MATCH_STATUS.READY
+              ? {
+                  label: "You",
+                  name: myDisplayName,
+                  occupied: true,
+                  wager: wagerLabel,
+                }
+              : { label: "You", name: myDisplayName, occupied: true },
+            match.status === MATCH_STATUS.READY
+              ? {
+                  label: isAi ? "GRYND AI" : "Opponent",
+                  name: opponentDisplayName,
+                  occupied: true,
+                  wager: wagerLabel,
+                }
+              : { label: isAi ? "GRYND AI" : "Opponent", occupied: false },
+          ]}
           onCancel={
             match.status === MATCH_STATUS.WAITING && canCancel
               ? handleCancel
@@ -1459,6 +1596,31 @@ export default function MinesPvpMatchPage({
               <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
             </button>
           )}
+        </div>
+
+        {/* Player seats — usernames, wager and tiles clicked. Emotes pop
+            on the sender's name. */}
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
+          <PlayerSeat
+            isMe
+            name={myDisplayName}
+            tiles={myPicks.length}
+            wagerLabel={wagerLabel}
+            thinking={inPickState && isMyTurn}
+            isWinner={meWon}
+            emote={myEmote}
+            emoteSide="mine"
+          />
+          <PlayerSeat
+            isMe={false}
+            name={opponentDisplayName}
+            tiles={opponentPicks.length}
+            wagerLabel={wagerLabel}
+            thinking={inPickState && !isMyTurn}
+            isWinner={oppWon}
+            emote={incomingEmote}
+            emoteSide="incoming"
+          />
         </div>
 
         {/* Turn indicator */}
