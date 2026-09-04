@@ -30,7 +30,7 @@
 // The host-picked first player is whichever of player1Id / player2Id
 // was rolled at match creation; the other player goes second.
 
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
 import {
@@ -1361,4 +1361,83 @@ export async function fetchMatch(matchId) {
     .from(minesPvpMatches)
     .where(eq(minesPvpMatches.id, matchId));
   return match || null;
+}
+
+// ── User enrichment (player names + icons) ─────────────────────────────
+//
+// Best-effort lookup of `users` rows for both seats so the match view can
+// render real usernames next to each player. Mirrors
+// `keno-pvp/serverStore.js`'s `enrichMatchesWithUsers`. Never crashes the
+// caller on lookup failure (the client falls back to seat labels). AI seats
+// (free AI matches seat the bot as player2Id === MINES_AI_PLAYER_ID) resolve
+// to the fixed GRYND AI identity instead of hitting the users table.
+export async function enrichMatchWithPlayers(match) {
+  if (!match) return match;
+
+  const clerkIds = [];
+  if (match.player1Id && match.player1Id !== MINES_AI_PLAYER_ID) {
+    clerkIds.push(match.player1Id);
+  }
+  if (match.player2Id && match.player2Id !== MINES_AI_PLAYER_ID) {
+    clerkIds.push(match.player2Id);
+  }
+
+  const summary = {};
+  if (clerkIds.length > 0) {
+    try {
+      const rows = await db
+        .select({
+          clerkId: users.clerkId,
+          displayName: users.name,
+          iconKey: users.selectedIcon,
+        })
+        .from(users)
+        .where(inArray(users.clerkId, clerkIds));
+      for (const r of rows) {
+        if (!r || !r.clerkId) continue;
+        summary[r.clerkId] = {
+          id: r.clerkId,
+          displayName: r.displayName || r.clerkId,
+          iconKey: r.iconKey || "default",
+        };
+      }
+    } catch (err) {
+      console.warn(
+        "[mines-pvp] enrichMatchWithPlayers: users lookup failed:",
+        err && err.message ? err.message : err,
+      );
+    }
+  }
+
+  const seatSummary = (clerkId, fallbackName) => {
+    if (!clerkId) return null;
+    return (
+      summary[clerkId] || {
+        id: clerkId,
+        displayName: fallbackName || clerkId,
+        iconKey: "default",
+        missing: true,
+      }
+    );
+  };
+
+  const aiPlayer = {
+    id: MINES_AI_PLAYER_ID,
+    displayName: "GRYND AI",
+    iconKey: "default",
+  };
+
+  return {
+    ...match,
+    players: {
+      p1:
+        match.player1Id === MINES_AI_PLAYER_ID
+          ? aiPlayer
+          : seatSummary(match.player1Id),
+      p2:
+        match.player2Id === MINES_AI_PLAYER_ID
+          ? aiPlayer
+          : seatSummary(match.player2Id),
+    },
+  };
 }

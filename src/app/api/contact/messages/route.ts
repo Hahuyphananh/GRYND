@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { ensureContactTables } from "../../../../lib/contact/ensureTables";
+import { decryptFieldSafe } from "../../../../lib/security/fieldEncryption";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,11 +51,16 @@ export async function GET(_req: NextRequest) {
 
     const repliesByMessage: Record<number, any[]> = {};
     for (const r of replies) {
-      (repliesByMessage[r.message_id] ||= []).push(r);
+      (repliesByMessage[r.message_id] ||= []).push({
+        ...r,
+        reply: decryptFieldSafe(r.reply),
+      });
     }
 
     const result = messages.map((m: any) => ({
       ...m,
+      // Messages are encrypted at rest — decrypt for display only.
+      message: decryptFieldSafe(m.message),
       replies: repliesByMessage[m.id] || [],
     }));
 

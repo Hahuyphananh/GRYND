@@ -123,11 +123,20 @@ export async function sendEmailSafely({
     });
     error = result.error;
     if (error) {
-      console.error("[sendEmailSafely] Resend API returned error:", JSON.stringify(error));
+      // Log only the error name/message — a serialized Resend error payload
+      // can echo the recipient address (PII) into log sinks.
+      console.error(
+        "[sendEmailSafely] Resend API returned error:",
+        error?.name || "ResendError",
+        error?.message || "Unknown error",
+      );
     }
   } catch (sendErr) {
-    error = { message: (sendErr as Error).message || "Resend send failed" };
-    console.error("[sendEmailSafely] Resend send threw:", sendErr);
+    const message = (sendErr as Error).message || "Resend send failed";
+    error = { message };
+    // Same rule: never log the thrown object wholesale (it can embed the
+    // recipient and payload); message-only keeps PII out of the logs.
+    console.error("[sendEmailSafely] Resend send threw:", message);
   }
 
   // ── DB event logging (best-effort, non-blocking) ──────────────

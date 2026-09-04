@@ -41,6 +41,7 @@ import { auth } from "@clerk/nextjs/server";
 import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
+  enrichMatchWithPlayers,
 } from "../../../../../lib/mines-pvp/serverStore";
 import {
   GRID_CELLS,
@@ -191,6 +192,8 @@ function normaliseMatchForViewer(match, viewerUserId) {
     startedAt: match.startedAt,
     endedAt: match.endedAt,
     createdAt: match.createdAt,
+    // Player summaries (usernames/icons) added by enrichMatchWithPlayers.
+    players: match.players ?? null,
   };
 }
 
@@ -235,6 +238,21 @@ export async function GET(req, { params }) {
       );
     }
 
+    // Enrich with player usernames + icon keys so the match view can
+    // render proper player heads. Best-effort — never crash the route
+    // on lookup failure (the client falls back to seat labels).
+    let enrichedMatch = match;
+    try {
+      const e = await enrichMatchWithPlayers(match);
+      if (e) enrichedMatch = e;
+    } catch (err) {
+      console.warn(
+        "[mines-pvp/match] player enrichment failed:",
+        err && err.message ? err.message : err,
+      );
+      enrichedMatch = match;
+    }
+
     // Always returns 1 row (this is a single-round game) — kept as
     // an array for API symmetry with the multi-round PvP systems.
     const rounds = await fetchMatchRounds(matchId);
@@ -242,7 +260,7 @@ export async function GET(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatchForViewer(match, userId),
+        match: normaliseMatchForViewer(enrichedMatch, userId),
         rounds: rounds.map((r) => ({
           id: r.id,
           roundNumber: r.roundNumber,

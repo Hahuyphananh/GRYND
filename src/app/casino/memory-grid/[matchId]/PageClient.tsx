@@ -748,6 +748,21 @@ export default function MemoryGridMatchPage({
     : oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
   const oppIconKey = oppHead?.iconKey || null;
 
+  // My own seat head — same server enrichment, so the viewer's real
+  // username renders next to the opponent's (falls back to "You").
+  const myHead = match
+    ? viewerIsPlayer1
+      ? match.players?.p1
+      : match.players?.p2
+    : null;
+  const myName = myHead?.displayName || "You";
+
+  // Wager shown on the occupied ready-takeover seat chips (formatted like
+  // the in-game stake chip; AI matches wagered nothing).
+  const stakeLabel = match?.isAi
+    ? "Free play"
+    : Number(match?.stakeAmount ?? 0).toLocaleString();
+
   // Waiting state: the creator can cancel their own open lobby, and
   // anyone can copy the invite link (mirrors lane-runner's waiting
   // card). `match` is read from a ref inside cancelLobby to keep the
@@ -827,7 +842,7 @@ export default function MemoryGridMatchPage({
           <div className="mb-5 grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-3 text-center">
               <p className="relative text-[10px] font-bold uppercase tracking-widest text-white/50">
-                You
+                {myName}
                 <EmoteBubble emote={myEmote} side="mine" />
               </p>
               <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
@@ -1036,8 +1051,14 @@ export default function MemoryGridMatchPage({
           </span>
         </div>
         <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
-          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">You · {myTotal ?? 0} pts</span>
-          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">{oppName} · {oppTotal ?? 0} pts</span>
+          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
+            {myName} · {myTotal ?? 0} pts
+            <EmoteBubble emote={myEmote} side="mine" />
+          </span>
+          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
+            {oppName} · {oppTotal ?? 0} pts
+            <EmoteBubble emote={incomingEmote} />
+          </span>
         </div>
       </ShellHeader>
       <ShellMain className="flex-col justify-center">
@@ -1045,7 +1066,7 @@ export default function MemoryGridMatchPage({
       </ShellMain>
       <ShellAside>
         <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
-          Round wins · You {myScore ?? 0} / {oppName} {oppScore ?? 0}
+          Round wins · {myName} {myScore ?? 0} / {oppName} {oppScore ?? 0}
         </p>
         {mgControlsNode}
       </ShellAside>
@@ -1067,14 +1088,27 @@ export default function MemoryGridMatchPage({
               ? "Get ready — memorize the pattern!"
               : "Your stake is escrowed. Share the invite link to play a friend of the same stake, or wait for matchmaking."
           }
-          seats={
-            match.status === MATCH_STATUS.WAITING
-              ? [
-                  { label: "You", name: "You", occupied: true },
-                  { label: "Opponent", occupied: false },
-                ]
-              : []
-          }
+          seats={[
+            // Real username + wager on both seats once the opponent has
+            // joined — the ready takeover flips their seat from open to
+            // occupied (same treatment as the in-game cards).
+            match.status === MATCH_STATUS.READY
+              ? {
+                  label: "You",
+                  name: myName,
+                  occupied: true,
+                  wager: stakeLabel,
+                }
+              : { label: "You", name: myName, occupied: true },
+            match.status === MATCH_STATUS.READY
+              ? {
+                  label: "Opponent",
+                  name: oppName,
+                  occupied: true,
+                  wager: stakeLabel,
+                }
+              : { label: "Opponent", occupied: false },
+          ]}
           onCancel={viewerCanCancel ? cancelLobby : null}
           cancelLabel="Cancel lobby"
           cancelling={cancelling}
@@ -1167,7 +1201,10 @@ export default function MemoryGridMatchPage({
             }`}
           >
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/50">
-              You
+              <span className="relative inline-block">
+                {myName}
+                <EmoteBubble emote={myEmote} side="mine" />
+              </span>
               {viewerSubmitted && <span className="ml-1.5 text-emerald-300">✓</span>}
             </p>
             <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
@@ -1195,7 +1232,10 @@ export default function MemoryGridMatchPage({
                 name={oppName}
                 size="h-3.5 w-3.5"
               />
-              {oppName}
+              <span className="relative inline-block">
+                {oppName}
+                <EmoteBubble emote={incomingEmote} />
+              </span>
               {opponentSubmitted && <span className="ml-0.5 text-cyan-300">✓</span>}
             </p>
             <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">

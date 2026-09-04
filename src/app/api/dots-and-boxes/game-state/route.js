@@ -9,6 +9,7 @@ import {
   remainingEdges,
 } from "../../../../lib/dotsAndBoxesEngine";
 import {
+  advanceReadyIfNeeded,
   computeMoveTimeRemaining,
   getGameMoveSeconds,
   settleAutoMoveIfNeeded,
@@ -43,10 +44,14 @@ export async function GET(req) {
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
+    // Lazy server-side advance: if the ready countdown has elapsed, flip
+    // to in_progress (and set the first move deadline) before responding.
+    let game = await advanceReadyIfNeeded(fetched);
+
     // Lazy server-side auto-move: if any player is fetching and the
     // current turn's deadline has expired, server runs a random legal
     // edge for the current player before returning state.
-    const game = await settleAutoMoveIfNeeded(fetched);
+    game = await settleAutoMoveIfNeeded(game);
 
     const role = getPlayerRole(game, userId) || "spectator";    const [hostName, guestName, hostBadge, guestBadge] = await Promise.all([
       db

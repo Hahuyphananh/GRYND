@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { fourInARowGames } from "../../../../db/schema";
 import {
+  advanceReadyIfNeeded,
   computeMoveTimeRemaining,
   getGameMoveSeconds,
   getPlayerRole,
@@ -42,6 +43,9 @@ export async function GET(req) {
 
     const role = getPlayerRole(game, userAliases) || "spectator";
 
+    // Lazy server-side advance: if the ready countdown has elapsed, flip
+    // to in_progress (and set the first move deadline) before responding.
+    game = await advanceReadyIfNeeded(game);
     game = await settleTimeoutIfNeeded(game);
 
     const [hostName, guestName] = await Promise.all([

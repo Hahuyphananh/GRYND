@@ -595,17 +595,69 @@ const prefersReducedMotion = useReducedMotion();
 
   return (
     <>
-      {/* Unified full-screen waiting takeover */}
-      {game?.status === "waiting" && (
+      {/* Unified full-screen takeover — matchmaking, then the brief
+          "Match found!" countdown once the opponent joins */}
+      {(game?.status === "waiting" || game?.status === "ready") && (
         <MatchWaiting
-          state="waiting"
+          state={game.status === "ready" ? "ready" : "waiting"}
           gameName="Dots & Boxes"
-          subtitle={t("games.dots_and_boxes.status_waiting")}
+          subtitle={
+            game.status === "ready"
+              ? t("games.dots_and_boxes.status_ready")
+              : t("games.dots_and_boxes.status_waiting")
+          }
           seats={[
-            { label: "You", name: "You", occupied: true },
-            { label: "Opponent", occupied: false },
+            // Real username + wager on the occupied seat — same avatar +
+            // wager treatment as the other casino match views. Once the
+            // opponent joins (ready) both seats fill with real names.
+            {
+              label: "You",
+              name:
+                game?.role === "host"
+                  ? game?.hostName || "You"
+                  : game?.guestName || "You",
+              occupied: true,
+              wager: game?.isAiGame
+                ? "Free play"
+                : `${Number(game?.betAmount || 0).toFixed(2)} ${t(
+                    "games.dots_and_boxes.tokens_suffix",
+                  )}`,
+            },
+            game.status === "ready"
+              ? {
+                  label: "Opponent",
+                  name:
+                    game?.role === "host"
+                      ? game?.guestName || "Opponent"
+                      : game?.hostName || "Opponent",
+                  occupied: true,
+                  wager: game?.isAiGame
+                    ? "Free play"
+                    : `${Number(game?.betAmount || 0).toFixed(2)} ${t(
+                        "games.dots_and_boxes.tokens_suffix",
+                      )}`,
+                }
+              : { label: "Opponent", occupied: false },
           ]}
-          onCancel={game?.role === "host" ? cancelGame : null}
+          countdown={
+            game.status === "ready"
+              ? Math.max(
+                  0,
+                  Math.ceil(
+                    ((game.readyDeadlineAt
+                      ? new Date(game.readyDeadlineAt).getTime()
+                      : Date.now()) -
+                      now) /
+                      1000,
+                  ),
+                )
+              : null
+          }
+          onCancel={
+            game.status === "waiting" && game?.role === "host"
+              ? cancelGame
+              : null
+          }
           cancelLabel={t("games.dots_and_boxes.cancel_game_button")}
         />
       )}

@@ -4,14 +4,14 @@
 // Blocks fall vertically onto the highest support below their footprint and
 // become fixed. The only losing placement is one that crosses the ceiling.
 
-export const GRID_WIDTH = 12;
+export const GRID_WIDTH = 16;
 export const GRID_DEPTH = 1;
-export const CEILING_HEIGHT = 18;
+export const CEILING_HEIGHT = 24;
 export const BLOCK_HEIGHT = 1;
 export const OVERHANG_ALLOWANCE = 0;
 export const SLIDE_BUDGET = 0;
 
-export const BLOCK_SHAPES = ["I", "L", "T", "square", "short"] as const;
+export const BLOCK_SHAPES = ["I", "L", "T", "square", "short", "long", "big"] as const;
 export type BlockShape = (typeof BLOCK_SHAPES)[number];
 
 export const BLOCK_DIMS: Record<BlockShape, { w: number; h: number }> = {
@@ -20,6 +20,8 @@ export const BLOCK_DIMS: Record<BlockShape, { w: number; h: number }> = {
   T: { w: 2, h: 2 },
   square: { w: 2, h: 1 },
   short: { w: 1, h: 1 },
+  long: { w: 4, h: 1 },
+  big: { w: 3, h: 2 },
 };
 
 export const BLOCK_FOOTPRINTS: Record<BlockShape, Array<[number, number]>> = {
@@ -28,6 +30,8 @@ export const BLOCK_FOOTPRINTS: Record<BlockShape, Array<[number, number]>> = {
   T: [[0, 0], [1, 0], [0, 1], [1, 1]],
   square: [[0, 0], [1, 0]],
   short: [[0, 0]],
+  long: [[0, 0], [1, 0], [2, 0], [3, 0]],
+  big: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]],
 };
 
 function normalizedRotation(rotation: number): number {
@@ -295,7 +299,7 @@ export function findSafeDrop(
   tower: TowerState,
   available: BlockShape[],
 ): { shape: BlockShape; x: number; rotation: number } | null {
-  const preference: BlockShape[] = ["short", "square", "I", "T", "L"];
+  const preference: BlockShape[] = ["short", "square", "I", "L", "T", "big", "long"];
   for (const shape of preference) {
     if (!available.includes(shape)) continue;
     for (const rotation of [0, 1]) {

@@ -3,6 +3,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { sql } from "../../../db/sql";
 import { deleteUserLocalData } from "../../../lib/security/deleteUserData";
 import { logError } from "../../../lib/logError";
+import { parseAndValidateJson } from "../../../lib/security/validation";
 
 export async function POST(request) {
   const { userId } = await auth();
@@ -18,16 +19,15 @@ export async function POST(request) {
   }
 
   try {
-    const { password } = await request.json();
-    if (!password) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Password is required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
+    // Strict allowlist: only `password` may be sent. Rejects anything else
+    // (e.g. a crafted confirmUserId/isAdmin/balance field) instead of
+    // silently ignoring it.
+    const parsed = await parseAndValidateJson(request, {
+      password: { type: "string", required: true, minLength: 1, maxLength: 128 },
+    });
+    if (!parsed.ok) return parsed.response;
+
+    const password = parsed.data.password;
 
     const userResult = await sql`
       SELECT id, password FROM users WHERE clerk_id = ${userId} LIMIT 1

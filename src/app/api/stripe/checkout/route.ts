@@ -20,6 +20,7 @@ import { tokenPackages, stripeCheckoutSessions } from "../../../../db/schema";
 import { getStripe, getBaseUrl } from "../../../../lib/stripe";
 import { ensurePackageStripe } from "../../../../lib/stripe/packages";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,17 +36,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { packageKey?: unknown };
-  try {
-    body = await req.json().catch(() => ({}));
-  } catch {
-    body = {};
-  }
+  // Strict allowlist: `packageKey` is the ONLY field a client may send. The
+  // price/token amount is always resolved server-side from the catalog — a
+  // body that tries to smuggle amount, tokens, priceCents, or a userId is
+  // rejected instead of partially read.
+  const parsed = await parseAndValidateJson(req, {
+    packageKey: { type: "string", required: true, minLength: 1, maxLength: 100 },
+  });
+  if (!parsed.ok) return parsed.response;
 
-  const packageKey = typeof body?.packageKey === "string" ? body.packageKey.trim() : "";
-  if (!packageKey) {
-    return NextResponse.json({ success: false, error: "packageKey is required" }, { status: 400 });
-  }
+  const packageKey = parsed.data.packageKey;
 
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(

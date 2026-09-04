@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
 import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
+import { parseAndValidateJson } from "../../../../lib/security/validation";
 
 export const runtime = "nodejs";
 
@@ -33,28 +34,22 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { color?: unknown };
-  try {
-    body = await req.json().catch(() => ({}));
-  } catch {
-    body = {};
-  }
+  // Strict allowlist: only `color` is accepted (a #RRGGBB string, or null to
+  // clear). Any other field is rejected rather than silently ignored.
+  const parsed = await parseAndValidateJson(req, {
+    color: { type: "string", required: true, nullable: true, pattern: HEX_COLOR },
+  });
+  if (!parsed.ok) return parsed.response;
+
+  const color = parsed.data.color;
 
   // color: null clears the custom color (back to the default).
-  if (body?.color === null) {
+  if (color === null) {
     await db
       .update(users)
       .set({ chatColor: null })
       .where(eq(users.clerkId, userId));
     return NextResponse.json({ success: true, color: null });
-  }
-
-  const color = typeof body?.color === "string" ? body.color.trim() : "";
-  if (!HEX_COLOR.test(color)) {
-    return NextResponse.json(
-      { success: false, error: "Color must be a hex value like #00e5ff." },
-      { status: 400 }
-    );
   }
 
   await db

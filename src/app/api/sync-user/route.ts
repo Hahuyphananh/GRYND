@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { logError } from "../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../lib/icons";
 import { reconcileEmoteState } from "../../../lib/emotes";
+import { validateObject } from "../../../lib/security/validation";
 
 export async function POST(req: Request) {
   try {
@@ -63,15 +64,34 @@ export async function POST(req: Request) {
 
     let rawPassword = crypto.randomBytes(32).toString("hex");
 
+    // Strict allowlist on the optional body: only `password` may be sent.
+    // An empty/invalid JSON body stays acceptable for a plain sync, but a
+    // well-formed body carrying ANY other field — isAdmin, role, balance,
+    // email, name, userId, ... — is rejected outright instead of being
+    // silently ignored (nothing except `password` is ever read here, and
+    // profile fields are owned by Clerk + the user.created webhook).
     try {
       const body = await req.json();
-      if (body?.password) {
-        rawPassword = String(body.password);
-        try {
-          await client.users.updateUser(clerkId, { password: rawPassword });
-        } catch (err) {
-          console.warn(" Clerk password update failed:", err);
-          rawPassword = crypto.randomBytes(32).toString("hex");
+      if (body !== null && body !== undefined) {
+        const parsed = await validateObject(body, {
+          password: {
+            type: "string",
+            required: false,
+            minLength: 6,
+            maxLength: 72,
+            default: null,
+          },
+        });
+        if (!parsed.ok) return parsed.response;
+        const suppliedPassword = parsed.data.password;
+        if (suppliedPassword) {
+          rawPassword = suppliedPassword;
+          try {
+            await client.users.updateUser(clerkId, { password: rawPassword });
+          } catch (err) {
+            console.warn(" Clerk password update failed:", err);
+            rawPassword = crypto.randomBytes(32).toString("hex");
+          }
         }
       }
     } catch {

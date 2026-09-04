@@ -157,7 +157,10 @@ export async function POST(request) {
 
     auditLog("profile_updated", {
       userId,
-      emailChangedTo: hasEmail ? cleanEmail : undefined,
+      // Never log the raw email address — audit logs (console + any sink)
+      // must not become a second copy of PII. A boolean flag keeps the
+      // forensic signal without storing the value.
+      emailChanged: Boolean(hasEmail),
       passwordUpdated: Boolean(passwordHash),
     });
 

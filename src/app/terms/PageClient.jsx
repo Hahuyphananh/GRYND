@@ -54,8 +54,11 @@ const sections = [
   {
     title: "8. User Content & Community",
     content: [
-      "You retain ownership of the content you submit (chat messages, reviews, and other user-generated content), and you grant GRYND a non-exclusive, worldwide, royalty-free license to host, display, reproduce, and distribute that content on the platform (for example, approved reviews are shown on the reviews page and homepage, and large wins appear in the Big Wins feed).",
-      "All user content is subject to moderation. We may remove, hide, or edit content that violates these terms, and we may suspend users who repeatedly breach community standards. Content you submit must not be unlawful, defamatory, obscene, or infringe the rights of others.",
+      "User-generated content (\"UGC\") is any content you create, upload, or transmit on the platform, including without limitation chat messages, usernames and display names, avatar icons, profile customizations, emotes, reviews, gameplay clips or replays, and reports or feedback you submit.",
+      "You retain ownership of the content you submit, and you grant GRYND a non-exclusive, worldwide, royalty-free, sublicensable, and transferable license to host, store, display, reproduce, modify (solely to the extent needed to operate the platform, such as resizing or filtering), distribute, and transmit that content on and through the platform, and to grant other users the limited right to view and interact with it as the platform permits (for example, approved reviews are shown on the reviews page and homepage, and large wins appear in the Big Wins feed). This license ends when you delete your content or account, except where the content has already been shared with other users or is needed to comply with law.",
+      "You represent and warrant that: (a) you own or have all necessary rights to the UGC you submit; (b) your UGC does not infringe, misappropriate, or violate the rights of any third party, including intellectual property, privacy, or publicity rights; and (c) your UGC is not unlawful, defamatory, obscene, hateful, harassing, or otherwise prohibited by Section 6.",
+      "All UGC is subject to moderation, and GRYND may monitor, review, refuse, remove, hide, or edit any UGC at any time, with or without notice and for any reason, including where we reasonably believe it violates these Terms, our Fair Play Policy, or applicable law. Chat messages are retained for a limited period for moderation, safety, and dispute-resolution purposes even after deletion on your end, and deleted messages may remain visible to recipients who already received them.",
+      "If you believe content on the platform infringes your rights, contact us and we will review the request promptly. Users who repeatedly breach community standards may have content removed and may be suspended or permanently banned.",
     ],
   },
   {
@@ -97,7 +100,11 @@ const sections = [
   {
     title: "15. Privacy",
     content: [
-      "Our collection and use of your personal information is described in our Privacy Policy, which forms part of these Terms. By using the platform you also agree to the practices described there.",
+      "Our collection and use of your personal information is described in our Privacy Policy, which forms part of these Terms and explains in detail what we collect and why. By using the platform you also agree to the practices described there.",
+      "In summary, we collect and process only the data needed to run the service: account information (email address, date of birth for age verification, and profile settings), gameplay records (including token balances, match history, and chat messages), technical and analytics data (device, browser, and usage diagnostics), and communications you send us (such as support requests).",
+      "We use this data to operate the platform, verify eligibility, keep the games fair and free of cheating or abuse, process disputes, provide support, and — where permitted by law — send you service and marketing communications you can opt out of. We do not sell your personal information.",
+      "Your data is stored on secure servers and protected in transit and at rest. Some service providers (for example, payment processors, hosting providers, and analytics tools) may process data on our behalf under contractual safeguards, and some of your data may be stored or processed outside your country of residence, including in Canada and the United States, where it remains subject to the protections described in these Terms and the Privacy Policy.",
+      "We keep personal data only as long as needed for the purposes described above or as required by law; see the Data Retention section of our Privacy Policy for details. You may request access to, correction of, export of, or deletion of your personal information at any time through your account settings or by contacting us, subject to legal and security obligations.",
     ],
   },
   {
@@ -109,7 +116,13 @@ const sections = [
   {
     title: "17. Governing Law & Disputes",
     content: [
-      "These Terms & Conditions and any dispute arising out of or relating to them, or to your use of the platform, shall be governed by and construed in accordance with the laws of the Province of Quebec and the federal laws of Canada applicable therein, without regard to conflict-of-laws principles. Any dispute, claim, or controversy arising out of or relating to these Terms or the platform shall first be resolved through good-faith negotiations between the parties. If the dispute is not resolved within thirty (30) days of the first notice, it shall be resolved by binding arbitration conducted in the Province of Quebec, Canada, under the applicable arbitration rules in effect at that time, and judgment on the arbitral award may be entered in any court of competent jurisdiction. You agree to submit to the personal jurisdiction of the courts of the Province of Quebec for any matters not subject to arbitration and for the enforcement of any arbitration award.",
+      "These Terms & Conditions and any dispute arising out of or relating to them, or to your use of the platform, shall be governed by and construed in accordance with the laws of the Province of Quebec and the federal laws of Canada applicable therein, without regard to conflict-of-laws principles.",
+      "Informal resolution first: any dispute, claim, or controversy arising out of or relating to these Terms or the platform (each a \"Dispute\") shall first be resolved through good-faith negotiations between the parties. Before starting arbitration or any court proceeding, the complaining party must send written notice describing the Dispute to the other party, and the parties must attempt to resolve it within thirty (30) days of that notice.",
+      "Binding arbitration: if a Dispute is not resolved within that thirty (30) day period, it shall be resolved by final and binding individual arbitration administered in the Province of Quebec, Canada, under the applicable arbitration rules in effect at that time. The arbitration will be conducted in English by a single arbitrator, and judgment on the arbitral award may be entered in any court of competent jurisdiction. Each party will bear its own costs and fees, subject to any right to recover them under applicable law or the applicable rules.",
+      "Small claims: instead of arbitration, either party may bring an individual Dispute in a small claims court of competent jurisdiction in the Province of Quebec if the Dispute qualifies for that court.",
+      "No class actions: you and GRYND agree that each party may bring Disputes only in its individual capacity, and neither may bring a Dispute as a plaintiff or class member in any class, collective, consolidated, or representative proceeding. The arbitrator may not consolidate or join the claims of more than one person and may not preside over any class or representative proceeding.",
+      "Opt-out: you may opt out of the arbitration provision in this Section by sending written notice within thirty (30) days of first accepting these Terms; the notice must include your name, the email address on your account, and a statement that you are opting out of the arbitration provision of the Terms. If you opt out, Disputes will be resolved exclusively in the courts of the Province of Quebec.",
+      "You agree to submit to the personal jurisdiction of the courts of the Province of Quebec for any matters not subject to arbitration and for the enforcement of any arbitration award. This Section does not affect any right to bring a Dispute before a consumer-protection authority where applicable law permits.",
     ],
   },
 ];
@@ -131,7 +144,7 @@ export default function TermsPage() {
             Terms & Conditions
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: August 25, 2026
+            Last updated: September 3, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">

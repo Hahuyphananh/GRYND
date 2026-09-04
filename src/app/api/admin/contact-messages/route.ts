@@ -9,6 +9,10 @@ import { auth } from "@clerk/nextjs/server";
 import { isAdmin } from "../../../../lib/auth/isAdmin";
 import { getNeonSql } from "../../../../db/neon";
 import { ensureContactTables } from "../../../../lib/contact/ensureTables";
+import {
+  decryptFieldSafe,
+  encryptField,
+} from "../../../../lib/security/fieldEncryption";
 
 const MAX_REPLY_LENGTH = 5000;
 
@@ -69,7 +73,13 @@ export async function GET(req: NextRequest) {
 
     const withReplies = messages.map((m: any) => ({
       ...m,
-      replies: repliesByMessage[m.id] || [],
+      // Messages and replies are encrypted at rest — decrypt for the admin
+      // dashboard only; the DB never holds plaintext.
+      message: decryptFieldSafe(m.message),
+      replies: (repliesByMessage[m.id] || []).map((r: any) => ({
+        ...r,
+        reply: decryptFieldSafe(r.reply),
+      })),
     }));
 
     return NextResponse.json({ success: true, messages: withReplies });
@@ -143,7 +153,7 @@ export async function POST(req: NextRequest) {
 
     await sql`
       INSERT INTO contact_message_replies (message_id, admin_clerk_id, admin_name, reply)
-      VALUES (${messageId}, ${userId}, ${adminName}, ${reply.trim()})
+      VALUES (${messageId}, ${userId}, ${adminName}, ${encryptField(reply.trim())})
     `;
 
     // A replied message is no longer "new" — mark it replied.

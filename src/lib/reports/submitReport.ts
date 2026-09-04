@@ -9,6 +9,10 @@
 // assert on the queries that would hit `player_reports`.
 
 import { getNeonSql } from "../../db/neon";
+import {
+  encryptField,
+  isFieldEncryptionConfigured,
+} from "../security/fieldEncryption";
 
 export const REPORT_REASONS = [
   "toxic_player",
@@ -267,9 +271,18 @@ export async function submitReport(
       };
     }
 
+    // Free-text `details` is encrypted at rest when the encryption key is
+    // configured (framework-free core: the unit tests run keyless and keep
+    // passing; production MUST set FIELD_ENCRYPTION_KEY — see
+    // src/lib/security/fieldEncryption.ts).
+    const storedDetails =
+      details && isFieldEncryptionConfigured()
+        ? encryptField(details)
+        : details || null;
+
     await sql`
       INSERT INTO player_reports (reporter_clerk_id, reported_clerk_id, game_type, game_id, reason, details)
-      VALUES (${userId}, ${resolvedReportedId}, ${gameType}, ${gameId}, ${reason}, ${details || null})
+      VALUES (${userId}, ${resolvedReportedId}, ${gameType}, ${gameId}, ${reason}, ${storedDetails})
     `;
 
     return { success: true, status: 200, message: "Report submitted successfully" };

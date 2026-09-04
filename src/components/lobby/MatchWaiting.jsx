@@ -50,6 +50,29 @@ function formatElapsed(totalSeconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Small token/gold coin glyph — duplicated per-page across the casino
+// (see the mines/blackjack match views); kept local so the shared
+// waiting takeover has no import coupling back into game pages.
+function CoinIcon({ className = "" }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
+      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
+      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
+    </svg>
+  );
+}
+
 export default function MatchWaiting({
   // identity
   state = "searching", // "searching" | "waiting" | "ready"
@@ -59,7 +82,8 @@ export default function MatchWaiting({
   title = null, // overrides the translated default
   subtitle = null, // game-specific context line (escrow note, hint…)
   // waiting-room data
-  seats = [], // [{ label, name?, occupied }]
+  seats = [], // [{ label, name?, occupied, wager? }] — wager = optional
+  //             token-amount label shown on the seat once occupied
   countdown = null, // seconds until start (ready state only)
   // actions
   copyCode = null,
@@ -78,6 +102,11 @@ export default function MatchWaiting({
   const isSearching = state === "searching";
   const isWaiting = state === "waiting";
   const isReady = state === "ready";
+
+  // Seat tiles render while waiting (open seats) and during the ready
+  // countdown, when games pass seats with both players occupied so the
+  // "Match found!" moment shows real usernames.
+  const showSeats = (isWaiting || isReady) && seats.length > 0;
 
   // Elapsed counter — only meaningful while searching.
   useEffect(() => {
@@ -193,50 +222,94 @@ export default function MatchWaiting({
           )}
         </p>
 
-        {/* Seat tiles (waiting state) */}
-        {isWaiting && seats.length > 0 && (
-          <div className="mt-8 grid w-full grid-cols-2 gap-3">
-            {seats.map((seat, i) => (
-              <div
-                key={i}
-                className={`flex flex-col items-center justify-center rounded-xl border p-4 ${
-                  seat.occupied
-                    ? "border-cyan-500/40 bg-cyan-500/10"
-                    : "border-white/15 bg-black/40"
-                }`}
-              >
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">
-                  {seat.label}
-                </p>
-                {seat.occupied ? (
-                  <>
-                    <p className="mt-1.5 max-w-full truncate text-sm font-bold text-white">
-                      {seat.name || "—"}
-                    </p>
-                    <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                      {t("home.matchWaiting.connected")}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-2 animate-pulse text-sm font-semibold text-cyan-200/80">
-                      {t("home.matchWaiting.awaiting_seat")}
-                    </p>
-                    <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-white/35">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/30" />
-                      {t("home.matchWaiting.open")}
-                    </span>
-                  </>
-                )}
-              </div>
-            ))}
+        {/* Seat tiles — waiting (open seats) and ready (the matchup, both
+            occupied so real usernames show during the countdown) */}
+        {showSeats && (
+          <div
+            className={`grid w-full grid-cols-2 gap-3 ${
+              isWaiting ? "mt-8" : "mt-6"
+            }`}
+          >
+            {seats.map((seat, i) => {
+              // Pair-game duotone (seat 1 = viewer cyan, seat 2 =
+              // opponent fuchsia) mirrors the in-game seat cards; extra
+              // seats beyond a duel fall back to a neutral accent.
+              const accent =
+                i === 0
+                  ? {
+                      tile: "border-cyan-500/40 bg-cyan-500/10",
+                      avatar:
+                        "border-cyan-300/40 bg-cyan-400/15 text-cyan-200",
+                    }
+                  : i === 1
+                    ? {
+                        tile: "border-fuchsia-500/40 bg-fuchsia-500/10",
+                        avatar:
+                          "border-fuchsia-300/40 bg-fuchsia-400/15 text-fuchsia-200",
+                      }
+                    : {
+                        tile: "border-white/20 bg-white/5",
+                        avatar: "border-white/25 bg-white/10 text-white/80",
+                      };
+              return (
+                <div
+                  key={i}
+                  className={`flex flex-col items-center justify-center rounded-xl border p-4 ${
+                    seat.occupied ? accent.tile : "border-white/15 bg-black/40"
+                  }`}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">
+                    {seat.label}
+                  </p>
+                  {seat.occupied ? (
+                    <div className="mt-2 flex w-full flex-col items-center gap-1.5">
+                      {/* Initial avatar — same treatment as the in-game
+                          seat cards */}
+                      <span
+                        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border text-sm font-black ${accent.avatar}`}
+                      >
+                        {(seat.name || "?").charAt(0).toUpperCase()}
+                      </span>
+                      <p className="max-w-full truncate text-sm font-bold text-white">
+                        {seat.name || "—"}
+                      </p>
+                      <span className="flex min-h-4 flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] font-semibold">
+                        {seat.wager && (
+                          <span className="inline-flex items-center gap-1 text-yellow-200/85">
+                            <CoinIcon className="h-3 w-3 text-yellow-300" />
+                            {seat.wager}
+                          </span>
+                        )}
+                        <span className="inline-flex items-center gap-1.5 text-cyan-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                          {t("home.matchWaiting.connected")}
+                        </span>
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-2 animate-pulse text-sm font-semibold text-cyan-200/80">
+                        {t("home.matchWaiting.awaiting_seat")}
+                      </p>
+                      <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-white/35">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/30" />
+                        {t("home.matchWaiting.open")}
+                      </span>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* Ready countdown */}
         {isReady && countdownSeconds !== null && (
-          <div className="mt-8 flex items-baseline justify-center gap-2">
+          <div
+            className={`flex items-baseline justify-center gap-2 ${
+              showSeats ? "mt-6" : "mt-8"
+            }`}
+          >
             <span className="text-6xl font-black tabular-nums text-[#f5ff3b] drop-shadow-[0_0_20px_rgba(245,255,59,0.45)]">
               {countdownSeconds}
             </span>

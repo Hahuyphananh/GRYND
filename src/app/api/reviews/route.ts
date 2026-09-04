@@ -4,25 +4,13 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import { productReviews, users } from "../../../db/schema";
 import { captureServerEvent } from "../../../lib/analytics-server";
+import { parseAndValidateJson } from "../../../lib/security/validation";
 
 export const runtime = "nodejs";
 
 const MAX_BODY = 2000;
 const MAX_TITLE = 120;
-
-function validate(rating: unknown, body: unknown, title: unknown) {
-  const r = Number(rating);
-  if (!Number.isInteger(r) || r < 1 || r > 5) {
-    return "Rating must be a whole number between 1 and 5.";
-  }
-  if (typeof title === "string" && title.trim().length > MAX_TITLE) {
-    return `Title must be at most ${MAX_TITLE} characters.`;
-  }
-  if (typeof body === "string" && body.trim().length > MAX_BODY) {
-    return `Review must be at most ${MAX_BODY} characters.`;
-  }
-  return null;
-}
+const MAX_GAME = 50;
 
 /**
  * POST /api/reviews — submit a review (one per user; upsert replaces the
@@ -36,22 +24,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    let bodyJson: { rating?: unknown; title?: unknown; body?: unknown; game?: unknown };
-    try {
-      bodyJson = await req.json();
-    } catch {
-      return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
-    }
+    // Strict allowlist: only rating / title / body / game are accepted. A
+    // client cannot smuggle moderation or identity fields (status,
+    // userId, approvedBy, ...) — every row is created as "pending" and
+    // keyed to the authenticated user below.
+    const parsed = await parseAndValidateJson(req, {
+      rating: { type: "number", required: true, integer: true, min: 1, max: 5 },
+      title: { type: "string", required: false, maxLength: MAX_TITLE, default: null },
+      body: { type: "string", required: false, maxLength: MAX_BODY, default: null },
+      game: { type: "string", required: false, maxLength: MAX_GAME, default: null },
+    });
+    if (!parsed.ok) return parsed.response;
 
-    const error = validate(bodyJson.rating, bodyJson.body, bodyJson.title);
-    if (error) {
-      return NextResponse.json({ success: false, error }, { status: 400 });
-    }
-
-    const rating = Number(bodyJson.rating);
-    const title = typeof bodyJson.title === "string" ? bodyJson.title.trim().slice(0, MAX_TITLE) || null : null;
-    const body = typeof bodyJson.body === "string" ? bodyJson.body.trim().slice(0, MAX_BODY) || null : null;
-    const game = typeof bodyJson.game === "string" ? bodyJson.game.trim().slice(0, 50) || null : null;
+    const rating = parsed.data.rating;
+    const title = parsed.data.title || null;
+    const body = parsed.data.body || null;
+    const game = parsed.data.game || null;
 
     // Resolve the local user row (reviews are keyed by users.id for cascade).
     const row = await db
