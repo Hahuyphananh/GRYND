@@ -80,7 +80,7 @@ export default function AccessibilityPage() {
             Accessibility Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: August 25, 2026
+            Last updated: September 4, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">

@@ -6,6 +6,7 @@ import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import TawkProvider from "../components/TawkProvider";
 import SplashScreen from "../components/SplashScreen";
+import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl } from "../lib/ogImages";
 
 export const dynamic = "force-dynamic";
@@ -72,12 +73,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SplashScreen />
 
         <Providers>
-          <CsrfFetchGuard />
-          <DisableInspect />
-          <TawkProvider />
-          <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>
-          <ClerkSafeChatWidget />
-          <CookieConsentBanner />
+          {/* Global branded toast system (UX plan P0-1) — wraps everything
+              so any page/component can call useToast(). Toasts portal to
+              <body>, so the provider's position in the tree only matters
+              for context propagation. */}
+          <ToastProvider>
+            <CsrfFetchGuard />
+            <DisableInspect />
+            <TawkProvider />
+            <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>
+            <ClerkSafeChatWidget />
+            <CookieConsentBanner />
+          </ToastProvider>
         </Providers>
       </body>
     </html>

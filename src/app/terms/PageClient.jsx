@@ -58,6 +58,7 @@ const sections = [
       "You retain ownership of the content you submit, and you grant GRYND a non-exclusive, worldwide, royalty-free, sublicensable, and transferable license to host, store, display, reproduce, modify (solely to the extent needed to operate the platform, such as resizing or filtering), distribute, and transmit that content on and through the platform, and to grant other users the limited right to view and interact with it as the platform permits (for example, approved reviews are shown on the reviews page and homepage, and large wins appear in the Big Wins feed). This license ends when you delete your content or account, except where the content has already been shared with other users or is needed to comply with law.",
       "You represent and warrant that: (a) you own or have all necessary rights to the UGC you submit; (b) your UGC does not infringe, misappropriate, or violate the rights of any third party, including intellectual property, privacy, or publicity rights; and (c) your UGC is not unlawful, defamatory, obscene, hateful, harassing, or otherwise prohibited by Section 6.",
       "All UGC is subject to moderation, and GRYND may monitor, review, refuse, remove, hide, or edit any UGC at any time, with or without notice and for any reason, including where we reasonably believe it violates these Terms, our Fair Play Policy, or applicable law. Chat messages are retained for a limited period for moderation, safety, and dispute-resolution purposes even after deletion on your end, and deleted messages may remain visible to recipients who already received them.",
+      "For clarity, gameplay recordings you produce through Creator Mode (\u201cCreator Recordings\u201d) are generated locally on your device, are not uploaded to or stored on the platform, and are not considered UGC. Creator Recordings exist only as files on your device (or in your browser) until you download or delete them, and the license above does not apply to them.",
       "If you believe content on the platform infringes your rights, contact us and we will review the request promptly. Users who repeatedly breach community standards may have content removed and may be suspended or permanently banned.",
     ],
   },
@@ -144,7 +145,7 @@ export default function TermsPage() {
             Terms & Conditions
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: September 3, 2026
+            Last updated: September 4, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">

@@ -374,6 +374,12 @@ export const APP_TEXT_TRANSLATIONS = {
         no_results_title: "No games match your search.",
         no_results_hint: "Try a different keyword or change the filter.",
         play_vs_ai: "Play vs AI",
+        badge_hot: "HOT",
+        badge_new: "NEW",
+        recently_played: "Recently Played",
+        play_again: "Play again",
+        recently_played_empty: "Games you play will show up here.",
+        clear_recent: "Clear",
       },
       // ── Unified matchmaking waiting screen (full-screen takeover) ──
       matchWaiting: {
@@ -1464,6 +1470,12 @@ export const APP_TEXT_TRANSLATIONS = {
         no_results_title: "Aucun jeu ne correspond à votre recherche.",
         no_results_hint: "Essayez un autre mot-clé ou changez le filtre.",
         play_vs_ai: "Jouer contre l'IA",
+        badge_hot: "HOT",
+        badge_new: "NOUVEAU",
+        recently_played: "Récemment joués",
+        play_again: "Rejouer",
+        recently_played_empty: "Les jeux auxquels vous jouez apparaîtront ici.",
+        clear_recent: "Effacer",
       },
       // ── Écran d'attente unifié (plein écran) ──
       matchWaiting: {
@@ -2205,6 +2217,12 @@ export const APP_TEXT_TRANSLATIONS = {
         no_results_title: "Ningún juego coincide con tu búsqueda.",
         no_results_hint: "Prueba con otra palabra clave o cambia el filtro.",
         play_vs_ai: "Jugar contra la IA",
+        badge_hot: "POPULAR",
+        badge_new: "NUEVO",
+        recently_played: "Jugados recientemente",
+        play_again: "Jugar de nuevo",
+        recently_played_empty: "Los juegos a los que juegues aparecerán aquí.",
+        clear_recent: "Borrar",
       },
       // ── Pantalla de espera unificada (pantalla completa) ──
       matchWaiting: {

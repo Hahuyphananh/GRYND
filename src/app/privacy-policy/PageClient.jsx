@@ -16,6 +16,7 @@ const sections = [
       "Content you submit: chat messages (in global and game rooms), product reviews (rating, title, body, and the game reviewed), contact-form messages (your name, email, and message), and player reports about other users (the reason and any details you provide).",
       "Communications: we keep records of emails we send you (welcome, inactivity/reactivation, and marketing messages) so we can avoid duplicates and manage preferences.",
       "Technical & security data: your IP address (used for rate limiting and security auditing), browser and device information (received from our analytics and error-monitoring providers), and the cookies and local/session storage described below.",
+      "Creator Recordings: recordings you produce through Creator Mode (\u201cCreator Recordings\u201d) are generated locally on your device and are never uploaded to, transmitted to, or stored by GRYND. They exist only as files on your device (or in your browser) until you download or delete them, and are therefore not part of the personal information described in this Policy.",
     ],
   },
   {
@@ -130,7 +131,7 @@ export default function PrivacyPolicyPage() {
             Privacy Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: August 25, 2026
+            Last updated: September 4, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">

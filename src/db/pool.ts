@@ -55,8 +55,17 @@ export function getPool(): Pool {
     // Serverless platforms spin up one pool per warm instance; a small max
     // keeps connection counts bounded while the provider pooler multiplexes.
     max: 10,
-    connectionTimeoutMillis: 10_000,
-    idleTimeoutMillis: 30_000,
+    // Establish connections fast (or fail fast): with a 10s handshake
+    // timeout, a slow pooler made every queued request wait ~10s and the
+    // resulting backlog stacked into 12-14s requests and cascading 500s.
+    connectionTimeoutMillis: 5_000,
+    // Keep idle connections warm longer so bursty dev traffic doesn't churn
+    // TLS handshakes against the pooler — each refill re-pays the handshake
+    // latency that was timing out under load.
+    idleTimeoutMillis: 60_000,
+    // TCP keepalive so the provider doesn't reap connections the pool still
+    // thinks are alive (the "Connection terminated unexpectedly" errors).
+    keepAlive: true,
     // A hung query must never pin a connection (or a request) forever.
     // 8s is generous for game queries but still bounds worst-case latency
     // when the provider pooler misbehaves or a lock is stuck.

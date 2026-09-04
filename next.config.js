@@ -27,13 +27,10 @@ const nextConfig = {
   async rewrites() {
     // Proxy PostHog ingestion through the app domain to prevent ad-blockers
     // from blocking analytics requests. The /ingest path must match the
-    // api_host set in PostHogProvider.tsx.
+    // api_host set in PostHogProvider.tsx (production only — dev talks to
+    // PostHog directly so external DNS failures never spam the dev server).
     const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://app.posthog.com";
-    return [
-      {
-        source: "/ingest/:path*",
-        destination: `${posthogHost}/:path*`,
-      },
+    const rewrites = [
       // /games/* is the canonical alias for the game hub. It rewrites to the
       // existing /casino/* routes so the app code stays untouched while
       // /games URLs serve the same pages (and stay in the address bar).
@@ -50,6 +47,15 @@ const nextConfig = {
         destination: "/casino/:path*",
       },
     ];
+
+    if (process.env.NODE_ENV === "production") {
+      rewrites.unshift({
+        source: "/ingest/:path*",
+        destination: `${posthogHost}/:path*`,
+      });
+    }
+
+    return rewrites;
   },
 
   async redirects() {

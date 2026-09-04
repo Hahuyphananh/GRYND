@@ -503,9 +503,28 @@ function NavigationBar({ currentPath = "" }) {
                         </span>
                       </div>
                     </Link>
-                    {/* Tokens chip only on very wide screens — at laptop
-                        widths it pushed the right cluster off the viewport
-                        (balance stays reachable via the hamburger menu). */}
+                    {/* Compact balance chip on laptop widths (lg–2xl) — the
+                        full Tokens chip only fit at 2xl+, leaving signed-in
+                        players on laptops with no visible balance. The
+                        compact chip shows just the coin icon + amount so the
+                        right cluster stays on screen, and the full chip takes
+                        over on very wide screens. */}
+                    <div className="hidden lg:flex 2xl:hidden items-center gap-1.5 rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-2.5 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
+                      <IconCoins size={14} className="shrink-0 text-[#f5ff3b]" aria-hidden="true" />
+                      <span className="font-mono text-sm font-semibold text-[#67f9ff] drop-shadow-[0_0_8px_rgba(0,229,255,0.65)]">
+                        {error
+                          ? "—"
+                          : balance !== null
+                            ? Number(balance).toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })
+                            : t("nav.loading")}
+                      </span>
+                    </div>
+                    {/* Tokens chip only on very wide screens — the full
+                        labelled chip (plus the profile cluster) only fits
+                        comfortably at 2xl+; laptop widths use the compact
+                        chip above. */}
                     <div className="hidden 2xl:flex rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-3 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
                       <span className="mr-1 text-[10px] uppercase tracking-[0.2em] text-[#7dd3fc]">
                         Tokens
@@ -526,6 +545,8 @@ function NavigationBar({ currentPath = "" }) {
                     onClick={() => setMobileMenuOpen((v) => !v)}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] 2xl:hidden"
                     aria-label="Toggle menu"
+                    aria-expanded={mobileMenuOpen}
+                    aria-controls="mobile-nav-menu"
                   >
                     <IconMenu size={20} />
                   </button>
@@ -562,7 +583,7 @@ function NavigationBar({ currentPath = "" }) {
           </div>
         </UIPro01NavShell>
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+          <div id="mobile-nav-menu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
             {/* SIDEBAR */}
             <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
               {/* CLOSE */}
