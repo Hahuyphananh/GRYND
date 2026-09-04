@@ -2,6 +2,11 @@ import { Redis } from "@upstash/redis";
 
 let redis: Redis | null = null;
 
+// cacheGet/cacheSet no-op when Redis isn't configured, which is the normal
+// state in dev. Warn once instead of on every call so a page load doesn't
+// spam N identical "Redis disabled" lines.
+let warnedAboutMissingConfig = false;
+
 /**
  * Returns the shared Redis client.
  * Falls back to null when KV_REST_API_URL / KV_REST_API_TOKEN
@@ -19,10 +24,13 @@ export function getRedis(): Redis | null {
     process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!url || !token) {
-    console.warn(
-      "[redis] Missing KV_REST_API_URL / KV_REST_API_TOKEN. " +
-        "Redis caching is disabled. Queries will hit the database directly.",
-    );
+    if (!warnedAboutMissingConfig) {
+      warnedAboutMissingConfig = true;
+      console.warn(
+        "[redis] Missing KV_REST_API_URL / KV_REST_API_TOKEN. " +
+          "Redis caching is disabled. Queries will hit the database directly.",
+      );
+    }
     return null;
   }
 

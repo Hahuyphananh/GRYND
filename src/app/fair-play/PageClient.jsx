@@ -73,7 +73,7 @@ export default function FairPlayPage() {
             Fair Play Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: August 25, 2026
+            Last updated: September 4, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
@@ -82,7 +82,8 @@ export default function FairPlayPage() {
               dedicated to ensuring that every game on our platform is fair,
               transparent, and enjoyable for all users. This policy outlines our
               standards, monitoring practices, and the consequences of violating
-              fair play rules.
+              fair play rules, and it forms part of and is incorporated into our
+              Terms & Conditions, together with our Privacy Policy.
             </p>
           </div>
         </motion.div>

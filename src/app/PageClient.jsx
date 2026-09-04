@@ -28,10 +28,10 @@ import {
 import {
   UIPro06PrimaryButton,
   UIPro07SecondaryButton,
-  UIPro16ToastShell,
   UIPro17ModalBackdrop,
   UIPro18ModalPanel,
 } from "../components/uipro";
+import { useToast } from "../components/toast/ToastProvider";
 import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
 import {
@@ -47,7 +47,6 @@ function MainComponent() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [betInProgress, setBetInProgress] = useState(false);
-  const [notification, setNotification] = useState(null);
   const [jwt, setJwt] = useState(null);
   const [dailyRewardCooldown, setDailyRewardCooldown] = useState(false);
   const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
@@ -389,7 +388,7 @@ function MainComponent() {
 
   const claimDailyReward = async () => {
     if (!user || !isSignedIn) {
-      showNotification(t("home.rewards.must_sign_in"), "error");
+      showToast(t("home.rewards.must_sign_in"), "error");
       return;
     }
 
@@ -405,7 +404,7 @@ function MainComponent() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        showNotification(data.error || t("home.rewards.claim_error"), "error");
+        showToast(data.error || t("home.rewards.claim_error"), "error");
         return;
       }
 
@@ -439,7 +438,7 @@ function MainComponent() {
       setDailyRewardCooldown(true);
     } catch (err) {
       console.error(err);
-      showNotification(err.message || t("home.rewards.claim_error"), "error");
+      showToast(err.message || t("home.rewards.claim_error"), "error");
     }
   };
 
@@ -584,9 +583,8 @@ function MainComponent() {
 
   useRevealOnScroll([]);
 
-  const showNotification = (message, type = "info") => {
-    setNotification({ message, type });
-  };
+  // Global branded toasts (UX plan P0-1) — replaces the old local toast.
+  const { showToast } = useToast();
 
   // Derived battlepass widget values — the next reward is the first reward
   // of the upcoming level (reserved-empty levels show "soon").
@@ -929,24 +927,6 @@ function MainComponent() {
         </section>
       </div>
 
-      <AnimatePresence>
-        {notification && (
-          <motion.div
-            initial={fadeUpVariant.initial}
-            animate={fadeUpVariant.animate}
-            exit={fadeUpVariant.exit}
-            transition={fadeUpVariant.transition}
-          >
-            <UIPro16ToastShell
-              className={`fixed bottom-4 right-4 p-4 rounded-lg text-white ${
-                notification.type === "success" ? "bg-green-600" : "bg-red-600"
-              }`}
-            >
-              {notification.message}
-            </UIPro16ToastShell>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {isSignedIn && (
         <div className="fixed left-4 top-20 z-50">
           <button

@@ -52,9 +52,10 @@ export default function CreatorModeOverlay() {
     stopCreatorRecording,
   } = useCreatorMode();
 
-  // "Stop & save": stop the capture, then download the finished MP4/WebM
+  // "Stop": stop the capture, then auto-download the finished MP4/WebM
   // as soon as the recorder finalises it. The result panel still appears
-  // afterwards (preview + re-download + discard).
+  // afterwards with its own Download / Discard / Record-another actions,
+  // so the user can re-download any time.
   const [pendingDownload, setPendingDownload] = useState(false);
 
   useEffect(() => {
@@ -97,7 +98,10 @@ export default function CreatorModeOverlay() {
         </div>
       )}
 
-      {/* Stop & save — the one interactive control during recording. */}
+      {/* Stop & save — the one interactive control during recording.
+          Stopping finalises the capture and auto-downloads the file; the
+          result panel that follows keeps its Download button (re-download
+          any time) plus Discard / Record another. */}
       {state === "recording" && (
         <button
           onClick={stopAndSave}

@@ -1,7 +1,13 @@
 # Neon Backup & Restore Runbook
 
-GRYND's database is Neon Postgres. This runbook documents what protection
-exists, how to verify restores actually work, and the exact steps to follow
+> **Historical.** GRYND's database moved from Neon to **Supabase** — see
+> `docs/SUPABASE_MIGRATION.md` and the current backup/restore tooling in
+> `docs/database-backup-restore.md`. This runbook is kept for reference
+> (the restore *principles* still apply) but the provider-specific steps
+> no longer match production.
+
+GRYND's database was Neon Postgres. This runbook documents what protection
+existed, how to verify restores actually work, and the exact steps to follow
 during a real incident.
 
 > **Golden rule: "we have backups" is not "restores work".** Run the restore

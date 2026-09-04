@@ -35,9 +35,10 @@
 //   • Creator mode on → renders children + the floating recording
 //     overlay.
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import CreatorModeProvider from "../../lib/creator-mode/CreatorModeProvider";
 import CreatorModeOverlay from "./CreatorModeOverlay";
+import { recordPlayedGame } from "../../lib/recentlyPlayed";
 
 export default function CreatorModeHost({
   autoStart = false,
@@ -46,6 +47,18 @@ export default function CreatorModeHost({
   gameLabel = "game",
   children = null,
 }) {
+  // UX plan P1-1: record the play when the REAL game session starts
+  // (autoStart flips true — the same signal Creator Mode records on), so
+  // the casino lobby can show a "Recently played" strip. Fire once per
+  // autoStart edge; best-effort, never blocks the game.
+  const prevAutoStartRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && !prevAutoStartRef.current) {
+      recordPlayedGame(gameLabel);
+    }
+    prevAutoStartRef.current = autoStart;
+  }, [autoStart, gameLabel]);
+
   return (
     <CreatorModeProvider
       autoStart={autoStart}

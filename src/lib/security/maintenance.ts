@@ -16,6 +16,7 @@ import {
 const CACHE_TTL_MS = 10_000;
 
 let cache: { value: boolean; expiresAt: number } | null = null;
+let inflight: Promise<boolean> | null = null;
 
 function readCached(): boolean | null {
   if (cache && cache.expiresAt > Date.now()) return cache.value;
@@ -36,21 +37,36 @@ export async function isMaintenanceMode(): Promise<boolean> {
   const cached = readCached();
   if (cached !== null) return cached;
 
-  try {
-    const row = await db
-      .select({ value: appSettings.value })
-      .from(appSettings)
-      .where(eq(appSettings.key, MAINTENANCE_MODE_KEY))
-      .limit(1)
-      .then((rows) => rows[0]);
+  // Deduplicate concurrent lookups: the flag is checked on every request,
+  // so a page-load burst would otherwise fire N identical queries at once
+  // (and N identical failure logs when the DB is down).
+  if (inflight) return inflight;
 
-    const on = row?.value === MAINTENANCE_MODE_ON;
-    writeCache(on);
-    return on;
-  } catch (err) {
-    console.warn("[maintenance] flag lookup failed, treating as off:", (err as Error).message);
-    return false;
-  }
+  inflight = (async () => {
+    try {
+      const row = await db
+        .select({ value: appSettings.value })
+        .from(appSettings)
+        .where(eq(appSettings.key, MAINTENANCE_MODE_KEY))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      const on = row?.value === MAINTENANCE_MODE_ON;
+      writeCache(on);
+      return on;
+    } catch (err) {
+      // Fail open — a DB hiccup must never take the whole site down. Also
+      // negative-cache the failure briefly so a down/slow DB isn't
+      // re-queried (and re-logged) on every single request.
+      console.warn("[maintenance] flag lookup failed, treating as off:", (err as Error).message);
+      writeCache(false);
+      return false;
+    } finally {
+      inflight = null;
+    }
+  })();
+
+  return inflight;
 }
 
 /** Flip the maintenance flag and invalidate the cache immediately. */

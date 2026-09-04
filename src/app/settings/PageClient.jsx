@@ -6,6 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconShield, IconSettings, IconShoppingBag, IconUser, IconVolume } from "@tabler/icons-react";
 import NavigationBar from "../../components/navigation-bar";
 import SoundToggle from "../../components/SoundToggle";
+import { useToast } from "../../components/toast/ToastProvider";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTranslation } from "../../hooks/useTranslation";
 import { WAGER_GAMES } from "../../lib/defaultWagers";
@@ -21,6 +22,10 @@ export default function SettingsPageClient() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { language, setLanguage } = useLanguage();
   const { t } = useTranslation();
+  // Global branded toasts (UX plan P0-1): save/security successes toast;
+  // errors stay inline next to the field (Law 15 — tell the user how to
+  // fix it in place).
+  const { showToast } = useToast();
   const [isAdmin, setIsAdmin] = useState(false);
 
   // ── Responsible play: daily loss limit (moved from the profile page) ──
@@ -181,15 +186,14 @@ export default function SettingsPageClient() {
       const data = await response.json();
       if (response.ok && data?.success) {
         setLossLimit(limit);
-        setLossLimitMsg({
-          ok: true,
-          text:
-            limit === null
-              ? "Using the global default warning."
-              : limit === 0
-                ? "Warnings disabled."
-                : `Warn me when I'm down ${limit.toLocaleString()} tokens in a day.`,
-        });
+        showToast(
+          limit === null
+            ? "Using the global default warning."
+            : limit === 0
+              ? "Warnings disabled."
+              : `Warn me when I'm down ${limit.toLocaleString()} tokens in a day.`,
+          "success",
+        );
       } else {
         setLossLimitMsg({ ok: false, text: data?.error || "Failed to save." });
       }
@@ -212,7 +216,7 @@ export default function SettingsPageClient() {
       const data = await res.json();
       if (res.ok && data.success) {
         setMfaOtpSent(true);
-        setMfaMsg({ ok: true, text: "Code sent to your email. It expires in 5 minutes." });
+        showToast("Code sent to your email. It expires in 5 minutes.", "success");
       } else {
         setMfaMsg({ ok: false, text: data.error || "Failed to send the code." });
       }
@@ -242,10 +246,10 @@ export default function SettingsPageClient() {
         setMfaEnabled(true);
         setMfaOtpSent(false);
         setMfaCode("");
-        setMfaMsg({
-          ok: true,
-          text: "Two-factor authentication is now on. A code will be required on new sessions for 24h windows.",
-        });
+        showToast(
+          "Two-factor authentication is now on. A code will be required on new sessions for 24h windows.",
+          "success",
+        );
       } else {
         setMfaMsg({ ok: false, text: data.error || "Verification failed." });
       }
@@ -271,7 +275,7 @@ export default function SettingsPageClient() {
       const data = await res.json();
       if (res.ok && data.success) {
         setMfaEnabled(false);
-        setMfaMsg({ ok: true, text: "Two-factor authentication is off." });
+        showToast("Two-factor authentication is off.", "success");
       } else {
         setMfaMsg({ ok: false, text: data.error || "Failed to disable." });
       }
@@ -295,7 +299,7 @@ export default function SettingsPageClient() {
       const data = await res.json();
       if (res.ok && data.success) {
         setPrefs({ ...data.prefs });
-        setPrefsMsg({ ok: true, text: "Notification preferences saved." });
+        showToast("Notification preferences saved.", "success");
       } else {
         setPrefsMsg({ ok: false, text: data.error || "Failed to save." });
       }
@@ -330,7 +334,7 @@ export default function SettingsPageClient() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setWagerMsg({ ok: true, text: "Default wagers saved. They apply the next time you open a game." });
+        showToast("Default wagers saved. They apply the next time you open a game.", "success");
       } else {
         setWagerMsg({ ok: false, text: data.error || "Failed to save." });
       }

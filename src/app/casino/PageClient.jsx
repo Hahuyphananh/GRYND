@@ -28,23 +28,68 @@ import ImgMemoryGrid from "../../images/memorygridimage.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
+import { IconClock } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
 import OnboardingTour, { getTourStorageKey } from "../../components/OnboardingTour";
 import CreatorModeLobby from "../../components/creator-mode/CreatorModeLobby";
 import { buildCreatorHref } from "../../lib/creator-mode/client";
+import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
+
+// sessionStorage keys for the lobby's persisted state (UX plan P1-1): the
+// search box + active filter survive a refresh / back-navigation within the
+// browser session, so a returning player lands where they left off instead
+// of re-scanning the full grid.
+const LOBBY_SEARCH_KEY = "grynd.lobby.search.v1";
+const LOBBY_FILTER_KEY = "grynd.lobby.filter.v1";
+
+function readStored(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    return window.sessionStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function MainComponent() {
   const { user } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [search, setSearch] = useState(() => readStored(LOBBY_SEARCH_KEY, ""));
+  const [activeFilter, setActiveFilter] = useState(() => {
+    const stored = readStored(LOBBY_FILTER_KEY, "all");
+    console.log("[LOBBYDBG] filter init from storage:", stored);
+    return ["all", "popular", "skill", "newest"].includes(stored) ? stored : "all";
+  });
+  const [recentGames, setRecentGames] = useState([]);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTour, setShowTour] = useState(false);
   // Creator Mode (admin-only): when enabled, game links carry ?creator=1
   // so the shared CreatorModeProvider inside each game picks it up.
   const [creatorModeEnabled, setCreatorModeEnabled] = useState(false);
   const { t } = useTranslation();
+
+  // Persist search + filter for the session (UX plan P1-1). Written on
+  // every change; read once on mount via the lazy initializers above.
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(LOBBY_SEARCH_KEY, search);
+    } catch {}
+  }, [search]);
+
+  useEffect(() => {
+    console.log("[LOBBYDBG] filter effect writing:", activeFilter);
+    try {
+      window.sessionStorage.setItem(LOBBY_FILTER_KEY, activeFilter);
+    } catch {}
+  }, [activeFilter]);
+
+  // Recently played (UX plan P1-1): read once on mount. Games record a
+  // play through <CreatorModeHost /> (autoStart edge), so returning to
+  // the lobby shows a "Play again" strip of the last sessions.
+  useEffect(() => {
+    setRecentGames(getPlayedGames());
+  }, []);
 
   // Phase-2 onboarding: continues right after the thank-you page tour.
   useEffect(() => {
@@ -100,6 +145,7 @@ function MainComponent() {
       name: "Mines Duel",
       href: "/casino/mines-pvp",
       leaderboardKey: "mines-pvp",
+      recencyKey: "mines-duel",
       image: ImgMinesPvp,
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.mines_pvp_desc",
@@ -121,6 +167,7 @@ function MainComponent() {
       name: "Plinko",
       href: "/casino/plinko",
       leaderboardKey: "plinko",
+      recencyKey: "plinko-duel",
       image: Img4,
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.plinko_desc",
@@ -164,6 +211,7 @@ function MainComponent() {
       name: "Neon Flush",
       href: "/casino/neon-flush",
       leaderboardKey: "uno",
+      recencyKey: "uno-multiplayer",
       image: Img11,
       descriptionKey: "games.uno_desc",
     },
@@ -171,6 +219,7 @@ function MainComponent() {
       name: "Roche-Papier-Ciseaux",
       href: "/casino/rps",
       leaderboardKey: "rps",
+      recencyKey: "rock-paper-scissors",
       image: Img12,
       descriptionKey: "games.rps_desc",
       nameKey: "games.rps_name",
@@ -196,6 +245,7 @@ function MainComponent() {
       name: "Lane Rush Duel",
       href: "/casino/lane-runner",
       leaderboardKey: "lane-runner",
+      recencyKey: "lane-rush-duel",
       image: ImgLaneRush,
       // Gentler hover zoom so the twin towers stay fully visible.
       imageClassName: "group-hover:scale-[1.03]",
@@ -298,6 +348,12 @@ function MainComponent() {
     displayedGames = displayedGames.filter((g) => g.popular);
   }
 
+  // Games at the top of the newest order get a "NEW" badge on their card.
+  // Ordered newest-first (see `newestOrder` below), so the first N entries
+  // are the most recently shipped games.
+  const NEW_BADGE_COUNT = 4;
+  const newestKeys = newestOrder.slice(0, NEW_BADGE_COUNT);
+
   if (activeFilter === "skill") {
     displayedGames = displayedGames.filter((g) => skillGameKeys.has(g.leaderboardKey));
   }
@@ -319,13 +375,35 @@ function MainComponent() {
 
   const GameCard = ({ game }) => (        <div className="group relative overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
       <Link href={buildCreatorHref(game.href, creatorModeEnabled)} className="block cursor-pointer" aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}>
-        <div className="mb-3 aspect-video overflow-hidden rounded-lg">
+        <div className="mb-3 relative aspect-video overflow-hidden rounded-lg">
           <Image
             src={game.image}
             alt={game.nameKey ? t(game.nameKey) : game.name}
             quality={90}
             className={`h-full w-full object-cover object-center transition-transform group-hover:scale-110 ${game.imageClassName || ""}`}
           />
+          {/* Popular / New badges — brand neon pills over the card art.
+              Purely informational chrome: aria-hidden so screen readers
+              don't double-announce what the game title already says. */}
+          {/* NEW takes priority: the newest games always carry the recency
+              badge even when they're also popular, so the recency signal is
+              unambiguous (popularity stays discoverable via the filter). */}
+          {newestKeys.includes(game.leaderboardKey) && (
+            <span
+              aria-hidden="true"
+              className="absolute right-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm"
+            >
+              {t("home.casino_lobby.badge_new")}
+            </span>
+          )}
+          {game.popular && !newestKeys.includes(game.leaderboardKey) && (
+            <span
+              aria-hidden="true"
+              className="absolute right-2 top-2 rounded-full border border-[#f5ff3b]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b] shadow-[0_0_10px_rgba(245,255,59,0.45)] backdrop-blur-sm"
+            >
+              {t("home.casino_lobby.badge_hot")}
+            </span>
+          )}
         </div>
 
         <h3 className="mb-2 text-base font-bold text-[#f5ff3b] md:text-lg">
@@ -466,6 +544,65 @@ function MainComponent() {
         <div className="mb-8 flex justify-center">
           <CreatorModeLobby onChange={setCreatorModeEnabled} />
         </div>
+
+        {/* Recently played (UX plan P1-1) — the last games the player
+            actually started this session, newest first. Shown only on the
+            unfiltered view: once the player searches or picks a filter,
+            the grid below is what they asked for and the strip would just
+            compete with it. Games record a play via <CreatorModeHost />'s
+            autoStart edge, so this is per-user and per-session. */}
+        {search.trim().length === 0 &&
+          activeFilter === "all" &&
+          recentGames.length > 0 && (
+            <section className="mb-8" aria-label={t("home.casino_lobby.recently_played")}>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight text-[#f5ff3b] sm:text-xl">
+                  <IconClock size={18} className="text-[#00e5ff]" aria-hidden="true" />
+                  {t("home.casino_lobby.recently_played")}
+                </h2>
+                <button
+                  onClick={() => {
+                    clearPlayedGames();
+                    setRecentGames([]);
+                  }}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-[#9dd8ff] transition hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                >
+                  {t("home.casino_lobby.clear_recent")}
+                </button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {recentGames.map((label) => {
+                  const game = games.find((g) => (g.recencyKey || g.leaderboardKey) === label);
+                  if (!game) return null;
+                  return (
+                    <Link
+                      key={label}
+                      href={buildCreatorHref(game.href, creatorModeEnabled)}
+                      className="group w-40 shrink-0 overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_24px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
+                      aria-label={`${t("home.casino_lobby.play_again")}: ${game.nameKey ? t(game.nameKey) : game.name}`}
+                    >
+                      <div className="relative aspect-video overflow-hidden">
+                        <Image
+                          src={game.image}
+                          alt=""
+                          quality={85}
+                          className="h-full w-full object-cover object-center transition-transform group-hover:scale-110"
+                        />
+                      </div>
+                      <div className="px-3 py-2">
+                        <p className="truncate text-sm font-bold text-[#f5ff3b]">
+                          {game.nameKey ? t(game.nameKey) : game.name}
+                        </p>
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-[#00e5ff]">
+                          {t("home.casino_lobby.play_again")}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
         {displayedGames.length > 0 && (
           <>

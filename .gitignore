@@ -80,3 +80,6 @@ next-env.d.ts
 
 # Load-test session tokens (one per VU)
 load-test/tokens.csv
+
+# Database backups (contain real user data — never commit them)
+/backups/
