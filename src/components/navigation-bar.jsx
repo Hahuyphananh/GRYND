@@ -6,7 +6,6 @@ import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
 import AddFundsModal from "./AddFundsModal";
 import Link from "next/link";
-import { useLanguage } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { useTranslation } from "../hooks/useTranslation";
 import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
@@ -14,8 +13,7 @@ import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import BattlepassClaimBadge from "./BattlepassClaimBadge";
-import SoundToggle from "./SoundToggle";
-import { IconCoins, IconDeviceMobile, IconFlame, IconGlobe, IconHelp, IconMail, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
+import { IconCoins, IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
 import IconAvatar from "./IconAvatar";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
@@ -41,7 +39,6 @@ const NAV_TRANSLATION_KEYS = {
 function NavigationBar({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { getToken } = useAuth();
-  const { language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
   const pathname = usePathname();
@@ -67,8 +64,6 @@ function NavigationBar({ currentPath = "" }) {
   const [prestigeNotice, setPrestigeNotice] = useState(null);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [langOpen, setLangOpen] = useState(false);
-  const [langClosing, setLangClosing] = useState(false);
   const [level, setLevel] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -107,12 +102,6 @@ function NavigationBar({ currentPath = "" }) {
   const navVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const itemVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const { canInstall, install } = useInstallPWA();
-
-  const closeLang = () => {
-    setLangClosing(true);
-    setLangOpen(false);
-    setTimeout(() => setLangClosing(false), 400);
-  };
 
   const isIOS = typeof window !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
@@ -290,24 +279,6 @@ function NavigationBar({ currentPath = "" }) {
     if (isSignedIn) fetchBalance({ includeMeta: true });
   }, [isSignedIn]);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (!e.target.closest(".relative")) setLangOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Close language dropdown on Escape — per accessibility policy promise
-  useEffect(() => {
-    if (!langOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape") closeLang();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [langOpen, closeLang]);
-
   // Close mobile menu on Escape — per accessibility policy promise
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -418,7 +389,7 @@ function NavigationBar({ currentPath = "" }) {
                 alt="GRYND Logo"
                 width={92}
                 height={95}
-                className="h-[84px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[92px]"
+                className="h-[74px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[82px]"
               />
             </Link>
 
@@ -447,19 +418,18 @@ function NavigationBar({ currentPath = "" }) {
                 </motion.div>
               ))}
               <motion.div
-                key="/contact"
-                className="hidden 2xl:flex"
+                key="/settings"
                 initial={itemVariant.initial}
                 animate={itemVariant.animate}
                 transition={itemVariant.transition}
                 whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
               >
                 <Link
-                  href="/contact"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/contact" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                  href="/settings"
+                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
-                    <IconMail size={15} className="shrink-0" /> Contact
+                    <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
                   </span>
                 </Link>
               </motion.div>
@@ -480,42 +450,6 @@ function NavigationBar({ currentPath = "" }) {
                   </span>
                 </Link>
               </motion.div>
-              <motion.div
-                key="/faq"
-                className="hidden 2xl:flex"
-                initial={itemVariant.initial}
-                animate={itemVariant.animate}
-                transition={itemVariant.transition}
-                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
-              >
-                <Link
-                  href="/faq"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/faq" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconHelp size={15} className="shrink-0" /> FAQ
-                  </span>
-                </Link>
-              </motion.div>
-              {isAdmin && isSignedIn && (
-                <motion.div
-                  key="/admin"
-                  className="hidden 2xl:flex"
-                  initial={itemVariant.initial}
-                  animate={itemVariant.animate}
-                  transition={itemVariant.transition}
-                  whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
-                >
-                  <Link
-                    href="/admin"
-                    className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff8c42] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/admin" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#ff8c42] hover:text-[#ffb347]"}`}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconSettings size={15} className="shrink-0" /> Admin
-                    </span>
-                  </Link>
-                </motion.div>
-              )}
             </motion.div>
 
             {/* shrink-0: the right-side cluster must never be squeezed off
@@ -530,71 +464,6 @@ function NavigationBar({ currentPath = "" }) {
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
               )}
-              <SoundToggle />
-              <div className="relative">
-                <button
-                  onClick={() => (langOpen ? closeLang() : setLangOpen(true))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      langOpen ? closeLang() : setLangOpen(true);
-                    }
-                  }}
-                  aria-expanded={langOpen}
-                  aria-label={`Select language, currently ${language === "en" ? "English" : language === "fr" ? "French" : "Spanish"}`}
-                  className="cursor-pointer rounded-lg border border-[#00e5ff]/50 bg-[#091737] px-2 py-1 text-xs text-[#c9f7ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] sm:text-sm"
-                >
-                  {language === "en" && (
-                    <span className="inline-flex items-center gap-1">
-                      EN <IconGlobe size={14} />
-                    </span>
-                  )}
-                  {language === "fr" && (
-                    <span className="inline-flex items-center gap-1">
-                      FR <IconGlobe size={14} />
-                    </span>
-                  )}
-                  {language === "es" && (
-                    <span className="inline-flex items-center gap-1">
-                      ES <IconGlobe size={14} />
-                    </span>
-                  )}
-                </button>
-
-                {(langOpen || langClosing) && (
-                  <div
-                    className={`absolute right-0 mt-2 w-full ${langOpen ? "animate-parchment" : "animate-parchment-close"}`}
-                  >
-                    <div role="menu" className="overflow-hidden rounded-lg border border-[#00e5ff]/50 bg-[#091737] shadow-lg">
-                      {[
-                        { value: "en", label: "EN" },
-                        { value: "fr", label: "FR" },
-                        { value: "es", label: "ES" },
-                      ].map((lang) => (
-                        <button
-                          key={lang.value}
-                          onClick={() => {
-                            setLanguage(lang.value);
-                            closeLang();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setLanguage(lang.value);
-                              closeLang();
-                            }
-                          }}
-                          role="menuitem"
-                          className="w-full text-left cursor-pointer px-2 py-1 text-sm text-[#c9f7ff] hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:bg-[#00e5ff]/20"
-                        >
-                          {lang.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {isLoaded && isSignedIn ? (
                 <>
                   <div className="hidden items-center space-x-4 lg:flex">
@@ -765,12 +634,12 @@ function NavigationBar({ currentPath = "" }) {
                   </Link>
                 ))}
                   <Link
-                    href="/contact"
+                    href="/settings"
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
                     <span className="inline-flex items-center gap-1.5">
-                      <IconMail size={15} className="shrink-0" /> Contact
+                      <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
                     </span>
                   </Link>
                   <Link
@@ -782,26 +651,6 @@ function NavigationBar({ currentPath = "" }) {
                       <IconShoppingBag size={15} className="shrink-0" /> Shop
                     </span>
                   </Link>
-                  <Link
-                    href="/faq"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconHelp size={15} className="shrink-0" /> FAQ
-                    </span>
-                  </Link>
-                {isAdmin && isSignedIn && (
-                <Link
-                  href="/admin"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block rounded-lg bg-[#091737] px-3 py-2 text-[#ff8c42]"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconSettings size={15} className="shrink-0" /> Admin
-                  </span>
-                </Link>
-              )}
             </div>
               {!isSignedIn && (
                 <div className="grid grid-cols-2 gap-2">

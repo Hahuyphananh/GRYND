@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { AnimatePresence, motion } from "framer-motion";
 // @ts-ignore: no types for canvas-confetti in this project
 import confetti from "canvas-confetti";
@@ -345,7 +346,7 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
 
 export default function DiceFlushPage() {
   const { isSignedIn, user } = useUser();
-  const [wager, setWager] = useState(100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
+  const [wager, setWager] = useDefaultWager("dice-flush", 100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"pvp" | "ai">("pvp");
   const [joiningId, setJoiningId] = useState<string | null>(null); const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
   const [showRules, setShowRules] = useState(false);

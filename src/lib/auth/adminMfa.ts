@@ -108,3 +108,26 @@ export async function isSecondFactorSatisfied(
 ): Promise<boolean> {
   return hasRecentMfa(factorVerificationAge) || (await verifyAdminMfaToken(token, userId));
 }
+
+// ── User-level MFA (regular accounts) ──────────────────────────────────────
+// Same self-hosted mechanism as the admin gate, but for any signed-in user
+// who opts in via Settings → Account Security. The token format is identical
+// (HMAC-signed payload bound to the user id + expiry); only the cookie name
+// differs so the two gates don't clobber each other. A token issued by either
+// flow satisfies both gates (the middleware checks both cookies), so an admin
+// with user MFA enabled never gets bounced between two MFA pages.
+
+export const USER_MFA_COOKIE = "user_mfa";
+export const USER_MFA_MAX_AGE_MS = ADMIN_MFA_MAX_AGE_MS;
+export const USER_MFA_MAX_AGE_SECONDS = Math.floor(USER_MFA_MAX_AGE_MS / 1000);
+
+export async function issueUserMfaToken(userId: string): Promise<string> {
+  return issueAdminMfaToken(userId);
+}
+
+export async function verifyUserMfaToken(
+  token: string | undefined,
+  userId: string,
+): Promise<boolean> {
+  return verifyAdminMfaToken(token, userId);
+}

@@ -21,6 +21,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -68,7 +69,7 @@ export default function LaneRushDuelLobbyPage() {
   const { socket } = useSocket();
 
   // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useState(50);
+  const [stake, setStake] = useDefaultWager("lane-runner", 50);
   const [difficulty, setDifficulty] = useState("easy");
 
   // ── Lobby state ───────────────────────────────────────────────────

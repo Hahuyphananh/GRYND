@@ -9,6 +9,7 @@
 //   * Live list of open lobbies (polled every 3s + realtime nudge).
 
 import { useEffect, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
@@ -25,7 +26,7 @@ export default function RPSLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
-  const [betAmount, setBetAmount] = useState(10);
+  const [betAmount, setBetAmount] = useDefaultWager("rps", 10);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);

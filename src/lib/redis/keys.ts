@@ -68,6 +68,15 @@ export const CacheKeys = {
   userAge: (clerkId: string) => `${PREFIX}:user:age:${clerkId}`,
   userAgeAll: `${PREFIX}:user:age:*`,
 
+  // ── User-MFA flag lookup (middleware) ────────────────────────
+  // Caches `users.mfa_enabled` for the middleware user-MFA gate so a page
+  // load doesn't hit the DB on every navigation. The flag only changes on
+  // an explicit enable/disable in Settings, and the security routes
+  // invalidate the key directly (cacheDelete) so the TTL is just a
+  // safety net.
+  userMfa: (clerkId: string) => `${PREFIX}:user:mfa:${clerkId}`,
+  userMfaAll: `${PREFIX}:user:mfa:*`,
+
   // ── Friend presence ────────────────────────────────────────
   // Short-lived per-user cache for the friends game-presence feed so
   // multiple tabs/screens don't each run a friend_relations join on every
@@ -119,6 +128,10 @@ export const CacheTTL = {
   /** Age-gate value: 15 min — birthdate changes are rare and the
       update-birthdate flow could invalidate the cache directly. */
   userAge: 15 * 60,
+
+  /** User-MFA flag: 5 min safety net — the security routes invalidate it
+      directly on enable/disable. */
+  userMfa: 5 * 60,
 
   /** Friend presence: 10s — online status tolerates a few seconds of
       staleness and the client polls every 60s anyway. */

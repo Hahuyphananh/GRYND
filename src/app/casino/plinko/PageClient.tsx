@@ -24,6 +24,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -91,7 +92,7 @@ export default function PlinkoPvpLobbyPage() {
   const { socket } = useSocket();
 
   // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useState<number>(50);
+  const [stake, setStake] = useDefaultWager("plinko", 50);
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
@@ -169,7 +170,7 @@ export default function OddsPage() {
 function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const PICK_TIMER_SECONDS = 15;
 
-  const [wager, setWager] = useState(50);
+  const [wager, setWager] = useDefaultWager("odds", 50);
   const [loading, setLoading] = useState(false);
   const [gameId, setGameId] = useState<number | null>(null);
   const [interactiveState, setInteractiveState] = useState<InteractiveOddsStateType | null>(null);
@@ -757,7 +758,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const { socket } = useSocket();
 
   // ── Lobby state ──
-  const [wager, setWager] = useState(50);
+  const [wager, setWager] = useDefaultWager("odds", 50);
   const [userId, setUserId] = useState<string | null>(null);
   const [games, setGames] = useState<any[]>([]);
   const [myGameId, setMyGameId] = useState<number | null>(null);

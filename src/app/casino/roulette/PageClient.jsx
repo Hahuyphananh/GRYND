@@ -25,6 +25,7 @@
 // blackjack layout / farkle color scheme.
 
 import { useEffect, useRef, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -58,7 +59,7 @@ export default function RoulettePvpLobbyPage() {
     if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
   };
 
-  const [stake, setStake] = useState(50);
+  const [stake, setStake] = useDefaultWager("roulette", 50);
   const [availableMatches, setAvailableMatches] = useState([]);
   const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);

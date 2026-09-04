@@ -14,6 +14,7 @@
 //     for the rationale.
 
 import { useCallback, useEffect, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
@@ -43,7 +44,7 @@ export default function PrecisionLobbyPage() {
   const { t } = useTranslation();
   const { isSignedIn, user } = useUser();
   const [lobbies, setLobbies] = useState<PrecisionLobby[]>([]);
-  const [wager, setWager] = useState<number>(DEFAULT_WAGER);
+  const [wager, setWager] = useDefaultWager("precision", DEFAULT_WAGER);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

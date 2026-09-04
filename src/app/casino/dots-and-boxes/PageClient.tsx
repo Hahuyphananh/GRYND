@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
@@ -19,7 +20,7 @@ export default function DotsAndBoxesLobbyPage() {
   const posthog = usePostHog();
   const { t } = useTranslation();
 
-  const [betAmount, setBetAmount] = useState(10);
+  const [betAmount, setBetAmount] = useDefaultWager("dots-and-boxes", 10);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
