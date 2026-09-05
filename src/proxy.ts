@@ -34,6 +34,11 @@ const isPublicRoute = createRouteMatcher([
   "/games",
   "/sync",
   "/thank-you",
+  // /welcome is the first-time onboarding flow shown to brand-new accounts
+  // right after /sync. Like /sync and /thank-you it must stay reachable
+  // BEFORE the user has set their age (/complete-profile gate) — the page
+  // itself bounces signed-out visitors to the public home.
+  "/welcome",
   "/classement",
   "/profil(.*)",
   "/casino/blackjack(.*)",

@@ -22,6 +22,7 @@ import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay, auto-starts when the match actually begins (a real
 // round_1..N is in play, i.e. left the waiting room) and auto-stops once
@@ -54,13 +55,11 @@ import {
   IconCoins,
   IconHeartHandshake,
   IconTrophy,
-  IconSkull,
   IconCircleX,
   IconNotebook,
   IconX,
   IconTarget,
   IconVolume,
-  IconRefresh,
   IconClock,
 } from "@tabler/icons-react";
 import { PoolBallIcon } from "../../../../components/icons/CustomIcons";
@@ -1077,10 +1076,14 @@ function RulesModal({ onClose }) {
   );
 }
 
-// ── Result modal ──────────────────────────────────────────────────────
+// ── Result screen — shared PvpResultScreen (UX plan P3-3) ─────────
+// End-of-match adapter: maps the real match result / payout / score
+// fields onto the shared result screen. No invented values — sections
+// without data (XP, Battle Pass, duration…) simply don't render. The
+// old bespoke MATCH DRAW / YOU WON modal is gone; the per-round
+// breakdown lives under the screen's expandable Match Details.
 function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts, oppPts, onLobby }) {
   const router = useRouter();
-  const [showReveal, setShowReveal] = useState(false);
   const result = match.result;
   const iWon = result === me;
   const drew = result === "draw";
@@ -1088,99 +1091,106 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
   // Normal draws refund in full (houseFee = 0 → net 0). An OVERTIME
   // tie takes 5% of each stake (10% total, stored in houseFee) — each
   // player's net is −(houseFee / 2).
-  const net = useMemo(() => {
-    if (drew) return -(Number(match.houseFee) || 0) / 2;
-    return iWon ? Number(match.prizePaid) - Number(match.stakeAmount) : -Number(match.stakeAmount);
-  }, [match, iWon, drew]);
+  const net = drew
+    ? -(Number(match.houseFee) || 0) / 2
+    : iWon
+      ? Number(match.prizePaid) - Number(match.stakeAmount)
+      : -Number(match.stakeAmount);
 
   const tieFee = drew ? Number(match.houseFee) || 0 : 0;
-
   const winnerName = result === "player1" ? p1Name : p2Name;
+  const oppName = me === "player1" ? p2Name : p1Name;
+  const outcome = drew ? "draw" : iWon ? "win" : "loss";
+  const stakeTokens = Number(match.stakeAmount) || 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-[#00e5ff]/40 bg-[#050d1f]/95 p-6 shadow-[0_0_40px_rgba(0,229,255,0.25)] max-h-[92vh] overflow-y-auto">
-        <div className="text-center mb-4">
-          <p className="mb-2 flex justify-center">{drew ? <IconHeartHandshake size={48} className="text-white/70" /> : iWon ? <IconTrophy size={48} className="text-[#00ffa6]" /> : <IconSkull size={48} className="text-red-400" />}</p>
-          <h2 className={`text-2xl sm:text-3xl font-extrabold ${
-            drew ? "text-white/70" : iWon ? "text-[#00ffa6]" : "text-red-400"
-          }`}>
-            {drew ? "MATCH DRAW" : iWon ? "YOU WON!" : `${winnerName} WON`}
-          </h2>
-          <p className="text-sm text-white/60 mt-1">
-            {myPts} – {oppPts} pts · {myWins} – {oppWins} round wins
-          </p>
-          {tieFee > 0 && (
-            <p className="mt-1 text-xs text-amber-300/90">
-              Overtime ended tied. No winner, 5% rake per player
-            </p>
+    <PvpResultScreen
+      open
+      outcome={outcome}
+      headline={
+        drew
+          ? tieFee > 0
+            ? "Overtime ended tied — no winner"
+            : "Stake refunded"
+          : `${myPts} – ${oppPts} pts · ${myWins} – ${oppWins} round wins`
+      }
+      subline={
+        drew && tieFee > 0
+          ? "Both players keep 95% of their stake (5% rake each)."
+          : outcome === "loss"
+            ? `${winnerName} takes the pot.`
+            : undefined
+      }
+      gameName="Keno Duel"
+      opponent={
+        match.isAi ? { name: "GRYND AI", isAi: true } : { name: oppName }
+      }
+      tokenDelta={net}
+      summary={[
+        { label: "Score", value: `${myPts} – ${oppPts} pts` },
+        { label: "Round wins", value: `${myWins} – ${oppWins}` },
+      ]}
+      details={
+        [
+          ...(match.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
+          { label: "Wager", value: `${stakeTokens.toLocaleString()} tokens` },
+          ...(iWon
+            ? [{ label: "Payout", value: `${(Number(match.prizePaid) || 0).toLocaleString()} tokens` }]
+            : []),
+          ...(drew && tieFee > 0
+            ? [{ label: "Rake (5% each)", value: `${tieFee.toLocaleString()} tokens` }]
+            : []),
+          { label: "Winner", value: drew ? "Draw" : winnerName },
+        ]
+      }
+      detailsContent={
+        <div className="mt-2 space-y-2">
+          {rounds.length === 0 && (
+            <p className="text-xs text-white/40 text-center">No completed rounds (forfeit).</p>
           )}
-          <p className={`mt-2 text-xl font-black ${drew ? (tieFee > 0 ? "text-amber-300" : "text-white/60") : iWon ? "text-[#00ffa6]" : "text-red-400"}`}>
-            {drew
-              ? tieFee > 0
-                ? <span className="inline-flex items-center gap-1">Tie. 95% refunded ({net < 0 ? "−" : "+"}{Math.abs(net).toLocaleString()} <IconCoins size={14} />)</span>
-                : "Stake refunded"
-              : <span className="inline-flex items-center gap-1">{iWon ? "+" : "−"}{Math.abs(net).toLocaleString()} <IconCoins size={14} /></span>}
-          </p>
-        </div>
-
-        {/* Rounds reveal */}
-        <button
-          onClick={() => setShowReveal((v) => !v)}
-          className="w-full mb-4 rounded-lg bg-[#0b224f]/80 border border-[#00e5ff]/25 px-3 py-2 text-sm font-bold text-[#7cefff] hover:border-[#00e5ff]/60 transition"
-        >
-          {showReveal ? "Hide" : "Reveal"} round results
-        </button>
-        {showReveal && (
-          <div className="space-y-2 mb-4 max-h-56 overflow-y-auto pr-1">
-            {rounds.length === 0 && (
-              <p className="text-xs text-white/40 text-center">No completed rounds (forfeit).</p>
-            )}
-            {rounds.map((r) => {
-              const rWinner = r.roundWinner === "player1" ? p1Name : r.roundWinner === "player2" ? p2Name : "Draw";
-              return (
-                <div key={r.id} className="rounded-lg bg-[#08142f]/80 border border-white/10 p-2.5 text-xs">
-                  <div className="flex justify-between mb-1.5">
-                    <span className="font-bold text-[#FFD700]">Round {r.roundNumber}</span>
-                    <span className="text-white/60">{r.player1Score} – {r.player2Score} · winner: {rWinner}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="text-white/40 mr-1">P1:</span>
-                    {r.player1Catches.map((c) => (
-                      <span key={c.number} className={`px-1.5 rounded ${c.quality === "perfect" ? "bg-emerald-500/20 text-emerald-300" : "bg-cyan-500/15 text-cyan-200"}`}>
-                        {c.number}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    <span className="text-white/40 mr-1">P2:</span>
-                    {r.player2Catches.map((c) => (
-                      <span key={c.number} className={`px-1.5 rounded ${c.quality === "perfect" ? "bg-emerald-500/20 text-emerald-300" : "bg-cyan-500/15 text-cyan-200"}`}>
-                        {c.number}
-                      </span>
-                    ))}
-                  </div>
+          {rounds.map((r) => {
+            const rWinner =
+              r.roundWinner === "player1" ? p1Name : r.roundWinner === "player2" ? p2Name : "Draw";
+            return (
+              <div
+                key={r.id}
+                className="rounded-lg border border-white/10 bg-[#08142f]/80 p-2.5 text-xs"
+              >
+                <div className="mb-1.5 flex justify-between">
+                  <span className="font-bold text-[#FFD700]">Round {r.roundNumber}</span>
+                  <span className="text-white/60">
+                    {r.player1Score} – {r.player2Score} · winner: {rWinner}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <button
-            onClick={onLobby}
-            className="flex-1 rounded-lg bg-[#00e5ff] text-[#001933] py-3 font-bold hover:shadow-[0_0_20px_rgba(0,229,255,0.6)] transition"
-          >
-            Back to Lobby
-          </button>
-          <button
-            onClick={() => router.push("/casino/keno")}
-            className="flex-1 rounded-lg bg-gradient-to-r from-[#00e5ff] to-[#00ffa6] text-[#001933] py-3 font-bold hover:shadow-[0_0_20px_rgba(0,255,166,0.6)] transition"
-          >
-            <span className="inline-flex items-center gap-1.5"><IconRefresh size={16} /> New Match</span>
-          </button>
+                <div className="flex flex-wrap gap-1">
+                  <span className="mr-1 text-white/40">P1:</span>
+                  {r.player1Catches.map((c) => (
+                    <span
+                      key={c.number}
+                      className={`rounded px-1.5 ${c.quality === "perfect" ? "bg-emerald-500/20 text-emerald-300" : "bg-cyan-500/15 text-cyan-200"}`}
+                    >
+                      {c.number}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <span className="mr-1 text-white/40">P2:</span>
+                  {r.player2Catches.map((c) => (
+                    <span
+                      key={c.number}
+                      className={`rounded px-1.5 ${c.quality === "perfect" ? "bg-emerald-500/20 text-emerald-300" : "bg-cyan-500/15 text-cyan-200"}`}
+                    >
+                      {c.number}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
-    </div>
+      }
+      playAgain={{ label: "Play Again", onClick: onLobby }}
+      onReturnToLobby={() => router.push("/casino")}
+    />
   );
 }

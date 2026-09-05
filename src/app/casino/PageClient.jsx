@@ -30,7 +30,6 @@ import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
 import { IconClock } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
-import OnboardingTour, { getTourStorageKey } from "../../components/OnboardingTour";
 import CreatorModeLobby from "../../components/creator-mode/CreatorModeLobby";
 import { buildCreatorHref } from "../../lib/creator-mode/client";
 import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
@@ -63,7 +62,7 @@ function MainComponent() {
   });
   const [recentGames, setRecentGames] = useState([]);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
-  const [showTour, setShowTour] = useState(false);
+
   // Creator Mode (admin-only): when enabled, game links carry ?creator=1
   // so the shared CreatorModeProvider inside each game picks it up.
   const [creatorModeEnabled, setCreatorModeEnabled] = useState(false);
@@ -90,25 +89,6 @@ function MainComponent() {
   useEffect(() => {
     setRecentGames(getPlayedGames());
   }, []);
-
-  // Phase-2 onboarding: continues right after the thank-you page tour.
-  useEffect(() => {
-    if (!user) return;
-    const key = getTourStorageKey(user.id);
-    if (localStorage.getItem(key) === "casino") setShowTour(true);
-  }, [user]);
-
-  const finishTour = () => {
-    if (user) localStorage.setItem(getTourStorageKey(user.id), "done");
-    setShowTour(false);
-  };
-
-  const tourSteps = [
-    { id: "search", title: t("tour.searchTitle"), description: t("tour.searchDesc") },
-    { id: "filters", title: t("tour.filtersTitle"), description: t("tour.filtersDesc") },
-    { id: "games", title: t("tour.gamesTitle"), description: t("tour.gamesDesc") },
-    { id: "firstGame", title: t("tour.firstGameTitle"), description: t("tour.firstGameDesc") },
-  ];
 
   const fetchFriendPresence = async () => {
     try {
@@ -482,7 +462,7 @@ function MainComponent() {
           {user && <></>}
         </section>
         <div className="mb-8 flex justify-center px-4">
-          <div className="relative w-full max-w-4xl" data-tour="search">
+          <div className="relative w-full max-w-4xl">
             {/* Search Icon */}
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -515,7 +495,7 @@ function MainComponent() {
           <p className="text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff] opacity-80">
             {t("home.casino_lobby.sort_by")}
           </p>
-          <div className="flex flex-wrap justify-center gap-2 sm:gap-3" data-tour="filters">
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
             {[
               { key: "all", labelKey: "home.casino_lobby.filter_all" },
               { key: "popular", labelKey: "home.casino_lobby.filter_popular" },
@@ -616,12 +596,11 @@ function MainComponent() {
                     : t("home.all_games")}
             </h2>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4 stagger-container" data-tour="games">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4 stagger-container">
               {displayedGames.map((game, index) => (
                 <div
                   key={game.nameKey ? t(game.nameKey) : game.name}
                   style={{ "--i": index }}
-                  data-tour={index === 0 ? "firstGame" : undefined}
                 >
                   <GameCard game={game} />
                 </div>
@@ -674,9 +653,6 @@ function MainComponent() {
       `}</style>
       <Footer />
       <StickyMobileCta playHref={buildCreatorHref("/casino/roulette", creatorModeEnabled)} />
-      {showTour && (
-        <OnboardingTour steps={tourSteps} onFinish={finishTour} onSkip={finishTour} />
-      )}
     </div>
   );
 }

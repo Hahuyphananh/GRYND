@@ -8,6 +8,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
 // Self-contained Creator Mode (admin-only) presentation layer.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
@@ -19,7 +20,7 @@ import {
   ShellAside,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 
-import { celebrateWin, turnBanner as turnBannerAnim } from "../../../../lib/animations";
+import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
 import { usePostHog } from "posthog-js/react";
 import {
@@ -36,8 +37,6 @@ const Chessboard = dynamic(
   },
   { ssr: false },
 );
-
-const CONFETTI_COLORS = ["#facc15", "#22c55e", "#38bdf8", "#fb7185", "#a78bfa"];
 
 const PIECE_SYMBOLS = {
   p: "♟", n: "♞", b: "♝", r: "♜", q: "♛",
@@ -394,7 +393,7 @@ export default function ChessGamePage() {
       if (text.includes("won") && !resultShownRef.current) {
         resultShownRef.current = true;
         playVictory();
-        celebrateWin();
+        // Confetti is handled by the shared PvpResultScreen.
       } else if (text.includes("lost") && !resultShownRef.current) {
         resultShownRef.current = true;
         playDefeat();
@@ -1005,77 +1004,75 @@ export default function ChessGamePage() {
           </div>
     </>
   );
-  const creatorResult = (
-    <>{showResultPopup && (
-        <AnimatePresence>
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center px-4">
-          <motion.div
-            key="chess-game-over"
-            initial={{ scale: 0.6, opacity: 0, y: 40 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.6, opacity: 0, y: 40 }}
-            transition={{ type: "spring", stiffness: 250, damping: 18 }}
-            className="relative w-full max-w-md rounded-2xl border border-cyan-400/30 bg-[#0b1020] p-6 text-center overflow-hidden shadow-[0_0_40px_rgba(0,255,255,0.25)]"
-          >
-            <motion.h2
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="text-3xl font-black text-cyan-300 mb-3"
-            >
-              MATCH FINISHED
-            </motion.h2>
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered when the match finishes (game status finished/expired —
+  // gated by the same `showResultPopup` flag the old popup used).
+  // Every number comes from the real game row (betAmount / payout /
+  // winnerId / result) — nothing is invented. Winner/payout logic is
+  // untouched; the old bespoke "MATCH FINISHED" popup is deleted.
+  function renderResult() {
+    if (!showResultPopup || !gameData) return null;
 
-            <motion.p
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.35 }}
-              className="text-xl text-white mb-2"
-            >
-              {resultText}
-            </motion.p>
+    const myId =
+      color === "white" ? gameData.whitePlayerId : gameData.blackPlayerId;
+    const iWon = Boolean(gameData.winnerId) && gameData.winnerId === myId;
+    const isDraw = gameData.result === "draw";
+    const outcome = isDraw ? "draw" : iWon ? "win" : "loss";
 
-            {resultPayout && (
-              <motion.p
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.45 }}
-                className={`text-lg font-bold mb-6 ${resultPayout.startsWith("+") ? "text-green-400" : resultPayout.startsWith("-") ? "text-red-400" : "text-yellow-300"}`}
-              >
-                {resultPayout}
-              </motion.p>
-            )}
+    const bet = Number(gameData.betAmount || 0);
+    // Mirror the old popup's settlement math: the winner is credited
+    // the pot minus the house edge (`payout` includes their stake
+    // back); a draw refunds the stake; a loss forfeits it.
+    const winPayout = gameData.payout
+      ? Number(gameData.payout)
+      : Number((bet * 2 * 0.9).toFixed(2));
+    const tokenDelta = isDraw
+      ? 0
+      : iWon
+        ? winPayout - bet
+        : -bet;
 
-            {resultText.includes("won") && (
-              <div className="absolute inset-0 pointer-events-none">
-                {Array.from({ length: 24 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className="absolute w-2 h-5 animate-bounce"
-                    style={{
-                      left: `${(i * 17) % 100}%`,
-                      top: `${(i % 6) * 10}%`,
-                      backgroundColor:
-                        CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-                      animationDelay: `${i * 0.05}s`,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+    const oppName =
+      color === "white"
+        ? gameData.blackPlayerName || "Opponent"
+        : gameData.whitePlayerName || "Opponent";
 
-            <button
-              onClick={() => router.push("/casino/chess")}
-              className="w-full bg-cyan-400 hover:bg-cyan-300 text-black font-bold py-3 rounded-xl transition"
-            >
-              Return to Lobby
-            </button>
-          </motion.div>
-        </div>
-        </AnimatePresence>
-      )}
-    </>
-  );
+    const headline =
+      resultText ||
+      (isDraw ? "Game drawn" : iWon ? "You win!" : "You lost.");
+    const subline = isDraw
+      ? "Stake returned — no tokens changed hands."
+      : iWon
+        ? `Your ${bet.toFixed(2)} stake back plus ${(winPayout - bet).toFixed(2)} in winnings.`
+        : `You lost your ${bet.toFixed(2)} stake.`;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Chess Arena"
+        opponent={{ name: oppName }}
+        tokenDelta={tokenDelta}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+        ]}
+        details={[
+          { label: "Game ID", value: String(gameId) },
+          { label: "Wager", value: `${bet.toLocaleString()} tokens` },
+          { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : oppName },
+        ]}
+        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/chess") }}
+        onReturnToLobby={() => router.push("/casino")}
+        onDismiss={() => setShowResultPopup(false)}
+        dismissLabel="View Match Results"
+      />
+    );
+  }
 
   const desktopContent = (
     <>
@@ -1088,7 +1085,6 @@ export default function ChessGamePage() {
           {creatorSidebar}
         </div>
       </div>
-      {creatorResult}
     </>
   );
 
@@ -1097,7 +1093,6 @@ export default function ChessGamePage() {
       <ShellHeader>{creatorHeader}</ShellHeader>
       <ShellMain className="h-full items-center">{creatorBoard}</ShellMain>
       <ShellAside className="space-y-3">{creatorSidebar}</ShellAside>
-      {creatorResult}
     </CreatorModeShell>
   );
 
@@ -1205,6 +1200,14 @@ export default function ChessGamePage() {
           landscape={desktopContent}
         />
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. The old bespoke "MATCH
+          FINISHED" popup is deleted — this is the single end-of-
+          match experience, and it can be dismissed to reveal the
+          final board underneath. */}
+      {renderResult()}
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

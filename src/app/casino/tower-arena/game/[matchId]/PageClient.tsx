@@ -21,6 +21,7 @@ import Footer from "../../../../../components/Footer";
 import IconAvatar from "../../../../../components/IconAvatar";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { CoinIcon } from "../../../../../components/lobby/PvpLobby";
+import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import {
   IconBuildingSkyscraper,
   IconX,
@@ -922,6 +923,20 @@ export default function TowerArenaMatchPage() {
     if (isFinished && !showResults) setShowResults(true);
   }, [isFinished, showResults]);
 
+  // Duration + rival (for the shared result screen) — real values only;
+  // a multi-player arena (>2 seats) has no single "opponent", so the
+  // opponent block is limited to the final 1v1 duel.
+  let resultDurationSeconds: number | null = null;
+  if (match?.startedAt && match?.endedAt) {
+    const t0 = new Date(match.startedAt).getTime();
+    const t1 = new Date(match.endedAt).getTime();
+    if (Number.isFinite(t0) && Number.isFinite(t1) && t1 >= t0) {
+      resultDurationSeconds = Math.round((t1 - t0) / 1000);
+    }
+  }
+  const rival =
+    players.length === 2 ? (players.find((p) => p.userId !== me?.userId) ?? null) : null;
+
   // Cleanup timers on unmount.
   useEffect(() => {
     return () => {
@@ -1484,11 +1499,69 @@ export default function TowerArenaMatchPage() {
       <>
         <ResultsView match={match} players={players} meUserId={me?.userId} onBack={() => router.replace("/casino/tower-arena")} />
         {!resultPopupDismissed && myFinalResult && (
-          <ResultPopup
-            result={myFinalResult}
-            stats={myStats}
+          <PvpResultScreen
+            open
+            outcome={myFinalResult.isWinner ? "win" : "loss"}
+            headline={`${ordinal(myFinalResult.placement)} place`}
+            subline={
+              myFinalResult.isAi ? "Free play — no tokens at stake." : undefined
+            }
+            gameName="Tower Arena"
+            opponent={
+              rival
+                ? {
+                    name: rival.name || "Opponent",
+                    iconKey: rival.iconKey || null,
+                    isAi: Boolean(rival.isAi),
+                  }
+                : null
+            }
+            tokenDelta={myFinalResult.isAi ? null : myFinalResult.net}
+            durationSeconds={resultDurationSeconds}
+            summary={[
+              { label: "Placement", value: ordinal(myFinalResult.placement) },
+              ...(myFinalResult.isAi
+                ? []
+                : [
+                    {
+                      label: "Wager",
+                      value: `${Number(myFinalResult.wager || 0).toLocaleString()} tokens`,
+                    },
+                  ]),
+            ]}
+            details={[
+              ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
+              ...(myFinalResult.isAi
+                ? []
+                : [
+                    {
+                      label: "Payout",
+                      value: `${Number(myFinalResult.payout || 0).toLocaleString()} tokens`,
+                    },
+                  ]),
+            ]}
+            detailsContent={
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                {[
+                  ["Blocks placed", myStats?.blocksPlaced ?? 0],
+                  ["Blocks in tower", myStats?.towerBlocks ?? 0],
+                  ["Collapses", myStats?.collapses ?? 0],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-xl border border-white/10 bg-black/30 px-2 py-3"
+                  >
+                    <p className="text-xl font-black text-white">{value}</p>
+                    <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                      {label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            }
+            playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
             onDismiss={() => setResultPopupDismissed(true)}
-            onBack={() => router.replace("/casino/tower-arena")}
+            dismissLabel="View Results"
           />
         )}
       </>
@@ -1814,14 +1887,71 @@ export default function TowerArenaMatchPage() {
         </CreatorModeHost>
       </div>
       <Footer />
-      {/* Mid-match resign result popup (over the live board as a spectator) */}
+      {/* Mid-match resign result (over the live board as a spectator) */}
       {resignResult && (
-        <ResultPopup
-          result={resignResult}
-          stats={myStats}
-          dismissLabel="Watch game"
+        <PvpResultScreen
+          open
+          outcome={resignResult.isWinner ? "win" : "loss"}
+          headline={`${ordinal(resignResult.placement)} place`}
+          subline={
+            resignResult.isAi ? "Free play — no tokens at stake." : undefined
+          }
+          gameName="Tower Arena"
+          opponent={
+            rival
+              ? {
+                  name: rival.name || "Opponent",
+                  iconKey: rival.iconKey || null,
+                  isAi: Boolean(rival.isAi),
+                }
+              : null
+          }
+          tokenDelta={resignResult.isAi ? null : resignResult.net}
+          durationSeconds={null}
+          summary={[
+            { label: "Placement", value: ordinal(resignResult.placement) },
+            ...(resignResult.isAi
+              ? []
+              : [
+                  {
+                    label: "Wager",
+                    value: `${Number(resignResult.wager || 0).toLocaleString()} tokens`,
+                  },
+                ]),
+          ]}
+          details={[
+            ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
+            ...(resignResult.isAi
+              ? []
+              : [
+                  {
+                    label: "Payout",
+                    value: `${Number(resignResult.payout || 0).toLocaleString()} tokens`,
+                  },
+                ]),
+          ]}
+          detailsContent={
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              {[
+                ["Blocks placed", myStats?.blocksPlaced ?? 0],
+                ["Blocks in tower", myStats?.towerBlocks ?? 0],
+                ["Collapses", myStats?.collapses ?? 0],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-xl border border-white/10 bg-black/30 px-2 py-3"
+                >
+                  <p className="text-xl font-black text-white">{value}</p>
+                  <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                    {label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          }
+          playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
           onDismiss={() => setResignResult(null)}
-          onBack={() => router.replace("/casino/tower-arena")}
+          dismissLabel="Watch game"
         />
       )}
     </div>
@@ -2086,119 +2216,4 @@ function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
-}
-
-// ── Result popup (win / lose) ──────────────────────────────────────────
-//
-// Shown to each player with THEIR OWN result: placement, game stats and the
-// profit/loss. Paid matches show the money (win = payout beats the wager);
-// free-play shows placement + stats only. Used both on match finish and when
-// a player resigns mid-match (their placement + payout are already decided).
-
-function ResultPopup({
-  result,
-  stats,
-  onDismiss,
-  onBack,
-  dismissLabel = "View Results",
-}: {
-  result: any;
-  stats?: { blocksPlaced: number; towerBlocks: number; collapses: number };
-  onDismiss?: () => void;
-  onBack: () => void;
-  dismissLabel?: string;
-}) {
-  const { placement, payout, net, isWinner, isAi, wager } = result;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <motion.div
-        initial={{ scale: 0.7, opacity: 0, y: 24 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 260, damping: 20 }}
-        className={`w-full max-w-md rounded-3xl border-2 p-6 text-center shadow-2xl ${
-          isWinner
-            ? "border-amber-400/70 bg-gradient-to-b from-[#2a1d05] to-[#120c02] shadow-[0_0_60px_rgba(251,191,36,0.25)]"
-            : "border-red-500/60 bg-gradient-to-b from-[#2a0707] to-[#120303]"
-        }`}
-      >
-        {isWinner ? (
-          <IconTrophy className="mx-auto h-14 w-14 text-amber-400 drop-shadow-[0_0_16px_rgba(251,191,36,0.6)]" />
-        ) : (
-          <IconX className="mx-auto h-14 w-14 text-red-400" />
-        )}
-        <h1
-          className={`mt-3 text-4xl font-black tracking-tight ${
-            isWinner ? "text-amber-300" : "text-red-300"
-          }`}
-        >
-          {isWinner ? "YOU WIN!" : "YOU LOSE"}
-        </h1>
-        <p className="mt-1 text-sm font-semibold text-white/70">{ordinal(placement)} place</p>
-
-        {/* Game stats */}
-        <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-          <Stat label="Blocks placed" value={stats?.blocksPlaced ?? 0} />
-          <Stat label="Blocks in tower" value={stats?.towerBlocks ?? 0} />
-          <Stat label="Collapses" value={stats?.collapses ?? 0} />
-        </div>
-
-        {/* Money result */}
-        <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
-          {isAi ? (
-            <p className="text-sm font-semibold text-white/60">Free play — no tokens at stake</p>
-          ) : (
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-white/60">Wager</span>
-                <span className="font-semibold text-yellow-300">{Number(wager || 0).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-white/60">Payout</span>
-                <span className="font-semibold text-cyan-300">{Number(payout || 0).toLocaleString()}</span>
-              </div>
-              <div
-                className={`flex justify-between border-t border-white/10 pt-1 text-base font-black ${
-                  Number(net) >= 0 ? "text-emerald-300" : "text-red-300"
-                }`}
-              >
-                <span>{Number(net) > 0 ? "Profit" : "Lost"}</span>
-                <span>
-                  {Number(net) > 0 ? "+" : ""}
-                  {Number(net).toLocaleString()}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 flex gap-2">
-          {onDismiss && (
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="flex-1 rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-bold text-white/80 transition hover:bg-white/10"
-            >
-              {dismissLabel}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex-1 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-black text-black transition hover:brightness-110"
-          >
-            Back to Lobby
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-black/30 px-2 py-3">
-      <p className="text-xl font-black text-white">{value}</p>
-      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">{label}</p>
-    </div>
-  );
 }

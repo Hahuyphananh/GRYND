@@ -1,23 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
-import OnboardingTour, { getTourStorageKey } from "../../components/OnboardingTour";
 import { useTranslation } from "../../hooks/useTranslation";
+
+// Legacy post-signup landing. Brand-new accounts are now routed to the
+// /welcome onboarding flow (see src/app/sync), so this page no longer arms
+// the old localStorage tour — it just keeps the welcome confetti for
+// anyone who lands here directly.
 
 export default function ThankYouPage() {
   const { t } = useTranslation();
-  const { isLoaded, user } = useUser();
-  const [tourVisible, setTourVisible] = useState(false);
 
-  const storageKey = user ? getTourStorageKey(user.id) : null;
-
-  // Welcome confetti + arm the tour for this brand-new account.
+  // Welcome confetti.
   useEffect(() => {
-    if (!isLoaded) return;
-
     const brand = ["#FFD700", "#00e5ff", "#FF2D9B", "#00FFA3"];
     const burst = (x, angle) =>
       confetti({
@@ -32,32 +29,7 @@ export default function ThankYouPage() {
     burst(0.3, 60);
     setTimeout(() => burst(0.7, 120), 250);
     setTimeout(() => burst(0.5, 90), 500);
-
-    if (user && !localStorage.getItem(storageKey)) {
-      localStorage.setItem(storageKey, "started");
-      setTourVisible(true);
-    }
-  }, [isLoaded, user, storageKey]);
-
-  const handleTourFinish = () => {
-    if (storageKey) localStorage.setItem(storageKey, "casino");
-    setTourVisible(false);
-    // Full navigation, not router.push: client-side navigation to a page
-    // can remount it moments later (killing the phase-2 tour on the lobby).
-    // /games is the canonical lobby URL (/casino 308-redirects to it).
-    window.location.assign("/games");
-  };
-
-  const handleTourSkip = () => {
-    if (storageKey) localStorage.setItem(storageKey, "done");
-    setTourVisible(false);
-  };
-
-  const tourSteps = [
-    { id: "welcome", title: t("tour.welcomeTitle"), description: t("tour.welcomeDesc") },
-    { id: "tokens", title: t("tour.tokensTitle"), description: t("tour.tokensDesc") },
-    { id: "play", title: t("tour.playTitle"), description: t("tour.playDesc") },
-  ];
+  }, []);
 
   return (
     <div
@@ -71,7 +43,6 @@ export default function ThankYouPage() {
 
       {/* Welcome */}
       <motion.div
-        data-tour="welcome"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
@@ -90,7 +61,6 @@ export default function ThankYouPage() {
 
       {/* Free tokens card */}
       <motion.div
-        data-tour="tokens"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
@@ -107,7 +77,6 @@ export default function ThankYouPage() {
 
       {/* Start playing */}
       <motion.div
-        data-tour="play"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.35, ease: "easeOut" }}
@@ -122,9 +91,6 @@ export default function ThankYouPage() {
         </button>
       </motion.div>
 
-      {tourVisible && (
-        <OnboardingTour steps={tourSteps} onFinish={handleTourFinish} onSkip={handleTourSkip} />
-      )}
     </div>
   );
 }

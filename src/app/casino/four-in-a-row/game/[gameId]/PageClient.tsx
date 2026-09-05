@@ -27,19 +27,16 @@ import {
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
-import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../../lib/animations";
+import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import { turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
   IconTarget,
   IconEye,
   IconFlag,
-  IconTrophy,
-  IconBomb,
 } from "@tabler/icons-react";
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
-
-const CONFETTI_COLORS = ["#facc15", "#4ade80", "#60a5fa", "#f472b6", "#f97316"];
 
 function playUiTone(type: "drop" | "win" = "drop") {
   const ctx = getSharedAudioContext();
@@ -182,7 +179,7 @@ export default function ConnectFourGamePage() {
       ) {
         setStatusText("You won!");
         playUiTone("win");
-        celebrateWin();
+        // Confetti is handled by the shared PvpResultScreen.
       } else {
         setStatusText(
           gameData.result === "timeout" ? "You lost on time." : "You lost.",
@@ -352,6 +349,97 @@ export default function ConnectFourGamePage() {
     game?.isAiGame || Number(game?.betAmount || 0) === 0
       ? "Free play"
       : `${Number(game?.betAmount || 0).toFixed(2)} tokens`;
+
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the match finishes (no pending
+  // rematch). Every number comes from the real game row
+  // (winnerClerkId / result / payout / betAmount / hostName–guestName)
+  // — nothing is invented. Winner/payout logic is untouched; the old
+  // win/loss popup + confetti overlay are gone.
+  function renderResult() {
+    if (!showResultPopup || !game) return null;
+    const isDraw = game.result === "draw";
+    const outcome = isDraw ? "draw" : playerWon ? "win" : "loss";
+    const bet = Number(game.betAmount || 0);
+    // Settlement (settleFourInARowGame): the winner is credited
+    // `payout` (= bet × 1.9, stake included); a draw refunds both in
+    // full; a loss forfeits the stake. AI/free games never move
+    // tokens.
+    const tokenDelta = game.isAiGame
+      ? null
+      : isDraw
+        ? 0
+        : playerWon
+          ? Number(game.payout || 0) - bet
+          : -bet;
+
+    const oppName =
+      game.role === "host"
+        ? game.guestName || "Opponent"
+        : game.hostName || "Opponent";
+    const headline = isDraw
+      ? "Draw game — no winner"
+      : playerWon
+        ? `Four in a row! You beat ${oppName}`
+        : `${oppName} connected four first`;
+    const subline = game.isAiGame
+      ? "Free practice match — no tokens were wagered."
+      : isDraw
+        ? "Board filled with no winner. Both stakes refunded in full."
+        : playerWon
+          ? `Your ${bet.toFixed(2)} stake back plus ${(Number(game.payout || 0) - bet).toFixed(2)} in winnings.`
+          : `You lost your ${bet.toFixed(2)} stake.`;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Four in a Row"
+        opponent={{ name: oppName }}
+        tokenDelta={tokenDelta}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+        ]}
+        details={[
+          { label: "Game ID", value: String(gameId) },
+          ...(game.isAiGame || bet === 0
+            ? []
+            : [
+                { label: "Wager", value: `${bet.toFixed(2)} tokens` },
+                ...(playerWon
+                  ? [
+                      {
+                        label: "Prize paid",
+                        value: `${Number(game.payout || 0).toFixed(2)} tokens`,
+                      },
+                    ]
+                  : []),
+              ]),
+          { label: "Winner", value: isDraw ? "Draw" : playerWon ? "You" : oppName },
+        ]}
+        detailsContent={
+          <div className="mt-3 text-center">
+            <p className="text-xs font-bold uppercase tracking-widest text-yellow-200">
+              Auto-quit in{" "}
+              <span className="font-mono font-bold text-yellow-300">
+                {replayCountdown}s
+              </span>
+            </p>
+            {replayMessage && (
+              <p className="mt-1 text-xs text-cyan-300">{replayMessage}</p>
+            )}
+          </div>
+        }
+        playAgain={{ label: "Replay", onClick: () => respondReplay("replay") }}
+        onReturnToLobby={() => respondReplay("quit")}
+      />
+    );
+  }
 
   const playColumn = async (column: number) => {
     if (!canPlay || loadingMove) return;
@@ -730,23 +818,6 @@ export default function ConnectFourGamePage() {
           </button>
         </div>
 
-        {playerWon && (
-          <div className="confetti-overlay">
-            {Array.from({ length: 24 }).map((_, index) => (
-              <span
-                key={`c4-confetti-${index}`}
-                className="confetti-piece"
-                style={{
-                  left: `${(index * 19) % 100}%`,
-                  backgroundColor:
-                    CONFETTI_COLORS[index % CONFETTI_COLORS.length],
-                  animationDelay: `${(index % 6) * 0.06}s`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
           <div className="casino-surface p-3 rounded-2xl">
             <div className="flex justify-between items-center mb-4">
@@ -914,91 +985,19 @@ export default function ConnectFourGamePage() {
           </div>
         </div>
 
-        <AnimatePresence>
-        {showResultPopup && (
-          <motion.div
-            key="cf-result-popup"
-            {...gameOverModal.backdrop}
-            className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4"
-          >
-            <motion.div
-              {...gameOverModal.panel}
-              className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${
-                playerWon
-                  ? "border-yellow-400/40 bg-gradient-to-b from-[#0a2a1a] to-[#031a0a] shadow-[0_0_40px_rgba(250,204,21,0.2)]"
-                  : "border-white/20 bg-[#031a37]"
-              }`}
-            >
-              <motion.div
-                initial={{ scale: 0, rotate: -30 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.25 }}
-                className="mb-2 text-6xl text-center"
-              >
-                {playerWon ? <IconTrophy size={56} className="text-yellow-400" /> : <IconBomb size={56} className="text-red-400" />}
-              </motion.div>
-              <motion.h3
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4, duration: 0.3 }}
-                className={`text-2xl font-extrabold mb-2 text-center ${playerWon ? "text-yellow-300" : "text-red-300"}`}
-              >
-                {playerWon ? <span className="inline-flex items-center gap-2"><IconTrophy size={24} /> You Won!</span> : <span className="inline-flex items-center gap-2"><IconBomb size={24} /> You Lost</span>}
-              </motion.h3>
-              <motion.p
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.3 }}
-                className="text-white/80 mb-3 text-center"
-              >
-                Choose replay or quit. Auto-quit in{" "}
-                <span className="font-mono font-bold text-yellow-300">
-                  {replayCountdown}s
-                </span>
-                .
-              </motion.p>
-              {replayMessage && (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.6 }}
-                  className="text-sm text-cyan-300 mb-4 text-center"
-                >
-                  {replayMessage}
-                </motion.p>
-              )}
-
-              <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7, duration: 0.3 }}
-                className="grid grid-cols-2 gap-3"
-              >
-                <button
-                  onClick={() => respondReplay("replay")}
-                  disabled={sendingReplayDecision}
-                  className="py-2 rounded-lg bg-yellow-400 text-[#08213d] font-bold hover:bg-yellow-300 disabled:bg-slate-500"
-                >
-                  Replay
-                </button>
-                <button
-                  onClick={() => respondReplay("quit")}
-                  disabled={sendingReplayDecision}
-                  className="py-2 rounded-lg bg-slate-700 text-white font-bold hover:bg-slate-600 disabled:bg-slate-500"
-                >
-                  Quit
-                </button>
-              </motion.div>
-            </motion.div>
-          </motion.div>
-        )}
-        </AnimatePresence>
       </div>
     </motion.div>}
       portrait={c4Shell}
       landscape={c4Shell}
     />
     </CreatorModeHost>
+
+    {/* Post-match result screen — shared PvpResultScreen (UX plan
+        P3-3), mounted OUTSIDE CreatorModeHost so the recording
+        viewport never captures it. The old win/loss popup is
+        deleted — this is the single end-of-match experience; the
+        coordinated replay flow (auto-quit countdown) is unchanged. */}
+    {renderResult()}
     </>
   );
 }

@@ -8,6 +8,7 @@ import { usePostHog } from "posthog-js/react";
 import UnoCard, { UNO_PALETTE } from "../../../components/UnoCard";
 import UnoBack from "../../../components/UnoBack";
 import NavigationBar from "../../../components/navigation-bar";
+import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 import Footer from "../../../components/Footer";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
@@ -733,6 +734,10 @@ export default function UnoGamePage() {
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
+      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+      <div className="mt-3 flex justify-center">
+        <CreatorModeLobby />
+      </div>
       {/* Only the actual game + its result popup are recorded — the nav,
           footer and the `!game` lobby/finder stay outside (or unrecorded:
           autoStart is false in the lobby). Recording starts when a real

@@ -3,17 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { AnimatePresence, motion } from "framer-motion";
-// @ts-ignore: no types for canvas-confetti in this project
-import confetti from "canvas-confetti";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
 import NavigationBar from "../../../components/navigation-bar";
+import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
+import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
@@ -30,8 +30,6 @@ import {
   IconCheck,
   IconHourglass,
   IconSparkles,
-  IconTrophy,
-  IconSkull,
   IconBook,
 } from "@tabler/icons-react";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
@@ -496,28 +494,6 @@ export default function DiceFlushPage() {
       setGameOverType("win");
       playVictory();
       posthog?.capture("dice_flush_game_ended", { result: "win", bet_amount: game?.players?.[0]?.isAI ? (game as any)?.wager || wager : (game as any)?.wager || wager, mode: opponent?.isAI ? "ai" : "pvp", my_score: myTotal, opponent_score: opTotal });
-      // Fire confetti cannon multiple times
-      const fire = () => {
-        confetti({
-          particleCount: 80,
-          spread: 100,
-          origin: { x: Math.random(), y: 0.3 + Math.random() * 0.3 },
-          colors: ["#f5ff3b","#00e5ff","#a855f7","#34d399","#fbbf24"],
-        });
-      };
-      fire();
-      const intervals = [200, 500, 900, 1400];
-      intervals.forEach((delay) => setTimeout(fire, delay));
-
-      // Big final burst
-      setTimeout(() => {
-        confetti({
-          particleCount: 150,
-          spread: 160,
-          origin: { x: 0.5, y: 0.3 },
-          colors: ["#f5ff3b","#00e5ff","#a855f7","#34d399","#fbbf24"],
-        });
-      }, 1800);
     } else {
       setGameOverType("lose");
       playDefeat();
@@ -781,6 +757,10 @@ export default function DiceFlushPage() {
       )}
 
       <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
+        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+        <div className="mt-3 flex justify-center">
+          <CreatorModeLobby />
+        </div>
     <div className="mx-auto mt-4 max-w-5xl">
       {/* ────── TITLE ────── */}
       <motion.div
@@ -1338,156 +1318,31 @@ export default function DiceFlushPage() {
           )}
         </AnimatePresence>
 
-        {/* ═══ GAME OVER OVERLAY ═══ */}
-        <AnimatePresence>
-          {gameOverType && gameOverScores && (
-            <motion.div
-              key="game-over"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.4 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-            >
-              <motion.div
-                initial={{ scale: 0.6, opacity: 0, y: 40 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.6, opacity: 0, y: 40 }}
-                transition={{ type: "spring", stiffness: 250, damping: 18, delay: 0.15 }}
-                className={`relative mx-4 w-full max-w-md overflow-hidden rounded-[32px] border-2 p-6 text-center shadow-2xl ${
-                  gameOverType === "win"
-                    ? "border-[#f5ff3b]/40 bg-gradient-to-b from-[#081a3d] to-[#030817] shadow-[0_0_60px_rgba(245,255,59,0.2)]"
-                    : "border-[#f87171]/30 bg-gradient-to-b from-[#1a0a0a] to-[#0d0505] shadow-[0_0_60px_rgba(248,113,113,0.15)]"
-                }`}
-              >
-                {/* Winner trophy / Loser icon */}
-                <motion.div
-                  initial={{ scale: 0, rotate: -30 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
-                  className="mb-2 text-7xl"
-                >
-                  {gameOverType === "win" ? <IconTrophy size={64} className="text-amber-400" /> : <IconSkull size={64} className="text-red-400" />}
-                </motion.div>
-
-                {/* Result text */}
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.5, duration: 0.4 }}
-                >
-                  <h2 className={`text-4xl font-black tracking-wider ${
-                    gameOverType === "win" ? "text-[#f5ff3b]" : "text-[#f87171]"
-                  }`}>
-                    {gameOverType === "win" ? "YOU WIN!" : "YOU LOSE"}
-                  </h2>
-                </motion.div>
-
-                {/* Final score comparison */}
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.7, duration: 0.4 }}
-                  className="mt-4 flex items-center justify-center gap-6"
-                >
-                  {/* Your score */}
-                  <div className="text-center">
-                    <div className="text-xs font-bold uppercase text-gray-400">
-                      {you?.name || "You"}
-                      {you?.prestigeBadge && (
-                        <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                          {you.prestigeBadge}
-                        </span>
-                      )}
-                    </div>
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 0.9, type: "spring", stiffness: 300 }}
-                      className={`mt-1 text-4xl font-black ${
-                        gameOverScores.mine >= gameOverScores.theirs ? "text-[#f5ff3b]" : "text-gray-400"
-                      }`}
-                    >
-                      {gameOverScores.mine}
-                    </motion.div>
-                  </div>
-
-                  {/* VS divider */}
-                  <div className="text-3xl font-black text-gray-500">VS</div>
-
-                  {/* Opponent score */}
-                  <div className="text-center">
-                    <div className="text-xs font-bold uppercase text-gray-400">
-                      {opponent?.name || "Opponent"}
-                      {opponent?.prestigeBadge && (
-                        <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                          {opponent.prestigeBadge}
-                        </span>
-                      )}
-                    </div>
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 1.0, type: "spring", stiffness: 300 }}
-                      className={`mt-1 text-4xl font-black ${
-                        gameOverScores.theirs >= gameOverScores.mine ? "text-[#f5ff3b]" : "text-gray-400"
-                      }`}
-                    >
-                      {gameOverScores.theirs}
-                    </motion.div>
-                  </div>
-                </motion.div>
-
-                {/* Winner sparkle lines / Loser fade message */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 1.2 }}
-                  className="mt-4"
-                >
-                  {gameOverType === "win" ? (
-                    <div className="flex justify-center gap-1">
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <motion.span
-                          key={i}
-                          animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
-                          transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
-                        >
-                          <IconSparkles size={20} className="text-amber-300" />
-                        </motion.span>
-                      ))}
-                    </div>
-                  ) : (
-                    <motion.p
-                      className="text-sm text-gray-400"
-                      animate={{ opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    >
-                      Better luck next time!
-                    </motion.p>
-                  )}
-                </motion.div>
-
-                {/* Play Again button */}
-                <motion.button
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 1.4, duration: 0.4 }}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={resetToLobby}
-                  className={`mt-6 rounded-2xl border-b-[3px] px-8 py-3 text-lg font-black transition active:translate-y-[2px] ${
-                    gameOverType === "win"
-                      ? "border-[#f5ff3b]/50 bg-[#f5ff3b] text-black shadow-[0_0_25px_rgba(245,255,59,0.4)]"
-                      : "border-[#f87171]/50 bg-[#f87171] text-white shadow-[0_0_25px_rgba(248,113,113,0.3)]"
-                  }`}
-                >
-                  Return to lobby
-                </motion.button>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* ═══ GAME OVER RESULT SCREEN ═══ */}
+        {gameOverType && gameOverScores && (
+          <PvpResultScreen
+            open
+            outcome={gameOverType === "win" ? "win" : "loss"}
+            gameName="Dice Flush"
+            headline={
+              gameOverType === "win"
+                ? "You took the match with the higher total"
+                : "The final total wasn't enough this time"
+            }
+            subline={opponent?.isAI ? "Free practice match — no tokens were wagered." : undefined}
+            opponent={{
+              name: opponent?.name || "Opponent",
+              iconKey: null,
+              isAi: !!opponent?.isAI,
+            }}
+            summary={[
+              { label: "Your Score", value: String(gameOverScores.mine) },
+              { label: "Opponent Score", value: String(gameOverScores.theirs) },
+            ]}
+            details={roomId ? [{ label: "Room ID", value: roomId }] : []}
+            onReturnToLobby={resetToLobby}
+          />
+        )}
       </div>)}
       </CreatorResponsiveLayout>
       </CreatorModeHost>

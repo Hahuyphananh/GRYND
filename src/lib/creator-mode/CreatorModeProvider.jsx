@@ -157,6 +157,13 @@ export default function CreatorModeProvider({
 
   // ── Recording viewport frame (scaled to fit the screen) ──────────
   const frameRef = useRef(null);
+  // The outer flex column that holds the frame; its top offset anchors
+  // the scale so the frame fits in the visible viewport below it — even
+  // on pages that have their own header / nav above the game (e.g.
+  // blackjack). The bottom ~96px of the viewport is deliberately left
+  // free: that strip is where the portaled Creator controls sit (see
+  // CreatorModeOverlay), so they never cover the game.
+  const layoutRef = useRef(null);
   const [scale, setScale] = useState(1);
 
   useLayoutEffect(() => {
@@ -164,7 +171,12 @@ export default function CreatorModeProvider({
     const compute = () => {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const s = Math.min(1, (vw - 48) / dimensions.width, (vh - 220) / dimensions.height);
+      // Height actually available below this layout block: from its top
+      // edge to the viewport bottom, minus the controls strip (~60px) +
+      // a small breathing margin (36px).
+      const top = layoutRef.current?.getBoundingClientRect().top ?? 0;
+      const availH = Math.max(160, vh - top - 96);
+      const s = Math.min(1, (vw - 48) / dimensions.width, availH / dimensions.height);
       setScale(Math.max(0.15, s));
     };
     compute();
@@ -205,6 +217,33 @@ export default function CreatorModeProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Begin in-page capture of the recording frame. Returns true when a
+   * container was found and the (async) capture start was requested. If
+   * the game already reached its result while the countdown was running
+   * (a fast game — gameFinished() stored a pending stop because
+   * recording hadn't begun yet), the stopped delay is applied once the
+   * capture actually resolves so the recording auto-stops instead of
+   * running forever.
+   */
+  const beginCapture = () => {
+    const container = frameRef.current;
+    if (!container) return false;
+    const dims = dimensionsRef.current;
+    recorder.start({
+      container,
+      width: dims.width,
+      height: dims.height,
+    }).then((ok) => {
+      if (ok && pendingStopRef.current != null) {
+        const delay = pendingStopRef.current;
+        pendingStopRef.current = null;
+        scheduleStop(delay);
+      }
+    });
+    return true;
+  };
+
   /** Begin the recording flow: 3→2→1 countdown, then in-page capture. */
   const start = () => {
     if (!enabled || recorder.isRecording) return;
@@ -215,35 +254,29 @@ export default function CreatorModeProvider({
     pendingStopRef.current = null;
     cancelScheduledStop();
     cancelCountdown();
-    const dims = dimensionsRef.current;
     setCountdown(3);
     let n = 3;
     countdownTimerRef.current = setInterval(() => {
       n -= 1;
       if (n <= 0) {
         cancelCountdown();
-        const container = frameRef.current;
-        if (container) {
-          // Capture begins after the probe resolves (async). If the game
-          // already reached its result while the countdown was running
-          // (a fast game — gameFinished() stored a pending stop because
-          // recording hadn't begun yet), apply that stopped delay now so
-          // the just-started recording still auto-stops. This prevents a
-          // recording from running forever on a game that ends very
-          // quickly / resolves during the countdown.
-          recorder.start({
-            container,
-            width: dims.width,
-            height: dims.height,
-          }).then((ok) => {
-            if (ok && pendingStopRef.current != null) {
-              const delay = pendingStopRef.current;
-              pendingStopRef.current = null;
-              scheduleStop(delay);
-            }
-          });
-        } else {
-          recorder.cancel();
+        // Capture must start right as the countdown ends. If the frame
+        // is not mounted at that exact instant (e.g. creator mode was
+        // just enabled and the page is still committing), WAIT for it in
+        // short retries instead of silently cancelling — a recording
+        // that never starts is indistinguishable from a broken one.
+        const started = beginCapture();
+        // Breadcrumb: whether the recording frame was found at countdown
+        // end — the frame must exist or capture can never begin.
+        console.info(
+          `[creator] countdown done → frame ${started ? "found, capture requested" : "MISSING, retrying…"}`,
+        );
+        if (!started) {
+          let tries = 0;
+          const retry = setInterval(() => {
+            tries += 1;
+            if (beginCapture() || tries >= 25) clearInterval(retry);
+          }, 200);
         }
       } else {
         setCountdown(n);
@@ -292,6 +325,14 @@ export default function CreatorModeProvider({
     if (recorder.isRecording) recorder.stop();
   };
 
+  // Exposed so the exterior bar can offer a MANUAL "Start Recording"
+  // action when nothing is recording (the countdown then capture flow is
+  // identical to the auto path).
+  const manualStart = () => {
+    if (!enabled || recorder.isRecording) return;
+    start();
+  };
+
   /** Game reached its completed/result state — grace, then stop. */
   const gameFinished = (delayMs = autoStopDelayMs) => {
     cancelCountdown();
@@ -308,7 +349,7 @@ export default function CreatorModeProvider({
   };
 
   // Canonical aliases so games/hooks use one consistent vocabulary.
-  const startCreatorRecording = start;
+  const startCreatorRecording = manualStart;
   const gameStarted = start;
   const gameQuit = stopCreatorRecording;
 
@@ -316,25 +357,32 @@ export default function CreatorModeProvider({
   // Start when the actual game starts (autoStart flips true). A 3-2-1
   // countdown precedes capture so the creator sees what will be
   // recorded; the game remains fully playable throughout.
+  // BUG-FIX (creator access race): the game can signal `autoStart` before
+  // the server access check resolves (e.g. a free vs-AI blackjack match
+  // comes back already active on the first poll). Latching `autoStartRef`
+  // while `enabled` is still false would swallow the later enabled=true
+  // transition, so the 3-2-1 countdown + recording would never start.
+  // The edge is only consumed once the mode is actually enabled.
   const autoStartRef = useRef(false);
   useEffect(() => {
-    if (!autoStart || autoStartRef.current) return;
+    if (!enabled || !autoStart || autoStartRef.current) return;
     autoStartRef.current = true;
-    if (enabled) start();
+    start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, enabled]);
 
   // Stop when the game reaches its completed/result state (autoStop flips
   // true). Recording keeps running for the grace period so the result /
   // winner animation is captured, then stops and becomes downloadable.
+  // Same access-race guard as autoStart: only latch once enabled.
   const autoStopRef = useRef(false);
   useEffect(() => {
-    if (!autoStop || autoStopRef.current) return;
+    if (!enabled || !autoStop || autoStopRef.current) return;
     autoStopRef.current = true;
     setGameEnded(true);
     gameFinished();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStop, recorder.isRecording]);
+  }, [autoStop, enabled, recorder.isRecording]);
 
   // User quit / navigated away: stop and release the capture. The
   // recorder hook's own unmount cleanup does the same, but stopping here
@@ -345,15 +393,55 @@ export default function CreatorModeProvider({
   }, [recorder.isRecording]);
   useEffect(() => {
     return () => {
-      // User quit / navigated away: stop NOW (no grace period) and
-      // release the capture. The recorder hook's own unmount cleanup
-      // does the same, but stopping here first lets the chunks flush if
-      // the page is merely being replaced.
+      // User quit / navigated away (e.g. the match page unmounts on
+      // "Return to lobby", "Play Again", browser back within the app):
+      // stop NOW (no grace period) and SAVE the clip — stopAndSave
+      // auto-downloads the finished file from the recorder's own
+      // finalize handler, so nothing keeps recording and nothing is
+      // silently discarded.
       cancelScheduledStop();
-      if (isRecordingRef.current) recorder.stop();
+      // Always ask the recorder to save: it no-ops when nothing is live
+      // and never downloads the same clip twice, so this covers both the
+      // leave-mid-recording case AND the tiny gap where a clip finished
+      // but its auto-download effect had not fired yet.
+      recorder.stopAndSave(`grynd-${gameLabel}`);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Save-on-leave for browser-level departures: hide the tab, go back
+  // out of the app, close the tab, or follow an external link while a
+  // recording is live — stop it and auto-download the clip. A recording
+  // must never keep running unattended or be lost to navigation. The
+  // recorder methods are called unconditionally: they no-op safely when
+  // nothing is live (and never download the same clip twice), so stale
+  // React state can never skip a needed save.
+  useEffect(() => {
+    if (!enabled) return;
+    // Tab hidden (switched away / app backgrounded): graceful stop — the
+    // page stays alive, so finalize() runs and the full clip is saved.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        recorder.stopAndSave(`grynd-${gameLabel}`);
+      }
+    };
+    // Page actually leaving (refresh, tab close, external navigation,
+    // back out of the SPA): the page can be torn down before the async
+    // finalize runs, so save synchronously from the frames already
+    // captured.
+    const onPageHide = () => {
+      recorder.stopAndSaveSync(`grynd-${gameLabel}`);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("beforeunload", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("beforeunload", onPageHide);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, gameLabel]);
 
   const value = useMemo(
     () => ({
@@ -409,28 +497,34 @@ export default function CreatorModeProvider({
   return (
     <CreatorModeContext.Provider value={value}>
       {enabled ? (
-        <div className="flex justify-center" data-creator-mode-active>
-          <div
-            style={{
-              width: dimensions.width * scale,
-              height: dimensions.height * scale,
-            }}
-          >
+        <div
+          ref={layoutRef}
+          className="flex flex-col items-center"
+          data-creator-mode-active
+        >
+          <div className="flex justify-center">
             <div
-              ref={frameRef}
-              data-creator-recording
-              aria-hidden="false"
               style={{
-                width: dimensions.width,
-                height: dimensions.height,
-                overflow: "hidden",
-                background: "#000000",
-                transform: `scale(${scale})`,
-                transformOrigin: "top left",
-                position: "relative",
+                width: dimensions.width * scale,
+                height: dimensions.height * scale,
               }}
             >
-              {children}
+              <div
+                ref={frameRef}
+                data-creator-recording
+                aria-hidden="false"
+                style={{
+                  width: dimensions.width,
+                  height: dimensions.height,
+                  overflow: "hidden",
+                  background: "#000000",
+                  transform: `scale(${scale})`,
+                  transformOrigin: "top left",
+                  position: "relative",
+                }}
+              >
+                {children}
+              </div>
             </div>
           </div>
         </div>

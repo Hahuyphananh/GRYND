@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
@@ -53,6 +53,7 @@ import {
 } from "../../../../components/creator-mode/CreatorModeLayout";
 
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -80,7 +81,6 @@ import {
   playBuzz,
 } from "../../../../lib/gameAudio";
 import {
-  IconTrophy,
   IconLock,
   IconClock,
   IconArrowLeft,
@@ -1125,33 +1125,64 @@ export default function LaneRushDuelMatchPage({ params }) {
     else playGoodReveal();
   }, [lastPeek]);
 
+  // Real final-banked totals come from the server payload (p1Points /
+  // p2Points); prizePaid is viewer-scrubbed server-side (only set when
+  // this viewer won), so the delta math below uses real values only.
+  const stakeNumber = Number(match?.stakeAmount) || 0;
+  const myFinalPts = isPlayer1
+    ? Number(match?.p1Points) || 0
+    : Number(match?.p2Points) || 0;
+  const oppFinalPts = isPlayer1
+    ? Number(match?.p2Points) || 0
+    : Number(match?.p1Points) || 0;
+
+  // Duration from the existing match timestamps (omitted when absent).
+  let durationSeconds = null;
+  if (match?.startedAt && match?.endedAt) {
+    const t0 = new Date(match.startedAt).getTime();
+    const t1 = new Date(match.endedAt).getTime();
+    if (Number.isFinite(t0) && Number.isFinite(t1) && t1 >= t0) {
+      durationSeconds = Math.round((t1 - t0) / 1000);
+    }
+  }
+
+  // Shared end-of-match screen (UX plan P3-3) — the old inline
+  // YOU WIN / DRAW / YOU LOSE popup is gone. This const is mounted in
+  // every layout variant below (creator portrait/landscape + default).
   const matchEndPopup = finished ? (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="w-full max-w-md rounded-3xl border border-white/15 bg-slate-950 p-6 text-center shadow-2xl"
-        >
-          <IconTrophy className={`mx-auto mb-3 ${wonMatch ? "text-amber-300" : drawMatch ? "text-amber-200" : "text-rose-300"}`} size={42} />
-          <h2 className="text-3xl font-black">{wonMatch ? "YOU WIN" : drawMatch ? "DRAW" : "YOU LOSE"}</h2>
-          <p className="mt-2 text-sm text-white/60">
-            {drawMatch ? "Both players receive their stake back." : wonMatch ? "You won the Lane Rush race." : "Your opponent won the Lane Rush race."}
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/casino/lane-runner")}
-            className="mt-6 w-full rounded-xl bg-cyan-400 px-5 py-3 font-black text-black transition hover:bg-cyan-300"
-          >
-            Back to Lane Rush
-          </button>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    <PvpResultScreen
+      open
+      outcome={drawMatch ? "draw" : wonMatch ? "win" : "loss"}
+      headline={
+        drawMatch
+          ? "Both players receive their stake back"
+          : wonMatch
+            ? "You won the Lane Rush race"
+            : "Your opponent won the Lane Rush race"
+      }
+      gameName="Lane Rush Duel"
+      opponent={
+        isBotMatch ? { name: "GRYND AI", isAi: true } : { name: "Opponent" }
+      }
+      tokenDelta={
+        drawMatch ? 0 : wonMatch ? Number(match.prizePaid || 0) - stakeNumber : -stakeNumber
+      }
+      durationSeconds={durationSeconds}
+      summary={[
+        { label: "Final score", value: `${myFinalPts} – ${oppFinalPts} pts` },
+        {
+          label: "Result",
+          value: drawMatch ? "Draw" : wonMatch ? "Win" : "Loss",
+        },
+      ]}
+      details={[
+        ...(match.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
+        { label: "Wager", value: `${stakeNumber.toLocaleString()} tokens` },
+        { label: "Winner", value: drawMatch ? "Draw" : wonMatch ? "You" : "Opponent" },
+      ]}
+      playAgain={{ onClick: () => router.push("/casino/lane-runner") }}
+      onReturnToLobby={() => router.push("/casino")}
+    />
   ) : null;
 
 

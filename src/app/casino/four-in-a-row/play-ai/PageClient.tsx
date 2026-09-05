@@ -13,12 +13,7 @@ import {
   type FourInARowBoard,
 } from "../../../../lib/fourInARow";
 import NavigationBar from "../../../../components/navigation-bar";
-import { celebrateWin } from "../../../../lib/animations";
-import {
-  IconTrophy,
-  IconBomb,
-  IconHeartHandshake,
-} from "@tabler/icons-react";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 
 const HUMAN_PLAYER = 1 as const;
 const AI_PLAYER = 2 as const;
@@ -318,10 +313,6 @@ export default function FourInARowVsAiPage() {
     posthog?.capture("four_in_a_row_ai_reset");
   }, [posthog]);
 
-  useEffect(() => {
-    if (status === "won") celebrateWin();
-  }, [status]);
-
   const statusText = useMemo(() => {
     if (status === "won") return "You won!";
     if (status === "lost") return "AI won.";
@@ -463,23 +454,28 @@ export default function FourInARowVsAiPage() {
           </p>
         </div>
 
-        {/* Status message after game ends */}
+        {/* End-of-match result screen */}
         {status !== "playing" && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 rounded-xl border border-white/10 bg-[#0b224f]/70 p-4 text-center"
-          >
-            <p className="text-sm font-semibold mb-1">
-              {status === "won" && <span className="inline-flex items-center gap-1.5"><IconTrophy size={16} className="text-amber-400" /> Great play. Congratulations!</span>}
-              {status === "lost" && <span className="inline-flex items-center gap-1.5"><IconBomb size={16} className="text-red-400" /> The AI got you this round.</span>}
-              {status === "draw" && <span className="inline-flex items-center gap-1.5"><IconHeartHandshake size={16} className="text-yellow-300" /> Board is full. It's a draw.</span>}
-            </p>
-            <p className="text-xs text-white/60">
-              Hit <span className="font-semibold text-white">New Game</span> to
-              take another match.
-            </p>
-          </motion.div>
+          <PvpResultScreen
+            open
+            outcome={status === "won" ? "win" : status === "draw" ? "draw" : "loss"}
+            headline={
+              status === "won"
+                ? "Great play. Congratulations!"
+                : status === "lost"
+                  ? "The AI got you this round."
+                  : "Board is full. It's a draw."
+            }
+            subline="Free practice match — no tokens were wagered."
+            gameName="Four-in-a-Row vs AI"
+            opponent={{ name: "AI", iconKey: null, isAi: true }}
+            summary={[
+              { label: "Session", value: `${score.wins}W – ${score.losses}L – ${score.draws}D` },
+              { label: "Moves", value: String(countPieces(board)) },
+            ]}
+            playAgain={{ label: "New Game", onClick: resetGame }}
+            onReturnToLobby={() => router.push("/casino/four-in-a-row")}
+          />
         )}
       </div>
 

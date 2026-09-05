@@ -38,6 +38,7 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually begins,
 // auto-stops when it ends or the user quits. No gameplay logic touched.
@@ -299,28 +300,6 @@ function CheckIcon({ className = "" }: { className?: string }) {
       aria-hidden
     >
       <path d="M5 12 L10 17 L19 7" />
-    </svg>
-  );
-}
-
-function TrophyIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M7 4 H17 V10 a5 5 0 0 1 -10 0 V4 Z" />
-      <path d="M5 5 H3 a3 3 0 0 0 3 3" />
-      <path d="M19 5 H21 a3 3 0 0 1 -3 3" />
-      <path d="M9 19 H15" />
-      <path d="M12 14 V19" />
     </svg>
   );
 }
@@ -2431,108 +2410,130 @@ export default function PlinkoPvpMatchPage({
   }
 
   // ── Winner popup (shown when match finishes) ────────────────────
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ──────
+  // Rendered when the match finishes. Every value comes from the real
+  // match row (winnerId / p1Score–p2Score / prizePaid / houseFee /
+  // startedAt→endedAt) — nothing is invented, and the old bespoke
+  // "Match Over / You Win / It's a Draw" popup is gone. Winner/payout
+  // logic is untouched.
   function renderWinnerPopup() {
     if (!isFinished) return null;
     const isDraw = match.result === RESULT.TIE;
     const iWon = Boolean(
       match.winnerId && user?.id && match.winnerId === user.id,
     );
-    const p1Name = match?.players?.p1?.displayName || "Player 1";
-    const p2Name = match?.players?.p2?.displayName || "Player 2";
+    const isAi = Boolean(match.isAi);
     const pointDiff = Math.abs((match.p1Score || 0) - (match.p2Score || 0));
+
+    // Stake was escrowed at matchmaking; at settle the winner is
+    // credited `prizePaid` (= stake + 90% of the loser's stake). The
+    // net token change from the viewer's pocket:
+    //   win  → +prizePaid − stake = +0.9 × stake
+    //   loss → −stake
+    //   draw → full refund = 0, or −(houseFee/2) for a 5%-fee
+    //          overtime tie (houseFee = 10% of one stake total)
+    // AI practice matches never move tokens.
+    const stake = Number(match.stakeAmount) || 0;
+    const prizePaid = Number(match.prizePaid) || 0;
+    const houseFee = Number(match.houseFee) || 0;
+    const tokenDelta = isAi
+      ? null
+      : isDraw
+        ? houseFee > 0
+          ? -(houseFee / 2)
+          : 0
+        : iWon
+          ? prizePaid - stake
+          : -stake;
+
+    // Duration from the existing timestamps (omitted when unavailable).
+    let durationSeconds: number | null = null;
+    if (match.startedAt && match.endedAt) {
+      const start = new Date(match.startedAt).getTime();
+      const end = new Date(match.endedAt).getTime();
+      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+        durationSeconds = Math.round((end - start) / 1000);
+      }
+    }
+
     const winnerName = isDraw
       ? null
       : match.result === RESULT.PLAYER1
         ? p1Name
         : p2Name;
+    const outcome = isDraw ? "draw" : iWon ? "win" : "loss";
+    const oppHead = isViewerP1
+      ? (match?.players?.p2 ?? null)
+      : (match?.players?.p1 ?? null);
+    const oppName = oppHead?.displayName || (isViewerP1 ? p2Name : p1Name);
+
+    const headline = isDraw
+      ? "Evenly matched — both players refunded"
+      : iWon
+        ? `You out-scored ${oppName} by ${pointDiff} point${pointDiff !== 1 ? "s" : ""}`
+        : `${winnerName} won by ${pointDiff} point${pointDiff !== 1 ? "s" : ""}`;
+
+    const subline = isAi
+      ? "Free practice match — no tokens were wagered or paid out."
+      : isDraw && houseFee > 0
+        ? `Each player refunded ${(stake * 0.95).toFixed(2)} tokens (5% house fee).`
+        : undefined;
+
+    const decidedRound = match.currentBall > REQUIRED_BALLS
+      ? `Overtime · Round ${match.currentBall}`
+      : `Round ${match.currentBall || REQUIRED_BALLS}`;
+
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-      >
-        <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
-          <div className="flex items-center justify-center mb-4">
-            <TrophyIcon className="w-10 h-10 text-yellow-300 drop-shadow-[0_0_16px_rgba(255,200,0,0.5)]" />
-          </div>
-          <h3 className="text-center text-sm uppercase tracking-widest text-cyan-200/70 font-semibold mb-1">
-            Match Over
-          </h3>
-
-          {/* Result callout */}
-          <p
-            className={`text-center text-3xl font-black mt-2 ${
-              isDraw
-                ? "text-yellow-300"
-                : iWon
-                  ? "text-emerald-300"
-                  : "text-red-300"
-            }`}
-          >
-            {isDraw ? "It's a Draw!" : iWon ? "You Win!" : "You Lose"}
-          </p>
-
-          {/* Winner detail */}
-          {!isDraw && winnerName && (
-            <p className="text-center text-sm text-white/70 mt-2">
-              <span className="font-bold text-white">{winnerName}</span> won
-              by <span className="font-bold text-white">{pointDiff} point{pointDiff !== 1 ? "s" : ""}</span>
-            </p>
-          )}
-
-          {/* Round indicator — signals which round the match was decided in */}
-          <p className="text-center text-[11px] uppercase tracking-wider text-cyan-200/60 font-semibold mt-3">
-            {match.currentBall > REQUIRED_BALLS
-              ? `Overtime · Round ${match.currentBall}`
-              : `Decided in Round ${match.currentBall || REQUIRED_BALLS}`}
-          </p>
-
-          {/* Score summary */}
-          <div className="grid grid-cols-2 gap-4 mt-5">
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Plinko Duel"
+        opponent={{
+          name: oppName,
+          iconKey: oppHead?.iconKey || null,
+          isAi,
+        }}
+        tokenDelta={tokenDelta}
+        durationSeconds={durationSeconds}
+        summary={[
+          { label: "Result", value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw" },
+          { label: "Score", value: `${match.p1Score} – ${match.p2Score}` },
+          { label: "Decided", value: decidedRound },
+        ]}
+        details={[
+          { label: "Match ID", value: String(match.id) },
+          ...(isAi || isDraw
+            ? []
+            : [
+                { label: "Wager", value: `${stake.toFixed(2)} tokens` },
+                { label: "Prize paid", value: `${prizePaid.toFixed(2)} tokens` },
+                ...(houseFee > 0
+                  ? [{ label: "House fee", value: `${houseFee.toFixed(2)} tokens` }]
+                  : []),
+              ]),
+          { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : winnerName || "Opponent" },
+        ]}
+        detailsContent={
+          <div className="mt-3 grid grid-cols-2 gap-2 text-center">
             <div className="rounded-xl border border-cyan-300/30 bg-cyan-500/10 p-3 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-cyan-200/70 truncate">{p1Name}</p>
+              <p className="truncate text-[10px] uppercase tracking-wider text-cyan-200/70">{p1Name}</p>
               <p className="mt-1 text-2xl font-black text-cyan-100 tabular-nums">
                 {match.p1Score} pts
               </p>
             </div>
             <div className="rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 p-3 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70 truncate">{p2Name}</p>
+              <p className="truncate text-[10px] uppercase tracking-wider text-fuchsia-200/70">{p2Name}</p>
               <p className="mt-1 text-2xl font-black text-fuchsia-100 tabular-nums">
                 {match.p2Score} pts
               </p>
             </div>
           </div>
-
-          {/* Prize info */}
-          {match.isAi ? (
-            <p className="text-center text-xs text-cyan-200/70 mt-4">
-              Free practice match — no tokens were wagered or paid out.
-            </p>
-          ) : !isDraw ? (
-            <p className="text-center text-xs text-white/60 mt-4">
-              Prize paid:{" "}
-              <span className="text-white font-bold">
-                ${(match.prizePaid || 0).toFixed(2)}
-              </span>
-            </p>
-          ) : null}
-          {isDraw && !match.isAi && (
-            <p className="text-center text-xs text-white/60 mt-4">
-              {match.houseFee > 0
-                ? `Each player refunded $${(Number(match.stakeAmount) * 0.95).toFixed(2)} (5% house fee)`
-                : "Both players refunded. No house fee"}
-            </p>
-          )}
-
-          {/* Back to lobby button */}
-          <button
-            onClick={() => router.push("/casino/plinko")}
-            className="mt-6 w-full px-4 py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-400 to-cyan-500 text-[#001933] hover:from-cyan-300 hover:to-cyan-400 transition shadow-[0_0_25px_rgba(0,229,255,0.4)]"
-          >
-            Back to Lobby
-          </button>
-        </div>
-      </motion.div>
+        }
+        playAgain={{ onClick: () => router.push("/casino/plinko") }}
+        onReturnToLobby={() => router.push("/casino")}
+      />
     );
   }
 

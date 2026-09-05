@@ -29,6 +29,7 @@ import { useCreatorModeAccess } from "../../lib/creator-mode/useCreatorModeAcces
 import {
   getStoredCreatorDimensions,
   getStoredCreatorMode,
+  isCreatorModeSearch,
   setStoredCreatorDimensions,
   setStoredCreatorMode,
 } from "../../lib/creator-mode/client";
@@ -123,7 +124,7 @@ function RecordingFramePreview({ width, height, preset }) {
   );
 }
 
-export default function CreatorModeLobby({ onChange }) {
+export default function CreatorModeLobby({ onChange = () => {} }) {
   const { user } = useUser();
   const { canUseCreatorMode, loading } = useCreatorModeAccess();
 
@@ -133,17 +134,26 @@ export default function CreatorModeLobby({ onChange }) {
   const [customW, setCustomW] = useState("");
   const [customH, setCustomH] = useState("");
 
-  // Restore session state for this user (flag + dimensions).
+  // Restore session state for this user (flag + dimensions). Same rule as
+  // the game-page provider: the URL ?creator=1 param is canonical and is
+  // persisted to storage, so landing on any lobby with the param (e.g.
+  // deep-linked from a decorated game card) keeps the mode alive through
+  // subsequent in-app navigations that don't carry the param.
   useEffect(() => {
     if (!user?.id) return;
+    const fromUrl = isCreatorModeSearch(window.location.search);
     const storedEnabled = getStoredCreatorMode(user.id);
-    setEnabled(storedEnabled);
+    const enabledNow = fromUrl || storedEnabled;
+    setEnabled(enabledNow);
+    if (enabledNow && fromUrl) {
+      setStoredCreatorMode(user.id, true);
+    }
     const stored = getStoredCreatorDimensions(user.id);
     setPreset(stored.preset);
     setCustomW(String(stored.width));
     setCustomH(String(stored.height));
     // Keep the lobby's game-link decoration in sync with stored state.
-    onChange?.(storedEnabled);
+    onChange?.(enabledNow);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

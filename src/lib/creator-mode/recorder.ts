@@ -17,8 +17,12 @@
 //     into the output canvas, then any live <canvas> elements in the
 //     container are composited on top ("composite mode"). This uses the
 //     browser's own SVG rasterizer, so page styles, Tailwind classes,
-//     inline styles and SVG all render — verified to stay origin-clean
-//     so `captureStream()` can record it.
+//     inline styles and SVG all render. Every raster and CSS url() is
+//     INLINED as a data URL before drawing and the CSS is compacted +
+//     CDATA-wrapped — so the canvas always stays origin-clean and
+//     `captureStream()` can record it. (The transport MUST be a data:
+//     URL: drawing an SVG image from a blob: URL taints the canvas in
+//     Chrome, verified experimentally.)
 //
 // The output canvas is always the SELECTED recording dimensions (aspect
 // ratio / custom size), so the creator never resizes their browser — the
@@ -37,9 +41,12 @@
 //   • <canvas>/WebGL content inside the DOM snapshot renders blank, so
 //     live canvases are composited on top afterwards (positioned via
 //     layout math that is robust to the viewport's CSS transform).
-//   • Cross-origin images would taint the canvas and are excluded by the
-//     origin-clean probe — the recorder fails with a clear error instead
-//     of silently producing a broken/black recording.
+//   • Cross-origin images would taint the canvas (any http(s) image
+//     referenced by an SVG-in-img loads without CORS), so every raster is
+//     INLINED into the snapshot as a data URL before drawing (same-origin
+//     and CORS-enabled images are fetched in; anything the browser won't
+//     let us read becomes a transparent pixel). The snapshot is therefore
+//     always self-contained and the canvas can never taint.
 //   • Relative URLs in serialized HTML/CSS are absolutized; exotic CSS
 //     (external @import, some blend modes) may not rasterize identically.
 //
@@ -148,108 +155,326 @@ export function collectPageCss(): string {
 }
 
 /**
- * Serialize a container element into XHTML suitable for a <foreignObject>.
- * Strips non-rasterizable/unsafe nodes (canvas is composited separately,
- * scripts/iframes do nothing in an image) and absolutizes URLs so
- * same-origin assets resolve inside the data-URL SVG.
+ * 1×1 transparent GIF. Substitutes any raster the recorder is not allowed
+ * to read (cross-origin images served without CORS). Keeping the element
+ * in place with a transparent source means layout is preserved AND the
+ * snapshot can never taint the recording canvas.
  */
-export function serializeContainer(container: HTMLElement): string {
-  const clone = container.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll("canvas,script,iframe,noscript,object,embed").forEach((n) => n.remove());
+const TRANSPARENT_PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-  // Absolutize src/srcset/poster and inline-style url()s.
-  clone.querySelectorAll<HTMLImageElement | HTMLSourceElement | HTMLVideoElement>(
-    "img,source,video",
-  ).forEach((el) => {
+/**
+ * Fetch an image and return it as a data URL, or null when the browser
+ * will not let us read it (no CORS headers) or the fetch fails. Data URLs
+ * are self-contained: an SVG snapshot that only references data: rasters
+ * can never taint a canvas, which is what lets captureStream record it.
+ */
+async function fetchImageAsDataUrl(src: string): Promise<string | null> {
+  try {
+    const res = await fetch(src, { mode: "cors", credentials: "omit" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob.type.startsWith("image/") || blob.size <= 0) return null;
+    // Guard: never inline huge media into a per-frame snapshot.
+    if (blob.size > 6 * 1024 * 1024) return null;
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a src-ish token to an absolute http(s)/blob URL, or null when
+ *  it is already self-contained (data:/#/empty). Blob URLs are NOT left
+ *  as-is: inside an SVG-in-<img> a blob: raster is unreachable and can
+ *  behave like a failed external load, so they are fetched (same-origin
+ *  fetch works for blobs) and inlined like any other image. */
+function absolutizeToken(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.startsWith("data:") || trimmed.startsWith("#")) {
+    return null;
+  }
+  try {
+    return new URL(trimmed, location.href).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Serialize a container element into XHTML suitable for a <foreignObject>,
+ * with every external raster INLINED so the resulting snapshot is fully
+ * self-contained. This is what makes DOM capture possible at all: an SVG
+ * drawn from a data: URL sits in an opaque origin, so ANY http(s) image
+ * it references (even same-origin ones) loads without CORS and would
+ * TAINT the canvas — browsers then refuse to record it. Inlining every
+ * image as a data: URL (or a transparent pixel when the browser refuses
+ * to read it) means the snapshot can never taint.
+ *
+ * Strips non-rasterizable/unsafe nodes (canvas is composited separately,
+ * scripts/iframes/video do nothing inside an image).
+ *
+ * @param resolve      async (url → data URL | null) resolver (cached)
+ * @param maxResolves  cap on how many distinct rasters get inlined per
+ *                     call (probe uses a small cap so it stays instant;
+ *                     real frames inline everything)
+ */
+async function serializeContainerClean(
+  container: HTMLElement,
+  resolve: (src: string) => Promise<string | null>,
+  maxResolves = Infinity,
+): Promise<string> {
+  const clone = container.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll(
+      "canvas,script,iframe,noscript,object,embed,video,audio,link",
+    )
+    .forEach((n) => n.remove());
+
+  let resolveBudget = maxResolves;
+  const inline = async (abs: string): Promise<string> => {
+    if (resolveBudget <= 0) return TRANSPARENT_PIXEL;
+    resolveBudget -= 1;
+    return (await resolve(abs)) || TRANSPARENT_PIXEL;
+  };
+
+  // <img>/<source> src + srcset: replace every http(s)/relative raster
+  // with its inlined data URL.
+  const media = Array.from(
+    clone.querySelectorAll<HTMLImageElement | HTMLSourceElement>("img,source"),
+  );
+  for (const el of media) {
     const src = el.getAttribute("src");
     if (src) {
-      try {
-        el.setAttribute("src", new URL(src, location.href).href);
-      } catch {
-        // leave as-is
-      }
+      const abs = absolutizeToken(src);
+      if (abs) el.setAttribute("src", await inline(abs));
     }
     const srcset = el.getAttribute("srcset");
     if (srcset) {
-      el.setAttribute(
-        "srcset",
-        srcset
-          .split(",")
-          .map((part) => {
-            const [urlPart, ...rest] = part.trim().split(/\s+/);
-            try {
-              return [new URL(urlPart, location.href).href, ...rest].join(" ");
-            } catch {
-              return part;
-            }
-          })
-          .join(", "),
-      );
-    }
-    const poster = (el as HTMLVideoElement).getAttribute?.("poster");
-    if (poster) {
-      try {
-        (el as HTMLVideoElement).setAttribute("poster", new URL(poster, location.href).href);
-      } catch {
-        // leave as-is
+      const next: string[] = [];
+      for (const part of srcset.split(",")) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        const [urlPart, ...rest] = trimmed.split(/\s+/);
+        const abs = absolutizeToken(urlPart);
+        next.push([abs ? await inline(abs) : urlPart, ...rest].join(" "));
       }
+      el.setAttribute("srcset", next.join(", "));
     }
-  });
+  }
 
-  // Inline style url()s (rare, but background-image etc. appear inline).
-  clone.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+  // Inline style url()s (background-image etc.).
+  const styled = Array.from(clone.querySelectorAll<HTMLElement>("[style]"));
+  for (const el of styled) {
     const style = el.getAttribute("style");
-    if (style && style.includes("url(")) {
-      el.setAttribute("style", absolutizeCssUrls(style));
+    if (!style || !style.includes("url(")) continue;
+    const regex = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+    let out = "";
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(style))) {
+      out += style.slice(cursor, match.index);
+      const abs = absolutizeToken(match[2]);
+      out += abs ? `url(${await inline(abs)})` : match[0];
+      cursor = match.index + match[0].length;
     }
-  });
+    if (cursor < style.length) out += style.slice(cursor);
+    if (out !== style) el.setAttribute("style", out);
+  }
+
+  // <style> elements living INSIDE the container (SVG games often carry
+  // their own) — sanitize their url()s exactly like the page CSS.
+  for (const styleEl of Array.from(clone.querySelectorAll<HTMLStyleElement>("style"))) {
+    const css = styleEl.textContent || "";
+    if (!css.includes("url(")) continue;
+    const regex = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+    let out = "";
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(css))) {
+      out += css.slice(cursor, match.index);
+      const abs = absolutizeToken(match[2]);
+      out += abs ? `url(${await inline(abs)})` : match[0];
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < css.length) out += css.slice(cursor);
+    if (out !== css) styleEl.textContent = out;
+  }
+
+  // <image> references inside inline SVGs (avatars/art drawn as SVG
+  // <image>) — inline or blank them like <img>s.
+  for (const imgEl of Array.from(
+    clone.querySelectorAll<SVGImageElement>("image"),
+  )) {
+    const href = imgEl.getAttribute("href") || imgEl.getAttribute("xlink:href");
+    if (!href) continue;
+    const abs = absolutizeToken(href);
+    if (abs) {
+      imgEl.removeAttribute("xlink:href");
+      imgEl.setAttribute("href", await inline(abs));
+    }
+  }
+
+  // ── Catch-all scrub ────────────────────────────────────────────────
+  // The targeted passes above inline every raster they recognise, but a
+  // single missed external reference (an SVG <use> sprite, an exotic
+  // embed, a background on an attribute we did not predict) would taint
+  // the canvas when Chrome rasterizes. Walk the whole clone one last
+  // time and neutralize ANY remaining external raster reference. The
+  // snapshot therefore physically cannot taint — it contains nothing
+  // but inline data: rasters.
+  for (const el of Array.from(clone.querySelectorAll("*"))) {
+    for (const attr of ["src", "href", "poster", "xlink:href"]) {
+      const raw = el.getAttribute(attr);
+      if (!raw) continue;
+      const abs = absolutizeToken(raw);
+      if (abs) el.setAttribute(attr, TRANSPARENT_PIXEL);
+    }
+    const srcset = el.getAttribute("srcset");
+    if (srcset) {
+      const next: string[] = [];
+      for (const part of srcset.split(",")) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        const [urlPart, ...rest] = trimmed.split(/\s+/);
+        const abs = absolutizeToken(urlPart);
+        next.push([abs ? TRANSPARENT_PIXEL : urlPart, ...rest].join(" "));
+      }
+      el.setAttribute("srcset", next.join(", "));
+    }
+  }
 
   clone.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
   return new XMLSerializer().serializeToString(clone);
 }
 
+type CompositeProbeResult = {
+  ok: boolean;
+  /** Human-readable reason when the probe fails — surfaced to the user
+   *  instead of the old canned "canvas would be tainted" message, so the
+   *  real cause (load failure / blank render / genuine taint) is visible. */
+  reason?: string;
+};
+
 /**
  * Probe whether composite (DOM) capture works in this browser: load one
- * data-URL foreignObject snapshot, draw it, and verify the canvas stays
+ * foreignObject snapshot, draw it, and verify the canvas stays
  * origin-clean AND something was actually painted (covers browsers that
  * silently render foreignObject blank or taint the canvas). Called once
  * when composite mode starts — a tainted canvas would make
  * captureStream throw, so we fail loudly instead of recording black.
+ *
+ * TRANSPORT: the snapshot MUST be served as a data: URL. Blob: URLs are
+ * NOT origin-clean here — drawing an SVG image loaded from a blob:
+ * taints the canvas in Chrome (verified experimentally: identical
+ * snapshot, data: draws clean, blob: throws SecurityError on
+ * getImageData). The data: form is limited to roughly 2 MB per URL by
+ * Chrome, so the recorder compacts the embedded CSS (comments removed,
+ * newlines collapsed) and reports a size error rather than failing
+ * silently if the encoded snapshot would still exceed the limit.
  */
 async function probeComposite(
   container: HTMLElement,
   css: string,
+  resolve: (src: string) => Promise<string | null>,
   width: number,
   height: number,
-): Promise<boolean> {
-  try {
-    const html = serializeContainer(container);
+): Promise<CompositeProbeResult> {
+  /** Load one SVG snapshot; true = it loaded (regardless of pixels). */
+  const loadSnapshot = async (svgCss: string): Promise<boolean> => {
+    const html = await serializeContainerClean(container, resolve, 12);
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-      `<style>${css}</style>` +
+      // The page CSS is CSS, not XML — it can legally contain raw &
+      // (e.g. content: 'R&D'), which would make the whole SVG unparseable
+      // and fail the image load. CDATA protects it.
+      `<style><![CDATA[${svgCss}]]></style>` +
       `<foreignObject width="${width}" height="${height}">${html}</foreignObject></svg>`;
     const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("snapshot failed to load"));
-      img.src = url;
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return false;
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(img, 0, 0, width, height);
-    const data = ctx.getImageData(0, 0, width, height).data;
-    for (let i = 0; i < data.length; i += 997) {
-      if (data[i] || data[i + 1] || data[i + 2]) return true;
+    try {
+      const img = new Image();
+      await new Promise<void>((loadOk, loadFail) => {
+        img.onload = () => loadOk();
+        img.onerror = () => loadFail(new Error("load failed"));
+        img.src = url;
+      });
+      return true;
+    } catch {
+      return false;
     }
-    return false;
-  } catch {
-    return false;
+  };
+
+  try {
+    const loaded = await loadSnapshot(css);
+    if (!loaded) {
+      // Classify: is the snapshot simply too large for a data: URL, or is
+      // DOM capture unsupported? Retry with empty CSS — if that loads,
+      // the (compacted) CSS was still too big.
+      const bare = await loadSnapshot("");
+      const approxKb = Math.round(css.length / 1024);
+      return {
+        ok: false,
+        reason: bare
+          ? `the DOM snapshot is too large to load (~${approxKb} KB of CSS) — DOM recording cannot be used on this page`
+          : "the SVG snapshot failed to load — DOM capture appears unsupported in this browser",
+      };
+    }
+
+    // Loaded — now verify it stays origin-clean AND actually paints.
+    const html = await serializeContainerClean(container, resolve, 12);
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+      `<style><![CDATA[${css}]]></style>` +
+      `<foreignObject width="${width}" height="${height}">${html}</foreignObject></svg>`;
+    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    try {
+      const img = new Image();
+      await new Promise<void>((loadOk, loadFail) => {
+        img.onload = () => loadOk();
+        img.onerror = () => loadFail(new Error("load failed"));
+        img.src = url;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return { ok: false, reason: "a 2D canvas context is unavailable" };
+      }
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      let data: Uint8ClampedArray;
+      try {
+        data = ctx.getImageData(0, 0, width, height).data;
+      } catch {
+        return {
+          ok: false,
+          reason: "the rendered snapshot tainted the canvas (an asset could not be inlined)",
+        };
+      }
+      for (let i = 0; i < data.length; i += 997) {
+        if (data[i] || data[i + 1] || data[i + 2]) return { ok: true };
+      }
+      return {
+        ok: false,
+        reason: "the snapshot rendered blank — DOM capture is not supported in this browser",
+      };
+    } catch {
+      return {
+        ok: false,
+        reason: "the snapshot failed to load when rendered — the DOM is too large for DOM recording",
+      };
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message : "unknown snapshot error",
+    };
   }
 }
 
@@ -305,11 +530,78 @@ export class CreatorRecorder {
   private frameIntervalMs = 1000 / 15;
   private snapshotImg: HTMLImageElement | null = null;
   private cssCache = "";
+  /** Page CSS with every url() inlined — the only CSS the snapshot uses. */
+  private cssClean = "";
   private cssCachedAt = 0;
+  /** Resolved raster cache (url → data URL | null), cleared per capture. */
+  private imageDataUrlCache = new Map<string, Promise<string | null>>();
+
+  /** Resolve an image URL to a data URL (cached for the whole capture). */
+  private resolveImageDataUrl(src: string): Promise<string | null> {
+    let pending = this.imageDataUrlCache.get(src);
+    if (!pending) {
+      pending = fetchImageAsDataUrl(src);
+      this.imageDataUrlCache.set(src, pending);
+      // Keep the cache bounded (avatars/emotes are stable per session).
+      if (this.imageDataUrlCache.size > 120) {
+        for (const key of this.imageDataUrlCache.keys()) {
+          this.imageDataUrlCache.delete(key);
+          if (this.imageDataUrlCache.size <= 80) break;
+        }
+      }
+    }
+    return pending;
+  }
+
+  /** Inline every url() token in the page CSS (styles, backgrounds,
+   *  fonts) so the snapshot's <style> can never taint the canvas either.
+   *  Also COMPACTS the CSS (comments stripped, line breaks collapsed to
+   *  single spaces) — the compacted CSS is what the recorder embeds, so
+   *  the snapshot's data: URL stays comfortably under Chrome's ~2 MB
+   *  ceiling even on CSS-heavy pages. */
+  private async sanitizeCssUrls(rawCss: string): Promise<string> {
+    const css = rawCss
+      ? rawCss
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/\s*\n\s*/g, " ")
+          .trim()
+      : "";
+    if (!css || !css.includes("url(")) return css;
+    const regex = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+    let out = "";
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(css))) {
+      out += css.slice(cursor, match.index);
+      const abs = absolutizeToken(match[2]);
+      out += abs
+        ? `url(${(await this.resolveImageDataUrl(abs)) || TRANSPARENT_PIXEL})`
+        : match[0];
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < css.length) out += css.slice(cursor);
+    return out;
+  }
 
   private startedAt = 0;
   private requesting = false;
   private result: RecordingResult | null = null;
+  /** Auto-save filename requested for the current capture: when set, the
+   *  finished recording is downloaded automatically as soon as it is
+   *  finalised (used by the "stop & save on quit/leave" path). */
+  private saveOnStopFilename: string | null = null;
+  /** URL of the clip most recently handed to download() — guards against
+   *  handing the same finished clip to the browser twice (e.g. leave
+   *  auto-save after the game-end auto-download already fired). */
+  private lastDownloadedUrl: string | null = null;
+  /** True from the moment stop() is called on a live recorder until its
+   *  queued onstop → finalize() has run. dispose() waits for finalize so
+   *  the finished clip is never torn down before it is saved. */
+  private finalizePending = false;
+  /** True when the chunks were already saved synchronously (unload path);
+   *  the queued finalize() then only releases resources instead of
+   *  rebuilding (and re-revoking) the saved clip. */
+  private finalizeSuppressed = false;
 
   dimensions: CaptureDimensions | null = null;
   error: string | null = null;
@@ -375,6 +667,12 @@ export class CreatorRecorder {
         URL.revokeObjectURL(this.result.url);
         this.result = null;
       }
+      // A fresh capture starts with a clean auto-save state and a fresh
+      // raster cache (game session may show different avatars/emotes).
+      this.lastDownloadedUrl = null;
+      this.finalizeSuppressed = false;
+      this.imageDataUrlCache.clear();
+      this.cssClean = "";
       // Reset from a previous capture.
       this.releaseResources(true);
 
@@ -388,12 +686,21 @@ export class CreatorRecorder {
 
       // Composite (DOM) mode needs a one-shot origin-clean probe before
       // we commit: a tainted canvas makes captureStream throw, so we
-      // fail loudly rather than record a broken/black video.
+      // fail loudly rather than record a broken/black video. The probe
+      // runs against the SANITIZED snapshot (all rasters inlined), which
+      // is exactly what the real frames will draw.
       if (mode === "composite") {
         this.cssCache = collectPageCss();
+        this.cssClean = await this.sanitizeCssUrls(this.cssCache);
         this.cssCachedAt = Date.now();
-        const probeOk = await probeComposite(container, this.cssCache, 64, 64);
-        if (!probeOk) {
+        const probe = await probeComposite(
+          container,
+          this.cssClean,
+          (src) => this.resolveImageDataUrl(src),
+          64,
+          64,
+        );
+        if (!probe.ok) {
           // Best compatible fallback: if a dominant canvas exists, use
           // canvas mode instead of giving up silently.
           const canvases = Array.from(container.querySelectorAll("canvas")).filter(
@@ -402,8 +709,7 @@ export class CreatorRecorder {
           if (canvases.length > 0) {
             this.sourceMode = "canvas";
           } else {
-            this.error =
-              "In-page DOM capture is not supported in this browser (the canvas would be tainted, which browsers refuse to record).";
+            this.error = `In-page DOM capture is not possible: ${probe.reason ?? "unknown reason"}`;
             this.requesting = false;
             this.onStateChange?.("error");
             return false;
@@ -495,12 +801,84 @@ export class CreatorRecorder {
       return;
     }
     this.cancelAnimation();
+    // The recorder's onstop → finalize() event is queued asynchronously —
+    // remember it is owed so dispose() does not tear down first.
+    this.finalizePending = true;
     try {
       this.recorder.stop();
     } catch {
       // Already inactive — nothing to stop.
+      this.finalizePending = false;
     }
     // finalize() runs from the recorder's onstop handler.
+  }
+
+  /**
+   * Stop the capture and AUTO-DOWNLOAD the finished file as soon as it
+   * is finalised. This is the "save on leave" path (user quit the game,
+   * navigated away, hidden the tab): the download is triggered from the
+   * recorder's own finalize handler, so it never depends on React state
+   * or the exterior bar still being mounted.
+   * @returns the filename used, or null when there was nothing to save.
+   */
+  stopAndSave(filenameBase = "grynd-creator-recording"): string | null {
+    this.saveOnStopFilename = filenameBase;
+    if (this.recorder && this.recorder.state !== "inactive") {
+      this.stop();
+      return null; // finalize() performs the download once the clip exists
+    }
+    // A stop was already requested and its finalize() is still owed (the
+    // user pressed Stop & save, then left before the clip finalised) —
+    // keep the auto-save filename so that finalize downloads the clip.
+    if (this.finalizePending) return null;
+    this.saveOnStopFilename = null;
+    // Nothing live — save an already-finished clip, unless that exact
+    // clip was already handed to the browser (game-end auto-download,
+    // manual Stop & save, a previous leave event…).
+    if (this.result && this.lastDownloadedUrl !== this.result.url) {
+      return this.download(filenameBase);
+    }
+    return null;
+  }
+
+  /**
+   * Leave/close path (pagehide / beforeunload): the page can be torn
+   * down before MediaRecorder's async onstop → finalize() runs, so build
+   * the file synchronously from the frames already captured and hand it
+   * to the browser download manager right now. Falls back to the graceful
+   * stopAndSave() when there is nothing to build yet.
+   * @returns the filename used, or null when there was nothing to save.
+   */
+  stopAndSaveSync(filenameBase = "grynd-creator-recording"): string | null {
+    const chunks = this.chunks.filter((c) => c.size > 0);
+    const live = Boolean(this.recorder && this.recorder.state !== "inactive");
+    if (chunks.length > 0 && !this.result) {
+      const mimeType = this.recorder?.mimeType || pickMimeType() || "video/webm";
+      const blob = new Blob(chunks, { type: mimeType });
+      const previous = this.result;
+      this.result = {
+        blob,
+        url: URL.createObjectURL(blob),
+        mimeType,
+        dimensions: this.dimensions,
+        durationMs: Date.now() - this.startedAt,
+      };
+      if (previous) URL.revokeObjectURL(previous.url);
+      // The clip is saved — a queued finalize() must only release
+      // resources, never rebuild or re-download it.
+      this.saveOnStopFilename = null;
+      this.finalizeSuppressed = true;
+      if (live) {
+        this.finalizePending = true;
+        try {
+          this.recorder?.stop();
+        } catch {
+          // ignore
+        }
+      }
+      return this.download(filenameBase);
+    }
+    return this.stopAndSave(filenameBase);
   }
 
   /** Abort without producing a recording (e.g. page unload). */
@@ -567,12 +945,46 @@ export class CreatorRecorder {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
+    // Remember this clip was handed to the browser so the save-on-leave
+    // path never downloads the same result twice.
+    this.lastDownloadedUrl = result.url;
     return filename;
   }
 
   /** Release every resource: animation, recorder, stream, canvases,
    *  snapshot image, chunks and object URLs. */
   dispose(): void {
+    this.cancelAnimation();
+    const hadLiveRecorder = Boolean(
+      this.recorder && this.recorder.state !== "inactive",
+    );
+    if (hadLiveRecorder) {
+      // Unmounted mid-recording (user left the game page): save the clip
+      // instead of losing it — stop and let finalize() auto-download.
+      if (!this.saveOnStopFilename) {
+        this.saveOnStopFilename = "grynd-creator-recording";
+      }
+      this.finalizePending = true;
+      try {
+        this.recorder?.stop();
+      } catch {
+        // ignore
+      }
+    }
+    if (this.finalizePending) {
+      // stop() was just requested on a live recorder — its queued onstop
+      // event (→ finalize → auto-download) must run before resources are
+      // released, otherwise the chunks are wiped and the clip is lost.
+      // finalize() clears finalizePending; this deferred teardown then
+      // completes the cleanup.
+      setTimeout(() => this.teardown(), 600);
+      return;
+    }
+    this.teardown();
+  }
+
+  /** Full resource teardown (shared by every dispose path). */
+  private teardown(): void {
     this.cancelAnimation();
     this.releaseResources(true);
     if (this.result) {
@@ -628,6 +1040,17 @@ export class CreatorRecorder {
   /** MediaRecorder onstop: build the final Blob and surface it. */
   private finalize(): void {
     this.cancelAnimation();
+    this.finalizePending = false;
+    if (this.finalizeSuppressed) {
+      // The chunks were already saved synchronously (unload path) — only
+      // release the capture resources, keeping the saved result intact.
+      this.finalizeSuppressed = false;
+      this.stream?.getVideoTracks().forEach((t) => t.stop());
+      this.stream = null;
+      this.recorder = null;
+      this.chunks = [];
+      return;
+    }
     const durationMs = Date.now() - this.startedAt;
     const mimeType = this.recorder?.mimeType || "video/webm";
 
@@ -652,9 +1075,17 @@ export class CreatorRecorder {
           durationMs,
         };
         this.onStateChange?.("stopped");
+        // Auto-save requested (stop & save on quit/leave): hand the
+        // finished clip straight to the browser download manager.
+        if (this.saveOnStopFilename) {
+          const base = this.saveOnStopFilename;
+          this.saveOnStopFilename = null;
+          if (this.result) this.download(base);
+        }
       }
     } else {
       this.error = "Recording stopped before any frames were captured.";
+      this.saveOnStopFilename = null;
       this.onStateChange?.("error");
     }
 
@@ -715,70 +1146,87 @@ export class CreatorRecorder {
   }
 
   /** Composite mode: DOM snapshot + canvas overlay into the output. */
-  private drawCompositeFrame(): Promise<void> {
+  private async drawCompositeFrame(): Promise<void> {
     const container = this.container;
     const ctx = this.ctx;
     const output = this.output;
-    if (!container || !ctx || !output) return Promise.resolve();
+    if (!container || !ctx || !output) return;
 
-    // Refresh the stylesheet cache periodically (dynamic style injection).
+    // Refresh the stylesheet cache periodically (dynamic style injection)
+    // and inline its url()s so the snapshot's <style> never touches the
+    // network either.
     if (Date.now() - this.cssCachedAt > 2000) {
       this.cssCache = collectPageCss();
+      this.cssClean = await this.sanitizeCssUrls(this.cssCache);
       this.cssCachedAt = Date.now();
     }
-    const css = this.cssCache;
 
     const cw = container.offsetWidth || 1;
     const ch = container.offsetHeight || 1;
     const fit = fitRect(cw, ch, output.width, output.height);
 
-    const html = serializeContainer(container);
-    // Character-wise encoding means we can pre-encode the static head
-    // (SVG + styles) once and only encode the per-frame HTML.
-    const encodedHead = encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="0 0 ${cw} ${ch}"><style>${css}</style><foreignObject width="${cw}" height="${ch}">`,
-    );
-    const encodedFoot = encodeURIComponent("</foreignObject></svg>");
-    const url = `data:image/svg+xml;charset=utf-8,${encodedHead}${encodeURIComponent(html)}${encodedFoot}`;
+    let html: string;
+    try {
+      html = await serializeContainerClean(container, (src) =>
+        this.resolveImageDataUrl(src),
+      );
+    } catch {
+      // A serialization hiccup keeps the previous frame — never break
+      // the recording loop over a snapshot.
+      return;
+    }
 
-    if (!this.snapshotImg) this.snapshotImg = new Image();
-    const img = this.snapshotImg;
-    img.src = url;
+    // Transport: the snapshot MUST be a data: URL — Chrome taints the
+    // canvas when an SVG image is drawn from a blob: URL (verified
+    // experimentally), while the identical snapshot from a data: URL
+    // draws clean. Every raster inside is already inlined as data: and
+    // the CSS is compacted + CDATA-wrapped, keeping the URL well under
+    // Chrome's ~2 MB data-URL limit.
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="0 0 ${cw} ${ch}">` +
+      `<style><![CDATA[${this.cssClean}]]></style>` +
+      `<foreignObject width="${cw}" height="${ch}">${html}</foreignObject></svg>`;
+    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    // If the encoded snapshot would exceed Chrome's data-URL ceiling,
+    // skip the frame (keep the previous one) rather than load a dead URL.
+    if (url.length > 1_900_000) return;
 
-    return (img.decode ? img.decode() : Promise.resolve())
-      .then(() => {
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, output.width, output.height);
-        ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
+    try {
+      if (!this.snapshotImg) this.snapshotImg = new Image();
+      const img = this.snapshotImg;
+      img.src = url;
+      if (img.decode) await img.decode();
 
-        // Live canvas overlay: draw each <canvas> at its layout position.
-        const cRect = container.getBoundingClientRect();
-        if (cRect.width > 0 && cRect.height > 0) {
-          container.querySelectorAll("canvas").forEach((cv) => {
-            if (cv.width <= 0 || cv.height <= 0) return;
-            const r = cv.getBoundingClientRect();
-            const relX = ((r.left - cRect.left) / cRect.width) * cw;
-            const relY = ((r.top - cRect.top) / cRect.height) * ch;
-            const relW = (r.width / cRect.width) * cw;
-            const relH = (r.height / cRect.height) * ch;
-            try {
-              ctx.drawImage(
-                cv,
-                fit.x + relX * fit.scale,
-                fit.y + relY * fit.scale,
-                relW * fit.scale,
-                relH * fit.scale,
-              );
-            } catch {
-              // tainted canvas — skip it rather than fail the frame
-            }
-          });
-        }
-      })
-      .catch(() => {
-        // A snapshot that fails to decode (e.g. oversized data URL on a
-        // constrained device) leaves the previous frame — do not throw
-        // out of the loop.
-      });
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, output.width, output.height);
+      ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
+
+      // Live canvas overlay: draw each <canvas> at its layout position.
+      const cRect = container.getBoundingClientRect();
+      if (cRect.width > 0 && cRect.height > 0) {
+        container.querySelectorAll("canvas").forEach((cv) => {
+          if (cv.width <= 0 || cv.height <= 0) return;
+          const r = cv.getBoundingClientRect();
+          const relX = ((r.left - cRect.left) / cRect.width) * cw;
+          const relY = ((r.top - cRect.top) / cRect.height) * ch;
+          const relW = (r.width / cRect.width) * cw;
+          const relH = (r.height / cRect.height) * ch;
+          try {
+            ctx.drawImage(
+              cv,
+              fit.x + relX * fit.scale,
+              fit.y + relY * fit.scale,
+              relW * fit.scale,
+              relH * fit.scale,
+            );
+          } catch {
+            // tainted canvas — skip it rather than fail the frame
+          }
+        });
+      }
+    } catch {
+      // A snapshot that fails to decode leaves the previous frame — do
+      // not throw out of the loop.
+    }
   }
 }

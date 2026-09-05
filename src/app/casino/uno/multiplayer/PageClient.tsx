@@ -12,18 +12,17 @@ import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import useGamePresence from "../../../../hooks/useGamePresence";
-import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
+import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardPlace, playTurnSwitch, playVictory } from "../../../../lib/gameAudio";
 import ReportModal from "../../../../components/ReportModal";
 import {
-  IconTrophy,
-  IconSkull,
   IconRobot,
   IconUser,
   IconFlag,
@@ -89,6 +88,10 @@ export default function UnoMultiplayerPage() {
     reason: string;
     openedAt: number;
   } | null>(null);
+  // Pot captured from the finished payload — the winner's payout
+  // mirrors the server's settleWinner math (pot × 95%), so the net
+  // token delta is only shown when the pot is known.
+  const [endPot, setEndPot] = useState<number | null>(null);
   const [replayRequested, setReplayRequested] = useState(false);
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
   const [returnChosen, setReturnChosen] = useState(false);
@@ -96,13 +99,18 @@ export default function UnoMultiplayerPage() {
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
   const prevIsPlayerTurnRef = useRef<boolean | null>(null);
 
-  const openEndPopup = (result: "win" | "loss", reason = "finished") => {
+  const openEndPopup = (
+    result: "win" | "loss",
+    reason = "finished",
+    pot: number | null = null,
+  ) => {
     setEndPopup({ result, reason, openedAt: Date.now() });
+    setEndPot(pot);
     setReplayRequested(false);
     setOpponentReplayRequested(false);
     setReturnChosen(false);
     setReplaySecondsLeft(15);
-    if (result === "win") { celebrateWin(); playVictory(); }
+    if (result === "win") { playVictory(); }
     posthog?.capture("neon_flush_table_game_ended", {
       result,
       reason,
@@ -347,12 +355,12 @@ export default function UnoMultiplayerPage() {
         if (data.status === "finished" && !endPopup) {
           const youWon = data.data?.winner === data.data?.role;
           setMessage(youWon ? "You won the match!" : "You lost the match.");
-          openEndPopup(youWon ? "win" : "loss");
+          openEndPopup(youWon ? "win" : "loss", "finished", data.data?.pot);
           return;
         }
         if (data.shouldReturnToLobby || !data.data?.role) {
           setMessage("Game over.");
-          openEndPopup("loss");
+          openEndPopup("loss", "finished", data.data?.pot);
           return;
         }
 
@@ -617,7 +625,7 @@ export default function UnoMultiplayerPage() {
       if (data.status === "finished" || data.shouldReturnToLobby || !data.data?.role) {
         const youWon = data.data?.winner === data.data?.role;
         setMessage(youWon ? "You won the match!" : "You lost the match.");
-        openEndPopup(youWon ? "win" : "loss");
+        openEndPopup(youWon ? "win" : "loss", "finished", data.data?.pot);
         return;
       }
 
@@ -661,7 +669,7 @@ export default function UnoMultiplayerPage() {
       if (data.status === "finished" || data.shouldReturnToLobby || !data.data?.role) {
         const youWon = data.data?.winner === data.data?.role;
         setMessage(youWon ? "You won the match!" : "You lost the match.");
-        openEndPopup(youWon ? "win" : "loss");
+        openEndPopup(youWon ? "win" : "loss", "finished", data.data?.pot);
         return;
       }
 
@@ -760,6 +768,87 @@ export default function UnoMultiplayerPage() {
     selfId: (game as any)?.currentUserId ?? null,
   });
 
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the table ends (win/loss). The
+  // old bespoke end popup is deleted. Every number comes from real
+  // data: the table's `betAmount` (server settings) + the finished
+  // payload's `pot`; the winner payout mirrors the server's
+  // settleWinner math (pot × 95%). The tokens row is hidden when the
+  // pot wasn't captured — nothing is invented.
+  const renderResult = () => {
+    if (!endPopup) return null;
+    const won = endPopup.result === "win";
+    const bet = Number(unoMultiSettings.betAmount || 0);
+    const pot = Number(endPot || 0);
+    // Server settlement (settleWinner): the winner is credited
+    // pot × (100% − 5% house edge); their own bet was part of the
+    // pot, so the net change is payout − bet; losers forfeit their
+    // bet.
+    const payout = pot > 0 ? Number((pot * 0.95).toFixed(2)) : null;
+    const tokenDelta =
+      payout !== null && bet > 0
+        ? won
+          ? payout - bet
+          : -bet
+        : null;
+
+    const headline = won
+      ? "You cleared your hand first"
+      : endPopup.reason === "resigned"
+        ? "You resigned from the table"
+        : "Another player cleared their hand";
+    const subline =
+      payout !== null && bet > 0
+        ? won
+          ? `Your ${bet.toFixed(2)} stake back plus ${(payout - bet).toFixed(2)} in winnings.`
+          : `You lost your ${bet.toFixed(2)} stake.`
+        : undefined;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={won ? "win" : "loss"}
+        headline={headline}
+        subline={subline}
+        gameName={unoMultiSettings.gameName || "UNO Table"}
+        tokenDelta={tokenDelta}
+        summary={[
+          { label: "Result", value: won ? "Win" : "Loss" },
+          ...(unoMultiPlayers.length > 0
+            ? [{ label: "Players", value: String(unoMultiPlayers.length) }]
+            : []),
+        ]}
+        details={[
+          ...(unoMultiTableCode
+            ? [{ label: "Table code", value: unoMultiTableCode }]
+            : []),
+          ...(bet > 0
+            ? [{ label: "Wager", value: `${bet.toLocaleString()} tokens` }]
+            : []),
+          ...(payout !== null
+            ? [{ label: "Pot", value: `${pot.toLocaleString()} tokens` }]
+            : []),
+        ]}
+        detailsContent={
+          <div className="mt-3 text-center">
+            <p className="text-xs font-bold uppercase tracking-widest text-yellow-200">
+              Replay window: {replaySecondsLeft}s
+            </p>
+            <p className="mt-1 text-xs text-slate-300">
+              {returnChosen
+                ? "A player chose the lobby. Replay is disabled."
+                : opponentReplayRequested
+                  ? "Another player is ready for replay."
+                  : "Players must click replay before the timer ends."}
+            </p>
+          </div>
+        }
+        playAgain={{ label: "Replay", onClick: requestReplay }}
+        onReturnToLobby={closeToUnoLobby}
+      />
+    );
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -768,101 +857,7 @@ export default function UnoMultiplayerPage() {
       className="bg-gradient-to-br from-[#001933] mt-12 to-[#000d1a] min-h-screen flex flex-col items-center text-white px-4 py-8"
     >
       <NavigationBar currentPath="/casino" />
-      <AnimatePresence>
-        {endPopup && (
-          <motion.div
-            key="uno-end-popup"
-            {...gameOverModal.backdrop}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
-          >
-            <motion.div
-              {...gameOverModal.panel}
-              className={`relative w-full max-w-md overflow-hidden rounded-3xl border p-6 text-center shadow-2xl ${
-                endPopup.result === "win"
-                  ? "border-yellow-400/60 bg-gradient-to-b from-[#0a2a1a] to-[#031a0a] shadow-[0_0_45px_rgba(250,204,21,0.35)]"
-                  : "border-cyan-300/60 bg-[#071124] shadow-[0_0_45px_rgba(0,229,255,0.35),inset_0_0_30px_rgba(217,70,239,0.12)]"
-              }`}
-            >
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-300 via-fuchsia-500 to-yellow-300" />
-              <motion.div
-                initial={{ scale: 0, rotate: -30 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
-                className="mb-2 text-6xl"
-              >
-                {endPopup.result === "win" ? <IconTrophy size={56} className="text-amber-400" /> : <IconSkull size={56} className="text-red-400" />}
-              </motion.div>
-              <p className="text-xs font-black uppercase tracking-[0.45em] text-cyan-200">
-                Neon Flush Table Result
-              </p>
-              <motion.h2
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.4 }}
-                className={`mt-3 text-4xl font-black uppercase ${endPopup.result === "win" ? "text-yellow-300" : "text-fuchsia-300"}`}
-              >
-                {endPopup.result === "win"
-                  ? "Victory"
-                  : endPopup.reason === "resigned"
-                    ? "Resigned"
-                    : "Defeat"}
-              </motion.h2>
-              <motion.p
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.6, duration: 0.4 }}
-                className="mt-3 text-sm text-slate-200"
-              >
-                {endPopup.result === "win"
-                  ? "You won the table."
-                  : endPopup.reason === "resigned"
-                    ? "You resigned from the table."
-                    : "You lost the table."}
-              </motion.p>
-              <motion.p
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.7, duration: 0.4 }}
-                className="mt-4 text-xs font-bold uppercase tracking-widest text-yellow-200"
-              >
-                Replay window: {replaySecondsLeft}s
-              </motion.p>
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.8, duration: 0.4 }}
-                className="mt-6 grid gap-3 sm:grid-cols-2"
-              >
-                <button
-                  onClick={requestReplay}
-                  disabled={returnChosen || replayRequested}
-                  className="rounded-xl border border-fuchsia-300/70 bg-fuchsia-500/20 px-4 py-3 font-black text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {replayRequested ? "Replay requested" : "Replay"}
-                </button>
-                <button
-                  onClick={closeToUnoLobby}
-                  className="rounded-xl border border-cyan-300/70 bg-cyan-400 px-4 py-3 font-black text-[#031026] shadow-[0_0_18px_rgba(34,211,238,0.35)]"
-                >
-                  Return to Lobby
-                </button>
-              </motion.div>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.0, duration: 0.4 }}
-                className="mt-3 text-xs text-slate-300"
-              >
-                {returnChosen
-                  ? "A player chose the lobby. Replay is disabled."
-                  : opponentReplayRequested
-                    ? "Another player is ready for replay."
-                    : "Players must click replay before the timer ends."}
-              </motion.p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
       {/* Turn Banner */}
       <AnimatePresence>
         {turnBanner && (
@@ -1381,6 +1376,15 @@ export default function UnoMultiplayerPage() {
         </CreatorResponsiveLayout>
         </CreatorModeHost>
       )}
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. The old bespoke end popup is
+          deleted — this is the single end-of-table experience; the
+          coordinated replay flow (15s window, both-players-agree) is
+          unchanged and surfaced via Play Again / Return to Lobby. */}
+      {renderResult()}
+
       <ReportModal
         isOpen={showReportModal && !!humanOpponent}
         onClose={() => setShowReportModal(false)}

@@ -24,12 +24,10 @@ import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import ReportModal from "../../../../../components/ReportModal";
-import { celebrateWin, gameOverModal } from "../../../../../lib/animations";
+import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
   IconFlag,
-  IconTrophy,
-  IconMoodSad,
   IconNotebook,
   IconTarget,
 } from "@tabler/icons-react";
@@ -254,6 +252,14 @@ export default function Page() {
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [resigning, setResigning] = useState(false);
   const [showWinLossPopup, setShowWinLossPopup] = useState(false);
+  // Match-row settlement numbers captured from /api/pool/get-match
+  // (wager / prizePaid / houseFee are columns on the row) so the
+  // shared result screen shows real values only.
+  const [matchMeta, setMatchMeta] = useState<{
+    wager: number;
+    prizePaid: number;
+    houseFee: number;
+  } | null>(null);
   const resigningRef = useRef(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
@@ -375,9 +381,8 @@ export default function Page() {
   // Show win/loss popup when winner is determined
   useEffect(() => {
     if (winner && !showWinLossPopup) {
-      // Fire confetti if local player won
+      // Confetti is handled by the shared PvpResultScreen.
       if (winner === ownerRef.current) {
-        celebrateWin();
         playVictory();
       } else {
         playDefeat();
@@ -1212,6 +1217,15 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           return;
         }
       }
+      // Capture the real settlement numbers off the match row for the
+      // shared result screen.
+      if (data.match) {
+        setMatchMeta({
+          wager: Number(data.match.wager || 0),
+          prizePaid: Number(data.match.prizePaid || 0),
+          houseFee: Number(data.match.houseFee || 0),
+        });
+      }
       // Handle match finished (e.g. opponent resigned)
       if (data.match?.status === "finished" && !winner) {
         const finishedWinner = gs?.winner;
@@ -1470,98 +1484,72 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
 
         </>
   );
-  const creatorPopup = (
-    <>{/* ── Win / Loss popup modal ── */}
-        <AnimatePresence>
-        {showWinLossPopup && gameOverMessage && (
-          <motion.div
-            key="pool-end-popup"
-            {...gameOverModal.backdrop}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          >
-            <motion.div
-              {...gameOverModal.panel}
-              className={`relative mx-4 w-full max-w-sm rounded-2xl border p-8 shadow-2xl ${
-                gameOverMessage.won
-                  ? "border-yellow-400/40 bg-gradient-to-b from-[#1a2e1a] to-[#0d1a0d] shadow-[0_0_40px_rgba(250,204,21,0.3)]"
-                  : "border-white/20 bg-[#1a1a2e]"
-              }`}
-            >
-              {/* Confetti / decorative glow */}
-              <div
-                className={`absolute inset-0 rounded-2xl opacity-20 blur-xl ${
-                  gameOverMessage.won
-                    ? "bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600"
-                    : "bg-gradient-to-br from-red-400 via-rose-500 to-pink-600"
-                }`}
-              />
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the match ends (win/loss). Every
+  // number comes from the real match row (winner seat / wager /
+  // prizePaid / houseFee) — nothing is invented. Winner/payout logic
+  // is untouched; the old win/loss popup is deleted.
+  const renderResult = () => {
+    if (!showWinLossPopup || !gameOverMessage) return null;
+    const won = gameOverMessage.won;
+    const wager = Number(matchMeta?.wager || 0);
+    const prizePaid = Number(matchMeta?.prizePaid || 0);
+    const houseFee = Number(matchMeta?.houseFee || 0);
+    // Settlement (pool end/resign routes): the winner is credited
+    // `prizePaid` (= 2 × wager − 5% house fee, stake included); the
+    // loser forfeits the wager. AI matches never move tokens.
+    const tokenDelta = aiMode
+      ? null
+      : won
+        ? prizePaid - wager
+        : -wager;
 
-              <div className="relative flex flex-col items-center gap-4">
-                {/* Icon */}
-                <motion.div
-                  initial={{ scale: 0, rotate: -30 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
-                  className="text-6xl"
-                >
-                  {gameOverMessage.won ? <IconTrophy size={56} className="text-amber-400" /> : <IconMoodSad size={56} className="text-red-400" />}
-                </motion.div>
+    const headline = won
+      ? `You sank the 8-ball — ${oppName} beaten`
+      : `${oppName} sank the 8-ball first`;
+    const subline = aiMode
+      ? "Free practice match — no tokens were wagered."
+      : won
+        ? `Your ${wager.toFixed(2)} stake back plus ${(prizePaid - wager).toFixed(2)} in winnings.`
+        : `You lost your ${wager.toFixed(2)} stake.`;
 
-                {/* Title */}
-                <motion.h2
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.5, duration: 0.4 }}
-                  className={`text-3xl font-black ${
-                    gameOverMessage.won
-                      ? "bg-gradient-to-r from-yellow-300 to-amber-400 bg-clip-text text-transparent"
-                      : "bg-gradient-to-r from-red-300 to-rose-400 bg-clip-text text-transparent"
-                  }`}
-                >
-                  {gameOverMessage.won ? "You Win!" : "You Lose"}
-                </motion.h2>
-
-                {/* Subtitle */}
-                <motion.p
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.6, duration: 0.4 }}
-                  className="text-center text-sm text-white/60"
-                >
-                  {gameOverMessage.won
-                    ? "Congratulations! You won the match."
-                    : `${oppName} won the match. Better luck next time!`}
-                </motion.p>
-
-                {/* Buttons */}
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.7, duration: 0.4 }}
-                  className="mt-2 flex w-full flex-col gap-2"
-                >
-                  <button
-                    onClick={handleReturnToLobby}
-                    className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 font-bold text-white shadow-lg transition-all hover:scale-105 hover:from-indigo-500 hover:to-purple-500"
-                  >
-                    Return to Lobby
-                  </button>
-                  <button
-                    onClick={handleRematch}
-                    disabled={rematching}
-                    className="w-full rounded-xl border border-white/20 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white/70 transition-all hover:bg-white/10 disabled:opacity-40"
-                  >
-                    {rematching ? "Creating..." : aiMode ? "Play Again" : "Find New Match"}
-                  </button>
-                </motion.div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-        </AnimatePresence>
-
-        </>
-  );
+    return (
+      <PvpResultScreen
+        open
+        outcome={won ? "win" : "loss"}
+        headline={headline}
+        subline={subline}
+        gameName="Pool Masters"
+        opponent={{ name: oppName }}
+        tokenDelta={tokenDelta}
+        summary={[
+          { label: "Result", value: won ? "Win" : "Loss" },
+        ]}
+        details={[
+          { label: "Match ID", value: String(activeMatchId) },
+          ...(aiMode || wager === 0
+            ? []
+            : [
+                { label: "Wager", value: `${wager.toFixed(2)} tokens` },
+                ...(won
+                  ? [
+                      { label: "Prize paid", value: `${prizePaid.toFixed(2)} tokens` },
+                      ...(houseFee > 0
+                        ? [{ label: "House fee", value: `${houseFee.toFixed(2)} tokens` }]
+                        : []),
+                    ]
+                  : []),
+              ]),
+          { label: "Winner", value: won ? "You" : oppName },
+        ]}
+        playAgain={{
+          label: aiMode ? "Play Again" : "Find New Match",
+          onClick: handleRematch,
+        }}
+        onReturnToLobby={handleReturnToLobby}
+      />
+    );
+  };
   const creatorHistory = (
     <>{/* ── Shot history toggle & panel ── */}
         <div className="mt-3">
@@ -1981,7 +1969,6 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           {portraitHistory}
         </div>
       </div>
-      {creatorPopup}
     </div>
   );
 
@@ -1992,7 +1979,6 @@ ${!canShoot ? "pointer-events-none" : ""}`}
       {creatorScoreRow}
       {creatorEmotes}
       {creatorResign}
-      {creatorPopup}
       {creatorHistory}
       {creatorTable}
       </div>
@@ -2064,6 +2050,12 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           landscape={desktopContent}
         />
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. The old win/loss popup is
+          deleted — this is the single end-of-match experience. */}
+      {renderResult()}
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

@@ -6,6 +6,7 @@ import TableList from "./TableList";
 import WagerSection from "./WagerSection";
 import BuyInModal from "./BuyInModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
+import CreatorModeLobby from "../creator-mode/CreatorModeLobby";
 import { CRASH_MIN_WAGER } from "../../lib/games/crash/constants";
 import { useSocket } from "../../context/SocketProvider";
 import {
@@ -212,6 +213,12 @@ export default function ArenaLobby({
         >
           <IconBook size={15} /> How to Play
         </button>
+      </div>
+
+      {/* Creator Mode toggle (admin-only — renders nothing for other
+          users). */}
+      <div className="mb-6 flex justify-center">
+        <CreatorModeLobby />
       </div>
 
       {/* Balance bar */}

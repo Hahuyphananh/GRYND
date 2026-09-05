@@ -18,6 +18,10 @@
 // service. MP4 (H.264 + AAC) is preferred when the browser can record it
 // (Chrome/Safari); browsers that only record WebM (Firefox) fall back
 // gracefully — no FFmpeg-style transcoding dependency is added.
+//
+// Z-index note: this panel renders above the games' shared end-of-match
+// overlay (PvpResultScreen is z-[95]) so the Download action stays
+// reachable after a match auto-stops the recording.
 
 import React, { useRef, useState } from "react";
 
@@ -99,7 +103,7 @@ export default function CreatorModeResultPanel({
   const format = formatLabel(result.mimeType);
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onDiscard} />
 
       <div className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-b from-[#0a1533] to-[#040d24] p-5 shadow-[0_0_60px_rgba(0,229,255,0.25)] sm:p-6">

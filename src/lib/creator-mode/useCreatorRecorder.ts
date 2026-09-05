@@ -36,6 +36,10 @@ export type UseCreatorRecorder = {
   start: (options: StartRecordingOptions) => Promise<boolean>;
   /** Stop and produce a downloadable recording. */
   stop: () => void;
+  /** Stop and auto-download the finished recording (save on leave). */
+  stopAndSave: (filenameBase?: string) => string | null;
+  /** Save synchronously from the frames already captured (page unload). */
+  stopAndSaveSync: (filenameBase?: string) => string | null;
   /** Stop without producing a recording. */
   cancel: () => void;
   /** Delete the finished recording and release its object URL. */
@@ -76,6 +80,47 @@ export function useCreatorRecorder(): UseCreatorRecorder {
     setSourceModeUsed(rec.sourceModeUsed);
   }, []);
 
+  // Truth-poll: the recorder CLASS is the source of truth (it reads the
+  // live MediaRecorder directly), while React state is fed by async
+  // events. If an event is ever dropped or arrives late (a known hazard
+  // with fast game starts), the UI would drift — e.g. show "armed" while
+  // the recorder is actually running, leaving the Stop button disabled
+  // and clicks appearing to do nothing. Poll the class once a second and
+  // push any difference into React so the UI can never drift from the
+  // real recorder state.
+  const lastSnapshotRef = useRef<string>("");
+  useEffect(() => {
+    const syncFromRecorder = () => {
+      const rec = recorderRef.current;
+      if (!rec) return;
+      const snapshot = JSON.stringify({
+        s: rec.state,
+        d: rec.dimensions,
+        e: rec.error,
+        r: rec.lastResult ? rec.lastResult.url : null,
+        m: rec.sourceModeUsed,
+      });
+      if (snapshot === lastSnapshotRef.current) return;
+      lastSnapshotRef.current = snapshot;
+      setState(rec.state);
+      setDimensions(rec.dimensions);
+      setError(rec.error);
+      setLastResult(rec.lastResult);
+      setSourceModeUsed(rec.sourceModeUsed);
+    };
+    syncFromRecorder();
+    const timer = window.setInterval(syncFromRecorder, 1000);
+    // Also re-sync immediately when the tab becomes visible again.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") syncFromRecorder();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
   // Automatic stop on unmount = the user left the game page / quit.
   useEffect(() => {
     const rec = recorderRef.current;
@@ -93,6 +138,11 @@ export function useCreatorRecorder(): UseCreatorRecorder {
       setError(rec.error);
       setLastResult(rec.lastResult);
       setSourceModeUsed(rec.sourceModeUsed);
+      // Breadcrumb: capture start outcome — helps diagnose "countdown
+      // ran but recording never started" reports (armed forever).
+      console.info(
+        `[creator] capture start → ok=${ok} state=${rec.state} mode=${rec.sourceModeUsed ?? "-"} error=${rec.error ?? "-"}`,
+      );
     }
     return Boolean(ok);
   }, []);
@@ -106,6 +156,30 @@ export function useCreatorRecorder(): UseCreatorRecorder {
       setError(rec.error);
       setLastResult(rec.lastResult);
     }
+  }, []);
+
+  const stopAndSave = useCallback((filenameBase?: string) => {
+    const filename = recorderRef.current?.stopAndSave(filenameBase) ?? null;
+    const rec = recorderRef.current;
+    if (rec) {
+      setState(rec.state);
+      setDimensions(rec.dimensions);
+      setError(rec.error);
+      setLastResult(rec.lastResult);
+    }
+    return filename;
+  }, []);
+
+  const stopAndSaveSync = useCallback((filenameBase?: string) => {
+    const filename = recorderRef.current?.stopAndSaveSync(filenameBase) ?? null;
+    const rec = recorderRef.current;
+    if (rec) {
+      setState(rec.state);
+      setDimensions(rec.dimensions);
+      setError(rec.error);
+      setLastResult(rec.lastResult);
+    }
+    return filename;
   }, []);
 
   const cancel = useCallback(() => {
@@ -140,6 +214,8 @@ export function useCreatorRecorder(): UseCreatorRecorder {
     sourceModeUsed,
     start,
     stop,
+    stopAndSave,
+    stopAndSaveSync,
     cancel,
     discard,
     download,

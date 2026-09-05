@@ -28,6 +28,7 @@ import Link from "next/link";
 import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
 import MatchWaiting from "./MatchWaiting";
+import CreatorModeLobby from "../creator-mode/CreatorModeLobby";
 import { usePlatformQuickQueue } from "./PlatformQuickQueue";
 import DailyLossGuard from "../DailyLossGuard";
 import SessionGuard from "../SessionGuard";
@@ -647,6 +648,12 @@ export default function PvpLobbyPage(props) {
     >
       <NavigationBar currentPath="/casino" />
       <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
+        {/* Creator Mode toggle (admin-only — renders nothing for other
+            users). Lives on the shared lobby chrome so every PvP game
+            lobby gets the same ON/OFF control. */}
+        <div className="mb-6 flex justify-center">
+          <CreatorModeLobby />
+        </div>
         <PvpLobby {...props} quickQueue={props.quickQueue ? { ...quickQueue, ...props.quickQueue } : { ...quickQueue, preferences: props.quickQueuePreferences }} />
         <Footer />
       </div>
