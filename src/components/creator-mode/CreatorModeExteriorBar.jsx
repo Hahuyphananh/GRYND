@@ -14,10 +14,11 @@
 // no-op state (a stale React state could previously leave a "disabled"
 // Stop button even while the recorder was actually running, so clicks
 // appeared to do nothing). Tapping a button always responds:
-//   • Stop & Save while recording → ends the capture and auto-downloads
-//     the finished file;
+//   • Stop & Save while recording → ends the capture; the finished clip
+//     (with its video preview) appears in the result panel;
 //   • Stop & Save with nothing recording → shows a short hint;
-//   • Download when a finished clip exists → downloads it;
+//   • Download when a finished clip exists → downloads it (the ONLY
+//     download trigger — nothing auto-downloads);
 //   • Download with no clip yet → shows a short hint.
 // The status label shows the live state: "Creator Mode armed" → REC +
 // dimensions → "Saved — ready to download" (errors inline).
@@ -83,7 +84,6 @@ export default function CreatorModeExteriorBar() {
     state,
     error,
     lastResult,
-    gameEnded,
     dimensions,
     countdown,
     startCreatorRecording,
@@ -91,28 +91,11 @@ export default function CreatorModeExteriorBar() {
     download,
   } = useCreatorMode();
 
-  // ── Save on stop ───────────────────────────────────────────────────
-  // A finished recording is auto-downloaded the moment the recorder
-  // finalises it when (a) the game ended normally (auto-stop) or (b) the
-  // user pressed the manual "Stop & save" button here in the bar. Each
-  // result is downloaded at most once, guarded by its identity.
-  const [manualStop, setManualStop] = useState(false);
-  const autoSavedKeyRef = useRef(null);
-
-  useEffect(() => {
-    if (state === "recording") {
-      // A new capture started — clear the guards for the upcoming result.
-      setManualStop(false);
-      autoSavedKeyRef.current = null;
-      return;
-    }
-    if (state !== "stopped" || !lastResult) return;
-    if (autoSavedKeyRef.current === lastResult) return;
-    autoSavedKeyRef.current = lastResult;
-    if (manualStop || gameEnded) {
-      download();
-    }
-  }, [state, lastResult, gameEnded, manualStop, download]);
+  // NOTE: nothing here auto-downloads. When a recording stops — whether
+  // the game ended (auto-stop) or the user pressed "Stop & Save" — the
+  // finished clip appears in the result panel with its video preview, and
+  // downloading happens ONLY when the user clicks a Download button (this
+  // bar's, or the result panel's).
 
   // ── Transient hint shown when a button is tapped but has nothing to
   // act on yet — every tap must visibly respond. Auto-clears after 2.5s.
@@ -140,16 +123,22 @@ export default function CreatorModeExteriorBar() {
   // user simply wants to record now).
   const canStartManually = !recording && !hasClip && countdown === null;
 
-  // "Stop & save": end the capture; the effect above auto-downloads the
-  // finished file as soon as the recorder finalises it. Always enabled —
-  // with nothing recording it shows a hint instead of silently no-oping.
+  // "Stop & save": end the capture; the finished clip appears in the
+  // result panel with its video preview. Downloading stays manual (the
+  // Download button). Always enabled — with nothing recording it shows a
+  // hint instead of silently no-oping.
   const stopAndSave = () => {
     if (!recording) {
       showNotice("No active recording yet — starts when the match begins");
       return;
     }
-    setManualStop(true);
     stopCreatorRecording();
+    // Notify the hosting game that the creator MANUALLY stopped the
+    // capture (Tower Arena pauses the match while the clip is reviewed).
+    // Fired ONLY for this explicit Stop & Save action — never for
+    // auto-stops on game end or tab-hide saves — so games can react to
+    // the creator's intent. No listeners → harmless no-op.
+    window.dispatchEvent(new CustomEvent("grynd:creator-manual-stop"));
   };
 
   const onDownload = () => {
@@ -208,9 +197,9 @@ export default function CreatorModeExteriorBar() {
         </button>
       )}
 
-      {/* Stop & save — ALWAYS clickable. Ends the capture and
-          auto-downloads the finished file; a hint appears if there is
-          nothing recording yet. */}
+      {/* Stop & save — ALWAYS clickable. Ends the capture; the finished
+          clip appears in the result panel (download stays manual). A
+          hint appears if there is nothing recording yet. */}
       <button
         type="button"
         onClick={stopAndSave}
@@ -229,8 +218,9 @@ export default function CreatorModeExteriorBar() {
         Stop &amp; Save
       </button>
 
-      {/* Download — ALWAYS clickable. Downloads the finished clip, or
-          shows a hint when there is no finished recording yet. */}
+      {/* Download — ALWAYS clickable. The ONLY way a recording is
+          downloaded: downloads the finished clip, or shows a hint when
+          there is no finished recording yet. */}
       <button
         type="button"
         onClick={onDownload}

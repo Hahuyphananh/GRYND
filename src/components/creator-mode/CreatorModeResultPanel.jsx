@@ -24,6 +24,7 @@
 // reachable after a match auto-stops the recording.
 
 import React, { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
@@ -98,7 +99,9 @@ export default function CreatorModeResultPanel({
   onDownload,
   onDiscard,
   onRecordAnother,
+  backToLobbyHref = null,
 }) {
+  const router = useRouter();
   const dims = result.dimensions || selectedDimensions;
   const format = formatLabel(result.mimeType);
 
@@ -162,6 +165,16 @@ export default function CreatorModeResultPanel({
               Discard
             </button>
           </div>
+          {/* Optional per-game "head back to the lobby" action — shown
+              only when the hosting game passes a lobby href. */}
+          {backToLobbyHref && (
+            <button
+              onClick={() => router.push(backToLobbyHref)}
+              className="w-full rounded-xl border border-[#00e5ff]/40 bg-[#040d24]/70 px-4 py-2 text-sm font-bold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            >
+              ← Go back to lobby
+            </button>
+          )}
           <p className="text-center text-[10px] text-[#6aa4d8]">
             {gameEnded
               ? "This game has ended — Creator Mode stays armed for your next game."

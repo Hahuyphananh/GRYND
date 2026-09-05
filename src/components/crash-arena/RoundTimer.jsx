@@ -53,28 +53,41 @@ export default function RoundTimer({ seconds = 30, deadlineAt = null, isRunning 
   useEffect(() => {
     if (deadlineAt != null) return;
     setRemaining(seconds);
+    firedRef.current = false;
   }, [seconds, deadlineAt]);
 
+  // IMPORTANT: side effects (onExpire, playTick, clearInterval) must NOT
+  // run inside the setRemaining updater — updater functions execute during
+  // React's render phase, so calling onExpire there updates the parent
+  // mid-render and throws "Cannot update a component while rendering a
+  // different component". The interval only updates state; the expiry and
+  // the tick sound fire from dedicated effects below.
   useEffect(() => {
     if (deadlineAt != null) return;
     if (!isRunning || remaining <= 0) return;
-    // Countdown tick every second so the pending round is audible.
-    // (The effect re-runs each second as `remaining` changes, so the
-    // tick lives in the interval callback — not the effect body —
-    // to avoid double-firing.)
     const timer = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          onExpire?.();
-          return 0;
-        }
-        playTick();
-        return prev - 1;
-      });
+      setRemaining((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => clearInterval(timer);
+  }, [isRunning, remaining, deadlineAt]);
+
+  // Fire onExpire exactly ONCE when the relative countdown reaches zero.
+  // (Runs after commit, so updating the parent from here is legal.)
+  useEffect(() => {
+    if (deadlineAt != null) return;
+    if (!isRunning || remaining > 0) return;
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onExpire?.();
   }, [isRunning, remaining, onExpire, deadlineAt]);
+
+  // Audible tick each second of the relative countdown — but NOT on the
+  // final second (remaining becomes 0), matching the old behavior.
+  useEffect(() => {
+    if (deadlineAt != null) return;
+    if (!isRunning || remaining <= 0 || remaining >= seconds) return;
+    playTick();
+  }, [deadlineAt, isRunning, remaining, seconds]);
 
   const isUrgent = remaining <= 5 && remaining > 0;
 

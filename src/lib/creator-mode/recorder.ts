@@ -228,7 +228,74 @@ async function serializeContainerClean(
   resolve: (src: string) => Promise<string | null>,
   maxResolves = Infinity,
 ): Promise<string> {
+  // ── Scroll preservation ─────────────────────────────────────────────
+  // cloneNode(true) does NOT copy scroll offsets (verified in Chrome: a
+  // scrolled element clones at scrollTop 0), so a naive snapshot would
+  // always show every scrollable area at its TOP — in-game scrolling
+  // (the [data-creator-fill] page scroll, chat/leaderboard panels)
+  // would never appear in the recording. Capture the offsets of every
+  // scrolled element and re-apply them to the clone. The index paths
+  // are exact because the clone is still an identical copy of the
+  // container at this point (nodes are stripped afterwards).
+  const scrolls: Array<{ path: number[]; top: number; left: number }> =
+    [];
+  const collectScrolls = (el: Element, path: number[]): void => {
+    if (el.scrollTop > 0 || el.scrollLeft > 0) {
+      scrolls.push({ path, top: el.scrollTop, left: el.scrollLeft });
+    }
+    Array.from(el.children).forEach((child, i) =>
+      collectScrolls(child, [...path, i]),
+    );
+  };
+  collectScrolls(container, []);
+
   const clone = container.cloneNode(true) as HTMLElement;
+
+  // ── Presentation-transform strip ────────────────────────────────────
+  // The recording container itself carries the provider's on-screen
+  // `transform: scale()` — the frame is CSS-scaled to fit the browser
+  // window. Serialized verbatim, that inline transform would shrink the
+  // WHOLE snapshot to the on-screen scale: whenever the window is
+  // smaller than the capture size (the norm on laptops), the game
+  // would record small and top-left inside a big black frame instead
+  // of filling the output. Capture must run at the container's logical
+  // size, so drop the container's OWN transform (+ origin) from the
+  // clone. Transforms on descendants are untouched.
+  clone.style.removeProperty("transform");
+  clone.style.removeProperty("transform-origin");
+
+  // Simulate the scrolled view in the clone. scrollTop/scrollLeft are
+  // live layout properties, NOT HTML attributes — XMLSerializer cannot
+  // carry them, and assigning them on a detached clone is a no-op in
+  // Chrome (verified: a scrolled element clones at scrollTop 0 and the
+  // assignment is ignored), so the foreignObject would re-layout the
+  // clone at its TOP. Instead, translate each scrolled element's
+  // children by the negative offset: the element's own overflow clip
+  // makes that visually identical to the real scrolled view inside the
+  // snapshot. The `translate` property (not `transform`) is used so a
+  // child's own transform/animation is never clobbered. The clone is
+  // still an exact structural copy at this point, so the index paths
+  // map 1:1.
+  for (const { path, top, left } of scrolls) {
+    let node: Element = clone;
+    let ok = true;
+    for (const i of path) {
+      const child = node.children[i];
+      if (!child) {
+        ok = false;
+        break;
+      }
+      node = child;
+    }
+    if (ok) {
+      const tx = left ? `${-left}px` : "0px";
+      const ty = top ? `${-top}px` : "0px";
+      for (const child of Array.from(node.children)) {
+        (child as HTMLElement).style.translate = `${tx} ${ty}`;
+      }
+    }
+  }
+
   clone
     .querySelectorAll(
       "canvas,script,iframe,noscript,object,embed,video,audio,link",
@@ -959,11 +1026,9 @@ export class CreatorRecorder {
       this.recorder && this.recorder.state !== "inactive",
     );
     if (hadLiveRecorder) {
-      // Unmounted mid-recording (user left the game page): save the clip
-      // instead of losing it — stop and let finalize() auto-download.
-      if (!this.saveOnStopFilename) {
-        this.saveOnStopFilename = "grynd-creator-recording";
-      }
+      // Unmounted mid-recording (user left the game page): stop the
+      // capture. Downloads are ALWAYS manual — nothing auto-downloads on
+      // teardown; the clip is simply released with the page.
       this.finalizePending = true;
       try {
         this.recorder?.stop();
@@ -973,10 +1038,10 @@ export class CreatorRecorder {
     }
     if (this.finalizePending) {
       // stop() was just requested on a live recorder — its queued onstop
-      // event (→ finalize → auto-download) must run before resources are
-      // released, otherwise the chunks are wiped and the clip is lost.
-      // finalize() clears finalizePending; this deferred teardown then
-      // completes the cleanup.
+      // event (→ finalize) must run before resources are released,
+      // otherwise the chunks are wiped mid-finalize. finalize() clears
+      // finalizePending; this deferred teardown then completes the
+      // cleanup.
       setTimeout(() => this.teardown(), 600);
       return;
     }

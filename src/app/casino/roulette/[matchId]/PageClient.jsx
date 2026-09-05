@@ -377,6 +377,10 @@ export default function RoulettePvpGamePage({ params }) {
   }, [matchEndedBanner]);
   const lastRoundCountRef = useRef(null);
   const bannerTimerRef = useRef(null);
+  // Delay timer for the end-of-match win/loss popup: on the FINAL round
+  // the popup is held back so the round-result (both balances) can be
+  // seen first, then revealed after ~5s (see the spin-settle effect).
+  const resultDelayTimerRef = useRef(null);
   // Last server-stamped spin-result fingerprint we animated on. Held
   // in a ref (NOT useState) so updating it inside the spin effect
   // doesn't re-run the effect with `lastAnimatedSpinId` in its dep
@@ -475,20 +479,28 @@ export default function RoulettePvpGamePage({ params }) {
       // pop it once the canvas animation completes — see
       // `pendingBannerRef` for the full reasoning.
       const counted = (data.data.rounds || []).length;
+      let detectedNewRound = false;
       if (lastRoundCountRef.current === null) {
         lastRoundCountRef.current = counted;
       } else if (counted > lastRoundCountRef.current) {
+        detectedNewRound = true;
         const latest = data.data.rounds[data.data.rounds.length - 1];
         const meIsP1 = player1IdRef.current === user?.id;
         const won =
           latest?.roundWinner === (meIsP1 ? "player1" : "player2");
         const drew = !latest?.roundWinner;
+        // The match row already carries the post-resolution balances
+        // (the server credits the payout in resolveRound, before this
+        // poll sees rounds++), so snapshot them now — the round-result
+        // banner shows how much each player has NOW.
         pendingBannerRef.current = {
           roundNumber: latest?.roundNumber,
           winner: won ? "you" : drew ? "draw" : "opponent",
           spinResult: latest?.spinResult,
           p1Net: latest?.player1Net,
           p2Net: latest?.player2Net,
+          p1Points: Number(data.data.match?.playerOnePoints),
+          p2Points: Number(data.data.match?.playerTwoPoints),
           isSuddenDeath: Boolean(latest?.isSuddenDeath),
         };
         posthog?.capture("roulette_pvp_round_resolved", {
@@ -535,6 +547,16 @@ export default function RoulettePvpGamePage({ params }) {
         winner: isDraw ? "draw" : endKind,
         prize_paid: data.data.match.prizePaid,
       });
+      // The final round's result must be seen BEFORE the win/loss
+      // popup: hold the popup back now (it re-reveals ~5s after the
+      // round-result banner settles — see the spin effect), so the
+      // finished table + both balances stay visible. Only applies when
+      // THIS poll actually resolved a round (a forfeit / a reload on an
+      // already-finished match has no round result to show first, so
+      // the popup shows immediately as before).
+      if (detectedNewRound) {
+        setShowResult(false);
+      }
         // Confetti is handled by the shared PvpResultScreen.
       } else if (data.data.match?.status !== MATCH_STATUS.FINISHED) {
         setMatchEndedBanner(null);
@@ -549,6 +571,7 @@ export default function RoulettePvpGamePage({ params }) {
   useEffect(() => {
     return () => {
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      if (resultDelayTimerRef.current) clearTimeout(resultDelayTimerRef.current);
     };
   }, []);
 
@@ -907,11 +930,23 @@ export default function RoulettePvpGamePage({ params }) {
           if (pendingBannerRef.current.winner === "you") playVictory();
           else if (pendingBannerRef.current.winner === "opponent") playDefeat();
           else playTick();
+          // On the FINAL round (a player just hit 0) the round result
+          // stays on screen ~5s and the win/loss popup (suppressed in
+          // fetchStatus) is then revealed — so the player sees both
+          // balances first, then the winner/loser popup.
+          const isMatchOver = match?.status === MATCH_STATUS.FINISHED;
           if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
           bannerTimerRef.current = setTimeout(
             () => setRoundResultBanner(null),
-            3000,
+            isMatchOver ? 5000 : 3000,
           );
+          if (isMatchOver) {
+            if (resultDelayTimerRef.current) clearTimeout(resultDelayTimerRef.current);
+            resultDelayTimerRef.current = setTimeout(
+              () => setShowResult(true),
+              5000,
+            );
+          }
           pendingBannerRef.current = null;
         }
       } finally {
@@ -1236,9 +1271,19 @@ export default function RoulettePvpGamePage({ params }) {
 
   const placeBet = (target) => {
     if (myBetsAreLocked) return;
-    playCardPlace(); // chip-on-table click
-    const amount = betAmount < 1 ? 1 : betAmount;
+    // BUG-FIX ("bets can exceed your token balance"): staged bets must
+    // never go over the player's current match points. The chip value
+    // is clamped to what's actually affordable, and a click with
+    // nothing left is ignored entirely — the player can never stage
+    // more than they own.
+    const remaining = Math.max(
+      0,
+      (Number.isFinite(myMatchPoints) ? myMatchPoints : 0) - myTotalBet,
+    );
+    const amount = Math.min(betAmount < 1 ? 1 : betAmount, remaining);
+    if (amount <= 0) return;
     if (betAmount < 1) setBetAmount(1);
+    playCardPlace(); // chip-on-table click
     setBets((prev) => {
       const updated = {
         ...prev,
@@ -1252,6 +1297,18 @@ export default function RoulettePvpGamePage({ params }) {
       () => setNewChipKeys((prev) => prev.filter((k) => k !== key)),
       350,
     );
+  };
+
+  // Right-click (contextmenu) on a tile/zone clears THAT tile's staged
+  // bet — one at a time — instead of wiping the whole board.
+  const clearBet = (key) => {
+    if (myBetsAreLocked) return;
+    setBets((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   // ── Skill layer: pay ELIMINATION_COST points to remove a number ──
@@ -1472,6 +1529,11 @@ export default function RoulettePvpGamePage({ params }) {
                   ? handleEliminate(0)
                   : placeBet(0)
               }
+              onContextMenu={(e) => {
+                e.preventDefault();
+                clearBet(0);
+              }}
+              title={bets[0] ? "Right-click to clear this bet" : undefined}
               disabled={
                 myBetsAreLocked ||
                 isNumberEliminated(0) ||
@@ -1526,6 +1588,11 @@ export default function RoulettePvpGamePage({ params }) {
                         ? handleEliminate(num)
                         : placeBet(num)
                     }
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      clearBet(num);
+                    }}
+                    title={bets[num] ? "Right-click to clear this bet" : undefined}
                     disabled={
                       myBetsAreLocked || dead || (eliminateMode && !canEliminate)
                     }
@@ -1828,10 +1895,11 @@ export default function RoulettePvpGamePage({ params }) {
         gameLabel="roulette"
       >
       <CreatorResponsiveLayout>
-      {/* data-creator-stack-swap: in the portrait (9:16) creator frame this
-          flips to the phone-style stacked column (wheel + board first,
-          controls below) via the shared portrait-stacking CSS. Desktop and
-          landscape/square creator rendering are unchanged. */}
+      {/* data-creator-stack-swap: inside the creator phone viewport
+          (every recording ratio) this flips to the phone-style stacked
+          column (wheel + board first, controls below) via the shared
+          phone-stacking CSS. Desktop / non-creator rendering is
+          unchanged. */}
       <div data-creator-stack data-creator-stack-swap className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
         {/* ── Left sidebar: PvP state + controls ─────────────────── */}
         <div className="flex w-full flex-shrink-0 flex-col items-start gap-3 sm:w-[280px] sm:gap-4">
@@ -2388,39 +2456,85 @@ export default function RoulettePvpGamePage({ params }) {
             </div>
           )}
 
-          {/* Round-just-resolved banner */}
+          {/* Round-just-resolved result — shows how much EACH player
+              (or the AI) has now. Stays visible on the final round
+              (when a player hits 0) until the win/loss popup reveals
+              ~5s later. */}
           {roundResultBanner &&
-            match.status !== MATCH_STATUS.FINISHED &&
             match.status !== MATCH_STATUS.CANCELLED && (
               <motion.div
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="w-full rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-center text-sm font-semibold text-cyan-100"
+                className="w-full rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-3 py-2"
               >
-                Round {roundResultBanner.roundNumber}{" "}
-                {roundResultBanner.winner === "you"
-                  ? "won by you"
-                  : roundResultBanner.winner === "opponent"
-                    ? "won by opponent"
-                    : "ended in a draw"}
-                . Spin:{" "}
-                <b className="text-yellow-300">{roundResultBanner.spinResult}</b>{" "}
-                · You net{" "}
-                <b
-                  className={
-                    (isPlayer1
-                      ? roundResultBanner.p1Net
-                      : roundResultBanner.p2Net) > 0
-                      ? "text-green-300"
-                      : "text-red-300"
-                  }
-                >
-                  {Number(
-                    isPlayer1
-                      ? roundResultBanner.p1Net
-                      : roundResultBanner.p2Net,
-                  ).toFixed(2)}
-                </b>
+                <div className="text-center text-sm font-semibold text-cyan-100">
+                  Round {roundResultBanner.roundNumber}{" "}
+                  {roundResultBanner.winner === "you"
+                    ? "won by you"
+                    : roundResultBanner.winner === "opponent"
+                      ? "won by opponent"
+                      : "ended in a draw"}
+                  · Spin:{" "}
+                  <b className="text-yellow-300">
+                    {roundResultBanner.spinResult}
+                  </b>
+                  {roundResultBanner.isSuddenDeath && (
+                    <span className="ml-1.5 text-[10px] uppercase tracking-widest text-amber-300/80">
+                      Sudden death
+                    </span>
+                  )}
+                </div>
+                {/* Both balances — the point of the round result. */}
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  <div className="text-left">
+                    <div className="text-[10px] uppercase tracking-widest text-white/50">
+                      You
+                    </div>
+                    <div className="text-lg font-black text-cyan-200 leading-none">
+                      {Math.max(
+                        0,
+                        Number(
+                          isPlayer1
+                            ? roundResultBanner.p1Points
+                            : roundResultBanner.p2Points,
+                        ),
+                      ).toFixed(0)}
+                    </div>
+                  </div>
+                  <div className="text-center text-xs text-cyan-100/70">
+                    You net{" "}
+                    <b
+                      className={
+                        (isPlayer1
+                          ? roundResultBanner.p1Net
+                          : roundResultBanner.p2Net) > 0
+                          ? "text-green-300"
+                          : "text-red-300"
+                      }
+                    >
+                      {Number(
+                        isPlayer1
+                          ? roundResultBanner.p1Net
+                          : roundResultBanner.p2Net,
+                      ).toFixed(2)}
+                    </b>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-widest text-white/50">
+                      {match?.isAi ? "GRYND AI" : "Opponent"}
+                    </div>
+                    <div className="text-lg font-black text-cyan-200 leading-none">
+                      {Math.max(
+                        0,
+                        Number(
+                          isPlayer1
+                            ? roundResultBanner.p2Points
+                            : roundResultBanner.p1Points,
+                        ),
+                      ).toFixed(0)}
+                    </div>
+                  </div>
+                </div>
               </motion.div>
             )}
 
@@ -2607,6 +2721,11 @@ export default function RoulettePvpGamePage({ params }) {
                 <button
                   key={key}
                   onClick={() => placeBet(key)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    clearBet(key);
+                  }}
+                  title={bets[key] ? "Right-click to clear this bet" : undefined}
                   disabled={myBetsAreLocked || deadKey}
                   className={`relative px-2.5 py-1.5 rounded border border-[#FFFF33]/30 text-xs sm:text-sm font-bold capitalize transition-all duration-150 ${
                     deadKey

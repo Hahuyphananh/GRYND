@@ -30,7 +30,12 @@ import Footer from "../../../../../components/Footer";
 // quits. The waiting room and Footer/modals stay OUTSIDE so nothing is
 // recorded until real gameplay starts.
 import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+} from "../../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
@@ -1002,6 +1007,413 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       ? diffToRank(Math.abs(timerMs - state.targetMs))
       : null;
 
+  // ── Creator-mode layout nodes ─────────────────────────────────────
+  // The game content is split into reusable nodes so the normal page
+  // (non-creator) renders byte-for-byte the same, while Creator Mode
+  // gets a bespoke arrangement: portrait = phone-style (compact header
+  // on top, the game panels filling the middle); landscape/square =
+  // the panels fill the frame height.
+
+  // Header — match label, title, wager + report/leave/resign buttons.
+  const headerNode = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+          {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
+        </p>
+        <h1 className="mt-1 text-2xl font-black text-fuchsia-300 sm:text-3xl">
+          {state?.phase === "active" ? t("games.precision.duel_in_progress") : t("games.precision.setting_up")}
+        </h1>
+        {state && (
+          <p className="mt-1 text-sm text-cyan-100/90">
+            {t("games.precision.wager_tokens", { wager: formatTokens(state.wager) })}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {canReport && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/25"
+          >
+            <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
+          </button>
+        )}
+        <button
+          onClick={handleLeave}
+          className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black"
+        >
+          {t("games.precision.lobby_button")}
+        </button>
+        {state?.phase === "active" && (
+          <button
+            onClick={handleResign}
+            className="rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-500"
+          >
+            {t("games.precision.resign")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // Compact header for the creator frames — tighter typography.
+  const creatorHeaderNode = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/80">
+          {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
+        </p>
+        <h1 className="truncate text-lg font-black text-fuchsia-300">
+          {state?.phase === "active" ? t("games.precision.duel_in_progress") : t("games.precision.setting_up")}
+        </h1>
+        {state && (
+          <p className="text-xs text-cyan-100/90">
+            {t("games.precision.wager_tokens", { wager: formatTokens(state.wager) })}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {canReport && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="rounded border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-300 transition hover:bg-red-500/25"
+          >
+            <span className="inline-flex items-center gap-1"><IconFlag size={11} /> Report</span>
+          </button>
+        )}
+        <button
+          onClick={handleLeave}
+          className="rounded bg-[#f5ff3b] px-2.5 py-1 text-[11px] font-bold text-black"
+        >
+          {t("games.precision.lobby_button")}
+        </button>
+        {state?.phase === "active" && (
+          <button
+            onClick={handleResign}
+            className="rounded bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-red-500"
+          >
+            {t("games.precision.resign")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // Turn banner + error status lines.
+  const statusNode = (
+    <>
+      {turnBanner && (
+        <p className="mt-4 inline-block rounded border border-amber-300/40 bg-amber-300/10 px-3 py-1 text-sm font-bold uppercase tracking-widest text-amber-200">
+          {turnBanner}
+        </p>
+      )}
+
+      {error && (
+        <p className="mt-4 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          {error}
+        </p>
+      )}
+    </>
+  );
+
+  // Phase panels — waiting takeover + round transitions (the actual
+  // game content: scoreboard, countdown, timer + stop button).
+  const bodyNode = (
+    <>
+      {showWaiting && (
+        <MatchWaiting
+          state="waiting"
+          gameName="Precision"
+          subtitle={`Hosted by ${hostName} · ${(state?.wager ?? 0).toLocaleString()} stake`}
+          seats={[
+            {
+              label: "Alpha",
+              name: players.find((p) => p.seat === 1)?.name,
+              occupied: Boolean(players.find((p) => p.seat === 1)),
+            },
+            {
+              label: "Bravo",
+              name: players.find((p) => p.seat === 2)?.name,
+              occupied: Boolean(players.find((p) => p.seat === 2)),
+            },
+          ]}
+          onCancel={isHost ? handleLeave : null}
+          cancelLabel={t("games.precision.cancel_lobby")}
+          onLeave={handleLeave}
+          copyCode={matchId}
+        />
+      )}
+
+      <AnimatePresence mode="wait" initial={false}>
+
+        {showReadyRoom && (
+          <motion.div key="phase-ready" {...fadeUp}>
+            <PrecisionReadyRoom
+              matchId={matchId}
+              players={players}
+              wager={state?.wager ?? 0}
+              selfReady={effectiveSelfReady}
+              readySubmitting={readySubmitting}
+              onReadyClick={handleReadyClick}
+              onLeave={handleLeave}
+            />
+          </motion.div>
+        )}
+
+        {showArming && state && (
+          <motion.div key="phase-arming" {...fadeUp}>
+            <motion.div
+              animate={{
+                scale: [1, 1.02, 1],
+                opacity: [0.92, 1, 0.92],
+              }}
+              transition={{
+                duration: 1.6,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+              className="mt-6 space-y-5"
+            >
+              <PrecisionScoreboard
+                score={score}
+                players={players}
+                currentRound={currentRound}
+                lastRoundWinnerSeat={lastRoundWinnerSeat}
+                viewerSeat={localSeat}
+              />
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-10">
+                <p className="animate-pulse"><IconClock size={44} className="text-yellow-400" /></p>
+                <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
+                  {t("games.precision.round_get_ready", { round: currentRound })}
+                </h2>
+                <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-200/70">
+                  {t("games.precision.countdown_label")}
+                </p>
+                <p
+                  data-testid="precision-round-countdown"
+                  className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
+                >
+                  {countdownMs !== null ? Math.max(1, Math.ceil(countdownMs / 1000)) : "…"}
+                </p>
+                <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
+                  {t("games.precision.arming_hint")}
+                </p>
+                <button
+                  onClick={handleResign}
+                  className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
+                >
+                  {t("games.precision.resign")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showActive && state && (
+          <motion.div key="phase-active" {...fadeUp}>
+            <div className="mt-6 space-y-5">
+              <PrecisionScoreboard
+                score={score}
+                players={players}
+                currentRound={currentRound}
+                lastRoundWinnerSeat={lastRoundWinnerSeat}
+                viewerSeat={localSeat}
+                awaitingOpponentStop={awaitingOpponentStop}
+                lastRoundStops={
+                  state.lastRoundStops
+                    ? {
+                        seat1: {
+                          elapsedMs: state.lastRoundStops.seat1.elapsedMs,
+                          diffMs: state.lastRoundStops.seat1.diffMs,
+                        },
+                        seat2: {
+                          elapsedMs: state.lastRoundStops.seat2.elapsedMs,
+                          diffMs: state.lastRoundStops.seat2.diffMs,
+                        },
+                      }
+                    : null
+                }
+              />
+
+              <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
+                <p><IconTarget size={44} className="text-fuchsia-400" /></p>
+                <h2 className="mt-4 text-2xl font-black text-fuchsia-300">
+                  {t("games.precision.round_label", { round: currentRound })}
+                </h2>
+
+                <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+                  {t("games.precision.elapsed_label")}
+                </p>
+                <p
+                  data-testid="precision-round-timer"
+                  className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
+                >
+                  {Math.round(timerMs).toLocaleString()}
+                  <span className="ml-1 text-3xl text-cyan-300/60">{t("games.precision.ms_suffix")}</span>
+                </p>
+
+                <p className="mt-4 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+                  {t("games.precision.target")}
+                </p>
+                <p
+                  data-testid="precision-round-target"
+                  className="mt-1 text-4xl font-black text-yellow-300 sm:text-5xl"
+                >
+                  {state.targetMs !== null
+                    ? `${state.targetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`
+                    : "-"}
+                </p>
+
+                {previewRank && (
+                  <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
+                    <PrecisionRankIcon label={previewRank.label} size={16} className="mr-1 inline" /> {previewRank.label}{" "}
+                    <span className="text-sm font-normal text-cyan-100/70">
+                      ({t("games.precision.ms_off_format", { ms: Math.abs(Math.round(timerMs - (state.targetMs ?? 0))).toLocaleString() })})
+                    </span>
+                  </p>
+                )}
+                {state.lastRoundStops && (
+                  <div
+                    data-testid="precision-last-round-stops"
+                    className="mt-5 rounded-2xl border border-cyan-400/40 bg-black/30 px-4 py-2 text-xs text-cyan-100"
+                  >
+                    <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-200/80">
+                      {t("games.precision.previous_round_snapshot")}
+                    </p>
+                    <p className="mt-1 font-mono">
+                      {t("games.precision.you_label_short")}{" "}
+                      <span className="font-bold text-yellow-300">
+                        {state.lastRoundStops[
+                          localSeat === 1 ? "seat1" : "seat2"
+                        ]?.elapsedMs ?? 0}{" "}
+                        {t("games.precision.ms_suffix")}
+                      </span>{" "}
+                      · {t("games.precision.opponent_label_short")}{" "}
+                      <span className="font-bold text-fuchsia-300">
+                        {state.lastRoundStops[
+                          localSeat === 1 ? "seat2" : "seat1"
+                        ]?.elapsedMs ?? 0}{" "}
+                        {t("games.precision.ms_suffix")}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[10px] text-cyan-100/70">
+                      {t("games.precision.snapshot_hint")}
+                    </p>
+                  </div>
+                )}
+                <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
+                  {t("games.precision.stop_hint")}
+                </p>
+                <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={handleStopClick}
+                    disabled={
+                      selfStopPending ||
+                      stopSubmitting ||
+                      awaitingOpponentStop
+                    }
+                    data-testid="precision-stop-button"
+                    className={
+                      selfStopPending
+                        ? "w-full cursor-default rounded-2xl border-2 border-emerald-300/40 bg-emerald-400/20 px-6 py-6 text-3xl font-black tracking-widest text-emerald-100"
+                        : stopSubmitting
+                          ? "w-full cursor-wait rounded-2xl border-2 border-yellow-300/40 bg-yellow-400/20 px-6 py-6 text-3xl font-black tracking-widest text-yellow-100"
+                          : "w-full rounded-2xl border-2 border-red-400/60 bg-gradient-to-b from-red-500 to-red-600 px-6 py-6 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
+                    }
+                  >
+                    {selfStopPending
+                      ? t("games.precision.stop_sent")
+                      : stopSubmitting
+                        ? t("games.precision.submitting")
+                        : t("games.precision.stop_button")}
+                  </button>
+                </div>
+                <button
+                  onClick={handleResign}
+                  className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
+                >
+                  {t("games.precision.resign")}
+                </button>
+
+                <div className="mt-6 flex justify-center">
+                  <EmotePicker
+                    compact
+                    incomingEmote={incomingEmote}
+                    myEmote={myEmote}
+                    onSend={(emote) => sendEmote(emote)}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {state?.phase === "finished" && (
+          <motion.div key="phase-finished" {...fadeUp}>
+            <div className="mt-8 flex flex-col items-center gap-3">
+              {state.score && (
+                <PrecisionScoreboard
+                  score={state.score}
+                  players={players}
+                  currentRound={Math.max(state.currentRound, 1)}
+                  lastRoundWinnerSeat={state.lastRoundWinnerSeat}
+                />
+              )}
+              <p className="rounded border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100">
+                {t("games.precision.match_finished_short")}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+
+  // Normal (non-creator) page — byte-for-byte the original stack.
+  const normalView = (
+    <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
+      {headerNode}
+      {statusNode}
+      {bodyNode}
+    </div>
+  );
+
+  // Portrait (9:16) — phone-style: compact header, the game panels
+  // filling the middle.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-b from-[#06120f] to-[#050816]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        {creatorHeaderNode}
+      </ShellHeader>
+      <ShellMain className="overflow-hidden">
+        <div className="flex h-full w-full flex-col px-3 py-2">
+          {statusNode}
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-cyan-500/40 bg-black/30 p-4">
+            {bodyNode}
+          </div>
+        </div>
+      </ShellMain>
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — the game panels fill the frame
+  // height.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-b from-[#06120f] to-[#050816]">
+      <ShellMain className="overflow-hidden">
+        <div className="flex h-full w-full flex-col gap-2 p-4">
+          {creatorHeaderNode}
+          {statusNode}
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-cyan-500/40 bg-black/30 p-4">
+            {bodyNode}
+          </div>
+        </div>
+      </ShellMain>
+    </CreatorModeShell>
+  );
+
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
@@ -1018,345 +1430,13 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         }
         autoStop={state?.phase === "finished"}
         gameLabel="precision"
+        backToLobbyHref="/casino/precision"
       >
-      <CreatorResponsiveLayout>
-      <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-cyan-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-              {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
-            </p>
-            <h1 className="mt-1 text-2xl font-black text-fuchsia-300 sm:text-3xl">
-              {state?.phase === "active" ? t("games.precision.duel_in_progress") : t("games.precision.setting_up")}
-            </h1>
-            {state && (
-              <p className="mt-1 text-sm text-cyan-100/90">
-                {t("games.precision.wager_tokens", { wager: formatTokens(state.wager) })}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {canReport && (
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/25"
-              >
-                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
-              </button>
-            )}
-            <button
-              onClick={handleLeave}
-              className="rounded bg-[#f5ff3b] px-4 py-2 font-bold text-black"
-            >
-              {t("games.precision.lobby_button")}
-            </button>
-            {state?.phase === "active" && (
-              <button
-                onClick={handleResign}
-                className="rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-500"
-              >
-                {t("games.precision.resign")}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {turnBanner && (
-          <p className="mt-4 inline-block rounded border border-amber-300/40 bg-amber-300/10 px-3 py-1 text-sm font-bold uppercase tracking-widest text-amber-200">
-            {turnBanner}
-          </p>
-        )}
-
-        {error && (
-          <p className="mt-4 rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {error}
-          </p>
-        )}
-
-        {/* ── Round-transition wrapper ─────────────────────────
-            Single AnimatePresence with mode="wait" + initial={false}
-            so consecutive phases (waiting → ready → arming → active →
-            finished) cross-fade cleanly. Each region's child is a
-            motion.div keyed on the phase name; when the phase flips,
-            AnimatePresence unmounts the prior region (running its exit
-            animation) and mounts the new one. `initial={false}` skips
-            the entrance animation on the FIRST mount so a refresh
-            doesn't replay the fade. The per-region transform is short
-            (fadeUp: 12px y + opacity), compositor-friendly, and the
-            page remains idle between region changes.
-        */}
-        {/* Unified full-screen waiting takeover — replaces the legacy
-            PrecisionWaitingRoom panel (seats + invite code + actions). */}
-        {showWaiting && (
-          <MatchWaiting
-            state="waiting"
-            gameName="Precision"
-            subtitle={`Hosted by ${hostName} · ${(state?.wager ?? 0).toLocaleString()} stake`}
-            seats={[
-              {
-                label: "Alpha",
-                name: players.find((p) => p.seat === 1)?.name,
-                occupied: Boolean(players.find((p) => p.seat === 1)),
-              },
-              {
-                label: "Bravo",
-                name: players.find((p) => p.seat === 2)?.name,
-                occupied: Boolean(players.find((p) => p.seat === 2)),
-              },
-            ]}
-            onCancel={isHost ? handleLeave : null}
-            cancelLabel={t("games.precision.cancel_lobby")}
-            onLeave={handleLeave}
-            copyCode={matchId}
-          />
-        )}
-
-        <AnimatePresence mode="wait" initial={false}>
-
-          {showReadyRoom && (
-            <motion.div key="phase-ready" {...fadeUp}>
-              <PrecisionReadyRoom
-                matchId={matchId}
-                players={players}
-                wager={state?.wager ?? 0}
-                selfReady={effectiveSelfReady}
-                readySubmitting={readySubmitting}
-                onReadyClick={handleReadyClick}
-                onLeave={handleLeave}
-              />
-            </motion.div>
-          )}
-
-          {showArming && state && (
-            <motion.div key="phase-arming" {...fadeUp}>
-              {/* Timer fade: continuous gentle scale + opacity breath on
-                  the arming indicator. The animation runs on the
-                  compositor thread (transform + opacity only) so it
-                  doesn't bust the rAF/memoization optimizations set up
-                  in the previous pass. Combined with the existing
-                  `animate-pulse` timer glyph, the arming phase feels like
-                  a soft heartbeat instead of a static panel. */}
-              <motion.div
-                animate={{
-                  scale: [1, 1.02, 1],
-                  opacity: [0.92, 1, 0.92],
-                }}
-                transition={{
-                  duration: 1.6,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-                className="mt-6 space-y-5"
-              >
-                <PrecisionScoreboard
-                  score={score}
-                  players={players}
-                  currentRound={currentRound}
-                  lastRoundWinnerSeat={lastRoundWinnerSeat}
-                  viewerSeat={localSeat}
-                />
-                <div className="flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-10">
-                  <p className="animate-pulse"><IconClock size={44} className="text-yellow-400" /></p>
-                  <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
-                    {t("games.precision.round_get_ready", { round: currentRound })}
-                  </h2>
-                  {/* ── 5-second countdown before the timer starts ──
-                      Both clients count down from the server-stamped
-                      `countdownEndsAt` so they stay in sync; the server
-                      flips to "active" (timer + target) the instant it
-                      hits zero. `Math.max(1, …)` keeps the display on
-                      "1" during the final tick instead of flashing 0. */}
-                  <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-200/70">
-                    {t("games.precision.countdown_label")}
-                  </p>
-                  <p
-                    data-testid="precision-round-countdown"
-                    className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
-                  >
-                    {countdownMs !== null ? Math.max(1, Math.ceil(countdownMs / 1000)) : "…"}
-                  </p>
-                  <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
-                    {t("games.precision.arming_hint")}
-                  </p>
-                  <button
-                    onClick={handleResign}
-                    className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
-                  >
-                    {t("games.precision.resign")}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-
-          {showActive && state && (
-            <motion.div key="phase-active" {...fadeUp}>
-              <div className="mt-6 space-y-5">
-                <PrecisionScoreboard
-                  score={score}
-                  players={players}
-                  currentRound={currentRound}
-                  lastRoundWinnerSeat={lastRoundWinnerSeat}
-                  viewerSeat={localSeat}
-                  awaitingOpponentStop={awaitingOpponentStop}
-                  lastRoundStops={
-                    state.lastRoundStops
-                      ? {
-                          seat1: {
-                            elapsedMs: state.lastRoundStops.seat1.elapsedMs,
-                            diffMs: state.lastRoundStops.seat1.diffMs,
-                          },
-                          seat2: {
-                            elapsedMs: state.lastRoundStops.seat2.elapsedMs,
-                            diffMs: state.lastRoundStops.seat2.diffMs,
-                          },
-                        }
-                      : null
-                  }
-                />
-
-                <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
-                  <p><IconTarget size={44} className="text-fuchsia-400" /></p>
-                  <h2 className="mt-4 text-2xl font-black text-fuchsia-300">
-                    {t("games.precision.round_label", { round: currentRound })}
-                  </h2>
-
-                  {/* ── Running timer (client-side, visual-only) ── */}
-                  <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-                    {t("games.precision.elapsed_label")}
-                  </p>
-                  <p
-                    data-testid="precision-round-timer"
-                    className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
-                  >
-                    {Math.round(timerMs).toLocaleString()}
-                    <span className="ml-1 text-3xl text-cyan-300/60">{t("games.precision.ms_suffix")}</span>
-                  </p>
-
-                  {/* Per-round target revealed by the server when the
-                      arming→active timer fires. The value is `null` if the
-                      state hasn't been refreshed yet on the very first
-                      active tick — show a placeholder rather than crashing. */}
-                  <p className="mt-4 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-                    {t("games.precision.target")}
-                  </p>
-                  <p
-                    data-testid="precision-round-target"
-                    className="mt-1 text-4xl font-black text-yellow-300 sm:text-5xl"
-                  >
-                    {state.targetMs !== null
-                      ? `${state.targetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`
-                      : "-"}
-                  </p>
-
-                  {/* Live rank preview — shows what rank the player would
-                      earn if they stopped at the current timer value. */}
-                  {previewRank && (
-                    <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
-                      <PrecisionRankIcon label={previewRank.label} size={16} className="mr-1 inline" /> {previewRank.label}{" "}
-                      <span className="text-sm font-normal text-cyan-100/70">
-                        ({t("games.precision.ms_off_format", { ms: Math.abs(Math.round(timerMs - (state.targetMs ?? 0))).toLocaleString() })})
-                      </span>
-                    </p>
-                  )}
-                  {state.lastRoundStops && (
-                    <div
-                      data-testid="precision-last-round-stops"
-                      className="mt-5 rounded-2xl border border-cyan-400/40 bg-black/30 px-4 py-2 text-xs text-cyan-100"
-                    >
-                      <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-200/80">
-                        {t("games.precision.previous_round_snapshot")}
-                      </p>
-                      <p className="mt-1 font-mono">
-                        {t("games.precision.you_label_short")}{" "}
-                        <span className="font-bold text-yellow-300">
-                          {state.lastRoundStops[
-                            localSeat === 1 ? "seat1" : "seat2"
-                          ]?.elapsedMs ?? 0}{" "}
-                          {t("games.precision.ms_suffix")}
-                        </span>{" "}
-                        · {t("games.precision.opponent_label_short")}{" "}
-                        <span className="font-bold text-fuchsia-300">
-                          {state.lastRoundStops[
-                            localSeat === 1 ? "seat2" : "seat1"
-                          ]?.elapsedMs ?? 0}{" "}
-                          {t("games.precision.ms_suffix")}
-                        </span>
-                      </p>
-                      <p className="mt-1 text-[10px] text-cyan-100/70">
-                        {t("games.precision.snapshot_hint")}
-                      </p>
-                    </div>
-                  )}
-                  <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
-                    {t("games.precision.stop_hint")}
-                  </p>
-                  <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={handleStopClick}
-                      disabled={
-                        selfStopPending ||
-                        stopSubmitting ||
-                        awaitingOpponentStop
-                      }
-                      data-testid="precision-stop-button"
-                      className={
-                        selfStopPending
-                          ? "w-full cursor-default rounded-2xl border-2 border-emerald-300/40 bg-emerald-400/20 px-6 py-6 text-3xl font-black tracking-widest text-emerald-100"
-                          : stopSubmitting
-                            ? "w-full cursor-wait rounded-2xl border-2 border-yellow-300/40 bg-yellow-400/20 px-6 py-6 text-3xl font-black tracking-widest text-yellow-100"
-                            : "w-full rounded-2xl border-2 border-red-400/60 bg-gradient-to-b from-red-500 to-red-600 px-6 py-6 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
-                      }
-                    >
-                      {selfStopPending
-                        ? t("games.precision.stop_sent")
-                        : stopSubmitting
-                          ? t("games.precision.submitting")
-                          : t("games.precision.stop_button")}
-                    </button>
-                  </div>
-                  <button
-                    onClick={handleResign}
-                    className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
-                  >
-                    {t("games.precision.resign")}
-                  </button>
-
-                  {/* Emotes — picker with its own bubbles, near the actions */}
-                  <div className="mt-6 flex justify-center">
-                    <EmotePicker
-                      compact
-                      incomingEmote={incomingEmote}
-                      myEmote={myEmote}
-                      onSend={(emote) => sendEmote(emote)}
-                    />
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {state?.phase === "finished" && (
-            <motion.div key="phase-finished" {...fadeUp}>
-              <div className="mt-8 flex flex-col items-center gap-3">
-                {state.score && (
-                  <PrecisionScoreboard
-                    score={state.score}
-                    players={players}
-                    currentRound={Math.max(state.currentRound, 1)}
-                    lastRoundWinnerSeat={state.lastRoundWinnerSeat}
-                  />
-                )}
-                <p className="rounded border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-bold text-cyan-100">
-                  {t("games.precision.match_finished_short")}
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      </CreatorResponsiveLayout>
+      <CreatorView
+        normal={normalView}
+        portrait={portraitContent}
+        landscape={landscapeContent}
+      />
       </CreatorModeHost>
 
       <PrecisionResultPopup

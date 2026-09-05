@@ -20,18 +20,18 @@ body {
   }
 }
 
-/* ── Creator Mode portrait stacking ──────────────────────────────────
+/* ── Creator Mode phone stacking ─────────────────────────────────────
    Games whose normal layout is side-by-side on desktop (roulette's
    controls + wheel, rps's history + duel, crash-arena's table + sidebar)
-   render the phone-style stacked column inside the portrait (9:16)
-   recording frame. Scoped to the creator shell's data-creator-layout
-   attribute, so normal rendering — and landscape/square recordings —
-   stay byte-for-byte unchanged.
+   render the phone-style stacked column inside the creator phone
+   viewport. Scoped to the phone wrapper ([data-creator-phone], rendered
+   by <CreatorResponsiveLayout> in EVERY recording ratio), so normal
+   rendering stays byte-for-byte unchanged.
 
    • [data-creator-stack]      → force column + phone-width centred
    • [data-creator-stack-swap] → additionally put gameplay first
      (last child on top) so the recorded video leads with the board. */
-[data-creator-layout="portrait"] [data-creator-stack] {
+[data-creator-phone] [data-creator-stack] {
   flex-direction: column !important;
   /* Grid-based desktop layouts (e.g. chess's board + sidebar grid) stack
      to a single column too — harmless on flex layouts, where it is
@@ -45,15 +45,15 @@ body {
   margin-right: auto !important;
   align-items: center !important;
 }
-[data-creator-layout="portrait"] [data-creator-stack] > * {
+[data-creator-phone] [data-creator-stack] > * {
   width: 100% !important;
   max-width: 100% !important;
   flex-shrink: 1 !important;
 }
-[data-creator-layout="portrait"] [data-creator-stack-swap] > :first-child {
+[data-creator-phone] [data-creator-stack-swap] > :first-child {
   order: 2 !important;
 }
-[data-creator-layout="portrait"] [data-creator-stack-swap] > :last-child {
+[data-creator-phone] [data-creator-stack-swap] > :last-child {
   order: 1 !important;
 }
 

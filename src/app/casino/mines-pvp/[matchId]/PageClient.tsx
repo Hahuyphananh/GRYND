@@ -23,7 +23,7 @@
 // turn indicator + 20 s countdown + a post-match result screen
 // that reveals the full board + payout breakdown.
 
-import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -36,7 +36,14 @@ import Footer from "../../../../components/Footer";
 // quits. The waiting/matchmaking takeover and Footer stay OUTSIDE so
 // nothing is recorded until real gameplay starts.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+  useCreatorModeLayout,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -301,6 +308,27 @@ function AlertIcon({ className = "" }: { className?: string }) {
       <line x1="12" y1="10" x2="12" y2="15" />
       <circle cx="12" cy="17.5" r="0.8" fill="currentColor" stroke="none" />
     </svg>
+  );
+}
+
+// Creator-mode board sizer: the 5×5 board is square, so cap it to the
+// smaller frame dimension (minus shell chrome/padding) — it then fills
+// the frame without overflowing in ANY orientation (9:16 / 16:9 / 1:1 /
+// custom). Reads the shell's layout context (useCreatorModeLayout), so it
+// must be rendered inside <CreatorModeShell />.
+function CreatorBoardStage({ children }: { children: ReactNode }) {
+  const { width, height, isPortrait } = useCreatorModeLayout();
+  const cap = Math.max(
+    280,
+    Math.min(width, height) * (isPortrait ? 0.94 : 0.88) - (isPortrait ? 32 : 96),
+  );
+  return (
+    <div
+      className="flex w-full flex-col items-center justify-center"
+      style={{ maxWidth: cap }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -1362,6 +1390,339 @@ export default function MinesPvpMatchPage({
     Boolean(oppSeatClerkId);
   const wagerLabel = isAi ? "Free play" : `${stake.toLocaleString()} tokens`;
 
+  // ── Creator Mode arrangement ──────────────────────────────────────
+  // The game content is extracted into nodes so the SAME pieces compose
+  // the normal page, the portrait (9:16) phone frame, and the
+  // landscape/square frame — mirroring Tower Arena's creator shell.
+  // No game logic or state is touched, only layout.
+
+  // Title
+  const titleNode = (
+    <motion.div
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
+      <h1 className="flex items-center justify-center gap-3 text-center text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
+        <MineIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
+        <span>Mines Duel · Match #{matchId}</span>
+      </h1>
+    </motion.div>
+  );
+
+  // Match info strip
+  const infoNode = (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60">
+      <span className="inline-flex items-center gap-1">
+        {isAi ? "Free vs AI" : "Stake:"}
+        {!isAi && (
+          <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
+            {stake.toLocaleString()}
+            <CoinIcon className="w-3.5 w-3.5 text-yellow-300" />
+          </span>
+        )}
+        {isAi && (
+          <span className="text-emerald-300 font-semibold">
+            No tokens at stake
+          </span>
+        )}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        Mines:
+        <span className="text-fuchsia-300 font-semibold inline-flex items-center gap-1">
+          {match.minesCount}
+          <MineIcon className="w-3.5 h-3.5 text-fuchsia-300" />
+        </span>
+      </span>
+      {/* Safe-tiles counter — makes the zugzwang endgame legible.
+          Server-stamped (the client can't count the opponent's
+          scrubbed safe reveals). Color-coded so the "only mines
+          left" moment is unmissable: emerald while comfortable,
+          amber when it's tight, red + pulse when the next forced
+          mine is one pick away. */}
+      <span
+        title="Safe (non-mine) tiles still unrevealed. When it hits 0, only mines are left. Whoever must pick next loses by logic (zugzwang)."
+        className={`inline-flex items-center gap-1 ${
+          match.safeTilesRemaining <= 2
+            ? "animate-pulse"
+            : ""
+        }`}
+      >
+        <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Safe left:</span>
+        <span
+          className={`font-bold inline-flex items-center gap-1 ${
+            match.safeTilesRemaining <= 2
+              ? "text-red-300"
+              : match.safeTilesRemaining <= 4
+                ? "text-amber-300"
+                : "text-emerald-300"
+          }`}
+        >
+          {match.safeTilesRemaining}
+        </span>
+      </span>
+      <span>
+        Seat: <span className="text-cyan-200 font-semibold">{mySeat}</span>
+      </span>
+      {opponentClerkId && (
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+        >
+          <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
+        </button>
+      )}
+    </div>
+  );
+
+  // Player seats — stacks on narrow screens, two-up once there's room
+  // (normal mobile gets single cards, desktop + creator frames get 2-up).
+  const seatsNode = (
+    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+      <PlayerSeat
+        isMe
+        name={myDisplayName}
+        tiles={myPicks.length}
+        wagerLabel={wagerLabel}
+        thinking={inPickState && isMyTurn}
+        isWinner={meWon}
+        emote={myEmote}
+        emoteSide="mine"
+      />
+      <PlayerSeat
+        isMe={false}
+        name={opponentDisplayName}
+        tiles={opponentPicks.length}
+        wagerLabel={wagerLabel}
+        thinking={inPickState && !isMyTurn}
+        isWinner={oppWon}
+        emote={incomingEmote}
+        emoteSide="incoming"
+      />
+    </div>
+  );
+
+  // Resign (mid-match only)
+  const resignNode =
+    match.status !== MATCH_STATUS.FINISHED &&
+    match.status !== MATCH_STATUS.CANCELLED &&
+    match.status !== MATCH_STATUS.WAITING &&
+    match.status !== MATCH_STATUS.READY ? (
+      <div className="mt-3 flex justify-center">
+        <button
+          onClick={handleResign}
+          disabled={resigning}
+          className="inline-flex items-center gap-1 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/25 disabled:opacity-50"
+        >
+          <IconFlag size={14} />
+          {resigning ? "Resigning…" : "Resign match"}
+        </button>
+      </div>
+    ) : null;
+
+  // Pick / flag-mode toggle (your turn only)
+  const pickToggleNode =
+    isMyTurn &&
+    match.status !== MATCH_STATUS.FINISHED &&
+    match.status !== MATCH_STATUS.CANCELLED ? (
+      <div className="mt-3 flex flex-col items-center gap-1.5">
+        <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
+          <button
+            onClick={() => setFlagMode(false)}
+            className={`px-3 py-1.5 rounded-lg transition ${
+              !flagMode
+                ? "bg-cyan-300 text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.45)]"
+                : "text-cyan-200/70 hover:text-cyan-100"
+            }`}
+          >
+            <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Pick a tile</span>
+          </button>
+          <button
+            onClick={() => setFlagMode(true)}
+            className={`px-3 py-1.5 rounded-lg transition ${
+              flagMode
+                ? "bg-red-400 text-[#2a0d1e] shadow-[0_0_10px_rgba(248,113,113,0.45)]"
+                : "text-red-300/70 hover:text-red-200"
+            }`}
+          >
+            <span className="inline-flex items-center gap-1"><IconFlag size={14} className="text-red-300" /> Flag a mine</span>
+          </button>
+        </div>
+        {flagMode && (
+          <p className="text-[10px] uppercase tracking-widest text-red-300/80 font-bold">
+            Click a tile you believe is a mine. Correct = opponent
+            loses · wrong = you lose
+          </p>
+        )}
+      </div>
+    ) : null;
+
+  // Emote picker
+  const emoteNode = (
+    <div className="mt-3 flex justify-center">
+      <EmotePicker
+        compact
+        hideBubbles
+        incomingEmote={incomingEmote}
+        myEmote={myEmote}
+        onSend={(emote) => sendEmote(emote)}
+      />
+    </div>
+  );
+
+  // Error banner
+  const errorNode = error ? (
+    <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
+      <AlertIcon className="w-4 h-4 text-red-300" />
+      <span>{error}</span>
+    </div>
+  ) : null;
+
+  // ── The 5×5 gameboard (reused from solo mines) — padding/gaps shrink
+  // on small screens so the cells stay big and thumb-friendly. ──────
+  const boardNode = (
+    <div
+      className="mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6"
+    >
+      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+        {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
+          const display = getCellDisplay(cellIndex);
+          const cellAlreadyPicked =
+            myPicks.includes(cellIndex) ||
+            opponentPicks.includes(cellIndex);
+          const isMyTurnClickable =
+            isMyTurn &&
+            !cellAlreadyPicked &&
+            match.status !== MATCH_STATUS.FINISHED;
+          return (
+            <button
+              key={cellIndex}
+              onClick={() => handleCellClick(cellIndex)}
+              disabled={!isMyTurnClickable || busy}
+              className={`w-full aspect-square rounded-xl flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
+                cellIndex,
+              )} ${!isMyTurnClickable ? "cursor-not-allowed" : ""}`}
+            >
+              {display.content}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // Minesweeper hint legend — the skill mechanic
+  const legendNode = (
+    <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
+      <span className="inline-flex items-center gap-1"><IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it) · only you see your own</span>
+    </p>
+  );
+
+  // Host-only cancel button while still in waiting
+  const cancelNode = canCancel ? (
+    <div className="mt-4 flex justify-center">
+      <button
+        onClick={handleCancel}
+        disabled={cancelling}
+        className="px-4 py-2 rounded-lg border border-red-500/40 bg-red-500/15 text-red-200 hover:bg-red-500/25 text-sm font-bold transition disabled:opacity-50"
+      >
+        {cancelling ? "Cancelling…" : "Cancel lobby (refund stake)"}
+      </button>
+    </div>
+  ) : null;
+
+  // Normal (non-creator) page — identical stack as before.
+  const normalView = (
+    <>
+      {titleNode}
+      {infoNode}
+      {seatsNode}
+      <div className="mt-4">{renderTurnIndicator()}</div>
+      {resignNode}
+      {pickToggleNode}
+      {emoteNode}
+      {errorNode}
+      {boardNode}
+      {legendNode}
+      {cancelNode}
+    </>
+  );
+
+  // Portrait (9:16) — phone-style: compact status header, the board
+  // filling the middle, and turn/controls/seats pinned below.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <MineIcon className="h-5 w-5 shrink-0 text-cyan-300" />
+            <h1 className="truncate text-base font-extrabold tracking-tight text-cyan-100">
+              Mines Duel
+            </h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
+            <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2 py-0.5 text-fuchsia-200">
+              <MineIcon className="h-3 w-3" /> {match.minesCount}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/15 px-2 py-0.5 text-cyan-200">
+              <IconDiamondFilled size={12} /> {match.safeTilesRemaining} safe
+            </span>
+            <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-white/70">
+              Seat {mySeat}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+          <span className="truncate text-cyan-200">
+            {isAi ? "Free vs AI — no tokens at stake" : `${stake.toLocaleString()} tokens at stake`}
+          </span>
+          <span className="shrink-0 text-white/50">Match #{matchId}</span>
+        </div>
+      </ShellHeader>
+
+      <ShellMain className="flex-col overflow-hidden">
+        <div className="flex h-full w-full flex-col items-center justify-center px-3 py-2">
+          <CreatorBoardStage>
+            {boardNode}
+            {legendNode}
+          </CreatorBoardStage>
+        </div>
+      </ShellMain>
+
+      <ShellAside className="space-y-2">
+        {renderTurnIndicator()}
+        {seatsNode}
+        {pickToggleNode}
+        {emoteNode}
+        {resignNode}
+        {errorNode}
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — board fills the height with the
+  // turn/controls/seats in a right rail.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="overflow-hidden">
+        <div className="flex h-full w-full flex-col items-center justify-center p-4">
+          <CreatorBoardStage>
+            {boardNode}
+            {legendNode}
+          </CreatorBoardStage>
+        </div>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {renderTurnIndicator()}
+        {seatsNode}
+        {pickToggleNode}
+        {emoteNode}
+        {resignNode}
+        {errorNode}
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -1431,236 +1792,13 @@ export default function MinesPvpMatchPage({
             match?.status === MATCH_STATUS.CANCELLED
           }
           gameLabel="mines-duel"
+          backToLobbyHref="/casino/mines-pvp"
         >
-        <CreatorResponsiveLayout>
-        <motion.div
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <h1 className="flex items-center justify-center gap-3 text-center text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
-            <MineIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
-            <span>Mines Duel · Match #{matchId}</span>
-          </h1>
-        </motion.div>
-
-        {/* Match info strip */}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60">
-          <span className="inline-flex items-center gap-1">
-            {isAi ? "Free vs AI" : "Stake:"}
-            {!isAi && (
-              <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-                {stake.toLocaleString()}
-                <CoinIcon className="w-3.5 w-3.5 text-yellow-300" />
-              </span>
-            )}
-            {isAi && (
-              <span className="text-emerald-300 font-semibold">
-                No tokens at stake
-              </span>
-            )}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            Mines:
-            <span className="text-fuchsia-300 font-semibold inline-flex items-center gap-1">
-              {match.minesCount}
-              <MineIcon className="w-3.5 h-3.5 text-fuchsia-300" />
-            </span>
-          </span>
-          {/* Safe-tiles counter — makes the zugzwang endgame legible.
-              Server-stamped (the client can't count the opponent's
-              scrubbed safe reveals). Color-coded so the "only mines
-              left" moment is unmissable: emerald while comfortable,
-              amber when it's tight, red + pulse when the next forced
-              mine is one pick away. */}
-          <span
-            title="Safe (non-mine) tiles still unrevealed. When it hits 0, only mines are left. Whoever must pick next loses by logic (zugzwang)."
-            className={`inline-flex items-center gap-1 ${
-              match.safeTilesRemaining <= 2
-                ? "animate-pulse"
-                : ""
-            }`}
-          >
-            <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Safe left:</span>
-            <span
-              className={`font-bold inline-flex items-center gap-1 ${
-                match.safeTilesRemaining <= 2
-                  ? "text-red-300"
-                  : match.safeTilesRemaining <= 4
-                    ? "text-amber-300"
-                    : "text-emerald-300"
-              }`}
-            >
-              {match.safeTilesRemaining}
-            </span>
-          </span>
-          <span>
-            Seat: <span className="text-cyan-200 font-semibold">{mySeat}</span>
-          </span>
-          {opponentClerkId && (
-            <button
-              onClick={() => setShowReportModal(true)}
-              className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
-            >
-              <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
-            </button>
-          )}
-        </div>
-
-        {/* Player seats — usernames, wager and tiles clicked. Emotes pop
-            on the sender's name. */}
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
-          <PlayerSeat
-            isMe
-            name={myDisplayName}
-            tiles={myPicks.length}
-            wagerLabel={wagerLabel}
-            thinking={inPickState && isMyTurn}
-            isWinner={meWon}
-            emote={myEmote}
-            emoteSide="mine"
-          />
-          <PlayerSeat
-            isMe={false}
-            name={opponentDisplayName}
-            tiles={opponentPicks.length}
-            wagerLabel={wagerLabel}
-            thinking={inPickState && !isMyTurn}
-            isWinner={oppWon}
-            emote={incomingEmote}
-            emoteSide="incoming"
-          />
-        </div>
-
-        {/* Turn indicator */}
-        <div className="mt-4">{renderTurnIndicator()}</div>
-
-        {/* Flag-mode toggle — only on your turn, only mid-match.
-            In flag mode, clicking a tile submits a "call a mine"
-            flag instead of a pick: correct = opponent loses,
-            wrong = you lose. Auto-resets when the turn passes. */}
-        {match.status !== MATCH_STATUS.FINISHED &&
-          match.status !== MATCH_STATUS.CANCELLED &&
-          match.status !== MATCH_STATUS.WAITING &&
-          match.status !== MATCH_STATUS.READY && (
-            <div className="mt-3 flex justify-center">
-              <button
-                onClick={handleResign}
-                disabled={resigning}
-                className="inline-flex items-center gap-1 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/25 disabled:opacity-50"
-              >
-                <IconFlag size={14} />
-                {resigning ? "Resigning…" : "Resign match"}
-              </button>
-            </div>
-          )}
-
-        {isMyTurn &&
-          match.status !== MATCH_STATUS.FINISHED &&
-          match.status !== MATCH_STATUS.CANCELLED && (
-            <div className="mt-3 flex flex-col items-center gap-1.5">
-              <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
-                <button
-                  onClick={() => setFlagMode(false)}
-                  className={`px-3 py-1.5 rounded-lg transition ${
-                    !flagMode
-                      ? "bg-cyan-300 text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.45)]"
-                      : "text-cyan-200/70 hover:text-cyan-100"
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Pick a tile</span>
-                </button>
-                <button
-                  onClick={() => setFlagMode(true)}
-                  className={`px-3 py-1.5 rounded-lg transition ${
-                    flagMode
-                      ? "bg-red-400 text-[#2a0d1e] shadow-[0_0_10px_rgba(248,113,113,0.45)]"
-                      : "text-red-300/70 hover:text-red-200"
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-1"><IconFlag size={14} className="text-red-300" /> Flag a mine</span>
-                </button>
-              </div>
-              {flagMode && (
-                <p className="text-[10px] uppercase tracking-widest text-red-300/80 font-bold">
-                  Click a tile you believe is a mine. Correct = opponent
-                  loses · wrong = you lose
-                </p>
-              )}
-            </div>
-          )}
-
-        {/* Emotes */}
-        <div className="mt-3 flex justify-center">
-          <EmotePicker
-            compact
-            hideBubbles
-            incomingEmote={incomingEmote}
-            myEmote={myEmote}
-            onSend={(emote) => sendEmote(emote)}
-          />
-        </div>
-
-        {/* Error banner */}
-        {error && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
-            <AlertIcon className="w-4 h-4 text-red-300" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* ── The 5×5 gameboard (reused from solo mines) ────────── */}
-        <div
-          className={`mt-6 rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-6 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)]`}
-        >
-          <div
-            className={`grid grid-cols-5 gap-3 ${
-              match.status === MATCH_STATUS.FINISHED ? "" : ""
-            }`}
-          >
-            {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
-              const display = getCellDisplay(cellIndex);
-              const cellAlreadyPicked =
-                myPicks.includes(cellIndex) ||
-                opponentPicks.includes(cellIndex);
-              const isMyTurnClickable =
-                isMyTurn &&
-                !cellAlreadyPicked &&
-                match.status !== MATCH_STATUS.FINISHED;
-              return (
-                <button
-                  key={cellIndex}
-                  onClick={() => handleCellClick(cellIndex)}
-                  disabled={!isMyTurnClickable || busy}
-                  className={`w-full aspect-square rounded-xl flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
-                    cellIndex,
-                  )} ${!isMyTurnClickable ? "cursor-not-allowed" : ""}`}
-                >
-                  {display.content}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Minesweeper hint legend — the skill mechanic */}
-        <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
-          <span className="inline-flex items-center gap-1"><IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it) · only you see your own</span>
-        </p>
-
-        {/* Host-only cancel button while still in waiting */}
-        {canCancel && (
-          <div className="mt-4 flex justify-center">
-            <button
-              onClick={handleCancel}
-              disabled={cancelling}
-              className="px-4 py-2 rounded-lg border border-red-500/40 bg-red-500/15 text-red-200 hover:bg-red-500/25 text-sm font-bold transition disabled:opacity-50"
-            >
-              {cancelling ? "Cancelling…" : "Cancel lobby (refund stake)"}
-            </button>
-          </div>
-        )}
-        </CreatorResponsiveLayout>
+        <CreatorView
+          normal={normalView}
+          portrait={portraitContent}
+          landscape={landscapeContent}
+        />
         </CreatorModeHost>
 
         <Footer />
