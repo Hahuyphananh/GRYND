@@ -4,15 +4,20 @@
 // src/components/creator-mode/CreatorModeLayout.jsx (the `data-creator-phone`
 // wrapper rendered by <CreatorResponsiveLayout>) + src/app/globals.css:
 //
-//   • Portrait (9:16) frames lay the game out at a real phone width (390px)
-//     and `zoom` it up so it FILLS the whole 1080×1920 output frame
-//     edge-to-edge (getBoundingClientRect ≈ 1080×1920, anchored top-left).
+//   • EVERY recording ratio lays the game out at a real phone width
+//     (390px) and `zoom`s it up to fill the output frame.
+//   • Portrait (9:16): the phone viewport FILLS the whole 1080×1920
+//     output frame edge-to-edge (getBoundingClientRect ≈ 1080×1920,
+//     anchored top-left).
+//   • Landscape (16:9) / square (1:1): the full phone screen is fitted
+//     inside the frame, centered, zoomed to fill the frame height — the
+//     recording looks like a real phone screen (never a shrunken
+//     desktop page).
 //   • The generic [data-creator-fill] root still fills the phone viewport
 //     (desktop max-w caps overridden; full width + height).
 //   • A [data-creator-stack] GRID (chess-ai style board + sidebar) collapses
-//     to a single stacked column inside the portrait frame.
-//   • Landscape / square frames keep the direct full-frame fill (no phone
-//     wrapper), and non-creator rendering is byte-for-byte unchanged.
+//     to a single stacked column inside the phone viewport.
+//   • Non-creator rendering is byte-for-byte unchanged.
 //
 // Run: node qa/creator-phone-check.mjs
 
@@ -53,12 +58,29 @@ const html = `<!doctype html>
         </div>
       </div>
     </div>
-    <!-- Landscape recording frame (16:9): direct fill, no phone wrapper -->
+    <!-- Landscape recording frame (16:9): full phone screen fitted inside,
+         centered, zoomed to fill the height -->
     <div id="frame-landscape" style="width:1920px;height:1080px;overflow:hidden">
       <div data-creator-layout="landscape" style="display:flex;height:100%;width:100%">
-        <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-          <div class="game-root-landscape mx-auto max-w-5xl px-3 py-4">
-            <div class="panel rounded-2xl p-6">landscape game</div>
+        <div data-creator-phone class="relative flex min-h-0 min-w-0 flex-col self-start mx-auto"
+             style="width:390px;height:693.3333333333334px;zoom:1.5576923076923077">
+          <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+            <div class="game-root-landscape mx-auto max-w-5xl px-3 py-4">
+              <div class="panel rounded-2xl p-6">landscape game</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Square recording frame (1:1): same phone treatment -->
+    <div id="frame-square" style="width:1080px;height:1080px;overflow:hidden">
+      <div data-creator-layout="square" style="display:flex;height:100%;width:100%">
+        <div data-creator-phone class="relative flex min-h-0 min-w-0 flex-col self-start mx-auto"
+             style="width:390px;height:693.3333333333334px;zoom:1.5576923076923077">
+          <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+            <div class="game-root-square mx-auto max-w-5xl px-3 py-4">
+              <div class="panel rounded-2xl p-6">square game</div>
+            </div>
           </div>
         </div>
       </div>
@@ -82,7 +104,7 @@ const generated = await postcss([tailwind({ content: [join(tmp, "input.html")] }
 
 // Append the creator fill + stacking CSS from globals.css.
 const globals = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
-const start = globals.indexOf('[data-creator-layout="portrait"] [data-creator-stack]');
+const start = globals.indexOf('[data-creator-phone] [data-creator-stack]');
 const end = globals.indexOf("@media (prefers-reduced-motion", start);
 if (start < 0) throw new Error("creator frame-fill CSS not found in globals.css");
 const creatorCss = globals.slice(start, end).trim();
@@ -98,9 +120,12 @@ try {
     const out = {};
     const fr = document.getElementById("frame-portrait").getBoundingClientRect();
     const fl = document.getElementById("frame-landscape").getBoundingClientRect();
-    const phone = document.querySelector("[data-creator-phone]");
-    const phoneRect = phone.getBoundingClientRect();
-    const phoneStyle = getComputedStyle(phone);
+    const fs = document.getElementById("frame-square").getBoundingClientRect();
+    const phones = [...document.querySelectorAll("[data-creator-phone]")];
+    const phoneStyle = getComputedStyle(phones[0]);
+    const portraitPhone = phones[0].getBoundingClientRect();
+    const landPhone = phones[1].getBoundingClientRect();
+    const squarePhone = phones[2].getBoundingClientRect();
     const root = document.querySelector(".game-root");
     const rootRect = root.getBoundingClientRect();
     const rootCss = getComputedStyle(root);
@@ -112,20 +137,37 @@ try {
     });
     const landRoot = document.querySelector(".game-root-landscape").getBoundingClientRect();
     const landCss = getComputedStyle(document.querySelector(".game-root-landscape"));
+    const squareRoot = document.querySelector(".game-root-square").getBoundingClientRect();
     const plain = document.querySelector(".game-root-plain").getBoundingClientRect();
     const plainCss = getComputedStyle(document.querySelector(".game-root-plain"));
     out.phone = {
-      w: phoneRect.width,
-      h: phoneRect.height,
-      left: phoneRect.left,
-      top: phoneRect.top,
+      w: portraitPhone.width,
+      h: portraitPhone.height,
+      left: portraitPhone.left,
+      top: portraitPhone.top,
       cssWidth: phoneStyle.width,
       zoom: phoneStyle.zoom,
     };
     out.portrait = { frameW: fr.width, frameH: fr.height };
+    out.landscape = {
+      frameW: fl.width,
+      frameH: fl.height,
+      phoneW: landPhone.width,
+      phoneH: landPhone.height,
+      phoneLeft: landPhone.left,
+      phoneTop: landPhone.top,
+    };
+    out.square = {
+      frameW: fs.width,
+      frameH: fs.height,
+      phoneW: squarePhone.width,
+      phoneH: squarePhone.height,
+      phoneLeft: squarePhone.left,
+      phoneTop: squarePhone.top,
+    };
     out.root = { w: rootRect.width, h: rootRect.height, maxW: rootCss.maxWidth };
     out.stack = { gridTemplateColumns: stackCss.gridTemplateColumns, kids: stackKids };
-    out.landscape = { rootW: landRoot.width, frameW: fl.width, maxW: landCss.maxWidth };
+    out.landRoot = { w: landRoot.width, h: landRoot.height, maxW: landCss.maxWidth };
     out.plain = { w: plain.width, maxW: plainCss.maxWidth };
     return out;
   });
@@ -140,18 +182,44 @@ try {
   passes.push(check(parseInt(results.phone.cssWidth, 10) === 390, "phone wrapper lays out at 390px CSS width"));
   // …and zoomed up so it fills the whole 1080×1920 portrait frame edge-to-edge
   passes.push(
-    check(Math.abs(results.phone.w - results.portrait.frameW) < 2, "phone viewport fills frame width"),
+    check(Math.abs(results.phone.w - results.portrait.frameW) < 2, "portrait phone viewport fills frame width"),
   );
   passes.push(
-    check(Math.abs(results.phone.h - results.portrait.frameH) < 2, "phone viewport fills frame height"),
+    check(Math.abs(results.phone.h - results.portrait.frameH) < 2, "portrait phone viewport fills frame height"),
   );
-  passes.push(check(results.phone.left === 0 && results.phone.top === 0, "phone viewport anchored top-left"));
-  // The game root fills the whole frame visually (its getBoundingClientRect
-  // is the zoomed size — 1080×1920, exactly the phone viewport's rect — so
-  // the game content fills the output edge-to-edge)
+  passes.push(check(results.phone.left === 0 && results.phone.top === 0, "portrait phone viewport anchored top-left"));
+  // Landscape: the full phone screen is fitted inside the frame, centered,
+  // zoomed to fill the frame HEIGHT (1080px) — the game renders as a real
+  // phone screen, never a shrunken desktop page.
+  passes.push(
+    check(Math.abs(results.landscape.phoneH - results.landscape.frameH) < 2, "landscape phone viewport fills frame height"),
+  );
+  passes.push(
+    check(results.landscape.phoneW < results.landscape.frameW, "landscape phone viewport is narrower than the frame (fitted, centered)"),
+  );
+  passes.push(
+    check(
+      Math.abs(results.landscape.phoneLeft - (results.landscape.frameW - results.landscape.phoneW) / 2) < 2,
+      "landscape phone viewport is centered horizontally",
+    ),
+  );
+  // Square: same fitted phone-screen treatment
+  passes.push(
+    check(Math.abs(results.square.phoneH - results.square.frameH) < 2, "square phone viewport fills frame height"),
+  );
+  passes.push(
+    check(
+      Math.abs(results.square.phoneLeft - (results.square.frameW - results.square.phoneW) / 2) < 2,
+      "square phone viewport is centered horizontally",
+    ),
+  );
+  // The game root fills the whole phone viewport (its getBoundingClientRect
+  // is the zoomed size, so the game content fills the output edge-to-edge)
   passes.push(check(Math.abs(results.root.w - results.phone.w) < 1, "game root fills phone viewport width (zoomed 1080px)"));
   passes.push(check(Math.abs(results.root.h - results.phone.h) < 1, "game root fills phone viewport height (zoomed 1920px)"));
   passes.push(check(results.root.maxW === "none" || results.root.maxW === "100%", "game root desktop max-width cap removed"));
+  passes.push(check(Math.abs(results.landRoot.w - results.landscape.phoneW) < 1, "landscape game root fills its phone viewport"));
+  passes.push(check(results.landRoot.maxW === "none" || results.landRoot.maxW === "100%", "landscape max-width cap removed"));
   // data-creator-stack GRID stacks to a single column (children stacked vertically)
   passes.push(
     check(
@@ -160,9 +228,6 @@ try {
       "data-creator-stack grid stacks children into one column",
     ),
   );
-  // Landscape keeps the direct fill (no phone wrapper) at full frame size
-  passes.push(check(Math.abs(results.landscape.rootW - results.landscape.frameW) < 2, "landscape game root fills frame width"));
-  passes.push(check(results.landscape.maxW === "none" || results.landscape.maxW === "100%", "landscape max-width cap removed"));
   // Non-creator rendering untouched
   passes.push(check(Math.abs(results.plain.w - 1024) < 2, "no creator mode keeps desktop max-w-5xl (1024px)"));
   passes.push(check(results.plain.maxW.includes("1024"), "no creator mode keeps desktop max-width value"));

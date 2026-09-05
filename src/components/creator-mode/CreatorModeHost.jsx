@@ -14,6 +14,8 @@
 //                                //   after the game ends so the
 //                                //   result/winner animation is captured
 //     gameLabel="plinko-duel"    // used in the downloaded filename
+//     backToLobbyHref={"/casino/plinko"} // optional: adds a "Go back to
+//                                //   lobby" button to the result panel
 //   >
 //     {/* only the actual game content — nav/footer/modals stay outside */}
 //   </CreatorModeHost>
@@ -45,6 +47,9 @@ export default function CreatorModeHost({
   autoStop = false,
   autoStopDelayMs = undefined,
   gameLabel = "game",
+  // Optional: when set, the finished-recording result panel shows a
+  // "Go back to lobby" button navigating to this href (e.g. "/casino/tower-arena").
+  backToLobbyHref = undefined,
   children = null,
 }) {
   // UX plan P1-1: record the play when the REAL game session starts
@@ -67,7 +72,7 @@ export default function CreatorModeHost({
       gameLabel={gameLabel}
     >
       {children}
-      <CreatorModeOverlay />
+      <CreatorModeOverlay backToLobbyHref={backToLobbyHref} />
     </CreatorModeProvider>
   );
 }

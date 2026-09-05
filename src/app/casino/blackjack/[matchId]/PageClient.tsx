@@ -36,7 +36,12 @@ import NavigationBar from "../../../../components/navigation-bar";
 // quits. The waiting/matchmaking takeover stays OUTSIDE so nothing is
 // recorded until real gameplay starts.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellMain,
+  CreatorPhoneFrame,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
@@ -953,6 +958,557 @@ export default function BlackjackPvpMatchPage({
     );
   }
 
+  // ── Creator-mode layout nodes ─────────────────────────────────────
+  // The game content is split into reusable nodes so the normal page
+  // (non-creator) renders byte-for-byte the same, while Creator Mode
+  // gets a bespoke arrangement: portrait = phone-style (compact header,
+  // the table filling the middle, controls pinned at the bottom);
+  // landscape/square = the table fills the frame height with controls
+  // in a right rail.
+
+  // Header — title, stake chip, report + leave/resign (desktop layout).
+  const headerNode = (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h1 className="text-2xl sm:text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">
+        <span className="inline-flex items-center gap-2"><IconCards size={26} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
+      </h1>
+      <span className="px-4 py-1.5 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-sm shadow-[0_0_10px_rgba(255,215,0,0.3)]">
+        {match?.isAi
+          ? t("blackjackPvp.freeMatch", "Free AI match")
+          : t("blackjackPvp.stake", "Mise : {amount}").replace(
+              "{amount}",
+              Number(match?.stakeAmount ?? 0).toLocaleString(),
+            )}
+      </span>
+      {!match?.isAi && opponentClerkId && (
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-extrabold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+        >
+          <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
+        </button>
+      )}
+
+      {/* Leave / Resign — kept in the top header so it stays
+          reachable even when the portrait creator frame crops the
+          tall content column. PvP matches resign (stake forfeit)
+          via the resign API; free vs-AI matches just leave —
+          nothing is at stake. Hidden while waiting (owner uses
+          Cancel) and once the match reaches a terminal state. */}
+      {match &&
+        match.status !== "waiting" &&
+        match.status !== "finished" &&
+        match.status !== "cancelled" && (
+          <button
+            onClick={() =>
+              match.isAi
+                ? setShowAiLeave(true)
+                : setShowResignConfirm(true)
+            }
+            disabled={resigning}
+            className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] disabled:opacity-40 ${
+              match.isAi
+                ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
+                : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+            }`}
+          >
+            {match.isAi
+              ? t("blackjackPvp.leave.button", "Leave match")
+              : t("blackjackPvp.resign.button", "Resign")}
+          </button>
+        )}
+    </div>
+  );
+
+  // Compact header for the creator frames — same actions, tighter
+  // typography so the table gets the vertical space.
+  const creatorHeaderNode = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h1 className="text-lg font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">
+        <span className="inline-flex items-center gap-2"><IconCards size={20} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
+      </h1>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="px-2.5 py-1 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-[11px] shadow-[0_0_10px_rgba(255,215,0,0.3)]">
+          {match?.isAi
+            ? t("blackjackPvp.freeMatch", "Free AI match")
+            : t("blackjackPvp.stake", "Mise : {amount}").replace(
+                "{amount}",
+                Number(match?.stakeAmount ?? 0).toLocaleString(),
+              )}
+        </span>
+        {!match?.isAi && opponentClerkId && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="px-2.5 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-[11px] font-extrabold text-red-400 transition-all hover:bg-red-500/20"
+          >
+            <span className="inline-flex items-center gap-1"><IconFlag size={11} /> Report</span>
+          </button>
+        )}
+        {match &&
+          match.status !== "waiting" &&
+          match.status !== "finished" &&
+          match.status !== "cancelled" && (
+            <button
+              onClick={() =>
+                match.isAi
+                  ? setShowAiLeave(true)
+                  : setShowResignConfirm(true)
+              }
+              disabled={resigning}
+              className={`px-2.5 py-1 rounded-full border text-[11px] font-extrabold transition-all hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] disabled:opacity-40 ${
+                match.isAi
+                  ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
+                  : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              }`}
+            >
+              {match.isAi
+                ? t("blackjackPvp.leave.button", "Leave match")
+                : t("blackjackPvp.resign.button", "Resign")}
+            </button>
+          )}
+      </div>
+    </div>
+  );
+
+  const errorNode = errorMsg ? (
+    <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded text-sm text-center">
+      {errorMsg}
+    </div>
+  ) : null;
+
+  // The game table itself — status banner + both hands + the round
+  // scoreboard + held-card preview + between-rounds + peek strip.
+  const tableNode = (
+    <>
+      {/* Status banner — transient status only (round indicator
+          lives in the GameTableCenter below). */}
+      <div className="text-center mb-3">
+        <motion.h2
+          key={match?.status ?? "loading"}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-[#FFD700] text-base sm:text-lg font-bold"
+        >
+          {statusLabel}
+        </motion.h2>
+      </div>
+
+      {/* ▶ TOP SECTION — Opponent
+          Always face-down + localized "Opponent Playing…"
+          placeholder text. Never reveals anything else. */}
+      <OpponentHand
+        t={t}
+        label={oppSeatLabel}
+        hand={oppHand}
+        isMatchFinished={match?.status === "finished"}
+        isAi={Boolean(match?.isAi)}
+      />
+
+      {/* ▶ MIDDLE SECTION — Game table
+          Round scoreboard + Round N/3 chip (Player | Round |
+          Opponent). Hidden during the between-rounds transition
+          because that screen overlays the table instead. */}
+      <GameTableCenter
+        t={t}
+        viewerIsPlayer1={viewerIsPlayer1}
+        status={match?.status || "waiting"}
+        roundNumber={
+          match?.roundNumber && match.roundNumber >= 1
+            ? match.roundNumber
+            : 1
+        }
+        // During the round-4 TIEBREAK the chip reads "Round 4/4"
+        // (roundNumber exceeds the best-of-3 ceiling).
+        totalRounds={Math.max(
+          TOTAL_ROUNDS,
+          match?.roundNumber ?? 1,
+        )}
+        myRounds={
+          viewerIsPlayer1
+            ? Number(match?.roundsWonPlayer1 || 0)
+            : Number(match?.roundsWonPlayer2 || 0)
+        }
+        oppRounds={
+          viewerIsPlayer1
+            ? Number(match?.roundsWonPlayer2 || 0)
+            : Number(match?.roundsWonPlayer1 || 0)
+        }
+        mySeatLabel={mySeatLabel}
+        oppSeatLabel={oppSeatLabel}
+        myEmote={myEmote}
+        incomingEmote={incomingEmote}
+      />
+
+      {/* ▶ BOTTOM SECTION — You
+          Face-up cards + my score (with bust / stood states
+          surfaced through the same MyHand component). The
+          `canSwap` + `swapTarget` props wire click-to-select
+          card highlighting into MyHand so the swap target picks
+          up via card click instead of the (now-removed) 1st/2nd
+          pill — swap itself still routes through ActionPanel. */}
+      <MyHand
+        t={t}
+        label={mySeatLabel}
+        hand={myHand}
+        myState={myState}
+        score={myScore}
+        canSwap={canSwap}
+        swapTarget={swapTarget}
+        onSwapTargetChange={setSwapTarget}
+      />
+
+      {/* Held-card preview (so the player can see what's on hold
+         and decide add vs discard). */}
+      {myActions.heldCard && (
+        <HeldCardPreview
+          t={t}
+          card={myActions.heldCard}
+          resolved={myActions.heldResolved}
+        />
+      )}
+
+      {/* Between-rounds transition screen — shows while the
+          server is in MATCH_STATUS.BETWEEN_ROUNDS (a 3-second
+          buffer between resolved rounds). The active cards are
+          deliberately hidden here so the "next round incoming"
+          message is unambiguous; the polling loop will surface
+          the next round's hands automatically. A "Continue now"
+          button lets the player skip the wait. */}
+      {match?.status === "between_rounds" && (
+        <BetweenRoundsScreen
+          t={t}
+          matchId={matchId}
+          // The tiebreak transition holds roundNumber=4, which IS
+          // the upcoming round — cap the advertisement at round 4
+          // so it never reads "Round 5/4" (regular transitions
+          // keep the existing roundNumber+1 behaviour).
+          nextRound={
+            Number(match.roundNumber) + 1 > TIEBREAK_ROUND_NUMBER
+              ? TIEBREAK_ROUND_NUMBER
+              : Number(match.roundNumber) + 1
+          }
+          totalRounds={Math.max(
+            TOTAL_ROUNDS,
+            Number(match.roundNumber) + 1 > TIEBREAK_ROUND_NUMBER
+              ? TIEBREAK_ROUND_NUMBER
+              : Number(match.roundNumber) + 1,
+          )}
+          roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
+          roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
+          onAfter={fetchStatus}
+        />
+      )}
+
+      {/* Animated Peek strip — sits BETWEEN the player's hand and
+          the action buttons so the player sees the next card on
+          the shoe right where they're deciding. Enter/exit
+          animations are driven by `localPeekedCard` being set or
+          cleared; clearing happens automatically inside
+          `sendAction` whenever the player commits to a non-peek
+          verb (HIT/SWAP/STAND/HOLD/USE_HELD). */}
+      <AnimatePresence>
+        {localPeekedCard && (
+          <PeekOverlay t={t} card={localPeekedCard} />
+        )}
+      </AnimatePresence>
+    </>
+  );
+
+  // Action controls — timer, Hit/Stand/Swap/Freeze/Peek + emotes,
+  // plus the turn-state hints and waiting/ready banners.
+  const controlsNode = (
+    <>
+      {/* Action buttons — visible for both PLAYING (full move
+          set) and BUSTED (recovery via Swap / Freeze / Use-Held)
+          seats. Hit and Stand appear but stay disabled on busted
+          seats because they can't un-bust you. */}
+      {handIsInteractive && (
+        <>
+          <RoundTimerDisplay
+            t={t}
+            deadline={match?.roundDeadline ?? null}
+            total={ROUND_TIMER_SECONDS}
+          />
+          <ActionPanel
+            t={t}
+            submitting={submitting}
+            canHit={canHit}
+            canStand={canStand}
+            canSwap={canSwap && swapTarget !== null}
+            canHold={canHold}
+            canPeek={canPeek}
+            canUseHeldAdd={canUseHeldAdd}
+            canUseHeldDiscard={canUseHeldDiscard}
+            swapTarget={swapTarget}
+            onHit={() => sendAction("hit")}
+            onStand={() => sendAction("stand")}
+            onSwap={() => swapTarget !== null && sendAction("swap", { swapIndex: swapTarget })}
+            onHold={() => sendAction("hold")}
+            onPeek={() => sendAction("peek")}
+            onUseHeldAdd={() =>
+              sendAction("use_held", { subaction: "add" })
+            }
+            onUseHeldDiscard={() =>
+              sendAction("use_held", { subaction: "discard" })
+            }
+          />
+          <div className="mt-2 flex justify-center">
+            <EmotePicker
+              compact
+              hideBubbles
+              incomingEmote={incomingEmote}
+              myEmote={myEmote}
+              onSend={(emote) => {
+                setMyEmote(emote);
+                socket?.emit("room_event", {
+                  roomId: blackjackPvpMatchRoom(matchId),
+                  event: "blackjack:emote",
+                  payload: { emote, senderId: user?.id },
+                });
+                window.setTimeout(() => setMyEmote(null), 3000);
+              }}
+            />
+          </div>
+        </>
+      )}
+      {/* STOOD lock: the hand is frozen and the round resolves
+          as soon as BOTH seats leave PLAYING. We surface ONE
+          consolidated hint here — the previous build had a
+          second duplicate render that just stacked with this
+          one, which read as visual noise. */}
+      {isMyTurn && myState === "stood" && (
+        <div className="mt-3 text-center text-xs text-white/55 italic">
+          {t(
+            "blackjackPvp.lockedAfterStand",
+            "Hand locked. Both hands reveal when the round ends.",
+          )}
+        </div>
+      )}
+      {/* Busted-but-still-active hint — clarifies that the
+          player can still use Swap & Freeze to recover before
+          the round resolves (the panel above stays visible).
+          The two halves are independently translated so fr/es
+          players don't see English glue text. */}
+      {myState === "busted" && handIsInteractive && (
+        <div className="mt-2 text-center text-xs">
+          <span className="text-amber-200 font-bold uppercase tracking-wider">
+            {t("blackjackPvp.bustedPrefix", "Busted!")}
+          </span>{" "}
+          <span className="text-white/75">
+            {t(
+              "blackjackPvp.bustedRecoverHint",
+              "Swap or freeze to recover.",
+            )}
+          </span>
+        </div>
+      )}
+      {match?.status === "waiting" && (
+        <WaitingBanner
+          t={t}
+          onCancel={async () => {
+            await fetch(
+              `/api/blackjack-pvp/match/${matchId}/cancel`,
+              {
+                method: "POST",
+                credentials: "include",
+              },
+            );
+            socket?.emit("room_event", {
+              roomId: "lobby:blackjack-pvp",
+              event: "lobby:updated",
+            });
+            router.push("/casino/blackjack");
+          }}
+          isOwner={match?.player1Id === user?.id}
+        />
+      )}
+      {match?.status === "ready" && (
+        <div className="mt-4 text-center text-xs text-cyan-300 font-bold tracking-widest uppercase">
+          {t("blackjackPvp.ready", "Manche 1 imminente…")}
+        </div>
+      )}
+    </>
+  );
+
+  // Round-by-round history footer — abstract win/loss only;
+  // opponent cards+score are scrubbed server-side.
+  const historyNode =
+    rounds.length > 0 ? (
+      <div className="mt-4 rounded-xl bg-[#001933]/60 border border-[#FFD700]/15 p-3 text-xs text-[#FFD700]/80">
+        <h3 className="text-[#FFD700] font-bold mb-2 text-sm">
+          {t("blackjackPvp.historyTitle", "Historique des manches")}
+        </h3>
+        <div className="space-y-1.5">
+          {rounds.map((r) => {
+            const myScore = viewerIsPlayer1
+              ? r.player1Score
+              : r.player2Score;
+            const oppScore = viewerIsPlayer1
+              ? r.player2Score
+              : r.player1Score;
+            const myBusted =
+              (viewerIsPlayer1 ? r.player1State : r.player2State) ===
+              "busted";
+            const oppBusted =
+              (viewerIsPlayer1 ? r.player2State : r.player1State) ===
+              "busted";
+            const viewerWon = r.viewerWonThisRound === true;
+            return (
+              <div
+                key={r.id}
+                className="flex items-center justify-between rounded-lg bg-[#08142f]/60 px-3 py-1.5"
+              >
+                <span>
+                  {t(
+                    "blackjackPvp.historyRow",
+                    "Manche {n}, {me}: {myScore}{meTag} vs {opp}: {oppScore}{oppTag}",
+                  )
+                    .replace("{n}", String(r.roundNumber))
+                    .replace("{me}", mySeatLabel)
+                    .replace("{myScore}", String(myScore))
+                    .replace(
+                      "{meTag}",
+                      myBusted
+                        ? ` ${t("blackjackPvp.bustTag", "(sauté)")}`
+                        : "",
+                    )
+                    .replace("{opp}", oppSeatLabel)
+                    .replace("{oppScore}", String(oppScore))
+                    .replace(
+                      "{oppTag}",
+                      oppBusted
+                        ? ` ${t("blackjackPvp.bustTag", "(sauté)")}`
+                        : "",
+                    )}
+                </span>
+                <span
+                  className={
+                    r.roundWinner === "draw"
+                      ? "text-yellow-300 font-bold"
+                      : viewerWon
+                      ? "text-green-300 font-bold"
+                      : "text-red-300 font-bold"
+                  }
+                >
+                  {r.roundWinner === "draw"
+                    ? t("blackjackPvp.historyDraw", "Égalité")
+                    : viewerWon
+                    ? t("blackjackPvp.historyWin", "Vous gagnez")
+                    : t("blackjackPvp.historyLose", "Vous perdez")}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
+  // Round-end popup + cancelled modal (fixed overlays — rendered in
+  // every view so recordings capture the same game feedback).
+  const modalsNode = (
+    <>
+      {/* Round-end popup — pops for ~5s after each resolved round to
+         celebrate the round winner (with their seat label + the
+         updated best-of-3 score, e.g. "Joueur 1 wins Round 2 (1-0)").
+         Both hands + both scores are revealed because the round is
+         no longer secret once it has resolved server-side. */}
+      <AnimatePresence>
+        {roundResultShownFor !== null &&
+          (() => {
+            const round = rounds.find(
+              (r) => r.roundNumber === roundResultShownFor,
+            );
+            if (!round || !match) return null;
+            return (
+              <RoundResultModal
+                key={`round-${round.roundNumber}-${round.id}`}
+                t={t}
+                round={round}
+                viewerIsPlayer1={viewerIsPlayer1}
+                mySeatLabel={mySeatLabel}
+                oppSeatLabel={oppSeatLabel}
+                isAi={Boolean(match.isAi)}
+                roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
+                roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
+                onDismiss={() => setRoundResultShownFor(null)}
+              />
+            );
+          })()}
+      </AnimatePresence>
+
+      {/* Match cancelled modal (unchanged) */}
+      <AnimatePresence>
+        {match?.status === "cancelled" && (
+          <CancelledModal
+            t={t}
+            onBackToLobby={() => router.push("/casino/blackjack")}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+
+  // Normal (non-creator) page — byte-for-byte the original stack.
+  const normalView = (
+    <>
+      <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
+        {headerNode}
+        {errorNode}
+        <div className="rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-4 sm:p-6">
+          {tableNode}
+          {controlsNode}
+        </div>
+        {historyNode}
+      </div>
+      {modalsNode}
+    </>
+  );
+
+  // The game renders inside a phone-width viewport (390px) that is
+  // `zoom`ed up to fill the frame — exactly how <CreatorResponsiveLayout>
+  // makes the generic games look like a real phone. Blackjack's cards and
+  // buttons are fixed-size (80×112px cards, ~36px buttons), so rendered
+  // directly in the wide frame they read as tiny; at phone width they are
+  // the real mobile sizes, then zoomed 2.77× (portrait) / 1.56×
+  // (landscape) → big and readable. Layout stays: compact header, table
+  // filling the middle (scrolls), controls + history pinned below.
+  const creatorGameNode = (
+    <>
+      <div className="shrink-0">{creatorHeaderNode}</div>
+      {errorNode}
+      <div className="mt-2 flex-1 min-h-0 overflow-y-auto rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-3">
+        {tableNode}
+      </div>
+      <div className="mt-2 shrink-0 space-y-2">
+        {controlsNode}
+        {historyNode && (
+          <div className="max-h-[110px] overflow-y-auto">{historyNode}</div>
+        )}
+      </div>
+    </>
+  );
+
+  // Portrait (9:16) — phone screen filling the frame edge-to-edge.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
+      </ShellMain>
+      {modalsNode}
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — the same phone screen, fitted and
+  // centered inside the frame (ShellMain centers its children).
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
+      </ShellMain>
+      {modalsNode}
+    </CreatorModeShell>
+  );
+
   // ── Main render ───────────────────────────────────────────────────
   return (
     <>
@@ -1010,425 +1566,13 @@ export default function BlackjackPvpMatchPage({
           match?.status === "finished" || match?.status === "cancelled"
         }
         gameLabel="blackjack"
+        backToLobbyHref="/casino/blackjack"
       >
-      <CreatorResponsiveLayout>
-      <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
-        {/* Header */}
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">
-            <span className="inline-flex items-center gap-2"><IconCards size={26} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
-          </h1>
-          <span className="px-4 py-1.5 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-sm shadow-[0_0_10px_rgba(255,215,0,0.3)]">
-            {match?.isAi
-              ? t("blackjackPvp.freeMatch", "Free AI match")
-              : t("blackjackPvp.stake", "Mise : {amount}").replace(
-                  "{amount}",
-                  Number(match?.stakeAmount ?? 0).toLocaleString(),
-                )}
-          </span>
-          {!match?.isAi && opponentClerkId && (
-            <button
-              onClick={() => setShowReportModal(true)}
-              className="px-3 py-1.5 rounded-full border border-red-500/30 bg-red-500/10 text-xs font-extrabold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
-            >
-              <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
-            </button>
-          )}
-
-          {/* Leave / Resign — kept in the top header so it stays
-              reachable even when the portrait creator frame crops the
-              tall content column. PvP matches resign (stake forfeit)
-              via the resign API; free vs-AI matches just leave —
-              nothing is at stake. Hidden while waiting (owner uses
-              Cancel) and once the match reaches a terminal state. */}
-          {match &&
-            match.status !== "waiting" &&
-            match.status !== "finished" &&
-            match.status !== "cancelled" && (
-              <button
-                onClick={() =>
-                  match.isAi
-                    ? setShowAiLeave(true)
-                    : setShowResignConfirm(true)
-                }
-                disabled={resigning}
-                className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] disabled:opacity-40 ${
-                  match.isAi
-                    ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
-                    : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                }`}
-              >
-                {match.isAi
-                  ? t("blackjackPvp.leave.button", "Leave match")
-                  : t("blackjackPvp.resign.button", "Resign")}
-              </button>
-            )}
-        </div>
-
-        {errorMsg && (
-          <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded text-sm text-center">
-            {errorMsg}
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-4 sm:p-6">
-          {/* Status banner — transient status only (round indicator
-              lives in the GameTableCenter below). */}
-          <div className="text-center mb-3">
-            <motion.h2
-              key={match?.status ?? "loading"}
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-[#FFD700] text-base sm:text-lg font-bold"
-            >
-              {statusLabel}
-            </motion.h2>
-          </div>
-
-          {/* ▶ TOP SECTION — Opponent
-              Always face-down + localized "Opponent Playing…"
-              placeholder text. Never reveals anything else. */}
-          <OpponentHand
-            t={t}
-            label={oppSeatLabel}
-            hand={oppHand}
-            isMatchFinished={match?.status === "finished"}
-            isAi={Boolean(match?.isAi)}
-          />
-
-          {/* ▶ MIDDLE SECTION — Game table
-              Round scoreboard + Round N/3 chip (Player | Round |
-              Opponent). Hidden during the between-rounds transition
-              because that screen overlays the table instead. */}
-          <GameTableCenter
-            t={t}
-            viewerIsPlayer1={viewerIsPlayer1}
-            status={match?.status || "waiting"}
-            roundNumber={
-              match?.roundNumber && match.roundNumber >= 1
-                ? match.roundNumber
-                : 1
-            }
-            // During the round-4 TIEBREAK the chip reads "Round 4/4"
-            // (roundNumber exceeds the best-of-3 ceiling).
-            totalRounds={Math.max(
-              TOTAL_ROUNDS,
-              match?.roundNumber ?? 1,
-            )}
-            myRounds={
-              viewerIsPlayer1
-                ? Number(match?.roundsWonPlayer1 || 0)
-                : Number(match?.roundsWonPlayer2 || 0)
-            }
-            oppRounds={
-              viewerIsPlayer1
-                ? Number(match?.roundsWonPlayer2 || 0)
-                : Number(match?.roundsWonPlayer1 || 0)
-            }
-            mySeatLabel={mySeatLabel}
-            oppSeatLabel={oppSeatLabel}
-            myEmote={myEmote}
-            incomingEmote={incomingEmote}
-          />
-
-          {/* ▶ BOTTOM SECTION — You
-              Face-up cards + my score (with bust / stood states
-              surfaced through the same MyHand component). The
-              `canSwap` + `swapTarget` props wire click-to-select
-              card highlighting into MyHand so the swap target picks
-              up via card click instead of the (now-removed) 1st/2nd
-              pill — swap itself still routes through ActionPanel. */}
-          <MyHand
-            t={t}
-            label={mySeatLabel}
-            hand={myHand}
-            myState={myState}
-            score={myScore}
-            canSwap={canSwap}
-            swapTarget={swapTarget}
-            onSwapTargetChange={setSwapTarget}
-          />
-
-          {/* Held-card preview (so the player can see what's on hold
-             and decide add vs discard). */}
-          {myActions.heldCard && (
-            <HeldCardPreview
-              t={t}
-              card={myActions.heldCard}
-              resolved={myActions.heldResolved}
-            />
-          )}
-
-          {/* Between-rounds transition screen — shows while the
-              server is in MATCH_STATUS.BETWEEN_ROUNDS (a 3-second
-              buffer between resolved rounds). The active cards are
-              deliberately hidden here so the "next round incoming"
-              message is unambiguous; the polling loop will surface
-              the next round's hands automatically. A "Continue now"
-              button lets the player skip the wait. */}
-          {match?.status === "between_rounds" && (
-            <BetweenRoundsScreen
-              t={t}
-              matchId={matchId}
-              // The tiebreak transition holds roundNumber=4, which IS
-              // the upcoming round — cap the advertisement at round 4
-              // so it never reads "Round 5/4" (regular transitions
-              // keep the existing roundNumber+1 behaviour).
-              nextRound={
-                Number(match.roundNumber) + 1 > TIEBREAK_ROUND_NUMBER
-                  ? TIEBREAK_ROUND_NUMBER
-                  : Number(match.roundNumber) + 1
-              }
-              totalRounds={Math.max(
-                TOTAL_ROUNDS,
-                Number(match.roundNumber) + 1 > TIEBREAK_ROUND_NUMBER
-                  ? TIEBREAK_ROUND_NUMBER
-                  : Number(match.roundNumber) + 1,
-              )}
-              roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
-              roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
-              onAfter={fetchStatus}
-            />
-          )}
-
-          {/* Animated Peek strip — sits BETWEEN the player's hand and
-              the action buttons so the player sees the next card on
-              the shoe right where they're deciding. Enter/exit
-              animations are driven by `localPeekedCard` being set or
-              cleared; clearing happens automatically inside
-              `sendAction` whenever the player commits to a non-peek
-              verb (HIT/SWAP/STAND/HOLD/USE_HELD). */}
-          <AnimatePresence>
-            {localPeekedCard && (
-              <PeekOverlay t={t} card={localPeekedCard} />
-            )}
-          </AnimatePresence>
-
-          {/* Action buttons — visible for both PLAYING (full move
-              set) and BUSTED (recovery via Swap / Freeze / Use-Held)
-              seats. Hit and Stand appear but stay disabled on busted
-              seats because they can't un-bust you. */}
-          {handIsInteractive && (
-            <>
-              <RoundTimerDisplay
-                t={t}
-                deadline={match?.roundDeadline ?? null}
-                total={ROUND_TIMER_SECONDS}
-              />
-              <ActionPanel
-                t={t}
-                submitting={submitting}
-                canHit={canHit}
-                canStand={canStand}
-                canSwap={canSwap && swapTarget !== null}
-                canHold={canHold}
-                canPeek={canPeek}
-                canUseHeldAdd={canUseHeldAdd}
-                canUseHeldDiscard={canUseHeldDiscard}
-                swapTarget={swapTarget}
-                onHit={() => sendAction("hit")}
-                onStand={() => sendAction("stand")}
-                onSwap={() => swapTarget !== null && sendAction("swap", { swapIndex: swapTarget })}
-                onHold={() => sendAction("hold")}
-                onPeek={() => sendAction("peek")}
-                onUseHeldAdd={() =>
-                  sendAction("use_held", { subaction: "add" })
-                }
-                onUseHeldDiscard={() =>
-                  sendAction("use_held", { subaction: "discard" })
-                }
-              />
-              <div className="mt-2 flex justify-center">
-                <EmotePicker
-                  compact
-                  hideBubbles
-                  incomingEmote={incomingEmote}
-                  myEmote={myEmote}
-                  onSend={(emote) => {
-                    setMyEmote(emote);
-                    socket?.emit("room_event", {
-                      roomId: blackjackPvpMatchRoom(matchId),
-                      event: "blackjack:emote",
-                      payload: { emote, senderId: user?.id },
-                    });
-                    window.setTimeout(() => setMyEmote(null), 3000);
-                  }}
-                />
-              </div>
-            </>
-          )}
-          {/* STOOD lock: the hand is frozen and the round resolves
-              as soon as BOTH seats leave PLAYING. We surface ONE
-              consolidated hint here — the previous build had a
-              second duplicate render that just stacked with this
-              one, which read as visual noise. */}
-          {isMyTurn && myState === "stood" && (
-            <div className="mt-3 text-center text-xs text-white/55 italic">
-              {t(
-                "blackjackPvp.lockedAfterStand",
-                "Hand locked. Both hands reveal when the round ends.",
-              )}
-            </div>
-          )}
-          {/* Busted-but-still-active hint — clarifies that the
-              player can still use Swap & Freeze to recover before
-              the round resolves (the panel above stays visible).
-              The two halves are independently translated so fr/es
-              players don't see English glue text. */}
-          {myState === "busted" && handIsInteractive && (
-            <div className="mt-2 text-center text-xs">
-              <span className="text-amber-200 font-bold uppercase tracking-wider">
-                {t("blackjackPvp.bustedPrefix", "Busted!")}
-              </span>{" "}
-              <span className="text-white/75">
-                {t(
-                  "blackjackPvp.bustedRecoverHint",
-                  "Swap or freeze to recover.",
-                )}
-              </span>
-            </div>
-          )}
-          {match?.status === "waiting" && (
-            <WaitingBanner
-              t={t}
-              onCancel={async () => {
-                await fetch(
-                  `/api/blackjack-pvp/match/${matchId}/cancel`,
-                  {
-                    method: "POST",
-                    credentials: "include",
-                  },
-                );
-                socket?.emit("room_event", {
-                  roomId: "lobby:blackjack-pvp",
-                  event: "lobby:updated",
-                });
-                router.push("/casino/blackjack");
-              }}
-              isOwner={match?.player1Id === user?.id}
-            />
-          )}
-          {match?.status === "ready" && (
-            <div className="mt-4 text-center text-xs text-cyan-300 font-bold tracking-widest uppercase">
-              {t("blackjackPvp.ready", "Manche 1 imminente…")}
-            </div>
-          )}
-          {/* Leave / Resign now lives in the top header (above), where
-              it stays reachable inside the portrait creator frame. */}
-        </div>
-
-        {/* Round-by-round history footer — abstract win/loss only;
-           opponent cards+score are scrubbed server-side. */}
-        {rounds.length > 0 && (
-          <div className="mt-4 rounded-xl bg-[#001933]/60 border border-[#FFD700]/15 p-3 text-xs text-[#FFD700]/80">
-            <h3 className="text-[#FFD700] font-bold mb-2 text-sm">
-              {t("blackjackPvp.historyTitle", "Historique des manches")}
-            </h3>
-            <div className="space-y-1.5">
-              {rounds.map((r) => {
-                const myScore = viewerIsPlayer1
-                  ? r.player1Score
-                  : r.player2Score;
-                const oppScore = viewerIsPlayer1
-                  ? r.player2Score
-                  : r.player1Score;
-                const myBusted =
-                  (viewerIsPlayer1 ? r.player1State : r.player2State) ===
-                  "busted";
-                const oppBusted =
-                  (viewerIsPlayer1 ? r.player2State : r.player1State) ===
-                  "busted";
-                const viewerWon = r.viewerWonThisRound === true;
-                return (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between rounded-lg bg-[#08142f]/60 px-3 py-1.5"
-                  >
-                    <span>
-                      {t(
-                        "blackjackPvp.historyRow",
-                        "Manche {n}, {me}: {myScore}{meTag} vs {opp}: {oppScore}{oppTag}",
-                      )
-                        .replace("{n}", String(r.roundNumber))
-                        .replace("{me}", mySeatLabel)
-                        .replace("{myScore}", String(myScore))
-                        .replace(
-                          "{meTag}",
-                          myBusted
-                            ? ` ${t("blackjackPvp.bustTag", "(sauté)")}`
-                            : "",
-                        )
-                        .replace("{opp}", oppSeatLabel)
-                        .replace("{oppScore}", String(oppScore))
-                        .replace(
-                          "{oppTag}",
-                          oppBusted
-                            ? ` ${t("blackjackPvp.bustTag", "(sauté)")}`
-                            : "",
-                        )}
-                    </span>
-                    <span
-                      className={
-                        r.roundWinner === "draw"
-                          ? "text-yellow-300 font-bold"
-                          : viewerWon
-                          ? "text-green-300 font-bold"
-                          : "text-red-300 font-bold"
-                      }
-                    >
-                      {r.roundWinner === "draw"
-                        ? t("blackjackPvp.historyDraw", "Égalité")
-                        : viewerWon
-                        ? t("blackjackPvp.historyWin", "Vous gagnez")
-                        : t("blackjackPvp.historyLose", "Vous perdez")}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Round-end popup — pops for ~5s after each resolved round to
-         celebrate the round winner (with their seat label + the
-         updated best-of-3 score, e.g. "Joueur 1 wins Round 2 (1-0)").
-         Both hands + both scores are revealed because the round is
-         no longer secret once it has resolved server-side. */}
-      <AnimatePresence>
-        {roundResultShownFor !== null &&
-          (() => {
-            const round = rounds.find(
-              (r) => r.roundNumber === roundResultShownFor,
-            );
-            if (!round || !match) return null;
-            return (
-              <RoundResultModal
-                key={`round-${round.roundNumber}-${round.id}`}
-                t={t}
-                round={round}
-                viewerIsPlayer1={viewerIsPlayer1}
-                mySeatLabel={mySeatLabel}
-                oppSeatLabel={oppSeatLabel}
-                isAi={Boolean(match.isAi)}
-                roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
-                roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
-                onDismiss={() => setRoundResultShownFor(null)}
-              />
-            );
-          })()}
-      </AnimatePresence>
-
-      {/* Match cancelled modal (unchanged) */}
-      <AnimatePresence>
-        {match?.status === "cancelled" && (
-          <CancelledModal
-            t={t}
-            onBackToLobby={() => router.push("/casino/blackjack")}
-          />
-        )}
-      </AnimatePresence>
-      </CreatorResponsiveLayout>
+      <CreatorView
+        normal={normalView}
+        portrait={portraitContent}
+        landscape={landscapeContent}
+      />
       </CreatorModeHost>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan

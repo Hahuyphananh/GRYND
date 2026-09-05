@@ -1,10 +1,11 @@
 // qa/creator-stack-check.mjs
 //
-// Verifies the Creator Mode portrait-stacking CSS from src/app/globals.css:
-// inside [data-creator-layout="portrait"], games marked [data-creator-stack]
-// switch to a phone-style stacked column (and [data-creator-stack-swap]
-// additionally puts gameplay first). Desktop / landscape / square must be
-// unchanged.
+// Verifies the Creator Mode phone-stacking CSS from src/app/globals.css:
+// inside the phone viewport ([data-creator-phone], rendered by
+// <CreatorResponsiveLayout> in EVERY recording ratio), games marked
+// [data-creator-stack] switch to a phone-style stacked column (and
+// [data-creator-stack-swap] additionally puts gameplay first). Desktop /
+// non-creator rendering must be unchanged.
 //
 // Run: node qa/creator-stack-check.mjs
 
@@ -30,20 +31,24 @@ const html = `<!doctype html>
     <!-- Portrait recording frame (CreatorModeProvider-style) -->
     <div id="frame-portrait" style="width:1080px;height:1920px;overflow:hidden">
       <div data-creator-layout="portrait" style="display:flex;flex-direction:column;height:100%;width:100%">
+        <div data-creator-phone class="relative flex min-h-0 min-w-0 flex-col self-start">
         <div id="main" style="flex:1;overflow-y:auto;display:flex;justify-content:flex-start;align-items:flex-start">
           <div class="roulette-body flex flex-col sm:flex-row w-full max-w-[1300px]" data-creator-stack data-creator-stack-swap>
             <div class="left-col">controls panel</div>
             <div class="right-col">wheel + board</div>
           </div>
         </div>
+        </div>
       </div>
     </div>
-    <!-- Landscape recording frame: must stay desktop row -->
+    <!-- Landscape recording frame: also a phone viewport → must stack too -->
     <div id="frame-landscape" style="width:1080px;height:600px;overflow:hidden">
       <div data-creator-layout="landscape" style="display:flex;height:100%;width:100%">
-        <div class="roulette-body-landscape flex flex-col sm:flex-row w-full max-w-[1300px]">
-          <div class="left-col">controls panel</div>
-          <div class="right-col">wheel + board</div>
+        <div data-creator-phone class="relative flex min-h-0 min-w-0 flex-col self-start mx-auto">
+          <div class="roulette-body-landscape flex flex-col sm:flex-row w-full max-w-[1300px]" data-creator-stack>
+            <div class="left-col">controls panel</div>
+            <div class="right-col">wheel + board</div>
+          </div>
         </div>
       </div>
     </div>
@@ -67,7 +72,7 @@ const generated = await postcss([tailwind({ content: [join(tmp, "input.html")] }
 
 // Append the creator portrait-stacking rules from globals.css.
 const globals = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
-const start = globals.indexOf('[data-creator-layout="portrait"] [data-creator-stack]');
+const start = globals.indexOf('[data-creator-phone] [data-creator-stack]');
 const end = globals.indexOf("@media (prefers-reduced-motion", start);
 if (start < 0) throw new Error("portrait-stacking CSS not found in globals.css");
 const stackingCss = globals.slice(start, end).trim();
@@ -95,6 +100,7 @@ try {
     out.portraitFirstOrder = getComputedStyle(kids[0]).order;
     out.portraitSecondOrder = getComputedStyle(kids[1]).order;
     out.landscapeDirection = getComputedStyle(document.querySelector(".roulette-body-landscape")).flexDirection;
+    out.landscapeMaxWidth = getComputedStyle(document.querySelector(".roulette-body-landscape")).maxWidth;
     out.plainDirection = getComputedStyle(document.querySelector(".roulette-body-plain")).flexDirection;
     out.portraitLeftWidth = getComputedStyle(document.querySelector(".left-col")).width;
     return out;
@@ -110,7 +116,9 @@ try {
   passes.push(check(parseInt(results.portraitMaxWidth, 10) <= 460, "portrait caps width to phone column (460px)"));
   passes.push(check(results.visualFirstChild === "wheel + board", "swap puts gameplay (wheel) first on screen"));
   passes.push(check(Number(results.portraitFirstOrder) > Number(results.portraitSecondOrder), "flex orders swapped so controls land below"));
-  passes.push(check(results.landscapeDirection === "row", "landscape keeps desktop row"));
+  // Landscape is a phone viewport too → the stack rules apply there as well
+  passes.push(check(results.landscapeDirection === "column", "landscape phone viewport stacks to a column"));
+  passes.push(check(parseInt(results.landscapeMaxWidth, 10) <= 460, "landscape phone column keeps phone-width cap"));
   passes.push(check(results.plainDirection === "row", "no creator mode keeps desktop row"));
   const failed = passes.filter((p) => !p);
   console.log(failed.length === 0 ? "ALL PASS" : `${failed.length} FAILED`);

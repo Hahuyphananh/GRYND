@@ -13,14 +13,14 @@
 //     bars, or lose clicks.
 //   • Countdown        — the 3 → 2 → 1 ring (pure UI, pointer-events:
 //     none; the game stays fully playable).
-//   • After recording stops — the finished MP4/WebM is auto-downloaded
-//     when the game ended normally (or the user pressed "Stop & save"),
-//     so a clip can never be lost to navigation or a covering result
-//     overlay (the auto-save is owned by CreatorModeExteriorBar). A clean
-//     result panel (modal) then appears with the video preview
-//     (play/pause), selected dimensions, duration, format, and Download /
-//     Discard / Record-another actions. The recording stays local to the
-//     browser — never uploaded or stored.
+//   • After recording stops (game ended automatically, or the user
+//     pressed "Stop & save") a clean result panel (modal) appears with
+//     the video preview (play/pause), selected dimensions, duration,
+//     format, and Download / Discard / Record-another actions.
+//     Downloading is ALWAYS manual — nothing auto-downloads; the clip is
+//     only handed to the browser when the user clicks a Download button.
+//     The recording stays local to the browser — never uploaded or
+//     stored.
 //
 // Everything here is portaled to <body> (so it is never trapped inside
 // the recording viewport's CSS transform or captured on video).
@@ -33,7 +33,7 @@ import { useCreatorMode } from "../../lib/creator-mode/CreatorModeProvider";
 import CreatorModeResultPanel from "./CreatorModeResultPanel";
 import CreatorModeExteriorBar from "./CreatorModeExteriorBar";
 
-export default function CreatorModeOverlay() {
+export default function CreatorModeOverlay({ backToLobbyHref = null }) {
   const {
     isCreatorMode,
     state,
@@ -93,6 +93,7 @@ export default function CreatorModeOverlay() {
           onDownload={() => download()}
           onDiscard={() => discard()}
           onRecordAnother={recordAnotherGame}
+          backToLobbyHref={backToLobbyHref}
         />
       )}
     </>

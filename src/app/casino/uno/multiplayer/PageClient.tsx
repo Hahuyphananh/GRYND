@@ -9,7 +9,13 @@ import { usePostHog } from "posthog-js/react";
 // once the end popup shows. The create/join table lobby stays OUTSIDE so
 // nothing is recorded during matchmaking. No gameplay logic touched.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -849,6 +855,362 @@ export default function UnoMultiplayerPage() {
     );
   };
 
+  // ── Creator-mode layout nodes ─────────────────────────────────────
+  // The game content is split into reusable nodes so the normal page
+  // (non-creator) renders byte-for-byte the same, while Creator Mode
+  // gets a bespoke arrangement: portrait = phone-style (compact header,
+  // the table circle filling the middle, controls pinned at the
+  // bottom); landscape/square = the table fills the frame height with
+  // controls in a right rail.
+
+  // Compact header for the creator frames — title + tokens + the
+  // resign/report/lobby actions as inline buttons (the desktop page
+  // floats them fixed at the top; inside a recording frame they must
+  // live in the shell header instead).
+  const creatorHeaderNode = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-col">
+        <h1 className="truncate text-lg font-bold">{t("neonFlush.tableTitle")}</h1>
+        {tokens && (
+          <p className="text-yellow-300 text-xs font-semibold">
+            {t("neonFlush.tokens")} : {tokens.balance}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {humanOpponent && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="rounded-lg border border-red-500/40 bg-red-500/20 px-2.5 py-1.5 text-[11px] font-bold text-red-300 transition-all hover:bg-red-500/30"
+          >
+            <span className="inline-flex items-center gap-1"><IconFlag size={11} /> Report</span>
+          </button>
+        )}
+        <button
+          onClick={resignGame}
+          className="rounded-lg border-2 border-[#FF2D9B]/70 bg-[#FF2D9B]/15 px-2.5 py-1.5 font-black uppercase tracking-wider text-[#ff7ac2] text-[11px] shadow-[0_0_14px_rgba(255,45,155,0.3)] transition-all hover:bg-[#FF2D9B]/25"
+        >
+          {t("neonFlush.resign")}
+        </button>
+        <button
+          onClick={resetUnoMultiplayerLobby}
+          className="rounded-lg border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-2.5 py-1.5 font-black uppercase tracking-wider text-[#FFE066] text-[11px] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
+        >
+          {t("neonFlush.lobby")}
+        </button>
+      </div>
+    </div>
+  );
+
+  // The round table — deck + current card + seats + emotes.
+  const tableCircleInnerNode = (
+    <>
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
+        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#9dd8ff]/70">
+          {t("neonFlush.currentColor")}
+        </p>
+        <p className="mb-2 flex items-center justify-center gap-1.5 text-sm font-black uppercase">
+          <span
+            className="inline-block h-3.5 w-3.5 rounded-full"
+            style={{
+              backgroundColor: currentColorHex,
+              boxShadow: `0 0 10px ${currentColorHex}`,
+            }}
+          />
+          <span style={{ color: currentColorHex }}>{currentColorLabel}</span>
+        </p>
+        <div className="flex gap-3 justify-center">
+          <button onClick={drawCard}>
+            <UnoBack />
+          </button>
+          {displayedCard ? (
+            <UnoCard
+              color={displayedCard.color}
+              value={displayedCard.value}
+              onClick={() => {}}
+              style={{}}
+            />
+          ) : (
+            <div className="w-16 h-24 rounded-lg bg-[#0f172a]/60 border border-white/25" />
+          )}
+        </div>
+      </div>
+
+      {/* Emotes */}
+      <div className="mt-2 flex justify-center">
+        <EmotePicker
+          compact
+          hideBubbles
+          incomingEmote={incomingEmote}
+          myEmote={myEmote}
+          onSend={(emote) => sendEmote(emote)}
+        />
+      </div>
+
+      {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
+        const player = unoMultiPlayers.find((p) => p.seatIndex === seatIndex);
+        if (!player || seatIndex >= unoMultiSettings.maxPlayers) return null;
+        const hand = unoMultiHandCounts.find((h) => h.playerId === player.id);
+        return (
+          <div
+            key={`${player.id}-${seatIndex}`}
+            className="absolute"
+            style={{
+              left: pos.left,
+              top: pos.top,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <div
+              className={`w-32 rounded-xl border px-2 py-2 text-center ${unoMultiTurnPlayerId === player.id ? "border-[#FFD700] bg-[#FFD700]/20 shadow-[0_0_20px_rgba(255,215,0,0.6)]" : "bg-[#08142f] border-[#00e5ff]/35 text-white"}`}
+            >
+              <p className="text-xs font-bold truncate">
+                <span className="relative inline-flex items-center gap-1">
+                  {player.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {player.name}
+                  {(player as any).prestigeBadge && (
+                    <span className="ml-0.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
+                      {(player as any).prestigeBadge}
+                    </span>
+                  )}
+                  {player.userId === (game as any)?.currentUserId ? (
+                    <EmoteBubble emote={myEmote} side="mine" />
+                  ) : player.userId === humanOpponent?.userId ? (
+                    <EmoteBubble emote={incomingEmote} />
+                  ) : null}
+                </span>
+              </p>
+              <p className="text-[11px] opacity-80">{hand?.count ?? 0} cards</p>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+
+  // Color picker overlay (wild card played).
+  const colorPickerNode = showColorPicker ? (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-[#00e5ff]/50 bg-[#040d24] p-6 text-white shadow-[0_0_35px_rgba(0,229,255,0.35)]">
+        <h2 className="text-xl font-black uppercase tracking-widest text-[#00e5ff]">
+          {t("neonFlush.chooseColor")}
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          {(["red", "blue", "green", "yellow"] as const).map((color) => (
+            <button
+              key={color}
+              onClick={() => sendPlayCard(pendingCard, color)}
+              className="h-20 w-20 rounded-xl text-sm font-black uppercase text-[#031026] transition-transform hover:scale-105"
+              style={{
+                backgroundColor: UNO_PALETTE[color],
+                boxShadow: `0 0 16px ${UNO_PALETTE[color]}66`,
+              }}
+            >
+              {t(COLOR_NAME_KEYS[color])}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // Turn message + draw/flush buttons + my hand.
+  const controlsNode = (
+    <>
+      {/* Turn message */}
+      <div className="my-2 text-center text-sm font-semibold text-yellow-200">
+        {isPlayerTurn
+          ? t("neonFlush.yourTurn")
+          : isAiThinking
+            ? <span className="inline-flex items-center gap-1"><IconRobot size={14} /> {currentPlayer?.name} {t("neonFlush.isThinking")}</span>
+            : t("neonFlush.waitingPlayer")}
+      </div>
+
+      {/* Action buttons — neon cyberpunk */}
+      <div className="my-3 flex items-center justify-center gap-3">
+        <button
+          onClick={drawCard}
+          disabled={!isPlayerTurn || loading}
+          className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {t("neonFlush.drawCard")}
+        </button>
+        <button
+          className="rounded-xl border-2 border-[#FF2D9B]/60 bg-[#FF2D9B]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.25)] opacity-80 transition-all hover:opacity-100"
+        >
+          {t("neonFlush.flush")}
+        </button>
+      </div>
+
+      {/* Player hand */}
+      <div
+        className={`flex flex-wrap justify-center gap-1.5 rounded-2xl p-2 ${isPlayerTurn ? "ring-2 ring-[#00e5ff]/50 shadow-[0_0_18px_rgba(0,229,255,0.25)]" : ""}`}
+      >
+        {playerHand.map((card, index) => (
+          <div
+            key={`${card.color}-${card.value}-${index}`}
+            className="transition-transform hover:-translate-y-2 duration-200"
+          >
+            <UnoCard
+              color={card.color}
+              value={card.value}
+              onClick={() => sendPlayCard(card)}
+              style={{}}
+            />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  // Opponents strip (top of the board in normal view).
+  const opponentsStripNode =
+    orderedOpponents.length > 0 ? (
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2 flex-wrap justify-center max-w-[90%]">
+        {orderedOpponents.map((entry) => (
+          <div
+            key={entry.playerId}
+            className={`rounded-xl px-2 py-1 border ${unoMultiTurnPlayerId === entry.playerId ? "border-[#FFD700] bg-[#FFD700]/20" : "border-white/25 bg-black/20"}`}
+          >
+            <p className="text-[10px] font-semibold truncate">{entry.name}</p>
+            <p className="text-[10px] text-center">{entry.count} cards</p>
+          </div>
+        ))}
+      </div>
+    ) : null;
+
+  // Move history inner content (shared by the desktop aside and the
+  // creator rails).
+  const historyInnerNode = (
+    <>
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#00e5ff]">
+        <IconHistory size={14} /> {t("neonFlush.moveHistory")}
+      </div>
+      <div className="max-h-[540px] flex-1 space-y-1.5 overflow-y-auto pr-1">
+        {turnHistory.length === 0 && (
+          <p className="text-xs text-[#9dd8ff]/60">{t("neonFlush.noMovesYet")}</p>
+        )}
+        {turnHistory.map((card, i) => {
+          const isCurrent = (historyIndex ?? turnHistory.length - 1) === i;
+          return (
+            <button
+              key={i}
+              onClick={() => setHistoryIndex(i === turnHistory.length - 1 ? null : i)}
+              className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-all ${
+                isCurrent
+                  ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_10px_rgba(0,229,255,0.15)]"
+                  : "border-[#00e5ff]/20 bg-black/30 hover:border-[#00e5ff]/50"
+              }`}
+            >
+              <span
+                className="inline-block h-3 w-3 shrink-0 rounded-full"
+                style={{ backgroundColor: historyColor(card), boxShadow: `0 0 8px ${historyColor(card)}` }}
+              />
+              <span className="truncate font-bold uppercase tracking-wide">{historyLabel(card)}</span>
+              <span className="ml-auto text-[10px] text-[#9dd8ff]/60">#{i + 1}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  // Desktop history aside (normal page) — hidden on small screens.
+  const historyNode = (
+    <aside className="hidden w-60 shrink-0 flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur md:flex">
+      {historyInnerNode}
+    </aside>
+  );
+
+  // Normal (non-creator) game view — byte-for-byte the original board
+  // row (fixed action buttons + table circle + controls + history).
+  const normalView = (
+    <div className="mb-16 flex w-full max-w-6xl items-stretch gap-4">
+      {/* Board — compact, shifted left so the history panel has room */}
+      <div className="relative flex min-w-0 flex-1 flex-col justify-between rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-4 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
+        <button
+          onClick={resignGame}
+          className="fixed top-24 right-5 z-50 rounded-lg border-2 border-[#FF2D9B]/70 bg-[#FF2D9B]/15 px-4 py-2 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.3)] transition-all hover:bg-[#FF2D9B]/25"
+        >
+          {t("neonFlush.resign")}
+        </button>
+        {humanOpponent && (
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="fixed top-24 right-32 z-50 rounded-lg border border-red-500/40 bg-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/30"
+          >
+            <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
+          </button>
+        )}
+        <button
+          onClick={resetUnoMultiplayerLobby}
+          className="fixed top-24 left-5 z-50 rounded-lg border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-4 py-2 font-black uppercase tracking-wider text-[#FFE066] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
+        >
+          {t("neonFlush.lobby")}
+        </button>
+
+        {/* Table circle — shorter than before */}
+        <div className="relative mt-1 w-full h-[380px] rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]">
+          {tableCircleInnerNode}
+        </div>
+
+        {colorPickerNode}
+
+        {controlsNode}
+
+        {opponentsStripNode}
+      </div>
+
+      {historyNode}
+    </div>
+  );
+
+  // Portrait (9:16) — phone-style: compact header, the table circle
+  // filling the middle, controls + history pinned at the bottom.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        {creatorHeaderNode}
+      </ShellHeader>
+      <ShellMain className="overflow-hidden">
+        <div className="relative flex h-full w-full flex-col items-center justify-center px-3 py-2">
+          <div className="relative h-full max-h-full w-full rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]" style={{ aspectRatio: "1 / 1", maxWidth: "min(100%, 100vh)" }}>
+            {tableCircleInnerNode}
+            {colorPickerNode}
+            {opponentsStripNode}
+          </div>
+        </div>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {controlsNode}
+        <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
+          {historyInnerNode}
+        </div>
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — table circle fills the frame
+  // height, controls + history in a right rail.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="overflow-hidden">
+        <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 p-4">
+          <div className="relative h-full max-h-full w-full rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]" style={{ aspectRatio: "1 / 1", maxWidth: "min(100%, 100vh)" }}>
+            {tableCircleInnerNode}
+            {colorPickerNode}
+            {opponentsStripNode}
+          </div>
+        </div>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {controlsNode}
+        <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
+          {historyInnerNode}
+        </div>
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -1147,233 +1509,13 @@ export default function UnoMultiplayerPage() {
           autoStart={Boolean(game)}
           autoStop={Boolean(endPopup)}
           gameLabel="uno-multiplayer"
+          backToLobbyHref="/uno/multiplayer"
         >
-        <CreatorResponsiveLayout>
-        <div className="mb-16 flex w-full max-w-6xl items-stretch gap-4">
-          {/* Board — compact, shifted left so the history panel has room */}
-          <div className="relative flex min-w-0 flex-1 flex-col justify-between rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-4 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
-            <button
-              onClick={resignGame}
-              className="fixed top-24 right-5 z-50 rounded-lg border-2 border-[#FF2D9B]/70 bg-[#FF2D9B]/15 px-4 py-2 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.3)] transition-all hover:bg-[#FF2D9B]/25"
-            >
-              {t("neonFlush.resign")}
-            </button>
-            {humanOpponent && (
-              <button
-                onClick={() => setShowReportModal(true)}
-                className="fixed top-24 right-32 z-50 rounded-lg border border-red-500/40 bg-red-500/20 px-3 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/30"
-              >
-                <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report</span>
-              </button>
-            )}
-            <button
-              onClick={resetUnoMultiplayerLobby}
-              className="fixed top-24 left-5 z-50 rounded-lg border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-4 py-2 font-black uppercase tracking-wider text-[#FFE066] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
-            >
-              {t("neonFlush.lobby")}
-            </button>
-
-            {/* Table circle — shorter than before */}
-            <div className="relative mt-1 w-full h-[380px] rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]">
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#9dd8ff]/70">
-                  {t("neonFlush.currentColor")}
-                </p>
-                <p className="mb-2 flex items-center justify-center gap-1.5 text-sm font-black uppercase">
-                  <span
-                    className="inline-block h-3.5 w-3.5 rounded-full"
-                    style={{
-                      backgroundColor: currentColorHex,
-                      boxShadow: `0 0 10px ${currentColorHex}`,
-                    }}
-                  />
-                  <span style={{ color: currentColorHex }}>{currentColorLabel}</span>
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <button onClick={drawCard}>
-                    <UnoBack />
-                  </button>
-                  {displayedCard ? (
-                    <UnoCard
-                      color={displayedCard.color}
-                      value={displayedCard.value}
-                      onClick={() => {}}
-                      style={{}}
-                    />
-                  ) : (
-                    <div className="w-16 h-24 rounded-lg bg-[#0f172a]/60 border border-white/25" />
-                  )}
-                </div>
-              </div>
-
-              {/* Emotes */}
-              <div className="mt-2 flex justify-center">
-                <EmotePicker
-                  compact
-                  hideBubbles
-                  incomingEmote={incomingEmote}
-                  myEmote={myEmote}
-                  onSend={(emote) => sendEmote(emote)}
-                />
-              </div>
-
-              {UNO_MULTI_SEAT_POSITIONS.map((pos, seatIndex) => {
-                const player = unoMultiPlayers.find((p) => p.seatIndex === seatIndex);
-                if (!player || seatIndex >= unoMultiSettings.maxPlayers) return null;
-                const hand = unoMultiHandCounts.find((h) => h.playerId === player.id);
-                return (
-                  <div
-                    key={`${player.id}-${seatIndex}`}
-                    className="absolute"
-                    style={{
-                      left: pos.left,
-                      top: pos.top,
-                      transform: "translate(-50%, -50%)",
-                    }}
-                  >
-                    <div
-                      className={`w-32 rounded-xl border px-2 py-2 text-center ${unoMultiTurnPlayerId === player.id ? "border-[#FFD700] bg-[#FFD700]/20 shadow-[0_0_20px_rgba(255,215,0,0.6)]" : "bg-[#08142f] border-[#00e5ff]/35 text-white"}`}
-                    >
-                      <p className="text-xs font-bold truncate">
-                        <span className="relative inline-flex items-center gap-1">
-                          {player.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {player.name}
-                          {(player as any).prestigeBadge && (
-                            <span className="ml-0.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                              {(player as any).prestigeBadge}
-                            </span>
-                          )}
-                          {player.userId === (game as any)?.currentUserId ? (
-                            <EmoteBubble emote={myEmote} side="mine" />
-                          ) : player.userId === humanOpponent?.userId ? (
-                            <EmoteBubble emote={incomingEmote} />
-                          ) : null}
-                        </span>
-                      </p>
-                      <p className="text-[11px] opacity-80">{hand?.count ?? 0} cards</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {showColorPicker && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
-                <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-[#00e5ff]/50 bg-[#040d24] p-6 text-white shadow-[0_0_35px_rgba(0,229,255,0.35)]">
-                  <h2 className="text-xl font-black uppercase tracking-widest text-[#00e5ff]">
-                    {t("neonFlush.chooseColor")}
-                  </h2>
-                  <div className="grid grid-cols-2 gap-3">
-                    {(["red", "blue", "green", "yellow"] as const).map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => sendPlayCard(pendingCard, color)}
-                        className="h-20 w-20 rounded-xl text-sm font-black uppercase text-[#031026] transition-transform hover:scale-105"
-                        style={{
-                          backgroundColor: UNO_PALETTE[color],
-                          boxShadow: `0 0 16px ${UNO_PALETTE[color]}66`,
-                        }}
-                      >
-                        {t(COLOR_NAME_KEYS[color])}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Turn message */}
-            <div className="my-2 text-center text-sm font-semibold text-yellow-200">
-              {isPlayerTurn
-                ? t("neonFlush.yourTurn")
-                : isAiThinking
-                  ? <span className="inline-flex items-center gap-1"><IconRobot size={14} /> {currentPlayer?.name} {t("neonFlush.isThinking")}</span>
-                  : t("neonFlush.waitingPlayer")}
-            </div>
-
-            {/* Action buttons — neon cyberpunk */}
-            <div className="my-3 flex items-center justify-center gap-3">
-              <button
-                onClick={drawCard}
-                disabled={!isPlayerTurn || loading}
-                className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {t("neonFlush.drawCard")}
-              </button>
-              <button
-                className="rounded-xl border-2 border-[#FF2D9B]/60 bg-[#FF2D9B]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.25)] opacity-80 transition-all hover:opacity-100"
-              >
-                {t("neonFlush.flush")}
-              </button>
-            </div>
-
-            {/* Player hand */}
-            <div
-              className={`flex flex-wrap justify-center gap-1.5 rounded-2xl p-2 ${isPlayerTurn ? "ring-2 ring-[#00e5ff]/50 shadow-[0_0_18px_rgba(0,229,255,0.25)]" : ""}`}
-            >
-              {playerHand.map((card, index) => (
-                <div
-                  key={`${card.color}-${card.value}-${index}`}
-                  className="transition-transform hover:-translate-y-2 duration-200"
-                >
-                  <UnoCard
-                    color={card.color}
-                    value={card.value}
-                    onClick={() => sendPlayCard(card)}
-                    style={{}}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {orderedOpponents.length > 0 && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2 flex-wrap justify-center max-w-[90%]">
-                {orderedOpponents.map((entry) => (
-                  <div
-                    key={entry.playerId}
-                    className={`rounded-xl px-2 py-1 border ${unoMultiTurnPlayerId === entry.playerId ? "border-[#FFD700] bg-[#FFD700]/20" : "border-white/25 bg-black/20"}`}
-                  >
-                    <p className="text-[10px] font-semibold truncate">{entry.name}</p>
-                    <p className="text-[10px] text-center">{entry.count} cards</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Move history — right panel */}
-          <aside className="hidden w-60 shrink-0 flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur md:flex">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#00e5ff]">
-              <IconHistory size={14} /> {t("neonFlush.moveHistory")}
-            </div>
-            <div className="max-h-[540px] flex-1 space-y-1.5 overflow-y-auto pr-1">
-              {turnHistory.length === 0 && (
-                <p className="text-xs text-[#9dd8ff]/60">{t("neonFlush.noMovesYet")}</p>
-              )}
-              {turnHistory.map((card, i) => {
-                const isCurrent = (historyIndex ?? turnHistory.length - 1) === i;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setHistoryIndex(i === turnHistory.length - 1 ? null : i)}
-                    className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-all ${
-                      isCurrent
-                        ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_10px_rgba(0,229,255,0.15)]"
-                        : "border-[#00e5ff]/20 bg-black/30 hover:border-[#00e5ff]/50"
-                    }`}
-                  >
-                    <span
-                      className="inline-block h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: historyColor(card), boxShadow: `0 0 8px ${historyColor(card)}` }}
-                    />
-                    <span className="truncate font-bold uppercase tracking-wide">{historyLabel(card)}</span>
-                    <span className="ml-auto text-[10px] text-[#9dd8ff]/60">#{i + 1}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-        </div>
-        </CreatorResponsiveLayout>
+        <CreatorView
+          normal={normalView}
+          portrait={portraitContent}
+          landscape={landscapeContent}
+        />
         </CreatorModeHost>
       )}
 

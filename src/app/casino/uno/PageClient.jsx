@@ -22,7 +22,13 @@ import { playCardPlace, playCardDraw, playTurnSwitch, playVictory, playDefeat } 
 // win/loss overlay is captured. The nav/footer/modals stay outside the
 // shared CreatorModeHost recording viewport.
 import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../components/creator-mode/CreatorModeLayout";
 import {
   IconRobot,
   IconUser,
@@ -731,23 +737,17 @@ export default function UnoGamePage() {
       prev === null ? null : prev >= turnHistory.length - 2 ? null : prev + 1,
     );
 
-  return (
-    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
-      <NavigationBar currentPath="/casino" />
-      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-      <div className="mt-3 flex justify-center">
-        <CreatorModeLobby />
-      </div>
-      {/* Only the actual game + its result popup are recorded — the nav,
-          footer and the `!game` lobby/finder stay outside (or unrecorded:
-          autoStart is false in the lobby). Recording starts when a real
-          hand is active and stops once the result is shown. */}
-      <CreatorModeHost
-        autoStart={Boolean(game)}
-        autoStop={Boolean(endPopup)}
-        gameLabel="neon-flush"
-      >
-      <CreatorResponsiveLayout>
+  // ── Creator-mode layout nodes ─────────────────────────────────────
+  // The game content is split into reusable nodes so the normal page
+  // (non-creator) renders byte-for-byte the same, while Creator Mode
+  // gets a bespoke arrangement: portrait = phone-style (compact header,
+  // the table filling the middle, controls pinned at the bottom);
+  // landscape/square = the table fills the frame height with controls
+  // in a right rail.
+
+  // Fixed overlays — round-end popup, turn banner + rules modal.
+  const modalsNode = (
+    <>
       <AnimatePresence>
         {endPopup && (
           <motion.div
@@ -905,26 +905,6 @@ export default function UnoGamePage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <h1 className="text-3xl mb-2 font-bold">
-        {gameMode === "online" ? t("neonFlush.onlineTitle") : t("neonFlush.vsAiTitle")}
-      </h1>
-
-      {tokens && (
-        <p className="text-yellow-300 mb-4 text-lg">
-          {t("neonFlush.tokens")} : {tokens.balance}
-        </p>
-      )}
-
-      {/* How to Play — rules modal at the top of the lobby */}
-      <div className="mb-5 text-center">
-        <button
-          onClick={() => setShowRules(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
-        >
-          <IconPalette size={15} /> How to Play
-        </button>
-      </div>
       {showRules && (
         <RulesModal
           title="How to Play"
@@ -963,350 +943,516 @@ export default function UnoGamePage() {
           onClose={() => setShowRules(false)}
         />
       )}
+    </>
+  );
 
-      {!game ? (
-        <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border border-amber-700/60 bg-black/40 p-4 text-center shadow-[0_0_28px_rgba(251,191,36,0.12)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
-        <h2 className="text-2xl font-bold mb-6 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.4)]">{t("neonFlush.prepare")}</h2>
+  // Desktop header — title, tokens + How-to-Play (normal page).
+  const headerNode = (
+    <>
+      <h1 className="text-3xl mb-2 font-bold">
+        {gameMode === "online" ? t("neonFlush.onlineTitle") : t("neonFlush.vsAiTitle")}
+      </h1>
+      {tokens && (
+        <p className="text-yellow-300 mb-4 text-lg">
+          {t("neonFlush.tokens")} : {tokens.balance}
+        </p>
+      )}
+      {/* How to Play — rules modal at the top of the lobby */}
+      <div className="mb-5 text-center">
+        <button
+          onClick={() => setShowRules(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 transition-all duration-300 hover:bg-amber-500/20 hover:scale-105 shadow-[0_0_14px_rgba(251,191,36,0.15)]"
+        >
+          <IconPalette size={15} /> How to Play
+        </button>
+      </div>
+    </>
+  );
 
-        {/* Mode toggle: free-play AI vs wagered 1v1 online */}
-        <div className="mb-4 grid grid-cols-2 gap-2 w-full max-w-xs">
+  // Compact header for the creator frames — title + tokens + rules.
+  const creatorHeaderNode = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h1 className="text-lg font-bold">
+        {gameMode === "online" ? t("neonFlush.onlineTitle") : t("neonFlush.vsAiTitle")}
+      </h1>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {tokens && (
+          <span className="text-yellow-300 text-xs font-bold">
+            {t("neonFlush.tokens")}: {tokens.balance}
+          </span>
+        )}
+        <button
+          onClick={() => setShowRules(true)}
+          className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-all hover:bg-amber-500/20"
+        >
+          <IconPalette size={13} /> How to Play
+        </button>
+      </div>
+    </div>
+  );
+
+  // Lobby / matchmaking screen (pre-game).
+  const lobbyNode = (
+    <div className="casino-surface flex w-full max-w-4xl flex-col items-center justify-center rounded-[1.5rem] border border-amber-700/60 bg-black/40 p-4 text-center shadow-[0_0_28px_rgba(251,191,36,0.12)] sm:aspect-[2/1] sm:rounded-[2rem] sm:p-8">
+      <h2 className="text-2xl font-bold mb-6 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.4)]">{t("neonFlush.prepare")}</h2>
+      <div className="mb-4 grid grid-cols-2 gap-2 w-full max-w-xs">
+        <button
+          onClick={() => setLobbyMode("ai")}
+          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+            lobbyMode === "ai"
+              ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_12px_rgba(251,191,36,0.4)]"
+              : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
+          }`}
+        >
+          <span className="inline-flex items-center gap-1.5"><IconRobot size={16} /> {t("neonFlush.vsAi")}</span>
+        </button>
+        <button
+          onClick={() => setLobbyMode("online")}
+          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+            lobbyMode === "online"
+              ? "border-b-4 border-cyan-700 bg-cyan-500 text-black shadow-[0_0_12px_rgba(34,211,238,0.35)]"
+              : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
+          }`}
+        >
+          <span className="inline-flex items-center gap-1.5"><IconGlobe size={16} /> {t("neonFlush.online")}</span>
+        </button>
+      </div>
+      {lobbyMode === "ai" ? (
+        <div className="mb-6 rounded-lg border-2 border-dashed border-amber-400/40 bg-amber-500/10 p-3 text-center w-full max-w-xs">
+          <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> {t("neonFlush.freePlay")}</p>
+          <p className="mt-1 text-[10px] text-amber-200/70">{t("neonFlush.freePlayHint")}</p>
+        </div>
+      ) : (
+        <label className="mb-6 text-lg font-semibold flex flex-col items-center">
+          <span className="mb-2 text-amber-200">{t("neonFlush.wager")} :</span>
+          <input
+            type="number"
+            value={betAmount}
+            onChange={(e) => setBetAmount(Number(e.target.value))}
+            className="bg-[#020617] border border-amber-600/50 text-white px-3 py-1 rounded text-center w-32 focus:border-amber-400 outline-none"
+            min={1}
+            max={1000}
+          />
+        </label>
+      )}
+      <button
+        onClick={() => setShowGameModeModal(true)}
+        disabled={loading || !!waitingGameId}
+        className="border-b-4 border-amber-700 px-8 py-3 rounded-xl font-bold text-black bg-amber-500 hover:bg-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)] active:translate-y-[2px] transition"
+      >
+        {loading ? t("neonFlush.loading") : t("neonFlush.startGame")}
+      </button>
+      <button
+        onClick={joinOnlineGame}
+        disabled={loading || !!waitingGameId}
+        className="border-b-4 border-cyan-700 mt-4 px-8 py-3 rounded-xl font-bold text-black bg-cyan-500 hover:bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.35)] active:translate-y-[2px] transition"
+      >
+        {loading ? t("neonFlush.searching") : t("neonFlush.joinGame")}
+      </button>
+      <button
+        onClick={() => router.push("/uno/multiplayer")}
+        className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-green-300 hover:bg-green-200"
+      >
+        {t("neonFlush.tableMode")}
+      </button>
+      {waitingGameId && (
+        <button
+          onClick={cancelWaitingOnlineGame}
+          disabled={isCancellingWaitingGame}
+          className="mt-3 bg-red-600 hover:bg-red-500 text-white px-8 py-2 rounded-full font-bold"
+        >
+          {isCancellingWaitingGame ? t("neonFlush.cancelling") : t("neonFlush.cancelWaiting")}
+        </button>
+      )}
+      <div className="mt-6 w-full max-w-md rounded-2xl p-4 border border-cyan-700/30 bg-slate-900/80">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="text-lg font-bold text-cyan-300">{t("neonFlush.onlineGames")}</h3>
           <button
-            onClick={() => setLobbyMode("ai")}
-            className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
-              lobbyMode === "ai"
-                ? "border-b-4 border-amber-700 bg-amber-500 text-black shadow-[0_0_12px_rgba(251,191,36,0.4)]"
-                : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
-            }`}
+            onClick={fetchAvailableGames}
+            disabled={isLoadingAvailableGames}
+            className="bg-cyan-500 text-black px-3 py-1 rounded-md text-sm font-semibold hover:bg-cyan-400 transition"
           >
-            <span className="inline-flex items-center gap-1.5"><IconRobot size={16} /> {t("neonFlush.vsAi")}</span>
-          </button>
-          <button
-            onClick={() => setLobbyMode("online")}
-            className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
-              lobbyMode === "online"
-                ? "border-b-4 border-cyan-700 bg-cyan-500 text-black shadow-[0_0_12px_rgba(34,211,238,0.35)]"
-                : "border border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
-            }`}
-          >
-            <span className="inline-flex items-center gap-1.5"><IconGlobe size={16} /> {t("neonFlush.online")}</span>
+            {isLoadingAvailableGames ? "..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> {t("neonFlush.refresh")}</span>}
           </button>
         </div>
-
-        {lobbyMode === "ai" ? (
-          <div className="mb-6 rounded-lg border-2 border-dashed border-amber-400/40 bg-amber-500/10 p-3 text-center w-full max-w-xs">
-            <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> {t("neonFlush.freePlay")}</p>
-            <p className="mt-1 text-[10px] text-amber-200/70">{t("neonFlush.freePlayHint")}</p>
-          </div>
+        {isLoadingAvailableGames ? (
+          <p className="text-sm text-gray-200">{t("neonFlush.loadingGames")}</p>
+        ) : availableGames.length === 0 ? (
+          <p className="text-sm text-gray-200">{t("neonFlush.noGames")}</p>
         ) : (
-          <label className="mb-6 text-lg font-semibold flex flex-col items-center">
-            <span className="mb-2 text-amber-200">{t("neonFlush.wager")} :</span>
-            <input
-              type="number"
-              value={betAmount}
-              onChange={(e) => setBetAmount(Number(e.target.value))}
-              className="bg-[#020617] border border-amber-600/50 text-white px-3 py-1 rounded text-center w-32 focus:border-amber-400 outline-none"
-              min={1}
-              max={1000}
-            />
-          </label>
-        )}
-
-          <button
-            onClick={() => setShowGameModeModal(true)}
-            disabled={loading || !!waitingGameId}
-            className="border-b-4 border-amber-700 px-8 py-3 rounded-xl font-bold text-black bg-amber-500 hover:bg-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)] active:translate-y-[2px] transition"
-          >
-            {loading ? t("neonFlush.loading") : t("neonFlush.startGame")}
-          </button>
-          <button
-            onClick={joinOnlineGame}
-            disabled={loading || !!waitingGameId}
-            className="border-b-4 border-cyan-700 mt-4 px-8 py-3 rounded-xl font-bold text-black bg-cyan-500 hover:bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.35)] active:translate-y-[2px] transition"
-          >
-            {loading ? t("neonFlush.searching") : t("neonFlush.joinGame")}
-          </button>
-          <button
-            onClick={() => router.push("/uno/multiplayer")}
-            className="mt-4 px-8 py-3 rounded-full font-bold text-[#001933] bg-green-300 hover:bg-green-200"
-          >
-            {t("neonFlush.tableMode")}
-          </button>
-
-          {waitingGameId && (
-            <button
-              onClick={cancelWaitingOnlineGame}
-              disabled={isCancellingWaitingGame}
-              className="mt-3 bg-red-600 hover:bg-red-500 text-white px-8 py-2 rounded-full font-bold"
-            >
-              {isCancellingWaitingGame ? t("neonFlush.cancelling") : t("neonFlush.cancelWaiting")}
-            </button>
-          )}
-
-          <div className="mt-6 w-full max-w-md rounded-2xl p-4 border border-cyan-700/30 bg-slate-900/80">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-bold text-cyan-300">{t("neonFlush.onlineGames")}</h3>
-              <button
-                onClick={fetchAvailableGames}
-                disabled={isLoadingAvailableGames}
-                className="bg-cyan-500 text-black px-3 py-1 rounded-md text-sm font-semibold hover:bg-cyan-400 transition"
+          <ul className="space-y-2 text-sm">
+            {availableGames.slice(0, 6).map((onlineGame) => (
+              <li
+                key={onlineGame.id}
+                className="flex justify-between items-center bg-black/30 border border-cyan-700/30 hover:border-cyan-500/50 rounded-lg px-3 py-2 transition"
               >
-                {isLoadingAvailableGames ? "..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> {t("neonFlush.refresh")}</span>}
+                <span>
+                  {onlineGame.hostName} • {t("neonFlush.wager")}: <span className="text-yellow-300 font-semibold">{onlineGame.betAmount}</span>
+                </span>
+                <button
+                  onClick={() => joinSpecificOnlineGame(onlineGame.id)}
+                  disabled={!onlineGame.canAfford || loading || !!waitingGameId}
+                  className={`px-3 py-1 rounded-md font-semibold ${onlineGame.canAfford && !waitingGameId ? "bg-cyan-500 text-black hover:bg-cyan-400" : "bg-gray-600 text-gray-200 cursor-not-allowed"}`}
+                >
+                  {onlineGame.canAfford ? t("neonFlush.join") : t("neonFlush.insufficient")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {showGameModeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+          <div className="bg-[#08142f] text-white border border-[#00e5ff]/40 rounded-2xl p-6 w-full max-w-sm">
+            <h3 className="text-xl font-bold mb-4 text-center text-[#FFD700]">
+              {t("neonFlush.chooseMode")}
+            </h3>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowGameModeModal(false);
+                  initializeGame();
+                }}
+                className="border-b-4 border-amber-700 px-4 py-2 rounded-lg font-bold bg-amber-500 text-black hover:bg-amber-400 transition"
+              >
+                {t("neonFlush.playVsAi")}
+              </button>
+              <button
+                onClick={createOnlineGame}
+                disabled={!!waitingGameId}
+                className="border-b-4 border-cyan-700 px-4 py-2 rounded-lg font-bold bg-cyan-500 text-black hover:bg-cyan-400 transition"
+              >
+                {t("neonFlush.createOnline")}
+              </button>
+              <button
+                onClick={() => setShowGameModeModal(false)}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold"
+              >
+                {t("neonFlush.cancel")}
               </button>
             </div>
-            {isLoadingAvailableGames ? (
-              <p className="text-sm text-gray-200">{t("neonFlush.loadingGames")}</p>
-            ) : availableGames.length === 0 ? (
-              <p className="text-sm text-gray-200">{t("neonFlush.noGames")}</p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {availableGames.slice(0, 6).map((onlineGame) => (
-                  <li
-                    key={onlineGame.id}
-                    className="flex justify-between items-center bg-black/30 border border-cyan-700/30 hover:border-cyan-500/50 rounded-lg px-3 py-2 transition"
-                  >
-                    <span>
-                      {onlineGame.hostName} • {t("neonFlush.wager")}: <span className="text-yellow-300 font-semibold">{onlineGame.betAmount}</span>
-                    </span>
-                    <button
-                      onClick={() => joinSpecificOnlineGame(onlineGame.id)}
-                      disabled={!onlineGame.canAfford || loading || !!waitingGameId}
-                      className={`px-3 py-1 rounded-md font-semibold ${onlineGame.canAfford && !waitingGameId ? "bg-cyan-500 text-black hover:bg-cyan-400" : "bg-gray-600 text-gray-200 cursor-not-allowed"}`}
-                    >
-                      {onlineGame.canAfford ? t("neonFlush.join") : t("neonFlush.insufficient")}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
-
-          {showGameModeModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-              <div className="bg-[#08142f] text-white border border-[#00e5ff]/40 rounded-2xl p-6 w-full max-w-sm">
-                <h3 className="text-xl font-bold mb-4 text-center text-[#FFD700]">
-                  {t("neonFlush.chooseMode")}
-                </h3>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => {
-                      setShowGameModeModal(false);
-                      initializeGame();
-                    }}
-                    className="border-b-4 border-amber-700 px-4 py-2 rounded-lg font-bold bg-amber-500 text-black hover:bg-amber-400 transition"
-                  >
-                    {t("neonFlush.playVsAi")}
-                  </button>
-                  <button
-                    onClick={createOnlineGame}
-                    disabled={!!waitingGameId}
-                    className="border-b-4 border-cyan-700 px-4 py-2 rounded-lg font-bold bg-cyan-500 text-black hover:bg-cyan-400 transition"
-                  >
-                    {t("neonFlush.createOnline")}
-                  </button>
-                  <button
-                    onClick={() => setShowGameModeModal(false)}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold"
-                  >
-                    {t("neonFlush.cancel")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
         </div>
+      )}
+      {message && <p className="mt-6 text-yellow-300 text-lg font-medium">{message}</p>}
+    </div>
+  );
+
+  // The interactive table — opponent hand, center row + my hand.
+  const tableNode = (
+    <>
+      {/* Opponent / AI hand — overlapping backs to save height */}
+      <div className="w-full">
+        <div className="mb-1.5 flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff]/80">
+          {gameMode === "online" ? <IconUser size={13} /> : <IconRobot size={13} />}
+          {gameMode === "online" ? t("neonFlush.opponentHand") : t("neonFlush.aiHand")}
+          {!isPlayerTurn && gameMode === "ai" && (
+            <IconRobot size={13} className="animate-spin" style={{ animationDuration: "1s" }} />
+          )}
+        </div>
+        <div className="flex justify-center">
+          {Array(aiHandCount)
+            .fill(0)
+            .map((_, i) => (
+              <div key={i} className="-ml-5 first:ml-0">
+                <UnoBack />
+              </div>
+            ))}
+          {aiHandCount === 0 && <div className="h-20 w-14" />}
+        </div>
+      </div>
+
+      {showColorPicker && (
+        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="rounded-2xl border-2 border-[#00e5ff]/50 bg-[#040d24] p-6 shadow-[0_0_35px_rgba(0,229,255,0.35)] text-white flex flex-col items-center gap-5">
+            <h2 className="mb-1 flex items-center gap-2 text-xl font-black uppercase tracking-widest text-[#00e5ff]">
+              {t("neonFlush.chooseColor")} <IconPalette size={20} />
+            </h2>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { color: "red", labelKey: "neonFlush.colorPink" },
+                { color: "blue", labelKey: "neonFlush.colorCyan" },
+                { color: "green", labelKey: "neonFlush.colorMint" },
+                { color: "yellow", labelKey: "neonFlush.colorGold" },
+              ].map(({ color, labelKey }) => (
+                <button
+                  key={color}
+                  onClick={() => {
+                    setShowColorPicker(false);
+                    sendPlayCard(pendingCard, color);
+                  }}
+                  className="h-20 w-20 rounded-xl text-sm font-black uppercase text-[#031026] transition-transform hover:scale-105"
+                  style={{
+                    backgroundColor: UNO_PALETTE[color],
+                    boxShadow: `0 0 16px ${UNO_PALETTE[color]}66`,
+                  }}
+                >
+                  {t(labelKey)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Center row: current color + card + history scrub */}
+      <div className="my-3 flex items-center justify-center gap-4 sm:gap-6">
+        <div className="flex flex-col items-center gap-1 rounded-xl border border-[#00e5ff]/30 bg-[#040d24]/80 px-3 py-2">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#9dd8ff]/70">
+            {t("neonFlush.currentColor")}
+          </span>
+          <span className="flex items-center gap-1.5 text-sm font-black uppercase">
+            <span
+              className="inline-block h-3.5 w-3.5 rounded-full"
+              style={{ backgroundColor: currentColorHex, boxShadow: `0 0 10px ${currentColorHex}` }}
+            />
+            <span style={{ color: currentColorHex }}>{currentColorLabel}</span>
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={goBackHistory}
+            disabled={turnHistory.length <= 1 || historyIndex === 0}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#00e5ff]/40 text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 disabled:opacity-30"
+          >
+            <IconArrowLeft size={18} />
+          </button>
+          {displayedCard ? (
+            <UnoCard color={displayedCard.color} value={displayedCard.value} onClick={() => {}} />
+          ) : (
+            <div className="h-20 w-14 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/60" />
+          )}
+          <button
+            onClick={goForwardHistory}
+            disabled={historyIndex === null}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#00e5ff]/40 text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 disabled:opacity-30"
+          >
+            <IconArrowRight size={18} />
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center gap-1 rounded-xl border border-[#00e5ff]/30 bg-[#040d24]/80 px-3 py-2">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-[#9dd8ff]/70">
+            {t("neonFlush.currentCard")}
+          </span>
+          <span className="text-xs font-black uppercase text-[#d8fbff]/85">
+            {displayedCard ? historyLabel(displayedCard) : "-"}
+          </span>
+        </div>
+      </div>
+
+      {/* Player hand */}
+      <div
+        className={`flex flex-wrap justify-center gap-1.5 rounded-2xl p-2 ${isPlayerTurn ? "ring-2 ring-[#00e5ff]/50 shadow-[0_0_18px_rgba(0,229,255,0.25)]" : ""}`}
+      >
+        {playerHand.map((card, i) => (
+          <UnoCard
+            key={i}
+            color={card.color}
+            value={card.value}
+            onClick={() => playCard(card)}
+          />
+        ))}
+      </div>
+    </>
+  );
+
+  // Action controls — draw / resign / lobby + status message.
+  const controlsNode = (
+    <>
+      {/* Action buttons — neon cyberpunk */}
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
+        <button
+          onClick={drawCard}
+          disabled={!isPlayerTurn || loading || historyIndex !== null}
+          className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {t("neonFlush.drawCard")}
+        </button>
+        {game && !gameOver && (
+          <button
+            onClick={resignGame}
+            disabled={isResigning}
+            className="rounded-xl border-2 border-[#FF2D9B]/70 bg-[#FF2D9B]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.3)] transition-all hover:bg-[#FF2D9B]/25 disabled:opacity-40"
+          >
+            {isResigning ? (
+              t("neonFlush.resigning")
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <IconX size={15} /> {t("neonFlush.resign")}
+              </span>
+            )}
+          </button>
+        )}
+        <button
+          onClick={returnToLobby}
+          className="rounded-xl border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#FFE066] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
+        >
+          {t("neonFlush.lobby")}
+        </button>
+      </div>
+      {message && (
+        <p className="mt-3 text-center text-sm font-semibold text-yellow-300">{message}</p>
+      )}
+    </>
+  );
+
+  // Move history inner content (shared by the desktop aside and the
+  // creator rails).
+  const historyInnerNode = (
+    <>
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#00e5ff]">
+        <IconHistory size={14} /> {t("neonFlush.moveHistory")}
+      </div>
+      <div className="max-h-[540px] flex-1 space-y-1.5 overflow-y-auto pr-1">
+        {turnHistory.length === 0 && (
+          <p className="text-xs text-[#9dd8ff]/60">{t("neonFlush.noMovesYet")}</p>
+        )}
+        {turnHistory.map((card, i) => {
+          const isCurrent = (historyIndex ?? turnHistory.length - 1) === i;
+          return (
+            <button
+              key={i}
+              onClick={() => setHistoryIndex(i === turnHistory.length - 1 ? null : i)}
+              className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-all ${
+                isCurrent
+                  ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_10px_rgba(0,229,255,0.15)]"
+                  : "border-[#00e5ff]/20 bg-black/30 hover:border-[#00e5ff]/50"
+              }`}
+            >
+              <span
+                className="inline-block h-3 w-3 shrink-0 rounded-full"
+                style={{ backgroundColor: historyColor(card), boxShadow: `0 0 8px ${historyColor(card)}` }}
+              />
+              <span className="truncate font-bold uppercase tracking-wide">{historyLabel(card)}</span>
+              <span className="ml-auto text-[10px] text-[#9dd8ff]/60">#{i + 1}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  // Desktop history aside (normal page) — hidden on small screens.
+  const historyNode = (
+    <aside className="hidden w-60 shrink-0 flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur md:flex">
+      {historyInnerNode}
+    </aside>
+  );
+
+  // Normal (non-creator) page — byte-for-byte the original stack.
+  const normalView = (
+    <>
+      {modalsNode}
+      {headerNode}
+      {!game ? (
+        lobbyNode
       ) : (
         <div className="mb-16 flex w-full max-w-6xl items-stretch gap-4">
           {/* Board — compact, shifted left so the history panel has room */}
           <div className="relative flex min-w-0 flex-1 flex-col items-center justify-between overflow-hidden rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)] sm:p-4">
-            {/* Opponent / AI hand — overlapping backs to save height */}
-            <div className="w-full">
-              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff]/80">
-                {gameMode === "online" ? <IconUser size={13} /> : <IconRobot size={13} />}
-                {gameMode === "online" ? t("neonFlush.opponentHand") : t("neonFlush.aiHand")}
-                {!isPlayerTurn && gameMode === "ai" && (
-                  <IconRobot size={13} className="animate-spin" style={{ animationDuration: "1s" }} />
-                )}
-              </div>
-              <div className="flex justify-center">
-                {Array(aiHandCount)
-                  .fill(0)
-                  .map((_, i) => (
-                    <div key={i} className="-ml-5 first:ml-0">
-                      <UnoBack />
-                    </div>
-                  ))}
-                {aiHandCount === 0 && <div className="h-20 w-14" />}
-              </div>
-            </div>
-
-            {showColorPicker && (
-              <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-                <div className="rounded-2xl border-2 border-[#00e5ff]/50 bg-[#040d24] p-6 shadow-[0_0_35px_rgba(0,229,255,0.35)] text-white flex flex-col items-center gap-5">
-                  <h2 className="mb-1 flex items-center gap-2 text-xl font-black uppercase tracking-widest text-[#00e5ff]">
-                    {t("neonFlush.chooseColor")} <IconPalette size={20} />
-                  </h2>
-                  <div className="grid grid-cols-2 gap-4">
-                    {[
-                      { color: "red", labelKey: "neonFlush.colorPink" },
-                      { color: "blue", labelKey: "neonFlush.colorCyan" },
-                      { color: "green", labelKey: "neonFlush.colorMint" },
-                      { color: "yellow", labelKey: "neonFlush.colorGold" },
-                    ].map(({ color, labelKey }) => (
-                      <button
-                        key={color}
-                        onClick={() => {
-                          setShowColorPicker(false);
-                          sendPlayCard(pendingCard, color);
-                        }}
-                        className="h-20 w-20 rounded-xl text-sm font-black uppercase text-[#031026] transition-transform hover:scale-105"
-                        style={{
-                          backgroundColor: UNO_PALETTE[color],
-                          boxShadow: `0 0 16px ${UNO_PALETTE[color]}66`,
-                        }}
-                      >
-                        {t(labelKey)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Center row: current color + card + history scrub */}
-            <div className="my-3 flex items-center justify-center gap-4 sm:gap-6">
-              <div className="flex flex-col items-center gap-1 rounded-xl border border-[#00e5ff]/30 bg-[#040d24]/80 px-3 py-2">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-[#9dd8ff]/70">
-                  {t("neonFlush.currentColor")}
-                </span>
-                <span className="flex items-center gap-1.5 text-sm font-black uppercase">
-                  <span
-                    className="inline-block h-3.5 w-3.5 rounded-full"
-                    style={{ backgroundColor: currentColorHex, boxShadow: `0 0 10px ${currentColorHex}` }}
-                  />
-                  <span style={{ color: currentColorHex }}>{currentColorLabel}</span>
-                </span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={goBackHistory}
-                  disabled={turnHistory.length <= 1 || historyIndex === 0}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#00e5ff]/40 text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 disabled:opacity-30"
-                >
-                  <IconArrowLeft size={18} />
-                </button>
-                {displayedCard ? (
-                  <UnoCard color={displayedCard.color} value={displayedCard.value} onClick={() => {}} />
-                ) : (
-                  <div className="h-20 w-14 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/60" />
-                )}
-                <button
-                  onClick={goForwardHistory}
-                  disabled={historyIndex === null}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#00e5ff]/40 text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 disabled:opacity-30"
-                >
-                  <IconArrowRight size={18} />
-                </button>
-              </div>
-
-              <div className="flex flex-col items-center gap-1 rounded-xl border border-[#00e5ff]/30 bg-[#040d24]/80 px-3 py-2">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-[#9dd8ff]/70">
-                  {t("neonFlush.currentCard")}
-                </span>
-                <span className="text-xs font-black uppercase text-[#d8fbff]/85">
-                  {displayedCard ? historyLabel(displayedCard) : "-"}
-                </span>
-              </div>
-            </div>
-
-            {/* Player hand */}
-            <div
-              className={`flex flex-wrap justify-center gap-1.5 rounded-2xl p-2 ${isPlayerTurn ? "ring-2 ring-[#00e5ff]/50 shadow-[0_0_18px_rgba(0,229,255,0.25)]" : ""}`}
-            >
-              {playerHand.map((card, i) => (
-                <UnoCard
-                  key={i}
-                  color={card.color}
-                  value={card.value}
-                  onClick={() => playCard(card)}
-                />
-              ))}
-            </div>
-
-            {/* Action buttons — neon cyberpunk */}
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={drawCard}
-                disabled={!isPlayerTurn || loading || historyIndex !== null}
-                className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {t("neonFlush.drawCard")}
-              </button>
-              {game && !gameOver && (
-                <button
-                  onClick={resignGame}
-                  disabled={isResigning}
-                  className="rounded-xl border-2 border-[#FF2D9B]/70 bg-[#FF2D9B]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.3)] transition-all hover:bg-[#FF2D9B]/25 disabled:opacity-40"
-                >
-                  {isResigning ? (
-                    t("neonFlush.resigning")
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconX size={15} /> {t("neonFlush.resign")}
-                    </span>
-                  )}
-                </button>
-              )}
-              <button
-                onClick={returnToLobby}
-                className="rounded-xl border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#FFE066] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
-              >
-                {t("neonFlush.lobby")}
-              </button>
-            </div>
-
-            {message && (
-              <p className="mt-3 text-center text-sm font-semibold text-yellow-300">{message}</p>
-            )}
+            {tableNode}
+            {controlsNode}
           </div>
-
-          {/* Move history — right panel */}
-          <aside className="hidden w-60 shrink-0 flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur md:flex">
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#00e5ff]">
-              <IconHistory size={14} /> {t("neonFlush.moveHistory")}
-            </div>
-            <div className="max-h-[540px] flex-1 space-y-1.5 overflow-y-auto pr-1">
-              {turnHistory.length === 0 && (
-                <p className="text-xs text-[#9dd8ff]/60">{t("neonFlush.noMovesYet")}</p>
-              )}
-              {turnHistory.map((card, i) => {
-                const isCurrent = (historyIndex ?? turnHistory.length - 1) === i;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setHistoryIndex(i === turnHistory.length - 1 ? null : i)}
-                    className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-all ${
-                      isCurrent
-                        ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_10px_rgba(0,229,255,0.15)]"
-                        : "border-[#00e5ff]/20 bg-black/30 hover:border-[#00e5ff]/50"
-                    }`}
-                  >
-                    <span
-                      className="inline-block h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: historyColor(card), boxShadow: `0 0 8px ${historyColor(card)}` }}
-                    />
-                    <span className="truncate font-bold uppercase tracking-wide">{historyLabel(card)}</span>
-                    <span className="ml-auto text-[10px] text-[#9dd8ff]/60">#{i + 1}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
+          {historyNode}
         </div>
       )}
-      </CreatorResponsiveLayout>
+    </>
+  );
+
+  // Portrait (9:16) — phone-style: compact header, the table filling
+  // the middle, controls + history pinned at the bottom.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-b from-[#0a0118] to-[#061b3d]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        {creatorHeaderNode}
+      </ShellHeader>
+      <ShellMain className="overflow-hidden">
+        {!game ? (
+          <div className="flex h-full w-full items-start justify-center overflow-y-auto px-3 py-3">
+            {lobbyNode}
+          </div>
+        ) : (
+          <div className="flex h-full w-full flex-col px-3 py-2">
+            <div className="flex-1 min-h-0 overflow-y-auto rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
+              <div className="relative flex min-h-full flex-col items-center justify-between">
+                {tableNode}
+              </div>
+            </div>
+          </div>
+        )}
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {!game ? null : (
+          <>
+            {controlsNode}
+            <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
+              {historyInnerNode}
+            </div>
+          </>
+        )}
+      </ShellAside>
+      {modalsNode}
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — table fills the frame height,
+  // controls + history in a right rail.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-b from-[#0a0118] to-[#061b3d]">
+      <ShellMain className="overflow-hidden">
+        {!game ? (
+          <div className="flex h-full w-full items-start justify-center overflow-y-auto p-4">
+            {lobbyNode}
+          </div>
+        ) : (
+          <div className="flex h-full w-full flex-col p-4">
+            {creatorHeaderNode}
+            <div className="flex-1 min-h-0 overflow-y-auto rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
+              <div className="relative flex min-h-full flex-col items-center justify-between">
+                {tableNode}
+              </div>
+            </div>
+          </div>
+        )}
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {!game ? null : (
+          <>
+            {controlsNode}
+            <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
+              {historyInnerNode}
+            </div>
+          </>
+        )}
+      </ShellAside>
+      {modalsNode}
+    </CreatorModeShell>
+  );
+
+  return (
+    <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
+      <NavigationBar currentPath="/casino" />
+      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+      <div className="mt-3 flex justify-center">
+        <CreatorModeLobby />
+      </div>
+      {/* Only the actual game + its result popup are recorded — the nav,
+          footer and the `!game` lobby/finder stay outside (or unrecorded:
+          autoStart is false in the lobby). Recording starts when a real
+          hand is active and stops once the result is shown. */}
+      <CreatorModeHost
+        autoStart={Boolean(game)}
+        autoStop={Boolean(endPopup)}
+        gameLabel="neon-flush"
+        backToLobbyHref="/uno"
+      >
+      <CreatorView
+        normal={normalView}
+        portrait={portraitContent}
+        landscape={landscapeContent}
+      />
       </CreatorModeHost>
       <Footer />
     </div>

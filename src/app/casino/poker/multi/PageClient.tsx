@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -21,7 +21,14 @@ import Footer from "../../../../components/Footer";
 // report modal / footer stay OUTSIDE so nothing is recorded until
 // real gameplay starts.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+  useCreatorModeLayout,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../../components/lobby/PvpLobby";
 import confetti from "canvas-confetti";
@@ -146,6 +153,29 @@ function nextActiveFrom(currentIndex: number, players: Player[]): number {
   if (pos === -1) return active[0];
 
   return active[(pos + 1) % active.length];
+}
+
+// Creator-mode table stage: poker's table + seats are laid out in a
+// 900×600-style wrapper (seats %-positioned, ellipse centered inside).
+// In creator frames we size that wrapper from the frame dimensions so the
+// felt fills the recording; seats stay glued to the ellipse in any ratio
+// (9:16 / 16:9 / 1:1). Reads the shell's layout context, so it must be
+// rendered inside <CreatorModeShell />.
+function PokerCreatorTableStage({ children }: { children: ReactNode }) {
+  const { width, height, isPortrait } = useCreatorModeLayout();
+  // Reserve room for the compact header (and bottom strip in portrait).
+  const availW = width - (isPortrait ? 24 : 72);
+  const availH = height - (isPortrait ? 170 : 120);
+  const stageW = Math.min(availW, availH * 1.5);
+  const stageH = stageW / 1.5;
+  return (
+    <div
+      className="relative flex items-center justify-center overflow-visible"
+      style={{ width: Math.max(280, stageW), height: Math.max(190, stageH) }}
+    >
+      {children}
+    </div>
+  );
 }
 
 export default function PokerPage() {
@@ -1958,27 +1988,11 @@ export default function PokerPage() {
   }
 
 
-  // main UI when game exists
-  return (
-    <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white overflow-hidden relative">
-      {/* Only the actual hand table is recorded — the build/join lobby
-          (the `!game` early-return above) and the report modal / footer
-          below sit outside the shared CreatorModeHost recording viewport.
-          Recording auto-starts when the host starts the real hand
-          (`game.waiting` flips false = cards dealt) and auto-stops once
-          the hand reaches its result (showdown + winner) so the winner
-          animation is captured, then the grace period elapses. */}
-      <CreatorModeHost
-        autoStart={Boolean(game) && !game.waiting}
-        autoStop={
-          Boolean(game) &&
-          game.stage === "showdown" &&
-          Boolean(game.winnerId)
-        }
-        gameLabel="poker"
-      >
-      <CreatorResponsiveLayout>
-      {/* ── Portrait-mode overlay (mobile only) ── */}
+  // ── Creator-mode node extraction (poker) ──────────────────────────
+  // Real mobile portrait browsers only — never inside a creator frame
+  // (the creator chose the frame's aspect ratio, so the table shows).
+  const rotateOverlayNode = (
+    <>
       {isPortrait && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
           <div className="mb-6 animate-spin" style={{ animationDuration: "4s" }}><IconDeviceMobileRotated size={60} /></div>
@@ -1988,148 +2002,159 @@ export default function PokerPage() {
           <p className="text-sm text-[#b0b0ff]/70">Mode paysage requis pour le Texas Hold'em</p>
         </div>
       )}
+    </>
+  );
 
-      {/* ── Ambient scanlines overlay ── */}
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
-        style={{
-          backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.15) 2px, rgba(0,229,255,0.15) 4px)",
+  const scanlinesNode = (
+    <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03]"
+      style={{
+        backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.15) 2px, rgba(0,229,255,0.15) 4px)",
+      }}
+    />
+  );
+
+  // The three top-bar items (Return / title / sound) — wrapped differently
+  // per view: absolute overlay on the normal page, compact header row in
+  // creator frames.
+  const topBarInnerNode = (
+    <>
+      <button
+        onClick={async () => {
+          if (game?.stage === "showdown" || game?.waiting) {
+            const meStack = game?.players.find((p) => p.id === myId)?.stack ?? 0;
+            await leaveCurrentGame(meStack);
+            await fetchUserTokens();
+            setGame(null);
+          } else {
+            alert("You can only return to the form after the hand ends!");
+          }
         }}
-      />
+        className={`pointer-events-auto px-4 py-2 rounded-lg font-bold transition text-sm ${
+          game?.stage === "showdown" || game?.waiting
+            ? "bg-gradient-to-r from-[#ff00cc]/70 to-[#00e5ff]/70 text-black hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
+            : "bg-[#0a0a1a]/80 text-[#b0b0ff]/40 border border-[#b0b0ff]/10 cursor-not-allowed"
+        }`}
+      >
+        ← Return
+      </button>
 
-      {/* ── Top bar: Return | Title | Sound ── */}
-      <div className="pointer-events-none absolute top-0 left-0 right-0 z-30 flex items-center justify-between gap-3 px-3 pt-3 sm:px-5 sm:pt-4">
+      <h1 className="text-center text-xl font-black uppercase leading-none tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] sm:text-3xl">
+        TEXAS HOLD'EM
+      </h1>
+
+      <button
+        onClick={() => audio.setEnabled(!audio.enabled)}
+        className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#00e5ff]/30 bg-[#0a0a1a]/80 text-lg shadow-[0_0_10px_rgba(0,229,255,0.2)] transition hover:bg-[#00e5ff]/20"
+        title={audio.enabled ? "Mute sounds" : "Enable sounds"}
+      >
+        {audio.enabled ? <IconVolume size={20} /> : <IconVolumeOff size={20} />}
+      </button>
+    </>
+  );
+
+  // The table-controls row (report / timer / invite / start / replay / retire).
+  const controlsInnerNode = (
+    <>
+      {game && game.players.some((p) => !p.isAI && p.id !== myId) && (
         <button
-          onClick={async () => {
-            if (game?.stage === "showdown" || game?.waiting) {
-              const meStack = game?.players.find((p) => p.id === myId)?.stack ?? 0;
-              await leaveCurrentGame(meStack);
-              await fetchUserTokens();
-              setGame(null);
-            } else {
-              alert("You can only return to the form after the hand ends!");
-            }
-          }}
-          className={`pointer-events-auto px-4 py-2 rounded-lg font-bold transition text-sm ${
-            game?.stage === "showdown" || game?.waiting
-              ? "bg-gradient-to-r from-[#ff00cc]/70 to-[#00e5ff]/70 text-black hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
-              : "bg-[#0a0a1a]/80 text-[#b0b0ff]/40 border border-[#b0b0ff]/10 cursor-not-allowed"
-          }`}
+          onClick={() => setShowReportModal(true)}
+          className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
         >
-          ← Return
+          <span className="inline-flex items-center gap-1.5"><IconFlag size={14} /> Report Player</span>
         </button>
+      )}
 
-        <h1 className="text-center text-xl font-black uppercase leading-none tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] via-[#00e5ff] to-[#ff00cc] drop-shadow-[0_0_20px_rgba(255,0,204,0.8)] sm:text-3xl">
-          TEXAS HOLD'EM
-        </h1>
-
-        <button
-          onClick={() => audio.setEnabled(!audio.enabled)}
-          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#00e5ff]/30 bg-[#0a0a1a]/80 text-lg shadow-[0_0_10px_rgba(0,229,255,0.2)] transition hover:bg-[#00e5ff]/20"
-          title={audio.enabled ? "Mute sounds" : "Enable sounds"}
+      <div className="flex items-center gap-2 rounded-lg border border-[#ff00cc]/25 bg-[#0a0a1a]/85 px-3 py-1.5 text-xs text-[#b0b0ff]/70 backdrop-blur-sm">
+        <span className="text-[10px] uppercase tracking-wider">Turn timer</span>
+        <select
+          value={turnTimeLimit}
+          onChange={(e) => setTurnTimeLimit(Number(e.target.value) || 60)}
+          className="rounded border border-[#ff00cc]/30 bg-transparent px-1.5 py-0.5 text-[#ff00cc] focus:outline-none focus:border-[#ff00cc]"
         >
-          {audio.enabled ? <IconVolume size={20} /> : <IconVolumeOff size={20} />}
-        </button>
+          <option value={15}>15s</option>
+          <option value={30}>30s</option>
+          <option value={60}>60s</option>
+        </select>
       </div>
 
-      {/* ── Table controls: report / timer / invite / actions ── */}
-      <div className="relative z-10 mt-20 mb-4 flex flex-wrap items-center justify-center gap-2 sm:mt-24">
-        {game && game.players.some((p) => !p.isAI && p.id !== myId) && (
-          <button
-            onClick={() => setShowReportModal(true)}
-            className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/40 text-xs font-bold text-red-300 hover:bg-red-500/30 transition"
-          >
-            <span className="inline-flex items-center gap-1.5"><IconFlag size={14} /> Report Player</span>
-          </button>
-        )}
-
-        <div className="flex items-center gap-2 rounded-lg border border-[#ff00cc]/25 bg-[#0a0a1a]/85 px-3 py-1.5 text-xs text-[#b0b0ff]/70 backdrop-blur-sm">
-          <span className="text-[10px] uppercase tracking-wider">Turn timer</span>
-          <select
-            value={turnTimeLimit}
-            onChange={(e) => setTurnTimeLimit(Number(e.target.value) || 60)}
-            className="rounded border border-[#ff00cc]/30 bg-transparent px-1.5 py-0.5 text-[#ff00cc] focus:outline-none focus:border-[#ff00cc]"
-          >
-            <option value={15}>15s</option>
-            <option value={30}>30s</option>
-            <option value={60}>60s</option>
-          </select>
-        </div>
-
-        {game?.inviteCode && (
-          <div className="flex items-center gap-2 rounded-lg border border-[#00e5ff]/25 bg-[#0a0a1a]/85 px-3 py-1.5 backdrop-blur-sm">
-            <span className="text-[10px] uppercase tracking-wider text-[#b0b0ff]/70">Code</span>
-            <span className="font-mono text-sm font-bold tracking-wider text-[#00e5ff]">
-              {game.inviteCode}
-            </span>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(game.inviteCode || "");
-                alert("Invite code copied!");
-              }}
-              className="rounded border border-[#ff00cc]/40 bg-[#ff00cc]/20 px-2 py-0.5 text-[10px] font-bold text-[#ff00cc] transition hover:bg-[#ff00cc]/35"
-            >
-              Copy
-            </button>
-          </div>
-        )}
-
-        {game?.waiting && isHost && (
+      {game?.inviteCode && (
+        <div className="flex items-center gap-2 rounded-lg border border-[#00e5ff]/25 bg-[#0a0a1a]/85 px-3 py-1.5 backdrop-blur-sm">
+          <span className="text-[10px] uppercase tracking-wider text-[#b0b0ff]/70">Code</span>
+          <span className="font-mono text-sm font-bold tracking-wider text-[#00e5ff]">
+            {game.inviteCode}
+          </span>
           <button
             onClick={() => {
-              if (!game) return;
-              if (game.players.length < 2) {
-                alert(
-                  "You need at least 1 AI to start (player + 1 AI). Add an AI by clicking a seat.",
-                );
-                return;
-              }
-              startGame();
+              navigator.clipboard.writeText(game.inviteCode || "");
+              alert("Invite code copied!");
             }}
-            className={`bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-5 py-2 rounded-lg font-bold text-black transition hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_20px_rgba(255,0,204,0.5)] ${
-              game.players.length < 2 ? "opacity-40 cursor-not-allowed" : ""
-            }`}
-            disabled={game.players.length < 2}
+            className="rounded border border-[#ff00cc]/40 bg-[#ff00cc]/20 px-2 py-0.5 text-[10px] font-bold text-[#ff00cc] transition hover:bg-[#ff00cc]/35"
           >
-            <span className="inline-flex items-center gap-1.5"><IconBolt size={16} /> Start Game</span>
+            Copy
           </button>
-        )}
+        </div>
+      )}
 
-        {game?.replayVisible && (
-          <button
-            onClick={replayHand}
-            className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded-lg font-bold transition hover:from-[#ff00cc] hover:to-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
-          >
-            <span className="inline-flex items-center gap-1.5"><IconRefresh size={16} /> Replay Hand</span>
-          </button>
-        )}
+      {game?.waiting && isHost && (
+        <button
+          onClick={() => {
+            if (!game) return;
+            if (game.players.length < 2) {
+              alert(
+                "You need at least 1 AI to start (player + 1 AI). Add an AI by clicking a seat.",
+              );
+              return;
+            }
+            startGame();
+          }}
+          className={`bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-5 py-2 rounded-lg font-bold text-black transition hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_20px_rgba(255,0,204,0.5)] ${
+            game.players.length < 2 ? "opacity-40 cursor-not-allowed" : ""
+          }`}
+          disabled={game.players.length < 2}
+        >
+          <span className="inline-flex items-center gap-1.5"><IconBolt size={16} /> Start Game</span>
+        </button>
+      )}
 
-        {(game?.stage === "showdown" || game?.waiting) && me && me.stack > 0 && (
-          <button
-            onClick={async () => {
-              const cs = me.stack;
-              await leaveCurrentGame(cs);
-              await fetchUserTokens();
-              setGame(null);
-            }}
-            className="bg-gradient-to-r from-[#FFD700]/70 to-[#FFA500]/70 border border-[#FFD700]/50 text-black px-5 py-2 rounded-lg font-bold transition hover:from-[#FFD700] hover:to-[#FFA500] shadow-[0_0_15px_rgba(255,215,0,0.4)]"
-          >
-            <span className="inline-flex items-center gap-1.5"><IconCoins size={16} /> Retirer {me.stack} jetons</span>
-          </button>
-        )}
+      {game?.replayVisible && (
+        <button
+          onClick={replayHand}
+          className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded-lg font-bold transition hover:from-[#ff00cc] hover:to-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
+        >
+          <span className="inline-flex items-center gap-1.5"><IconRefresh size={16} /> Replay Hand</span>
+        </button>
+      )}
 
-        {game?.stage !== "showdown" && !game?.waiting && (
-          <label className="flex cursor-pointer select-none items-center gap-2 rounded-lg border border-[#ff00cc]/20 bg-[#0a0a1a]/85 px-3 py-1.5 backdrop-blur-sm">
-            <input
-              type="checkbox"
-              checked={leaveAfterHand}
-              onChange={(e) => setLeaveAfterHand(e.target.checked)}
-              className="h-4 w-4 cursor-pointer rounded border-[#ff00cc]/40 bg-[#0a0a1a] accent-[#ff00cc] focus:ring-[#ff00cc]"
-            />
-            <span className="text-xs text-[#b0b0ff]/70">Quitter après cette main</span>
-          </label>
-        )}
-      </div>
+      {(game?.stage === "showdown" || game?.waiting) && me && me.stack > 0 && (
+        <button
+          onClick={async () => {
+            const cs = me.stack;
+            await leaveCurrentGame(cs);
+            await fetchUserTokens();
+            setGame(null);
+          }}
+          className="bg-gradient-to-r from-[#FFD700]/70 to-[#FFA500]/70 border border-[#FFD700]/50 text-black px-5 py-2 rounded-lg font-bold transition hover:from-[#FFD700] hover:to-[#FFA500] shadow-[0_0_15px_rgba(255,215,0,0.4)]"
+        >
+          <span className="inline-flex items-center gap-1.5"><IconCoins size={16} /> Retirer {me.stack} jetons</span>
+        </button>
+      )}
 
+      {game?.stage !== "showdown" && !game?.waiting && (
+        <label className="flex cursor-pointer select-none items-center gap-2 rounded-lg border border-[#ff00cc]/20 bg-[#0a0a1a]/85 px-3 py-1.5 backdrop-blur-sm">
+          <input
+            type="checkbox"
+            checked={leaveAfterHand}
+            onChange={(e) => setLeaveAfterHand(e.target.checked)}
+            className="h-4 w-4 cursor-pointer rounded border-[#ff00cc]/40 bg-[#0a0a1a] accent-[#ff00cc] focus:ring-[#ff00cc]"
+          />
+          <span className="text-xs text-[#b0b0ff]/70">Quitter après cette main</span>
+        </label>
+      )}
+    </>
+  );
+
+  const actionLogNode = (
+    <>
       {(game.actionLog?.length ?? 0) > 0 && (
         <div className="mb-3 w-full max-w-xl rounded-lg bg-[#0a0a1a]/90 border border-[#ff00cc]/20 p-2 text-xs z-10 backdrop-blur-sm">
           <div className="font-bold text-[#ff00cc] mb-1 drop-shadow-[0_0_6px_#ff00cc]">Recent actions</div>
@@ -2145,16 +2170,25 @@ export default function PokerPage() {
           </div>
         </div>
       )}
+    </>
+  );
 
-
+  // The full scalable table (felt + overlays + seats + chips + modals).
+  // `fill` adapts the wrapper/felt to the creator frame (the felt fills the
+  // stage sized by PokerCreatorTableStage) instead of the window-based
+  // 75vh / 85vmin sizing used on the normal page.
+  const tableBlockNode = (fill: boolean) => (
+    <>
    {/* ── Scalable table wrapper ── */}
-<div className="relative w-full h-[75vh] flex items-center justify-center overflow-visible">
+<div className={`relative flex items-center justify-center overflow-visible ${fill ? "w-full h-full" : "w-full h-[75vh]"}`}>
         {/* The cyberpunk poker table */}
        <div
-  className="relative w-[85vmin] h-[55vmin] max-w-[1000px] max-h-[650px] rounded-full flex items-center justify-center
+  className={`relative rounded-full flex items-center justify-center
 bg-gradient-to-br from-[#0a0015] via-[#0d0020] to-[#05000d]
 border-[6px] border-[#ff00cc]/60
-shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60px_rgba(255,0,204,0.1)]"
+shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60px_rgba(255,0,204,0.1)] ${
+    fill ? "w-full h-full max-w-none max-h-none" : "w-[85vmin] h-[55vmin] max-w-[1000px] max-h-[650px]"
+  }`}
  style={{ transform: "translateZ(0)" }}
         >
           {/* Hex grid pattern overlay */}
@@ -2861,9 +2895,16 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
       {/* ── End of scalable wrapper ── */}
       </div>
+    </>
+  );
 
-     {/* ── ACTION CONTROLS ── */}
-{game && !game.waiting && game.stage !== "showdown" && (() => {
+  // The desktop + mobile action docks (Fold / Check-Call / Bet / Raise).
+  // They are `fixed`, so inside a creator frame they pin to the FRAME
+  // (the recording root is a transformed containing block), keeping the
+  // game controls reachable in every orientation.
+  const actionDockNode = (
+    <>
+      {game && !game.waiting && game.stage !== "showdown" && (() => {
   const me = game.players.find((p) => p.id === myId);
   const isMyTurnNow = game.players[game.currentTurn]?.id === myId;
 
@@ -3101,8 +3142,13 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
     </>
   );
 })()}
+    </>
+  );
 
-      {/* Multiplayer Waiting Panel — bottom-left, public-only */}
+  // Public-game queue — pinned to the frame bottom-left (fixed → frame-relative
+  // inside the creator recording root).
+  const waitingPanelNode = (
+    <>
       {!isPrivateGame && (
         <div className="fixed bottom-56 left-3 right-3 z-50 pointer-events-auto lg:bottom-6 lg:left-6 lg:right-auto">
           <div className="w-full lg:w-64 bg-black/60 backdrop-blur-md border border-amber-700/40 rounded-lg shadow-[0_0_20px_rgba(251,191,36,0.12)] p-3">
@@ -3152,7 +3198,97 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           </div>
         </div>
       )}
-      </CreatorResponsiveLayout>
+    </>
+  );
+
+  // Normal (non-creator) page — identical stack as before.
+  const normalView = (
+    <>
+      {rotateOverlayNode}
+      {scanlinesNode}
+      <div className="pointer-events-none absolute top-0 left-0 right-0 z-30 flex items-center justify-between gap-3 px-3 pt-3 sm:px-5 sm:pt-4">
+        {topBarInnerNode}
+      </div>
+      <div className="relative z-10 mt-20 mb-4 flex flex-wrap items-center justify-center gap-2 sm:mt-24">
+        {controlsInnerNode}
+      </div>
+      {actionLogNode}
+      {tableBlockNode(false)}
+      {actionDockNode}
+      {waitingPanelNode}
+    </>
+  );
+
+  // Portrait (9:16) — compact header, the felt filling the middle, and
+  // controls + recent actions pinned at the bottom. No rotate overlay.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          {topBarInnerNode}
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {controlsInnerNode}
+        </div>
+      </ShellHeader>
+      <ShellMain className="overflow-hidden">
+        <PokerCreatorTableStage>{tableBlockNode(true)}</PokerCreatorTableStage>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {actionLogNode}
+      </ShellAside>
+      {actionDockNode}
+      {waitingPanelNode}
+      {scanlinesNode}
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — felt fills the height with
+  // controls + recent actions in a right rail.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex items-center justify-between gap-2 px-1">
+        {topBarInnerNode}
+      </ShellHeader>
+      <ShellMain className="overflow-hidden">
+        <PokerCreatorTableStage>{tableBlockNode(true)}</PokerCreatorTableStage>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {controlsInnerNode}
+        </div>
+        {actionLogNode}
+      </ShellAside>
+      {actionDockNode}
+      {waitingPanelNode}
+      {scanlinesNode}
+    </CreatorModeShell>
+  );
+
+  // main UI when game exists
+  return (
+    <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white overflow-hidden relative">
+      {/* Only the actual hand table is recorded — the build/join lobby
+          (the `!game` early-return above) and the report modal / footer
+          below sit outside the shared CreatorModeHost recording viewport.
+          Recording auto-starts when the host starts the real hand
+          (`game.waiting` flips false = cards dealt) and auto-stops once
+          the hand reaches its result (showdown + winner) so the winner
+          animation is captured, then the grace period elapses. */}
+      <CreatorModeHost
+        autoStart={Boolean(game) && !game.waiting}
+        autoStop={
+          Boolean(game) &&
+          game.stage === "showdown" &&
+          Boolean(game.winnerId)
+        }
+        gameLabel="poker"
+        backToLobbyHref="/casino/poker"
+      >      <CreatorView
+        normal={normalView}
+        portrait={portraitContent}
+        landscape={landscapeContent}
+      />
       </CreatorModeHost>
       <ReportModal
         isOpen={showReportModal && game != null && game.players.some((p: Player) => !p.isAI && p.id !== myId)}

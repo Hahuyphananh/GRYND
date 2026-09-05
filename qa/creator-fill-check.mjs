@@ -40,13 +40,17 @@ const html = `<!doctype html>
       </div>
     </div>
     <!-- Portrait frame with a data-creator-stack element: must keep its
-         phone-width cap even inside a fill container. -->
+         phone-width cap even inside a fill container (the stack rules are
+         scoped to the phone viewport, which is always present in the real
+         DOM). -->
     <div id="frame-stack" style="width:1080px;height:1920px;overflow:hidden">
       <div data-creator-layout="portrait" style="display:flex;flex-direction:column;height:100%;width:100%">
-        <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-          <div data-creator-stack class="mx-auto flex w-full max-w-[1300px] flex-col gap-4 sm:flex-row">
-            <div class="left-col">controls</div>
-            <div class="right-col">board</div>
+        <div data-creator-phone class="relative flex min-h-0 min-w-0 flex-col self-start">
+          <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+            <div data-creator-stack class="mx-auto flex w-full max-w-[1300px] flex-col gap-4 sm:flex-row">
+              <div class="left-col">controls</div>
+              <div class="right-col">board</div>
+            </div>
           </div>
         </div>
       </div>
@@ -62,12 +66,17 @@ const html = `<!doctype html>
         </div>
       </div>
     </div>
-    <!-- Landscape recording frame (16:9) -->
+    <!-- Landscape recording frame (16:9): the game still renders inside
+         the phone viewport (fitted, centered) → the fill rules must apply
+         within the phone viewport too -->
     <div id="frame-landscape" style="width:1920px;height:1080px;overflow:hidden">
       <div data-creator-layout="landscape" style="display:flex;height:100%;width:100%">
-        <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-          <div class="game-root-landscape mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
-            <div class="panel rounded-2xl p-6">landscape game</div>
+        <div data-creator-phone class="relative flex min-h-0 min-w-0 flex-col self-start mx-auto"
+             style="width:390px;height:693.3333333333334px;zoom:1.5576923076923077">
+          <div data-creator-fill class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+            <div class="game-root-landscape mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
+              <div class="panel rounded-2xl p-6">landscape game</div>
+            </div>
           </div>
         </div>
       </div>
@@ -91,7 +100,7 @@ const generated = await postcss([tailwind({ content: [join(tmp, "input.html")] }
 
 // Append the creator fill + stacking CSS from globals.css.
 const globals = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
-const start = globals.indexOf('[data-creator-layout="portrait"] [data-creator-stack]');
+const start = globals.indexOf('[data-creator-phone] [data-creator-stack]');
 const end = globals.indexOf("@media (prefers-reduced-motion", start);
 if (start < 0) throw new Error("creator frame-fill CSS not found in globals.css");
 const creatorCss = globals.slice(start, end).trim();
@@ -107,6 +116,7 @@ const results = await page.evaluate(() => {
   const out = {};
   const fr = document.getElementById("frame-portrait").getBoundingClientRect();
   const ff = document.getElementById("frame-landscape").getBoundingClientRect();
+  const landPhone = document.querySelector("#frame-landscape [data-creator-phone]").getBoundingClientRect();
   const root = document.querySelector(".game-root").getBoundingClientRect();
   const rootCss = getComputedStyle(document.querySelector(".game-root"));
   const landRoot = document.querySelector(".game-root-landscape").getBoundingClientRect();
@@ -120,7 +130,7 @@ const results = await page.evaluate(() => {
   const plainCss = getComputedStyle(document.querySelector(".game-root-plain"));
   out.portrait = { rootW: root.width, frameW: fr.width, rootH: root.height, frameH: fr.height };
   out.portraitMaxW = rootCss.maxWidth;
-  out.landscape = { rootW: landRoot.width, frameW: ff.width, rootH: landRoot.height, frameH: ff.height };
+  out.landscape = { rootW: landRoot.width, frameW: ff.width, phoneW: landPhone.width, phoneH: landPhone.height, rootH: landRoot.height, frameH: ff.height };
   out.landscapeMaxW = landCss.maxWidth;
   out.stackMaxW = stackCss.maxWidth;
   out.stackDirection = stackCss.flexDirection;
@@ -151,16 +161,16 @@ const results = await page.evaluate(() => {
   passes.push(
     check(results.portrait.rootH >= results.portrait.frameH - 1, "portrait game root stretches to frame height"),
   );
-  // Landscape: fills width too
+  // Landscape: the game still fills its (fitted, centered) phone viewport
   passes.push(
     check(
-      Math.abs(results.landscape.rootW - results.landscape.frameW) < 2,
-      "landscape game root fills frame width",
+      Math.abs(results.landscape.rootW - results.landscape.phoneW) < 1,
+      "landscape game root fills phone viewport width",
     ),
   );
   passes.push(check(results.landscapeMaxW === "none" || results.landscapeMaxW === "100%", "landscape max-width cap removed"));
   passes.push(
-    check(results.landscape.rootH >= results.landscape.frameH - 1, "landscape game root stretches to frame height"),
+    check(results.landscape.rootH >= results.landscape.phoneH - 1, "landscape game root stretches to phone viewport height"),
   );
   // Stack exemption: phone column keeps its cap + column direction
   passes.push(check(parseInt(results.stackMaxW, 10) <= 460, "data-creator-stack keeps phone-width cap (460px)"));

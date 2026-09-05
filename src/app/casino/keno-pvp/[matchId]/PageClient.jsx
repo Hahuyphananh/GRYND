@@ -29,7 +29,14 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 // it finishes/cancels. The matchmaking takeover and nav stay outside the
 // shared CreatorModeHost recording viewport.
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+  useCreatorModeLayout,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 import {
   getSharedAudioContext,
   getSharedOutputNode,
@@ -70,6 +77,25 @@ const FLASH_LABEL = {
   caught: { text: "CAUGHT!", cls: "text-emerald-300 border-emerald-400/60 bg-emerald-500/15" },
   missed: { text: "MISSED", cls: "text-red-300 border-red-400/60 bg-red-500/15" },
 };
+
+// Creator-mode board sizer: the keno board (tile grid + points table) is
+// taller than it is wide, so portrait caps by the width and landscape /
+// square by a tighter fraction of the height so it always fits. Reads
+// the shell layout context — must be rendered inside <CreatorModeShell />.
+function KenoBoardStage({ children }) {
+  const { width, height, isPortrait } = useCreatorModeLayout();
+  const cap = isPortrait
+    ? Math.max(300, Math.min(width, height) * 0.94 - 32)
+    : Math.max(300, Math.min(width, height) * 0.72 - 80);
+  return (
+    <div
+      className="flex w-full flex-col items-center justify-center"
+      style={{ maxWidth: cap }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function KenoPvpMatchPage({ params }) {
   const router = useRouter();
@@ -548,6 +574,318 @@ export default function KenoPvpMatchPage({ params }) {
     : match.players?.p2?.displayName || match.player2Id?.slice(0, 6) || "P2";
   const oppName = me === "player1" ? p2Name : p1Name;
 
+  // ── Creator Mode arrangement ──────────────────────────────────────
+  // The SAME game content composes the normal page and the creator
+  // frames (portrait phone-style + landscape/square rail), mirroring
+  // Tower Arena / Mines Duel. Layout only — no game logic touched.
+
+  // Round status line + glow hint + emotes (live round only)
+  const roundStatusNode = (
+    <div className="rounded-2xl border border-[#00e5ff]/35 bg-[#050d1f]/80 p-4 sm:p-6 shadow-[0_0_25px_rgba(0,229,255,0.15)]">
+      <div className="mb-4 flex items-center justify-between text-xs text-white/60">
+        <span className="font-bold text-[#FFD700] uppercase tracking-wider">
+          Round {match.currentRound} · first to {POINTS_TO_WIN} pts
+        </span>
+        <span>{roundTimeLeft}s left</span>
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        {activeTile ? (
+          <p className="text-sm font-bold text-[#00e5ff] animate-pulse">
+            Tap tile {activeTile.number}. It's glowing!
+          </p>
+        ) : fadingTile ? (
+          <p className="text-sm font-bold text-[#7cefff] animate-pulse">
+            Hurry, tile {fadingTile.number} is fading!
+          </p>
+        ) : (
+          <p className="text-sm text-white/50 animate-pulse">
+            {roundTimeLeft > 0 ? "Next tile incoming…" : "Resolving round…"}
+          </p>
+        )}
+        <p className="text-[11px] text-white/40">
+          Each tile glows for {GLOW_MS / 1000}s. Tap it while the ring is shrinking. Green = caught · Red = missed.
+        </p>
+      </div>
+      <div className="mt-2 flex justify-center">
+        <EmotePicker
+          compact
+          hideBubbles
+          incomingEmote={incomingEmote}
+          myEmote={myEmote}
+          onSend={(emote) => sendEmote(emote)}
+        />
+      </div>
+      <AnimatePresence>
+        {lastQuality && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.7 }}
+            className="fixed inset-x-0 top-24 z-40 flex justify-center pointer-events-none"
+          >
+            <span
+              className={`rounded-full border px-5 py-2 text-lg font-black tracking-widest shadow-lg ${
+                FLASH_LABEL[lastQuality.quality]?.cls || "text-white border-white/40 bg-black/60"
+              }`}
+            >
+              {lastQuality.quality === "missed"
+                ? lastQuality.text || "MISSED"
+                : `TILE ${lastQuality.ball} · ${FLASH_LABEL[lastQuality.quality].text}`}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
+  // Keno board — the main play visual. Tiles are FLUID here so the
+  // board fills the creator frame; the normal page keeps its fixed
+  // tile sizes.
+  const boardNode = (
+    <div className="rounded-2xl border border-[#00e5ff]/35 bg-[#050d1f]/70 p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-[#7cefff]">
+          <span className="inline-flex items-center gap-1.5"><PoolBallIcon size={16} className="text-[#00e5ff]" /> Keno Board 1–{KENO_POOL_SIZE}</span>
+        </h3>
+        <span className="text-xs text-white/50">
+          {drawnNumbers.size} / {BALL_COUNT} drawn
+          {oppRevealedNumbers.size > 0 && (
+            <span className="ml-2 text-[#FFD700]/80">
+              · {oppRevealedNumbers.size} opponent caught
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="grid grid-cols-5 sm:grid-cols-8 gap-2 sm:gap-2.5 justify-items-center">
+        {Array.from({ length: KENO_POOL_SIZE }, (_, i) => i + 1).map((num) => {
+          const ball = schedule.find((b) => b.number === num);
+          const released = ball && serverNow >= ball.releaseMs;
+          const isActive = activeTile?.number === num;
+          const inGraceTail =
+            ball && serverNow >= ball.expiresMs && serverNow < ball.acceptedUntilMs;
+          const caught = caughtNumbers.has(num);
+          const oppCaught = oppRevealedNumbers.has(num);
+          const missed = missedTiles.has(num);
+          let cls = "bg-[#020617] border border-[#00e5ff]/20 text-white/35 cursor-default";
+          if (caught)
+            cls = "bg-[#00ffa6] text-[#001933] scale-105 ring-2 ring-[#00ffa6]/70 shadow-[0_0_18px_rgba(0,255,166,0.9)] animate-pulse";
+          else if (isActive)
+            cls = "bg-[#00e5ff] text-[#001933] border-[#00e5ff] scale-110 shadow-[0_0_20px_rgba(0,229,255,0.8)] cursor-pointer animate-pulse";
+          else if (inGraceTail)
+            cls = "bg-[#00e5ff]/25 text-[#7cefff] border-[#00e5ff]/50 cursor-pointer";
+          else if (oppCaught)
+            cls = "bg-[#FFD700]/25 text-[#FFD700] border border-[#FFD700]/50";
+          else if (missed)
+            cls = "bg-red-500/25 text-red-400 border border-red-500/60";
+          else if (released)
+            cls = "bg-[#0a1a3a] border-[#00e5ff]/25 text-white/50 cursor-pointer";
+          return (
+            <button
+              key={num}
+              disabled={!released || caught || missed}
+              onClick={() => released && doCatch(num)}
+              className={`relative w-full aspect-square flex items-center justify-center rounded-lg text-sm font-bold transition-all duration-200 touch-manipulation select-none active:scale-90 ${cls}`}
+            >
+              {num}
+              {isActive && ball && (
+                <motion.span
+                  key={`glow-ring-${num}`}
+                  initial={{ scale: 1, opacity: 1 }}
+                  animate={{ scale: 0.55, opacity: 0 }}
+                  transition={{
+                    duration: Math.max(0.05, (ball.expiresMs - serverNow) / 1000),
+                    ease: "linear",
+                  }}
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-lg border-2 border-white/80 pointer-events-none"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {/* Inline points table — live highlight on the current tier */}
+      <div className="mt-4 border-t border-[#00e5ff]/20 pt-3">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-white/40">
+            Points: tiles caught → score
+          </h4>
+          <span className="text-[11px] font-semibold text-[#00ffa6]">
+            {myStats.caught} caught · {myStats.score} pts
+          </span>
+        </div>
+        <div className="grid grid-cols-5 gap-1.5">
+          {POINTS_TABLE.map(([caught, pts]) => {
+            const isCurrent = caught === myStats.caught;
+            return (
+              <div
+                key={caught}
+                className={`rounded-md border px-1 py-1 text-center transition-colors ${
+                  isCurrent
+                    ? "border-[#00ffa6]/80 bg-[#00ffa6]/15 shadow-[0_0_10px_rgba(0,255,166,0.35)]"
+                    : "border-[#00e5ff]/20 bg-[#0b224f]/60"
+                }`}
+              >
+                <div className={`text-[10px] font-bold ${isCurrent ? "text-[#00ffa6]" : "text-[#FFD700]"}`}>
+                  {caught}
+                </div>
+                <div className={`text-[11px] font-black ${isCurrent ? "text-white" : "text-[#00ffa6]"}`}>
+                  {pts}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {oppRevealedNumbers.size > 0 && (
+        <p className="mt-3 text-[11px] text-white/40">
+          <span className="text-[#FFD700]">Gold</span> = numbers the opponent caught in
+          resolved rounds. Their live ticket stays hidden until each round ends.
+        </p>
+      )}
+    </div>
+  );
+
+  // Tickets
+  const ticketsNode = (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="rounded-2xl border border-[#00ffa6]/30 bg-[#050d1f]/70 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-[#00ffa6]">
+            {me === "player1" ? "Your ticket" : p1Name + "'s ticket"}
+            {me === "player1" ? " (You)" : ""}
+          </h3>
+          <span className="text-xs text-white/60">{myStats.score} pts</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {(match.myCatches || []).length === 0 && (
+            <p className="text-xs text-white/40">Catch some tiles!</p>
+          )}
+          {(match.myCatches || []).map((c) => (
+            <span
+              key={c.number}
+              className="px-2.5 py-1 rounded-lg border text-sm font-bold bg-[#00ffa6]/15 text-[#00ffa6] border-[#00ffa6]/50"
+            >
+              {c.number}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-2xl border border-[#FFD700]/30 bg-[#050d1f]/70 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-[#FFD700]">
+            {me === "player2" ? "Your ticket" : p2Name + "'s ticket"}
+            {me === "player2" ? " (You)" : ""}
+          </h3>
+          <span className="text-xs text-white/60">
+            {me === "player2" ? `${myStats.score} pts` : `${match.opponentCatchCount} caught`}
+          </span>
+        </div>
+        <p className="text-xs text-white/40">
+          {me === "player2"
+            ? "Catch some balls!"
+            : `Opponent has caught ${match.opponentCatchCount} ball${match.opponentCatchCount === 1 ? "" : "s"} so far…`}
+        </p>
+      </div>
+    </div>
+  );
+
+  // Leave control (live match)
+  const leaveNode = !isFinished && !isCancelled && !isWaiting ? (
+    <div className="flex justify-center">
+      <button
+        onClick={goToLobby}
+        disabled={leaving}
+        className="px-4 py-2 rounded-lg text-xs text-white/50 border border-white/15 hover:text-white hover:border-white/40 transition disabled:opacity-50"
+      >
+        {leaving ? "Leaving…" : "Leave match (forfeit)"}
+      </button>
+    </div>
+  ) : null;
+
+  // Compact header for the creator frames
+  const compactHeaderNode = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <PoolBallIcon size={18} className="shrink-0 text-[#00e5ff]" />
+          <h1 className="truncate text-base font-extrabold tracking-tight text-cyan-100">
+            Keno Catch Duel
+          </h1>
+          <button
+            onClick={() => setShowRules(true)}
+            className="h-6 w-6 shrink-0 rounded-full border border-[#00e5ff]/40 bg-[#0b224f]/70 text-xs font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white"
+            aria-label="How to play"
+            title="How to play"
+          >
+            ?
+          </button>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
+          <span className="inline-flex items-center gap-1 rounded-full border border-[#00ffa6]/40 bg-[#00ffa6]/15 px-2 py-0.5 text-[#00ffa6]">
+            You {myPts}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-[#FFD700]/40 bg-[#FFD700]/15 px-2 py-0.5 text-[#FFD700]">
+            {oppName} {oppPts}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+        <span className="truncate text-cyan-200">
+          {isRound
+            ? `Round ${match.currentRound} · first to ${POINTS_TO_WIN} pts`
+            : isOvertime
+              ? "Overtime — most tiles wins"
+              : "Match"}
+        </span>
+        <span className="shrink-0 text-white/50">
+          {isRound ? `${roundTimeLeft}s left` : `Stake ${Number(match.stakeAmount).toLocaleString()}`}
+        </span>
+      </div>
+    </>
+  );
+
+  // Portrait (9:16) — phone-style: compact header, board filling the
+  // middle, status/controls pinned below.
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        {compactHeaderNode}
+      </ShellHeader>
+      <ShellMain className="flex-col overflow-hidden">
+        <div className="flex h-full w-full flex-col items-center justify-center px-3 py-2">
+          <KenoBoardStage>
+            {boardNode}
+          </KenoBoardStage>
+        </div>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {roundStatusNode}
+        {ticketsNode}
+        {leaveNode}
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
+  // Landscape (16:9) / square (1:1) — board fills the height with the
+  // status/controls in a right rail.
+  const landscapeContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellMain className="overflow-hidden">
+        <div className="flex h-full w-full flex-col items-center justify-center p-4">
+          <KenoBoardStage>
+            {boardNode}
+          </KenoBoardStage>
+        </div>
+      </ShellMain>
+      <ShellAside className="space-y-2">
+        {roundStatusNode}
+        {ticketsNode}
+        {leaveNode}
+      </ShellAside>
+    </CreatorModeShell>
+  );
+
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -584,9 +922,12 @@ export default function KenoPvpMatchPage({ params }) {
         autoStart={isRound}
         autoStop={isFinished || isCancelled}
         gameLabel="keno"
+        backToLobbyHref="/casino/keno"
       >
-      <CreatorResponsiveLayout>
-      <div className="mx-auto mt-4 max-w-5xl">
+      <CreatorView
+        normal={
+          <>
+            <div className="mx-auto mt-4 max-w-5xl">
         {/* Header + scoreboard */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -971,8 +1312,12 @@ export default function KenoPvpMatchPage({ params }) {
         )}
 
         <Footer />
-      </div>
-      </CreatorResponsiveLayout>
+            </div>
+          </>
+        }
+        portrait={portraitContent}
+        landscape={landscapeContent}
+      />
       </CreatorModeHost>
     </div>
     </>

@@ -41,6 +41,7 @@ import {
 } from "../../../../../lib/gameAudio";
 import {
   blockCells,
+  blockWidth,
   centerXFor,
   dropRangeFor,
   CEILING_HEIGHT,
@@ -66,16 +67,6 @@ const AIM_UPDATE_EVENT = "tower_arena_aim_update";
 // How long a received aim preview stays valid without a fresh heartbeat.
 const AIM_TTL_MS = 5_000;
 
-const SHAPE_LABEL: Record<BlockShape, string> = {
-  I: "I",
-  L: "L",
-  T: "T",
-  square: "▪",
-  short: "▮",
-  long: "▬",
-  big: "█",
-};
-
 const SHAPE_NAME: Record<BlockShape, string> = {
   I: "Beam",
   L: "Spire",
@@ -98,6 +89,68 @@ const SHAPE_COLORS: Record<BlockShape, { fill: string; edge: string }> = {
   long: { fill: "#7cf29c", edge: "#c9ffe1" },    // mint slab
   big: { fill: "#ff9f43", edge: "#ffdcb0" },     // amber block
 };
+
+/**
+ * One cell of a block, drawn in the shared block visual language (rounded
+ * slab, bright top gloss, grounded bottom bevel, crisp edge in the shape's
+ * accent color). Used by the MINI BLOCK ICONS in the chooser AND by the
+ * real blocks in the tower — a block looks exactly like its icon, so the
+ * picker never misrepresents what lands. Coordinates are in the caller's
+ * own space; `size` is the cell edge length.
+ */
+function BlockCell({
+  x,
+  y,
+  fill,
+  edge,
+  size = 0.96,
+  rx = 0.1,
+  opacity = 1,
+}: {
+  x: number;
+  y: number;
+  fill: string;
+  edge: string;
+  size?: number;
+  rx?: number;
+  opacity?: number;
+}) {
+  return (
+    <g opacity={opacity}>
+      {/* Base slab in the shape color with a crisp edge. */}
+      <rect
+        x={x}
+        y={y}
+        width={size}
+        height={size}
+        rx={rx}
+        fill={fill}
+        stroke={edge}
+        strokeWidth={Math.max(0.03, size * 0.05)}
+      />
+      {/* Top gloss — light catching the upper face. */}
+      <rect
+        x={x + size * 0.1}
+        y={y + size * 0.09}
+        width={size * 0.8}
+        height={size * 0.22}
+        rx={Math.max(0.02, size * 0.08)}
+        fill="#ffffff"
+        opacity={0.32}
+      />
+      {/* Bottom bevel — grounds the cell. */}
+      <rect
+        x={x + size * 0.1}
+        y={y + size * 0.8}
+        width={size * 0.8}
+        height={size * 0.13}
+        rx={Math.max(0.02, size * 0.05)}
+        fill="#000000"
+        opacity={0.2}
+      />
+    </g>
+  );
+}
 
 // ── Types (mirror the get-match projection) ───────────────────────────
 
@@ -203,14 +256,18 @@ function TowerScene({
   impact,
   remoteAiming,
   onStageClick,
+  onAimMove,
 }: {
   tower: any[];
   ghost?: { cells: any[]; willFall: boolean; remote?: boolean; label?: string } | null;
-  falling?: { cells: any[]; extra: any[]; willFall: boolean; slideDx: number; key: number } | null;
+  falling?: { cells: any[]; extra: any[]; willFall: boolean; slideDx: number; key: number; shape: BlockShape | null } | null;
   cursor?: { shape: BlockShape; x: number; rotation: number; danger: boolean } | null;
   impact?: number;
   remoteAiming?: string | null;
   onStageClick?: () => void;
+  /** Pointer moved over the stage while aiming: reports the world X under
+   *  the pointer so the page can re-position the drop column (mouse aim). */
+  onAimMove?: (worldX: number) => void;
 }) {
   // The stage grows with the tower: floor at the bottom, SKY_CELLS of open
   // sky above the highest block (blocks spawn from the top of that band).
@@ -225,8 +282,16 @@ function TowerScene({
   const yFor = (z: number) => viewH - z; // z=0 → bottom edge, taller z → up
   const cellY = (z: number) => yFor(z + 1);
   const ceilingY = yFor(CEILING_HEIGHT + 1);
-  const X_MIN = -1.4;
-  const X_MAX = GRID_WIDTH + 1.4;
+
+  // The floating platform reads LONGER than the 16 playable columns: it
+  // overhangs past each end into the void (purely visual — drop columns
+  // stay 0..GRID_WIDTH-1, only the art extends). The stage is framed a
+  // little wider than the platform so the longer floor is fully visible.
+  const FLOOR_OVERHANG = 2.4;
+  const X_MIN = -(FLOOR_OVERHANG + 0.9);
+  const X_MAX = GRID_WIDTH + FLOOR_OVERHANG + 0.9;
+  const floorMinX = -FLOOR_OVERHANG;
+  const floorMaxX = GRID_WIDTH + FLOOR_OVERHANG;
 
   const sortedBlocks = (tower || [])
     .slice()
@@ -259,6 +324,25 @@ function TowerScene({
       : 0;
   const guideBottomZ = Math.max(2, ghostMaxZ + 1);
 
+  // Drop-animation metrics: a placed block (player OR bot) starts HIGH in
+  // the sky and visibly FALLS to its landing spot. The block's cells are
+  // final; the group is translated up by `dropDz` (and horizontally by
+  // `slideDx` — the aim→resolved slip) and animated back to its real
+  // position. The block spawns ~10 cells above its landing (or just under
+  // the top of the stage when the tower is nearly at the ceiling), so the
+  // fall is always clearly visible — never a 1-2 cell nudge.
+  const fallingCells = falling?.cells || [];
+  const fallingMinZ = fallingCells.reduce((m: number, c: any) => Math.min(m, c.z), Infinity);
+  const dropSpawnZ = Number.isFinite(fallingMinZ)
+    ? Math.min(viewH - 1.5, fallingMinZ + 10)
+    : 0;
+  const dropDz = Number.isFinite(fallingMinZ)
+    ? Math.max(0, dropSpawnZ - fallingMinZ)
+    : 0;
+  // Fall duration grows with the drop height so long falls stay watchable
+  // and short ones stay snappy (capped at ~0.9s).
+  const fallSeconds = Math.min(0.9, 0.32 + dropDz * 0.035);
+
   // y is bottom-aligned: the floor line always sits on the bottom edge of
   // the stage, no matter how the container's aspect ratio differs.
   return (
@@ -269,9 +353,22 @@ function TowerScene({
     >
       <svg
         viewBox={`${X_MIN} 0 ${X_MAX - X_MIN} ${viewH}`}
-        className={onStageClick ? "h-full w-full cursor-pointer select-none" : "h-full w-full select-none"}
+        className={
+          onStageClick || onAimMove
+            ? "h-full w-full cursor-pointer select-none touch-none"
+            : "h-full w-full select-none"
+        }
         preserveAspectRatio="xMidYMax meet"
         onClick={onStageClick}
+        onPointerMove={(e) => {
+          if (!onAimMove) return;
+          const ctm = e.currentTarget.getScreenCTM?.();
+          if (!ctm) return;
+          // Convert the pointer's screen position into the SVG's world
+          // coordinates (handles the preserveAspectRatio letterboxing).
+          const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+          onAimMove(pt.x);
+        }}
       >
       <defs>
         <linearGradient id="ta-sky" x1="0" y1="0" x2="0" y2="1">
@@ -305,38 +402,34 @@ function TowerScene({
       ))}
 
       {/* Hard ceiling: a placement whose top crosses this line eliminates
-          the player, while every block below it remains fixed. Drawn bright
-          and layered so it always reads against the sky — the game is
-          decided at this line. */}
+          the player, while every block below it remains fixed. Drawn as one
+          clear, bright line spanning the whole stage — no label clutter,
+          just a wide soft glow with a solid amber core so it always reads
+          against the sky. The game is decided at this line. */}
       <line
-        x1={0}
+        x1={X_MIN + 0.2}
         y1={ceilingY}
-        x2={GRID_WIDTH}
+        x2={X_MAX - 0.2}
         y2={ceilingY}
-        stroke="rgba(255,207,90,0.28)"
-        strokeWidth={0.34}
+        stroke="rgba(255,207,90,0.16)"
+        strokeWidth={0.7}
       />
       <line
-        x1={0}
+        x1={X_MIN + 0.2}
         y1={ceilingY}
-        x2={GRID_WIDTH}
+        x2={X_MAX - 0.2}
         y2={ceilingY}
-        stroke="#ffcf5a"
-        strokeWidth={0.11}
-        strokeDasharray="0.3 0.16"
-        opacity={0.95}
+        stroke="rgba(255,207,90,0.45)"
+        strokeWidth={0.26}
       />
-      <text
-        x={X_MAX - 0.15}
-        y={ceilingY + 0.18}
-        fontSize={0.4}
-        fill="#ffcf5a"
-        fontWeight={900}
-        letterSpacing={0.03}
-        textAnchor="end"
-      >
-        CEILING
-      </text>
+      <line
+        x1={X_MIN + 0.2}
+        y1={ceilingY}
+        x2={X_MAX - 0.2}
+        y2={ceilingY}
+        stroke="#ffd873"
+        strokeWidth={0.12}
+      />
 
       {/* Column guide lines over the floor span */}
       {Array.from({ length: GRID_WIDTH + 1 }, (_, i) => (
@@ -351,79 +444,70 @@ function TowerScene({
         />
       ))}
 
-      {/* The floor line (z 0..1) — a thin platform pinned to the bottom of
-          the stage; the bright top edge reads as THE LINE blocks stand on */}
+      {/* The floor — a long floating platform pinned to the bottom of the
+          stage. It deliberately overhangs past the playable columns on
+          both sides (floorMinX..floorMaxX is wider than 0..GRID_WIDTH) so
+          the board reads LONGER horizontally; the bright top edge is THE
+          LINE blocks stand on. Landing columns are unchanged. */}
       <rect
-        x={0}
+        x={floorMinX}
         y={yFor(1)}
-        width={GRID_WIDTH}
+        width={floorMaxX - floorMinX}
         height={1}
         fill="url(#ta-platform)"
         stroke="rgba(94,234,212,0.85)"
-        strokeWidth={0.06}
-        rx={0.08}
+        strokeWidth={0.07}
+        rx={0.12}
       />
+      {/* Bright top edge running the full platform length */}
       <line
-        x1={0}
+        x1={floorMinX}
         y1={yFor(1)}
-        x2={GRID_WIDTH}
+        x2={floorMaxX}
         y2={yFor(1)}
         stroke="#9dfff0"
-        strokeWidth={0.1}
-        opacity={0.95}
+        strokeWidth={0.13}
+        opacity={0.98}
       />
+      {/* Subtle top gloss strip along the platform */}
+      <line
+        x1={floorMinX + 0.12}
+        y1={yFor(1.06)}
+        x2={floorMaxX - 0.12}
+        y2={yFor(1.06)}
+        stroke="rgba(255,255,255,0.18)"
+        strokeWidth={0.05}
+      />
+      {/* Tile separators over the playable span only (0..GRID_WIDTH) */}
       {Array.from({ length: GRID_WIDTH - 1 }, (_, i) => (
         <line
           key={`t${i}`}
           x1={i + 1}
-          y1={yFor(1.04)}
+          y1={yFor(1.05)}
           x2={i + 1}
-          y2={yFor(0.96)}
+          y2={yFor(0.95)}
           stroke="rgba(1,22,30,0.7)"
           strokeWidth={0.05}
         />
       ))}
-      {/* Cliff edge glow where the platform meets the void below */}
-      <line x1={0} y1={yFor(1.05)} x2={0} y2={yFor(1.8)} stroke="rgba(94,234,212,0.2)" strokeWidth={0.05} />
-      <line x1={GRID_WIDTH} y1={yFor(1.05)} x2={GRID_WIDTH} y2={yFor(1.8)} stroke="rgba(94,234,212,0.2)" strokeWidth={0.05} />
+      {/* Cliff edge glow where the platform overhangs the void below */}
+      <line x1={floorMinX} y1={yFor(1.05)} x2={floorMinX} y2={yFor(1.9)} stroke="rgba(94,234,212,0.22)" strokeWidth={0.06} />
+      <line x1={floorMaxX} y1={yFor(1.05)} x2={floorMaxX} y2={yFor(1.9)} stroke="rgba(94,234,212,0.22)" strokeWidth={0.06} />
 
-      {/* Tower blocks (oldest first so newer blocks paint above) */}
+      {/* Tower blocks (oldest first so newer blocks paint above) — every
+          cell drawn with the shared BlockCell look so each landed block
+          matches its chooser icon exactly. */}
       {sortedBlocks.map((b) => {
         const style = SHAPE_COLORS[b.shape as BlockShape] ?? SHAPE_COLORS.short;
         return (b.cells || []).map((c: any) => (
-          <g key={`${b.id}-${c.x}:${c.z}`}>
-            <rect
-              x={c.x + 0.02}
-              y={cellY(c.z) + 0.02}
-              width={0.96}
-              height={0.96}
-              fill={style.fill}
-              opacity={0.97}
-              stroke={style.edge}
-              strokeWidth={0.05}
-              rx={0.09}
-            />
-            {/* Top gloss — the light edge of each cell */}
-            <rect
-              x={c.x + 0.11}
-              y={cellY(c.z) + 0.11}
-              width={0.78}
-              height={0.22}
-              rx={0.08}
-              fill="#ffffff"
-              opacity={0.22}
-            />
-            {/* Bottom bevel — grounds each cell */}
-            <rect
-              x={c.x + 0.11}
-              y={cellY(c.z) + 0.79}
-              width={0.78}
-              height={0.13}
-              rx={0.05}
-              fill="#000000"
-              opacity={0.18}
-            />
-          </g>
+          <BlockCell
+            key={`${b.id}-${c.x}:${c.z}`}
+            x={c.x + 0.02}
+            y={cellY(c.z) + 0.02}
+            size={0.96}
+            fill={style.fill}
+            edge={style.edge}
+          />
         ));
       })}
 
@@ -514,11 +598,11 @@ function TowerScene({
         </g>
       )}
 
-      {/* Pop-in animation — the block no longer falls from the sky; it
-          appears with a springy pop right where it lands. A stable drop pops
-          in and stays (the tower block is revealed beneath it); a doomed
-          drop pops in red above the ceiling, holds, then fades. Blocks
-          shocked off the tower (extra) tumble in place and vanish. */}
+      {/* Drop animation — the placed block (player or bot) falls from the
+          sky band onto its landing spot. A stable drop falls and settles
+          (the tower block is revealed beneath it); a doomed drop falls in
+          red above the ceiling, holds, then fades. Blocks shocked off the
+          tower (extra) tumble off at the moment of impact and vanish. */}
       {falling && (
         <>
           {falling.extra.length > 0 && (
@@ -526,65 +610,78 @@ function TowerScene({
               key={`shock-${falling.key}`}
               initial={{ y: 0, opacity: 1 }}
               animate={{ y: 3.4, opacity: 0 }}
-              transition={{ delay: 0.35, duration: 0.5, ease: "easeIn" }}
+              transition={{ delay: Math.min(0.85, fallSeconds + 0.05), duration: 0.55, ease: "easeIn" }}
             >
+              {/* Shed pieces (shocked off by the impact) tumble and fade. */}
               {(falling.extra || []).map((c: any, i: number) => (
-                <rect
+                <BlockCell
                   key={i}
-                  x={c.x + 0.03}
-                  y={cellY(c.z) + 0.03}
-                  width={0.94}
-                  height={0.94}
+                  x={c.x + 0.02}
+                  y={cellY(c.z) + 0.02}
+                  size={0.96}
                   fill="#ff9f43"
-                  opacity={0.9}
-                  stroke="rgba(255,255,255,0.5)"
-                  strokeWidth={0.04}
-                  rx={0.06}
+                  edge="#ffdcb0"
                 />
               ))}
             </motion.g>
           )}
           <motion.g
-            key={`pop-${falling.key}`}
-            initial={{ scale: 0.2, opacity: 0 }}
+            key={`drop-${falling.key}`}
+            initial={{ x: falling.slideDx || 0, y: -dropDz, opacity: 0.95 }}
             animate={
               falling.willFall
-                ? { scale: 1, opacity: [1, 1, 0], y: 0 }
-                : { scale: 1, opacity: 1, y: 0 }
+                ? { x: 0, y: 0, opacity: [0.95, 1, 1, 0] }
+                : { x: 0, y: 0, opacity: 1 }
             }
             transition={
               falling.willFall
                 ? {
-                    scale: { type: "spring", stiffness: 620, damping: 20 },
-                    opacity: { duration: 1.05, times: [0, 0.68, 1], ease: "easeIn" },
+                    // A doomed drop falls the FULL height in red, pauses a
+                    // beat at the breach line, then fades out (the crash
+                    // banner + shed tumble land at the same moment).
+                    x: { duration: fallSeconds, ease: "easeIn" },
+                    y: { duration: fallSeconds, ease: "easeIn" },
+                    opacity: { duration: 0.45, delay: fallSeconds + 0.12, ease: "easeIn" },
                   }
                 : {
-                    scale: { type: "spring", stiffness: 460, damping: 14 },
-                    opacity: { duration: 0.1 },
+                    // Gravity-style accelerated fall for the whole drop
+                    // height, landing exactly on the support.
+                    x: { duration: fallSeconds, ease: "easeIn" },
+                    y: { duration: fallSeconds, ease: "easeIn" },
+                    opacity: { duration: 0.12 },
                   }
             }
-            style={{ transformBox: "fill-box", transformOrigin: "center" }}
           >
+            {/* The dropped block FALLS from the sky band down onto its
+                landing spot wearing its REAL shape colors (red when the
+                drop breaches the ceiling) — identical to the icon and the
+                block left in the tower. */}
             {(falling.cells || []).map((c: any, i: number) => (
-              <rect
+              <BlockCell
                 key={i}
-                x={c.x + 0.03}
-                y={cellY(c.z) + 0.03}
-                width={0.94}
-                height={0.94}
-                fill={falling.willFall ? "#ff4d6d" : "#a7f3d0"}
-                opacity={0.94}
-                stroke="rgba(255,255,255,0.65)"
-                strokeWidth={0.04}
-                rx={0.06}
+                x={c.x + 0.02}
+                y={cellY(c.z) + 0.02}
+                size={0.96}
+                fill={
+                  falling.willFall
+                    ? "#ff4d6d"
+                    : SHAPE_COLORS[falling.shape as BlockShape]?.fill ?? "#a7f3d0"
+                }
+                edge={
+                  falling.willFall
+                    ? "#ff8fa3"
+                    : SHAPE_COLORS[falling.shape as BlockShape]?.edge ?? "#ffffff"
+                }
               />
             ))}
           </motion.g>
         </>
       )}
 
-      {/* Aim cursor at the top of the stage + drop guide line (fruit-merge
-          feel): move left/right, R rotates, click/Enter drops from here. */}
+      {/* Aim cursor at the top of the stage + drop guide line: it follows
+          the mouse over the board (or ◀ ▶ / A-D), R rotates, click/Enter
+          drops from here. Rendered in the selected block's own shape color
+          so the hover preview already shows what will land. */}
       {cursorCells.length > 0 && (
         <>
           <line
@@ -597,17 +694,22 @@ function TowerScene({
             strokeDasharray="0.18 0.18"
           />
           {cursorCells.map((c: any, i: number) => (
-            <rect
+            <BlockCell
               key={`cur${i}`}
-              x={c.x + 0.03}
-              y={cellY(c.z) + 0.03}
-              width={0.94}
-              height={0.94}
-              fill={cursor?.danger ? "#ff4d6d" : "#67e8f9"}
-              opacity={0.75}
-              stroke="#ffffff"
-              strokeWidth={0.05}
-              rx={0.08}
+              x={c.x + 0.02}
+              y={cellY(c.z) + 0.02}
+              size={0.96}
+              fill={
+                cursor?.danger
+                  ? "#ff4d6d"
+                  : SHAPE_COLORS[cursor.shape as BlockShape]?.fill ?? "#67e8f9"
+              }
+              edge={
+                cursor?.danger
+                  ? "#ff8fa3"
+                  : SHAPE_COLORS[cursor.shape as BlockShape]?.edge ?? "#ffffff"
+              }
+              opacity={0.85}
             />
           ))}
         </>
@@ -665,6 +767,7 @@ export default function TowerArenaMatchPage() {
     willFall: boolean;
     slideDx: number; // aim column → resolved column (the slippery slip)
     key: number;
+    shape: BlockShape | null; // dropped block's shape (for its real colors)
   } | null>(null);
   // Bump to play the impact shake on the stage when a drop lands (contact).
   const [impactKey, setImpactKey] = useState(0);
@@ -674,6 +777,10 @@ export default function TowerArenaMatchPage() {
   // blockId of the drop this client animated optimistically at submit time;
   // used to skip re-animating it when the authoritative refresh arrives.
   const ownAnimBlockId = useRef<string | null>(null);
+  // blockId of the last remote placement this client animated. Overlapping
+  // refreshes (socket push + poll + the submit's own refetch can race) would
+  // otherwise re-animate the same entry and restart its fall mid-way.
+  const lastAnimatedBlockId = useRef<string | null>(null);
   const fallingKey = useRef(0);
   const fallTimer = useRef<number | null>(null);
   const bannerTimer = useRef<number | null>(null);
@@ -715,14 +822,21 @@ export default function TowerArenaMatchPage() {
     const willFall = Boolean(entry.collapsed);
     setHiddenBlockIds(willFall ? (entry.removedBlockIds || [entry.blockId]).slice() : [entry.blockId]);
     fallingKey.current += 1;
-    setFallingBlock({ cells, extra, willFall, slideDx, key: fallingKey.current });
+    setFallingBlock({
+      cells,
+      extra,
+      willFall,
+      slideDx,
+      key: fallingKey.current,
+      shape: BLOCK_SHAPES.includes(entry.shape) ? entry.shape : null,
+    });
     if (fallTimer.current) window.clearTimeout(fallTimer.current);
     fallTimer.current = window.setTimeout(() => {
       setFallingBlock(null);
       setHiddenBlockIds([]);
       // Contact + shock: the stage shakes when the drop (or collapse) lands.
       setImpactKey((k) => k + 1);
-    }, willFall ? 1150 : 700);
+    }, willFall ? 1650 : 1200);
   };
 
   const load = async () => {
@@ -755,11 +869,13 @@ export default function TowerArenaMatchPage() {
           if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
           bannerTimer.current = window.setTimeout(() => setCollapseBanner(null), 3200);
         }
-        // Animate EVERY drop with the pop — bots' and other players' blocks
-        // included — skipping the one we already animated at submit time.
-        if (last && last.blockId !== ownAnimBlockId.current) {
+        // Animate EVERY drop — bots' and other players' blocks included —
+        // skipping the one we already animated optimistically at submit time
+        // and any entry a racing refresh already animated.
+        if (last && last.blockId !== ownAnimBlockId.current && last.blockId !== lastAnimatedBlockId.current) {
           animateDrop(last);
-        } else if (last) {
+          lastAnimatedBlockId.current = last.blockId;
+        } else if (last && last.blockId === ownAnimBlockId.current) {
           ownAnimBlockId.current = null;
         }
       }
@@ -1188,6 +1304,31 @@ export default function TowerArenaMatchPage() {
     }
   };
 
+  // Creator Mode "Stop & save": the creator manually ended the capture
+  // (grynd:creator-manual-stop, dispatched only by the Stop & Save button)
+  // — pause the free-play match so the tower and turn timer freeze while
+  // they review the clip. Best effort: the pause API is human-vs-AI only,
+  // so PvP matches are unaffected.
+  useEffect(() => {
+    const onManualStop = () => {
+      if (pauseBusy || !match?.isAi || !isActive || isPaused) return;
+      setPauseBusy(true);
+      fetch("/api/tower-arena/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId, paused: true }),
+      })
+        .catch(() => {})
+        .finally(() => {
+          setPauseBusy(false);
+          loadRef.current();
+        });
+    };
+    window.addEventListener("grynd:creator-manual-stop", onManualStop);
+    return () => window.removeEventListener("grynd:creator-manual-stop", onManualStop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId, match?.isAi, isActive, isPaused, pauseBusy]);
+
   // ── Handlers ─────────────────────────────────────────────────────
 
   const clampX = (shape: BlockShape, rot: number, x: number) => {
@@ -1230,6 +1371,18 @@ export default function TowerArenaMatchPage() {
     const nx = clampX(selectedShape, rotation, positionX + dir);
     setPositionX(nx);
     emitAim(selectedShape, nx, rotation);
+  };
+
+  // Mouse aim: while a block is selected, moving the mouse over the board
+  // re-positions the drop column — the block is centered under the pointer
+  // (clamped to the valid drop range), so aiming is purely "hover where you
+  // want it, click to drop". Opponents still see the live aim via the
+  // 1.5s heartbeat, so no socket traffic is sent per mouse move.
+  const aimMove = (worldX: number) => {
+    if (!isMyTurn || !selectedShape || placing) return;
+    const width = blockWidth(selectedShape, rotation);
+    const nx = clampX(selectedShape, rotation, Math.round(worldX - width / 2));
+    setPositionX(nx);
   };
 
   // Core submit — takes explicit shape/rotation/x so the server resolves the
@@ -1285,14 +1438,21 @@ export default function TowerArenaMatchPage() {
     ownAnimBlockId.current = blockId;
     setHiddenBlockIds(willFall ? out.removedBlockIds.slice() : [blockId]);
     fallingKey.current += 1;
-    setFallingBlock({ cells, extra, willFall, slideDx: positionX - out.finalX, key: fallingKey.current });
+    setFallingBlock({
+      cells,
+      extra,
+      willFall,
+      slideDx: positionX - out.finalX,
+      key: fallingKey.current,
+      shape: selectedShape,
+    });
     if (fallTimer.current) window.clearTimeout(fallTimer.current);
     fallTimer.current = window.setTimeout(() => {
       setFallingBlock(null);
       setHiddenBlockIds([]);
       // The landing (or collapse) hits the tower — contact shock.
       setImpactKey((k) => k + 1);
-    }, willFall ? 1150 : 700);
+    }, willFall ? 1650 : 1200);
     await place(selectedShape, positionX, rotation);
   };
 
@@ -1571,22 +1731,28 @@ export default function TowerArenaMatchPage() {
   // ── Live board ───────────────────────────────────────────────────
   const turnHolder = players.find((p) => p.userId === match?.currentTurnPlayerId);
   const currentTurnName = me?.userId === turnHolder?.userId ? "You" : (turnHolder?.name ?? "…");
-  // Tower stage: stable 2D stack, aim cursor at the top (click the
-  // stage to drop), ghost preview + drop/shock animation.
+  // Tower stage: stable 2D stack, aim cursor follows the mouse over the
+  // board (click the stage to drop), ghost preview + drop/shock animation.
   const aiming = Boolean(isMyTurn && selectedShape);
-  const towerInnerNode = (
-    // Fixed-height stage: the floor line renders pinned to its bottom edge.
+  // Tower stage: one node, two sizing modes. `fillHeight` (creator
+  // portrait/landscape frames) grows the stage to fill every spare pixel
+  // of the shell so the game reads big and phone-like; the default mode
+  // (normal desktop/mobile page) keeps a fixed comfortable height.
+  const towerStageNode = (fillHeight = false) => (
     <div
-      className="relative flex h-[460px] items-center justify-center overflow-hidden rounded-xl sm:h-[540px]"
+      className={`relative flex items-center justify-center overflow-hidden rounded-xl ${
+        fillHeight ? "min-h-0 flex-1" : "h-[min(56vh,520px)] min-h-[380px] sm:h-[480px]"
+      }`}
       style={{
         background:
           "radial-gradient(circle at 50% 95%, rgba(45,212,191,0.08), transparent 60%), linear-gradient(#070916, #010205)",
       }}
     >
-      {/* The svg fills the stage exactly (h-full) and is width-capped so the
-          small floor line never spans the whole screen. Clicking the stage
-          drops the aimed block from where the cursor sits (fruit-merge). */}
-      <div className="mx-auto h-full w-full max-w-[700px]">
+      {/* The svg fills the stage exactly (h-full); the width cap only
+          applies in the fixed-height (non-fill) mode so the floor line
+          never spans a huge desktop card. Clicking/tapping the stage drops
+          the aimed block from where the cursor sits (fruit-merge). */}
+      <div className={`mx-auto h-full w-full ${fillHeight ? "" : "max-w-[700px]"}`}>
         <TowerScene
           tower={(match?.towerState || []).filter((b: any) => !hiddenBlockIds.includes(b.id))}
           ghost={isMyTurn ? ghostBlock : remoteGhost}
@@ -1595,14 +1761,14 @@ export default function TowerArenaMatchPage() {
           impact={impactKey}
           remoteAiming={remoteGhost ? null : humanOpponentAiming}
           onStageClick={aiming ? () => void drop() : undefined}
+          onAimMove={aiming ? aimMove : undefined}
         />
       </div>
       {/* Aim hint strip (own placement turn only) */}
       {aiming && (
         <div className="pointer-events-none absolute left-0 right-0 top-2 flex justify-center">
           <p className="rounded-full border border-cyan-400/30 bg-black/60 px-3 py-1 text-[11px] font-bold text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.25)]">
-            ◀ ▶ aim · <span className="font-black">R</span> rotate · click /
-            <span className="font-black">↵</span> to drop
+            move over the board to aim · <span className="font-black">R</span> rotate · tap to drop
           </p>
         </div>
       )}
@@ -1650,30 +1816,33 @@ export default function TowerArenaMatchPage() {
     </div>
   );
 
-  // Turn controls: placement controls or the "opponent dropping" commentary.
-  const turnControlsNode = (
-    <>
-      {isMyTurn && (
-        <PlacementControls
-          selectedShape={selectedShape}
-          shapeCounts={shapeCounts}
-          poolTotal={poolTotal}
-          rotation={rotation}
-          positionX={positionX}
-          onSelect={selectShape}
-          onRotate={rotate}
-          onNudge={nudgeX}
-          onDrop={drop}
-          placing={placing}
-        />
-      )}
-      {isActive && !isMyTurn && (
-        <p className="mt-4 text-center text-sm text-white/60">
-          {currentTurnName} is dropping… {!turnHolder?.isAi && turnHolder?.userId !== me?.userId ? "(watch the tower — every block changes the balance)" : ""}
-        </p>
-      )}
-    </>
-  );
+  // Turn controls: the block panel is ALWAYS shown during a live match, so
+  // every player can keep reading the shared pool (block icons + remaining
+  // counts + total). While it is not your turn the panel is simply disabled
+  // — nothing is clickable, and the current dropper's name is shown inside
+  // the panel instead of the aim controls.
+  const turnControlsNode = isActive ? (
+    <PlacementControls
+      selectedShape={selectedShape}
+      shapeCounts={shapeCounts}
+      poolTotal={poolTotal}
+      rotation={rotation}
+      positionX={positionX}
+      onSelect={selectShape}
+      onRotate={rotate}
+      onNudge={nudgeX}
+      onDrop={drop}
+      placing={placing}
+      disabled={!isMyTurn}
+      statusText={
+        isPaused
+          ? "Match paused — the pool is frozen."
+          : !isMyTurn
+            ? `${currentTurnName} is dropping…`
+            : null
+      }
+    />
+  ) : null;
 
   // Top bar (status strip).
   const topBarNode = (
@@ -1790,17 +1959,85 @@ export default function TowerArenaMatchPage() {
     </div>
   );
 
-  // Desktop / landscape / square game body.
+  // Desktop / landscape / square game body. The block picker lives in the
+  // RIGHT column beside the gameboard so it is always on screen (no more
+  // scrolling down to click a block), and the Players panel sits BELOW the
+  // board where the picker used to be. Grid auto-placement puts the picker
+  // in row 1 col 2 and the leaderboard in row 2 col 1 (under the tower);
+  // on small screens they stack board → blocks → players.
   const pageBody = (
     <div>
       {topBarNode}
-      {/* Body: tower center + leaderboard right (desktop), stacked mobile */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_290px]">
+      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
         <div className="rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
-          {towerInnerNode}
-          {turnControlsNode}
+          {towerStageNode(false)}
         </div>
+        <div>{turnControlsNode}</div>
         <div>{leaderboardNode}</div>
+      </div>
+    </div>
+  );
+
+  // Compact mobile-style players strip for the portrait (phone) frame —
+  // players scroll horizontally so the bottom controls stay compact and
+  // thumb-reachable. Same data as the full leaderboard; purely visual.
+  const compactPlayersNode = (
+    <div className="rounded-xl border border-cyan-800 bg-black/40 px-3 py-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-300">
+          <IconTrophy className="h-3.5 w-3.5" /> Players
+        </h2>
+        <span className="shrink-0 text-[10px] font-semibold text-white/50">
+          {activePlayers.length} / {match?.maxPlayers} in game
+        </span>
+        {iAmEliminated ? (
+          <button
+            onClick={backToLobby}
+            className="shrink-0 rounded-lg border border-cyan-400/60 bg-cyan-500/20 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-cyan-100 transition hover:bg-cyan-500/30"
+          >
+            Return
+          </button>
+        ) : (
+          <button
+            onClick={resign}
+            disabled={resignBusy || !isActive}
+            className="shrink-0 rounded-lg border border-red-500/40 bg-red-500/15 px-2.5 py-1 text-[10px] font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+          >
+            {resignBusy ? "…" : "Resign"}
+          </button>
+        )}
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {players
+          .slice()
+          .sort((a, b) => a.seat - b.seat)
+          .map((p) => {
+            const eliminated = p.status === "eliminated";
+            const isTurn = isActive && p.userId === match?.currentTurnPlayerId;
+            return (
+              <div
+                key={p.userId}
+                className={`flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1 ${
+                  eliminated
+                    ? "border-white/10 bg-black/30 opacity-60"
+                    : isTurn
+                      ? "border-cyan-500/60 bg-cyan-500/10"
+                      : "border-white/10 bg-white/[0.03]"
+                }`}
+              >
+                <IconAvatar iconKey={p.iconKey} name={p.name} size="h-6 w-6" />
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-bold">
+                    {p.name}
+                    {p.userId === me?.userId ? " (you)" : ""}
+                  </p>
+                  <p className="text-[9px] uppercase tracking-wider text-white/50">
+                    {eliminated ? `Out · ${ordinal(p.placement)}` : isTurn ? "Dropping…" : "Active"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
       </div>
     </div>
   );
@@ -1844,28 +2081,40 @@ export default function TowerArenaMatchPage() {
         </div>
       </ShellHeader>
 
-      <ShellMain className="flex-col items-center justify-start overflow-y-auto">          <div className="w-full max-w-[860px] px-3 py-2">
-          <div className="rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
-            {towerInnerNode}
+      <ShellMain className="flex-col overflow-hidden">
+        <div className="h-full w-full px-3 py-2">
+          <div className="flex h-full flex-col rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
+            {towerStageNode(true)}
           </div>
         </div>
       </ShellMain>
 
-      <ShellAside>
-        <div className="flex flex-col gap-2">
-          {turnControlsNode}
-          {leaderboardNode}
-        </div>
+      <ShellAside className="space-y-2">
+        {turnControlsNode}
+        {compactPlayersNode}
       </ShellAside>
     </CreatorModeShell>
   );
 
-  // Landscape (16:9) / square (1:1) creator arrangement — reuse the
-  // standard grid inside the frame shell so it adapts responsively.
+  // Landscape (16:9) / square (1:1) creator arrangement — the tower fills
+  // the frame's height with controls + players in a right rail, so the
+  // game adapts to any landscape/square ratio instead of scrolling a
+  // desktop-sized column.
   const landscapeContent = (
     <CreatorModeShell className="bg-[#050512]">
-      <ShellMain className="items-start justify-start overflow-y-auto">
-        {pageBody}
+      <ShellMain className="overflow-hidden">
+        <div className="flex h-full w-full flex-col p-4">
+          {topBarNode}
+          <div className="grid min-h-0 flex-1 auto-rows-fr gap-4 lg:grid-cols-[1fr_300px]">
+            <div className="flex min-h-0 flex-col rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
+              {towerStageNode(true)}
+            </div>
+            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
+              {turnControlsNode}
+              {leaderboardNode}
+            </div>
+          </div>
+        </div>
       </ShellMain>
     </CreatorModeShell>
   );
@@ -1878,6 +2127,7 @@ export default function TowerArenaMatchPage() {
           autoStart={isActive}
           autoStop={isFinished}
           gameLabel="tower-arena"
+          backToLobbyHref="/casino/tower-arena"
         >
           <CreatorView
             normal={pageBody}
@@ -2014,14 +2264,19 @@ function PauseChip({ paused, busy, onToggle }: { paused: boolean; busy: boolean;
   );
 }
 
-// Small side-view glyph of a block shape — makes the pool pieces visible
-// ("the blocks are actually there") instead of only text labels.
-function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) {
+// Small side-view glyph of a block shape — the chooser's icon for that
+// block. It is drawn from the REAL footprint (blockCells: the same cells
+// that land in the tower) and uses the same per-shape color + a matching
+// gloss/edge treatment, so the icon is a truthful miniature of the actual
+// block — never a misleading text glyph or a different-looking shape.
+function BlockGlyph({ shape, size = 26 }: { shape: BlockShape; size?: number }) {
   const cells = blockCells(shape, 0);
-  const maxZ = Math.max(...cells.map(([, z]) => z));
   const maxX = Math.max(...cells.map(([x]) => x));
+  const maxZ = Math.max(...cells.map(([, z]) => z));
   const w = maxX + 1;
   const h = maxZ + 1;
+  // Lay the icon out in real pixels (cell ≈ 6-8 px) so the 1px edges and
+  // gloss read crisply at button size.
   const cell = size / Math.max(w, h);
   const style = SHAPE_COLORS[shape] ?? SHAPE_COLORS.short;
   return (
@@ -2032,19 +2287,44 @@ function BlockGlyph({ shape, size = 24 }: { shape: BlockShape; size?: number }) 
       className="shrink-0"
       aria-hidden
     >
-      {cells.map(([x, z], i) => (
-        <rect
-          key={i}
-          x={x * cell + 0.4}
-          y={(h - 1 - z) * cell + 0.4}
-          width={cell - 0.8}
-          height={cell - 0.8}
-          fill={style.fill}
-          stroke={style.edge}
-          strokeWidth={0.6}
-          rx={1}
-        />
-      ))}
+      {cells.map(([x, z], i) => {
+        const cx = x * cell;
+        const cy = (h - 1 - z) * cell;
+        return (
+          <g key={i}>
+            <rect
+              x={cx + 0.6}
+              y={cy + 0.6}
+              width={cell - 1.2}
+              height={cell - 1.2}
+              rx={Math.max(1, cell * 0.14)}
+              fill={style.fill}
+              stroke={style.edge}
+              strokeWidth={Math.max(0.8, cell * 0.09)}
+            />
+            {/* Top gloss — same orientation as the real block cells. */}
+            <rect
+              x={cx + cell * 0.14}
+              y={cy + cell * 0.12}
+              width={cell * 0.72}
+              height={cell * 0.24}
+              rx={Math.max(0.6, cell * 0.09)}
+              fill="#ffffff"
+              opacity={0.34}
+            />
+            {/* Bottom bevel */}
+            <rect
+              x={cx + cell * 0.14}
+              y={cy + cell * 0.78}
+              width={cell * 0.72}
+              height={cell * 0.14}
+              rx={Math.max(0.5, cell * 0.06)}
+              fill="#000000"
+              opacity={0.22}
+            />
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -2063,32 +2343,57 @@ function PlacementControls(props: any) {
     onNudge,
     onDrop,
     placing,
+    disabled = false,
+    statusText = null,
   } = props;
 
   const available = BLOCK_SHAPES.filter((s) => (shapeCounts[s] || 0) > 0);
+  const interactive = !disabled;
 
   return (
-    <div className="mt-4 rounded-xl border border-cyan-700/40 bg-black/30 p-4">
+    <div
+      className={`mt-4 rounded-xl border bg-black/30 p-4 ${
+        disabled ? "border-cyan-900/30" : "border-cyan-700/40"
+      }`}
+    >
       <p className="mb-2 text-xs font-semibold text-white/70">
-        Choose a block to drop — it appears at the top of the tower.
+        {disabled
+          ? "Blocks left in the shared pool — pick one when it's your turn."
+          : "Pick a block — it drops from the sky onto the tower."}
       </p>
 
-      {/* Block chooser: selecting a shape enters aim mode. */}
+      {/* Block chooser: each button shows a truthful mini-icon of the
+          block (its real footprint + color) with the count remaining.
+          Selecting a shape enters aim mode. While it is not your turn the
+          buttons stay visible for reference but are disabled. */}
       <div className="flex flex-wrap items-center gap-2">
         {available.map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => onSelect(s)}
-              disabled={placing}
-              className={`rounded-lg border px-3 py-2 text-sm font-bold transition ${
-                selectedShape === s
-                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-100 shadow-[0_0_14px_rgba(0,229,255,0.3)]"
-                  : "border-white/15 bg-white/[0.03] text-white/80 hover:border-cyan-500/40"
-              } disabled:opacity-50`}
+              disabled={placing || disabled}
+              title={
+                disabled
+                  ? `${SHAPE_NAME[s]} — ${shapeCounts[s] || 0} left (pick on your turn)`
+                  : `${SHAPE_NAME[s]} — ${shapeCounts[s] || 0} available`
+              }
+              aria-label={`${SHAPE_NAME[s]} block, ${shapeCounts[s] || 0} available${disabled ? ", disabled until your turn" : ""}`}
+              aria-disabled={disabled || undefined}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition ${
+                interactive && selectedShape === s
+                  ? "border-cyan-400 bg-cyan-500/20 shadow-[0_0_14px_rgba(0,229,255,0.3)]"
+                  : disabled
+                    ? "cursor-not-allowed border-white/10 bg-white/[0.02] opacity-60"
+                    : "border-white/15 bg-white/[0.03] hover:border-cyan-500/40"
+              } disabled:opacity-60`}
             >
-              <span className="mr-1">{SHAPE_LABEL[s]}</span>
-              <span className="text-white/40">×{shapeCounts[s] || 0}</span>
+              <BlockGlyph shape={s} size={26} />
+              <span
+                className={`text-xs font-bold ${disabled ? "text-white/45" : "text-white/70"}`}
+              >
+                ×{shapeCounts[s] || 0}
+              </span>
             </button>
           ))}
         <span className="ml-auto rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-cyan-200/80">
@@ -2096,11 +2401,10 @@ function PlacementControls(props: any) {
         </span>
       </div>
 
-      {selectedShape ? (
+      {interactive && selectedShape ? (
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <p className="text-sm font-semibold text-white">            {SHAPE_NAME[selectedShape]}{" "}
-
-            · aim {positionX} · rot {rotation * 90}°
+          <p className="text-sm font-semibold text-white">
+            {SHAPE_NAME[selectedShape]} · column {positionX} · rot {rotation * 90}°
           </p>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => onNudge(-1)} className="controlBtn" aria-label="Aim left">
@@ -2122,13 +2426,15 @@ function PlacementControls(props: any) {
             </button>
           </div>
         </div>
-      ) : (
+      ) : disabled && statusText ? (
+        <p className="mt-3 text-sm font-semibold text-cyan-200/80">{statusText}</p>
+      ) : interactive ? (
         <p className="mt-3 text-sm text-white/50">
-          Pick a block and it hovers at the top of the board — aim it, rotate with R, then click the
-          stage (or press Enter) to drop it. Blocks remain fixed after they land; exceeding the
-          ceiling eliminates the current player.
+          Pick a block, then move over the board to aim it (or use ◀ ▶),
+          rotate with R, and tap the stage to drop. Blocks stay where they
+          land; crossing the ceiling eliminates the current player.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

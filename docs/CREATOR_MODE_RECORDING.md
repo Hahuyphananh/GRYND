@@ -48,15 +48,29 @@ Every frame the recorder:
 
 1. clones the container, strips `<canvas>/<script>/<iframe>` (canvases
    are drawn live, scripts/iframes do nothing in an image),
-2. absolutizes relative URLs (`src`, `srcset`, `poster`, CSS `url()`)
+2. preserves the game's live scroll positions (see below),
+3. absolutizes relative URLs (`src`, `srcset`, `poster`, CSS `url()`)
    so same-origin assets resolve inside the SVG,
-3. serializes the clone to XHTML and embeds it — together with the
+4. serializes the clone to XHTML and embeds it — together with the
    page's stylesheets, collected once and cached — into a
    `data:image/svg+xml` SVG with a `<foreignObject>`,
-4. draws that data-URL image into the output canvas (letterboxed to the
+5. draws that data-URL image into the output canvas (letterboxed to the
    selected output aspect ratio, centered on a black base), then
-5. composites any live `<canvas>` elements back on top at their layout
+6. composites any live `<canvas>` elements back on top at their layout
    positions.
+
+The snapshot is always taken at the container's LOGICAL size: the
+container's own on-screen `transform: scale()` (how the frame is
+CSS-fitted to the browser window) is stripped from the clone, so the
+recorded game fills the full output resolution edge-to-edge no matter
+how small the creator's window is — it is never captured shrunk into a
+corner of a black frame. In-game scrolling is recorded too: `scrollTop`
+is a live layout property that serialization cannot carry, so the
+recorder captures every scrolled element's offset and re-creates the
+scrolled view in the snapshot by translating that element's children
+(its overflow clip makes this visually identical to the real scroll).
+Scrolling the game page or an inner panel (chat, leaderboards) appears
+in the video at the actual scroll position.
 
 Chrome's own SVG rasterizer renders the DOM with the page's real CSS, so
 Tailwind classes, inline styles, and SVG elements all appear correctly.
@@ -123,9 +137,9 @@ page load. Games integrate through `<CreatorModeHost />` props or the
 | Signal | When to send it | What happens |
 | --- | --- | --- |
 | `autoStart` / `gameStarted()` | The actual game starts (e.g. a PvP match leaves the waiting room — `MATCH_STATUS.READY` / `BALL_*` in plinko) | 3 → 2 → 1 countdown, then in-page capture begins |
-| `autoStop` / `gameFinished()` | The game reaches its normal completed/result state | Recording keeps running for `autoStopDelayMs` (default 1600 ms) so the result/winner animation is captured, then stops and auto-downloads the finished clip |
-| unmount / `gameQuit()` | The user quits / navigates away (Return to lobby, Play Again, in-app back) | Recording stops immediately (no grace period) and the finished clip is AUTO-DOWNLOADED — nothing keeps recording and nothing is silently discarded |
-| Tab hidden / page leaving | Tab switched away, browser back out of the app, refresh, tab close, external link | Recording stops and the finished clip is auto-downloaded: graceful stop when the page stays alive (finalize builds the full clip), synchronous save from the frames already captured when the page is actually being torn down |
+| `autoStop` / `gameFinished()` | The game reaches its normal completed/result state | Recording keeps running for `autoStopDelayMs` (default 1600 ms) so the result/winner animation is captured, then stops. The finished clip appears in the result panel — downloading is ALWAYS manual |
+| unmount / `gameQuit()` | The user quits / navigates away (Return to lobby, Play Again, in-app back) | Recording stops immediately (no grace period). No download happens — downloads are only ever triggered by an explicit Download click |
+| Tab hidden | Tab switched away / app backgrounded | Recording stops (backgrounded capture frames would be garbage) but is never downloaded; the clip stays in memory and the result panel shows it on return |
 
 Recording only ever starts from a genuine game-start signal derived from
 the game's own state machine (plinko's reference wiring uses
@@ -156,30 +170,33 @@ selected recording aspect ratio (`src/components/creator-mode/`
   important info stays visible in the header, controls pinned below;
   nav/footer/unrelated casino UI are already outside the frame.
 
-Games that use the generic `<CreatorResponsiveLayout>` wrapper (blackjack,
-chess-ai, uno, odds, …) instead of a bespoke arrangement fill the frame via
-two mechanisms, depending on orientation:
+Games that use the generic `<CreatorResponsiveLayout>` wrapper (chess-ai,
+crash-arena, dice-flush, odds, roulette, rps, …) instead of a bespoke
+arrangement render as a real phone screen in EVERY selected ratio:
 
-- **Portrait (9:16) is the PHONE frame.** The game is laid out at a real
-  phone width (390px — `PHONE_LAYOUT_WIDTH`) and `zoom`ed up to fill the
-  whole output frame edge-to-edge (`data-creator-phone`). Because the game
-  sees a 390px-wide layout, its own mobile-first responsive styles take
-  over — wrapping, stacked panels, touch-sized controls — so the recorded
-  video looks like a real phone screen at 1080×1920, never a shrunken
-  desktop page in the middle of the frame. `zoom` (not `transform: scale`)
-  re-lays-out the subtree at the scaled size, so text stays crisp in both
-  the live frame and the composite-mode recording. The shared
-  `[data-creator-fill]` CSS still makes the game page root take the full
-  phone-viewport width and height (overriding desktop `max-w-*` caps and
-  `mx-auto` centering) and scrolls internally when the content is taller.
-- **Landscape (16:9) / square (1:1)** keep the direct full-frame fill: the
-  game page root fills the frame edge-to-edge via `[data-creator-fill]`.
+- The game is always laid out at a real phone width (390px —
+  `PHONE_LAYOUT_WIDTH`) and `zoom`ed up to fill the output frame
+  (`data-creator-phone`). Because the game sees a 390px-wide layout, its
+  own mobile-first responsive styles take over — wrapping, stacked
+  panels, touch-sized controls — so the recorded video looks like a real
+  phone screen, never a shrunken desktop page in the middle of the frame.
+  `zoom` (not `transform: scale`) re-lays-out the subtree at the scaled
+  size, so text stays crisp in both the live frame and the
+  composite-mode recording. The shared `[data-creator-fill]` CSS still
+  makes the game page root take the full phone-viewport width and height
+  (overriding desktop `max-w-*` caps and `mx-auto` centering) and scrolls
+  internally when the content is taller.
+- **Portrait (9:16)** fills the output frame (1080×1920) edge-to-edge.
+- **Landscape (16:9) / square (1:1) / custom** fit the whole phone screen
+  inside the frame, centered, zoomed to fill the frame height — the
+  recording shows the game exactly as players see it on mobile, with the
+  shell's background on the sides.
 
-Games opting into the phone-style portrait column keep it via
-`[data-creator-stack]` (which also collapses grid-based desktop layouts,
-like chess's board + sidebar grid, to a single column), and `position:
-fixed` overlays (turn chips, result modals) are exempt from the fill so
-they keep their compact sizing.
+Games opting into the phone-style column keep it via `[data-creator-stack]`
+(scoped to the phone viewport, so it applies in every ratio; it also
+collapses grid-based desktop layouts, like chess's board + sidebar grid, to
+a single column), and `position: fixed` overlays (turn chips, result
+modals) are exempt from the fill so they keep their compact sizing.
 
 Normal (non-Creator-Mode) rendering is byte-for-byte unchanged — the shell
 only mounts when Creator Mode is on. Plinko is the reference wiring: it
@@ -204,33 +221,38 @@ lobby opened with `?creator=1` in its URL keeps the mode on.
 | Before recording | The **Creator controls** — status ("Creator Mode armed"), **Stop & Save**, and **Download** — are portaled to the bottom of the VIEWPORT (fixed, above the game's own UI). They are always visible and always clickable on every device: they can't fall below the fold of a page layout or be covered by page chrome / fixed bottom bars, and they never appear in the recording (the recorder only reads the frame container). The frame is scaled to leave the bottom strip free so the controls never cover the game. Buttons stay visible but dimmed until they apply. |
 | Countdown | 3 → 2 → 1 ring, pure overlay UI (`pointer-events: none`), the game stays fully playable. |
 | During recording | The controls switch to REC + the selected dimensions and enable **Stop & Save**. No panels, no input capture — gameplay input is never intercepted, and the controls are never captured in the recording. |
-| After recording stops | The finished clip auto-downloads when the game ended normally, the user pressed "Stop & Save", OR the user left the game/page — so a recording is never lost to navigation. **Download** stays enabled (re-download any time), and a clean result panel (modal) appears: "Recording completed", selected dimensions, duration, format, an in-page video preview with play/pause, and Download / Discard / Record-another-game actions. The panel renders above the game's own end-of-match overlay so the Download action is always reachable. |
+| After recording stops | The finished clip appears in a clean result panel (modal) — "Recording completed", selected dimensions, duration, format, an in-page video preview with play/pause, and Download / Discard / Record-another-game actions. **Nothing auto-downloads**: the user clicks **Download** (in the panel or the control bar) to save the file. The panel renders above the game's own end-of-match overlay so the Download action is always reachable. |
+
+Two opt-in integration hooks: pressing **Stop & Save** dispatches a
+`grynd:creator-manual-stop` event on `window` (only for the manual button
+— never auto-stops or tab-hide saves) so a game can react to the
+creator's explicit intent (Tower Arena pauses the match while the clip is
+reviewed). And `<CreatorModeHost backToLobbyHref={...} />` adds a
+"Go back to lobby" button to the result panel (Tower Arena passes
+`/casino/tower-arena`). Both are optional — games that don't use them are
+unaffected.
 
 Downloads use the generated local blob with a meaningful filename:
 `grynd-{game}-{date}-{time}.mp4`/`.webm` (e.g. `grynd-plinko-duel-2026-08-30-14-32-05.mp4`).
-The download triggers itself when the match ends (auto-stop), when the
-creator presses the red "Stop & save" button, or when the user leaves
-mid-recording (navigating away, going back, hiding the tab, closing the
-page) — the game's result overlay no longer hides the finished clip, a
-recording never keeps running unattended, and navigating away can't
-discard it. Each finished clip is downloaded at most once (identity
-guard), so the leave-save never duplicates the auto-download. The format
-is labelled in the result panel. Recordings are never uploaded to the
-Grynd server, never stored in the database, and never sent to any
-external service — they exist only as a local blob (backed by an object
-URL) until the user downloads them or discards them.
+Downloads are ALWAYS manual: the user clicks the **Download** button
+(either in the floating control bar or in the result panel that appears
+after the recording stops). Nothing triggers a download on its own — not
+the game ending (auto-stop), not the "Stop & Save" button, and not
+leaving the page. The format is labelled in the result panel.
+Recordings are never uploaded to the Grynd server, never stored in the
+database, and never sent to any external service — they exist only as a
+local blob (backed by an object URL) until the user downloads them or
+discards them.
 
 ## Resource lifecycle
 
 `start()` → countdown (in the provider) → in-page capture. `stop()`
 flushes the `MediaRecorder`, builds the final `Blob`, stops the stream
 tracks, cancels the animation loop, and revokes the previous download
-URL. `stopAndSave()` stops and auto-downloads the finished file from the
-recorder's own finalize handler (leave/quit path); `stopAndSaveSync()`
-builds the file synchronously from the frames already captured for
-pagehide/beforeunload, where the page may die before the async finalize
-runs. `dispose()` defers full teardown until a queued finalize has run
-so a leave-save clip is never destroyed first, then releases the
+URL. `download()` is the ONLY way a finished clip reaches the browser's
+download manager — it is called exclusively from the Download buttons.
+`dispose()` defers full teardown until a queued finalize has run so the
+capture state is never destroyed mid-finalize, then releases the
 recorder, stream, snapshot image, chunks, and object URLs so nothing
 leaks between recordings. `cancel()`/`discard()` (result panel Discard /
 Record another game) revoke the finished recording's object URL and

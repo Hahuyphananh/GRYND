@@ -195,35 +195,43 @@ export function CreatorView({ normal, portrait, landscape }) {
 }
 
 /**
- * Phone-width layout viewport for the portrait (9:16) recording frame.
- * The game is laid out at a real phone width (so its mobile-first
- * responsive styles — wrapping, stacked panels, touch-sized controls —
- * are the ones that apply) and then `zoom`ed up to fill the output frame
- * exactly. `zoom` re-lays-out the subtree at the scaled size, so text
- * stays crisp in both the live frame and the composite-mode recording
- * (unlike `transform: scale`, which rasterizes at the layout size and
- * then upscales). Landscape/square frames keep the direct fill.
+ * Phone-width layout viewport for the recording frame. The game is laid
+ * out at a real phone width (so its mobile-first responsive styles —
+ * wrapping, stacked panels, touch-sized controls — are the ones that
+ * apply) and then `zoom`ed up to fill the output frame. `zoom`
+ * re-lays-out the subtree at the scaled size, so text stays crisp in
+ * both the live frame and the composite-mode recording (unlike
+ * `transform: scale`, which rasterizes at the layout size and then
+ * upscales).
  */
 export const PHONE_LAYOUT_WIDTH = 390;
 
 /**
+ * The canonical phone screen height for PHONE_LAYOUT_WIDTH (9:16 aspect
+ * ratio). The phone viewport is always this size in CSS px; the `zoom`
+ * factor adapts it to whatever frame is selected.
+ */
+export const PHONE_LAYOUT_HEIGHT = (PHONE_LAYOUT_WIDTH * 16) / 9;
+
+/**
  * <CreatorResponsiveLayout> is the quick, uniform integration for games
- * that don't need a bespoke portrait arrangement: when Creator Mode is on
- * it drops the existing game content into the shared recording-frame shell
- * and the game page FILLS the frame edge-to-edge.
+ * that don't need a bespoke arrangement: when Creator Mode is on it
+ * renders the existing game content inside the shared recording-frame
+ * shell as a phone screen in EVERY selected ratio.
  *
- *   • Portrait (9:16) — the phone frame: the game is laid out at a real
- *     phone width (390px) and zoomed up to fill the whole output frame
- *     (1080×1920), so the game renders in phone mode — its own mobile
- *     responsive layout — and fills the frame edge-to-edge like a real
- *     phone screen. Scrolling stays internal when content is taller.
- *   • Landscape/square — the game page fills the frame directly (full
- *     width/height via the shared `[data-creator-fill]` CSS, which
- *     overrides the page's desktop max-width / centering inside the
- *     shell).
+ *   • The game is always laid out at a real phone width (390px), so its
+ *     own mobile-first responsive styles (wrapping, stacked panels,
+ *     touch-sized controls) are the ones that apply — never the desktop
+ *     page shrunk into the frame.
+ *   • Portrait (9:16) fills the output frame (1080×1920) edge-to-edge.
+ *   • Landscape (16:9) / square (1:1) / custom frames fit the whole
+ *     phone screen inside the frame, centered, zoomed to fill the
+ *     height — the recording looks like a real phone screen, with the
+ *     shell's background visible on the sides.
  *
- * The game is never shrunk into a tiny rectangle. When Creator Mode is
- * off it returns `children` byte-for-byte unchanged.
+ * Scrolling stays internal when content is taller than the viewport.
+ * When Creator Mode is off it returns `children` byte-for-byte
+ * unchanged.
  *
  * Works hand-in-hand with <CreatorView>/<CreatorModeHost>: mount it as the
  * ONLY child of <CreatorModeHost /> so it reads the real provider context.
@@ -232,16 +240,22 @@ export function CreatorResponsiveLayout({ children }) {
   const { isCreatorMode, dimensions } = useCreatorMode();
   if (!isCreatorMode) return children;
 
-  // Portrait frames are the phone frame: lay the game out at a phone
-  // width and zoom it up so it fills the output edge-to-edge.
+  // The phone-frame treatment applies to EVERY recording ratio: lay the
+  // game out at a phone width and zoom it up to fill the output. The
+  // scale is the smaller of the width/height fits so the full phone
+  // screen always fits inside the frame (portrait fills both exactly).
   const isPortrait = Boolean(
     dimensions && dimensions.height > dimensions.width,
   );
   const phoneScale =
-    isPortrait && dimensions.width > 0
-      ? dimensions.width / PHONE_LAYOUT_WIDTH
+    dimensions.width > 0 && dimensions.height > 0
+      ? Math.min(
+          dimensions.width / PHONE_LAYOUT_WIDTH,
+          dimensions.height / PHONE_LAYOUT_HEIGHT,
+        )
       : 1;
-  const phoneHeight = isPortrait ? dimensions.height / phoneScale : 0;
+  const phoneHeight =
+    dimensions.height > 0 ? dimensions.height / phoneScale : 0;
 
   const fill = (
     <div
@@ -254,21 +268,56 @@ export function CreatorResponsiveLayout({ children }) {
 
   return (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      {isPortrait ? (
-        <div
-          data-creator-phone
-          className="relative flex min-h-0 min-w-0 flex-col self-start"
-          style={{
-            width: PHONE_LAYOUT_WIDTH,
-            height: phoneHeight,
-            zoom: phoneScale,
-          }}
-        >
-          {fill}
-        </div>
-      ) : (
-        fill
-      )}
+      <div
+        data-creator-phone
+        className={`relative flex min-h-0 min-w-0 flex-col self-start ${
+          isPortrait ? "" : "mx-auto"
+        }`}
+        style={{
+          width: PHONE_LAYOUT_WIDTH,
+          height: phoneHeight,
+          zoom: phoneScale,
+        }}
+      >
+        {fill}
+      </div>
     </CreatorModeShell>
+  );
+}
+
+/**
+ * <CreatorPhoneFrame> renders children at real phone width (390px) and
+ * `zoom`s them up to fill the selected recording frame — for games with a
+ * bespoke <CreatorView> shell that want the game content itself to look
+ * exactly like playing on mobile (big cards, big touch controls) instead
+ * of the desktop page stretched into the frame. Portrait (9:16) fills the
+ * frame edge-to-edge; landscape/square/custom fit the whole phone screen
+ * inside — mount it directly inside a <ShellMain>, which centers its
+ * children.
+ *
+ * Must be rendered under <CreatorModeShell /> so it reads the real frame
+ * geometry from the layout context.
+ */
+export function CreatorPhoneFrame({ className = "", children }) {
+  const { width, height } = useCreatorModeLayout();
+  const scale =
+    width > 0 && height > 0
+      ? Math.min(
+          width / PHONE_LAYOUT_WIDTH,
+          height / PHONE_LAYOUT_HEIGHT,
+        )
+      : 1;
+  const phoneHeight = height > 0 ? height / scale : 0;
+  return (
+    <div
+      className={`relative flex min-h-0 min-w-0 flex-col ${className}`}
+      style={{
+        width: PHONE_LAYOUT_WIDTH,
+        height: phoneHeight,
+        zoom: scale,
+      }}
+    >
+      {children}
+    </div>
   );
 }

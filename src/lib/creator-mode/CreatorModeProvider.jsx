@@ -395,53 +395,33 @@ export default function CreatorModeProvider({
     return () => {
       // User quit / navigated away (e.g. the match page unmounts on
       // "Return to lobby", "Play Again", browser back within the app):
-      // stop NOW (no grace period) and SAVE the clip — stopAndSave
-      // auto-downloads the finished file from the recorder's own
-      // finalize handler, so nothing keeps recording and nothing is
-      // silently discarded.
+      // stop NOW (no grace period). Downloads are always manual — the
+      // recorder only stops; the clip is never handed to the browser
+      // without an explicit Download click.
       cancelScheduledStop();
-      // Always ask the recorder to save: it no-ops when nothing is live
-      // and never downloads the same clip twice, so this covers both the
-      // leave-mid-recording case AND the tiny gap where a clip finished
-      // but its auto-download effect had not fired yet.
-      recorder.stopAndSave(`grynd-${gameLabel}`);
+      recorder.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Save-on-leave for browser-level departures: hide the tab, go back
-  // out of the app, close the tab, or follow an external link while a
-  // recording is live — stop it and auto-download the clip. A recording
-  // must never keep running unattended or be lost to navigation. The
-  // recorder methods are called unconditionally: they no-op safely when
-  // nothing is live (and never download the same clip twice), so stale
-  // React state can never skip a needed save.
+  // Tab-hidden handling: a backgrounded tab throttles the capture frames
+  // (garbage video), so the recording stops when the tab is hidden — but
+  // it is NEVER auto-downloaded. The finished clip stays in memory and
+  // the result panel shows it (with the Download button) when the user
+  // comes back. Downloads are always manual.
   useEffect(() => {
     if (!enabled) return;
-    // Tab hidden (switched away / app backgrounded): graceful stop — the
-    // page stays alive, so finalize() runs and the full clip is saved.
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        recorder.stopAndSave(`grynd-${gameLabel}`);
+        recorder.stop();
       }
     };
-    // Page actually leaving (refresh, tab close, external navigation,
-    // back out of the SPA): the page can be torn down before the async
-    // finalize runs, so save synchronously from the frames already
-    // captured.
-    const onPageHide = () => {
-      recorder.stopAndSaveSync(`grynd-${gameLabel}`);
-    };
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("pagehide", onPageHide);
-    window.addEventListener("beforeunload", onPageHide);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("pagehide", onPageHide);
-      window.removeEventListener("beforeunload", onPageHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, gameLabel]);
+  }, [enabled]);
 
   const value = useMemo(
     () => ({
