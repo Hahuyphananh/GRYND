@@ -68,6 +68,7 @@ import {
 } from "../../../../components/creator-mode/CreatorModeLayout";
 import IconAvatar from "../../../../components/IconAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import Footer from "../../../../components/Footer";
@@ -89,12 +90,9 @@ import {
   playGoodReveal,
 } from "../../../../lib/gameAudio";
 import {
-  IconRefresh,
-  IconTrophy,
   IconAlertTriangle,
   IconClock,
   IconSparkles,
-  IconHeartHandshake,
 } from "@tabler/icons-react";
 
 // ── Match payload types (from /api/memory-grid/match/[id]) ───────────
@@ -375,7 +373,10 @@ export default function MemoryGridMatchPage({
     speedTier: string;
     roundNumber: number;
   } | null>(null);
-  const [canLeave, setCanLeave] = useState(false);
+  // Finished-state result overlay visibility — the shared
+  // PvpResultScreen (UX plan P3-3) can be dismissed to reveal the
+  // final board underneath.
+  const [showResult, setShowResult] = useState(true);
   // Waiting state: cancelling an open lobby (creator only).
   const [cancelling, setCancelling] = useState(false);
   const [forfeiting, setForfeiting] = useState(false);
@@ -445,13 +446,6 @@ export default function MemoryGridMatchPage({
     const id = setInterval(() => setNowMs(Date.now()), 100);
     return () => clearInterval(id);
   }, []);
-
-  // Finished grace — allow returning to the lobby after a beat.
-  useEffect(() => {
-    if (match?.status !== MATCH_STATUS.FINISHED) return;
-    const t = setTimeout(() => setCanLeave(true), 2500);
-    return () => clearTimeout(t);
-  }, [match?.status]);
 
   // ── Derived phase state (SIMULTANEOUS play — no turns) ───────────
   const isFinished = match?.status === MATCH_STATUS.FINISHED;
@@ -1073,6 +1067,145 @@ export default function MemoryGridMatchPage({
     </CreatorModeShell>
   );
 
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the match finishes (the final
+  // board reveal stays underneath, reachable via "View Match
+  // Results"). Every number comes from the real match row
+  // (winnerId / p1Total–p2Total / prizePaid / houseFee / refundEach
+  // / players / startedAt→endedAt) — nothing is invented. Winner /
+  // payout logic is untouched; the old inline result panel + draw
+  // popup are gone.
+  function renderResult() {
+    if (!match || !isFinished || !showResult) return null;
+
+    const stake = Number(match.stakeAmount ?? 0);
+    const prizePaid = Number(match.prizePaid ?? 0);
+    const houseFee = Number(match.houseFee ?? 0);
+    const refundEach = Number(match.refundEach ?? 0);
+    const isAi = Boolean(match.isAi);
+
+    // Stake is escrowed at matchmaking; at settle the winner is
+    // credited `prizePaid` (= stake + 90% of the loser's stake). Net
+    // token change from the viewer's pocket:
+    //   win  → +prizePaid − stake = +0.9 × stake
+    //   loss → −stake
+    //   draw → +refundEach (95% of stake — 5% rake per side on the
+    //          tiebreak tie)
+    // AI practice matches never move tokens.
+    const tokenDelta = isAi
+      ? null
+      : viewerWon
+        ? prizePaid - stake
+        : viewerLost
+          ? -stake
+          : refundEach;
+
+    // Duration from the existing timestamps (omitted when unavailable).
+    let durationSeconds: number | null = null;
+    if (match.startedAt && match.endedAt) {
+      const start = new Date(match.startedAt).getTime();
+      const end = new Date(match.endedAt).getTime();
+      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+        durationSeconds = Math.round((end - start) / 1000);
+      }
+    }
+
+    const outcome = isDraw ? "draw" : viewerWon ? "win" : "loss";
+    const headline = viewerWon
+      ? `You out-remembered ${oppName} ${myScore ?? 0}–${oppScore ?? 0} rounds`
+      : viewerLost
+        ? `${oppName} out-remembered you ${oppScore ?? 0}–${myScore ?? 0}`
+        : "Evenly matched — the tiebreak couldn't split you";
+    const subline = isAi
+      ? "Free practice match — no tokens were wagered."
+      : viewerWon
+        ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
+        : viewerLost
+          ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
+          : `Tiebreak tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% house fee each).`;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Memory Grid"
+        opponent={{ name: oppName, iconKey: oppIconKey, isAi }}
+        tokenDelta={tokenDelta}
+        durationSeconds={durationSeconds}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+          { label: "Score", value: `${myTotal ?? 0} – ${oppTotal ?? 0} pts` },
+          { label: "Rounds won", value: `${myScore ?? 0} – ${oppScore ?? 0}` },
+        ]}
+        details={[
+          { label: "Match ID", value: String(match.id) },
+          ...(isAi
+            ? []
+            : [
+                { label: "Wager", value: `${stake.toLocaleString()} tokens` },
+                ...(viewerWon
+                  ? [
+                      { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
+                      { label: "House fee", value: `${houseFee.toLocaleString()} tokens` },
+                    ]
+                  : []),
+              ]),
+          { label: "Winner", value: isDraw ? "Draw" : viewerWon ? "You" : oppName },
+        ]}
+        detailsContent={
+          rounds.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Round scores
+              </p>
+              <div className="space-y-1">
+                {rounds.map((r) => {
+                  const youWonRound = match.viewerIsPlayer1
+                    ? r.roundWinner === "player1"
+                    : r.roundWinner === "player2";
+                  const oppWonRound = match.viewerIsPlayer1
+                    ? r.roundWinner === "player2"
+                    : r.roundWinner === "player1";
+                  return (
+                    <div
+                      key={r.roundNumber}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-white/50">Round {r.roundNumber}</span>
+                      <span
+                        className={
+                          youWonRound
+                            ? "font-bold text-emerald-300"
+                            : oppWonRound
+                              ? "font-bold text-red-300"
+                              : "text-white/60"
+                        }
+                      >
+                        {match.viewerIsPlayer1
+                          ? `${r.p1RoundScore} – ${r.p2RoundScore}`
+                          : `${r.p2RoundScore} – ${r.p1RoundScore}`}
+                        {youWonRound ? " ✓" : oppWonRound ? " ✗" : " -"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null
+        }
+        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/memory-grid") }}
+        onReturnToLobby={() => router.push("/casino")}
+        onDismiss={() => setShowResult(false)}
+        dismissLabel="View Match Results"
+      />
+    );
+  }
+
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -1470,177 +1603,23 @@ export default function MemoryGridMatchPage({
         {/* Reconstruct controls — free modification + explicit Submit */}
         {canPick && mgControlsNode}
 
-        {/* Result panel */}
-        {isFinished && match && (
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-6 rounded-2xl border border-amber-700/60 bg-black/40 p-6 text-center shadow-[0_0_30px_rgba(251,191,36,0.15)] backdrop-blur-xl"
-          >
-            <div className="mb-2 flex items-center justify-center gap-2 text-2xl font-black">
-              <IconTrophy
-                className={`h-7 w-7 ${viewerWon ? "text-amber-300" : "text-white/30"}`}
-              />
-              {viewerWon ? "You Win!" : viewerLost ? "You Lose" : "Draw"}
-            </div>
-            <p className="mb-1 text-sm text-white/70">
-              You {myTotal ?? 0} vs {oppTotal ?? 0} {oppName}
-              <span className="ml-1 text-white/40">
-                (points · {myScore ?? 0}–{oppScore ?? 0} rounds won)
-              </span>
-            </p>
-
-            {/* Per-round breakdown */}
-            {rounds.length > 0 && (
-              <div className="mx-auto mt-4 max-w-xs rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
-                  Round scores
-                </p>
-                <div className="space-y-1 text-xs">
-                  {rounds.map((r) => {
-                    const youWonRound = match.viewerIsPlayer1
-                      ? r.roundWinner === "player1"
-                      : r.roundWinner === "player2";
-                    const oppWonRound = match.viewerIsPlayer1
-                      ? r.roundWinner === "player2"
-                      : r.roundWinner === "player1";
-                    return (
-                      <div
-                        key={r.roundNumber}
-                        className="flex items-center justify-between"
-                      >
-                        <span className="text-white/50">Round {r.roundNumber}</span>
-                        <span
-                          className={
-                            youWonRound
-                              ? "font-bold text-emerald-300"
-                              : oppWonRound
-                                ? "font-bold text-red-300"
-                                : "text-white/60"
-                          }
-                        >
-                          {match.viewerIsPlayer1
-                            ? `${r.p1RoundScore} – ${r.p2RoundScore}`
-                            : `${r.p2RoundScore} – ${r.p1RoundScore}`}
-                          {youWonRound
-                            ? " ✓"
-                            : oppWonRound
-                              ? " ✗"
-                              : "-"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="mx-auto mt-3 max-w-xs rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
-              {viewerWon && (
-                <p className="flex items-center justify-between">
-                  <span className="text-white/60">Payout</span>
-                  <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
-                    +{(match.prizePaid ?? 0).toLocaleString()}
-                    <CoinIcon className="h-3.5 w-3.5" />
-                  </span>
-                </p>
-              )}
-              {isDraw && (
-                <p className="text-white/70">
-                  {match.isAi ? (
-                    "Free AI match draw. No tokens were wagered."
-                  ) : (
-                    <>
-                      Tiebreak tied. Both players refunded{" "}
-                      <span className="font-bold text-yellow-300">
-                        {(match.refundEach ?? 0).toLocaleString()}
-                      </span>{" "}
-                      (95%, 5% house fee each).
-                    </>
-                  )}
-                </p>
-              )}
-              <p className="flex items-center justify-between text-xs text-white/40">
-                <span>Stake</span>
-                <span>{Number(match.stakeAmount ?? 0).toLocaleString()}</span>
-              </p>
-            </div>
-            <button
-              onClick={() => router.push("/casino/memory-grid")}
-              disabled={!canLeave}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl border-b-4 border-amber-700 bg-amber-500 px-6 py-3 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
-            >
-              <IconRefresh className="h-4 w-4" />
-              Back to Lobby
-            </button>
-          </motion.div>
-        )}
       </div>
 
-      {/* Tie popup — the round-6 tiebreak ALSO tied, so the match is
-          a draw: both players get their stake back minus the 5%
-          per-side house fee. Overlays the finished screen (both
-          players see the identical refund amount). */}
-      {isFinished && isDraw && match && !match.isAi && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
-        >
-          <motion.div
-            initial={{ scale: 0.85, y: 30 }}
-            animate={{ scale: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 18 }}
-            className="relative w-full max-w-md rounded-3xl border-4 border-cyan-400/70 bg-gradient-to-b from-[#0b1a33] to-[#08142f] p-6 text-center shadow-[0_0_60px_rgba(34,211,238,0.35)]"
-          >
-            <IconHeartHandshake className="mx-auto mb-3 h-14 w-14 text-cyan-300 drop-shadow-[0_0_14px_rgba(34,211,238,0.6)]" />
-            <h2 className="text-3xl font-black uppercase tracking-wide text-cyan-300">
-              It&apos;s a tie!
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">
-              Even the tiebreak round couldn&apos;t split you two. Both
-              players get their stake back minus a 5% house fee.
-            </p>
-            <div className="mx-auto mt-4 max-w-[230px] space-y-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
-              <p className="flex items-center justify-between text-white/60">
-                <span>Stake</span>
-                <span className="font-bold text-white">
-                  {Number(match.stakeAmount ?? 0).toLocaleString()}
-                </span>
-              </p>
-              <p className="flex items-center justify-between text-white/60">
-                <span>House fee (5%)</span>
-                <span className="font-bold text-red-300">
-                  −
-                  {Math.round(
-                    Number(match.stakeAmount ?? 0) * 0.05,
-                  ).toLocaleString()}
-                </span>
-              </p>
-              <p className="flex items-center justify-between border-t border-white/10 pt-1.5 text-white/60">
-                <span>Refunded</span>
-                <span className="inline-flex items-center gap-1 font-bold text-emerald-300">
-                  +{(match.refundEach ?? 0).toLocaleString()}
-                  <CoinIcon className="h-3.5 w-3.5" />
-                </span>
-              </p>
-            </div>
-            <button
-              onClick={() => router.push("/casino/memory-grid")}
-              disabled={!canLeave}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl border-b-4 border-cyan-700 bg-cyan-400 px-6 py-2.5 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
-            >
-              <IconRefresh className="h-4 w-4" />
-              Back to Lobby
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
+
       </>}
         portrait={mgShell}
         landscape={mgShell}
       />
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen overlay
+          (UX plan P3-3), mounted OUTSIDE CreatorModeHost so the
+          recording viewport never captures it. The old inline result
+          panel + "It's a tie" popup are deleted — this is the single
+          end-of-match experience, and it can be dismissed to reveal
+          the final board underneath. */}
+      {renderResult()}
+
       <Footer />
       </div>
     </>

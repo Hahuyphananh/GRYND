@@ -58,11 +58,16 @@ export default function SyncPage() {
           setStatus("Redirecting...");
           // IMPORTANT: a full navigation (not router.replace) — so back/refresh
           // can't resubmit, and the destination page gets a clean mount.
-          // Client-side replaces to /thank-you from here remount the page a
+          // Client-side replaces to /welcome from here remount the page a
           // moment later (killing the onboarding tour), which never happens on
           // a full load. The ref guard keeps this single-fire: dev StrictMode
           // double-invokes the effect.
-          const target = isNewUser ? "/thank-you" : "/";
+          // Brand-new accounts go through the /welcome onboarding flow;
+          // everyone else goes straight home. /welcome re-checks the
+          // server-side onboarding flag, so a "fresh" account that already
+          // completed onboarding (log-out/log-in inside the 15-min window)
+          // bounces straight to the main experience.
+          const target = isNewUser ? "/welcome" : "/";
           window.location.replace(target);
         }
       } catch (err) {

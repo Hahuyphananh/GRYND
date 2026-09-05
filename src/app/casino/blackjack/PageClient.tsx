@@ -36,6 +36,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import { IconBook } from "@tabler/icons-react";
 import NavigationBar from "../../../components/navigation-bar";
+import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 import Footer from "../../../components/Footer";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
@@ -432,6 +433,10 @@ export default function BlackjackPvpLobbyPage() {
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
+      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+      <div className="mb-6 flex justify-center">
+        <CreatorModeLobby />
+      </div>
 
       <div className="mx-auto mt-4 max-w-5xl sm:mt-8">
         <motion.div

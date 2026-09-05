@@ -23,6 +23,7 @@ import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
@@ -31,9 +32,6 @@ import {
   IconRuler,
   IconFlag,
   IconDoorExit,
-  IconTrophy,
-  IconHeartHandshake,
-  IconBomb,
 } from "@tabler/icons-react";
 
 // ─── Module-level empty defaults (shared reference across renders) ─
@@ -500,6 +498,78 @@ const prefersReducedMotion = useReducedMotion();
   const isCancelled = game?.status === "cancelled";
   const isForfeitLoss =
     isResultLoss(game) && game?.result === "forfeit";
+
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the match finishes. Every number
+  // comes from the real game row (winnerClerkId / result / payout /
+  // betAmount / scores / hostName–guestName) — nothing is invented.
+  // Winner/payout logic is untouched; the old win/loss/draw popup is
+  // gone (the cancelled popup above still covers non-result exits).
+  function renderResult() {
+    if (!game || game.status !== "finished") return null;
+    const isDraw = game.result === "draw";
+    const outcome = isDraw ? "draw" : playerWon ? "win" : "loss";
+    const bet = Number(game.betAmount || 0);
+    // Settlement (dotsAndBoxesServer): the winner is credited
+    // `payout` (= bet × 1.9, stake included); a draw refunds both in
+    // full; a loss forfeits the stake.
+    const tokenDelta = isDraw
+      ? 0
+      : playerWon
+        ? Number(game.payout || 0) - bet
+        : -bet;
+
+    const myScore = game.role === "host" ? scores.host : scores.guest;
+    const oppScore = game.role === "host" ? scores.guest : scores.host;
+    const headline = isDraw
+      ? "Boxes split evenly — draw"
+      : playerWon
+        ? `You sealed the last box — ${myScore}–${oppScore}`
+        : `${opponentName} sealed the last box — ${oppScore}–${myScore}`;
+    const subline = isDraw
+      ? "Both players refunded in full."
+      : playerWon
+        ? `Your ${bet.toFixed(2)} stake back plus ${(Number(game.payout || 0) - bet).toFixed(2)} in winnings.`
+        : `You lost your ${bet.toFixed(2)} stake.`;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Dots & Boxes"
+        opponent={{ name: opponentName }}
+        tokenDelta={tokenDelta}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+          { label: "Score", value: `${myScore} – ${oppScore}` },
+        ]}
+        details={[
+          { label: "Game ID", value: String(gameId) },
+          ...(bet > 0
+            ? [
+                { label: "Wager", value: `${bet.toFixed(2)} tokens` },
+                ...(playerWon
+                  ? [
+                      {
+                        label: "Prize paid",
+                        value: `${Number(game.payout || 0).toFixed(2)} tokens`,
+                      },
+                    ]
+                  : []),
+              ]
+            : []),
+          { label: "Winner", value: isDraw ? "Draw" : playerWon ? "You" : opponentName },
+        ]}
+        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/dots-and-boxes") }}
+        onReturnToLobby={() => router.push("/casino")}
+      />
+    );
+  }
 
   // ── Keyboard handler for the result popup ────────────────────────
   // Lives below `showResultPopup` so the variable is in scope.
@@ -1058,11 +1128,13 @@ const prefersReducedMotion = useReducedMotion();
         )}
       </AnimatePresence>
 
-      {/* ─── Result / Loss popup (win/loss/draw/cancelled) ─────────── */}
+      {/* ─── Cancelled popup (unchanged — covers the cancelled-lobby
+          exit, which is not a win/loss result; the shared result
+          screen below handles finished matches) ──────────────── */}
       <AnimatePresence>
-        {showResultPopup && (
+        {isCancelled && (
           <motion.div
-            key="dnf-result-popup"
+            key="dnf-cancelled-popup"
             {...gameOverModalAnim.backdrop}
             onClick={(e) => {
               // Backdrop dismiss: route user back to lobby when they
@@ -1081,15 +1153,7 @@ const prefersReducedMotion = useReducedMotion();
               aria-modal="true"
               aria-labelledby="dnf-result-title"
               aria-describedby="dnf-result-body"
-              className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl text-center ${
-                playerWon
-                  ? "border-amber-400/40 bg-gradient-to-b from-[#0a2a1a] to-[#031a0a] shadow-[0_0_40px_rgba(250,204,21,0.25)]"
-                  : isDraw
-                    ? "border-white/20 bg-[#031a37]"
-                    : isCancelled
-                      ? "border-white/20 bg-[#031a37]"
-                      : "border-red-500/40 bg-gradient-to-b from-[#2a0a0a] to-[#1a0303] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
-              }`}
+              className="w-full max-w-md rounded-2xl border border-white/20 bg-[#031a37] p-6 shadow-2xl text-center"
             >
               <motion.div
                 initial={{ scale: 0, rotate: -25 }}
@@ -1103,30 +1167,16 @@ const prefersReducedMotion = useReducedMotion();
                 className="mb-2 text-6xl"
                 aria-hidden
               >
-                {isCancelled ? <IconDoorExit size={52} className="text-amber-300" /> : playerWon ? <IconTrophy size={52} className="text-amber-400" /> : isDraw ? <IconHeartHandshake size={52} className="text-yellow-300" /> : <IconBomb size={52} className="text-red-400" />}
+                <IconDoorExit size={52} className="text-amber-300" />
               </motion.div>
               <motion.h3
                 id="dnf-result-title"
                 initial={{ y: 12, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4, duration: 0.3 }}
-                className={`text-2xl font-extrabold mb-2 ${
-                  playerWon
-                    ? "text-amber-300"
-                    : isDraw
-                      ? "text-yellow-200"
-                      : "text-red-300"
-                }`}
+                className="text-2xl font-extrabold mb-2 text-amber-200"
               >
-                {isCancelled
-                  ? t("games.dots_and_boxes.result_cancelled_title")
-                  : playerWon
-                    ? t("games.dots_and_boxes.result_win_title")
-                    : isDraw
-                      ? t("games.dots_and_boxes.result_draw_title")
-                      : isForfeitLoss
-                        ? t("games.dots_and_boxes.result_forfeit_title")
-                        : t("games.dots_and_boxes.result_loss_title")}
+                {t("games.dots_and_boxes.result_cancelled_title")}
               </motion.h3>
               <motion.p
                 id="dnf-result-body"
@@ -1135,31 +1185,8 @@ const prefersReducedMotion = useReducedMotion();
                 transition={{ delay: 0.5, duration: 0.3 }}
                 className="text-white/80 mb-2"
               >
-                {isCancelled
-                  ? t("games.dots_and_boxes.result_cancelled_body")
-                  : playerWon
-                    ? (scores?.host ?? 0) > (scores?.guest ?? 0)
-                      ? `${scores?.host ?? 0} – ${scores?.guest ?? 0}`
-                      : `${scores?.guest ?? 0} – ${scores?.host ?? 0}`
-                    : isDraw
-                      ? `${scores?.host ?? 0} – ${scores?.guest ?? 0}`
-                      : (scores?.host ?? 0) > (scores?.guest ?? 0)
-                        ? `${scores?.host ?? 0} – ${scores?.guest ?? 0}`
-                        : `${scores?.guest ?? 0} – ${scores?.host ?? 0}`}
+                {t("games.dots_and_boxes.result_cancelled_body")}
               </motion.p>
-              {game?.payout !== null &&
-                game?.payout !== undefined &&
-                playerWon && (
-                  <motion.p
-                    initial={{ y: 12, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.6, duration: 0.3 }}
-                    className="text-lg font-bold text-yellow-300 mb-3"
-                  >
-                    +{Number(game.payout).toFixed(2)}{" "}
-                    {t("games.dots_and_boxes.tokens_suffix")}
-                  </motion.p>
-                )}
               <motion.div
                 initial={{ y: 12, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -1206,6 +1233,12 @@ const prefersReducedMotion = useReducedMotion();
         landscape={dbShell}
       />
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. The old win/loss/draw popup is
+          deleted — this is the single end-of-match experience. */}
+      {renderResult()}
     </>
   );
 }

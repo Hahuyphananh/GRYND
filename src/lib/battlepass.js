@@ -18,6 +18,13 @@ export const MAX_LEVEL = 100;
 // EXP sources.
 export const WAGER_EXP_DIVISOR = 10; // 1 XP per 10 tokens wagered
 export const QUEST_EXP_MULTIPLIER = 2; // quest XP = token reward × 2
+// One-time onboarding bonus for finishing the first Free Play vs AI match
+// (migration 0143). Free-play matches otherwise award no XP (expForWager(0)
+// = 0); this is the single explicit exception, granted once server-side by
+// /api/onboarding/first-game-complete and kept fully separate from wagered-
+// game rewards. 150 XP from a fresh account lands exactly on Level 2, where
+// a reward is waiting to be claimed on the Battle Pass page.
+export const FIRST_GAME_BONUS_XP = 150;
 
 // Cumulative XP required to REACH a level (level 1 = 0).
 export function expToReachLevel(level) {

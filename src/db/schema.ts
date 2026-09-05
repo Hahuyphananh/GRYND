@@ -365,6 +365,19 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   searchName: varchar("search_name", { length: 255 }),
   termsAccepted: boolean("terms_accepted").notNull().default(false),
+  // First-time-user onboarding completion. NULL = onboarding not finished
+  // (brand-new accounts only); once set it persists permanently. Written
+  // only through /api/onboarding/complete. Existing accounts were backfilled
+  // as completed (migration 0142) so nobody already using Grynd sees the
+  // welcome flow.
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  // Onboarding first free-match completion (the "first match is free" stage,
+  // migration 0143). NULL = the player hasn't yet finished their onboarding
+  // Free Play vs AI match; once set — only by /api/onboarding/first-game-complete
+  // at a real terminal game state — the one-time FIRST_GAME_BONUS_XP was
+  // granted and the tutorial match never reappears. Existing accounts were
+  // backfilled as completed so nobody already using Grynd can trigger it.
+  firstGameCompletedAt: timestamp("first_game_completed_at"),
   isAdmin: boolean("is_admin").notNull().default(false),
   isBanned: boolean("is_banned").notNull().default(false),
 });

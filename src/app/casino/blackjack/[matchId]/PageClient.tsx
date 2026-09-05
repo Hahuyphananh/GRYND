@@ -28,7 +28,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
-import confetti from "canvas-confetti";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
@@ -39,6 +38,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
@@ -287,6 +287,13 @@ export default function BlackjackPvpMatchPage({
   // loss so a stray tap can't throw the match away.
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [resigning, setResigning] = useState(false);
+  // Leave flow for free vs-AI matches — nothing is at stake, so leaving
+  // just returns to the lobby (no resign API call).
+  const [showAiLeave, setShowAiLeave] = useState(false);
+  // Finished-state result overlay visibility — the shared
+  // PvpResultScreen (UX plan P3-3) can be dismissed to reveal the
+  // final revealed hands underneath.
+  const [showResult, setShowResult] = useState(true);
   const victoryCelebratedRef = useRef(false);
   // Tracks which round numbers the user has already acknowledged in a
   // round-result modal. Without this, the modal would re-open on every
@@ -629,22 +636,7 @@ export default function BlackjackPvpMatchPage({
     ) {
       victoryCelebratedRef.current = true;
       playVictory();
-      confetti({
-        particleCount: 60,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ["#FFD700", "#FFA500", "#FFFFFF"],
-      });
-      setTimeout(
-        () =>
-          confetti({
-            particleCount: 30,
-            spread: 50,
-            origin: { y: 0.5 },
-            colors: ["#FFD700", "#FFFFFF"],
-          }),
-        300,
-      );
+      // Confetti is handled by the shared PvpResultScreen.
     }
     if (
       match?.status === "finished" &&
@@ -811,6 +803,156 @@ export default function BlackjackPvpMatchPage({
     );
   }
 
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered when the match finishes — AFTER the deciding round's
+  // per-round popup is dismissed (same sequencing as the old
+  // MatchEndModal it replaces, so the two overlays never stack).
+  // Every number comes from the real match row (winner / prizePaid /
+  // houseFee / refundEach / rounds / startedAt→endedAt) — nothing is
+  // invented. Winner/payout logic is untouched.
+  function renderMatchEnd() {
+    if (!match || match.status !== "finished" || !showResult) return null;
+    // Wait for the deciding round's RoundResultModal to be dismissed.
+    if (roundResultShownFor !== null) return null;
+
+    const isAi = Boolean(match.isAi);
+    const won = Boolean(match.winner) && user?.id === match.winner;
+    const draw = match.result === "draw";
+    const outcome = draw ? "draw" : won ? "win" : "loss";
+
+    const stake = Number(match.stakeAmount ?? 0);
+    const prizePaid = Number(match.prizePaid ?? 0);
+    const houseFee = Number(match.houseFee ?? 0);
+    const refundEach = Number(match.refundEach ?? 0);
+    const pot = stake * 2;
+    const myRounds = viewerIsPlayer1
+      ? Number(match.roundsWonPlayer1 || 0)
+      : Number(match.roundsWonPlayer2 || 0);
+    const oppRounds = viewerIsPlayer1
+      ? Number(match.roundsWonPlayer2 || 0)
+      : Number(match.roundsWonPlayer1 || 0);
+
+    // Stake is escrowed at matchmaking; at settle the winner is
+    // credited `prizePaid` (= pot − 5% fee = 1.9 × stake, stake
+    // included). Net token change from the viewer's pocket:
+    //   win  → +prizePaid − stake = +0.9 × stake
+    //   loss → −stake
+    //   draw → +refundEach (95% of stake — 5% rake per side on the
+    //          tiebreak tie)
+    // AI practice matches never move tokens.
+    const tokenDelta = isAi
+      ? null
+      : draw
+        ? refundEach
+        : won
+          ? prizePaid - stake
+          : -stake;
+
+    // Duration from the existing timestamps (omitted when unavailable).
+    let durationSeconds: number | null = null;
+    if (match.startedAt && match.endedAt) {
+      const start = new Date(match.startedAt).getTime();
+      const end = new Date(match.endedAt).getTime();
+      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+        durationSeconds = Math.round((end - start) / 1000);
+      }
+    }
+
+    const oppName = isAi ? "GRYND AI" : oppSeatLabel;
+    const headline = won
+      ? `You took the match ${myRounds}–${oppRounds} rounds`
+      : draw
+        ? "Evenly matched — the tiebreak round couldn't split you"
+        : `${oppName} took the match ${oppRounds}–${myRounds} rounds`;
+    const subline = isAi
+      ? "Free practice match — no tokens were wagered or awarded."
+      : draw
+        ? `Tiebreak round tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% house fee each).`
+        : won
+          ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
+          : `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Blackjack PvP"
+        opponent={{ name: oppName, isAi }}
+        tokenDelta={tokenDelta}
+        durationSeconds={durationSeconds}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+          { label: "Rounds", value: `${myRounds} – ${oppRounds}` },
+        ]}
+        details={[
+          { label: "Match ID", value: String(match.id) },
+          ...(isAi
+            ? []
+            : [
+                { label: "Wager", value: `${stake.toLocaleString()} tokens` },
+                { label: "Pot", value: `${pot.toLocaleString()} tokens` },
+                ...(won
+                  ? [
+                      { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
+                      { label: "House fee", value: `${houseFee.toLocaleString()} tokens` },
+                    ]
+                  : []),
+              ]),
+          { label: "Winner", value: draw ? "Draw" : won ? "You" : oppName },
+        ]}
+        detailsContent={
+          rounds.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Round scores
+              </p>
+              <div className="space-y-1">
+                {rounds.map((r) => {
+                  const myScore = viewerIsPlayer1
+                    ? r.player1Score
+                    : r.player2Score;
+                  const oppScore = viewerIsPlayer1
+                    ? r.player2Score
+                    : r.player1Score;
+                  const viewerWonRound = r.viewerWonThisRound === true;
+                  return (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-white/50">
+                        Round {r.roundNumber}
+                      </span>
+                      <span
+                        className={
+                          viewerWonRound
+                            ? "font-bold text-emerald-300"
+                            : "text-white/60"
+                        }
+                      >
+                        {myScore} – {oppScore}
+                        {viewerWonRound ? " ✓" : " ✗"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null
+        }
+        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/blackjack") }}
+        onReturnToLobby={() => router.push("/casino")}
+        onDismiss={() => setShowResult(false)}
+        dismissLabel="View Match Results"
+      />
+    );
+  }
+
   // ── Main render ───────────────────────────────────────────────────
   return (
     <>
@@ -892,6 +1034,35 @@ export default function BlackjackPvpMatchPage({
               <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
             </button>
           )}
+
+          {/* Leave / Resign — kept in the top header so it stays
+              reachable even when the portrait creator frame crops the
+              tall content column. PvP matches resign (stake forfeit)
+              via the resign API; free vs-AI matches just leave —
+              nothing is at stake. Hidden while waiting (owner uses
+              Cancel) and once the match reaches a terminal state. */}
+          {match &&
+            match.status !== "waiting" &&
+            match.status !== "finished" &&
+            match.status !== "cancelled" && (
+              <button
+                onClick={() =>
+                  match.isAi
+                    ? setShowAiLeave(true)
+                    : setShowResignConfirm(true)
+                }
+                disabled={resigning}
+                className={`px-3 py-1.5 rounded-full border text-xs font-extrabold transition-all hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] disabled:opacity-40 ${
+                  match.isAi
+                    ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
+                    : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                }`}
+              >
+                {match.isAi
+                  ? t("blackjackPvp.leave.button", "Leave match")
+                  : t("blackjackPvp.resign.button", "Resign")}
+              </button>
+            )}
         </div>
 
         {errorMsg && (
@@ -1142,30 +1313,8 @@ export default function BlackjackPvpMatchPage({
               {t("blackjackPvp.ready", "Manche 1 imminente…")}
             </div>
           )}
-          {/* Resign — available once an opponent has joined (during
-              waiting the owner uses the dedicated Cancel button which
-              refunds the same way). Forfeits the stake; the opponent
-              wins. Hidden once the match reaches a terminal state. */}
-          {match &&
-            match.status !== "waiting" &&
-            match.status !== "finished" &&
-            match.status !== "cancelled" &&
-            !match.isAi && (
-              <div className="mt-6 border-t border-white/10 pt-4 text-center">
-                <button
-                  onClick={() => setShowResignConfirm(true)}
-                  disabled={resigning}
-                  className="px-5 py-2 rounded-xl border border-red-400/40 bg-red-500/10 text-red-300 text-xs font-bold tracking-wide uppercase transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(239,68,68,0.25)] disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {resigning
-                    ? t("blackjackPvp.resign.loading", "Abandon en cours…")
-                    : t(
-                        "blackjackPvp.resign.button",
-                        "Abandonner et retourner au salon",
-                      )}
-                </button>
-              </div>
-            )}
+          {/* Leave / Resign now lives in the top header (above), where
+              it stays reachable inside the portrait creator frame. */}
         </div>
 
         {/* Round-by-round history footer — abstract win/loss only;
@@ -1270,30 +1419,8 @@ export default function BlackjackPvpMatchPage({
           })()}
       </AnimatePresence>
 
-      {/* Match-end modal — surfaces AFTER the deciding round's
-          per-round popup is dismissed (or auto-dismissed) so the
-          two modal layers never overlap. The round result modal
-          stays mounted until either the 5-second auto-dismiss tick
-          or the user clicks Continue/outside. */}
+      {/* Match cancelled modal (unchanged) */}
       <AnimatePresence>
-        {match?.status === "finished" && roundResultShownFor === null && (
-          <MatchEndModal
-            t={t}
-            isAi={Boolean(match.isAi)}
-            stake={Number(match.stakeAmount)}
-            prizePaid={Number(match.prizePaid)}
-            houseFee={Number(match.houseFee)}
-            refundEach={match.refundEach ?? null}
-            winner={match.winner}
-            userId={user?.id ?? null}
-            result={match.result}
-            onBackToLobby={() => {
-              victoryCelebratedRef.current = false;
-              acknowledgedRoundsRef.current = new Set();
-              router.push("/casino/blackjack");
-            }}
-          />
-        )}
         {match?.status === "cancelled" && (
           <CancelledModal
             t={t}
@@ -1303,6 +1430,13 @@ export default function BlackjackPvpMatchPage({
       </AnimatePresence>
       </CreatorResponsiveLayout>
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. It surfaces AFTER the deciding
+          round's per-round popup is dismissed (same gating as the
+          old MatchEndModal, which is now deleted). */}
+      {renderMatchEnd()}
 
       {/* Resign confirmation modal — warns the player their stake is
           forfeited before hitting the resign API. */}
@@ -1314,6 +1448,13 @@ export default function BlackjackPvpMatchPage({
             busy={resigning}
             onCancel={() => setShowResignConfirm(false)}
             onConfirm={handleResign}
+          />
+        )}
+        {showAiLeave && match?.isAi && (
+          <LeaveAiConfirmModal
+            t={t}
+            onCancel={() => setShowAiLeave(false)}
+            onConfirm={() => router.push("/casino/blackjack")}
           />
         )}
       </AnimatePresence>
@@ -2326,140 +2467,6 @@ function RoundResultSeat({
   );
 }
 
-function MatchEndModal({
-  t,
-  stake,
-  prizePaid,
-  houseFee,
-  refundEach,
-  winner: winnerId,
-  userId,
-  result,
-  isAi,
-  onBackToLobby,
-}: {
-  t: TFn;
-  stake: number;
-  prizePaid: number;
-  houseFee: number;
-  // Only set on a finished DRAW: what each player gets back (95% of
-  // their stake — 5% per-side rake on the tiebreak tie).
-  refundEach: number | null;
-  // Prompt 9 schema refactor: caller passes `winner` so the prop
-  // rename matches.
-  winner: string | null;
-  userId: string | null;
-  result: string | null;
-  isAi: boolean;
-  onBackToLobby: () => void;
-}) {
-  const won = Boolean(winnerId) && userId === winnerId;
-  const draw = result === "draw";
-
-  return (
-    // BUG-FIX (modal overlap): paint strictly ABOVE
-    // RoundResultModal (z-[80]) so when the per-round popup's
-    // exit-animation plays while MatchEndModal enters, framer-motion
-    // never composites them at the same stacking layer. Without this
-    // bump, both modals briefly render at z-[80] during the
-    // AnimatePresence transition.
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
-    >
-      <motion.div
-        initial={{ scale: 0.85, y: 30 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.85, y: 30 }}
-        transition={{ type: "spring", stiffness: 300, damping: 18 }}
-        className={`relative w-full max-w-md rounded-3xl border-4 p-6 text-center shadow-2xl ${
-          won
-            ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.45)]"
-            : draw
-            ? "border-yellow-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_40px_rgba(250,204,21,0.25)]"
-            : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_40px_rgba(239,68,68,0.25)]"
-        }`}
-      >
-        <motion.div
-          initial={{ scale: 0, rotate: -30 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mb-2 text-7xl"
-        >
-          {won ? <IconTrophy size={64} className="text-amber-400" /> : draw ? <IconHeartHandshake size={64} className="text-yellow-300" /> : <IconSkull size={64} className="text-red-400" />}
-        </motion.div>
-        <h2
-          className={`mt-2 text-3xl font-black uppercase ${
-            won ? "text-amber-300" : draw ? "text-yellow-300" : "text-red-400"
-          }`}
-        >
-          {won
-            ? t("blackjackPvp.matchWin", "Victoire !")
-            : draw
-            ? t("blackjackPvp.matchDraw", "Égalité")
-            : t("blackjackPvp.matchLose", "Défaite")}
-        </h2>        <p className="mt-2 text-white/80 text-sm leading-relaxed">
-          {isAi && (
-            <>
-              {t(
-                "blackjackPvp.freeMatchResult",
-                "Free match complete. No tokens were wagered or awarded.",
-              )}
-            </>
-          )}
-          {!isAi && won && (
-            <>
-              {t("blackjackPvp.matchWinDetail", "Vous remportez")} {" "}
-              <span className="text-amber-300 font-bold">
-                {prizePaid.toLocaleString()}
-              </span>{" "}
-              {t(
-                "blackjackPvp.tokensUnit",
-                "tokens (pot {pot} − commission {fee}).",
-              )
-                .replace("{pot}", String(stake * 2))
-                .replace("{fee}", houseFee.toLocaleString())}
-            </>
-          )}
-          {!isAi && draw && (
-            <>
-              {t(
-                "blackjackPvp.matchDrawDetail",
-                "Manche décisive. Votre mise de {amount} tokens vous est remboursée, moins une commission de 5 %, {refund} tokens.",
-              )
-                .replace("{amount}", stake.toLocaleString())
-                .replace(
-                  "{refund}",
-                  (refundEach ?? Math.round(stake * 0.95)).toLocaleString(),
-                )}
-            </>
-          )}
-          {!isAi && !won && !draw && (
-            <>
-              {t(
-                "blackjackPvp.matchLoseDetail",
-                "Vous perdez votre mise de {amount} tokens. Bonne chance la prochaine fois !",
-              ).replace("{amount}", stake.toLocaleString())}
-            </>
-          )}
-        </p>
-        <button
-          onClick={onBackToLobby}
-          className={`mt-6 rounded-xl border-b-4 px-7 py-2.5 text-base font-black transition active:translate-y-[2px] ${
-            won
-              ? "border-amber-700 bg-amber-400 text-black"
-              : "border-cyan-700 bg-cyan-400 text-black"
-          }`}
-        >
-          {t("blackjackPvp.lobby.back", "Retour au lobby")}
-        </button>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 function CancelledModal({
   t,
   onBackToLobby,
@@ -2559,6 +2566,61 @@ function ResignConfirmModal({
             {busy
               ? t("blackjackPvp.resign.loading", "Abandon en cours…")
               : t("blackjackPvp.resign.confirm", "Abandonner")}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Leave (vs-AI) confirmation modal ────────────────────────────────
+// Free vs-AI matches have no stake, so leaving is a plain exit back to
+// the lobby — no resign API call, no forfeiture copy.
+function LeaveAiConfirmModal({
+  t,
+  onCancel,
+  onConfirm,
+}: {
+  t: TFn;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ scale: 0.85, y: 30 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.85, y: 30 }}
+        transition={{ type: "spring", stiffness: 300, damping: 18 }}
+        className="relative w-full max-w-md rounded-3xl border-4 border-[#00e5ff]/40 bg-gradient-to-b from-[#0a1533] to-[#040d24] p-6 text-center shadow-2xl"
+      >
+        <div className="mb-2 flex justify-center text-6xl" aria-hidden>🚪</div>
+        <h2 className="mt-2 text-3xl font-black uppercase text-[#00e5ff]">
+          {t("blackjackPvp.leave.title", "Leave this match?")}
+        </h2>
+        <p className="mt-3 text-white/80 text-sm">
+          {t(
+            "blackjackPvp.leave.body",
+            "This is a free practice match — nothing is at stake. Leave and play again any time.",
+          )}
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button
+            onClick={onCancel}
+            className="rounded-xl border-b-4 border-white/20 bg-white/10 px-6 py-2.5 text-sm font-bold text-white transition active:translate-y-[2px]"
+          >
+            {t("blackjackPvp.resign.cancel", "Keep playing")}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-xl border-b-4 border-cyan-700 bg-cyan-400 px-6 py-2.5 text-sm font-black text-black transition active:translate-y-[2px]"
+          >
+            {t("blackjackPvp.leave.confirm", "Leave match")}
           </button>
         </div>
       </motion.div>

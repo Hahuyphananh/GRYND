@@ -11,16 +11,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
-import { celebrateWin, gameOverModal, turnBanner as turnBannerAnim } from "../../../../lib/animations";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import { useChessClock } from "../../../../lib/useChessClock";
 import { usePostHog } from "posthog-js/react";
 import {
   IconAlertTriangle,
-  IconTrophy,
-  IconHeartHandshake,
-  IconSkull,
-  IconSparkles,
   IconRobot,
   IconBulb,
   IconVolume,
@@ -734,7 +731,6 @@ export default function ChessAIPageInner() {
       if (!resultCelebratedRef.current) {
         resultCelebratedRef.current = true;
         playVictory();
-        celebrateWin();
       }
       endGame("win");
       setShowResultModal(true);
@@ -764,7 +760,6 @@ export default function ChessAIPageInner() {
         if (!resultCelebratedRef.current) {
           resultCelebratedRef.current = true;
           playVictory();
-          celebrateWin();
         }
       } else {
         setWinnerText("AI wins!");
@@ -931,83 +926,24 @@ export default function ChessAIPageInner() {
         )}
       </AnimatePresence>
 
-      {/* Game Over Modal */}
-      <AnimatePresence>
-        {showResultModal && (
-          <motion.div
-            key="chess-ai-end"
-            {...gameOverModal.backdrop}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
-          >
-            <motion.div
-              {...gameOverModal.panel}
-              className={`relative w-full max-w-md overflow-hidden rounded-3xl border-4 p-6 text-center shadow-2xl ${
-                gameResult === "win"
-                  ? "border-amber-400 bg-gradient-to-b from-[#1a3a1a] to-[#0d2b0d] shadow-[0_0_60px_rgba(251,191,36,0.4)]"
-                  : gameResult === "draw"
-                    ? "border-yellow-400 bg-gradient-to-b from-[#1a2a1a] to-[#0d1a0d] shadow-[0_0_60px_rgba(250,204,21,0.3)]"
-                    : "border-red-500 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] shadow-[0_0_60px_rgba(239,68,68,0.3)]"
-              }`}
-            >
-              <motion.div
-                initial={{ scale: 0, rotate: -30 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.3 }}
-                className="mb-2 text-7xl"
-              >
-                {gameResult === "win" ? <IconTrophy size={64} className="text-amber-400" /> : gameResult === "draw" ? <IconHeartHandshake size={64} className="text-yellow-300" /> : <IconSkull size={64} className="text-red-400" />}
-              </motion.div>
-              <motion.h2
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.4 }}
-                className={`mt-3 text-4xl font-black uppercase ${
-                  gameResult === "win" ? "text-amber-300" : gameResult === "draw" ? "text-yellow-300" : "text-red-400"
-                }`}
-              >
-                {winnerText}
-              </motion.h2>
-              {gameResult === "win" && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 1.0 }}
-                  className="mt-3 flex justify-center gap-1"
-                >
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <motion.span
-                      key={i}
-                      animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
-                      transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.12 }}
-                    >
-                      <IconSparkles size={20} className="text-amber-300" />
-                    </motion.span>
-                  ))}
-                </motion.div>
-              )}
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.8, duration: 0.4 }}
-                className="mt-6 flex gap-4 justify-center"
-              >
-                <button
-                  onClick={resetGame}
-                  className="rounded-xl border-b-4 border-green-700 bg-green-500 px-6 py-3 font-black text-white shadow-[0_0_15px_rgba(34,197,94,0.4)] transition active:translate-y-[2px]"
-                >
-                  Play Again
-                </button>
-                <button
-                  onClick={() => router.push("/casino/chess")}
-                  className="rounded-xl border-b-4 border-gray-600 bg-gray-700 px-6 py-3 font-black text-white transition active:translate-y-[2px]"
-                >
-                  Return to Lobby
-                </button>
-              </motion.div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Game Over result screen */}
+      {showResultModal && (
+        <PvpResultScreen
+          open
+          outcome={gameResult === "win" ? "win" : gameResult === "draw" ? "draw" : "loss"}
+          headline={winnerText || undefined}
+          subline="Free practice match — no tokens were wagered."
+          gameName="Chess vs AI"
+          opponent={{ name: "AI", iconKey: null, isAi: true }}
+          summary={[
+            { label: "Your Color", value: playerColor === "white" ? "White" : "Black" },
+            { label: "Moves", value: String(moves.length) },
+            { label: "Difficulty", value: `Level ${aiLevel}` },
+          ]}
+          playAgain={{ onClick: resetGame }}
+          onReturnToLobby={() => router.push("/casino/chess")}
+        />
+      )}
 
       <div className="max-w-7xl mx-auto">
         {/* HEADER */}

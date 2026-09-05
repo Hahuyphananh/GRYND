@@ -9,8 +9,17 @@
 // The AI reads your most common throw and counters it ~half the time,
 // so a predictable player gets punished — beat it by mixing up your
 // patterns. No tokens are ever wagered.
+//
+// ?onboarding=1 (from the /welcome first-match step) reuses this exact game
+// as the first-game tutorial: a one-line hint before the first throw, then
+// at the terminal state the shared PvpResultScreen shows the one-time
+// first-match XP bonus + Battle Pass progress with a "View Battle Pass"
+// next step. Completion is claimed server-side exactly once
+// (/api/onboarding/first-game-complete) so refresh/double-taps can never
+// double-grant XP. Everyone else — including replays after onboarding —
+// gets plain free practice, unchanged.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,6 +29,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
 import { RockFistIcon } from "../../../../components/icons/CustomIcons";
@@ -73,7 +83,27 @@ function getResult(player: Choice, ai: Choice): RoundResult {
   return "lose";
 }
 
-export default function RPSPlayAiPage() {
+type FirstMatchBonus = {
+  alreadyCompleted: boolean;
+  xpGranted: number;
+  fromLevel: number;
+  fromXp: number;
+  toLevel: number;
+  toXp: number;
+  leveledUp: boolean;
+};
+
+// Tutorial framing states. "checking" verifies the server flag on mount;
+// "active" means the first-match bonus is still owed; "complete" means the
+// terminal state was reached (bonus = server response, or null when the
+// claim POST failed and the match result must degrade gracefully).
+type TutorialState =
+  | { mode: "off" }
+  | { mode: "checking" }
+  | { mode: "active" }
+  | { mode: "complete"; bonus: FirstMatchBonus | null };
+
+export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boolean }) {
   const router = useRouter();
 
   const [myWins, setMyWins] = useState(0);
@@ -88,6 +118,13 @@ export default function RPSPlayAiPage() {
 
   const matchOver = phase === "matchOver";
   const wonMatch = myWins >= ROUNDS_TO_WIN;
+
+  // Tutorial (first-match) framing, only when launched from the welcome flow.
+  const [tutorial, setTutorial] = useState<TutorialState>(() =>
+    onboarding ? { mode: "checking" } : { mode: "off" },
+  );
+  const bonusPostedRef = useRef(false);
+  const tutorialActive = tutorial.mode === "active";
 
   const play = async (choice: Choice) => {
     if (phase !== "picking" || aiThinking) return;
@@ -147,6 +184,88 @@ export default function RPSPlayAiPage() {
     setLastResult(null);
     setPhase("picking");
   };
+
+  // After the first-match bonus was granted (or its claim failed), further
+  // matches are plain free practice — the tutorial must never stick around.
+  const restartAfterFirstMatch = () => {
+    if (tutorial.mode === "complete" && !tutorial.bonus) {
+      // The claim POST failed earlier — retry it on the next finished match.
+      bonusPostedRef.current = false;
+      setTutorial({ mode: "active" });
+    } else {
+      setTutorial({ mode: "off" });
+    }
+    restart();
+  };
+
+  // Mount: verify whether the first-match bonus is still owed. A fresh
+  // account (firstGameCompleted === false) keeps the tutorial framing;
+  // everyone else plays plain free practice. Fail-open on network errors so
+  // the game is never blocked by the onboarding API.
+  useEffect(() => {
+    if (tutorial.mode !== "checking") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/onboarding/status", {
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data?.success === true && data.firstGameCompleted === false) {
+          setTutorial({ mode: "active" });
+        } else {
+          setTutorial({ mode: "off" });
+        }
+      } catch {
+        if (!cancelled) setTutorial({ mode: "off" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tutorial]);
+
+  // Real terminal state only (matchOver, not merely opening the game): claim
+  // the one-time completion + XP bonus. The server-side claim is atomic and
+  // idempotent, so refresh / double-taps / extra tabs can never double-grant.
+  useEffect(() => {
+    if (tutorial.mode !== "active" || !matchOver) return;
+    if (bonusPostedRef.current) return;
+    bonusPostedRef.current = true;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    (async () => {
+      try {
+        const res = await fetch("/api/onboarding/first-game-complete", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || data?.success !== true) throw new Error("first-game-complete failed");
+        if (data.alreadyCompleted === true) {
+          // Another tab/session already claimed the bonus — plain free play.
+          setTutorial({ mode: "off" });
+          return;
+        }
+        setTutorial({ mode: "complete", bonus: data });
+      } catch {
+        // Graceful degradation: show the normal result (no XP rows); the
+        // bonus claim retries on the next finished match via Play Again.
+        if (!cancelled) setTutorial({ mode: "complete", bonus: null });
+      } finally {
+        clearTimeout(timeout);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [tutorial, matchOver]);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
@@ -241,40 +360,88 @@ export default function RPSPlayAiPage() {
           <RoundMarkers total={TOTAL_ROUNDS} myWins={myWins} oppWins={aiWins} myLabel="You" oppLabel="AI" />
         </div>
 
-        {matchOver ? (
-          <div className="text-center">
-            <motion.p
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 15 }}
-              className={`text-2xl font-bold ${
-                wonMatch
-                  ? "text-[#00ffa6] drop-shadow-[0_0_15px_rgba(0,255,166,1)]"
-                  : "text-red-400"
-              }`}
-            >
-              {wonMatch ? <IconTrophy size={26} className="inline" /> : <IconSkull size={22} className="inline" />}{" "}
-              {wonMatch ? "You win the best of 7!" : "The AI wins the best of 7."}
-            </motion.p>
-            <p className="mt-2 text-lg">
-              Final score: <span className="text-blue-400 font-bold">{myWins}</span> –{" "}
-              <span className="text-red-400 font-bold">{aiWins}</span>
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-3">
-              <button
-                onClick={restart}
-                className="border-b-4 border-amber-700 bg-amber-500 text-black px-5 py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(251,191,36,0.4)] hover:brightness-110 transition"
-              >
-                Play Again
-              </button>
-              <button
-                onClick={() => router.push("/casino/rps")}
-                className="border-b-4 border-cyan-700 bg-cyan-500 text-black px-5 py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(34,211,238,0.4)] hover:brightness-110 transition"
-              >
-                Back to Lobby
-              </button>
-            </div>
+        {/* Onboarding tutorial — one contextual hint before the first throw,
+            then it disappears and the real game teaches the rest. */}
+        {tutorialActive && phase === "picking" && history.length === 0 && (
+          <div className="w-full max-w-md rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-center text-xs leading-relaxed text-amber-100/90 backdrop-blur-sm">
+            <span className="font-black uppercase tracking-wider text-amber-300">Free Play vs AI</span>
+            <span className="mx-1.5 text-amber-200/40">·</span>No tokens at risk
+            <span className="mx-1.5 text-amber-200/40">·</span>First to 4 wins
+            <br />
+            <span className="text-amber-100/70">
+              The AI learns your most common throw — mix it up to beat it.
+            </span>
           </div>
+        )}
+
+        {matchOver ? (
+          tutorial.mode === "active" ? (
+            // Claim in flight — brief spinner so the result screen mounts once
+            // (avoids a flash + double confetti from the vanilla result).
+            <div className="flex w-full max-w-md items-center justify-center rounded-2xl border border-cyan-700/30 bg-black/40 px-8 py-10 backdrop-blur-xl">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#00e5ff]/20 border-t-[#00e5ff]" />
+                <p className="text-sm font-semibold text-[#9dd8ff]">Finishing your first match…</p>
+              </div>
+            </div>
+          ) : tutorial.mode === "complete" && tutorial.bonus && !tutorial.bonus.alreadyCompleted ? (
+            // First-match progression moment: real server numbers for the XP
+            // and Battle Pass rows, then a clear next step.
+            <PvpResultScreen
+              open
+              outcome={wonMatch ? "win" : "loss"}
+              headline={
+                wonMatch
+                  ? "You win your first free match!"
+                  : "First match done — the AI got you this time."
+              }
+              subline="Free practice — no tokens at risk. Finishing your first match earned a one-time XP bonus for your Battle Pass."
+              gameName="RPS vs AI"
+              opponent={{ name: "AI", iconKey: null, isAi: true }}
+              xp={tutorial.bonus.xpGranted > 0 ? tutorial.bonus.xpGranted : null}
+              progress={
+                tutorial.bonus.leveledUp
+                  ? [
+                      {
+                        label: "Battle Pass",
+                        from: String(tutorial.bonus.fromLevel),
+                        to: String(tutorial.bonus.toLevel),
+                        percent: 100,
+                      },
+                    ]
+                  : []
+              }
+              summary={[
+                { label: "Final Score", value: `${myWins} – ${aiWins}` },
+                { label: "Rounds", value: `${history.length} of ${TOTAL_ROUNDS}` },
+              ]}
+              playAgain={{
+                label: "View Battle Pass",
+                onClick: () => router.push("/battlepass"),
+              }}
+              rematch={{ label: "Play Again", onClick: restartAfterFirstMatch }}
+              onReturnToLobby={() => router.push("/casino/rps")}
+            />
+          ) : (
+            // Default result — plain free practice. In tutorial mode this
+            // also covers the "bonus claim pending/failed" fallback, so Play
+            // Again stays retry-aware (restartAfterFirstMatch resets the
+            // claim gate; for plain players it is identical to restart).
+            <PvpResultScreen
+              open
+              outcome={wonMatch ? "win" : "loss"}
+              headline={wonMatch ? "You win the best of 7!" : "The AI wins the best of 7."}
+              subline="Free practice match — no tokens were wagered."
+              gameName="RPS vs AI"
+              opponent={{ name: "AI", iconKey: null, isAi: true }}
+              summary={[
+                { label: "Final Score", value: `${myWins} – ${aiWins}` },
+                { label: "Rounds", value: `${history.length} of ${TOTAL_ROUNDS}` },
+              ]}
+              playAgain={{ onClick: restartAfterFirstMatch }}
+              onReturnToLobby={() => router.push("/casino/rps")}
+            />
+          )
         ) : (
           <>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-5 sm:gap-10 w-full">

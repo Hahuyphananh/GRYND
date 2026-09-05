@@ -11,6 +11,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
+import CreatorModeLobby from "../../../../components/creator-mode/CreatorModeLobby";
 import Footer from "../../../../components/Footer";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the real hand actually begins
@@ -1651,6 +1652,10 @@ export default function PokerPage() {
         />
 
         <NavigationBar currentPath="/casino" />
+        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+        <div className="mt-3 flex justify-center">
+          <CreatorModeLobby />
+        </div>
 
         <div className="relative z-10 mx-auto max-w-5xl">
           <motion.div

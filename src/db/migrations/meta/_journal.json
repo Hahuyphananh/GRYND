@@ -904,6 +904,20 @@
       "when": 1797000000000,
       "tag": "0141_settings_mfa_prefs_wagers",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1798000000000,
+      "tag": "0142_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1799000000000,
+      "tag": "0143_first_game_onboarding",
+      "breakpoints": true
     }
   ]
 }

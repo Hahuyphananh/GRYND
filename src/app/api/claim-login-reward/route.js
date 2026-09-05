@@ -50,8 +50,10 @@ function toUtcDayKey(value) {
 }
 
 export async function POST(req) {
+  // Hoisted so the catch handler below can log the clerk id on any failure.
+  let userId = null;
   try {
-    const { userId } = await auth();
+    ({ userId } = await auth());
 
     const idem = await claimIdempotency(req, "rewards:claim-login", 180);
     if (idem.enforced && !idem.allowed) {

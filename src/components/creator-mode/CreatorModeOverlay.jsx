@@ -4,43 +4,39 @@
 //
 // Recording UX for Creator Mode — designed to NEVER obstruct gameplay:
 //
-//   • Before recording — nothing over the game except a tiny
-//     non-interactive "armed" pill. Creator Mode configuration (output
-//     dimensions, enable/disable) lives in the LOBBY, not here.
+//   • The in-game status + controls (armed / REC / Stop & save /
+//     Download) render in a PORTAL fixed to the bottom of the viewport
+//     (CreatorModeExteriorBar) — above the game's own UI, never inside
+//     the recording frame, never recorded. Portaling guarantees they are
+//     always visible and always clickable: they can't fall below the
+//     fold of a page layout, be covered by page chrome / fixed bottom
+//     bars, or lose clicks.
 //   • Countdown        — the 3 → 2 → 1 ring (pure UI, pointer-events:
 //     none; the game stays fully playable).
-//   • During recording — a tiny non-interactive REC pill. No buttons,
-//     no panels, no input capture — nothing covers or blocks the game.
-//   • After recording stops — a clean result panel (modal) with the
-//     video preview (play/pause), selected dimensions, duration, format,
-//     and Download / Discard / Record-another actions. The recording
-//     stays local to the browser — never uploaded or stored.
+//   • After recording stops — the finished MP4/WebM is auto-downloaded
+//     when the game ended normally (or the user pressed "Stop & save"),
+//     so a clip can never be lost to navigation or a covering result
+//     overlay (the auto-save is owned by CreatorModeExteriorBar). A clean
+//     result panel (modal) then appears with the video preview
+//     (play/pause), selected dimensions, duration, format, and Download /
+//     Discard / Record-another actions. The recording stays local to the
+//     browser — never uploaded or stored.
 //
-// All elements are portaled to <body> (so they're never trapped inside
-// the recording viewport's CSS transform) and the status pills use
-// pointer-events: none, so they can never capture pointer input.
+// Everything here is portaled to <body> (so it is never trapped inside
+// the recording viewport's CSS transform or captured on video).
 //
 // Renders nothing when creator mode is off, so normal users never see it.
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { useCreatorMode } from "../../lib/creator-mode/CreatorModeProvider";
 import CreatorModeResultPanel from "./CreatorModeResultPanel";
-
-// Tiny status pill content per recorder state. `stopped` is handled by
-// the result panel instead. All pills are non-interactive.
-const STATE_PILL = {
-  idle: { dot: "bg-[#6aa4d8]", label: "Creator Mode armed" },
-  requesting: { dot: "bg-amber-400 animate-pulse", label: "Preparing…" },
-  recording: { dot: "bg-red-500 animate-pulse", label: "REC" },
-  error: { dot: "bg-red-400", label: "Recording unavailable" },
-};
+import CreatorModeExteriorBar from "./CreatorModeExteriorBar";
 
 export default function CreatorModeOverlay() {
   const {
     isCreatorMode,
     state,
-    error,
     lastResult,
     supported,
     countdown,
@@ -49,30 +45,10 @@ export default function CreatorModeOverlay() {
     discard,
     download,
     startCreatorRecording,
-    stopCreatorRecording,
   } = useCreatorMode();
-
-  // "Stop": stop the capture, then auto-download the finished MP4/WebM
-  // as soon as the recorder finalises it. The result panel still appears
-  // afterwards with its own Download / Discard / Record-another actions,
-  // so the user can re-download any time.
-  const [pendingDownload, setPendingDownload] = useState(false);
-
-  useEffect(() => {
-    if (pendingDownload && state === "stopped" && lastResult) {
-      setPendingDownload(false);
-      download();
-    }
-  }, [pendingDownload, state, lastResult, download]);
-
-  const stopAndSave = () => {
-    setPendingDownload(true);
-    stopCreatorRecording();
-  };
 
   if (!isCreatorMode) return null;
 
-  const pill = STATE_PILL[state] || null;
   const showResultPanel = state === "stopped" && lastResult !== null;
 
   // Record another game: discard the finished recording, then start
@@ -98,46 +74,15 @@ export default function CreatorModeOverlay() {
         </div>
       )}
 
-      {/* Stop & save — the one interactive control during recording.
-          Stopping finalises the capture and auto-downloads the file; the
-          result panel that follows keeps its Download button (re-download
-          any time) plus Discard / Record another. */}
-      {state === "recording" && (
-        <button
-          onClick={stopAndSave}
-          className="fixed bottom-14 right-4 z-[60] flex items-center gap-1.5 rounded-full border border-red-400/60 bg-red-600/90 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-[0_0_16px_rgba(239,68,68,0.5)] transition hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-          ⏹ Stop & save
-        </button>
-      )}
-
-      {/* Tiny non-interactive status pill (armed / preparing / REC / error). */}
-      {pill && !showResultPanel && (
-        <div
-          className="pointer-events-none fixed bottom-4 right-4 z-[60] flex items-center gap-1.5 rounded-full border border-[#00e5ff]/25 bg-[#040d24]/85 px-2.5 py-1 shadow-[0_0_12px_rgba(0,229,255,0.2)] backdrop-blur"
-          role="status"
-          aria-live="polite"
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${pill.dot}`} />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#d8fbff]">
-            {pill.label}
-          </span>
-          {state === "recording" && (
-            <span className="text-[10px] font-semibold text-[#9dd8ff] tabular-nums">
-              {dimensions.width}×{dimensions.height}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Error detail — tiny pill with the reason (still non-interactive;
-          the recording simply failed and gameplay is unaffected). */}
-      {state === "error" && error && (
-        <div className="pointer-events-none fixed bottom-14 right-4 z-[60] max-w-[240px] rounded-lg border border-red-400/30 bg-[#040d24]/95 px-2.5 py-1.5 text-[10px] leading-snug text-red-300 shadow-lg backdrop-blur">
-          {error}
-        </div>
-      )}
+      {/* Creator controls — fixed at the bottom of the VIEWPORT (not the
+          page), on the very top layer (z-[9998]) so NO page chrome,
+          overlay, or fixed bar can sit above them and swallow clicks.
+          Never inside the frame, never captured. The frame's scale
+          reserves this bottom strip so the controls don't cover the
+          game. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-3 z-[9998] flex justify-center px-3">
+        <CreatorModeExteriorBar />
+      </div>
 
       {/* Clean result panel — only after recording has stopped. */}
       {showResultPanel && (

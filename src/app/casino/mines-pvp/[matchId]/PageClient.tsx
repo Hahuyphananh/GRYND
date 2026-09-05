@@ -39,6 +39,7 @@ import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -1171,21 +1172,35 @@ export default function MinesPvpMatchPage({
     );
   }
 
-  // ── Result screen (overlay) ───────────────────────────────────────
-  // Prompt fix: previously this rendered inline at the bottom of
-  // the page, BELOW the 5×5 gameboard — now it renders as a fixed
-  // full-screen overlay (mirroring the chess game at
-  // `src/app/casino/chess-game/[gameId]/page.jsx`'s
-  // `showResultPopup`). The board stays visible behind the
-  // backdrop dim, but the win/lose headline + payout breakdown
-  // sit on top of it as a centered modal so the player can't miss
-  // the result. Gameplay logic is intentionally untouched.
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered when the match is finished. Every number comes from the
+  // real match row (winnerId / stakeAmount / houseFee / prizePaid /
+  // players / startedAt→endedAt) — nothing is invented. Winner/payout
+  // logic is untouched; the old bespoke WIN/LOSS overlay is gone and
+  // this shared screen is the single end-of-match experience.
   function renderResult() {
     if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
     const iWon =
       match.winnerId && myUserId && match.winnerId === myUserId;
     const iLost =
       match.winnerId && myUserId && match.winnerId !== myUserId;
+    const isDrawResult = !iWon && !iLost;
+
+    const stake = Number(match.stakeAmount);
+    const houseFee = Number(match.houseFee);
+    const prizePaid = Number(match.prizePaid);
+    const tokenDelta = iWon ? prizePaid : iLost ? -stake : 0;
+
+    // Duration from the existing timestamps (omitted when unavailable).
+    let durationSeconds: number | null = null;
+    if (match.startedAt && match.endedAt) {
+      const start = new Date(match.startedAt).getTime();
+      const end = new Date(match.endedAt).getTime();
+      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+        durationSeconds = Math.round((end - start) / 1000);
+      }
+    }
+
     // The deciding entry: the last pick in the chronology — either the
     // mine that was picked, or the flag that ended the match.
     const allResultPicks = Array.isArray(match.picks) ? match.picks : [];
@@ -1209,161 +1224,55 @@ export default function MinesPvpMatchPage({
           ? "You hit a mine"
           : "Match complete";
 
-    const headlineColor = iWon
-      ? "text-emerald-300"
-      : iLost
-        ? "text-red-300"
-        : "text-white";
-    const headlineEmoji = flagEntry
-      ? iFlagged
-        ? flagEntry.isMine
-          ? <IconTrophy size={64} className="text-emerald-300" />
-          : <IconBomb size={64} className="text-red-400" />
-        : flagEntry.isMine
-          ? <IconBomb size={64} className="text-red-400" />
-          : <IconTrophy size={64} className="text-emerald-300" />
-      : iWon
-        ? <IconTrophy size={64} className="text-emerald-300" />
+    const subline = isAi
+      ? iWon
+        ? "You beat the GRYND AI!"
         : iLost
-          ? <IconBomb size={64} className="text-red-400" />
-          : <IconCheck size={64} className="text-cyan-300" />;
-    const headlineBg = iWon
-      ? "from-[#0d2b1a] to-[#062a16] border-emerald-300/50 shadow-[0_0_60px_rgba(72,209,154,0.35)]"
-      : iLost
-        ? "from-[#3a1a1a] to-[#2b0d0d] border-red-500/40 shadow-[0_0_60px_rgba(239,68,68,0.3)]"
-        : "from-[#0a1a3a] to-[#04102a] border-cyan-300/40";
+          ? "The GRYND AI won this round."
+          : null
+      : iWon
+        ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
+        : iLost
+          ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
+          : null;
 
-    const stake = Number(match.stakeAmount);
-    const houseFee = Number(match.houseFee);
-    const prizePaid = Number(match.prizePaid);
+    const p1Summary = match.players?.p1 ?? null;
+    const p2Summary = match.players?.p2 ?? null;
+    const oppSummary = isPlayer1 ? p2Summary : p1Summary;
+    const oppName = oppSummary?.displayName || "Opponent";
+    const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
 
     return (
-      <AnimatePresence>
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6">
-          <motion.div
-            key="mines-pvp-result-overlay"
-            initial={{ opacity: 0, scale: 0.6, y: 40 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.6, y: 40 }}
-            transition={{ type: "spring", stiffness: 250, damping: 18 }}
-            className={`relative w-full max-w-md rounded-2xl border-2 bg-gradient-to-b p-6 text-center overflow-hidden ${headlineBg}`}
-          >
-            <motion.div
-              initial={{ scale: 0, rotate: -25 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 12, delay: 0.1 }}
-              className="mb-2 text-7xl"
-            >
-              {headlineEmoji}
-            </motion.div>
-            <h2 className={`mt-3 text-3xl sm:text-4xl font-black uppercase ${headlineColor}`}>
-              {headline}
-            </h2>
-            <p className="mt-1 text-sm text-white/70">
-              {isAi
-                ? iWon
-                  ? "You beat the GRYND AI!"
-                  : iLost
-                    ? "The GRYND AI won this round."
-                    : "Result recorded."
-                : iWon
-                  ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
-                  : iLost
-                    ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
-                    : "Result recorded."}
-            </p>
-
-            {/* Payout breakdown */}
-            <div className="mt-4 grid grid-cols-3 gap-2 text-xs sm:text-sm">
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2">
-                <p className="text-[10px] uppercase tracking-wider text-white/45">Stake</p>
-                <p className="font-bold text-white">{stake.toFixed(2)}</p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2">
-                <p className="text-[10px] uppercase tracking-wider text-white/45">Prize</p>
-                <p className={`font-bold ${prizePaid > 0 ? "text-emerald-300" : "text-white/50"}`}>
-                  {prizePaid.toFixed(2)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-black/30 p-2">
-                <p className="text-[10px] uppercase tracking-wider text-white/45">House</p>
-                <p className={`font-bold ${houseFee > 0 ? "text-fuchsia-300" : "text-white/50"}`}>
-                  {houseFee.toFixed(2)}
-                </p>
-              </div>
-            </div>
-
-            {/* Pick audit */}
-            <div className="mt-4 grid grid-cols-2 gap-2 text-left text-xs">
-              <div className="rounded-lg border border-cyan-300/20 bg-cyan-500/5 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-cyan-200/70">
-                  You {myLastPick?.flag ? "flagged" : "picked"} cell #{myPick ?? "?"}
-                </p>
-                <p className="mt-1 inline-flex items-center gap-1 font-semibold">
-                  {myPickIsMine ? (
-                    <span className="text-red-300 inline-flex items-center gap-1">
-                      <CrossIcon className="w-3.5 h-3.5" />{" "}
-                      {myLastPick?.flag ? "Mine: correct" : "Mine"}
-                    </span>
-                  ) : myPick !== null ? (
-                    <span className="text-emerald-300 inline-flex items-center gap-1">
-                      <CheckIcon className="w-3.5 h-3.5" />{" "}
-                      {myLastPick?.flag ? "Safe: wrong" : "Safe"}
-                    </span>
-                  ) : (
-                    "-"
-                  )}
-                  {myAutoPicked && (
-                    <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
-                      AFK auto
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="rounded-lg border border-fuchsia-300/20 bg-fuchsia-500/5 p-3">
-                <p className="text-[10px] uppercase tracking-wider text-fuchsia-200/70">
-                  {opponentLabel} {opponentLastPick?.flag ? "flagged" : "picked"} cell #{opponentPick ?? "?"}
-                </p>
-                <p className="mt-1 inline-flex items-center gap-1 font-semibold">
-                  {opponentPickIsMine ? (
-                    <span className="text-red-300 inline-flex items-center gap-1">
-                      <CrossIcon className="w-3.5 h-3.5" />{" "}
-                      {opponentLastPick?.flag ? "Mine: correct" : "Mine"}
-                    </span>
-                  ) : opponentPick !== null ? (
-                    <span className="text-emerald-300 inline-flex items-center gap-1">
-                      <CheckIcon className="w-3.5 h-3.5" />{" "}
-                      {opponentLastPick?.flag ? "Safe: wrong" : "Safe"}
-                    </span>
-                  ) : (
-                    "-"
-                  )}
-                  {opponentAutoPicked && (
-                    <span className="ml-1 rounded bg-yellow-300/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-200">
-                      AFK auto
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-              <button
-                onClick={() => router.push("/casino/mines-pvp")}
-                className="px-5 py-2.5 rounded-xl bg-cyan-400 text-[#001933] hover:bg-cyan-300 text-sm font-bold shadow-[0_0_18px_rgba(0,229,255,0.5)] transition"
-              >
-                Back to lobby
-              </button>
-              <button
-                onClick={() => router.push("/casino")}
-                className="px-5 py-2.5 rounded-xl border border-cyan-300/40 bg-transparent text-cyan-200 hover:bg-cyan-300/10 text-sm font-bold transition"
-              >
-                All games
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      </AnimatePresence>
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline ?? undefined}
+        gameName="Mines Duel"
+        opponent={
+          isAi
+            ? { name: "GRYND AI", isAi: true }
+            : { name: oppName, iconKey: oppSummary?.iconKey || null }
+        }
+        tokenDelta={tokenDelta}
+        durationSeconds={durationSeconds}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+          ...(isAi ? [] : [{ label: "Opponent", value: oppName }]),
+        ]}
+        details={[
+          { label: "Match ID", value: String(match.id) },
+          { label: "Wager", value: `${stake.toFixed(2)} tokens` },
+          { label: "Prize", value: `${prizePaid.toFixed(2)} tokens` },
+          { label: "House fee", value: `${houseFee.toFixed(2)} tokens` },
+          { label: "Winner", value: iWon ? "You" : iLost ? "Opponent" : "Draw" },
+        ]}
+        playAgain={{ onClick: () => router.push("/casino/mines-pvp") }}
+        onReturnToLobby={() => router.push("/casino")}
+      />
     );
   }
 

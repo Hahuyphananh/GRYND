@@ -36,7 +36,6 @@ import React, {
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
-import confetti from "canvas-confetti";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
 import ReportModal from "../../../../components/ReportModal";
@@ -87,6 +86,7 @@ import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePick
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { playVictory, playDefeat, playTick, playCardPlace } from "../../../../lib/gameAudio";
 
 // The socket room (ROULETTE_PVP_MATCH_UPDATED = "lobby:updated") pushes
@@ -348,6 +348,10 @@ export default function RoulettePvpGamePage({ params }) {
   const [timeLeft, setTimeLeft] = useState(null);
   const [roundResultBanner, setRoundResultBanner] = useState(null);
   const [matchEndedBanner, setMatchEndedBanner] = useState(null);
+  // Finished-state result overlay visibility — the shared
+  // PvpResultScreen (UX plan P3-3) can be dismissed to reveal the
+  // final table + wheel underneath.
+  const [showResult, setShowResult] = useState(true);
   // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
   const [incomingEmote, setIncomingEmote] = useState(null);
@@ -531,14 +535,7 @@ export default function RoulettePvpGamePage({ params }) {
         winner: isDraw ? "draw" : endKind,
         prize_paid: data.data.match.prizePaid,
       });
-        if (meWon) {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: [COLORS.gold, "#FFD700", "#FFA500"],
-          });
-        }
+        // Confetti is handled by the shared PvpResultScreen.
       } else if (data.data.match?.status !== MATCH_STATUS.FINISHED) {
         setMatchEndedBanner(null);
       }
@@ -1642,6 +1639,134 @@ export default function RoulettePvpGamePage({ params }) {
     );
   };
 
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the match finishes. Every
+  // number comes from the real match row (winnerId / prizePaid /
+  // houseFee / playerOnePoints–playerTwoPoints / rounds) — nothing
+  // is invented. Winner/payout logic is untouched; the old inline
+  // match-ended banner is gone.
+  function renderMatchEnd() {
+    if (!match || match.status !== MATCH_STATUS.FINISHED || !showResult) return null;
+
+    const isAi = Boolean(match.isAi);
+    // A match can finish with no winnerId (both sides wiped out
+    // under the elimination rule) or an explicit `result === "draw"`.
+    const isDraw = !match.winnerId || match.result === "draw";
+    const meWon = match.winnerId === user?.id;
+    const outcome = isDraw ? "draw" : meWon ? "win" : "loss";
+
+    const stake = Number(match.stakeAmount || 0);
+    const prizePaid = Number(match.prizePaid || 0);
+    const houseFee = Number(match.houseFee || 0);
+    const pot = stake * 2;
+
+    // Stake is escrowed at matchmaking; at settle the winner is
+    // credited `prizePaid` (= pot − 5% fee = 1.9 × stake, stake
+    // included). Net token change from the viewer's pocket:
+    //   win  → +prizePaid − stake = +0.9 × stake
+    //   loss → −stake
+    //   draw → full refund = 0 (mutual wipeout — house takes no fee)
+    // AI practice matches never move tokens.
+    const tokenDelta = isAi
+      ? null
+      : isDraw
+        ? 0
+        : meWon
+          ? prizePaid - stake
+          : -stake;
+
+    const oppName = isAi ? "GRYND AI" : "Opponent";
+    const headline = isDraw
+      ? "Mutual wipeout — both players eliminated"
+      : meWon
+        ? `You out-bet ${oppName} on the wheel`
+        : `${oppName} out-bet you on the wheel`;
+    const subline = isAi
+      ? "Free practice match — no tokens were wagered or awarded."
+      : isDraw
+        ? "Both players were wiped out on the same spin. Stakes refunded in full."
+        : meWon
+          ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
+          : `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`;
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Roulette PvP"
+        opponent={{ name: oppName, isAi }}
+        tokenDelta={tokenDelta}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+          {
+            label: "Match points",
+            value: `${myMatchPoints} – ${oppMatchPoints}`,
+          },
+        ]}
+        details={[
+          { label: "Match ID", value: String(match.id) },
+          ...(isAi
+            ? []
+            : [
+                { label: "Wager", value: `${stake.toLocaleString()} tokens` },
+                { label: "Pot", value: `${pot.toLocaleString()} tokens` },
+                ...(meWon
+                  ? [
+                      { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
+                      { label: "House fee", value: `${houseFee.toLocaleString()} tokens` },
+                    ]
+                  : []),
+              ]),
+          { label: "Winner", value: isDraw ? "Draw" : meWon ? "You" : "Opponent" },
+        ]}
+        detailsContent={
+          rounds.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Round results
+              </p>
+              <div className="space-y-1">
+                {rounds.map((r) => {
+                  const won = r.roundWinner === (isPlayer1 ? "player1" : "player2");
+                  return (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-white/50">
+                        {r.isSuddenDeath ? "Sudden death · " : ""}
+                        Round {r.roundNumber}
+                      </span>
+                      <span
+                        className={
+                          won
+                            ? "font-bold text-emerald-300"
+                            : "text-white/60"
+                        }
+                      >
+                        {r.spinResult ?? "—"}
+                        {won ? " ✓" : r.roundWinner ? " ✗" : " -"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null
+        }
+        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/roulette") }}
+        onReturnToLobby={() => router.push("/casino")}
+        onDismiss={() => setShowResult(false)}
+        dismissLabel="View Match Results"
+      />
+    );
+  }
+
   return (
     <>
       {/* Unified full-screen waiting takeover — matchmaking and the
@@ -2299,57 +2424,6 @@ export default function RoulettePvpGamePage({ params }) {
               </motion.div>
             )}
 
-          {/* Match-ended banner */}
-          {match.status === MATCH_STATUS.FINISHED && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`w-full rounded-2xl border p-4 text-center font-bold tracking-wide ${
-                matchEndedBanner === "you"
-                  ? "bg-green-500/15 border-green-400/40 text-green-200"
-                  : "bg-red-500/15 border-red-400/40 text-red-200"
-              }`}
-            >
-              {matchEndedBanner === "you" ? (
-                <span className="inline-flex items-center justify-center gap-2 flex-wrap">
-                  <TrophyIcon className="w-6 h-6 text-green-300" title="You won" />
-                  <span>
-                    {match.isAi
-                      ? "You won the free AI match"
-                      : `You won ${Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  </span>
-                  {!match.isAi && <CoinIcon className="w-5 h-5 text-green-300" title="Tokens" />}
-                  <span>!</span>
-                </span>
-              ) : matchEndedBanner === "opponent" ? (
-                <span className="inline-flex items-center justify-center gap-2 flex-wrap">
-                  <SkullIcon className="w-6 h-6 text-red-300" title="You lost" />
-                  <span>
-                    {match.isAi
-                      ? "The AI won this free match"
-                      : `You lost. Opponent took ${Number(match.prizePaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  </span>
-                  {!match.isAi && <CoinIcon className="w-5 h-5 text-red-300" title="Tokens" />}
-                  <span>.</span>
-                </span>
-              ) : matchEndedBanner === "draw" ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <HandshakeIcon className="w-6 h-6 text-white/80" title="Draw" />
-                  <span>{match.isAi ? "Free AI match ended in a draw." : "Mutual wipeout. Match is a draw and stakes were refunded."}</span>
-                </span>
-              ) : (
-                "Match finished"
-              )}
-              {!match.isAi && Number(match.prizePaid) > 0 && (
-                <span className="block mt-1 text-xs text-white/60 inline-flex items-center gap-1">
-                  <span>(house fee: {Number(match.houseFee || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <CoinIcon className="w-3 h-3 text-white/60" title="Tokens" />
-                  <span>)</span>
-                </span>
-              )}
-            </motion.div>
-          )}
-
           {/* Error */}
           {error && (
             <div className="w-full bg-red-900/30 border border-red-400/30 text-red-300 p-2 rounded text-xs text-center">
@@ -2568,6 +2642,14 @@ export default function RoulettePvpGamePage({ params }) {
       </div>
       </CreatorResponsiveLayout>
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. The old inline match-ended
+          banner is deleted — this is the single end-of-match
+          experience, and it can be dismissed to reveal the final
+          table underneath. */}
+      {renderMatchEnd()}
 
       {/* Animations */}
       <style jsx>{`

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconShield, IconSettings, IconShoppingBag, IconUser, IconVolume } from "@tabler/icons-react";
+import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconShoppingBag, IconUser, IconVolume } from "@tabler/icons-react";
 import NavigationBar from "../../components/navigation-bar";
 import SoundToggle from "../../components/SoundToggle";
 import { useToast } from "../../components/toast/ToastProvider";
@@ -723,6 +723,14 @@ export default function SettingsPageClient() {
                 <IconHelp size={20} /> Help & Support
               </h2>
               <ul className="space-y-2 text-sm">
+                <li>
+                  <Link
+                    href="/welcome?replay=1"
+                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
+                  >
+                    <IconRotateClockwise size={15} /> {t("onboarding.replay")} →
+                  </Link>
+                </li>
                 <li>
                   <Link
                     href="/faq"

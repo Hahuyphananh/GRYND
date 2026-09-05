@@ -13,10 +13,10 @@ import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot 
 import { useHexAudio } from "../../../lib/hexAudio";
 import { useChessClock } from "../../../lib/useChessClock";
 import HexBoard from "../../../components/HexBoard";
-import HexParticles from "../../../components/HexParticles";
 import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
 import HexActionLog from "../../../components/HexActionLog";
 import NavigationBar from "../../../components/navigation-bar";
+import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
 import {
@@ -29,15 +29,13 @@ import {
 
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
+import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
   IconDeviceGamepad2,
   IconGlobe,
   IconCoins,
   IconAlertTriangle,
-  IconSkull,
-  IconCrown,
-  IconTarget,
   IconTrophy,
   IconRobot,
   IconBolt,
@@ -63,10 +61,6 @@ const MOVE_COST = 1; // backward compat
 const GLOBAL_KEYFRAMES = `
 @keyframes victoryFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes victoryPopIn { from { opacity: 0; transform: scale(0.8) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-@keyframes victoryGlowPulse {
-  0%, 100% { box-shadow: 0 0 20px var(--glow-color); }
-  50%      { box-shadow: 0 0 60px var(--glow-color), 0 0 100px var(--glow-color); }
-}
 @keyframes victoryBorderSpin {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
@@ -84,14 +78,6 @@ const GLOBAL_KEYFRAMES = `
   0%   { transform: scale(1); }
   50%  { transform: scale(1.12); color: var(--bump-color, #fff); }
   100% { transform: scale(1); }
-}
-@keyframes payoutReveal {
-  from { opacity: 0; transform: scale(0.5) translateY(20px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-@keyframes confettiDrop {
-  0%   { transform: translateY(-100%) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
 }
 @keyframes floatUp {
   0%   { opacity: 0; transform: translateY(8px); }
@@ -462,208 +448,6 @@ function ResignConfirmation({
             Resign
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  Lose Modal
-// ══════════════════════════════════════════════════════════════════════════
-
-function LoseModal({
-  winnerLabel, winnerColor, winnerMoves, winnerTerritory, payoutInfo, onRestart,
-  isMultiplayer,
-}: {
-  winnerLabel: string; winnerColor: string;
-  winnerMoves: number; winnerTerritory: number;
-  payoutInfo: { wager: number; payout: number; multiplier: number } | null;
-  onRestart: () => void;
-  isMultiplayer?: boolean;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Defeat">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" style={{ animation: "victoryFadeIn 0.4s ease-out" }} />
-
-      <div
-        className="relative z-10 w-full max-w-sm rounded-2xl p-8 text-center
-          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
-          shadow-[0_0_80px_rgba(239,68,68,0.15),0_0_30px_rgba(239,68,68,0.08)]"
-        style={{
-          border: `2px solid ${winnerColor}`,
-          animation: "victoryPopIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards",
-        }}
-      >
-        {/* Defeat icon */}
-        <div
-          className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full"
-          style={{
-            background: `radial-gradient(circle at 40% 35%, ${winnerColor}44, ${winnerColor}11)`,
-            boxShadow: `0 0 30px ${winnerColor}44`,
-          }}
-        >
-          <IconSkull size={36} className="text-red-400" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}66)` }} />
-        </div>
-
-        <h2 className="mb-1 text-2xl font-black tracking-wider uppercase" style={{ color: winnerColor }}>
-          Defeat!
-        </h2>
-        <p className="mb-4 text-sm text-slate-400">
-          {isMultiplayer ? `${winnerLabel} conquered your capital!` : `${winnerLabel} conquered your capital!`}
-        </p>
-
-        {/* Stats grid */}
-        <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-white/[0.04] p-4">
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Their Moves</p>
-            <p className="text-xl font-black text-white">{winnerMoves}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Their Territory</p>
-            <p className="text-xl font-black text-white">{winnerTerritory}</p>
-          </div>
-        </div>
-
-        {/* Loss message */}
-        {payoutInfo && payoutInfo.wager > 0 && (
-          <div
-            className="mb-5 rounded-lg bg-red-500/10 border border-red-500/30 p-3"
-            style={{ animation: "payoutReveal 0.6s cubic-bezier(0.34,1.56,0.64,1) both" }}
-          >
-            <p className="text-[10px] text-red-400 uppercase tracking-widest mb-1">Lost</p>
-            <p className="text-2xl font-black text-red-400">
-              -{payoutInfo.wager.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Better luck next time!</p>
-          </div>
-        )}
-
-        <button
-          onClick={onRestart}
-          className="w-full rounded-xl px-6 py-3 text-sm font-bold uppercase tracking-[0.15em]
-            transition-all duration-200 hover:scale-105 active:scale-95 border border-white/20 text-slate-300
-            hover:bg-white/5"
-        >
-          Return to Lobby
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  Victory Modal (Enhanced with particles, confetti, animated crown)
-// ══════════════════════════════════════════════════════════════════════════
-
-function ConfettiPiece({ color, delay, x }: { color: string; delay: number; x: number }) {
-  return (
-    <div
-      className="absolute top-0 pointer-events-none w-2 h-2 rounded-sm"
-      style={{
-        left: `${x}%`,
-        backgroundColor: color,
-        animation: `confettiDrop ${1.5 + Math.random() * 1}s ease-in ${delay}s forwards`,
-        opacity: 0,
-      }}
-    />
-  );
-}
-
-function VictoryModal({
-  winner, winnerLabel, winnerColor, winnerMoves, winnerTerritory, payoutInfo, onRestart,
-}: {
-  winner: DuelPlayer; winnerLabel: string; winnerColor: string;
-  winnerMoves: number; winnerTerritory: number;
-  payoutInfo: { wager: number; payout: number; multiplier: number } | null;
-  onRestart: () => void;
-}) {
-  const confettiColors = ["#22d3ee", "#a855f7", "#facc15", "#f472b6", "#34d399", "#818cf8"];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Victory">
-      {/* Animated backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" style={{ animation: "victoryFadeIn 0.4s ease-out" }} />
-
-      {/* Background particles in victory mode */}
-      <div className="absolute inset-0 pointer-events-none">
-        <HexParticles victory accentColor={winnerColor} />
-      </div>
-
-      {/* Confetti */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {Array.from({ length: 40 }, (_, i) => (
-          <ConfettiPiece
-            key={i}
-            color={confettiColors[i % confettiColors.length]}
-            delay={Math.random() * 0.8}
-            x={Math.random() * 100}
-          />
-        ))}
-      </div>
-
-      {/* Modal card */}
-      <div
-        className="relative z-10 w-full max-w-sm rounded-2xl p-8 text-center
-          bg-gradient-to-b from-[#071230] via-[#0a1a3f] to-[#050d24]
-          shadow-[0_0_80px_rgba(250,204,21,0.2),0_0_30px_rgba(250,204,21,0.1)]"
-        style={{
-          border: `2px solid ${winnerColor}`,
-          animation: "victoryPopIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards",
-        }}
-      >
-        {/* Pulsing crown */}
-        <div
-          className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full transition-all duration-500"
-          style={{
-            background: `radial-gradient(circle at 40% 35%, ${winnerColor}66, ${winnerColor}22)`,
-            boxShadow: `0 0 30px ${winnerColor}66`,
-            animation: "victoryGlowPulse 2s ease-in-out infinite",
-            ["--glow-color" as any]: `${winnerColor}44`,
-          }}
-        >
-          <IconCrown size={36} className="text-yellow-400" style={{ filter: `drop-shadow(0 0 8px ${winnerColor}88)` }} />
-        </div>
-
-        <h2 className="mb-1 text-2xl font-black tracking-wider uppercase" style={{ color: winnerColor }}>
-          {winnerLabel} Wins!
-        </h2>          <p className="mb-4 flex items-center justify-center gap-1.5 text-sm text-slate-400">Enemy capital conquered! <IconTarget size={14} /></p>
-
-        {/* Stats grid */}
-        <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-white/[0.04] p-4">
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Moves</p>
-            <p className="text-xl font-black text-white">{winnerMoves}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest">Territory</p>
-            <p className="text-xl font-black text-white">{winnerTerritory}</p>
-          </div>
-        </div>
-
-        {/* Payout info — animated reveal. Hidden for AI/free-play wins
-            where payoutInfo.wager is 0 (nothing was actually wagered or
-            paid out). */}
-        {payoutInfo && payoutInfo.wager > 0 && (
-          <div
-            className="mb-5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3"
-            style={{ animation: "payoutReveal 0.6s cubic-bezier(0.34,1.56,0.64,1) both" }}
-          >
-            <p className="text-[10px] text-yellow-400 uppercase tracking-widest mb-1">Payout</p>
-            <p className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
-              +{payoutInfo.payout.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{payoutInfo.multiplier}× on {payoutInfo.wager} wagered</p>
-          </div>
-        )}
-
-        <button
-          onClick={onRestart} autoFocus
-          className="w-full rounded-xl px-6 py-3 text-sm font-bold uppercase tracking-[0.15em]
-            transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/50"
-          style={{ backgroundColor: winnerColor, color: "#020617", boxShadow: `0 0 20px ${winnerColor}66` }}
-        >
-          Play Again
-        </button>
       </div>
     </div>
   );
@@ -2799,6 +2583,14 @@ export default function HexDuelPage() {
         )}
         <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
           <NavigationBar currentPath="/casino" />
+        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+        <div className="mb-4 flex justify-center">
+          <CreatorModeLobby />
+        </div>
+          {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+          <div className="mb-4 flex justify-center">
+            <CreatorModeLobby />
+          </div>
 
           {/* Connection banner on waiting screen too */}
           <ConnectionBanner
@@ -3124,6 +2916,10 @@ export default function HexDuelPage() {
 
       <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
         <NavigationBar currentPath="/casino" />
+        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+        <div className="mb-4 flex justify-center">
+          <CreatorModeLobby />
+        </div>
 
         {/* Connection banner — pulsing red indicator for disconnects */}
         {gameMode === "multiplayer" && (
@@ -3325,41 +3121,52 @@ export default function HexDuelPage() {
           />
         )}
 
-        {/* Victory / Lose modals */}
+        {/* Victory / Lose result screen */}
         {effectiveWinner && (() => {
           const localPlayerWon = gameMode === "multiplayer"
             ? (isPlayer1 && effectiveWinner === "player1") || (!isPlayer1 && effectiveWinner === "player2")
             : effectiveWinner === "player1";
 
-          if (localPlayerWon) {
-            const winnerLabel = effectiveWinner === "player1" ? "Player 1" : aiEnabled ? "AI" : gameMode === "multiplayer" ? "Player 2" : "Player 2";
-            const winnerColor = effectiveWinner === "player1" ? "#22d3ee" : "#ef4444";
-            return (
-              <VictoryModal
-                winner={effectiveWinner}
-                winnerLabel={winnerLabel}
-                winnerColor={winnerColor}
-                winnerMoves={effectiveWinner === "player1" ? p1MoveCount : p2MoveCount}
-                winnerTerritory={effectiveWinner === "player1" ? p1Territory : p2Territory}
-                payoutInfo={payoutLoading ? null : (gameMode === "real" || gameMode === "multiplayer") ? payoutResult : null}
-                onRestart={handleRestart}
-              />
-            );
-          } else {
-            const winnerLabel = effectiveWinner === "player1" ? "Player 1" : aiEnabled ? "AI" : gameMode === "multiplayer" ? "Opponent" : "Player 2";
-            const winnerColor = effectiveWinner === "player1" ? "#22d3ee" : "#ef4444";
-            return (
-              <LoseModal
-                winnerLabel={winnerLabel}
-                winnerColor={winnerColor}
-                winnerMoves={effectiveWinner === "player1" ? p1MoveCount : p2MoveCount}
-                winnerTerritory={effectiveWinner === "player1" ? p1Territory : p2Territory}
-                payoutInfo={payoutLoading ? null : (gameMode === "real" || gameMode === "multiplayer") ? payoutResult : null}
-                onRestart={handleRestart}
-                isMultiplayer={gameMode === "multiplayer"}
-              />
-            );
-          }
+          // The winner is the opponent on a loss; on a win the opponent is
+          // the other side. Keep the generic labels the old modals used.
+          const opponentLabel = localPlayerWon
+            ? (effectiveWinner === "player1"
+                ? (aiEnabled ? "AI" : gameMode === "multiplayer" ? "Opponent" : "Player 2")
+                : "Player 1")
+            : (effectiveWinner === "player1" ? "Player 1"
+                : (aiEnabled ? "AI" : gameMode === "multiplayer" ? "Opponent" : "Player 2"));
+
+          const winnerMoves = effectiveWinner === "player1" ? p1MoveCount : p2MoveCount;
+          const winnerTerritory = effectiveWinner === "player1" ? p1Territory : p2Territory;
+          // Only real / multiplayer matches carry a token settlement; for-fun
+          // and AI practice games keep payoutInfo null (sections auto-hide).
+          const payoutInfo = payoutLoading ? null : (gameMode === "real" || gameMode === "multiplayer") ? payoutResult : null;
+
+          return (
+            <PvpResultScreen
+              open
+              outcome={localPlayerWon ? "win" : "loss"}
+              gameName="Hex Duel"
+              headline={localPlayerWon ? "Capital conquered!" : "Defeat!"}
+              subline={localPlayerWon ? undefined : `${opponentLabel} conquered your capital!`}
+              opponent={{
+                name: opponentLabel,
+                iconKey: null,
+                isAi: aiEnabled,
+              }}
+              tokenDelta={
+                localPlayerWon
+                  ? (payoutInfo && payoutInfo.payout > 0 ? payoutInfo.payout : null)
+                  : (payoutInfo && payoutInfo.wager > 0 ? -payoutInfo.wager : null)
+              }
+              summary={[
+                { label: localPlayerWon ? "Moves" : "Their Moves", value: String(winnerMoves) },
+                { label: localPlayerWon ? "Territory" : "Their Territory", value: String(winnerTerritory) },
+              ]}
+              playAgain={localPlayerWon ? { onClick: handleRestart } : null}
+              onReturnToLobby={handleRestart}
+            />
+          );
         })()}
 
         {/* Report Modal */}

@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../../lib/gameAudio";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the actual RPS game begins
@@ -21,6 +21,7 @@ import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/
 import Footer from "../../../../../components/Footer";
 import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
+import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
@@ -29,8 +30,6 @@ import {
   IconHandStop,
   IconScissors,
   IconQuestionMark,
-  IconTrophy,
-  IconSkull,
   IconFlag,
   IconHistory,
 } from "@tabler/icons-react";
@@ -291,6 +290,127 @@ export default function RPSPvpGamePage() {
     setActionLoading(false);
   };
 
+  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
+  // Rendered as a fixed overlay when the match finishes. Every number
+  // comes from the real match payload (winner / winnerPayout /
+  // winnerProfit / houseFee / betAmount / opponentName / history) —
+  // nothing is invented. Winner/payout logic is untouched; the old
+  // inline finished block is gone.
+  function renderResult() {
+    if (status !== "finished") return null;
+    const outcome =
+      winner === "you" ? "win" : winner === "opponent" ? "loss" : "draw";
+    // The server already computes the winner's net profit
+    // (`winnerProfit` = winnerPayout − betAmount); losers forfeit
+    // their stake; a tie refunds both.
+    const tokenDelta =
+      winner === "you"
+        ? typeof winnerProfit === "number"
+          ? winnerProfit
+          : Number(winnerPayout ?? 0) - betAmount
+        : winner === "opponent"
+          ? -betAmount
+          : 0;
+
+    const headline =
+      winner === "you"
+        ? "You win the best-of-7 match!"
+        : winner === "opponent"
+          ? "You lose the best-of-7 match."
+          : "It's a tie.";
+    const subline =
+      winner === "you"
+        ? `You took home ${winnerPayout ?? 0} tokens total (+${winnerProfit ?? 0} profit).`
+        : winner === "opponent"
+          ? `You lost your ${betAmount.toLocaleString()} stake.`
+          : "Evenly matched — the best-of-7 ended tied.";
+
+    return (
+      <PvpResultScreen
+        open
+        outcome={outcome}
+        headline={headline}
+        subline={subline}
+        gameName="Rock Paper Scissors"
+        opponent={{ name: opponentName || "Opponent" }}
+        tokenDelta={tokenDelta}
+        summary={[
+          {
+            label: "Result",
+            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
+          },
+          { label: "Score", value: `${myWins} – ${oppWins}` },
+        ]}
+        details={[
+          { label: "Match ID", value: String(gameId) },
+          { label: "Wager", value: `${betAmount.toLocaleString()} tokens` },
+          ...(winner === "you"
+            ? [
+                { label: "Prize paid", value: `${winnerPayout ?? 0} tokens` },
+                ...(typeof houseFee === "number"
+                  ? [{ label: "House fee", value: `${houseFee} tokens` }]
+                  : []),
+              ]
+            : []),
+          {
+            label: "Winner",
+            value:
+              winner === "you"
+                ? "You"
+                : winner === "opponent"
+                  ? opponentName || "Opponent"
+                  : "Draw",
+          },
+        ]}
+        detailsContent={
+          history.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Round history
+              </p>
+              <div className="space-y-1">
+                {history.map((entry, idx) => {
+                  const myThrow = viewerIsPlayer1
+                    ? entry.player1Choice
+                    : entry.player2Choice;
+                  const oppThrow = viewerIsPlayer1
+                    ? entry.player2Choice
+                    : entry.player1Choice;
+                  const won =
+                    entry.winner === "tie"
+                      ? null
+                      : entry.winner === (viewerIsPlayer1 ? "player1" : "player2");
+                  return (
+                    <div
+                      key={`${entry.round}-${idx}`}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-white/50">Round {entry.round}</span>
+                      <span
+                        className={
+                          won === null
+                            ? "text-white/60"
+                            : won
+                              ? "font-bold text-emerald-300"
+                              : "font-bold text-red-300"
+                        }
+                      >
+                        {myThrow} vs {oppThrow} ·{" "}
+                        {won === null ? "Tie" : won ? "Win" : "Loss"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null
+        }
+        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/rps") }}
+        onReturnToLobby={() => router.push("/casino")}
+      />
+    );
+  }
+
   if (failed) {
     return (
       <div className="flex min-h-screen flex-col bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white">
@@ -499,54 +619,6 @@ export default function RPSPvpGamePage() {
             </>
           )}
 
-          {status === "finished" && (
-            <div className="text-center">
-              <AnimatePresence>
-                <motion.p
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                  className={`text-xl font-bold ${
-                    winner === "you" ? "text-[#00ffa6]" : winner === "opponent" ? "text-red-400" : "text-gray-400"
-                  }`}
-                >
-                  {winner === "you" && <IconTrophy size={24} className="inline" />}{" "}
-                  {winner === "you"
-                    ? "You win the match!"
-                    : winner === "opponent"
-                      ? "You lose the match."
-                      : "It's a tie."}
-                  {winner === "opponent" && <IconSkull size={20} className="inline" />}
-                </motion.p>
-              </AnimatePresence>
-              <p className="text-lg mt-2">
-                Score: <span className="text-blue-400 font-bold">{myWins}</span> –{" "}
-                <span className="text-red-400 font-bold">{oppWins}</span>
-              </p>
-              {winner === "you" && (
-                <p className="text-green-300">
-                  You won {winnerPayout ?? 0} tokens total
-                  {typeof winnerProfit === "number" ? ` (+${winnerProfit} profit)` : ""}.
-                </p>
-              )}
-              {winner === "opponent" && <p className="text-red-300">You won 0 tokens this match.</p>}
-              {typeof houseFee === "number" && winner !== "tie" && (
-                <p className="text-xs text-gray-300">House fee (10%): {houseFee} tokens.</p>
-              )}
-              {typeof tokens === "number" && (
-                <p className="text-sm text-yellow-200">Your balance: {tokens.toLocaleString()}</p>
-              )}
-              <div className="mt-3 flex items-center justify-center gap-3">
-                <button
-                  onClick={() => router.push("/casino/rps")}
-                  className="bg-[#f5ff3b] hover:bg-[#d9e332] px-4 py-2 rounded font-semibold"
-                >
-                  Back to Lobby
-                </button>
-              </div>
-            </div>
-          )}
-
           {player2Id && (
             <button
               onClick={() => setShowReportModal(true)}
@@ -590,6 +662,13 @@ export default function RPSPvpGamePage() {
       </div>
       </CreatorResponsiveLayout>
       </CreatorModeHost>
+
+      {/* Post-match result screen — shared PvpResultScreen (UX plan
+          P3-3), mounted OUTSIDE CreatorModeHost so the recording
+          viewport never captures it. The old inline finished block is
+          deleted — this is the single end-of-match experience. */}
+      {renderResult()}
+
       <Footer />
     </div>
   );

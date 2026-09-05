@@ -5,6 +5,7 @@ import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
+import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay, auto-starts when the real Odds game begins and
 // auto-stops once the result is captured. The page shell (nav, rules,
@@ -14,10 +15,10 @@ import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import ReportModal from "../../../components/ReportModal";
+import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import EmotePicker from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
 import { useSocket } from "../../../context/SocketProvider";
-import { celebrateWin } from "../../../lib/animations";
 import { useOddsAudio } from "../../../lib/oddsAudio";
 import {
   IconDice,
@@ -29,10 +30,8 @@ import {
   IconVolumeOff,
   IconFlag,
   IconHourglass,
-  IconTrophy,
   IconMoodAngry,
   IconHeartHandshake,
-  IconMoodSad,
   IconClock,
   IconAlarm,
 } from "@tabler/icons-react";
@@ -75,6 +74,10 @@ export default function OddsPage() {
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.08),transparent_70%)] pointer-events-none" />
       <NavigationBar currentPath="/casino" />
+      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
+      <div className="mt-6 flex justify-center">
+        <CreatorModeLobby />
+      </div>
       <div className="mt-6 w-full max-w-2xl rounded-2xl border border-amber-700/60 bg-black/40 p-4 text-white shadow-[0_0_24px_rgba(251,191,36,0.12)] sm:mt-10 sm:p-6">
         <h1 className="mb-2 text-center text-2xl font-extrabold tracking-wide text-amber-400 sm:text-3xl drop-shadow-[0_0_15px_rgba(251,191,36,0.4)]">
           <span className="inline-flex items-center gap-2"><IconDice size={28} /> Odds Game</span>
@@ -320,7 +323,6 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         if (isPlayer1Win) {
           setTimeout(() => {
             if (mountedRef.current) {
-              celebrateWin();
               audio.playVictory();
             }
           }, 400);
@@ -983,7 +985,6 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           (!myIsPlayer1 && st.winner === "player2");
         const drew = st.winner === null;
         if (iWon) {
-          setTimeout(() => celebrateWin(), 400);
           setTimeout(() => audio.playVictory(), 200);
         } else if (!drew) {
           setTimeout(() => audio.playDefeat(), 200);
@@ -2266,78 +2267,49 @@ function OddsGameDisplay({
         })}
       </div>
 
-      {/* Game over popup — waits for the final round's result popup to dismiss */}
-      <AnimatePresence>
-        {gameOver && !showBreakdown && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.6, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.6, y: 40 }}
-              transition={{ type: "spring", stiffness: 250, damping: 20, delay: 0.1 }}
-              className={`mx-4 w-full max-w-sm rounded-2xl border-2 p-8 text-center ${
-                userWon
-                  ? "border-yellow-400/50 bg-gradient-to-b from-yellow-900/60 via-[#0a1a3a]/95 to-black/95 shadow-[0_0_60px_rgba(250,204,21,0.4)]"
-                  : userDrew
-                  ? "border-white/30 bg-gradient-to-b from-white/10 via-[#0a1a3a]/95 to-black/95 shadow-[0_0_60px_rgba(255,255,255,0.15)]"
-                  : "border-red-400/40 bg-gradient-to-b from-red-900/50 via-[#0a1a3a]/95 to-black/95 shadow-[0_0_60px_rgba(239,68,68,0.3)]"
-              }`}
-            >
-              <motion.div
-                animate={userWon ? { scale: [1, 1.2, 1] } : {}}
-                transition={{ duration: 0.5, delay: 0.3 }}
-              >
-                <p className="mb-3 flex justify-center">{userWon ? <IconTrophy size={56} className="text-yellow-400" /> : userDrew ? <IconHeartHandshake size={56} className="text-white/80" /> : <IconMoodSad size={56} className="text-red-400" />}</p>
-              </motion.div>
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className={`text-3xl font-black ${
-                  userWon ? "text-yellow-400" : userDrew ? "text-white/80" : "text-red-400"
-                }`}
-              >
-                {userWon ? "You Win!" : userDrew ? "It's a Draw" : "You Lose"}
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.35 }}
-                className="text-sm text-white/50 mt-3"
-              >
-                {userDrew
-                  ? "Stakes refunded. You tied."
-                  : userWon
-                    ? <><span className="inline-flex items-center gap-1">Payout: {payout} <IconCoins size={14} /></span></>
-                    : <><span className="inline-flex items-center gap-1">{oppLabel} wins the pot of {payout} <IconCoins size={14} /></span></>}
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="text-xs text-white/30 mt-1 mb-6"
-              >
-                Final score: {userLabel} {myPts} – {oppPts} {oppLabel} · {gameState.totalRounds} rounds
-              </motion.p>
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                onClick={onPlayAgain}
-                className="w-full rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black shadow-lg transition-all hover:scale-105 hover:shadow-[0_0_20px_rgba(250,204,21,0.5)]"
-              >
-                Play Again
-              </motion.button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Game over result screen — waits for the final round's result popup to dismiss */}
+      {gameOver && !showBreakdown && (
+        <PvpResultScreen
+          open
+          outcome={userWon ? "win" : userDrew ? "draw" : "loss"}
+          gameName="Odds"
+          headline={
+            userWon
+              ? "You called it right"
+              : userDrew
+                ? "Evenly matched"
+                : "The odds didn't fall your way"
+          }
+          subline={userDrew ? "Stakes refunded. You tied." : undefined}
+          opponent={{
+            name: oppLabel,
+            iconKey: null,
+            isAi: oppLabel === "AI",
+          }}
+          tokenDelta={
+            oppLabel === "AI"
+              ? null
+              : userDrew
+                ? 0
+                : userWon
+                  ? payout - wager
+                  : -wager
+          }
+          summary={[
+            { label: "Final Score", value: `${userLabel} ${myPts} – ${oppPts} ${oppLabel}` },
+            { label: "Rounds", value: String(gameState.totalRounds) },
+          ]}
+          details={
+            oppLabel === "AI"
+              ? []
+              : [
+                  { label: "Wager", value: String(wager) },
+                  { label: "Pot", value: String(payout) },
+                ]
+          }
+          playAgain={{ onClick: onPlayAgain }}
+        />
+      )}
     </div>
   );
 }

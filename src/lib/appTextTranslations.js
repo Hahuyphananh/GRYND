@@ -105,17 +105,34 @@ export const APP_TEXT_TRANSLATIONS = {
         betweenRounds: {
           auto: "Auto",
           continue: "Continue",
+          continueNow: "Continue now",
+          matchScore: "Score: {p1} – {p2}",
           nextRoundHint: "Next round starts shortly…",
           scoreCaption: "Best of 3",
           subtitle: "Round {n} of 3: best-of-3",
           title: "Round {n} incoming"
         },
         bustTag: "(busted)",
+        bustedPrefix: "Busted!",
+        bustedRecoverHint: "Swap or freeze to recover.",
         bustedScore: "Busted",
         forbidden: {
           desc: "This match is not yours to view.",
           title: "Not allowed"
         },
+        aiPlaying: "GRYND AI is playing…",
+        cancelled: {
+          detail:
+            "This match was cancelled. If an opponent had not yet joined, your stake was refunded."
+        },
+        continue: "Continue",
+        errorActionRejected: "Action rejected",
+        errorMatchUnavailable: "Match unavailable",
+        errorNetwork: "Network error",
+        freeMatch: "Free AI match",
+        hit: "Hit",
+        opponentDone: "Opponent's hand hidden",
+        opponentPlaying: "Opponent is playing…",
         freeze: "Freeze",
         freezeHint: "Stash your most recently drawn card aside for later",
         heldAdded: "(added to hand)",
@@ -127,8 +144,15 @@ export const APP_TEXT_TRANSLATIONS = {
         historyTitle: "Round history",
         historyWin: "Round {n}: won",
         invalidId: "Invalid match id",
+        leave: {
+          body: "This is a free practice match — nothing is at stake. Leave and play again any time.",
+          button: "Leave match",
+          confirm: "Leave match",
+          title: "Leave this match?"
+        },
         lobby: {
-          back: "Back to lobby"
+          back: "Back to lobby",
+          cancel: "Cancel lobby"
         },
         lockedAfterStand: "Hand locked. Both hands reveal when the round ends",
         matchEndHeader: "Match over",
@@ -159,6 +183,14 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         revealTeaser: "Revealing hands…",
         revealTeaserHint: "Both hands flip simultaneously",
+        roundResult: {
+          drawSubtitle: "No winner — scores are level",
+          drawTitle: "Tied round",
+          loseTitle: "{winner} wins round {n}",
+          rule: "Closest to 21 without going over wins; over 21 = bust.",
+          scoreLine: "Score: {me} {mine} – {theirs} {them}",
+          winTitle: "{winner} wins round {n}"
+        },
         roundResultHeader: "Round {n} result",
         scoreboard: {
           opponent: "Opponent",
@@ -166,21 +198,29 @@ export const APP_TEXT_TRANSLATIONS = {
           roundLabel: "Round",
           roundsUnit: "rd"
         },
-        "seat.opponent": "Opponent",
-        "seat.player1": "Player 1",
-        "seat.player2": "Player 2",
+        roundTimer: "{seconds}s",
+        roundTimerUrgent: "{seconds}s, act now",
+        seat: {
+          ai: "GRYND AI",
+          opponent: "Opponent",
+          player1: "Player 1",
+          player2: "Player 2"
+        },
         skipReveal: "Skip reveal",
         stake: "Stake: {amount}",
-        "status.activePlay": "In play",
-        "status.betweenRounds": "Round {n} won. Round {m} next",
-        "status.cancelled": "Match cancelled",
-        "status.finishedDraw": "Match ended in a draw",
-        "status.finishedLose": "You lost the match",
-        "status.finishedWin": "You won the match",
-        "status.loading": "Loading…",
-        "status.ready": "Get ready…",
-        "status.roundN": "Round {n} / 3",
-        "status.waiting": "Waiting for an opponent…",
+        stand: "Stand",
+        status: {
+          activePlay: "In play",
+          betweenRounds: "Round {n} won. Round {m} next",
+          cancelled: "Match cancelled",
+          finishedDraw: "Match ended in a draw",
+          finishedLose: "You lost the match",
+          finishedWin: "You won the match",
+          loading: "Loading…",
+          ready: "Get ready…",
+          roundN: "Round {n} / 3",
+          waiting: "Waiting for an opponent…"
+        },
         swap: "Swap",
         swapChosenHint: "Card #{n} marked. Press Swap to draw a random replacement",
         swapHint: "Replace your selected card with a random draw from the shoe",
@@ -192,7 +232,8 @@ export const APP_TEXT_TRANSLATIONS = {
         useHeldAdd: "Use frozen card",
         useHeldDiscard: "Discard frozen",
         waitingBusted: "Waiting…",
-        waitingStood: "Stood, waiting for opponent"
+        waitingStood: "Stood, waiting for opponent",
+        you: "You"
     },
     
     
@@ -1096,6 +1137,97 @@ export const APP_TEXT_TRANSLATIONS = {
       accept: "Accept",
       decline: "Decline",
     },
+    onboarding: {
+      welcome: {
+        kicker: "Welcome to",
+        title: "GRYND",
+        subtitle:
+          "The competitive PvP arena. Face real players in fast, fair, skill-based games — and climb your way to the top.",
+        play: "Let's Play",
+        skip: "Skip Tutorial",
+      },
+      what: {
+        kicker: "What is Grynd?",
+        title: "Three words",
+        playTitle: "Play",
+        playDesc: "Compete head-to-head against real players in PvP games.",
+        outplayTitle: "Outplay",
+        outplayDesc: "Skill, timing and strategy decide every match — not luck.",
+        progressTitle: "Progress",
+        progressDesc: "Every match earns XP toward your Battle Pass, cosmetics and rewards.",
+      },
+      tokens: {
+        kicker: "Quick guide",
+        title: "How tokens work",
+        lead: "Tokens are your Grynd balance — what you play with.",
+        areTitle: "What they are",
+        areDesc: "Tokens are the in-game currency every player starts with.",
+        whereTitle: "Where to find them",
+        whereDesc: "Your balance is always visible at the top-right of the screen.",
+        usedTitle: "What they're for",
+        usedDesc:
+          "You wager tokens to enter PvP matches. Win and you take the prize; lose and your wager goes to your opponent.",
+        freeTitle: "Free practice",
+        freeDesc:
+          "Most games let you play against an AI for free — zero tokens at stake. Perfect for learning a game first.",
+      },
+      pvp: {
+        kicker: "Matchmaking",
+        title: "Find an opponent in seconds",
+        lead: "Every normal PvP match works the same way:",
+        s1Title: "Find an opponent",
+        s1Desc: "Matchmaking pairs you with a real player at your wager.",
+        s2Title: "Match",
+        s2Desc: "The match starts the moment both players are ready.",
+        s3Title: "Play",
+        s3Desc: "Outplay your rival with pure skill.",
+        s4Title: "Win or lose",
+        s4Desc: "The winner takes the prize. Both players earn XP.",
+      },
+      nav: {
+        kicker: "Know your way around",
+        title: "Where everything lives",
+        lead: "These are the five places you'll spend your time:",
+        gamesTitle: "Games",
+        gamesDesc: "Browse the full lobby and jump into any match.",
+        profileTitle: "Profile",
+        profileDesc: "Your stats, titles and look.",
+        battlepassTitle: "Battle Pass",
+        battlepassDesc: "100 levels of XP rewards.",
+        shopTitle: "Shop",
+        shopDesc: "Cosmetics and token packages.",
+        settingsTitle: "Settings",
+        settingsDesc: "Sound, language, security and more.",
+      },
+      done: {
+        kicker: "You're ready",
+        title: "Let's play",
+        subtitle: "Head to the Games lobby and pick your first match. Good luck out there!",
+        cta: "Let's Go",
+      },
+      controls: {
+        back: "Back",
+        next: "Next",
+        skip: "Skip tutorial",
+      },
+      error: {
+        text: "We couldn't reach the server. Check your connection and try again.",
+        retry: "Try again",
+        continue: "Continue to Grynd",
+      },
+      firstMatch: {
+        kicker: "Free practice",
+        title: "Your first match is free",
+        lead:
+          "Let's drop you straight into a real match: Free Play vs AI in Rock Paper Scissors. Play the AI to learn how a Grynd match feels — no tokens are at risk.",
+        point1: "First to 4 round wins",
+        point2: "No tokens at risk",
+        point3: "Finish to earn a first-match XP bonus",
+        cta: "Start Free Match",
+        alt: "Not now — explore Grynd",
+      },
+      replay: "Replay tutorial",
+    },
   },
   fr: {
     stickyCta: {
@@ -1203,17 +1335,34 @@ export const APP_TEXT_TRANSLATIONS = {
         betweenRounds: {
           auto: "Auto",
           continue: "Continuer",
+          continueNow: "Continuer maintenant",
+          matchScore: "Score : {p1} – {p2}",
           nextRoundHint: "La prochaine manche commence bientôt…",
           scoreCaption: "Meilleur des 3",
           subtitle: "Manche {n} sur 3 : meilleur des 3",
           title: "Manche {n} à venir"
         },
         bustTag: "(sauté)",
+        bustedPrefix: "Vous avez sauté !",
+        bustedRecoverHint: "Échangez ou figez pour vous en sortir.",
         bustedScore: "Dépassement",
         forbidden: {
           desc: "Ce match n’est pas le vôtre.",
           title: "Accès refusé"
         },
+        aiPlaying: "GRYND AI joue…",
+        cancelled: {
+          detail:
+            "La partie a été annulée. Si un adversaire n'avait pas encore rejoint, votre mise vous a été remboursée."
+        },
+        continue: "Continuer",
+        errorActionRejected: "Action refusée",
+        errorMatchUnavailable: "Match indisponible",
+        errorNetwork: "Erreur réseau",
+        freeMatch: "Match IA gratuit",
+        hit: "Tirer",
+        opponentDone: "Adversaire. Main cachée",
+        opponentPlaying: "Adversaire joue…",
         freeze: "Geler",
         freezeHint: "Mettre de côté votre carte tirée pour plus tard",
         heldAdded: "(ajouté à la main)",
@@ -1224,8 +1373,15 @@ export const APP_TEXT_TRANSLATIONS = {
         historyTitle: "Historique des manches",
         historyWin: "Manche {n} : gagnée",
         invalidId: "Identifiant de match invalide",
+        leave: {
+          body: "C'est un match d'entraînement gratuit — rien n'est en jeu. Quittez et rejouez quand vous voulez.",
+          button: "Quitter la partie",
+          confirm: "Quitter la partie",
+          title: "Quitter cette partie ?"
+        },
         lobby: {
-          back: "Retour au salon"
+          back: "Retour au salon",
+          cancel: "Annuler la lobby"
         },
         lockedAfterStand: "Main verrouillée. Les deux mains se révèlent à la fin de la manche",
         matchEndHeader: "Match terminé",
@@ -1255,7 +1411,14 @@ export const APP_TEXT_TRANSLATIONS = {
           win: "Vous avez gagné"
         },
         revealTeaser: "Révélation des mains…",
-        revealTeaserHint: "Les deux mains se découvrent simultanément",
+        revealTeaserHint: "Les deux mains se découvrent simultanément",        roundResult: {
+          drawSubtitle: "Aucune manche gagnée. Score identique",
+          drawTitle: "Manche nulle",
+          loseTitle: "{winner} remporte la manche {n}",
+          rule: "Le score le plus proche de 21 sans dépasser gagne; au-delà de 21 = sauté.",
+          scoreLine: "Score : {me} {mine} – {theirs} {them}",
+          winTitle: "{winner} remporte la manche {n}"
+        },
         roundResultHeader: "Résultat de la manche {n}",
         scoreboard: {
           opponent: "Adversaire",
@@ -1263,21 +1426,29 @@ export const APP_TEXT_TRANSLATIONS = {
           roundLabel: "Manche",
           roundsUnit: "v."
         },
-        "seat.opponent": "Adversaire",
-        "seat.player1": "Joueur 1",
-        "seat.player2": "Joueur 2",
+        roundTimer: "{seconds}s",
+        roundTimerUrgent: "{seconds}s, agissez vite",
+        seat: {
+          ai: "GRYND AI",
+          opponent: "Adversaire",
+          player1: "Joueur 1",
+          player2: "Joueur 2"
+        },
         skipReveal: "Passer la révélation",
-        stake: "Mise : {amount}",
-        "status.activePlay": "En jeu",
-        "status.betweenRounds": "Manche {n} gagnée. Manche {m} suivante",
-        "status.cancelled": "Match annulé",
-        "status.finishedDraw": "Match nul",
-        "status.finishedLose": "Vous avez perdu le match",
-        "status.finishedWin": "Vous avez gagné le match",
-        "status.loading": "Chargement…",
-        "status.ready": "Prêt…",
-        "status.roundN": "Manche {n} / 3",
-        "status.waiting": "En attente d’un adversaire…",
+        stake: "Mise : {amount}",
+        stand: "Rester",
+        status: {
+          activePlay: "En jeu",
+          betweenRounds: "Manche {n} gagnée. Manche {m} suivante",
+          cancelled: "Match annulé",
+          finishedDraw: "Match nul",
+          finishedLose: "Vous avez perdu le match",
+          finishedWin: "Vous avez gagné le match",
+          loading: "Chargement…",
+          ready: "Prêt…",
+          roundN: "Manche {n} / 3",
+          waiting: "En attente d'un adversaire…"
+        },
         swap: "Permuter",
         swapChosenHint: "Carte n°{n} marquée. Appuyez sur Permuter",
         swapHint: "Remplacer la carte sélectionnée par un tirage aléatoire",
@@ -1289,7 +1460,8 @@ export const APP_TEXT_TRANSLATIONS = {
         useHeldAdd: "Ajouter la carte gelée",
         useHeldDiscard: "Jeter la carte gelée",
         waitingBusted: "En attente…",
-        waitingStood: "Resté, en attente de l’adversaire"
+        waitingStood: "Resté, en attente de l’adversaire",
+        you: "vous"
     },
     
     
@@ -1842,6 +2014,99 @@ export const APP_TEXT_TRANSLATIONS = {
       accept: "Accepter",
       decline: "Refuser",
     },
+    onboarding: {
+      welcome: {
+        kicker: "Bienvenue sur",
+        title: "GRYND",
+        subtitle:
+          "L'arène PvP compétitive. Affronte de vrais joueurs dans des jeux rapides, équitables et basés sur la compétence — et grimpe jusqu'au sommet.",
+        play: "C'est parti",
+        skip: "Passer le tutoriel",
+      },
+      what: {
+        kicker: "Qu'est-ce que Grynd ?",
+        title: "Trois mots",
+        playTitle: "Joue",
+        playDesc: "Affronte de vrais joueurs en duel dans des jeux PvP.",
+        outplayTitle: "Dépasse",
+        outplayDesc: "La compétence, le timing et la stratégie décident de chaque match — pas la chance.",
+        progressTitle: "Progresse",
+        progressDesc:
+          "Chaque match rapporte de l'XP vers ton Battle Pass, des cosmétiques et des récompenses.",
+      },
+      tokens: {
+        kicker: "Guide express",
+        title: "Comment fonctionnent les tokens",
+        lead: "Les tokens sont ton solde Grynd — c'est avec eux que tu joues.",
+        areTitle: "Ce que c'est",
+        areDesc: "Les tokens sont la monnaie du jeu avec laquelle chaque joueur commence.",
+        whereTitle: "Où les trouver",
+        whereDesc: "Ton solde est toujours visible en haut à droite de l'écran.",
+        usedTitle: "À quoi ils servent",
+        usedDesc:
+          "Tu mis des tokens pour entrer dans un match PvP. Gagne et remporte le prix ; perds et ta mise revient à ton adversaire.",
+        freeTitle: "Entraînement gratuit",
+        freeDesc:
+          "La plupart des jeux proposent un mode gratuit contre une IA — zéro token en jeu. Parfait pour apprendre un jeu.",
+      },
+      pvp: {
+        kicker: "Matchmaking",
+        title: "Trouve un adversaire en quelques secondes",
+        lead: "Chaque match PvP normal fonctionne de la même façon :",
+        s1Title: "Trouve un adversaire",
+        s1Desc: "Le matchmaking t'associe à un vrai joueur au même montant de mise.",
+        s2Title: "Match",
+        s2Desc: "Le match commence dès que les deux joueurs sont prêts.",
+        s3Title: "Joue",
+        s3Desc: "Dépasse ton rival grâce à ta compétence.",
+        s4Title: "Gagne ou perds",
+        s4Desc: "Le gagnant remporte le prix. Les deux joueurs gagnent de l'XP.",
+      },
+      nav: {
+        kicker: "Repère-toi",
+        title: "Où tout se trouve",
+        lead: "Voici les cinq endroits où tu passeras ton temps :",
+        gamesTitle: "Jeux",
+        gamesDesc: "Parcours le lobby complet et lance un match.",
+        profileTitle: "Profil",
+        profileDesc: "Tes stats, tes titres et ton look.",
+        battlepassTitle: "Battle Pass",
+        battlepassDesc: "100 niveaux de récompenses en XP.",
+        shopTitle: "Boutique",
+        shopDesc: "Cosmétiques et packs de tokens.",
+        settingsTitle: "Paramètres",
+        settingsDesc: "Son, langue, sécurité et plus.",
+      },
+      done: {
+        kicker: "Tu es prêt",
+        title: "C'est parti",
+        subtitle:
+          "Rends-toi dans le lobby des Jeux et choisis ton premier match. Bonne chance !",
+        cta: "On y va",
+      },
+      controls: {
+        back: "Retour",
+        next: "Suivant",
+        skip: "Passer le tutoriel",
+      },
+      error: {
+        text: "Impossible de joindre le serveur. Vérifie ta connexion et réessaie.",
+        retry: "Réessayer",
+        continue: "Continuer vers Grynd",
+      },
+      firstMatch: {
+        kicker: "Entraînement gratuit",
+        title: "Ton premier match est gratuit",
+        lead:
+          "On te plonge direct dans une vraie partie : Pierre-Papier-Ciseaux en mode gratuit contre l'IA. Joue contre l'IA pour découvrir comment fonctionne un match Grynd — aucun token n'est en jeu.",
+        point1: "Le premier à 4 manches gagne",
+        point2: "Aucun token en jeu",
+        point3: "Termine pour gagner un bonus d'XP de bienvenue",
+        cta: "Commencer le match gratuit",
+        alt: "Pas maintenant — explorer Grynd",
+      },
+      replay: "Rejouer le tutoriel",
+    },
   },
   es: {
     stickyCta: {
@@ -1949,17 +2214,34 @@ export const APP_TEXT_TRANSLATIONS = {
         betweenRounds: {
           auto: "Auto",
           continue: "Continuar",
+          continueNow: "Continuar ahora",
+          matchScore: "Marcador: {p1} – {p2}",
           nextRoundHint: "La siguiente ronda empieza pronto…",
           scoreCaption: "Mejor de 3",
           subtitle: "Ronda {n} de 3: mejor de 3",
           title: "Ronda {n} entrante"
         },
         bustTag: "(pasado)",
+        bustedPrefix: "¡Te pasaste!",
+        bustedRecoverHint: "Cambia o congela para recuperarte.",
         bustedScore: "Pasado",
         forbidden: {
           desc: "Este partido no es tuyo.",
           title: "No permitido"
         },
+        aiPlaying: "GRYND AI está jugando…",
+        cancelled: {
+          detail:
+            "Esta partida fue cancelada. Si ningún oponente llegó a unirse, tu apuesta fue reembolsada."
+        },
+        continue: "Continuar",
+        errorActionRejected: "Acción rechazada",
+        errorMatchUnavailable: "Partido no disponible",
+        errorNetwork: "Error de red",
+        freeMatch: "Partido gratis contra IA",
+        hit: "Pedir",
+        opponentDone: "Oponente. Mano oculta",
+        opponentPlaying: "El oponente está jugando…",
         freeze: "Congelar",
         freezeHint: "Apartar la última carta que robaste",
         heldAdded: "(añadido a la mano)",
@@ -1971,8 +2253,15 @@ export const APP_TEXT_TRANSLATIONS = {
         historyTitle: "Historial de rondas",
         historyWin: "Ronda {n}: ganada",
         invalidId: "Identificador de partido no válido",
+        leave: {
+          body: "Es una partida de práctica gratuita: no hay nada en juego. Sal y vuelve a jugar cuando quieras.",
+          button: "Salir de la partida",
+          confirm: "Salir de la partida",
+          title: "¿Salir de esta partida?"
+        },
         lobby: {
-          back: "Volver al salón"
+          back: "Volver al salón",
+          cancel: "Cancelar lobby"
         },
         lockedAfterStand: "Mano bloqueada. Ambas manos se revelan al final de la ronda",
         matchEndHeader: "Partido terminado",
@@ -2003,6 +2292,14 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         revealTeaser: "Revelando manos…",
         revealTeaserHint: "Las dos manos se descubren simultáneamente",
+        roundResult: {
+          drawSubtitle: "Nadie gana: puntuaciones igualadas",
+          drawTitle: "Ronda empatada",
+          loseTitle: "{winner} gana la ronda {n}",
+          rule: "Gana quien esté más cerca de 21 sin pasarse; pasarse = eliminado.",
+          scoreLine: "Marcador: {me} {mine} – {theirs} {them}",
+          winTitle: "{winner} gana la ronda {n}"
+        },
         roundResultHeader: "Resultado de la ronda {n}",
         scoreboard: {
           opponent: "Oponente",
@@ -2010,21 +2307,29 @@ export const APP_TEXT_TRANSLATIONS = {
           roundLabel: "Ronda",
           roundsUnit: "r."
         },
-        "seat.opponent": "Oponente",
-        "seat.player1": "Jugador 1",
-        "seat.player2": "Jugador 2",
+        roundTimer: "{seconds}s",
+        roundTimerUrgent: "{seconds}s, actúa ya",
+        seat: {
+          ai: "GRYND AI",
+          opponent: "Oponente",
+          player1: "Jugador 1",
+          player2: "Jugador 2"
+        },
         skipReveal: "Saltar revelación",
         stake: "Apuesta: {amount}",
-        "status.activePlay": "En juego",
-        "status.betweenRounds": "Ronda {n} ganada. Ronda {m} siguiente",
-        "status.cancelled": "Partido cancelado",
-        "status.finishedDraw": "Empate",
-        "status.finishedLose": "Perdiste el partido",
-        "status.finishedWin": "Ganaste el partido",
-        "status.loading": "Cargando…",
-        "status.ready": "Prepárate…",
-        "status.roundN": "Ronda {n} / 3",
-        "status.waiting": "Esperando a un oponente…",
+        stand: "Plantarse",
+        status: {
+          activePlay: "En juego",
+          betweenRounds: "Ronda {n} ganada. Ronda {m} siguiente",
+          cancelled: "Partido cancelado",
+          finishedDraw: "Empate",
+          finishedLose: "Perdiste el partido",
+          finishedWin: "Ganaste el partido",
+          loading: "Cargando…",
+          ready: "Prepárate…",
+          roundN: "Ronda {n} / 3",
+          waiting: "Esperando a un oponente…"
+        },
         swap: "Cambiar",
         swapChosenHint: "Carta n.° {n} marcada. Pulsa Cambiar para sacar una carta aleatoria",
         swapHint: "Reemplazar la carta seleccionada con un robo aleatorio del zapato",
@@ -2036,7 +2341,8 @@ export const APP_TEXT_TRANSLATIONS = {
         useHeldAdd: "Usar carta congelada",
         useHeldDiscard: "Descartar carta congelada",
         waitingBusted: "Esperando…",
-        waitingStood: "Plantado, esperando al oponente"
+        waitingStood: "Plantado, esperando al oponente",
+        you: "tú"
     },
     
     
@@ -2587,6 +2893,98 @@ export const APP_TEXT_TRANSLATIONS = {
       privacyLink: "Política de privacidad",
       accept: "Aceptar",
       decline: "Rechazar",
+    },
+    onboarding: {
+      welcome: {
+        kicker: "Bienvenido a",
+        title: "GRYND",
+        subtitle:
+          "El arena PvP competitiva. Enfréntate a jugadores reales en juegos rápidos, justos y basados en la habilidad — y sube hasta la cima.",
+        play: "A jugar",
+        skip: "Saltar tutorial",
+      },
+      what: {
+        kicker: "¿Qué es Grynd?",
+        title: "Tres palabras",
+        playTitle: "Juega",
+        playDesc: "Compite cara a cara contra jugadores reales en juegos PvP.",
+        outplayTitle: "Supera",
+        outplayDesc: "La habilidad, el timing y la estrategia deciden cada partida — no la suerte.",
+        progressTitle: "Progresa",
+        progressDesc:
+          "Cada partida otorga XP hacia tu Battle Pass, cosméticos y recompensas.",
+      },
+      tokens: {
+        kicker: "Guía rápida",
+        title: "Cómo funcionan los tokens",
+        lead: "Los tokens son tu saldo de Grynd — con lo que juegas.",
+        areTitle: "Qué son",
+        areDesc: "Los tokens son la moneda del juego con la que todo jugador empieza.",
+        whereTitle: "Dónde encontrarlos",
+        whereDesc: "Tu saldo siempre es visible en la esquina superior derecha de la pantalla.",
+        usedTitle: "Para qué sirven",
+        usedDesc:
+          "Apuestas tokens para entrar en partidas PvP. Gana y llévate el premio; pierde y tu apuesta va para tu rival.",
+        freeTitle: "Práctica gratis",
+        freeDesc:
+          "La mayoría de juegos te dejan jugar contra una IA gratis — cero tokens en juego. Perfecto para aprender un juego.",
+      },
+      pvp: {
+        kicker: "Matchmaking",
+        title: "Encuentra un rival en segundos",
+        lead: "Toda partida PvP normal funciona igual:",
+        s1Title: "Encuentra un rival",
+        s1Desc: "El matchmaking te empareja con un jugador real a tu misma apuesta.",
+        s2Title: "Match",
+        s2Desc: "La partida empieza en cuanto ambos jugadores están listos.",
+        s3Title: "Juega",
+        s3Desc: "Supera a tu rival con pura habilidad.",
+        s4Title: "Gana o pierde",
+        s4Desc: "El ganador se lleva el premio. Ambos jugadores ganan XP.",
+      },
+      nav: {
+        kicker: "Ubícate",
+        title: "Dónde está todo",
+        lead: "Estos son los cinco lugares donde pasarás tu tiempo:",
+        gamesTitle: "Juegos",
+        gamesDesc: "Explora el lobby completo y entra en cualquier partida.",
+        profileTitle: "Perfil",
+        profileDesc: "Tus estadísticas, títulos y aspecto.",
+        battlepassTitle: "Battle Pass",
+        battlepassDesc: "100 niveles de recompensas en XP.",
+        shopTitle: "Tienda",
+        shopDesc: "Cosméticos y paquetes de tokens.",
+        settingsTitle: "Ajustes",
+        settingsDesc: "Sonido, idioma, seguridad y más.",
+      },
+      done: {
+        kicker: "Estás listo",
+        title: "A jugar",
+        subtitle: "Ve al lobby de Juegos y elige tu primera partida. ¡Buena suerte!",
+        cta: "Vamos",
+      },
+      controls: {
+        back: "Atrás",
+        next: "Siguiente",
+        skip: "Saltar tutorial",
+      },
+      error: {
+        text: "No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
+        retry: "Reintentar",
+        continue: "Continuar a Grynd",
+      },
+      firstMatch: {
+        kicker: "Práctica gratuita",
+        title: "Tu primera partida es gratis",
+        lead:
+          "Te llevamos directo a una partida real: Piedra, Papel o Tijera gratis contra la IA. Juega contra la IA para aprender cómo se siente un partido de Grynd — no arriesgas ningún token.",
+        point1: "Gana el primero en llegar a 4 rondas",
+        point2: "Sin tokens en juego",
+        point3: "Termina para ganar un bonus de XP por tu primera partida",
+        cta: "Empezar partida gratuita",
+        alt: "Ahora no — explorar Grynd",
+      },
+      replay: "Repetir tutorial",
     },
   },
 };
