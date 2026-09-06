@@ -62,9 +62,8 @@ import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost
 import {
   CreatorView,
   CreatorModeShell,
-  ShellHeader,
   ShellMain,
-  ShellAside,
+  CreatorPhoneFrame,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 import IconAvatar from "../../../../components/IconAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
@@ -907,32 +906,33 @@ export default function MemoryGridMatchPage({
     <div className="mx-auto mt-4 max-w-3xl sm:mt-8">{mgRoundResultBody}</div>
   );
 
-  // Creator-mode phone-frame shell for the round-result view — compact
-  // header + the three grids in a scrollable main area. Same treatment
-  // as the gameplay shell so the recorded clip stays on-brand.
+  // Round-result view — same phone-frame treatment as the gameplay
+  // shell (compact header + the three grids scrolling at real phone
+  // width) so the recorded clip stays consistent.
   const mgRoundResultShell = (
     <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
-            <p className="text-xs text-white/70">Round {roundResult?.roundNumber}/{match?.roundsPerMatch ?? 5} · Result</p>
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame>
+          <div className="shrink-0 px-3 pb-1 pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
+                <p className="text-xs text-white/70">Round {roundResult?.roundNumber}/{match?.roundsPerMatch ?? 5} · Result</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
+                {msLeft !== null && msLeft > 0 ? `Next in ${Math.ceil(msLeft / 1000)}s` : "…"}
+              </span>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-center text-[11px]">
+              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
+                {myName} · {myTotal ?? 0} pts
+              </span>
+              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
+                {oppName} · {oppTotal ?? 0} pts
+              </span>
+            </div>
           </div>
-          <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
-            {msLeft !== null && msLeft > 0 ? `Next in ${Math.ceil(msLeft / 1000)}s` : "…"}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
-          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
-            {myName} · {myTotal ?? 0} pts
-          </span>
-          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
-            {oppName} · {oppTotal ?? 0} pts
-          </span>
-        </div>
-      </ShellHeader>
-      <ShellMain className="flex-col justify-start overflow-y-auto">
-        <div className="w-full max-w-[640px] px-2 py-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           <RoundResultGrid
             title="Correct Pattern"
             pattern={roundResult?.boardSnapshot ?? null}
@@ -956,7 +956,8 @@ export default function MemoryGridMatchPage({
             flip={opponentFlip}
             badge="opponent"
           />
-        </div>
+          </div>
+        </CreatorPhoneFrame>
       </ShellMain>
     </CreatorModeShell>
   );
@@ -998,17 +999,14 @@ export default function MemoryGridMatchPage({
         : `${Math.ceil(msLeft / 1000)}s`
       : null;
 
-  // ── Creator Mode bespoke portrait/landscape shell (shared recorder) ──
-  // Grid-first 9:16 presentation: compact header keeps the round, timer,
-  // and both scores readable, the memory grid fills the main area, and the
-  // reconstruct controls stay pinned below. Gameplay untouched.
-  // Creator-mode board — ONLY rendered inside the phone-frame shell,
-  // so it can be sized up freely: the grid caps at a wider max-width
-  // (560px vs the 448px normal cap) with bigger gaps so each tile is
-  // a large touch target in the recorded frame.
+  // ── Creator Mode board (rendered inside the phone-frame shell) ────
+  // Mobile sizing — the same max-width / gaps / tile radii as the
+  // normal mobile grid — so the recorded clip feels exactly like the
+  // mobile app: big, full-width tiles instead of a shrunken desktop
+  // board.
   const mgBoardNode = (
     <div
-      className="mx-auto grid max-w-[560px] gap-3 sm:gap-4"
+      className="mx-auto grid max-w-md gap-2.5 sm:gap-3"
       style={{
         gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
       }}
@@ -1028,7 +1026,7 @@ export default function MemoryGridMatchPage({
             disabled={!clickable}
             whileTap={clickable ? { scale: 0.92 } : undefined}
             aria-label={`Tile ${tileIndex + 1}`}
-            className={`relative aspect-square select-none overflow-hidden rounded-2xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
+            className={`relative aspect-square select-none overflow-hidden rounded-xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
               revealActive
                 ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
                 : faceUp
@@ -1047,12 +1045,12 @@ export default function MemoryGridMatchPage({
               transition={{ duration: 0.18, ease: "easeOut" }}
             >
               <span className="absolute inset-0 [backface-visibility:hidden]" />
-              <span className="absolute inset-0 flex items-center justify-center p-1.5 sm:p-2 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+              <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-1.5 [backface-visibility:hidden] [transform:rotateY(180deg)]">
                 <Image
                   src={LogoSmiley}
                   alt=""
-                  width={64}
-                  height={64}
+                  width={48}
+                  height={48}
                   className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
                 />
               </span>
@@ -1094,75 +1092,51 @@ export default function MemoryGridMatchPage({
       </div>
     </div>
   );
-  // Creator-mode controls — SAME actions as mgControlsNode but with
-  // larger touch targets / bigger text so they read well in the
-  // recorded phone frame.
-  const mgControlsNodeCreator = (
-    <div className="mx-auto flex max-w-md flex-wrap items-center justify-center gap-3">
-      <button
-        onClick={handleForfeit}
-        disabled={forfeiting}
-        className="rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-3 text-sm font-bold text-red-300 transition hover:bg-red-500/25 disabled:opacity-40"
-      >
-        {forfeiting ? "Forfeiting…" : "Forfeit"}
-      </button>
-      <button
-        onClick={() => setSelected([])}
-        disabled={selected.length === 0 || submitting}
-        className="rounded-xl border-2 border-white/20 bg-white/5 px-5 py-3 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-40"
-      >
-        Clear
-      </button>
-      <span className="text-center text-sm text-white/50">
-        {selected.length} selected. Tap again to remove · {activeCount}{" "}
-        lit this round
-      </span>
-      <button
-        onClick={() => submitPicks(selected)}
-        disabled={submitting}
-        className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-8 py-3 text-base font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
-      >
-        {submitting ? "Submitting…" : "Submit"}
-      </button>
-      <div className="flex justify-center">
-        <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
-      </div>
-    </div>
-  );
+  // ── Creator Mode phone-frame shell (same treatment as Blackjack) ──
+  // The game renders inside <CreatorPhoneFrame>: a real 390px phone
+  // layout `zoom`ed up to fill the recording frame, so the recorded
+  // clip looks exactly like the mobile app — a big full-width board
+  // with the controls directly underneath, instead of a shrunken
+  // desktop layout with the buttons detached in a bottom strip.
   const mgShell = (
     <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
-            <p className="text-xs text-white/70">
-              Round {match?.roundNumber ?? 1}/{match?.roundsPerMatch ?? 5} · {gridSize}×{gridSize}
-            </p>
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame>
+          {/* Compact header — round, grid size, timer, both scores. */}
+          <div className="shrink-0 px-3 pb-1 pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
+                <p className="text-xs text-white/70">
+                  Round {match?.roundNumber ?? 1}/{match?.roundsPerMatch ?? 5} · {gridSize}×{gridSize}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
+                ⏱ {countdownLabel ?? "—"}
+              </span>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-center text-[11px]">
+              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
+                {myName} · {myTotal ?? 0} pts
+                <EmoteBubble emote={myEmote} side="mine" />
+              </span>
+              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
+                {oppName} · {oppTotal ?? 0} pts
+                <EmoteBubble emote={incomingEmote} />
+              </span>
+            </div>
           </div>
-          <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
-            ⏱ {countdownLabel ?? "—"}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
-          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
-            {myName} · {myTotal ?? 0} pts
-            <EmoteBubble emote={myEmote} side="mine" />
-          </span>
-          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
-            {oppName} · {oppTotal ?? 0} pts
-            <EmoteBubble emote={incomingEmote} />
-          </span>
-        </div>
-      </ShellHeader>
-      <ShellMain className="flex-col justify-center">
-        <div className="w-full max-w-[640px] px-2">{mgBoardNode}</div>
+          {/* Board fills the phone-width middle — same sizing as mobile. */}
+          <div className="flex min-h-0 flex-1 items-center justify-center px-3 py-2">
+            {mgBoardNode}
+          </div>
+          {/* Controls directly under the board — mobile touch targets,
+              same mgControlsNode as the normal (non-creator) view. */}
+          <div className="shrink-0 px-3 pb-3">
+            {canPick && mgControlsNode}
+          </div>
+        </CreatorPhoneFrame>
       </ShellMain>
-      <ShellAside>
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
-          Round wins · {myName} {myScore ?? 0} / {oppName} {oppScore ?? 0}
-        </p>
-        {mgControlsNodeCreator}
-      </ShellAside>
     </CreatorModeShell>
   );
 

@@ -265,7 +265,13 @@ test("clients can toggle the badge preference but never claim a prestige level",
   // The endpoint only accepts a boolean and only writes the preference
   // column; it never imports the writer and never accepts prestige values.
   assert.match(badgeRoute, /body\?\.enabled === true/);
-  assert.match(badgeRoute, /\.set\(\{ showPrestigeBadge: enabled \}\)/);
+  // Equipping the badge clears the other title slots (one-title rule);
+  // unequipping writes only the preference column.
+  assert.match(
+    badgeRoute,
+    /\.set\(\{\s*showPrestigeBadge: true,\s*selectedTitle: null,\s*selectedSpecialTitle: null,\s*selectedStreakType: null,\s*\}\)/,
+  );
+  assert.match(badgeRoute, /\.set\(\{ showPrestigeBadge: false \}\)/);
   assert.ok(!badgeRoute.includes("applyPrestigeResult"), "badge endpoint must never call the prestige writer");
   // Nothing derived from the request body ever reaches a prestige column:
   // the only body field read is the boolean `enabled`.

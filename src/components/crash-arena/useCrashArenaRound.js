@@ -628,7 +628,19 @@ export default function useCrashArenaRound({
    *   practice tables resolve their single bot automatically
    * @returns {Promise<boolean>} true when the server accepted the action
    */
-  const submitAction = useCallback(async (action, raiseTo, forBot = false, forBotUserId = null) => {
+  const submitAction = useCallback(async (
+    action,
+    raiseTo,
+    forBot = false,
+    forBotUserId = null,
+    // Bot driver passes the checkpoint it is acting on explicitly: at the
+    // moment the sweep opens a new checkpoint the local multiplier is still
+    // capped at the PREVIOUS checkpoint (and roundStateRef hasn't re-rendered
+    // from the CHECKPOINT_OPENED dispatch), so deriving the target from the
+    // multiplier feed would compute the WRONG checkpoint and the server
+    // would reject every bot action after the first window.
+    forcedCheckpointIndex = null,
+  ) => {
     const roundId = currentRoundIdRef.current;
     if (!roundId) {
       if (!forBot) setError("No active hand");
@@ -641,11 +653,16 @@ export default function useCrashArenaRound({
     }
     // Pick the checkpoint to act on: the open one (curve reached it), or the
     // next one when the open one resolved and the curve crossed the boundary.
-    const curveIndex = checkpointIndexAtOrBelow(currentMultiplierRef.current);
-    const open = Number(rs.checkpointIndex ?? -1);
+    // Bots bypass the derivation entirely — the driver knows the checkpoint.
     let target = null;
-    if (curveIndex >= open + 1) target = open + 1;
-    else if (curveIndex === open && rs.bettingOpen) target = open;
+    if (forcedCheckpointIndex != null && Number.isFinite(Number(forcedCheckpointIndex))) {
+      target = Number(forcedCheckpointIndex);
+    } else {
+      const curveIndex = checkpointIndexAtOrBelow(currentMultiplierRef.current);
+      const open = Number(rs.checkpointIndex ?? -1);
+      if (curveIndex >= open + 1) target = open + 1;
+      else if (curveIndex === open && rs.bettingOpen) target = open;
+    }
     if (target == null) {
       if (!forBot) setError("Betting isn't open at this checkpoint yet");
       return false;
@@ -815,7 +832,8 @@ export default function useCrashArenaRound({
       // instead of waiting avoids the stall guard's auto-resolve delay.
       botInFlightRef.current.add(bot.userId);
       botActedIndexRef.current.set(bot.userId, target);
-      submitAction(decision.action, decision.raiseTo, true, bot.userId);
+      // Pass `target` explicitly — see submitAction's forcedCheckpointIndex.
+      submitAction(decision.action, decision.raiseTo, true, bot.userId, target);
     }
   }, [canDriveBots, aiDifficulty, submitAction]);
 

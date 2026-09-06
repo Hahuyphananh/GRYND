@@ -2929,8 +2929,12 @@ export const memoryGridMatches = pgTable(
     // The round winner is decided by comparing these two, then the
     // round is snapshotted into memory_grid_rounds and the next
     // round's pattern is dealt.
-    p1RoundScore: integer("p1_round_score").notNull().default(0),
-    p2RoundScore: integer("p2_round_score").notNull().default(0),
+    // DECIMAL — the round score is the exact full-grid accuracy
+    // percentage (computeFinalRoundScore, 1dp — e.g. 81.3), so these
+    // can hold fractional values. INT here caused pg_strtoint32 500s
+    // on every non-integer reconstruction.
+    p1RoundScore: numeric("p1_round_score", { precision: 6, scale: 1 }).notNull().default("0.0"),
+    p2RoundScore: numeric("p2_round_score", { precision: 6, scale: 1 }).notNull().default("0.0"),
     // Rounds WON across the match (best-of-5) — a display tally +
     // tiebreak indicator, kept in the scoreboard. A round win +1s
     // the winner's counter; tied rounds award nobody. The MATCH
@@ -2945,8 +2949,9 @@ export const memoryGridMatches = pgTable(
     // the running totals (e.g. YOU 247 — OPPONENT 231) alongside
     // rounds-won, matching the points-based PvP scoreboards
     // (lane-rush-duel, keno-pvp).
-    p1Total: integer("p1_total").notNull().default(0),
-    p2Total: integer("p2_total").notNull().default(0),
+    // DECIMAL — cumulative sum of 1dp round scores (e.g. 247.4).
+    p1Total: numeric("p1_total", { precision: 7, scale: 1 }).notNull().default("0.0"),
+    p2Total: numeric("p2_total", { precision: 7, scale: 1 }).notNull().default("0.0"),
     // Current round number (1..ROUNDS_PER_MATCH). Starts at 1 when
     // player2 joins; incremented by the server when a round
     // completes (both players have submitted).
@@ -3018,8 +3023,9 @@ export const memoryGridRounds = pgTable(
     flips: jsonb("flips")
       .notNull()
       .default(sql`'[]'::jsonb`),
-    p1RoundScore: integer("p1_round_score").notNull().default(0),
-    p2RoundScore: integer("p2_round_score").notNull().default(0),
+    // DECIMAL — mirrors memory_grid_matches.p1/p2_round_score.
+    p1RoundScore: numeric("p1_round_score", { precision: 6, scale: 1 }).notNull().default("0.0"),
+    p2RoundScore: numeric("p2_round_score", { precision: 6, scale: 1 }).notNull().default("0.0"),
     // 'player1' | 'player2' | 'draw' | null
     roundWinner: varchar("round_winner", { length: 10 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

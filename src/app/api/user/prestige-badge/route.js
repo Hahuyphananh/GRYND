@@ -98,10 +98,24 @@ export async function POST(req) {
     );
   }
 
-  await db
-    .update(users)
-    .set({ showPrestigeBadge: enabled })
-    .where(eq(users.id, row.id));
+  if (enabled) {
+    // Showing the Prestige badge clears every other title slot —
+    // the user can only ever display one title at a time.
+    await db
+      .update(users)
+      .set({
+        showPrestigeBadge: true,
+        selectedTitle: null,
+        selectedSpecialTitle: null,
+        selectedStreakType: null,
+      })
+      .where(eq(users.id, row.id));
+  } else {
+    await db
+      .update(users)
+      .set({ showPrestigeBadge: false })
+      .where(eq(users.id, row.id));
+  }
 
   const state = await loadState(userId);
   return NextResponse.json({ success: true, badge: state });

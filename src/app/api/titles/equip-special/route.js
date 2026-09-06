@@ -56,9 +56,16 @@ export async function POST(request) {
     );
   }
 
+  // Equipping a special title clears every other title slot —
+  // the user can only ever display one title at a time.
   await db
     .update(users)
-    .set({ selectedSpecialTitle: normalizedKey })
+    .set({
+      selectedSpecialTitle: normalizedKey,
+      selectedTitle: null,
+      selectedStreakType: null,
+      showPrestigeBadge: false,
+    })
     .where(eq(users.id, appUser.id));
 
   return new Response(

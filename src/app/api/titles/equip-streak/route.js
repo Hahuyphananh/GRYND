@@ -34,10 +34,24 @@ export async function POST(request) {
 
     const newValue = normalizedType || null;
 
-    await db
-      .update(users)
-      .set({ selectedStreakType: newValue })
-      .where(eq(users.clerkId, userId));
+    if (newValue) {
+      // Equipping a streak title clears every other title slot —
+      // the user can only ever display one title at a time.
+      await db
+        .update(users)
+        .set({
+          selectedStreakType: newValue,
+          selectedTitle: null,
+          selectedSpecialTitle: null,
+          showPrestigeBadge: false,
+        })
+        .where(eq(users.clerkId, userId));
+    } else {
+      await db
+        .update(users)
+        .set({ selectedStreakType: null })
+        .where(eq(users.clerkId, userId));
+    }
 
     return NextResponse.json({
       success: true,

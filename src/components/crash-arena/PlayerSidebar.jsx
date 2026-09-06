@@ -4,6 +4,7 @@ import {
   IconArmchair,
   IconBomb,
   IconCircleCheck,
+  IconPokerChip,
   IconClock,
   IconFlag,
   IconHome,
@@ -65,6 +66,11 @@ export default function PlayerSidebar({
 
       {players.map((p) => {
         const s = statusOf(p);
+        // Live bet amount: what the seat has committed to the current pot.
+        // Shown for everyone who is in the hand (contributed > 0) during a
+        // live round so you can see who bet what at a glance.
+        const betAmount = Number(p.contributed) || 0;
+        const showBet = isLive && betAmount > 0 && !p.busted;
         return (
           <div
             key={p.userId ?? p.name}
@@ -92,6 +98,15 @@ export default function PlayerSidebar({
               {p.name}
               {p.isYou ? " (You)" : ""}
             </span>
+            {showBet && (
+              <span
+                className="shrink-0 inline-flex items-center gap-1 rounded-full border border-[#FFD700]/40 bg-[#FFD700]/10 px-1.5 py-0.5 text-[10px] font-black tabular-nums text-[#FFD700]"
+                title={`Bet: $${betAmount.toFixed(2)}`}
+              >
+                <IconPokerChip size={11} className="text-[#FFD700]" />
+                ${betAmount % 1 === 0 ? betAmount.toLocaleString() : betAmount.toFixed(2)}
+              </span>
+            )}
             <span className={`font-bold tabular-nums shrink-0 ${s.cls}`}>
               {s.icon} {s.label}
             </span>
