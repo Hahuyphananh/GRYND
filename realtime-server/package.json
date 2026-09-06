@@ -11,11 +11,12 @@
     "@clerk/backend": "^2.29.7",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "socket.io": "^4.8.1"
   },
   "overrides": {
     "body-parser": "^1.20.6",
-    "socket.io-parser": "^4.2.7"
+    "socket.io-parser": "^4.2.7",
+    "qs": "^6.16.0"
   }
 }
