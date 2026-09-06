@@ -1049,6 +1049,7 @@ export default function ChessGamePage() {
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
@@ -1199,15 +1200,12 @@ export default function ChessGamePage() {
           portrait={portraitContent}
           landscape={desktopContent}
         />
-      </CreatorModeHost>
 
-      {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. The old bespoke "MATCH
-          FINISHED" popup is deleted — this is the single end-of-
-          match experience, and it can be dismissed to reveal the
-          final board underneath. */}
-      {renderResult()}
+        {/* Post-match result screen — shared PvpResultScreen (UX plan
+            P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+            recording; compact styling keeps it sized for the phone frame. */}
+        {renderResult()}
+      </CreatorModeHost>
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

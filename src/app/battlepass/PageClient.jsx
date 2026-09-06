@@ -64,24 +64,68 @@ export default function BattlepassPageClient() {
     load();
   }, [load]);
 
-  const claimReward = async (reward) => {
+  const claimReward = async (reward, level) => {
     if (claimingKey) return;
-    const key = `${reward.type}:${reward.key}`;
+    // Functional rewards (xp_boost / quest_boost / shield) have no key —
+    // they're disambiguated by their track level, so include it in the
+    // claim payload so each identical entry is claimed exactly once.
+    const isFunctional =
+      reward.type === "xp_boost" ||
+      reward.type === "quest_boost" ||
+      reward.type === "shield";
+    const key = `${reward.type}:${reward.key ?? `lvl${level}`}`;
     setClaimingKey(key);
     setClaimError(null);
     try {
       const res = await fetch("/api/battlepass/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: reward.type, key: reward.key }),
+        body: JSON.stringify({
+          type: reward.type,
+          key: reward.key,
+          level: isFunctional ? level : undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         setClaimError(data.error || "Could not claim this reward.");
         return;
       }
-      // Refresh the pass so the claimed reward flips to "Unlocked".
-      await load();
+      // Update the pass IN PLACE so the claimed reward flips to "Unlocked"
+      // without a full re-fetch (which replaces the track with the loading
+      // spinner and re-centers the scroll, forcing the user to scroll back
+      // after every claim). The server response is authoritative — we only
+      // mirror the claimed state locally. Already-claimed responses are a
+      // no-op (double-click guard).
+      if (!data.alreadyClaimed) {
+        setPass((prev) => {
+          if (!prev) return prev;
+          const matches = (r) =>
+            r.type === reward.type &&
+            (isFunctional || r.key === reward.key);
+          const wasClaimable = prev.levels.some(
+            (entry) => entry.level === level &&
+              entry.rewards.some((r) => matches(r) && r.claimable),
+          );
+          const levels = prev.levels.map((entry) =>
+            entry.level !== level
+              ? entry
+              : {
+                  ...entry,
+                  rewards: entry.rewards.map((r) =>
+                    matches(r) ? { ...r, claimed: true, claimable: false } : r,
+                  ),
+                },
+          );
+          return {
+            ...prev,
+            levels,
+            unclaimedCount: wasClaimable
+              ? Math.max(0, (prev.unclaimedCount || 0) - 1)
+              : prev.unclaimedCount,
+          };
+        });
+      }
     } catch {
       setClaimError("Could not claim this reward.");
     } finally {
@@ -97,6 +141,10 @@ export default function BattlepassPageClient() {
     trackRef.current?.scrollBy({ left: delta, behavior: "smooth" });
   };
 
+  // Horizontal battlepass track — auto-center on the CURRENT LEVEL only
+  // (not on every pass update). Depends on pass?.level, so claiming rewards
+  // in place (setPass below) never re-centers the track and the user keeps
+  // their scroll position while claiming in one go.
   useEffect(() => {
     if (!pass) return;
     const track = trackRef.current;
@@ -110,7 +158,7 @@ export default function BattlepassPageClient() {
       });
     }, 80);
     return () => clearTimeout(id);
-  }, [pass]);
+  }, [pass?.level]);
 
   // Prestige-advancement celebration. The tier number always comes from the
   // server response (/api/battlepass) — the client can never fabricate it.
@@ -342,6 +390,35 @@ export default function BattlepassPageClient() {
               </Link>
             </div>
 
+            {/* Premium upsell — shown to non-members while premium rewards
+                exist on the track. Members see the standard header. */}
+            {pass.isPremium === false && (
+              <div className="mt-6 rounded-xl border border-[#a78bfa]/40 bg-[#0b224f]/85 p-5 shadow-[0_0_24px_rgba(139,92,246,0.15)]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#a78bfa]/50 bg-[#a78bfa]/15 text-lg">
+                      👑
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-[#a78bfa]">
+                        Unlock premium rewards with Grynd+
+                      </div>
+                      <div className="mt-0.5 text-xs text-[#9dd8ff]/70">
+                        The 4 rare animated emotes on this track are exclusive to
+                        members. Already claimed one? It stays yours forever.
+                      </div>
+                    </div>
+                  </div>
+                  <Link
+                    href="/shop"
+                    className="rounded-xl bg-[#a78bfa] px-4 py-2 text-sm font-bold text-[#050b1e] transition hover:bg-[#c4b5fd]"
+                  >
+                    Get Grynd+ →
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {/* Level track — horizontal battlepass, Brawl-Stars style */}
             <div className="mt-6 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-5 sm:p-6">
               <div className="flex flex-wrap items-end justify-between gap-3">
@@ -510,27 +587,60 @@ export default function BattlepassPageClient() {
                                 <div className="text-[9px] leading-tight text-[#7dd3fc]">
                                   {reward.desc}
                                 </div>
+                                {/* Premium-track badge + lock — non-members
+                                    see premium rewards locked with a
+                                    subscribe CTA (unless already owned:
+                                    grandfathered owners keep their
+                                    rewards). */}
+                                {reward.premium && reward.locked && (
+                                  <div className="mt-1 rounded-md border border-[#a78bfa]/50 bg-[#a78bfa]/10 px-1.5 py-1">
+                                    <div className="flex items-center justify-center gap-1 text-[9px] font-bold text-[#a78bfa]">
+                                      <span aria-hidden>🔒</span> Grynd+ Premium
+                                    </div>
+                                    <Link
+                                      href="/shop"
+                                      className="mt-1 block w-full rounded-md bg-[#a78bfa] px-2 py-1 text-center text-[9px] font-bold text-[#050b1e] transition hover:bg-[#c4b5fd]"
+                                    >
+                                      Subscribe
+                                    </Link>
+                                  </div>
+                                )}
+                                {reward.premium && !reward.locked && !reward.claimed && (
+                                  <div className="mt-1 rounded-md border border-[#a78bfa]/40 bg-[#a78bfa]/5 px-1.5 py-0.5 text-center text-[9px] font-bold text-[#a78bfa]">
+                                    ✦ Grynd+ Premium
+                                  </div>
+                                )}
                                 {(reward.type === "banner" ||
-                                  reward.type === "emote") &&
+                                  reward.type === "emote" ||
+                                  reward.type === "title" ||
+                                  reward.type === "color" ||
+                                  reward.type === "xp_boost" ||
+                                  reward.type === "quest_boost" ||
+                                  reward.type === "shield") &&
                                   reward.claimed && (
                                     <div className="text-[9px] font-semibold text-emerald-300">
                                       Unlocked
                                     </div>
                                   )}
                                 {(reward.type === "banner" ||
-                                  reward.type === "emote") &&
+                                  reward.type === "emote" ||
+                                  reward.type === "title" ||
+                                  reward.type === "color" ||
+                                  reward.type === "xp_boost" ||
+                                  reward.type === "quest_boost" ||
+                                  reward.type === "shield") &&
                                   reward.claimable && (
                                     <button
                                       type="button"
-                                      onClick={() => claimReward(reward)}
+                                      onClick={() => claimReward(reward, lvl.level)}
                                       disabled={
                                         claimingKey ===
-                                        `${reward.type}:${reward.key}`
+                                        `${reward.type}:${reward.key ?? `lvl${lvl.level}`}`
                                       }
                                       className="mt-1 w-full rounded-md border border-[#f5ff3b]/60 bg-[#f5ff3b]/15 px-2 py-1 text-[10px] font-bold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/30 disabled:opacity-50"
                                     >
                                       {claimingKey ===
-                                      `${reward.type}:${reward.key}`
+                                      `${reward.type}:${reward.key ?? `lvl${lvl.level}`}`
                                         ? "Claiming…"
                                         : "Claim"}
                                     </button>

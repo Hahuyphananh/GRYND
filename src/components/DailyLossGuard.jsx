@@ -4,9 +4,10 @@
 //
 // Responsible-play guard (soft version — warn, never block).
 //
-// On mount it fetches today's settled bets from /api/get-bet-history?since=…
-// (the route's `since` param filters every game table at the SQL level, and
-// each bet carries its `tokenDiff` net), sums them, and:
+// On mount it reads today's net from the server-maintained daily counters
+// via /api/user/daily-loss (one indexed users-row read + a single
+// crash-arena query — previously this was a ~24-query fan-out across every
+// game table), and:
 //
 //   * over DAILY_LOSS_WARNING_THRESHOLD → shows a warning modal the player
 //     must acknowledge once per day ("I understand — keep playing"). The

@@ -25,6 +25,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchMatchWithAutoResolve } from "../../../../../lib/lane-rush-duel/serverStore";
+import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
   bankRateForSeat,
   bankedScoreOf,
@@ -137,6 +138,17 @@ function normaliseMatchForViewer(match, viewerUserId) {
   };
 }
 
+function identityFields(identity) {
+  return {
+    player1Name: identity.player1?.name ?? null,
+    player1IconKey: identity.player1?.iconKey ?? null,
+    player1NameColor: identity.player1?.nameColor ?? null,
+    player2Name: identity.player2?.name ?? null,
+    player2IconKey: identity.player2?.iconKey ?? null,
+    player2NameColor: identity.player2?.nameColor ?? null,
+  };
+}
+
 export async function GET(req, { params }) {
   const { userId } = await auth();
   if (!userId) {
@@ -171,10 +183,22 @@ export async function GET(req, { params }) {
       );
     }
 
+    // Real seat identity (username + official icon + equipped name
+    // color) for both seats. One query for both; the bot seat
+    // ("AI_BOT") stays null and the client falls back to its
+    // localized "GRYND AI" label.
+    const identity = await getSeatIdentity(
+      match.player1Id,
+      match.player2Id,
+    );
+
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatchForViewer(match, userId),
+        match: {
+          ...normaliseMatchForViewer(match, userId),
+          ...identityFields(identity),
+        },
       },
     });
   } catch (error) {

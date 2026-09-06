@@ -22,8 +22,10 @@ import {
   crashArenaRounds,
   crashArenaEntries,
   crashArenaTransactions,
+  users,
 } from "../../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
+import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { handFromEntries, resolveHand, expireStaleActions } from "./roundSystem";
 import { PLATFORM_FEE, NEXT_ROUND_COUNTDOWN_MS } from "./constants";
 import { broadcastTableUpdate } from "../crash-arena/rooms";
@@ -113,6 +115,8 @@ export async function settleCrashPokerHand(
         payoutGross: 0,
         winnerUserId: null as number | null,
         nextRoundAt: null as Date | null,
+        tableIsAi: false,
+        tableIsPrivate: false,
       };
     }
 
@@ -325,10 +329,12 @@ export async function settleCrashPokerHand(
       payoutGross,
       winnerUserId,
       nextRoundAt,
+      tableIsAi: table.isAi,
+      tableIsPrivate: table.isPrivate,
     };
   });
 
-  const { round, tableId, updatedEntries, resolved, returns, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt } = outcome;
+  const { round, tableId, updatedEntries, resolved, returns, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt, tableIsAi, tableIsPrivate } = outcome;
 
   // Best-effort fanout so the whole table reconciles instantly (after the
   // transaction committed).
@@ -347,6 +353,28 @@ export async function settleCrashPokerHand(
     nextRoundAt:
       nextRoundAt != null ? nextRoundAt.getTime() : Date.now() + NEXT_ROUND_COUNTDOWN_MS,
   });
+
+  // ── User stats + quests (real tables only, human participants) ──
+  // Crash Poker is a multi-player PvP table, so a settled hand is a PvP
+  // outcome. The winner records a PvP win and each "lost" participant a
+  // loss through the canonical applyLeaderboardCounters pipeline
+  // (user_stats wins/losses/win_rate, pvp_wins, quests). Folded entries
+  // are skipped — their money was largely returned via side-pot refunds,
+  // so they don't represent a settled win/loss. Practice/private tables
+  // use virtual chips and never touch real stats (mirrors the WIN/RAKE
+  // transaction gating). Fire-and-forget — never blocks settlement.
+  if (
+    !alreadySettled &&
+    !tableIsAi &&
+    !tableIsPrivate &&
+    winnerUserId != null
+  ) {
+    recordCrashArenaStats({
+      winnerUserId,
+      entries: updatedEntries,
+      payout,
+    }).catch((err) => console.error("[crash-arena] stats failed:", err));
+  }
 
   return {
     roundId,
@@ -374,4 +402,58 @@ export async function settleCrashPokerHand(
 /** Round to 2 decimals (cents). */
 function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// Best-effort stat side-effect for a settled Crash Poker hand. Resolves
+// numeric user ids → clerk ids (applyLeaderboardCounters keys on clerk id),
+// records the winner as a PvP win and each "lost" participant as a loss.
+// AI-bot seats are skipped. Fire-and-forget; a failure never blocks the
+// settlement response.
+async function recordCrashArenaStats(opts: {
+  winnerUserId: number;
+  entries: CrashPokerSettleResult["entries"];
+  payout: number;
+}): Promise<void> {
+  const { winnerUserId, entries, payout } = opts;
+  const allIds = entries.map((e) => e.userId);
+
+  // Identify AI-bot seats (reserved users) so we don't pollute real stats.
+  const botIds = new Set<number>();
+  for (const id of allIds) {
+    if (await isCrashArenaAiBotId(id)) botIds.add(id);
+  }
+
+  const rows = await db
+    .select({ id: users.id, clerkId: users.clerkId })
+    .from(users)
+    .where(inArray(users.id, allIds));
+  const clerkByUserId = new Map<number, string | null>();
+  for (const r of rows) clerkByUserId.set(r.id, r.clerkId);
+
+  const winnerClerk = clerkByUserId.get(winnerUserId);
+  if (winnerClerk) {
+    const winnerEntry = entries.find(
+      (e) => e.userId === winnerUserId && e.result === "won",
+    );
+    applyLeaderboardCounters({
+      clerkId: winnerClerk,
+      game: "crash",
+      betAmount: Number(winnerEntry?.contributed ?? 0),
+      payout,
+      isPvpWin: true,
+    }).catch(() => {});
+  }
+
+  for (const e of entries) {
+    if (e.userId === winnerUserId || e.result !== "lost") continue;
+    if (botIds.has(e.userId)) continue;
+    const clerk = clerkByUserId.get(e.userId);
+    if (!clerk) continue;
+    applyLeaderboardCounters({
+      clerkId: clerk,
+      game: "crash",
+      betAmount: Number(e.contributed) || 0,
+      payout: 0,
+    }).catch(() => {});
+  }
 }

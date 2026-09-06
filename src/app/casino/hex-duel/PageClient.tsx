@@ -30,6 +30,7 @@ import {
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../components/IconAvatar";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
   IconDeviceGamepad2,
@@ -497,7 +498,7 @@ function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: num
 function PlayerCard({
   player, label, isActive, isSelected, color, moves, territory, currentAP, maxAP, isWinner, isAI,
   turnJustChanged, totalTroops, maxTroops, clockTime, isLocal,
-  emoteBubble, emoteSide,
+  emoteBubble, emoteSide, iconKey, nameColor,
 }: {
   player: DuelPlayer; label: string;
   isActive: boolean; isSelected: boolean; color: string;
@@ -510,6 +511,8 @@ function PlayerCard({
   isLocal?: boolean;
   emoteBubble?: { value: string; kind?: string } | null;
   emoteSide?: "mine" | "incoming";
+  iconKey?: string | null;
+  nameColor?: string | null;
 }) {
   // Use color to determine blue/red styling — local player always blue, opponent always red
   const isBlue = color === "#22d3ee";
@@ -544,17 +547,12 @@ function PlayerCard({
             bubble anchored to the name so emotes "pop" on the sender's
             name (same treatment as mines / memory-grid / keno). */}
         <span className="relative flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>
-          <span
-            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
-              isBlue
-                ? "border-cyan-300/40 bg-cyan-400/15"
-                : "border-red-400/40 bg-red-500/15"
-            }`}
-            style={{ color }}
-          >
-            {(label || "?").charAt(0).toUpperCase()}
+          {/* Official Grynd icon — falls back to a letter circle when
+              the key is missing/invalid. */}
+          <IconAvatar iconKey={iconKey} name={label} size="h-6 w-6" showFrame={false} />
+          <span className="truncate" style={nameColor ? { color: nameColor } : undefined}>
+            {label}
           </span>
-          <span className="truncate">{label}</span>
           <EmoteBubble emote={emoteBubble} side={emoteSide ?? "incoming"} />
         </span>
         <div className="flex items-center gap-2">
@@ -943,6 +941,12 @@ export default function HexDuelPage() {
   const [opponentClerkId, setOpponentClerkId] = useState<string | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
   const [player1Name, setPlayer1Name] = useState<string | null>(null);
+  // Seat identity — real username + official Grynd icon + equipped name
+  // color, resolved server-side (getSeatIdentity in the status API).
+  const [player1IconKey, setPlayer1IconKey] = useState<string | null>(null);
+  const [player1NameColor, setPlayer1NameColor] = useState<string | null>(null);
+  const [opponentIconKey, setOpponentIconKey] = useState<string | null>(null);
+  const [opponentNameColor, setOpponentNameColor] = useState<string | null>(null);
 
   // ── Connection status ───────────────────────────────────────────
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
@@ -2179,7 +2183,10 @@ export default function HexDuelPage() {
 
         // ── Spectator heartbeat to keep lobby spectator counts live ──
         const now = Date.now();
-        if (data.game?.player1Id && (!lastHeartbeatRef.current || now - lastHeartbeatRef.current > 5000)) {
+        // Heartbeat only needs to land inside the 20s spectator-count
+        // window — a 15s throttle guarantees that with margin at 3x fewer
+        // UPSERTs + cleanup DELETEs than the old 5s beat.
+        if (data.game?.player1Id && (!lastHeartbeatRef.current || now - lastHeartbeatRef.current > 15000)) {
           lastHeartbeatRef.current = now;
           fetch("/api/spectators/heartbeat", {
             method: "POST",
@@ -2195,6 +2202,16 @@ export default function HexDuelPage() {
         if (data.game) {
           if (data.game.player1Name) setPlayer1Name(data.game.player1Name);
           if (data.game.player2Name) setOpponentName(data.game.player2Name);
+          if (data.game.player1IconKey) setPlayer1IconKey(data.game.player1IconKey);
+          if (data.game.player1NameColor) setPlayer1NameColor(data.game.player1NameColor);
+          if (data.game.player2IconKey) {
+            const oppKey = isPlayer1 ? data.game.player2IconKey : data.game.player1IconKey;
+            if (oppKey) setOpponentIconKey(oppKey);
+          }
+          if (data.game.player2NameColor) {
+            const oppColor = isPlayer1 ? data.game.player2NameColor : data.game.player1NameColor;
+            if (oppColor) setOpponentNameColor(oppColor);
+          }
         }
 
         const actions = data.actions || [];
@@ -2540,6 +2557,12 @@ export default function HexDuelPage() {
   // Labels
   const localLabel = isSpectator ? (player1Name || "Player 1") : (user?.firstName || user?.username || "You");
   const opponentLabel = aiEnabled ? "AI" : gameMode === "multiplayer" ? (opponentName || "Opponent") : "Player 2";
+  // Per-seat identity for the player cards. In multiplayer the viewer
+  // is seat 1 or 2; spectator view follows seat 1. AI seat stays null.
+  const localIconKey = isSpectator || isPlayer1 ? player1IconKey : opponentIconKey;
+  const localNameColor = isSpectator || isPlayer1 ? player1NameColor : opponentNameColor;
+  const oppIconKey = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentIconKey : player1IconKey) : null;
+  const oppNameColor = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentNameColor : player1NameColor) : null;
 
   // Fetch opponent name via status API when multiplayer game becomes ready
   useEffect(() => {
@@ -2552,6 +2575,14 @@ export default function HexDuelPage() {
           if (oppName) setOpponentName(oppName);
           const oppId = isPlayer1 ? d.game.player2Id : d.game.player1Id;
           if (oppId) setOpponentClerkId(oppId);
+          const oppKey = isPlayer1 ? d.game.player2IconKey : d.game.player1IconKey;
+          if (oppKey) setOpponentIconKey(oppKey);
+          const oppColor = isPlayer1 ? d.game.player2NameColor : d.game.player1NameColor;
+          if (oppColor) setOpponentNameColor(oppColor);
+          const myKey = isPlayer1 ? d.game.player1IconKey : d.game.player2IconKey;
+          if (myKey) setPlayer1IconKey(myKey);
+          const myColor = isPlayer1 ? d.game.player1NameColor : d.game.player2NameColor;
+          if (myColor) setPlayer1NameColor(myColor);
         }
       })
       .catch(() => {});
@@ -2686,6 +2717,7 @@ export default function HexDuelPage() {
                   totalTroops={localTotalTroops} maxTroops={maxTroops}
                   clockTime={localClockTime}
                   emoteBubble={myEmote} emoteSide="mine"
+                  iconKey={localIconKey} nameColor={localNameColor}
                 />
                 {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
                   <HexActionPanel
@@ -2824,6 +2856,7 @@ export default function HexDuelPage() {
                   totalTroops={opponentTotalTroops} maxTroops={maxTroops}
                   clockTime={opponentClockTime}
                   emoteBubble={incomingEmote} emoteSide="incoming"
+                  iconKey={oppIconKey} nameColor={oppNameColor}
                 />
                 {showGame && !isSpectator && gameMode === "multiplayer" && !isPlayer1 && (
                   // Right-side action panel for the red local user
@@ -3151,7 +3184,7 @@ export default function HexDuelPage() {
               subline={localPlayerWon ? undefined : `${opponentLabel} conquered your capital!`}
               opponent={{
                 name: opponentLabel,
-                iconKey: null,
+                iconKey: oppIconKey,
                 isAi: aiEnabled,
               }}
               tokenDelta={

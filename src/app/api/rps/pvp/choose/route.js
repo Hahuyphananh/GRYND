@@ -193,6 +193,7 @@ export async function POST(req) {
             winnerId,
             result: roundOutcome,
             status: "finished",
+            endedAt: new Date(),
           })
           .where(eq(rpsPvpGames.id, parsedGameId))
           .returning();

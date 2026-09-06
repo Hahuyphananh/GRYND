@@ -71,7 +71,7 @@ export async function POST(req) {
 
     await db
       .update(chessGames)
-      .set({ status: "expired" })
+      .set({ status: "expired", endedAt: new Date() })
       .where(
         and(
           eq(chessGames.status, "waiting"),

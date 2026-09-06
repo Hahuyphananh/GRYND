@@ -23,6 +23,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../components/IconAvatar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay, auto-starts when the match actually begins (a real
 // round_1..N is in play, i.e. left the waiting room) and auto-stops once
@@ -574,6 +575,16 @@ export default function KenoPvpMatchPage({ params }) {
     : match.players?.p2?.displayName || match.player2Id?.slice(0, 6) || "P2";
   const oppName = me === "player1" ? p2Name : p1Name;
 
+  // Seat identity — the server already enriches `players` with the
+  // official Grynd icon key + equipped name color per seat; the AI
+  // seat stays null and falls back to the GRYND AI label.
+  const mySeatSummary = match.players?.[me] ?? null;
+  const oppSeatSummary = match.players?.[opponent] ?? null;
+  const mySeatIcon = mySeatSummary?.iconKey || null;
+  const oppSeatIcon = oppSeatSummary?.iconKey || null;
+  const myNameColor = mySeatSummary?.nameColor || null;
+  const oppNameColor = oppSeatSummary?.nameColor || null;
+
   // ── Creator Mode arrangement ──────────────────────────────────────
   // The SAME game content composes the normal page and the creator
   // frames (portrait phone-style + landscape/square rail), mirroring
@@ -823,10 +834,16 @@ export default function KenoPvpMatchPage({ params }) {
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
           <span className="inline-flex items-center gap-1 rounded-full border border-[#00ffa6]/40 bg-[#00ffa6]/15 px-2 py-0.5 text-[#00ffa6]">
-            You {myPts}
+            <IconAvatar iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-3.5 w-3.5" />
+            <span style={myNameColor ? { color: myNameColor } : undefined}>
+              {me === "player1" ? p1Name : p2Name} {myPts}
+            </span>
           </span>
           <span className="inline-flex items-center gap-1 rounded-full border border-[#FFD700]/40 bg-[#FFD700]/15 px-2 py-0.5 text-[#FFD700]">
-            {oppName} {oppPts}
+            <span style={oppNameColor ? { color: oppNameColor } : undefined}>
+              {oppName} {oppPts}
+            </span>
+            <IconAvatar iconKey={oppSeatIcon} name={oppName} size="h-3.5 w-3.5" />
           </span>
         </div>
       </div>
@@ -950,9 +967,22 @@ export default function KenoPvpMatchPage({ params }) {
           </div>
           <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 px-4 py-2 text-sm shadow-[0_0_14px_rgba(0,229,255,0.15)] min-w-[210px]">
             <div className="flex items-center gap-3">
-              <span className="relative font-bold text-[#00ffa6]">{me === "player1" ? "You" : p1Name} {myPts}<EmoteBubble emote={myEmote} side="mine" /></span>
+              <span className="relative inline-flex items-center gap-1.5 font-bold text-[#00ffa6]">
+                <IconAvatar iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-4 w-4" />
+                <span style={myNameColor ? { color: myNameColor } : undefined}>
+                  {me === "player1" ? p1Name : p2Name} {myPts}
+                </span>
+                <EmoteBubble emote={myEmote} side="mine" />
+              </span>
               <span className="text-white/40">–</span>
-              <span className="relative font-bold text-[#FFD700]">{oppPts} {me === "player2" ? "You" : p2Name}<EmoteBubble emote={incomingEmote} /></span>
+              <span className="relative inline-flex items-center gap-1.5 font-bold text-[#FFD700]">
+                {oppPts} {me === "player2" ? p2Name : p1Name}
+                <IconAvatar iconKey={oppSeatIcon} name={me === "player2" ? p2Name : p1Name} size="h-4 w-4" />
+                <span style={oppNameColor ? { color: oppNameColor } : undefined}>
+                  {me === "player2" ? p2Name : p1Name}
+                </span>
+                <EmoteBubble emote={incomingEmote} />
+              </span>
             </div>
             {/* Race to the finish: each player fills toward the centre
                 10-point line (myPts / POINTS_TO_WIN from the left,
@@ -1445,6 +1475,7 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
   const tieFee = drew ? Number(match.houseFee) || 0 : 0;
   const winnerName = result === "player1" ? p1Name : p2Name;
   const oppName = me === "player1" ? p2Name : p1Name;
+  const oppSeatSummary = match.players?.[me === "player1" ? "player2" : "player1"] ?? null;
   const outcome = drew ? "draw" : iWon ? "win" : "loss";
   const stakeTokens = Number(match.stakeAmount) || 0;
 
@@ -1466,9 +1497,10 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
             ? `${winnerName} takes the pot.`
             : undefined
       }
-      gameName="Keno Duel"
-      opponent={
-        match.isAi ? { name: "GRYND AI", isAi: true } : { name: oppName }
+      gameName="Keno Duel"      opponent={
+        match.isAi
+          ? { name: "GRYND AI", isAi: true }
+          : { name: oppName, iconKey: oppSeatSummary?.iconKey || null }
       }
       tokenDelta={net}
       summary={[

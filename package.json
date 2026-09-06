@@ -12,7 +12,7 @@
     "db:backup": "node scripts/db-backup.mjs",
     "db:restore": "node scripts/db-restore.mjs",
     "backfill:field-encryption": "node --import tsx scripts/backfill-field-encryption.mjs",
-    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/emotes.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs tests/field-encryption.test.mjs tests/creator-recorder.test.mjs tests/db-backup-restore.test.mjs tests/recently-played.test.mjs",
+    "test": "npm run test:icons && node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs tests/iconAssets.test.mjs tests/emotes.test.mjs tests/security-authz.test.mjs tests/security-media.test.mjs tests/payment-webhook.test.mjs tests/field-encryption.test.mjs tests/creator-recorder.test.mjs tests/db-backup-restore.test.mjs tests/recently-played.test.mjs tests/daily-loss.test.mjs tests/chat-message-list.test.mjs",
     "test:icons": "node scripts/check-tabler-icons.mjs",
     "test:icon-system": "node --import tsx --test tests/iconAssets.test.mjs tests/icons-db.test.mjs",
     "test:db-backup-restore": "node --test tests/db-backup-restore.test.mjs",

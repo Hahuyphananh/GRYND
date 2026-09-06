@@ -7,6 +7,10 @@
     {
       "path": "/api/jobs/retention",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/jobs/daily-reset",
+      "schedule": "0 0 * * *"
     }
   ]
 }

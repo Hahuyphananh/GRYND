@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { pokerGames } from "../../../../db/schema";
-import { eq } from "drizzle-orm";
+import { glows, pokerGames, tokenSubscriptions, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 
 type Seat = {
   seat: number;
@@ -30,6 +31,61 @@ function normalizePlayersFromSeats(seats: Seat[]) {
     }));
 }
 
+/** Resolve official Grynd icon keys + equipped name colors for a set of
+ *  seated clerk ids (one query, same precedence as the chat route:
+ *  battlepass glow wins; the Grynd+ chat color only surfaces for active
+ *  members). Best-effort — never crashes the route on lookup failure. */
+async function enrichPlayersIdentity(players: any[]) {
+  const humanIds = players
+    .filter((p) => p.id && !p.isAI && String(p.id).startsWith("user_"))
+    .map((p) => String(p.id));
+  if (humanIds.length === 0) return players;
+  try {
+    const rows = await db
+      .select({
+        clerkId: users.clerkId,
+        iconKey: users.selectedIcon,
+        chatColor: users.chatColor,
+        glowColor: glows.color,
+        isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
+      })
+      .from(users)
+      .leftJoin(
+        glows,
+        and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+      )
+      .leftJoin(
+        tokenSubscriptions,
+        and(
+          eq(tokenSubscriptions.clerkId, users.clerkId),
+          inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+        ),
+      )
+      .where(inArray(users.clerkId, humanIds));
+    const byId = new Map(
+      rows.map((r) => [
+        r.clerkId,
+        {
+          iconKey: r.iconKey || null,
+          nameColor:
+            r.glowColor ||
+            (Boolean(r.isPremium) ? r.chatColor || null : null) ||
+            null,
+        },
+      ]),
+    );
+    return players.map((p) => {
+      const ident = byId.get(String(p.id));
+      return ident
+        ? { ...p, iconKey: ident.iconKey, nameColor: ident.nameColor }
+        : { ...p, iconKey: null, nameColor: null };
+    });
+  } catch (err) {
+    console.warn("[poker/game-state] identity enrichment failed:", err);
+    return players;
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
@@ -53,10 +109,16 @@ export async function GET(req: Request) {
   const meta = (game.playerPositions ?? {}) as StoredMeta;
   const seats = (game.players ?? []) as Seat[];
 
+  // Enrich every seated human with their official icon + equipped name
+  // color so the table renders real identities (AI seats stay null).
+  const enrichedPlayers = await enrichPlayersIdentity(
+    normalizePlayersFromSeats(seats),
+  );
+
   const state = meta.state ?? {
     id: game.id,
     inviteCode: game.gameCode,
-    players: normalizePlayersFromSeats(seats),
+    players: enrichedPlayers,
     community: game.communityCards ?? [],
     deck: [], // Never expose the deck — server controls card dealing
     deckHash: game.deck ? String((game.deck as any[]).length) : "0",
@@ -69,6 +131,12 @@ export async function GET(req: Request) {
     dealerIndex: game.dealerPosition ?? 0,
     waiting: game.status !== "active",
   };
+
+  // If a live round is persisted in `playerPositions.state`, the seats
+  // above are stale — enrich the ACTIVE player list instead.
+  if (Array.isArray(state.players) && meta.state) {
+    state.players = await enrichPlayersIdentity(state.players);
+  }
 
   return NextResponse.json({
     success: true,

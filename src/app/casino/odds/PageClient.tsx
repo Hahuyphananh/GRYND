@@ -766,6 +766,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const [myGameId, setMyGameId] = useState<number | null>(null);
   const [wagerLocked, setWagerLocked] = useState<number | null>(null);
   const [opponentId, setOpponentId] = useState<string | null>(null);
+  // Seat identity — real username + official Grynd icon + equipped name
+  // color, resolved server-side (getSeatIdentity in the pvp/status route).
+  const [myName, setMyName] = useState("You");
+  const [myIconKey, setMyIconKey] = useState<string | null>(null);
+  const [myNameColor, setMyNameColor] = useState<string | null>(null);
+  const [opponentName, setOpponentName] = useState("Opponent");
+  const [opponentIconKey, setOpponentIconKey] = useState<string | null>(null);
+  const [opponentNameColor, setOpponentNameColor] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [isPlayer1, setIsPlayer1] = useState(true);
@@ -831,6 +839,12 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         setWagerLocked(d.wager);
         setOpponentId(d.opponentId ?? null);
         setIsPlayer1(d.isPlayer1);
+        setMyName(d.myName || "You");
+        setMyIconKey(d.myIconKey || null);
+        setMyNameColor(d.myNameColor || null);
+        setOpponentName(d.opponentName || "Opponent");
+        setOpponentIconKey(d.opponentIconKey || null);
+        setOpponentNameColor(d.opponentNameColor || null);
         setInteractiveState(d.gameState);
         setRoundHistory(d.rounds ?? []);
         setPickValue("");
@@ -1527,8 +1541,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <PickHistoryStrip
               rounds={roundHistory}
               isPlayer1={isPlayer1}
-              userLabel="You"
-              oppLabel="Opponent"
+              userLabel={myName}
+              oppLabel={opponentName}
               className="mb-4"
             />
 
@@ -1654,8 +1668,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <PickHistoryStrip
               rounds={roundHistory}
               isPlayer1={isPlayer1}
-              userLabel="You"
-              oppLabel="Opponent"
+              userLabel={myName}
+              oppLabel={opponentName}
               className="mb-4"
             />
 
@@ -1827,8 +1841,10 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             userWon={userWon}
             userDrew={userDrew}
             isPlayer1={isPlayer1}
-            userLabel="You"
-            oppLabel="Opponent"
+            userLabel={myName}
+            oppLabel={opponentName}
+            oppIconKey={opponentIconKey}
+            oppNameColor={opponentNameColor}
             wager={wagerLocked ?? wager}
             payout={displayGameState.payout}
             onPlayAgain={reset}
@@ -1867,7 +1883,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           if (!data.success)
             throw new Error(data.error || "Failed to submit report");
         }}
-        reportedPlayerName="Opponent"
+        reportedPlayerName={opponentName || "Opponent"}
         gameType="Odds"
       />
       </CreatorResponsiveLayout>
@@ -1940,6 +1956,8 @@ function OddsGameDisplay({
   wager,
   payout,
   onPlayAgain,
+  oppIconKey,
+  oppNameColor,
 }: {
   gameState: GameState;
   revealedRounds: number;
@@ -1952,6 +1970,8 @@ function OddsGameDisplay({
   wager: number;
   payout: number;
   onPlayAgain: () => void;
+  oppIconKey?: string | null;
+  oppNameColor?: string | null;
 }) {
   const myPts = isPlayer1 ? gameState.p1Score : gameState.p2Score;
   const oppPts = isPlayer1 ? gameState.p2Score : gameState.p1Score;
@@ -2283,7 +2303,7 @@ function OddsGameDisplay({
           subline={userDrew ? "Stakes refunded. You tied." : undefined}
           opponent={{
             name: oppLabel,
-            iconKey: null,
+            iconKey: oppIconKey || null,
             isAi: oppLabel === "AI",
           }}
           tokenDelta={

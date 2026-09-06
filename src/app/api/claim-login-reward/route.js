@@ -9,6 +9,7 @@ import { claimIdempotency } from "../../../lib/security/idempotency";
 import { isPremiumMember } from "../../../lib/stripe/subscriptions";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { updateDailyStreak } from "../../../lib/dailyStreak";
+import { hasItem } from "../../../lib/shopItems";
 import { getAllStreakTitles, getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
 import { logError } from "../../../lib/logError";
 
@@ -111,16 +112,22 @@ export async function POST(req) {
         (nowDayKey - lastDayKey) / (1000 * 60 * 60 * 24),
       );
 
-      //  RESET streak if missed too long
+      //  RESET streak if missed too long — unless a Daily Streak Shield
+      //  absorbs the missed day. Ownership is checked NON-consuming here;
+      //  the shield is actually spent once inside updateDailyStreak (the
+      //  single consumption point) when it preserves dailyStreakCurrent.
       if (elapsedDays > STREAK_RESET_DAYS) {
-        await db
-          .update(userLoginRewards)
-          .set({
-            currentDay: 1,
-          })
-          .where(eq(userLoginRewards.userId, uid));
+        const shielded = await hasItem(uid, "streak_shield", 1);
+        if (!shielded) {
+          await db
+            .update(userLoginRewards)
+            .set({
+              currentDay: 1,
+            })
+            .where(eq(userLoginRewards.userId, uid));
 
-        rewardData.currentDay = 1;
+          rewardData.currentDay = 1;
+        }
       }
 
       //  Cooldown check

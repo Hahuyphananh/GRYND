@@ -11,6 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { getLevelFromXp } from "../../../../lib/battlepass";
 import { rewardsForLevel } from "../../../../lib/battlepassRewards";
+import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
 
 export async function GET() {
   try {
@@ -31,24 +32,58 @@ export async function GET() {
       Math.max(0, Math.floor(Number(rows[0]?.xp) || 0)),
     );
 
-    const [bannerRows, emoteRows] = await Promise.all([
+    // Premium-track gating mirrors /api/battlepass: non-members must not be
+    // nudged about premium rewards they can't claim. Owned (grandfathered)
+    // premium rewards are still excluded from the count either way.
+    const isPremium = await isPremiumMember(userId);
+
+    const [bannerRows, emoteRows, titleRows, glowRows, claimRows] = await Promise.all([
       sql`SELECT banner_key FROM user_banners WHERE user_id = ${dbUserId}`,
       sql`SELECT emote_key FROM user_emotes WHERE user_id = ${dbUserId}`,
+      sql`SELECT title_key FROM user_special_titles WHERE user_id = ${dbUserId}`,
+      sql`SELECT glow_key FROM user_glows WHERE user_id = ${dbUserId}`,
+      sql`SELECT level, reward_type FROM battlepass_claims WHERE user_id = ${dbUserId}`,
     ]);
     const ownedBannerKeys = new Set(bannerRows.map((row) => row.banner_key));
     const ownedEmoteKeys = new Set(emoteRows.map((row) => row.emote_key));
+    const ownedTitleKeys = new Set(titleRows.map((row) => row.title_key));
+    const ownedGlowKeys = new Set(glowRows.map((row) => row.glow_key));
+    const functionalClaims = new Set(
+      claimRows.map((row) => `${row.level}:${row.reward_type}`),
+    );
 
     // Scan only levels the player has reached (cheap: the track is static).
     const claimableLevels = [];
     for (let lvl = 1; lvl <= level; lvl += 1) {
       for (const reward of rewardsForLevel(lvl)) {
+        const isTitle = reward.type === "title";
+        const isFunctional =
+          reward.type === "xp_boost" ||
+          reward.type === "quest_boost" ||
+          reward.type === "shield";
+        const isGlow = reward.type === "color";
         const owned =
           reward.type === "banner"
             ? ownedBannerKeys.has(reward.key)
             : reward.type === "emote"
               ? ownedEmoteKeys.has(reward.key)
-              : false;
-        if (!owned && (reward.type === "banner" || reward.type === "emote")) {
+              : isTitle
+                ? ownedTitleKeys.has(reward.key)
+                : isGlow
+                  ? ownedGlowKeys.has(reward.key)
+                  : isFunctional
+                    ? functionalClaims.has(`${lvl}:${reward.type}`)
+                    : false;
+        const premiumLocked = reward.premium === true && !isPremium && !owned;
+        if (
+          !owned &&
+          !premiumLocked &&
+          (reward.type === "banner" ||
+            reward.type === "emote" ||
+            isTitle ||
+            isGlow ||
+            isFunctional)
+        ) {
           claimableLevels.push(lvl);
         }
       }

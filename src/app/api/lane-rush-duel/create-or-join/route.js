@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { createOrJoin } from "../../../../lib/lane-rush-duel/serverStore";
+import { attachSeatIdentity } from "../../../../lib/seatIdentity";
 import {
   MAX_STAKE,
   MIN_STAKE,
@@ -115,7 +116,9 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(match),
+        // Seat identity (real name / icon / name color) merged in so
+        // the initial render is already correct before the first poll.
+        match: await attachSeatIdentity(normaliseMatch(match)),
         joined: Boolean(result.joined),
       },
     });

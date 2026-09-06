@@ -52,6 +52,7 @@ export async function POST(req) {
       ELSE 'online'::presence_status
     END,
     updated_at = NOW()
+  WHERE user_presence.updated_at < NOW() - INTERVAL '4 minutes'
   RETURNING
     clerk_id,
     status,
@@ -59,6 +60,15 @@ export async function POST(req) {
     last_seen,
     updated_at
 `;
+
+    // The WHERE on the DO UPDATE makes the write conditional: when the row
+    // was touched in the last 4 minutes (an in-game client beating every 2
+    // minutes, or another tab's heartbeat), the UPSERT is a no-op — zero
+    // rows updated, no WAL write. Only genuinely stale rows pay the write
+    // cost, which is the entire point of the keep-alive. Heartbeats still
+    // fire on the client's 5/10-minute cadence; this just stops redundant
+    // writes when something fresher already exists. The client ignores the
+    // returned row, so an empty RETURNING is safe.
 
     return Response.json({
       success: true,

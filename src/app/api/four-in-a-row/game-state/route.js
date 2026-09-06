@@ -9,9 +9,9 @@ import {
   getGameMoveSeconds,
   getPlayerRole,
   getUserAliases,
-  resolveNameByClerkId,
   settleTimeoutIfNeeded,
 } from "../../../../lib/fourInARowServer";
+import { getSeatIdentity } from "../../../../lib/seatIdentity";
 
 function computeReplayTimeRemaining(deadline) {
   if (!deadline) return 0;
@@ -48,18 +48,27 @@ export async function GET(req) {
     game = await advanceReadyIfNeeded(game);
     game = await settleTimeoutIfNeeded(game);
 
-    const [hostName, guestName] = await Promise.all([
-      resolveNameByClerkId(game.hostClerkId),
-      resolveNameByClerkId(game.guestClerkId),
-    ]);
+    // Full seat identity (real username + official icon + equipped name
+    // color) for both seats. The AI guest (no users row) resolves to
+    // nulls and the client falls back to its "AI" label.
+    const identity = await getSeatIdentity(
+      game.hostClerkId,
+      game.guestClerkId,
+    );
+    const host = identity.player1;
+    const guest = identity.player2;
 
     return NextResponse.json({
       success: true,
       data: {
         ...game,
         role,
-        hostName: hostName || "Host",
-        guestName: guestName || "Guest",
+        hostName: host?.name || "Host",
+        guestName: guest?.name || "Guest",
+        hostIconKey: host?.iconKey ?? null,
+        guestIconKey: guest?.iconKey ?? null,
+        hostNameColor: host?.nameColor ?? null,
+        guestNameColor: guest?.nameColor ?? null,
         moveTimeLimit: getGameMoveSeconds(game),
         moveTimeRemaining: computeMoveTimeRemaining(game.moveDeadlineAt),
         replayTimeRemaining: computeReplayTimeRemaining(game.replayDeadlineAt),

@@ -24,6 +24,7 @@ import {
   users,
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
+import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { ROULETTE_NUMBERS } from "../rouletteConfig";
 import {
@@ -491,6 +492,11 @@ export async function forfeitMatch({ userId, matchId }) {
       })
       .where(eq(roulettePvpMatches.id, matchId))
       .returning();
+
+    // Best-effort stat side-effect (same helper as a normal finish).
+    if (updated?.winnerId) {
+      await recordRoulettePvpResult(tx, updated).catch(() => {});
+    }
 
     mirrorQueueTransition({
       gameKey: "roulette-pvp",
@@ -1207,7 +1213,56 @@ export async function resolveRound(tx, match) {
     .where(eq(roulettePvpMatches.id, match.id))
     .returning();
 
+  // Best-effort stat side-effect for the finished match. Draws set
+  // winnerId = null (both stakes refunded) so nothing is recorded;
+  // real finishes record gamesWon/gamesLost + the canonical
+  // applyLeaderboardCounters pipeline (user_stats, quests, etc.).
+  if (updated && nextStatus === MATCH_STATUS.FINISHED && updated.winnerId) {
+    await recordRoulettePvpResult(tx, updated).catch(() => {});
+  }
+
   return updated;
+}
+
+// Best-effort stat side-effect for a finished roulette PvP match —
+// mirrors blackjack-pvp / mines-pvp. Bumps the legacy per-seat counters
+// (public profile reads games_won / games_lost) and calls the canonical
+// applyLeaderboardCounters pipeline (user_stats wins/losses/win_rate/
+// total_bets, pvp_wins, wagered/won, streaks, battlepass XP, quests) for
+// BOTH seats. Fire-and-forget on its own pool — never blocks settlement.
+async function recordRoulettePvpResult(tx, finalRow) {
+  const winnerId = finalRow?.winnerId;
+  if (!winnerId) return;
+  const loserId =
+    finalRow.player1Id === winnerId
+      ? finalRow.player2Id
+      : finalRow.player1Id;
+  if (!loserId) return;
+
+  await tx
+    .update(users)
+    .set({ gamesWon: sql`${users.gamesWon} + 1` })
+    .where(eq(users.clerkId, winnerId));
+  await tx
+    .update(users)
+    .set({ gamesLost: sql`${users.gamesLost} + 1` })
+    .where(eq(users.clerkId, loserId));
+
+  const stake = Number(finalRow.stakeAmount) || 0;
+  const winnerPayout = Number(finalRow.prizePaid) || 0;
+  applyLeaderboardCounters({
+    clerkId: winnerId,
+    game: "roulette-pvp",
+    betAmount: stake,
+    payout: winnerPayout,
+    isPvpWin: true,
+  }).catch(() => {});
+  applyLeaderboardCounters({
+    clerkId: loserId,
+    game: "roulette-pvp",
+    betAmount: stake,
+    payout: 0,
+  }).catch(() => {});
 }
 
 // Credit winner's balance (server-side atomic transaction). Returns

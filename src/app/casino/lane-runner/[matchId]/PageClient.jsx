@@ -42,6 +42,7 @@ import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
+import IconAvatar from "../../../../components/IconAvatar";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import {
@@ -528,8 +529,9 @@ function PressureStrip({
   oppRate,
   difficulty,
   isBotMatch,
+  oppName: oppNameProp,
 }) {
-  const oppName = isBotMatch ? "the bot" : "your opponent";
+  const oppName = oppNameProp || (isBotMatch ? "the bot" : "your opponent");
   // Picks needed to reach the 1,000 target from the current
   // accumulated score (you still need to BANK it once you get there).
   const myPicksToTarget = safePicksToReachScore(
@@ -839,6 +841,41 @@ export default function LaneRushDuelMatchPage({ params }) {
   const isPlayer1 = match?.viewerIsPlayer1;
   const mySeat = isPlayer1 ? "player1" : "player2";
   const oppSeat = isPlayer1 ? "player2" : "player1";
+
+  // Seat identity — real username + official Grynd icon + equipped name
+  // color, resolved server-side (getSeatIdentity). Null for the bot
+  // seat; the labels fall back to "You" / "GRYND AI" / "Opponent".
+  const mySeatIdentity = isPlayer1
+    ? {
+        name: match?.player1Name || null,
+        iconKey: match?.player1IconKey || null,
+        nameColor: match?.player1NameColor || null,
+      }
+    : {
+        name: match?.player2Name || null,
+        iconKey: match?.player2IconKey || null,
+        nameColor: match?.player2NameColor || null,
+      };
+  const oppSeatIdentity = isBotMatch
+    ? { name: null, iconKey: null, nameColor: null }
+    : isPlayer1
+      ? {
+          name: match?.player2Name || null,
+          iconKey: match?.player2IconKey || null,
+          nameColor: match?.player2NameColor || null,
+        }
+      : {
+          name: match?.player1Name || null,
+          iconKey: match?.player1IconKey || null,
+          nameColor: match?.player1NameColor || null,
+        };
+  const myDisplayName = mySeatIdentity.name || "You";
+  const oppDisplayName =
+    oppSeatIdentity.name || (isBotMatch ? "GRYND AI" : "Opponent");
+  const mySeatIcon = mySeatIdentity.iconKey;
+  const oppSeatIcon = oppSeatIdentity.iconKey;
+  const myNameColor = mySeatIdentity.nameColor;
+  const oppNameColor = oppSeatIdentity.nameColor;
 
   const myLane = Number(match?.myLane) || 0;
   const oppLane = Number(match?.oppLane) || 0;
@@ -1161,9 +1198,11 @@ export default function LaneRushDuelMatchPage({ params }) {
             : "Your opponent won the Lane Rush race"
       }
       gameName="Lane Rush Duel"
-      opponent={
-        isBotMatch ? { name: "GRYND AI", isAi: true } : { name: "Opponent" }
-      }
+      opponent={{
+        name: oppDisplayName,
+        iconKey: oppSeatIcon,
+        isAi: isBotMatch,
+      }}
       tokenDelta={
         drawMatch ? 0 : wonMatch ? Number(match.prizePaid || 0) - stakeNumber : -stakeNumber
       }
@@ -1178,7 +1217,7 @@ export default function LaneRushDuelMatchPage({ params }) {
       details={[
         ...(match.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
         { label: "Wager", value: `${stakeNumber.toLocaleString()} tokens` },
-        { label: "Winner", value: drawMatch ? "Draw" : wonMatch ? "You" : "Opponent" },
+        { label: "Winner", value: drawMatch ? "Draw" : wonMatch ? "You" : oppDisplayName },
       ]}
       playAgain={{ onClick: () => router.push("/casino/lane-runner") }}
       onReturnToLobby={() => router.push("/casino")}
@@ -1192,12 +1231,22 @@ export default function LaneRushDuelMatchPage({ params }) {
     <>
 <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-cyan-300/50 bg-cyan-500/10 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-wider text-white/50">You</p>
+                <p className="inline-flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                  <IconAvatar iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
+                  <span className="max-w-[80px] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+                    {myDisplayName}
+                  </span>
+                </p>
                 <p className="text-2xl font-black text-cyan-200">{myScore} <span className="text-xs text-white/40">pts</span></p>
                 <p className="text-[10px] text-white/50">Race score · banked {myBanked}</p>
               </div>
               <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-3 text-center">
-                <p className="text-[10px] uppercase tracking-wider text-white/50">Opponent</p>
+                <p className="inline-flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                  <IconAvatar iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
+                  <span className="max-w-[80px] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+                    {oppDisplayName}
+                  </span>
+                </p>
                 <p className="text-2xl font-black text-rose-200">{oppScore} <span className="text-xs text-white/40">pts</span></p>
                 <p className="text-[10px] text-white/50">Race score · banked {oppBanked}</p>
               </div>
@@ -1217,6 +1266,7 @@ export default function LaneRushDuelMatchPage({ params }) {
               oppRate={oppRate}
               difficulty={match?.difficulty}
               isBotMatch={isBotMatch}
+              oppName={oppDisplayName}
             />
     </>
   );
@@ -1376,8 +1426,12 @@ export default function LaneRushDuelMatchPage({ params }) {
           seats={
             match.status === "waiting"
               ? [
-                  { label: "You", name: "You", occupied: true },
-                  { label: isBotMatch ? "Bot" : "Opponent", occupied: false },
+                  { label: "You", name: myDisplayName, occupied: true },
+                  {
+                    label: isBotMatch ? "Bot" : "Opponent",
+                    name: oppDisplayName,
+                    occupied: false,
+                  },
                 ]
               : []
           }

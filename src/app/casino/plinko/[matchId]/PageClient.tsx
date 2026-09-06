@@ -39,6 +39,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../components/IconAvatar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually begins,
 // auto-stops when it ends or the user quits. No gameplay logic touched.
@@ -98,6 +99,7 @@ type PlayerHead = {
   id: string;
   displayName: string;
   iconKey: string | null;
+  nameColor?: string | null;
   missing?: boolean;
 };
 
@@ -938,6 +940,7 @@ function PlayerSidePanel({
   seat,
   displayName,
   avatarKey,
+  nameColor,
   totalScore,
   isViewer,
   ready,
@@ -958,6 +961,7 @@ function PlayerSidePanel({
   seat: "player1" | "player2";
   displayName: string;
   avatarKey?: string | null;
+  nameColor?: string | null;
   totalScore: number;
   lastBallDelta?: number | null;
   isViewer: boolean;
@@ -1020,10 +1024,19 @@ function PlayerSidePanel({
             {(isCyan ? "Player 1" : "Player 2") + (isViewer ? " · You" : "")}
           </p>
           <p
-            className={`relative text-sm font-bold ${headerColour} truncate`}
+            className={`relative flex items-center gap-1.5 text-sm font-bold ${headerColour} truncate`}
             title={displayName}
           >
-            {displayName}
+            {/* Official Grynd icon — previously passed as `avatarKey` but
+                never rendered. Falls back to a letter circle when the key
+                is missing/invalid. */}
+            <IconAvatar iconKey={avatarKey} name={displayName} size="h-5 w-5" />
+            <span
+              className="truncate"
+              style={nameColor ? { color: nameColor } : undefined}
+            >
+              {displayName}
+            </span>
             <EmoteBubble emote={emoteBubble} side={isViewer ? "mine" : "incoming"} />
           </p>
         </div>
@@ -2634,6 +2647,7 @@ export default function PlinkoPvpMatchPage({
       seat="player1"
       displayName={p1Name}
       avatarKey={p1IconKey}
+      nameColor={match.players?.p1?.nameColor || null}
       totalScore={match.p1Score}
       lastBallDelta={p1Delta}
       emoteBubble={isViewerP1 ? myEmote : incomingEmote}
@@ -2659,6 +2673,7 @@ export default function PlinkoPvpMatchPage({
       seat="player2"
       displayName={p2Name}
       avatarKey={p2IconKey}
+      nameColor={match.players?.p2?.nameColor || null}
       totalScore={match.p2Score}
       lastBallDelta={p2Delta}
       emoteBubble={isViewerP1 ? incomingEmote : myEmote}

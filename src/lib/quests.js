@@ -1,5 +1,6 @@
 import { getNeonSql } from "../db/neon";
 import { addExp, expForQuest } from "./battlepass";
+import { consumeItem } from "./shopItems";
 
 let _sql = null;
 function getSql() {
@@ -260,7 +261,7 @@ export function questSlots(periodType) {
 
 // ── Generation + persistence ──────────────────────────────────────
 
-async function userIdByClerkId(clerkId) {
+export async function userIdByClerkId(clerkId) {
   const rows = await getSql()`
     SELECT id FROM users WHERE clerk_id = ${clerkId} LIMIT 1
   `;
@@ -291,8 +292,13 @@ async function recentSignatures(userId, periodType) {
   );
 }
 
-export async function ensureQuestsForPeriod(clerkId, periodType, periodKey) {
-  const userId = await userIdByClerkId(clerkId);
+/**
+ * Ensure quests exist for a period and return them. `clerkId` keeps the
+ * seeded-RNG deterministic (same player + period → same quests); `userId`
+ * is the numeric local id that callers resolve once and pass through so
+ * a period fetch never repeats the users lookup.
+ */
+export async function ensureQuestsForPeriod(clerkId, userId, periodType, periodKey) {
   if (!userId) return [];
 
   const existing = await getSql()`
@@ -388,7 +394,9 @@ export async function updateQuestProgress({
           newProgress += 1;
           break;
         case "win":
-          if (isWin) newProgress += 1;
+          // Real-player wins only — beating an AI/house opponent never
+          // counts toward "win N games" quests.
+          if (isWin && isPvpWin) newProgress += 1;
           break;
         case "wager":
           newProgress += bet;
@@ -397,10 +405,12 @@ export async function updateQuestProgress({
           if (isWin) newProgress = Math.max(newProgress, multiplier);
           break;
         case "streak":
-          newProgress = isWin ? newProgress + 1 : 0;
+          // PvP win streak only (resets on any non-PvP-win outcome).
+          newProgress = isWin && isPvpWin ? newProgress + 1 : 0;
           break;
         case "diversify": {
-          if (isWin && gameKey) {
+          // Real-player wins only — collect wins across games vs humans.
+          if (isWin && isPvpWin && gameKey) {
             const won = Array.isArray(meta.wonGames) ? meta.wonGames : [];
             if (!won.includes(gameKey)) {
               won.push(gameKey);
@@ -447,8 +457,16 @@ export async function claimQuest(clerkId, questId) {
   if (Number(q.progress) < Number(q.target))
     throw new Error("Quest not completed");
 
-  const reward = Number(q.reward || 0);
-  const xp = expForQuest(reward);
+  let reward = Number(q.reward || 0);
+
+  // Quest Boost (consumable shop item): the next claims pay DOUBLE. One
+  // charge is consumed per claim and both the token reward and the quest XP
+  // are doubled (they scale together). The consume is atomic (qty > 0
+  // guard) so a concurrent claim can never double-spend a charge.
+  const boosted = await consumeItem(userId, "quest_boost_3", 1);
+  if (boosted) reward = reward * 2;
+
+  let xp = expForQuest(reward);
 
   await getSql()`
     UPDATE user_quests SET claimed = true WHERE id = ${q.id}
@@ -462,5 +480,5 @@ export async function claimQuest(clerkId, questId) {
   if (xp > 0) {
     await addExp(userId, xp);
   }
-  return { questId: q.id, reward, xp };
+  return { questId: q.id, reward, xp, boosted };
 }

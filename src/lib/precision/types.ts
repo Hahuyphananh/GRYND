@@ -35,6 +35,10 @@ export interface PrecisionPlayer {
   name: string;
   /** Official Grynd icon key — never an arbitrary avatar URL. */
   selectedIcon?: string | null;
+  /** Official Grynd icon key (seat-identity resolver output). */
+  iconKey?: string | null;
+  /** Equipped name color (glow > premium chat color), null when none. */
+  nameColor?: string | null;
   isReady: boolean;
   isConnected: boolean;
   /** Server-resolved prestige badge label, only present when the player

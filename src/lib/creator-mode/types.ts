@@ -52,8 +52,13 @@ export type CreatorModeConfig = {
  * completed/result state, so the result/winner animation is captured
  * before the recording stops. Games can override via
  * <CreatorModeHost autoStopDelayMs={...} />.
+ *
+ * 2400ms covers the shared PvpResultScreen entrance (spring panel +
+ * icon pop, ~0.8s) plus its confetti bursts (fired at 0 / 350 / 650ms)
+ * with margin, so a creator clip ends after the WIN/LOSS popup is
+ * clearly on screen — never before it shows.
  */
-export const DEFAULT_AUTO_STOP_DELAY_MS = 1600;
+export const DEFAULT_AUTO_STOP_DELAY_MS = 2400;
 
 /**
  * The shared Creator Mode lifecycle API. Every game integrates against

@@ -25,6 +25,7 @@ import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePi
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../../components/IconAvatar";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
   IconFlag,
@@ -348,6 +349,8 @@ export default function Page() {
   const [aimLocked, setAimLocked] = useState(false);
   const [started, setStarted] = useState(aiMode);
   const [myName, setMyName] = useState("Player 1");
+  const [myIconKey, setMyIconKey] = useState<string | null>(null);
+  const [myNameColor, setMyNameColor] = useState<string | null>(null);
   // Emotes — both players already join the pool room, so reuse it.
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
     socket,
@@ -356,6 +359,8 @@ export default function Page() {
     selfId: String(owner),
   });
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
+  const [oppIconKey, setOppIconKey] = useState<string | null>(null);
+  const [oppNameColor, setOppNameColor] = useState<string | null>(null);
   const [remoteAim, setRemoteAim] = useState<{
     angle: number;
     pull: number;
@@ -1247,6 +1252,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       }
       if (data.viewerName) setMyName(data.viewerName);
       if (data.opponentName) setOppName(data.opponentName);
+      if (data.viewerIconKey) setMyIconKey(data.viewerIconKey);
+      if (data.viewerNameColor) setMyNameColor(data.viewerNameColor);
+      if (data.opponentIconKey) setOppIconKey(data.opponentIconKey);
+      if (data.opponentNameColor) setOppNameColor(data.opponentNameColor);
       // Capture opponent's clerkId for reporting
       if (data.match?.player1Id && data.match?.player2Id) {
         const oppId = data.viewerSeat === 1 ? data.match.player2Id : data.match.player1Id;
@@ -1413,12 +1422,20 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   const creatorScoreRow = (
     <><div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 shadow-inner">
-            <p className="relative font-bold">{myName}<EmoteBubble emote={myEmote} side="mine" /></p>
+            <p className="relative flex items-center gap-1.5 font-bold">
+              <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
+              <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
+              <EmoteBubble emote={myEmote} side="mine" />
+            </p>
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {myRemaining.join(", ") || "none"}</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 text-right shadow-inner">
-            <p className="relative font-bold">{oppName}<EmoteBubble emote={incomingEmote} /></p>
+            <p className="relative flex items-center justify-end gap-1.5 font-bold">
+              <span style={oppNameColor ? { color: oppNameColor } : undefined}>{oppName}</span>
+              <IconAvatar iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
+              <EmoteBubble emote={incomingEmote} />
+            </p>
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {oppRemaining.join(", ") || "none"}</p>
           </div>
@@ -1516,11 +1533,12 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     return (
       <PvpResultScreen
         open
+        compact
         outcome={won ? "win" : "loss"}
         headline={headline}
         subline={subline}
         gameName="Pool Masters"
-        opponent={{ name: oppName }}
+        opponent={{ name: oppName, iconKey: oppIconKey || null }}
         tokenDelta={tokenDelta}
         summary={[
           { label: "Result", value: won ? "Win" : "Loss" },
@@ -1837,8 +1855,11 @@ ${!canShoot ? "pointer-events-none" : ""}`}
   const portraitScoreRow = (
     <div className="grid w-full grid-cols-2 gap-2">
       <div className="rounded-lg border border-white/10 bg-[#1f1f1f]/85 px-2 py-1">
-        <p className="relative truncate text-xs font-bold">
-          {myName}
+        <p className="relative flex items-center gap-1.5 truncate text-xs font-bold">
+          <IconAvatar iconKey={myIconKey} name={myName} size="h-3.5 w-3.5" />
+          <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+            {myName}
+          </span>
           <EmoteBubble emote={myEmote} side="mine" />
         </p>
         <p className="truncate text-[10px] text-cyan-100">
@@ -1846,8 +1867,11 @@ ${!canShoot ? "pointer-events-none" : ""}`}
         </p>
       </div>
       <div className="rounded-lg border border-white/10 bg-[#1f1f1f]/85 px-2 py-1 text-right">
-        <p className="relative truncate text-xs font-bold">
-          {oppName}
+        <p className="relative flex items-center justify-end gap-1.5 truncate text-xs font-bold">
+          <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+            {oppName}
+          </span>
+          <IconAvatar iconKey={oppIconKey} name={oppName} size="h-3.5 w-3.5" />
           <EmoteBubble emote={incomingEmote} />
         </p>
         <p className="truncate text-[10px] text-cyan-100">
@@ -2049,13 +2073,12 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           portrait={portraitContent}
           landscape={desktopContent}
         />
-      </CreatorModeHost>
 
-      {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. The old win/loss popup is
-          deleted — this is the single end-of-match experience. */}
-      {renderResult()}
+        {/* Post-match result screen — shared PvpResultScreen (UX plan
+            P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+            recording; compact styling keeps it sized for the phone frame. */}
+        {renderResult()}
+      </CreatorModeHost>
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

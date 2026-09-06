@@ -47,6 +47,7 @@ import {
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../components/IconAvatar";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -193,6 +194,8 @@ function CrossIcon({ className = "" }: { className?: string }) {
 type PlayerSeatProps = {
   isMe: boolean;
   name: string;
+  iconKey?: string | null;
+  nameColor?: string | null;
   tiles: number;
   wagerLabel: string;
   thinking: boolean;
@@ -208,6 +211,8 @@ type PlayerSeatProps = {
 function PlayerSeat({
   isMe,
   name,
+  iconKey,
+  nameColor,
   tiles,
   wagerLabel,
   thinking,
@@ -229,16 +234,13 @@ function PlayerSeat({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="relative flex min-w-0 items-center gap-2">
+          {/* Official Grynd icon — falls back to a letter circle when
+              the key is missing/invalid. */}
+          <IconAvatar iconKey={iconKey} name={name} size="h-7 w-7" showFrame={false} />
           <span
-            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border text-xs font-black ${
-              isMe
-                ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-200"
-                : "border-fuchsia-300/40 bg-fuchsia-400/15 text-fuchsia-200"
-            }`}
+            className="truncate text-sm font-bold text-white/90"
+            style={nameColor ? { color: nameColor } : undefined}
           >
-            {(name || "?").charAt(0).toUpperCase()}
-          </span>
-          <span className="truncate text-sm font-bold text-white/90">
             {name}
           </span>
           {/* Emote pops above the sender's name */}
@@ -364,12 +366,14 @@ type PickEntry = {
 };
 
 // Enriched player summary — added server-side by enrichMatchWithPlayers
-// (users.name + selectedIcon per seat). `missing` marks a seat whose
-// users row wasn't found (the client falls back to seat labels).
+// (users.name + selectedIcon + nameColor per seat). `missing` marks a
+// seat whose users row wasn't found (the client falls back to seat
+// labels).
 type PlayerSummary = {
   id: string;
   displayName: string;
   iconKey: string;
+  nameColor?: string | null;
   missing?: boolean;
 };
 
@@ -1482,6 +1486,8 @@ export default function MinesPvpMatchPage({
       <PlayerSeat
         isMe
         name={myDisplayName}
+        iconKey={mySummary?.iconKey || null}
+        nameColor={mySummary?.nameColor || null}
         tiles={myPicks.length}
         wagerLabel={wagerLabel}
         thinking={inPickState && isMyTurn}
@@ -1492,6 +1498,8 @@ export default function MinesPvpMatchPage({
       <PlayerSeat
         isMe={false}
         name={opponentDisplayName}
+        iconKey={oppSummary?.iconKey || null}
+        nameColor={oppSummary?.nameColor || null}
         tiles={opponentPicks.length}
         wagerLabel={wagerLabel}
         thinking={inPickState && !isMyTurn}

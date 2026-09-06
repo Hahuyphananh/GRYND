@@ -11,6 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 import {
   dailyPeriodKey,
   ensureQuestsForPeriod,
+  userIdByClerkId,
   weeklyPeriodKey,
 } from "../../../lib/quests";
 
@@ -39,9 +40,20 @@ export async function GET() {
       );
     }
 
+    const localUserId = await userIdByClerkId(userId);
+    if (!localUserId) {
+      return Response.json({
+        success: true,
+        daily: [],
+        weekly: [],
+        periodKey: dailyPeriodKey(),
+        weekKey: weeklyPeriodKey(),
+      });
+    }
+
     const [daily, weekly] = await Promise.all([
-      ensureQuestsForPeriod(userId, "daily", dailyPeriodKey()),
-      ensureQuestsForPeriod(userId, "weekly", weeklyPeriodKey()),
+      ensureQuestsForPeriod(userId, localUserId, "daily", dailyPeriodKey()),
+      ensureQuestsForPeriod(userId, localUserId, "weekly", weeklyPeriodKey()),
     ]);
 
     return Response.json({

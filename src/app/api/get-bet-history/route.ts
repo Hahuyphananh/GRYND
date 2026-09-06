@@ -1,7 +1,9 @@
 //get-bet-history/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "../../../db";
-import { eq, or, and, inArray, sql, gte } from "drizzle-orm";
+import { eq, or, and, inArray, sql } from "drizzle-orm";
+import { cacheOrFetch } from "../../../lib/redis/cache";
+import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 import {
   users,
   rouletteGames,
@@ -37,13 +39,11 @@ const HISTORY_LIMIT = 200;
 
 export async function GET(req: NextRequest) {
   try {
-    // Optional `?since=ISO` — narrows every table query to rows settled at or
-    // after that instant (used by the daily-loss guard so the response is
-    // just today's bets; SQL-level so the per-table LIMIT can't hide them).
-    const sinceRaw = req.nextUrl?.searchParams?.get("since") || null;
-    const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw) : null;
-    const sinceFilter = (col: any) => (since ? [gte(col, since)] : []);
-
+    // NOTE: the `?since=` param (formerly used by the daily-loss guard to
+    // narrow the response to today's bets) is gone — that consumer now
+    // reads the maintained daily counter (/api/user/daily-loss). Every
+    // table query below is unfiltered by time, and the per-table LIMIT
+    // keeps the merged response bounded.
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json(
@@ -63,7 +63,15 @@ export async function GET(req: NextRequest) {
     const uid = dbUser.id;
     const clerkId = userId;
 
-    const [
+    // Bet history is append-only per user (a row is added only when the
+    // user plays), so the ~23-query fan-out below is cached per user for
+    // 60s — repeated profile views / load-test traffic hit one Redis GET
+    // instead of re-scanning every game-history table.
+    const allBets = await cacheOrFetch(
+      CacheKeys.betHistory(clerkId),
+      CacheTTL.betHistory,
+      async () => {
+        const [
       roulette,
       blackjack,
       mines,
@@ -98,7 +106,7 @@ export async function GET(req: NextRequest) {
           createdAt: rouletteGames.createdAt,
         })
         .from(rouletteGames)
-        .where(and(eq(rouletteGames.userId, uid), ...sinceFilter(rouletteGames.createdAt)))
+        .where(eq(rouletteGames.userId, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -108,7 +116,7 @@ export async function GET(req: NextRequest) {
           createdAt: blackjackGames.createdAt,
         })
         .from(blackjackGames)
-        .where(and(eq(blackjackGames.userId, uid), ...sinceFilter(blackjackGames.createdAt)))
+        .where(eq(blackjackGames.userId, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -118,7 +126,7 @@ export async function GET(req: NextRequest) {
           createdAt: minesGames.createdAt,
         })
         .from(minesGames)
-        .where(and(eq(minesGames.userId, uid), ...sinceFilter(minesGames.createdAt)))
+        .where(eq(minesGames.userId, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -128,7 +136,7 @@ export async function GET(req: NextRequest) {
           createdAt: plinkoGames.createdAt,
         })
         .from(plinkoGames)
-        .where(and(eq(plinkoGames.userId, userId), ...sinceFilter(plinkoGames.createdAt)))
+        .where(eq(plinkoGames.userId, userId))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -138,7 +146,7 @@ export async function GET(req: NextRequest) {
           createdAt: crashGames.createdAt,
         })
         .from(crashGames)
-        .where(and(eq(crashGames.userId, uid), ...sinceFilter(crashGames.createdAt)))
+        .where(eq(crashGames.userId, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -148,7 +156,7 @@ export async function GET(req: NextRequest) {
           createdAt: rpsGames.createdAt,
         })
         .from(rpsGames)
-        .where(and(eq(rpsGames.userId, clerkId), ...sinceFilter(rpsGames.createdAt)))
+        .where(eq(rpsGames.userId, clerkId))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -158,7 +166,7 @@ export async function GET(req: NextRequest) {
           createdAt: unoGames.createdAt,
         })
         .from(unoGames)
-        .where(and(eq(unoGames.userId, uid), ...sinceFilter(unoGames.createdAt)))
+        .where(eq(unoGames.userId, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -171,12 +179,9 @@ export async function GET(req: NextRequest) {
         })
         .from(chessGames)
         .where(
-          and(
-            or(
-              eq(chessGames.playerWhiteId, clerkId),
-              eq(chessGames.playerBlackId, clerkId),
-            ),
-            ...sinceFilter(chessGames.createdAt),
+          or(
+            eq(chessGames.playerWhiteId, clerkId),
+            eq(chessGames.playerBlackId, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -194,12 +199,9 @@ export async function GET(req: NextRequest) {
         })
         .from(kenoPvpMatches)
         .where(
-          and(
-            or(
-              eq(kenoPvpMatches.player1Id, clerkId),
-              eq(kenoPvpMatches.player2Id, clerkId),
-            ),
-            ...sinceFilter(kenoPvpMatches.endedAt),
+          or(
+            eq(kenoPvpMatches.player1Id, clerkId),
+            eq(kenoPvpMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -210,7 +212,7 @@ export async function GET(req: NextRequest) {
           created_at: keno_games.created_at,
         })
         .from(keno_games)
-        .where(and(eq(keno_games.user_id, uid), ...sinceFilter(keno_games.created_at)))
+        .where(eq(keno_games.user_id, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -224,12 +226,9 @@ export async function GET(req: NextRequest) {
         })
         .from(poolMatches)
         .where(
-          and(
-            or(
-              eq(poolMatches.player1Id, clerkId),
-              eq(poolMatches.player2Id, clerkId),
-            ),
-            ...sinceFilter(poolMatches.endedAt),
+          or(
+            eq(poolMatches.player1Id, clerkId),
+            eq(poolMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -245,12 +244,9 @@ export async function GET(req: NextRequest) {
         })
         .from(fourInARowGames)
         .where(
-          and(
-            or(
-              eq(fourInARowGames.hostClerkId, clerkId),
-              eq(fourInARowGames.guestClerkId, clerkId),
-            ),
-            ...sinceFilter(fourInARowGames.endedAt),
+          or(
+            eq(fourInARowGames.hostClerkId, clerkId),
+            eq(fourInARowGames.guestClerkId, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -264,7 +260,7 @@ export async function GET(req: NextRequest) {
           createdAt: laneRunnerGames.createdAt,
         })
         .from(laneRunnerGames)
-        .where(and(eq(laneRunnerGames.userId, uid), ...sinceFilter(laneRunnerGames.createdAt)))
+        .where(eq(laneRunnerGames.userId, uid))
         .limit(HISTORY_LIMIT),
       //  Hex Duel (PvP + AI, clerkId-based, skip fun mode)
       db
@@ -288,7 +284,6 @@ export async function GET(req: NextRequest) {
               eq(hexDuelGames.player2Id, clerkId),
             ),
             eq(hexDuelGames.isFunMode, false),
-            ...sinceFilter(hexDuelGames.endedAt),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -307,12 +302,9 @@ export async function GET(req: NextRequest) {
         })
         .from(oddsGames)
         .where(
-          and(
-            or(
-              eq(oddsGames.player1Id, clerkId),
-              eq(oddsGames.player2Id, clerkId),
-            ),
-            ...sinceFilter(oddsGames.endedAt),
+          or(
+            eq(oddsGames.player1Id, clerkId),
+            eq(oddsGames.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -335,20 +327,17 @@ export async function GET(req: NextRequest) {
         })
         .from(pokerGames)
         .where(
-          and(
-            sql`exists (
-              select 1
-              from jsonb_array_elements(
-                case
-                  when jsonb_typeof(${pokerGames.players}) = 'array'
-                    then ${pokerGames.players}
-                  else '[]'::jsonb
-                end
-              ) elem
-              where elem->>'clerkId' = ${clerkId}
-            )`,
-            ...sinceFilter(pokerGames.createdAt),
-          ),
+          sql`exists (
+            select 1
+            from jsonb_array_elements(
+              case
+                when jsonb_typeof(${pokerGames.players}) = 'array'
+                  then ${pokerGames.players}
+                else '[]'::jsonb
+              end
+            ) elem
+            where elem->>'clerkId' = ${clerkId}
+          )`,
         )
         .limit(HISTORY_LIMIT),
       //  Memory Grid (PvP, clerkId-based — finished-only)
@@ -366,12 +355,9 @@ export async function GET(req: NextRequest) {
         })
         .from(memoryGridMatches)
         .where(
-          and(
-            or(
-              eq(memoryGridMatches.player1Id, clerkId),
-              eq(memoryGridMatches.player2Id, clerkId),
-            ),
-            ...sinceFilter(memoryGridMatches.endedAt),
+          or(
+            eq(memoryGridMatches.player1Id, clerkId),
+            eq(memoryGridMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -387,7 +373,7 @@ export async function GET(req: NextRequest) {
         })
         .from(diceFlushPlayers)
         .innerJoin(diceFlushRooms, eq(diceFlushPlayers.roomId, diceFlushRooms.id))
-        .where(and(eq(diceFlushPlayers.userId, clerkId), ...sinceFilter(diceFlushRooms.createdAt)))
+        .where(eq(diceFlushPlayers.userId, clerkId))
         .limit(HISTORY_LIMIT),
       //  Mines Duel (PvP, clerkId-based, best-of-1 — only finished
       // matches contribute a win/loss; cancelled / in-flight matches
@@ -406,12 +392,9 @@ export async function GET(req: NextRequest) {
         })
         .from(minesPvpMatches)
         .where(
-          and(
-            or(
-              eq(minesPvpMatches.player1Id, clerkId),
-              eq(minesPvpMatches.player2Id, clerkId),
-            ),
-            ...sinceFilter(minesPvpMatches.endedAt),
+          or(
+            eq(minesPvpMatches.player1Id, clerkId),
+            eq(minesPvpMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -431,12 +414,9 @@ export async function GET(req: NextRequest) {
         })
         .from(laneRushDuelMatches)
         .where(
-          and(
-            or(
-              eq(laneRushDuelMatches.player1Id, clerkId),
-              eq(laneRushDuelMatches.player2Id, clerkId),
-            ),
-            ...sinceFilter(laneRushDuelMatches.endedAt),
+          or(
+            eq(laneRushDuelMatches.player1Id, clerkId),
+            eq(laneRushDuelMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -457,7 +437,7 @@ export async function GET(req: NextRequest) {
         .from(crashArenaEntries)
         .innerJoin(crashArenaRounds, eq(crashArenaEntries.roundId, crashArenaRounds.id))
         .innerJoin(crashArenaTables, eq(crashArenaRounds.tableId, crashArenaTables.id))
-        .where(and(eq(crashArenaEntries.userId, uid), ...sinceFilter(crashArenaRounds.createdAt)))
+        .where(eq(crashArenaEntries.userId, uid))
         .limit(HISTORY_LIMIT),
     ]);
 
@@ -832,7 +812,7 @@ export async function GET(req: NextRequest) {
       })
       .filter(Boolean);
 
-    const allBets = [
+        return [
     ...roulette.map((b) => formatBet("Roulette", b)),
     ...blackjack.map((b) => formatBet("Blackjack", b)),
     ...mines.map((b) => formatBet("Mines", b)),
@@ -854,14 +834,29 @@ export async function GET(req: NextRequest) {
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,
       ...crashArenaFormatted,
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      ]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        // Cap the merged list: the profile renders the newest 10 and the
+        // public profile paginates via its own endpoint, so the newest
+        // HISTORY_LIMIT across all games is everything the UI can show.
+        .slice(0, HISTORY_LIMIT);
+      },
+    );
 
     //  Cumulative stats (totalWagered, weeklyWagered, currentStreak, etc.)
     // are maintained by applyLeaderboardCounters (leaderboardCounters.js)
     // which is called by every game settlement endpoint. Recalculating them
     // here from a subset of game history tables causes stats to DECREASE
     // whenever a game type not listed above contributes to those counters.
-    return NextResponse.json({ success: true, bets: allBets });
+    return NextResponse.json(
+      { success: true, bets: allBets },
+      {
+        headers: {
+          // Private: per-user data. 15s client cache + the 60s Redis layer.
+          "Cache-Control": "private, max-age=15",
+        },
+      },
+    );
   } catch (err) {
     console.error("[GET_BET_HISTORY_ERROR]", err);
     return NextResponse.json(

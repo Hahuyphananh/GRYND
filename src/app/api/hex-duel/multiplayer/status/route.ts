@@ -3,6 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
+import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 
 /**
  * Backoff (in ms) between the failed first attempt and the retry on
@@ -279,22 +280,12 @@ export async function GET(req: Request) {
     const isReady = bothJoined && (game.status === "in_progress" || game.status.startsWith("turn_"));
     const currentTurn = statusToTurn(game.status);
 
-    // Fetch player2 name if both joined
-    let player2Name: string | null = null;
-    if (game.player2Id) {
-      // Same retry reasoning as the game lookup above. `game.player2Id`
-      // is narrowed non-null by the outer if, but TS narrowing does not
-      // carry into the arrow function passed to the helper, so the
-      // non-null assertion makes the typing explicit.
-      const [p2] = await withSingleRetryForReadOnly(() =>
-        db
-          .select({ name: users.name })
-          .from(users)
-          .where(eq(users.clerkId, game.player2Id!))
-          .limit(1),
-      );
-      player2Name = p2?.name || null;
-    }
+    // Full seat identity (real username + official icon + equipped name
+    // color) for both seats — one shared query. The AI seat (no users
+    // row) resolves to nulls and the client falls back to its label.
+    const identity = await getSeatIdentity(game.player1Id, game.player2Id);
+    const player1Name = identity.player1?.name ?? null;
+    const player2Name = identity.player2?.name ?? null;
 
     return NextResponse.json({
       success: true,
@@ -315,8 +306,12 @@ export async function GET(req: Request) {
         player1Id: game.player1Id,
         player2Id: game.player2Id,
         wagerAmount: game.wagerAmount,
-        player1Name: game.player1Name || null,
+        player1Name: player1Name || game.player1Name || null,
         player2Name,
+        player1IconKey: identity.player1?.iconKey ?? null,
+        player2IconKey: identity.player2?.iconKey ?? null,
+        player1NameColor: identity.player1?.nameColor ?? null,
+        player2NameColor: identity.player2?.nameColor ?? null,
       },
     });
   } catch (error: any) {

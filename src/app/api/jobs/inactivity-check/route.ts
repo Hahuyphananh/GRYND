@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import { db } from "../../../../db/index";
 import { userAutomationState, users } from "../../../../db/schema";
 import { sendInactivityEmail } from "../../../../lib/emails/inactivity";
@@ -16,12 +16,25 @@ export async function POST() {
         isNull(userAutomationState.lastInactivityEmailSentAt),
       ),
     );
+
+  // Email sends are external (rate-limit friendly) so they stay
+  // sequential; the dedupe marker is then stamped in ONE batched UPDATE
+  // instead of N per-row round-trips.
   for (const row of candidates) {
     await sendInactivityEmail({ clerkId: row.clerkId, email: row.email });
+  }
+
+  if (candidates.length > 0) {
     await db
       .update(userAutomationState)
       .set({ lastInactivityEmailSentAt: new Date(), updatedAt: new Date() })
-      .where(eq(userAutomationState.clerkId, row.clerkId));
+      .where(
+        inArray(
+          userAutomationState.clerkId,
+          candidates.map((c) => c.clerkId),
+        ),
+      );
   }
+
   return NextResponse.json({ scanned: candidates.length });
 }

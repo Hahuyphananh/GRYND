@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import { SEAT_COUNT } from "../../lib/precision/constants";
 import type { PrecisionPlayer } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
+import IconAvatar from "../IconAvatar";
 
 interface PrecisionReadyRoomProps {
   matchId: string;
@@ -82,8 +83,11 @@ function PrecisionReadyRoomImpl({
               </p>
               {occupant ? (
                 <>
-                  <p className="mt-2 text-xl font-black text-white">
-                    {occupant.name}
+                  <p className="mt-2 flex items-center justify-center gap-2 text-xl font-black text-white">
+                    <IconAvatar iconKey={occupant.iconKey} name={occupant.name} size="h-6 w-6" />
+                    <span style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
+                      {occupant.name}
+                    </span>
                   </p>
                   <div className="mt-2 flex items-center gap-2">
                     <span

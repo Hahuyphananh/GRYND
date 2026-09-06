@@ -806,100 +806,160 @@ export default function MemoryGridMatchPage({
   // auto-advances to the next round (or finished) when the window
   // elapses — the client just renders; the deadline countdown comes
   // from the same authoritative `phaseDeadline` as the other phases.
-  if (isRoundResult && roundResult) {
-    return (
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-        <NavigationBar currentPath="/casino" />
-        <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
-          {/* Round header */}
-          <div className="mb-5 text-center">
-            <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
-              Memory Grid
-            </h1>
-            <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-950/40 px-4 py-1.5 text-sm font-black text-emerald-300">
-              {roundResult.roundNumber > (match?.roundsPerMatch ?? 5)
-                ? `TIEBREAK ROUND ${roundResult.roundNumber}`
-                : `ROUND ${roundResult.roundNumber}/${match?.roundsPerMatch ?? 5}`}
-            </div>
-            <p className="mt-2 text-sm text-white/60">
-              {msLeft !== null && msLeft > 0
-                ? roundResult.roundNumber >= (match?.roundsPerMatch ?? 5)
-                  ? `Final results in ${Math.ceil(msLeft / 1000)}s…`
-                  : `Next round in ${Math.ceil(msLeft / 1000)}s…`
-                : "…"}
-            </p>
-          </div>
+  //
+  // IMPORTANT (creator-mode continuous recording): the round-result
+  // view is rendered INSIDE the same <CreatorModeHost> as gameplay —
+  // NOT as a separate early-return full page. A separate return would
+  // unmount the host (and the viewport recorder) every round, so each
+  // round would be captured as its own clip (the "stops recording every
+  // round" bug). Folding it in keeps ONE continuous capture across all
+  // rounds until the creator clicks Stop & save / Download.
+  const mgRoundResultBody = (
+    <>
+      {/* Round header */}
+      <div className="mb-5 text-center">
+        <h1 className="flex items-center justify-center gap-3 text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 drop-shadow-[0_0_18px_rgba(251,191,36,0.5)]">
+          Memory Grid
+        </h1>
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-950/40 px-4 py-1.5 text-sm font-black text-emerald-300">
+          {roundResult?.roundNumber > (match?.roundsPerMatch ?? 5)
+            ? `TIEBREAK ROUND ${roundResult?.roundNumber}`
+            : `ROUND ${roundResult?.roundNumber}/${match?.roundsPerMatch ?? 5}`}
+        </div>
+        <p className="mt-2 text-sm text-white/60">
+          {msLeft !== null && msLeft > 0
+            ? (roundResult?.roundNumber ?? 0) >= (match?.roundsPerMatch ?? 5)
+              ? `Final results in ${Math.ceil(msLeft / 1000)}s…`
+              : `Next round in ${Math.ceil(msLeft / 1000)}s…`
+            : "…"}
+        </p>
+      </div>
 
-          {/* Cumulative score — headline numbers are the cumulative
-              round-score points (same compact PvP scoreboard style
-              as the in-match board), rounds-won as the secondary line. */}
-          <div className="mb-5 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-3 text-center">
-              <p className="relative text-[10px] font-bold uppercase tracking-widest text-white/50">
-                {myName}
-                <EmoteBubble emote={myEmote} side="mine" />
-              </p>
-              <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
-                {myTotal ?? 0}
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">pts</p>
-              <p className="mt-0.5 text-[10px] text-white/40">
-                {myScore ?? 0} round win{myScore === 1 ? "" : "s"}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-cyan-400/70 bg-cyan-500/10 p-3 text-center">
-              <p className="relative flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
-                <IconAvatar
-                  iconKey={oppIconKey}
-                  name={oppName}
-                  size="h-3.5 w-3.5"
-                />
-                {oppName}
-                <EmoteBubble emote={incomingEmote} />
-              </p>
-              <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">
-                {oppTotal ?? 0}
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">pts</p>
-              <p className="mt-0.5 text-[10px] text-white/40">
-                {oppScore ?? 0} round win{oppScore === 1 ? "" : "s"}
-              </p>
-            </div>
-          </div>
+      {/* Cumulative score — headline numbers are the cumulative
+          round-score points (same compact PvP scoreboard style
+          as the in-match board), rounds-won as the secondary line. */}
+      <div className="mb-5 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-3 text-center">
+          <p className="relative text-[10px] font-bold uppercase tracking-widest text-white/50">
+            {myName}
+            <EmoteBubble emote={myEmote} side="mine" />
+          </p>
+          <p className="mt-0.5 text-3xl font-black tabular-nums text-yellow-300">
+            {myTotal ?? 0}
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">pts</p>
+          <p className="mt-0.5 text-[10px] text-white/40">
+            {myScore ?? 0} round win{myScore === 1 ? "" : "s"}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-cyan-400/70 bg-cyan-500/10 p-3 text-center">
+          <p className="relative flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
+            <IconAvatar
+              iconKey={oppIconKey}
+              name={oppName}
+              size="h-3.5 w-3.5"
+            />
+            {oppName}
+            <EmoteBubble emote={incomingEmote} />
+          </p>
+          <p className="mt-0.5 text-3xl font-black tabular-nums text-cyan-300">
+            {oppTotal ?? 0}
+          </p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">pts</p>
+          <p className="mt-0.5 text-[10px] text-white/40">
+            {oppScore ?? 0} round win{oppScore === 1 ? "" : "s"}
+          </p>
+        </div>
+      </div>
 
-          {/* Correct pattern */}
+      {/* Correct pattern */}
+      <RoundResultGrid
+        title="Correct Pattern"
+        pattern={roundResult?.boardSnapshot ?? null}
+        picks={roundResult?.boardSnapshot?.active ?? []}
+        highlight="pattern"
+        badge="answer key"
+      />
+
+      {/* Your reconstruction */}
+      <RoundResultGrid
+        title="Your Reconstruction"
+        pattern={roundResult?.boardSnapshot ?? null}
+        picks={viewerFlip?.picks ?? []}
+        highlight="picks"
+        flip={viewerFlip}
+        badge="you"
+      />
+
+      {/* Opponent reconstruction */}
+      <RoundResultGrid
+        title={`${oppName}: Reconstruction`}
+        pattern={roundResult?.boardSnapshot ?? null}
+        picks={opponentFlip?.picks ?? []}
+        highlight="picks"
+        flip={opponentFlip}
+        badge="opponent"
+      />
+    </>
+  );
+
+  const mgRoundResultNode = (
+    <div className="mx-auto mt-4 max-w-3xl sm:mt-8">{mgRoundResultBody}</div>
+  );
+
+  // Creator-mode phone-frame shell for the round-result view — compact
+  // header + the three grids in a scrollable main area. Same treatment
+  // as the gameplay shell so the recorded clip stays on-brand.
+  const mgRoundResultShell = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
+      <ShellHeader className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
+            <p className="text-xs text-white/70">Round {roundResult?.roundNumber}/{match?.roundsPerMatch ?? 5} · Result</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
+            {msLeft !== null && msLeft > 0 ? `Next in ${Math.ceil(msLeft / 1000)}s` : "…"}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
+          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
+            {myName} · {myTotal ?? 0} pts
+          </span>
+          <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
+            {oppName} · {oppTotal ?? 0} pts
+          </span>
+        </div>
+      </ShellHeader>
+      <ShellMain className="flex-col justify-start overflow-y-auto">
+        <div className="w-full max-w-[640px] px-2 py-2">
           <RoundResultGrid
             title="Correct Pattern"
-            pattern={roundResult.boardSnapshot}
-            picks={roundResult.boardSnapshot?.active ?? []}
+            pattern={roundResult?.boardSnapshot ?? null}
+            picks={roundResult?.boardSnapshot?.active ?? []}
             highlight="pattern"
             badge="answer key"
           />
-
-          {/* Your reconstruction */}
           <RoundResultGrid
             title="Your Reconstruction"
-            pattern={roundResult.boardSnapshot}
+            pattern={roundResult?.boardSnapshot ?? null}
             picks={viewerFlip?.picks ?? []}
             highlight="picks"
             flip={viewerFlip}
             badge="you"
           />
-
-          {/* Opponent reconstruction */}
           <RoundResultGrid
             title={`${oppName}: Reconstruction`}
-            pattern={roundResult.boardSnapshot}
+            pattern={roundResult?.boardSnapshot ?? null}
             picks={opponentFlip?.picks ?? []}
             highlight="picks"
             flip={opponentFlip}
             badge="opponent"
           />
         </div>
-        <Footer />
-      </div>
-    );
-  }
+      </ShellMain>
+    </CreatorModeShell>
+  );
 
 
   if (loading && !match) {
@@ -942,9 +1002,13 @@ export default function MemoryGridMatchPage({
   // Grid-first 9:16 presentation: compact header keeps the round, timer,
   // and both scores readable, the memory grid fills the main area, and the
   // reconstruct controls stay pinned below. Gameplay untouched.
+  // Creator-mode board — ONLY rendered inside the phone-frame shell,
+  // so it can be sized up freely: the grid caps at a wider max-width
+  // (560px vs the 448px normal cap) with bigger gaps so each tile is
+  // a large touch target in the recorded frame.
   const mgBoardNode = (
     <div
-      className="mx-auto grid max-w-md gap-2.5 sm:gap-3"
+      className="mx-auto grid max-w-[560px] gap-3 sm:gap-4"
       style={{
         gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
       }}
@@ -964,7 +1028,7 @@ export default function MemoryGridMatchPage({
             disabled={!clickable}
             whileTap={clickable ? { scale: 0.92 } : undefined}
             aria-label={`Tile ${tileIndex + 1}`}
-            className={`relative aspect-square select-none overflow-hidden rounded-xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
+            className={`relative aspect-square select-none overflow-hidden rounded-2xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
               revealActive
                 ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
                 : faceUp
@@ -983,12 +1047,12 @@ export default function MemoryGridMatchPage({
               transition={{ duration: 0.18, ease: "easeOut" }}
             >
               <span className="absolute inset-0 [backface-visibility:hidden]" />
-              <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-1.5 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+              <span className="absolute inset-0 flex items-center justify-center p-1.5 sm:p-2 [backface-visibility:hidden] [transform:rotateY(180deg)]">
                 <Image
                   src={LogoSmiley}
                   alt=""
-                  width={48}
-                  height={48}
+                  width={64}
+                  height={64}
                   className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
                 />
               </span>
@@ -1030,6 +1094,41 @@ export default function MemoryGridMatchPage({
       </div>
     </div>
   );
+  // Creator-mode controls — SAME actions as mgControlsNode but with
+  // larger touch targets / bigger text so they read well in the
+  // recorded phone frame.
+  const mgControlsNodeCreator = (
+    <div className="mx-auto flex max-w-md flex-wrap items-center justify-center gap-3">
+      <button
+        onClick={handleForfeit}
+        disabled={forfeiting}
+        className="rounded-xl border-2 border-red-500/50 bg-red-500/10 px-5 py-3 text-sm font-bold text-red-300 transition hover:bg-red-500/25 disabled:opacity-40"
+      >
+        {forfeiting ? "Forfeiting…" : "Forfeit"}
+      </button>
+      <button
+        onClick={() => setSelected([])}
+        disabled={selected.length === 0 || submitting}
+        className="rounded-xl border-2 border-white/20 bg-white/5 px-5 py-3 text-sm font-bold text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+      >
+        Clear
+      </button>
+      <span className="text-center text-sm text-white/50">
+        {selected.length} selected. Tap again to remove · {activeCount}{" "}
+        lit this round
+      </span>
+      <button
+        onClick={() => submitPicks(selected)}
+        disabled={submitting}
+        className="rounded-xl border-b-4 border-amber-700 bg-amber-500 px-8 py-3 text-base font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+      >
+        {submitting ? "Submitting…" : "Submit"}
+      </button>
+      <div className="flex justify-center">
+        <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
+      </div>
+    </div>
+  );
   const mgShell = (
     <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
       <ShellHeader className="flex flex-col gap-1.5">
@@ -1062,7 +1161,7 @@ export default function MemoryGridMatchPage({
         <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
           Round wins · {myName} {myScore ?? 0} / {oppName} {oppScore ?? 0}
         </p>
-        {mgControlsNode}
+        {mgControlsNodeCreator}
       </ShellAside>
     </CreatorModeShell>
   );
@@ -1127,6 +1226,7 @@ export default function MemoryGridMatchPage({
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
@@ -1263,13 +1363,19 @@ export default function MemoryGridMatchPage({
           match.status !== MATCH_STATUS.FINISHED &&
           match.status !== MATCH_STATUS.CANCELLED
         }
-        autoStop={
-          match?.status === MATCH_STATUS.FINISHED ||
-          match?.status === MATCH_STATUS.CANCELLED
-        }
+        // Continuous recording: keep capturing through all rounds (and
+        // past the match result) until the creator clicks "Stop & save"
+        // — downloads are always manual. Only a CANCELLED match stops
+        // the recording automatically.
+        autoStop={match?.status === MATCH_STATUS.CANCELLED}
         gameLabel="memory-grid"
       >
-      <CreatorView normal={<><div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+      <CreatorView
+        normal={
+          isRoundResult && roundResult ? (
+            mgRoundResultNode
+          ) : (
+            <><div className="mx-auto mt-4 max-w-3xl sm:mt-8">
         {/* Header — game title (same amber gradient treatment as the
             other casino games) + a compact stake line + the round
             indicator (ROUND X/5). */}
@@ -1606,19 +1712,18 @@ export default function MemoryGridMatchPage({
       </div>
 
 
-      </>}
-        portrait={mgShell}
-        landscape={mgShell}
+      </>)
+        }
+        portrait={isRoundResult && roundResult ? mgRoundResultShell : mgShell}
+        landscape={isRoundResult && roundResult ? mgRoundResultShell : mgShell}
       />
-      </CreatorModeHost>
 
       {/* Post-match result screen — shared PvpResultScreen overlay
-          (UX plan P3-3), mounted OUTSIDE CreatorModeHost so the
-          recording viewport never captures it. The old inline result
-          panel + "It's a tie" popup are deleted — this is the single
-          end-of-match experience, and it can be dismissed to reveal
-          the final board underneath. */}
+          (UX plan P3-3). Mounted INSIDE CreatorModeHost so it appears
+          in the recording; compact styling keeps it sized for the
+          phone frame. */}
       {renderResult()}
+      </CreatorModeHost>
 
       <Footer />
       </div>

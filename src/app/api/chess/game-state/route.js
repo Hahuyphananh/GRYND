@@ -188,6 +188,7 @@ async function settleTimeoutIfNeeded(game, clocks) {
         winnerId: lockedWinnerId,
         result: "timeout",
         payout: winnerPayout.toString(),
+        endedAt: new Date(),
       })
       .where(
         and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),

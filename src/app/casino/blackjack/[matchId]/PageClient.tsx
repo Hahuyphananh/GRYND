@@ -43,6 +43,7 @@ import {
   CreatorPhoneFrame,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import IconAvatar from "../../../../components/IconAvatar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
@@ -96,6 +97,15 @@ type MatchState = {
   id: number;
   player1Id: string;
   player2Id: string | null;
+  // Seat identity — real username / official icon / equipped name
+  // color (battlepass glow > premium chat color), server-resolved.
+  // Null for the AI seat; the client falls back to localized labels.
+  player1Name: string | null;
+  player1IconKey: string | null;
+  player1NameColor: string | null;
+  player2Name: string | null;
+  player2IconKey: string | null;
+  player2NameColor: string | null;
   isAi: boolean;
   stakeAmount: number;
   status: string;
@@ -309,6 +319,34 @@ export default function BlackjackPvpMatchPage({
 
   // Memo: my hand + opponent hand derived from viewerIsPlayer1.
   const viewerIsPlayer1 = Boolean(match?.viewerIsPlayer1);
+
+  // Seat identity — real username + official Grynd icon + equipped name
+  // color, resolved server-side (getMatchSeatIdentity). Null for the AI
+  // seat; the labels fall back to the localized seat names below.
+  const myIdentity = viewerIsPlayer1
+    ? {
+        name: match?.player1Name || null,
+        iconKey: match?.player1IconKey || null,
+        nameColor: match?.player1NameColor || null,
+      }
+    : {
+        name: match?.player2Name || null,
+        iconKey: match?.player2IconKey || null,
+        nameColor: match?.player2NameColor || null,
+      };
+  const oppIdentity = match?.isAi
+    ? { name: null, iconKey: null, nameColor: null }
+    : viewerIsPlayer1
+      ? {
+          name: match?.player2Name || null,
+          iconKey: match?.player2IconKey || null,
+          nameColor: match?.player2NameColor || null,
+        }
+      : {
+          name: match?.player1Name || null,
+          iconKey: match?.player1IconKey || null,
+          nameColor: match?.player1NameColor || null,
+        };
   // The opponent is whoever occupies the seat we don't hold. Only
   // reportable once a real opponent has joined (player2Id set).
   const opponentClerkId = match?.isAi
@@ -665,12 +703,23 @@ export default function BlackjackPvpMatchPage({
     match?.status === "round_3" ||
     match?.status === "round_4";
 
-  const mySeatLabel = viewerIsPlayer1
-    ? t("blackjackPvp.seat.player1", "Joueur 1")
-    : t("blackjackPvp.seat.player2", "Joueur 2");
-  const oppSeatLabel = match?.isAi
-    ? t("blackjackPvp.seat.ai", "GRYND AI")
-    : t("blackjackPvp.seat.opponent", "Adversaire");
+  // Real usernames when the server knows them; localized seat labels
+  // as fallback (waiting lobby before a PvP opponent joins, or the AI
+  // seat which has no users row).
+  const mySeatLabel =
+    myIdentity.name ||
+    (viewerIsPlayer1
+      ? t("blackjackPvp.seat.player1", "Joueur 1")
+      : t("blackjackPvp.seat.player2", "Joueur 2"));
+  const oppSeatLabel =
+    oppIdentity.name ||
+    (match?.isAi
+      ? t("blackjackPvp.seat.ai", "GRYND AI")
+      : t("blackjackPvp.seat.opponent", "Adversaire"));
+  const myIconKey = myIdentity.iconKey;
+  const oppIconKey = oppIdentity.iconKey;
+  const myNameColor = myIdentity.nameColor;
+  const oppNameColor = oppIdentity.nameColor;
 
   // Action gates (mirrors serverStore.applyAction):
   //   * STOOD is the ONLY state that locks the hand permanently.
@@ -880,11 +929,12 @@ export default function BlackjackPvpMatchPage({
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
         gameName="Blackjack PvP"
-        opponent={{ name: oppName, isAi }}
+        opponent={{ name: oppName, iconKey: oppIconKey, isAi }}
         tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
@@ -1099,6 +1149,8 @@ export default function BlackjackPvpMatchPage({
       <OpponentHand
         t={t}
         label={oppSeatLabel}
+        iconKey={oppIconKey}
+        nameColor={oppNameColor}
         hand={oppHand}
         isMatchFinished={match?.status === "finished"}
         isAi={Boolean(match?.isAi)}
@@ -1135,6 +1187,8 @@ export default function BlackjackPvpMatchPage({
         }
         mySeatLabel={mySeatLabel}
         oppSeatLabel={oppSeatLabel}
+        myNameColor={myNameColor}
+        oppNameColor={oppNameColor}
         myEmote={myEmote}
         incomingEmote={incomingEmote}
       />
@@ -1149,6 +1203,8 @@ export default function BlackjackPvpMatchPage({
       <MyHand
         t={t}
         label={mySeatLabel}
+        iconKey={myIconKey}
+        nameColor={myNameColor}
         hand={myHand}
         myState={myState}
         score={myScore}
@@ -1527,7 +1583,7 @@ export default function BlackjackPvpMatchPage({
           seats={
             match.status === "waiting"
               ? [
-                  { label: "You", name: "You", occupied: true },
+                  { label: "You", name: mySeatLabel || "You", occupied: true },
                   {
                     label: match?.isAi ? "GRYND AI" : "Opponent",
                     occupied: false,
@@ -1573,14 +1629,12 @@ export default function BlackjackPvpMatchPage({
         portrait={portraitContent}
         landscape={landscapeContent}
       />
-      </CreatorModeHost>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. It surfaces AFTER the deciding
-          round's per-round popup is dismissed (same gating as the
-          old MatchEndModal, which is now deleted). */}
+          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          recording; compact styling keeps it sized for the phone frame. */}
       {renderMatchEnd()}
+      </CreatorModeHost>
 
       {/* Resign confirmation modal — warns the player their stake is
           forfeited before hitting the resign API. */}
@@ -1711,12 +1765,16 @@ function RoundTimerDisplay({
 function OpponentHand({
   t,
   label,
+  iconKey,
+  nameColor,
   hand,
   isMatchFinished,
   isAi,
 }: {
   t: TFn;
   label: string;
+  iconKey?: string | null;
+  nameColor?: string | null;
   hand: Card[];
   isMatchFinished: boolean;
   isAi: boolean;
@@ -1730,7 +1788,20 @@ function OpponentHand({
   return (
     <div>
       <div className="text-center mb-2">
-        <h2 className="text-[#FFD700]/80 text-sm font-semibold">{label}</h2>
+        <div className="flex items-center justify-center gap-2">
+          <IconAvatar
+            iconKey={iconKey || null}
+            name={label}
+            size="h-10 w-10"
+            className="border border-[#FFD700]/40"
+          />
+          <h2
+            className="text-[#FFD700]/80 text-sm font-semibold"
+            style={nameColor ? { color: nameColor } : undefined}
+          >
+            {label}
+          </h2>
+        </div>
         <p className="text-xs mt-0.5 text-[#FFD700]/60 italic">
           {placeholder}
         </p>
@@ -1747,6 +1818,8 @@ function OpponentHand({
 function MyHand({
   t,
   label,
+  iconKey,
+  nameColor,
   hand,
   myState,
   score,
@@ -1756,6 +1829,8 @@ function MyHand({
 }: {
   t: TFn;
   label: string;
+  iconKey?: string | null;
+  nameColor?: string | null;
   hand: Card[];
   myState: string;
   score: number;
@@ -1770,9 +1845,20 @@ function MyHand({
   return (
     <div>
       <div className="text-center mb-2">
-        <h2 className="text-[#FFD700] text-sm font-bold">
-          {label} ({t("blackjackPvp.you", "vous")})
-        </h2>
+        <div className="flex items-center justify-center gap-2">
+          <IconAvatar
+            iconKey={iconKey || null}
+            name={label}
+            size="h-9 w-9"
+            className="border border-[#FFD700]/40"
+          />
+          <h2
+            className="text-[#FFD700] text-sm font-bold"
+            style={nameColor ? { color: nameColor } : undefined}
+          >
+            {label} ({t("blackjackPvp.you", "vous")})
+          </h2>
+        </div>
         {hand.length > 0 && (
           <p
             className={`text-xs mt-0.5 font-bold ${
@@ -2109,6 +2195,8 @@ function GameTableCenter({
   oppRounds,
   mySeatLabel,
   oppSeatLabel,
+  myNameColor,
+  oppNameColor,
   incomingEmote,
   myEmote,
 }: {
@@ -2123,6 +2211,8 @@ function GameTableCenter({
   oppRounds: number;
   mySeatLabel: string;
   oppSeatLabel: string;
+  myNameColor?: string | null;
+  oppNameColor?: string | null;
   incomingEmote?: { value: string } | null;
   myEmote?: { value: string } | null;
 }) {
@@ -2174,7 +2264,10 @@ function GameTableCenter({
                 </motion.span>
               )}
             </AnimatePresence>
-            <span className="block max-w-[110px] truncate text-[10px] uppercase tracking-widest text-white/50">
+            <span
+              className="block max-w-[110px] truncate text-[10px] uppercase tracking-widest text-white/50"
+              style={myNameColor ? { color: myNameColor } : undefined}
+            >
               {mySeatLabel}
             </span>
           </div>
@@ -2225,7 +2318,10 @@ function GameTableCenter({
                 </motion.span>
               )}
             </AnimatePresence>
-            <span className="block max-w-[110px] truncate text-[10px] uppercase tracking-widest text-white/50">
+            <span
+              className="block max-w-[110px] truncate text-[10px] uppercase tracking-widest text-white/50"
+              style={oppNameColor ? { color: oppNameColor } : undefined}
+            >
               {oppSeatLabel}
             </span>
           </div>

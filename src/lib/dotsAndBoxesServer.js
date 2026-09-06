@@ -164,12 +164,24 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
         isPvpWin: true,
       });
 
-      // Permanent Prestige — competitive PvP finish (AI matches are free
-      // play and draws refund above).
       const prestigeLoserId =
         locked.hostClerkId === winnerClerkId
           ? locked.guestClerkId
           : locked.hostClerkId;
+
+      // Also record the loser's loss + stake so losses / win_rate / wagered
+      // stay in sync with the winner's win (matches chess / precision).
+      if (prestigeLoserId) {
+        await applyLeaderboardCounters({
+          clerkId: prestigeLoserId,
+          game: "dots-and-boxes",
+          betAmount: bet,
+          payout: 0,
+        });
+      }
+
+      // Permanent Prestige — competitive PvP finish (AI matches are free
+      // play and draws refund above).
       await applyPrestigeResult({
         tx,
         clerkId: winnerClerkId,

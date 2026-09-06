@@ -1,8 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { users } from "../../../../db/schema";import { unoRoomStore } from "../../../../lib/unoRoomStore";
+import { glows, tokenSubscriptions, users } from "../../../../db/schema";
+import { unoRoomStore } from "../../../../lib/unoRoomStore";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 
 const MAX_SEATS = 6;
 const HOUSE_EDGE_PERCENT = 5;function getStore() {
@@ -19,6 +21,43 @@ function prestigeBadgeForUser(user) {
     prestigeLevel: user.prestigeLevel,
     showPrestigeBadge: user.showPrestigeBadge,
   });
+}
+
+/** Resolve a users row's official Grynd icon key + equipped name color
+ *  (battlepass glow wins; the Grynd+ chat color only surfaces for active
+ *  members). Raw columns never leave the server — only the resolved
+ *  values are stamped onto the in-memory player object. Best-effort:
+ *  a lookup failure returns defaults so seat rendering never breaks. */
+async function seatIdentityForUser(user) {
+  if (!user) return { iconKey: null, nameColor: null };
+  const [row] = await db
+    .select({
+      iconKey: users.selectedIcon,
+      chatColor: users.chatColor,
+      glowColor: glows.color,
+      isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
+    })
+    .from(users)
+    .leftJoin(
+      glows,
+      and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+    )
+    .leftJoin(
+      tokenSubscriptions,
+      and(
+        eq(tokenSubscriptions.clerkId, users.clerkId),
+        inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+      ),
+    )
+    .where(eq(users.clerkId, user.clerkId))
+    .limit(1);
+  return {
+    iconKey: row?.iconKey || null,
+    nameColor:
+      row?.glowColor ||
+      (Boolean(row?.isPremium) ? row?.chatColor || null : null) ||
+      null,
+  };
 }
 
 function tableSummary(room) {
@@ -267,6 +306,8 @@ function serializeGameForUser(room, userId) {
       count: (active.hands[p.id] || []).length,
       isHost: Boolean(p.isHost),
       prestigeBadge: p.prestigeBadge ?? null,
+      iconKey: p.iconKey ?? null,
+      nameColor: p.nameColor ?? null,
     })),
 
     topCard: active.discardPile[active.discardPile.length - 1] || null,
@@ -439,7 +480,9 @@ export async function POST(request) {
 
   if (action === "create") {
     const settings = sanitizeSettings(body?.settings || {});
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();    const hostPlayer = {
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const hostIdentity = await seatIdentityForUser(user);
+    const hostPlayer = {
       id: `${user.id}-host`,
       userId: user.id,
       name: user.name,
@@ -448,6 +491,8 @@ export async function POST(request) {
       isHost: true,
       skipNextRound: false,
       prestigeBadge: prestigeBadgeForUser(user),
+      iconKey: hostIdentity.iconKey,
+      nameColor: hostIdentity.nameColor,
     };
 
     const room = {
@@ -547,7 +592,9 @@ export async function POST(request) {
 
     if (existing) {
       existing.seatIndex = seatIndex;
-    } else {      room.players.push({
+    } else {
+      const joinIdentity = await seatIdentityForUser(user);
+      room.players.push({
         id: `${user.id}-${Date.now()}`,
         userId: user.id,
         name: user.name,
@@ -556,6 +603,8 @@ export async function POST(request) {
         isHost: false,
         skipNextRound: false,
         prestigeBadge: prestigeBadgeForUser(user),
+        iconKey: joinIdentity.iconKey,
+        nameColor: joinIdentity.nameColor,
       });
     }
 
@@ -604,6 +653,8 @@ export async function POST(request) {
       seatIndex,
       isHost: false,
       skipNextRound: false,
+      iconKey: null,
+      nameColor: null,
     });
 
     return Response.json({

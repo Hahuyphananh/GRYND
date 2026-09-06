@@ -32,7 +32,15 @@
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
-import { kenoPvpMatches, kenoPvpRounds, users } from "../../db/schema";
+import { applyLeaderboardCounters } from "../leaderboardCounters";
+import {
+  glows,
+  kenoPvpMatches,
+  kenoPvpRounds,
+  tokenSubscriptions,
+  users,
+} from "../../db/schema";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../stripe/subscriptions";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorKenoQueued, mirrorKenoTransition } from "./canonicalLifecycle";
 import {
@@ -130,6 +138,11 @@ function summariseUsers(rows) {
       displayName: r.displayName || r.clerkId,
       // Official Grynd icon key only — never an arbitrary avatar URL.
       iconKey: r.iconKey || "default",
+      // Equipped name color — battlepass glow wins; the Grynd+ chat
+      // color only surfaces for active members (chat-route precedence).
+      nameColor:
+        r.glowColor ||
+        (Boolean(r.isPremium) ? r.chatColor || null : null),
     };
   }
   return out;
@@ -159,8 +172,22 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
         clerkId: users.clerkId,
         displayName: users.name,
         iconKey: users.selectedIcon,
+        chatColor: users.chatColor,
+        glowColor: glows.color,
+        isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
       })
       .from(users)
+      .leftJoin(
+        glows,
+        and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+      )
+      .leftJoin(
+        tokenSubscriptions,
+        and(
+          eq(tokenSubscriptions.clerkId, users.clerkId),
+          inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+        ),
+      )
       .where(inArray(users.clerkId, Array.from(ids)));
   } catch (err) {
     console.warn(
@@ -747,28 +774,38 @@ async function recordPvPResult(tx, match, winnerId, result) {
     result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!loserId) return;
 
+  // Legacy per-seat counters — the public profile reads games_won /
+  // games_lost. The money/streak/daily counters (totalWon, totalWagered,
+  // biggestWin, daily_*, weekly_*, XP/level) are all maintained by
+  // applyLeaderboardCounters below; bumping them here too would double-
+  // count every settled match.
   await tx
     .update(users)
-    .set({ pvpWins: sql`${users.pvpWins} + 1` })
+    .set({ gamesWon: sql`${users.gamesWon} + 1` })
     .where(eq(users.clerkId, winnerId));
   await tx
     .update(users)
-    .set({
-      gamesWon: sql`${users.gamesWon} + 1`,
-      totalWon: sql`${users.totalWon} + ${Number(match.prizePaid) || 0}`,
-      biggestWin:
-        Number(match.prizePaid) > 0
-          ? sql`GREATEST(${users.biggestWin}, ${Number(match.prizePaid)})`
-          : sql`${users.biggestWin}`,
-    })
-    .where(eq(users.clerkId, winnerId));
-  await tx
-    .update(users)
-    .set({
-      gamesLost: sql`${users.gamesLost} + 1`,
-      totalWagered: sql`${users.totalWagered} + ${Number(match.stakeAmount)}`,
-    })
+    .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
+
+  // Canonical stats + quests pipeline (user_stats wins/losses/win_rate/
+  // total_bets, pvp_wins, wagered/won, streaks, battlepass XP, quest
+  // progress). Fire-and-forget on its own pool — never blocks settlement.
+  const stake = Number(match.stakeAmount) || 0;
+  const winnerPayout = Number(match.prizePaid) || 0;
+  applyLeaderboardCounters({
+    clerkId: winnerId,
+    game: "keno-pvp",
+    betAmount: stake,
+    payout: winnerPayout,
+    isPvpWin: true,
+  }).catch(() => {});
+  applyLeaderboardCounters({
+    clerkId: loserId,
+    game: "keno-pvp",
+    betAmount: stake,
+    payout: 0,
+  }).catch(() => {});
 
   // Permanent Prestige — server-authoritative PvP hook. This runs on the
   // same guarded single-execution path as the stats above (the match flips

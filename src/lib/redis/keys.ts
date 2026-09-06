@@ -45,7 +45,23 @@ export const CacheKeys = {
     game: (game: string, limit: number, offset: number) =>
       `${PREFIX}:lb:game:${game}:${limit}:${offset}`,
 
-    /** Wildcard pattern for eviction */
+    /**
+     * Patterns for the ranking boards every settlement can affect
+     * (all-time, weekly, wins, daily-streak). Per-game boards are
+     * deliberately NOT included — a board for game X only changes when
+     * game X is played, so the debounced settlement purge leaves them to
+     * their read TTL instead of forcing full-table recomputes on
+     * unrelated traffic. `all` (below) still wipes everything for the
+     * weekly reset / admin flush.
+     */
+    rankingPatterns: [
+      `${PREFIX}:lb:all-time:*`,
+      `${PREFIX}:lb:weekly:*`,
+      `${PREFIX}:lb:wins:*`,
+      `${PREFIX}:lb:daily-streak:*`,
+    ],
+
+    /** Wildcard pattern for eviction of ALL leaderboard keys */
     all: `${PREFIX}:lb:*`,
 
     /**
@@ -99,6 +115,17 @@ export const CacheKeys = {
   bigWins: () => `${PREFIX}:big-wins:latest`,
   bigWinsAll: `${PREFIX}:big-wins:*`,
 
+  // ── Bet history ──────────────────────────────────────────────
+  // Per-user bet history (the profile's recent-bets list). Append-only per
+  // user, so a short TTL turns the ~23-query fan-out into one Redis GET.
+  betHistory: (clerkId: string) => `${PREFIX}:bet-history:${clerkId}`,
+
+  // ── Live stats ───────────────────────────────────────────────
+  // Games-played-today aggregate for the home ticker: a slow-moving daily
+  // sum across ~20 game tables that the ticker polls every 30s. Cached so
+  // each poll is a Redis GET instead of 20 Postgres COUNTs.
+  liveStatsGamesToday: () => `${PREFIX}:live-stats:games-today`,
+
   // ── Hex Duel AI Session Tokens ──────────────────────────────
   /**
    * Short-lived, single-use proof that a user recently started a Hex
@@ -145,6 +172,14 @@ export const CacheTTL = {
 
   /** Special titles map: 5 min — titles rarely change. */
   specialTitles: 5 * 60,
+
+  /** Live-stats games-played-today aggregate: 5 min — it's a daily sum
+      that barely moves at the ticker's 30s poll cadence. */
+  liveStatsGamesToday: 5 * 60,
+
+  /** Bet history: 60s — a just-settled bet appears within a minute and the
+      profile's recent-bets list tolerates that easily. */
+  betHistory: 60,
 
   /**
    * Hex Duel AI session token. 15 min is plenty for a full AI match

@@ -3,17 +3,38 @@ import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches, poolLobbies } from "../../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { getSeatIdentity } from "../../../../lib/seatIdentity";
 
 type PoolMatchRow = typeof poolMatches.$inferSelect;
 
-function matchPayload(match: PoolMatchRow, userId: string | null) {
+async function matchPayload(match: PoolMatchRow, userId: string | null) {
   const viewerSeat: 1 | 2 = userId && userId === match.player2Id ? 2 : 1;
+  const viewerIsPlayer1 = viewerSeat === 1;
+
+  // Full seat identity (real username + official icon + equipped name
+  // color) for both seats — one shared query. The AI seat (id "AI",
+  // no users row) resolves to nulls and the client falls back to its
+  // "AI" label.
+  let identity = null;
+  try {
+    identity = await getSeatIdentity(match.player1Id, match.player2Id);
+  } catch {
+    identity = null;
+  }
+  const viewer = viewerIsPlayer1 ? identity?.player1 : identity?.player2;
+  const opponent = viewerIsPlayer1 ? identity?.player2 : identity?.player1;
+
   return {
     ok: true,
     match,
     viewerSeat,
-    viewerName: "You",
-    opponentName: match.player2Id === "AI" ? "AI" : "Opponent",
+    viewerName: viewer?.name ?? "You",
+    opponentName:
+      match.player2Id === "AI" ? "AI" : opponent?.name ?? "Opponent",
+    viewerIconKey: viewer?.iconKey ?? null,
+    viewerNameColor: viewer?.nameColor ?? null,
+    opponentIconKey: opponent?.iconKey ?? null,
+    opponentNameColor: opponent?.nameColor ?? null,
   };
 }
 
@@ -33,14 +54,14 @@ export async function GET(req: Request) {
     .from(poolMatches)
     .where(eq(poolMatches.id, matchId))
     .limit(1);
-  if (match) return NextResponse.json(matchPayload(match, userId));
+  if (match) return NextResponse.json(await matchPayload(match, userId));
 
   const [lobbyMatch] = await db
     .select()
     .from(poolMatches)
     .where(eq(poolMatches.lobbyId, matchId))
     .limit(1);
-  if (lobbyMatch) return NextResponse.json(matchPayload(lobbyMatch, userId));
+  if (lobbyMatch) return NextResponse.json(await matchPayload(lobbyMatch, userId));
 
   const [lobby] = await db
     .select()

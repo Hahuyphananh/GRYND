@@ -1,8 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
-import { db } from "../../../db/client";
-import { users } from "../../../db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { db } from "../../../db/client";
+import { glows, tokenSubscriptions, users } from "../../../db/schema";
 import { computeEquippedStreakTitle } from "../../../lib/streakTitles";
 import {
   DEFAULT_ICON_KEY,
@@ -10,6 +10,7 @@ import {
 } from "../../../lib/iconAssets";
 import { getIconByKey } from "../../../lib/icons";
 import { resolveSelectedBannerKey } from "../../../lib/banners";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions";
 
 export async function POST(req: Request) {
   try {
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
           name: null,
           email: null,
           selectedIcon: DEFAULT_ICON_KEY,
+          nameColor: null,
           profileAccent: null,
           selectedBanner: null,
           avatarFrame: null,
@@ -49,6 +51,9 @@ export async function POST(req: Request) {
         name: users.name,
         email: users.email,
         selectedIcon: users.selectedIcon,
+        chatColor: users.chatColor,
+        glowColor: glows.color,
+        isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
         profileAccent: users.profileAccent,
         avatarFrame: users.avatarFrame,
         selectedStreakType: users.selectedStreakType,
@@ -56,6 +61,17 @@ export async function POST(req: Request) {
         dailyStreakBest: users.dailyStreakBest,
       })
       .from(users)
+      .leftJoin(
+        glows,
+        and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+      )
+      .leftJoin(
+        tokenSubscriptions,
+        and(
+          eq(tokenSubscriptions.clerkId, users.clerkId),
+          inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+        ),
+      )
       .where(eq(users.clerkId, clerkId))
       .limit(1);
 
@@ -100,6 +116,13 @@ export async function POST(req: Request) {
           name: user.name,
           email: user.email,
           selectedIcon,
+          // Equipped name color for the client-only (vs-AI) game seats —
+          // same precedence as the chat route: an equipped battlepass glow
+          // wins; the Grynd+ custom chat color only surfaces for active
+          // members.
+          nameColor:
+            user.glowColor ||
+            (Boolean(user.isPremium) ? user.chatColor || null : null),
           profileAccent: user.profileAccent,
           selectedBanner,
           avatarFrame: user.avatarFrame,

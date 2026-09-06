@@ -14,6 +14,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import RoundMarkers from "../casino/RoundMarkers";
+import IconAvatar from "../IconAvatar";
 import { TARGET_WINS, MAX_ROUNDS } from "../../lib/precision/constants";
 import { diffToRank } from "../../lib/precision/utils";
 import { PrecisionRankIcon } from "./PrecisionRankIcon";
@@ -173,8 +174,14 @@ function PrecisionScoreboardImpl({
               : { scale: 1, boxShadow: "0 0 0 rgba(217,70,239,0)" }
           }
           transition={{ duration: 0.6, ease: "easeOut" }}
-        >          <p className="text-xs text-slate-300">
-            {seat1Player?.name ?? t("games.precision.seat_alpha")}
+        >          <p className="flex items-center gap-1.5 text-xs text-slate-300">
+            <IconAvatar iconKey={seat1Player?.iconKey} name={seat1Player?.name} size="h-4 w-4" />
+            <span
+              className="truncate"
+              style={seat1Player?.nameColor ? { color: seat1Player.nameColor } : undefined}
+            >
+              {seat1Player?.name ?? t("games.precision.seat_alpha")}
+            </span>
             {seat1Player?.prestigeBadge && (
               <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
                 {seat1Player.prestigeBadge}
@@ -212,8 +219,14 @@ function PrecisionScoreboardImpl({
               : { scale: 1, boxShadow: "0 0 0 rgba(34,211,238,0)" }
           }
           transition={{ duration: 0.6, ease: "easeOut" }}
-        >          <p className="text-xs text-slate-300">
-            {seat2Player?.name ?? t("games.precision.seat_bravo")}
+        >          <p className="flex items-center gap-1.5 text-xs text-slate-300">
+            <IconAvatar iconKey={seat2Player?.iconKey} name={seat2Player?.name} size="h-4 w-4" />
+            <span
+              className="truncate"
+              style={seat2Player?.nameColor ? { color: seat2Player.nameColor } : undefined}
+            >
+              {seat2Player?.name ?? t("games.precision.seat_bravo")}
+            </span>
             {seat2Player?.prestigeBadge && (
               <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
                 {seat2Player.prestigeBadge}

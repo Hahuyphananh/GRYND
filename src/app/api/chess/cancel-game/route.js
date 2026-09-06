@@ -47,7 +47,7 @@ export async function POST(req) {
 
       await tx
         .update(chessGames)
-        .set({ status: "expired" })
+        .set({ status: "expired", endedAt: new Date() })
         .where(eq(chessGames.id, parsedGameId));
 
       await tx

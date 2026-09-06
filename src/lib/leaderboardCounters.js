@@ -2,6 +2,7 @@ import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
 import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
+import { getActiveXpMultiplierByClerkId } from "./shopItems";
 
 let _sql = null;
 function getSql() {
@@ -26,11 +27,16 @@ export async function applyLeaderboardCounters({
   const win = Math.max(0, Math.floor(Number(payout) || 0));
   const multiplier = bet > 0 ? win / bet : 0;
   const isWin = win > bet;
-  // Battlepass EXP: 1 XP per 10 tokens wagered (0 for fun-mode bets,
-  // matching the bet > 0 guard below).
-  const betExp = expForWager(bet);
 
   if (!clerkId || bet <= 0) return;
+
+  // Battlepass EXP: 1 XP per 10 tokens wagered (0 for fun-mode bets,
+  // matching the bet > 0 guard above). An active XP Boost (2×/3×, timed
+  // shop/battlepass effect) multiplies the wager XP — looked up here (the
+  // settlement path only has the Clerk id) so every settled wager honors
+  // the boost.
+  const betExp =
+    expForWager(bet) * (await getActiveXpMultiplierByClerkId(clerkId));
 
   const counterRows = await getSql()`
     WITH updated_user AS (
@@ -40,6 +46,9 @@ export async function applyLeaderboardCounters({
           total_won = total_won + ${win},
           weekly_won = weekly_won + ${win},
           weekly_profit = weekly_profit + ${win - bet},
+          -- Daily responsible-play counters (UTC day; reset by /api/jobs/daily-reset).
+          daily_wagered = daily_wagered + ${bet},
+          daily_won = daily_won + ${win},
           biggest_win = GREATEST(biggest_win, ${win}),
           best_multiplier = GREATEST(best_multiplier, ${multiplier}),
           current_streak = CASE WHEN ${isWin} THEN current_streak + 1 ELSE 0 END,
