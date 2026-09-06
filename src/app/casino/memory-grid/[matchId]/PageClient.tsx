@@ -1000,13 +1000,13 @@ export default function MemoryGridMatchPage({
       : null;
 
   // ── Creator Mode board (rendered inside the phone-frame shell) ────
-  // Mobile sizing — the same max-width / gaps / tile radii as the
-  // normal mobile grid — so the recorded clip feels exactly like the
-  // mobile app: big, full-width tiles instead of a shrunken desktop
-  // board.
+  // Creator mode uses the full phone width inside the frame so the
+  // recorded board looks big/large, but we still cap width slightly
+  // so the controls underneath stay visible (not pushed off-screen).
+  // Buttons themselves are not resized.
   const mgBoardNode = (
     <div
-      className="mx-auto grid max-w-md gap-2.5 sm:gap-3"
+      className="mx-auto grid w-full max-w-lg gap-3"
       style={{
         gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
       }}
@@ -1045,12 +1045,12 @@ export default function MemoryGridMatchPage({
               transition={{ duration: 0.18, ease: "easeOut" }}
             >
               <span className="absolute inset-0 [backface-visibility:hidden]" />
-              <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-1.5 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+              <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-2 [backface-visibility:hidden] [transform:rotateY(180deg)]">
                 <Image
                   src={LogoSmiley}
                   alt=""
-                  width={48}
-                  height={48}
+                  width={64}
+                  height={64}
                   className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
                 />
               </span>
@@ -1061,7 +1061,7 @@ export default function MemoryGridMatchPage({
     </div>
   );
   const mgControlsNode = (
-    <div className="mx-auto flex max-w-md flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto flex w-full max-w-lg flex-wrap items-center justify-between gap-3">
       <button
         onClick={handleForfeit}
         disabled={forfeiting}
@@ -1132,7 +1132,7 @@ export default function MemoryGridMatchPage({
           </div>
           {/* Controls directly under the board — mobile touch targets,
               same mgControlsNode as the normal (non-creator) view. */}
-          <div className="shrink-0 px-3 pb-3">
+          <div className="shrink-0 w-full px-3 pb-3">
             {canPick && mgControlsNode}
           </div>
         </CreatorPhoneFrame>
@@ -1602,9 +1602,11 @@ export default function MemoryGridMatchPage({
           </div>
         )}
 
-        {/* The grid */}
+        {/* The grid — full-width inside the shell so the board looks big, but
+            capped slightly so the controls underneath stay visible. Buttons are
+            not resized here. */}
         <div
-          className="mx-auto grid max-w-md gap-2.5 sm:gap-3"
+          className="mx-auto grid w-full max-w-lg gap-3"
           style={{
             gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
           }}
@@ -1665,12 +1667,12 @@ export default function MemoryGridMatchPage({
                   {/* Blank back (inactive) */}
                   <span className="absolute inset-0 [backface-visibility:hidden]" />
                   {/* Logo face (memorize pattern / your picks / reveal) */}
-                  <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-1.5 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                  <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-2 [backface-visibility:hidden] [transform:rotateY(180deg)]">
                     <Image
                       src={LogoSmiley}
                       alt=""
-                      width={48}
-                      height={48}
+                      width={64}
+                      height={64}
                       className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
                     />
                   </span>

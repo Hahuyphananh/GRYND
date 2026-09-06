@@ -2920,7 +2920,20 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
   // They are `fixed`, so inside a creator frame they pin to the FRAME
   // (the recording root is a transformed containing block), keeping the
   // game controls reachable in every orientation.
-  const actionDockNode = (
+  // Creator-mode poker action dock: the same actions, but in creator mode
+  // the buttons should feel punchy/large and sit closer to the table.
+  // We keep the same action behavior and only change presentation/sizing in
+  // the creator frame so existing mobile/desktop docking behavior stays intact.
+  const isCreatorMode = false; // set by creator shell context if/when needed
+  const creatorCloser = 8;    // smaller cliff gap when in creator mode
+  const creatorScale = 1.0;   // optional extra scale in creator mode
+  const dockGap = isCreatorMode ? 0.25 : 0.5;   // em
+  const dockMargin = isCreatorMode ? 10 : 20;   // px from frame bottom
+  const buttonH = isCreatorMode ? 44 : 42;       // px touch target
+  const buttonTextBase = isCreatorMode ? "text-base" : "text-sm";
+  const raiseH = isCreatorMode ? 48 : 44;        // primary action slightly taller
+  const raiseTextBase = isCreatorMode ? "text-lg" : "text-base";
+  const iconSize = isCreatorMode ? 16 : 14;
     <>
       {game && !game.waiting && game.stage !== "showdown" && (() => {
   const me = game.players.find((p) => p.id === myId);
@@ -2941,23 +2954,24 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* ───────────────────────────── */}
       {/* DESKTOP BOTTOM-CENTER DOCK */}
       {/* ───────────────────────────── */}
-      <div className="hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-8 z-50">
+      <div className={`hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-[${dockBottom}] z-50`}>
         <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-[#ff00cc]/25 bg-[#050510]/90 px-3 py-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(255,0,204,0.2)] backdrop-blur-xl">
 
-          {/* Fold — smaller, quieter (destructive but secondary) */}
+          {/* Fold — bigger and more visible in creator mode */}
           <button
             onClick={() => performAction("fold")}
             aria-label="Fold"
             data-action="fold"
-            className="px-4 py-2.5 rounded-xl font-bold text-xs
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs
             bg-red-900/60 border border-red-500/40
             text-red-200/90
             hover:bg-red-900/80 hover:border-red-400/60
             hover:shadow-[0_0_18px_rgba(255,0,0,0.35)]
             transition-colors active:scale-95
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60"
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60
+            ${isCreatorMode ? `h-[${buttonH}px] text-base` : ``}`}
           >
-            <span className="inline-flex items-center gap-1.5"><IconX size={14} /> Fold</span>
+            <span className="inline-flex items-center gap-1.5"><IconX size={iconSize} /> Fold</span>
           </button>
 
           {/* Check / Call — mid-tier */}
@@ -2966,30 +2980,32 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               onClick={() => performAction("check")}
               aria-label="Check"
               data-action="check"
-              className="px-5 py-3 rounded-xl font-bold text-sm
+              className={`px-5 py-3 rounded-xl font-bold text-sm
               bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
               border border-[#00e5ff]/50
               text-[#00e5ff]
               hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
               transition-colors active:scale-95
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
+              ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
-              <span className="inline-flex items-center gap-1.5"><IconCheck size={14} /> Check</span>
+              <span className="inline-flex items-center gap-1.5"><IconCheck size={iconSize} /> Check</span>
             </button>
           ) : (
             <button
               onClick={() => performAction("call")}
               aria-label={`Call ${toCall}`}
               data-action="call"
-              className="px-5 py-3 rounded-xl font-bold text-sm
+              className={`px-5 py-3 rounded-xl font-bold text-sm
               bg-gradient-to-r from-[#00e5ff]/30 to-cyan-400/20
               border border-[#00e5ff]/50
               text-[#00e5ff]
               hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
               transition-colors active:scale-95
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
+              ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
-              <span className="inline-flex items-center gap-1.5"><IconPhone size={14} /> Call {toCall}</span>
+              <span className="inline-flex items-center gap-1.5"><IconPhone size={iconSize} /> Call {toCall}</span>
             </button>
           )}
 
@@ -2999,15 +3015,16 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               onClick={() => performAction("bet20")}
               aria-label="Bet 20 tokens"
               data-action="bet20"
-              className="px-5 py-3 rounded-xl font-bold text-sm
+              className={`px-5 py-3 rounded-xl font-bold text-sm
               bg-gradient-to-r from-yellow-500/30 to-amber-400/15
               border border-yellow-400/55
               text-yellow-200
               hover:shadow-[0_0_25px_rgba(255,215,0,0.5)]
               transition-colors active:scale-95
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60"
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60
+              ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
-              <span className="inline-flex items-center gap-1.5"><IconCoins size={14} /> Bet $20</span>
+              <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Bet $20</span>
             </button>
           )}
 
@@ -3020,16 +3037,17 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             }}
             aria-label="Raise"
             data-action="raise"
-            className="px-6 py-3.5 rounded-xl font-black text-base
+            className={`px-6 py-3.5 rounded-xl font-black text-base
             bg-gradient-to-r from-[#ff00cc] via-fuchsia-500 to-pink-500
             border-2 border-[#ff00cc]/70
             text-black
             shadow-[0_0_28px_rgba(255,0,204,0.55),inset_0_0_8px_rgba(255,255,255,0.2)]
             hover:shadow-[0_0_38px_rgba(255,0,204,0.75)]
             transition-colors active:scale-95
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70"
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70
+            ${isCreatorMode ? `h-[${raiseH}px] ${raiseTextBase}` : ``}`}
           >
-            <span className="inline-flex items-center gap-1.5"><IconArrowUp size={16} /> Raise</span>
+            <span className="inline-flex items-center gap-1.5"><IconArrowUp size={iconSize} /> Raise</span>
           </button>
         </div>
       </div>
@@ -3038,7 +3056,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* ───────────────────────────── */}
       {/* MOBILE ACTION DOCK */}
       {/* ───────────────────────────── */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-[80] px-2 pb-[max(env(safe-area-inset-bottom),8px)]">
+      <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-[80] px-2 pb-[max(env(safe-area-inset-bottom),${isCreatorMode ? 6 : 8}px)]`}>
         
         <div
           className="
@@ -3052,11 +3070,11 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         >
           {/* Turn Header */}
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className="text-xs uppercase tracking-widest text-[#b0b0ff]/60">
+            <div className={`uppercase tracking-widest text-[#b0b0ff]/60 ${isCreatorMode ? `text-sm` : ``}`}>
               Your Turn
             </div>
 
-            <div className="text-sm font-bold text-[#00e5ff]">
+            <div className={`font-bold text-[#00e5ff] ${isCreatorMode ? `text-base` : `text-sm`}`}>
               {canCheck ? "Check Available" : `Call $${toCall}`}
             </div>
           </div>
@@ -3065,14 +3083,15 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => performAction("fold")}
-              className="
-                h-14 rounded-2xl
+              className={`
+                rounded-2xl
                 bg-red-900/60
                 border border-red-500/40
                 text-red-200
                 font-bold text-sm
                 active:scale-95 transition-colors
-              "
+                ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
+              `}
             >
               Fold
             </button>
@@ -3080,28 +3099,30 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             {canCheck ? (
               <button
                 onClick={() => performAction("check")}
-                className="
-                  h-14 rounded-2xl
+                className={`
+                  rounded-2xl
                   bg-[#00e5ff]/20
                   border border-[#00e5ff]/40
                   text-[#00e5ff]
                   font-bold text-sm
                   active:scale-95 transition-colors
-                "
+                  ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
+                `}
               >
                 Check
               </button>
             ) : (
               <button
                 onClick={() => performAction("call")}
-                className="
-                  h-14 rounded-2xl
+                className={`
+                  rounded-2xl
                   bg-[#00e5ff]/20
                   border border-[#00e5ff]/40
                   text-[#00e5ff]
                   font-bold text-sm
                   active:scale-95 transition-colors
-                "
+                  ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
+                `}
               >
                 Call
               </button>
@@ -3113,14 +3134,15 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 setRaiseInputValue(Math.max(raiseAmount, minRaise));
                 setShowRaiseInput(true);
               }}
-              className="
-                h-14 rounded-2xl
+              className={`
+                rounded-2xl
                 bg-[#ff00cc]/20
                 border border-[#ff00cc]/40
                 text-[#ff00cc]
                 font-bold text-sm
                 active:scale-95 transition-colors
-              "
+                ${isCreatorMode ? `h-[${raiseH}px]` : `h-14`}
+              `}
             >
               Raise
             </button>
@@ -3128,19 +3150,20 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
           {/* Quick Action Row */}
           {canUseBetShortcut && (
-            <div className="mt-2">
+            <div className={`mt-2 ${isCreatorMode ? `mt-3` : ``}`}>
               <button
                 onClick={() => performAction("bet20")}
-                className="
-                  w-full h-11 rounded-xl
+                className={`
+                  w-full rounded-xl
                   bg-yellow-500/15
                   border border-yellow-400/30
                   text-yellow-200
                   font-semibold text-sm
                   active:scale-95 transition-colors
-                "
+                  ${isCreatorMode ? `h-[${buttonH}px]` : `h-11`}
+                `}
               >
-                <span className="inline-flex items-center gap-1.5"><IconCoins size={14} /> Quick Bet $20</span>
+                <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Quick Bet $20</span>
               </button>
             </div>
           )}
