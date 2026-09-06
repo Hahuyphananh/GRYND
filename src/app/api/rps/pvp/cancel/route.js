@@ -42,7 +42,7 @@ export async function POST(req) {
 
       await tx
         .update(rpsPvpGames)
-        .set({ status: "cancelled" })
+        .set({ status: "cancelled", endedAt: new Date() })
         .where(eq(rpsPvpGames.id, parsedGameId));
 
       const [user] = await tx

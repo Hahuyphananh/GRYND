@@ -24,6 +24,7 @@ import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../../components/IconAvatar";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
@@ -455,6 +456,8 @@ const prefersReducedMotion = useReducedMotion();
     game?.role === "host"
       ? game?.guestName || t("games.dots_and_boxes.guest_default")
       : game?.hostName || t("games.dots_and_boxes.host_default");
+  const opponentIconKey =
+    game?.role === "host" ? game?.guestIconKey : game?.hostIconKey;
 
   // Emotes — both players already join the dots-and-boxes room, so reuse it.
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
@@ -535,11 +538,12 @@ const prefersReducedMotion = useReducedMotion();
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
         gameName="Dots & Boxes"
-        opponent={{ name: opponentName }}
+        opponent={{ name: opponentName, iconKey: opponentIconKey || null }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -912,8 +916,11 @@ const prefersReducedMotion = useReducedMotion();
                         : "bg-transparent"
                     }`}
                   >
-                    <span className="relative text-xs text-amber-300 font-medium">
-                      {game?.hostName || t("games.dots_and_boxes.host_default")}
+                    <span className="relative inline-flex items-center gap-1.5 text-xs text-amber-300 font-medium">
+                      <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                      <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
+                        {game?.hostName || t("games.dots_and_boxes.host_default")}
+                      </span>
                       {game?.hostPrestigeBadge && (
                         <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
                           {game.hostPrestigeBadge}
@@ -933,8 +940,11 @@ const prefersReducedMotion = useReducedMotion();
                         : "bg-transparent"
                     }`}
                   >
-                    <span className="relative text-xs text-orange-300 font-medium">
-                      {game?.guestName || t("games.dots_and_boxes.guest_default")}
+                    <span className="relative inline-flex items-center gap-1.5 text-xs text-orange-300 font-medium">
+                      <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                      <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
+                        {game?.guestName || t("games.dots_and_boxes.guest_default")}
+                      </span>
                       {game?.guestPrestigeBadge && (
                         <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
                           {game.guestPrestigeBadge}
@@ -1232,13 +1242,12 @@ const prefersReducedMotion = useReducedMotion();
         portrait={dbShell}
         landscape={dbShell}
       />
-      </CreatorModeHost>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. The old win/loss/draw popup is
-          deleted — this is the single end-of-match experience. */}
+          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          recording; compact styling keeps it sized for the phone frame. */}
       {renderResult()}
+      </CreatorModeHost>
     </>
   );
 }

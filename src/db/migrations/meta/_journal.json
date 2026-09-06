@@ -918,6 +918,48 @@
       "when": 1799000000000,
       "tag": "0143_first_game_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1800000000000,
+      "tag": "0144_daily_loss_counter",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1800000000000,
+      "tag": "0145_retention_ended_at_chess_rps",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1800000000000,
+      "tag": "0146_retention_inactivity_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1800000000000,
+      "tag": "0147_shop_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1800000000000,
+      "tag": "0148_battlepass_reward_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1800000000000,
+      "tag": "0149_name_glows",
+      "breakpoints": true
     }
   ]
 }

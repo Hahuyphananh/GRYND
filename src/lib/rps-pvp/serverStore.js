@@ -64,6 +64,7 @@ export async function forfeitRpsPvpGame({ userId, gameId }) {
         winnerId,
         result: forfeiterIsPlayer1 ? "player2" : "player1",
         status: "finished",
+        endedAt: new Date(),
       })
       .where(eq(rpsPvpGames.id, gameId))
       .returning();

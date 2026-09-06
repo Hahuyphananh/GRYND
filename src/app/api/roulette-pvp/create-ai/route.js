@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { createAiMatch } from "../../../../lib/roulette-pvp/serverStore";
+import { attachSeatIdentity } from "../../../../lib/seatIdentity";
 
 function normaliseMatch(match) {
   if (!match) return null;
@@ -51,7 +52,12 @@ export async function POST() {
     }
     return NextResponse.json({
       success: true,
-      data: { match: normaliseMatch(result.match), joined: true },
+      data: {
+        // Seat identity (real name / icon / name color) merged in so
+        // the initial render is already correct before the first poll.
+        match: await attachSeatIdentity(normaliseMatch(result.match)),
+        joined: true,
+      },
     });
   } catch (error) {
     console.error("[roulette-pvp/create-ai] error:", error);

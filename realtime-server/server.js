@@ -494,6 +494,54 @@ setInterval(runCrashArenaStaleSweep, CRASH_ARENA_SWEEP_INTERVAL_MS);
 // route with the optional shared secret. Skipped entirely when no
 // crash-arena table room has any live socket (nothing to un-stall).
 const CRASH_ARENA_AUTOFOLD_INTERVAL_MS = 10_000;
+// Idle liveness cadence for the auto-fold sweep: while no hand is running
+// it backs off from 10s to 60s (the crash sweep below runs the same stall
+// guard at 1s while a hand is active, so this sweep is only a secondary
+// net — its cadence is not correctness-critical).
+const CRASH_ARENA_AUTOFOLD_IDLE_INTERVAL_MS = 60_000;
+
+// ── Adaptive sweep cadence ────────────────────────────────────────────
+// The crash sweep is the game clock for every running Crash Poker hand, so
+// it must tick at 1s while any hand is live. But when nothing is running it
+// previously hit Next.js (and Postgres) every second around the clock —
+// ~86k idle round-trips/day. `crashArenaRunningHands` is an in-process
+// hint for live hands: it is bumped the moment a `crashArena:updated`
+// roundStarted relay is seen (so the 1s clock resumes instantly on a real
+// start) and reconciled to ground truth — the sweep's authoritative
+// scanned count — on every crash sweep, so drift is bounded to one tick.
+// While the hint is 0, both sweeps back off to their idle liveness polls.
+let crashArenaRunningHands = 0;
+// Last time a roundStarted relay was seen — absorbs the commit→emit→scan
+// race so a scan racing a fresh start can't wrongly idle the game clock.
+let crashArenaLastStartSeenAt = 0;
+const CRASH_ARENA_START_SETTLE_MS = 5_000;
+
+let crashArenaCrashSweepTimer = null;
+let crashArenaAutoFoldSweepTimer = null;
+
+function scheduleCrashArenaCrashSweep(overrideDelayMs) {
+  if (crashArenaCrashSweepTimer) clearTimeout(crashArenaCrashSweepTimer);
+  crashArenaCrashSweepTimer = setTimeout(
+    runCrashArenaCrashSweep,
+    overrideDelayMs != null
+      ? overrideDelayMs
+      : crashArenaRunningHands > 0
+        ? CRASH_ARENA_CRASH_SWEEP_INTERVAL_MS
+        : CRASH_ARENA_CRASH_SWEEP_IDLE_INTERVAL_MS,
+  );
+}
+
+function scheduleCrashArenaAutoFoldSweep(overrideDelayMs) {
+  if (crashArenaAutoFoldSweepTimer) clearTimeout(crashArenaAutoFoldSweepTimer);
+  crashArenaAutoFoldSweepTimer = setTimeout(
+    runCrashArenaAutoFoldSweep,
+    overrideDelayMs != null
+      ? overrideDelayMs
+      : crashArenaRunningHands > 0
+        ? CRASH_ARENA_AUTOFOLD_INTERVAL_MS
+        : CRASH_ARENA_AUTOFOLD_IDLE_INTERVAL_MS,
+  );
+}
 
 async function runCrashArenaAutoFoldSweep() {
   try {
@@ -541,10 +589,14 @@ async function runCrashArenaAutoFoldSweep() {
       "[crash-arena] auto-fold sweep failed:",
       err && err.message ? err.message : err,
     );
+  } finally {
+    // Re-arm on the adaptive cadence: 10s while hands run, 60s when idle.
+    scheduleCrashArenaAutoFoldSweep();
   }
 }
 
-setInterval(runCrashArenaAutoFoldSweep, CRASH_ARENA_AUTOFOLD_INTERVAL_MS);
+// Start the auto-fold sweep (first tick at the active cadence).
+scheduleCrashArenaAutoFoldSweep(CRASH_ARENA_AUTOFOLD_INTERVAL_MS);
 
 // ── Crash Arena crash sweep ───────────────────────────────────────────
 // The crash point is generated server-side at hand start and NEVER sent to
@@ -562,6 +614,12 @@ setInterval(runCrashArenaAutoFoldSweep, CRASH_ARENA_AUTOFOLD_INTERVAL_MS);
 // socket is connected, so carry-over + table status stay correct for the
 // next hand.
 const CRASH_ARENA_CRASH_SWEEP_INTERVAL_MS = 1000;
+// Idle liveness cadence: while no hand is running the sweep backs off from
+// 1s to 15s. A `crashArena:updated` roundStarted relay snaps it back to 1s
+// the moment a new hand starts; the idle tick also discovers hands that
+// started without a socket relay (broken-socket host) within 15s. Cuts
+// ~86k idle round-trips/day down to ~5.7k.
+const CRASH_ARENA_CRASH_SWEEP_IDLE_INTERVAL_MS = 15_000;
 
 async function runCrashArenaCrashSweep() {
   try {
@@ -629,15 +687,37 @@ async function runCrashArenaCrashSweep() {
         "checkpoint update(s)",
       );
     }
+
+    // ── Reconcile the running-hand hint against ground truth ───────────
+    // The sweep is the only place that sees the authoritative scanned
+    // count, so it both raises the hint (a hand started without a socket
+    // relay) and lowers it (all hands settled). The settle window absorbs
+    // the commit→emit→scan race so a scan racing a fresh roundStarted
+    // relay can't wrongly idle the game clock.
+    const scanned = Number(data.data?.scanned ?? 0) || 0;
+    if (scanned > 0) {
+      crashArenaRunningHands = scanned;
+    } else if (
+      crashArenaRunningHands > 0 &&
+      Date.now() - crashArenaLastStartSeenAt >= CRASH_ARENA_START_SETTLE_MS
+    ) {
+      crashArenaRunningHands = 0;
+    }
   } catch (err) {
     console.warn(
       "[crash-arena] crash sweep failed:",
       err && err.message ? err.message : err,
     );
+  } finally {
+    // Re-arm on the adaptive cadence: 1s while hands run, 15s when idle.
+    scheduleCrashArenaCrashSweep();
   }
 }
 
-setInterval(runCrashArenaCrashSweep, CRASH_ARENA_CRASH_SWEEP_INTERVAL_MS);
+// Start the crash sweep at the active cadence — a hand may already be in
+// flight (e.g. across a realtime-server restart) and must be picked up
+// immediately; subsequent ticks adapt to the running-hand hint.
+scheduleCrashArenaCrashSweep(CRASH_ARENA_CRASH_SWEEP_INTERVAL_MS);
 
 // ── Generic disconnect grace timer (hex duel / precision / plinko) ────
 // Same model as the crash arena timer above, shared by the 1v1 games.
@@ -1498,6 +1578,17 @@ io.on("connection", (socket) => {
       );
       return;
     }
+    // A hand just started on this table — bump the running-hand hint so the
+    // crash sweep resumes its 1s game-clock cadence immediately if it was
+    // idling at the liveness interval (a fresh hand's first checkpoint is
+    // due within seconds). Duplicate relays only inflate the hint
+    // transiently — the next sweep tick reconciles it to the scanned count.
+    if (payload?.roundStarted === true) {
+      crashArenaRunningHands += 1;
+      crashArenaLastStartSeenAt = Date.now();
+      scheduleCrashArenaCrashSweep();
+    }
+
     const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${tableIdStr}`;
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
     logThrottled("crash-arena:relayUpdate", "[crash-arena] relay update: tableId=",

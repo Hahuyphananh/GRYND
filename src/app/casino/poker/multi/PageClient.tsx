@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
+import IconAvatar from "../../../../components/IconAvatar";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
@@ -69,6 +70,9 @@ type Player = {
   currentBet: number;
   seatIndex?: number; // UI seat index (0..5)
   hasActed?: boolean;
+  // Seat identity — resolved server-side (game-state GET).
+  iconKey?: string | null;
+  nameColor?: string | null;
 };
 
 type Game = {
@@ -1654,7 +1658,14 @@ export default function PokerPage() {
               key={p.id}
               className="rounded border border-cyan-400/30 bg-black/25 p-3"
             >
-              <p className="font-semibold">{p.name}</p>
+              <p className="flex items-center gap-1.5 font-semibold">
+                {p.isAI ? null : (
+                  <IconAvatar iconKey={p.iconKey} name={p.name} size="h-4 w-4" />
+                )}
+                <span style={p.nameColor ? { color: p.nameColor } : undefined}>
+                  {p.name}
+                </span>
+              </p>
               <p className="text-xs text-slate-300">
                 Stack: {p.stack} • Bet: {p.currentBet}
               </p>
@@ -2370,7 +2381,14 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
     `}
                 >
                   <div className="flex justify-between w-full px-1 items-center gap-1">
-                    <span className="relative truncate text-[#ffffff]/90">{occupant.name}{occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}
+                    <span className="relative flex items-center gap-1 truncate text-[#ffffff]/90">
+                      {occupant.isAI ? null : (
+                        <IconAvatar iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
+                      )}
+                      <span className="truncate" style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
+                        {occupant.name}
+                      </span>
+                      {occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}
                       {isPlayer ? (
                         <EmoteBubble emote={myEmote} side="mine" />
                       ) : occupant.id === incomingSenderId ? (

@@ -13,6 +13,7 @@ import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
 } from "../../../../../lib/roulette-pvp/serverStore";
+import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 
 function normaliseMatch(match, viewerId) {
   if (!match) return null;
@@ -99,6 +100,13 @@ export async function GET(req, { params }) {
       );
     }
     const match = result.match;
+    // Real seat identity (username + official icon + equipped name
+    // color) for both seats. One query for both; the AI seat stays null
+    // and the client falls back to its localized "GRYND AI" label.
+    const identity = await getSeatIdentity(
+      match?.player1Id,
+      match?.player2Id,
+    );
     let rounds = [];
     if (match && match.lastSpinResultIndex !== null) {
       rounds = await fetchMatchRounds(matchId);
@@ -106,7 +114,15 @@ export async function GET(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(match, userId),
+        match: {
+          ...normaliseMatch(match, userId),
+          player1Name: identity.player1?.name ?? null,
+          player1IconKey: identity.player1?.iconKey ?? null,
+          player1NameColor: identity.player1?.nameColor ?? null,
+          player2Name: identity.player2?.name ?? null,
+          player2IconKey: identity.player2?.iconKey ?? null,
+          player2NameColor: identity.player2?.nameColor ?? null,
+        },
         rounds: rounds.map((r) => ({
           id: r.id,
           roundNumber: r.roundNumber,

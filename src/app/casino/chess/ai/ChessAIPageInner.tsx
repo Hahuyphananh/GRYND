@@ -12,6 +12,8 @@ import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../components/IconAvatar";
+import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
 import { useChessClock } from "../../../../lib/useChessClock";
@@ -304,6 +306,9 @@ export default function ChessAIPageInner() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Real username / official Grynd icon / equipped name color for the
+  // human seat (client-side game — no server match payload).
+  const myIdentity = useMySeatIdentity();
   const gameId = searchParams.get("gameId");
   const difficultyParam = searchParams.get("difficulty");
   const timerParam = searchParams.get("timer");
@@ -840,7 +845,8 @@ export default function ChessAIPageInner() {
   }
 
   const opponentColor = playerColor === "white" ? "Black" : "White";
-  const playerSideLabel = `You (${playerColor === "white" ? "White" : "Black"})`;
+  const myDisplayName = myIdentity.name || "You";
+  const playerSideLabel = `${myDisplayName} (${playerColor === "white" ? "White" : "Black"})`;
   const aiSideLabel = `AI (${opponentColor})`;
   const isPlayerTurnNow = isPlayersTurn(game);
 
@@ -967,7 +973,8 @@ export default function ChessAIPageInner() {
               {/* AI (OPPONENT) */}
               <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-cyan-300">
+                  <span className="inline-flex items-center gap-1.5 font-bold text-cyan-300">
+                    <IconRobot size={16} className="text-cyan-300" />
                     {aiSideLabel}
                   </span>
                   {oppCaptured.length > 0 && (
@@ -1037,8 +1044,11 @@ export default function ChessAIPageInner() {
               {/* PLAYER */}
               <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-fuchsia-300">
-                    {playerSideLabel}
+                  <span className="inline-flex items-center gap-1.5 font-bold text-fuchsia-300">
+                    <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-5 w-5" />
+                    <span style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}>
+                      {playerSideLabel}
+                    </span>
                   </span>
                   {myCaptured.length > 0 && (
                     <span className="text-lg tracking-tight opacity-80">

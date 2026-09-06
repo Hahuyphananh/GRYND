@@ -70,7 +70,7 @@ export async function POST(req) {
       if (lockedGame.isAiGame) {
         await tx
           .update(chessGames)
-          .set({ status: "expired" })
+          .set({ status: "expired", endedAt: new Date() })
           .where(eq(chessGames.id, gameId));
         return;
       }
@@ -86,6 +86,7 @@ export async function POST(req) {
           .set({
             status: "expired",
             result: allowedResult || "cancelled",
+            endedAt: new Date(),
           })
           .where(eq(chessGames.id, gameId));
         return;
@@ -99,7 +100,7 @@ export async function POST(req) {
         if (!opponentId) {
           await tx
             .update(chessGames)
-            .set({ status: "expired" })
+            .set({ status: "expired", endedAt: new Date() })
             .where(eq(chessGames.id, gameId));
           return;
         }
@@ -120,6 +121,7 @@ export async function POST(req) {
             winnerId: opponentId,
             result: "opponent_left",
             payout: winnerPayout.toString(),
+            endedAt: new Date(),
           })
           .where(eq(chessGames.id, gameId));
 
@@ -179,6 +181,7 @@ export async function POST(req) {
         .set({
           status: "expired",
           ...(allowedResult ? { result: allowedResult } : {}),
+          endedAt: new Date(),
         })
         .where(eq(chessGames.id, gameId));
     });

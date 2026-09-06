@@ -111,12 +111,24 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
       isPvpWin: true,
     });
 
-    // Permanent Prestige — competitive PvP finish (draws refund above and
-    // four-in-a-row has no AI mode, so every paid finish counts).
     const prestigeLoserId =
       locked.hostClerkId === winnerClerkId
         ? locked.guestClerkId
         : locked.hostClerkId;
+
+    // Also record the loser's loss + stake so losses / win_rate / wagered
+    // stay in sync with the winner's win (matches chess / precision).
+    if (prestigeLoserId) {
+      await applyLeaderboardCounters({
+        clerkId: prestigeLoserId,
+        game: "four-in-a-row",
+        betAmount: bet,
+        payout: 0,
+      });
+    }
+
+    // Permanent Prestige — competitive PvP finish (draws refund above and
+    // four-in-a-row has no AI mode, so every paid finish counts).
     await applyPrestigeResult({
       tx,
       clerkId: winnerClerkId,

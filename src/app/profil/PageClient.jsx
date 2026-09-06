@@ -16,6 +16,7 @@ import {
 import IconAvatar from "../../components/IconAvatar";
 import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseBannerModal from "../../components/ChooseBannerModal";
+import ChooseGlowModal from "../../components/ChooseGlowModal";
 import ChooseEmotesModal from "../../components/ChooseEmotesModal";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import ProfileBanner from "../../components/ProfileBanner";
@@ -143,6 +144,11 @@ export default function ProfilePage() {
   // Official icon picker modal (owned Grynd icons only).
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [isBannerPickerOpen, setIsBannerPickerOpen] = useState(false);
+  // Battlepass-earned name glow: currently equipped glow's catalog hex
+  // (null = no glow) — rendered on the profile name + used for the preview.
+  const [isGlowPickerOpen, setIsGlowPickerOpen] = useState(false);
+  const [selectedGlowColor, setSelectedGlowColor] = useState(null);
+  const [selectedGlowName, setSelectedGlowName] = useState(null);
   // In-game emote loadout manager (owned animated emotes, max 9).
   const [isEmotesManagerOpen, setIsEmotesManagerOpen] = useState(false);
 
@@ -191,6 +197,28 @@ export default function ProfilePage() {
         highestTitle: data.highestTitle || "",
       });
     }
+  };
+
+  const loadGlow = async () => {
+    try {
+      const response = await fetch("/api/user/glows", {
+        credentials: "include",
+      });
+      const data = await response.json();
+      if (response.ok && data?.success && Array.isArray(data.ownedGlows)) {
+        const equipped = data.ownedGlows.find((g) => g.equipped) || null;
+        setSelectedGlowColor(equipped?.color || null);
+        setSelectedGlowName(equipped?.name || null);
+      }
+    } catch (err) {
+      console.error("[LOAD_GLOW_ERROR]", err);
+    }
+  };
+
+  const handleEquipGlow = (glow) => {
+    setSelectedGlowColor(glow?.color || null);
+    setSelectedGlowName(glow?.name || null);
+    setIsGlowPickerOpen(false);
   };
 
   const loadSpecialTitles = async () => {
@@ -641,6 +669,7 @@ export default function ProfilePage() {
           loadVipTitles(),
           loadStreakTitles(),
           loadMembership(),
+          loadGlow(),
           loadPrestigeBadge(),
           loadFriends(),
           loadFriendPresence(),
@@ -1123,7 +1152,15 @@ export default function ProfilePage() {
               </button>
               <div>
                 <div className="flex items-center gap-2">
-                  <p>Name : {profileInfo.name || user.fullName || "Unknown user"}</p>
+                  <p
+                    style={
+                      selectedGlowColor
+                        ? { color: selectedGlowColor, textShadow: `0 0 12px ${selectedGlowColor}66` }
+                        : undefined
+                    }
+                  >
+                    Name : {profileInfo.name || user.fullName || "Unknown user"}
+                  </p>
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
                       {membership.title || "GRYND+ Elite"}
@@ -2406,6 +2443,36 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
+              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+                <p className="mb-2 block text-sm text-gray-200">My Name Glow</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditOpen(false);
+                    setIsGlowPickerOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                >
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-sm font-bold text-white/70"
+                    style={
+                      selectedGlowColor
+                        ? {
+                            color: selectedGlowColor,
+                            borderColor: `${selectedGlowColor}66`,
+                            textShadow: `0 0 10px ${selectedGlowColor}66`,
+                          }
+                        : undefined
+                    }
+                  >
+                    Aa
+                  </span>
+                  <span className="flex-1 text-left text-sm text-gray-200">
+                    {selectedGlowName || "Choose Your Name Glow"}
+                  </span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+              </div>
               <label htmlFor="profil-edit-password" className="sr-only">
                 New password (optional)
               </label>
@@ -2495,6 +2562,13 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         onEquipped={(iconKey) =>
           setProfileInfo((prev) => ({ ...prev, selectedIcon: iconKey }))
         }
+      />
+
+      {/* Battlepass-earned name glow picker — owned glows only. */}
+      <ChooseGlowModal
+        open={isGlowPickerOpen}
+        onClose={() => setIsGlowPickerOpen(false)}
+        onEquipped={handleEquipGlow}
       />
 
       {/* In-game emote loadout manager — equipped animated emotes (max 9). */}

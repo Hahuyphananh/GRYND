@@ -14,6 +14,8 @@ import {
 } from "../../../../lib/fourInARow";
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../components/IconAvatar";
+import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 
 const HUMAN_PLAYER = 1 as const;
 const AI_PLAYER = 2 as const;
@@ -171,6 +173,10 @@ function pickAiMove(board: FourInARowBoard): number {
 export default function FourInARowVsAiPage() {
   const router = useRouter();
   const posthog = usePostHog();
+  // Real username / official Grynd icon / equipped name color for the
+  // human seat (client-side game — no server match payload).
+  const myIdentity = useMySeatIdentity();
+  const myDisplayName = myIdentity.name || "You";
   const [board, setBoard] = useState<FourInARowBoard>(() => createEmptyBoard());
   const [status, setStatus] = useState<"playing" | "won" | "lost" | "draw">(
     "playing",
@@ -348,7 +354,13 @@ export default function FourInARowVsAiPage() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                <span className="text-xs text-white/70">You</span>
+                <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
+                <span
+                  className="text-xs text-white/70"
+                  style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}
+                >
+                  {myDisplayName}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-purple-400" />

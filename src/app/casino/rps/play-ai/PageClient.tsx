@@ -32,6 +32,8 @@ import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
+import IconAvatar from "../../../../components/IconAvatar";
+import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { RockFistIcon } from "../../../../components/icons/CustomIcons";
 import {
   IconHandStop,
@@ -105,6 +107,10 @@ type TutorialState =
 
 export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boolean }) {
   const router = useRouter();
+  // Real username / official Grynd icon / equipped name color for the
+  // human seat (client-side game — no server match payload).
+  const myIdentity = useMySeatIdentity();
+  const myDisplayName = myIdentity.name || "You";
 
   const [myWins, setMyWins] = useState(0);
   const [aiWins, setAiWins] = useState(0);
@@ -357,7 +363,19 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
 
         {/* Round tracker — blue won / red lost */}
         <div className="w-full max-w-md rounded-2xl border border-cyan-700/30 bg-black/30 px-4 py-3 backdrop-blur-xl">
-          <RoundMarkers total={TOTAL_ROUNDS} myWins={myWins} oppWins={aiWins} myLabel="You" oppLabel="AI" />
+          <div className="mb-2 flex items-center justify-center gap-5 text-xs font-semibold text-[#a8f4ff]">
+            <span className="inline-flex items-center gap-1.5">
+              <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
+              <span style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}>
+                {myDisplayName}
+              </span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <IconRobot size={14} className="text-cyan-300" />
+              AI
+            </span>
+          </div>
+          <RoundMarkers total={TOTAL_ROUNDS} myWins={myWins} oppWins={aiWins} myLabel={myDisplayName} oppLabel="AI" />
         </div>
 
         {/* Onboarding tutorial — one contextual hint before the first throw,

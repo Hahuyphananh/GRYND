@@ -5,6 +5,7 @@ import { oddsGames } from "../../../../../db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { viewForPlayer } from "../../../../../lib/odds";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
+import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 
 export async function GET() {
   try {
@@ -44,6 +45,13 @@ export async function GET() {
     const opponentId = isPlayer1 ? game.player2Id : game.player1Id;
     const state = game.gameState as PvPInteractiveOddsState | null;
 
+    // Full seat identity (real username + official icon + equipped name
+    // color) for both seats — one shared query. The AI seat (never in
+    // this PvP-only route, but defensively) resolves to nulls.
+    const identity = await getSeatIdentity(game.player1Id, game.player2Id);
+    const mySeat = isPlayer1 ? identity.player1 : identity.player2;
+    const oppSeat = isPlayer1 ? identity.player2 : identity.player1;
+
     // Phase-aware: has the user already submitted their part of the
     // current phase (number in "pick", prediction in "predict")?
     const userHasPendingPick =
@@ -62,6 +70,12 @@ export async function GET() {
         wager: game.wager,
         isPlayer1,
         opponentId,
+        myName: mySeat?.name ?? null,
+        myIconKey: mySeat?.iconKey ?? null,
+        myNameColor: mySeat?.nameColor ?? null,
+        opponentName: oppSeat?.name ?? null,
+        opponentIconKey: oppSeat?.iconKey ?? null,
+        opponentNameColor: oppSeat?.nameColor ?? null,
         gameState: state ? viewForPlayer(state, isPlayer1) : null,
         rounds: state?.rounds ?? [],
         gameOver: state?.gameOver ?? false,

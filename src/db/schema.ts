@@ -305,6 +305,13 @@ export const users = pgTable("users", {
   weeklyWon: bigint("weekly_won", { mode: "number" }).default(0).notNull(),
   weeklyProfit: bigint("weekly_profit", { mode: "number" }).default(0).notNull(),
   weeklyWins: integer("weekly_wins").default(0).notNull(),
+  // Daily responsible-play counters (UTC day). daily_net = daily_won -
+  // daily_wagered mirrors the bet-history tokenDiff sum the daily-loss
+  // guard used to compute. Written only on real-money settlement
+  // (leaderboardCounters.js + the PvP server stores) and reset to 0 at
+  // midnight UTC by GET /api/jobs/daily-reset.
+  dailyWagered: bigint("daily_wagered", { mode: "number" }).default(0).notNull(),
+  dailyWon: bigint("daily_won", { mode: "number" }).default(0).notNull(),
   selectedTitle: text("selected_title").default(null),
   highestTitle: text("highest_title").default(null),
   selectedSpecialTitle: text("selected_special_title").default(null),
@@ -326,6 +333,10 @@ export const users = pgTable("users", {
   // Defaults to the official default icon key; NULL/invalid/disabled
   // values fall back to the default at read time.
   selectedIcon: varchar("selected_icon", { length: 120 }).default("default"),
+  // Official Grynd name glow the user has equipped (battlepass-earned,
+  // catalog-backed). NULL = no glow. Resolved through the `glows` catalog
+  // (src/lib/glows.ts) — never an arbitrary client-supplied color.
+  selectedGlow: varchar("selected_glow", { length: 120 }),
   // Persistent in-game emote loadout: an ORDERED array of equipped emote
   // keys (max 9, no duplicates, animated catalog emotes only — GG and
   // NICE MOVE are permanent system emotes and are never stored here).
@@ -439,6 +450,84 @@ export const userLoginRewards = pgTable("user_login_rewards", {
   lastClaimedDate: date("last_claimed_date").default(null),
 });
 
+// TOKEN-PRICED ITEM SHOP — consumable inventory + timed effects
+// ==============================================================================
+// Items are bought with tokens (users.balance) and have no cash value. The
+// buy route debits the balance and writes a `spend` row to token_transactions
+// in the same transaction. Consumables (streak shields, quest boosts) sit in
+// user_items with a qty and are auto-consumed by game hooks; timed boosts
+// (2× XP) live in user_item_effects with an expiry — repurchasing EXTENDS
+// the window instead of stacking a second row.
+export const userItems = pgTable(
+  "user_items",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemKey: varchar("item_key", { length: 64 }).notNull(),
+    qty: integer("qty").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserItem: unique("user_items_user_item_unique").on(table.userId, table.itemKey),
+    userItemIdx: index("user_items_user_idx").on(table.userId),
+  })
+);
+
+export const userItemEffects = pgTable(
+  "user_item_effects",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    effectKey: varchar("effect_key", { length: 64 }).notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserEffect: unique("user_item_effects_user_effect_unique").on(
+      table.userId,
+      table.effectKey
+    ),
+    userEffectIdx: index("user_item_effects_user_idx").on(table.userId),
+  })
+);
+
+// PER-LEVEL BATTLEPASS CLAIM JOURNAL
+// ==============================================================================
+// Records which functional battlepass rewards (xp_boost / quest_boost /
+// shield) a player has claimed at each level. Banner/emote/title ownership
+// lives in their own tables (user_banners / user_emotes /
+// user_special_titles); the functional rewards have no other home, and
+// since the track contains many identical items at different levels (ten
+// streak shields), the (user, level, type) uniqueness is what makes each
+// one claimable exactly once. Written only by POST /api/battlepass/claim.
+export const battlepassClaims = pgTable(
+  "battlepass_claims",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    level: integer("level").notNull(),
+    rewardType: varchar("reward_type", { length: 32 }).notNull(),
+    rewardKey: varchar("reward_key", { length: 64 }),
+    claimedAt: timestamp("claimed_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserLevelType: unique("battlepass_claims_user_level_type_unique").on(
+      table.userId,
+      table.level,
+      table.rewardType
+    ),
+    userIdx: index("battlepass_claims_user_idx").on(table.userId),
+  })
+);
+
 export const userStats = pgTable("user_stats", {
   userId: integer("user_id")
     .primaryKey()
@@ -534,6 +623,49 @@ export const userIcons = pgTable(
   },
   (table) => ({
     uniqUserIcon: index("user_icons_user_icon_idx").on(table.userId, table.iconKey),
+  })
+);
+
+// OFFICIAL GRYND NAME GLOW CATALOG + OWNERSHIP
+// ==============================================================================
+// Mirrors the icons ownership pattern: a catalog table (each row is a fixed
+// named color), a per-user ownership join table, and an equipped-item column
+// on `users` (selected_glow). The equipped glow's hex renders on the user's
+// name in chat, outranking the Grynd+ free-form chat_color when both are
+// set. `price_tokens` is reserved for a future token shop (NULL = not for
+// sale).
+export const glows = pgTable("glows", {
+  id: serial("id").primaryKey(),
+  // Stable slug used to claim + equip the glow (matches the `key` on the
+  // battlepass `color` rewards).
+  key: varchar("key", { length: 120 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description").notNull().default(""),
+  // The hex color rendered on the name (e.g. "#00e5ff"). Trusted catalog
+  // data — never accepted from clients.
+  color: varchar("color", { length: 7 }).notNull(),
+  rarity: varchar("rarity", { length: 40 }).notNull().default("Common"),
+  // Reserved for the future token shop; not used for charging yet.
+  priceTokens: integer("price_tokens"),
+  enabled: boolean("enabled").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const userGlows = pgTable(
+  "user_glows",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    glowKey: varchar("glow_key", { length: 120 }).notNull(),
+    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserGlow: index("user_glows_user_glow_idx").on(table.userId, table.glowKey),
   })
 );
 
@@ -902,8 +1034,14 @@ export const chessGames = pgTable("chess_games", {
   status: text("status").notNull().default("waiting"),
   isAiGame: boolean("is_ai_game").default(false).notNull(), // new column
   startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  statusEndedIdx: index("chess_games_status_ended_idx").on(
+    table.status,
+    table.endedAt,
+  ),
+}));
 
 export const chessMoves = pgTable(
   "chess_moves",
@@ -1241,11 +1379,16 @@ export const rpsPvpGames = pgTable(
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }).default("pending").notNull(),
     status: rpsPvpStatusEnum("status").default("active").notNull(),
+    endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
     openGamesIdx: index("rps_pvp_open_games_idx").on(table.player2Id),
     statusIdx: index("rps_pvp_status_idx").on(table.status),
+    statusEndedIdx: index("rps_pvp_games_status_ended_idx").on(
+      table.status,
+      table.endedAt,
+    ),
   })
 );
 

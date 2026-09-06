@@ -28,6 +28,7 @@ import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../../components/IconAvatar";
 import { turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
   IconTarget,
@@ -265,7 +266,9 @@ export default function ConnectFourGamePage() {
     };
 
     pollSpectators();
-    const id = setInterval(pollSpectators, 5000);
+    // The spectator-count window is 20s, so a 15s poll keeps the count
+    // accurate while cutting reads/writes 3x vs. the old 5s cadence.
+    const id = setInterval(pollSpectators, 15000);
 
     let hb;
     if (isSpectator) {
@@ -282,7 +285,10 @@ export default function ConnectFourGamePage() {
         });
       };
       beat();
-      hb = setInterval(beat, 5000);
+      // Heartbeat only needs to land inside the 20s count window — 15s
+      // cadence guarantees that with margin, 3x fewer UPSERTs + cleanup
+      // DELETEs than the old 5s beat.
+      hb = setInterval(beat, 15000);
     }
 
     return () => {
@@ -377,6 +383,8 @@ export default function ConnectFourGamePage() {
       game.role === "host"
         ? game.guestName || "Opponent"
         : game.hostName || "Opponent";
+    const oppIconKey =
+      game.role === "host" ? game.guestIconKey : game.hostIconKey;
     const headline = isDraw
       ? "Draw game — no winner"
       : playerWon
@@ -393,11 +401,12 @@ export default function ConnectFourGamePage() {
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
         gameName="Four in a Row"
-        opponent={{ name: oppName }}
+        opponent={{ name: oppName, iconKey: oppIconKey || null }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -618,6 +627,20 @@ export default function ConnectFourGamePage() {
               {game?.hostName || "Host"} vs {game?.guestName || "Guest"} ·{" "}
               {Number(game?.betAmount || 0).toFixed(2)} tokens
             </p>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+              <span className="inline-flex items-center gap-1.5">
+                <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
+                  {game?.hostName || "Host"}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
+                  {game?.guestName || "Guest"}
+                </span>
+              </span>
+            </p>
           </div>
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${activeTimer <= 10 ? "bg-red-500/20 text-red-300" : "bg-green-500/15 text-green-300"}`}
@@ -822,9 +845,22 @@ export default function ConnectFourGamePage() {
           <div className="casino-surface p-3 rounded-2xl">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <p className="text-white/70 text-sm">
-                  {game?.hostName || "Host"} (Green) vs{" "}
-                  {game?.guestName || "Guest"} (Red)
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/70 text-sm">
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                    <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
+                      {game?.hostName || "Host"}
+                    </span>
+                    <span className="text-white/40">(Green)</span>
+                  </span>
+                  <span className="text-white/40">vs</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                    <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
+                      {game?.guestName || "Guest"}
+                    </span>
+                    <span className="text-white/40">(Red)</span>
+                  </span>
                 </p>
                 <p className="font-bold text-lg">
                   Bet: {Number(game?.betAmount || 0).toFixed(2)} tokens each
@@ -847,8 +883,11 @@ export default function ConnectFourGamePage() {
               <div
                 className={`rounded-lg p-2 border ${game?.currentTurn === "host" ? "border-green-400 bg-green-500/10" : "border-white/15 bg-white/5"}`}
               >
-                <p className="relative text-sm text-white/70">
-                  {game?.hostName || "Host"}
+                <p className="relative flex items-center gap-1.5 text-sm text-white/70">
+                  <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                  <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
+                    {game?.hostName || "Host"}
+                  </span>
                   <EmoteBubble emote={game?.role === "host" ? myEmote : incomingEmote} side={game?.role === "host" ? "mine" : "incoming"} />
                 </p>
                 <p className="text-2xl font-mono font-bold">{hostTimer}s</p>
@@ -856,8 +895,11 @@ export default function ConnectFourGamePage() {
               <div
                 className={`rounded-lg p-2 border ${game?.currentTurn === "guest" ? "border-red-400 bg-red-500/10" : "border-white/15 bg-white/5"}`}
               >
-                <p className="relative text-sm text-white/70">
-                  {game?.guestName || "Guest"}
+                <p className="relative flex items-center gap-1.5 text-sm text-white/70">
+                  <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                  <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
+                    {game?.guestName || "Guest"}
+                  </span>
                   <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                 </p>
                 <p className="text-2xl font-mono font-bold">{guestTimer}s</p>
@@ -990,14 +1032,12 @@ export default function ConnectFourGamePage() {
       portrait={c4Shell}
       landscape={c4Shell}
     />
-    </CreatorModeHost>
 
     {/* Post-match result screen — shared PvpResultScreen (UX plan
-        P3-3), mounted OUTSIDE CreatorModeHost so the recording
-        viewport never captures it. The old win/loss popup is
-        deleted — this is the single end-of-match experience; the
-        coordinated replay flow (auto-quit countdown) is unchanged. */}
+        P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+        recording; compact styling keeps it sized for the phone frame. */}
     {renderResult()}
+    </CreatorModeHost>
     </>
   );
 }

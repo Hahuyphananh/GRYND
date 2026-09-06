@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 
 const HOUSE_EDGE_PERCENT = 10;
 
@@ -47,18 +48,13 @@ export async function GET(req) {
     game.player1Id === userId ? game.player1Choice : game.player2Choice;
   const opponentChoice =
     game.player1Id === userId ? game.player2Choice : game.player1Choice;
-  const [player1, player2] = await Promise.all([
-    db.query.users.findFirst({
-      where: eq(users.clerkId, game.player1Id),
-      columns: { name: true },
-    }),
-    game.player2Id
-      ? db.query.users.findFirst({
-          where: eq(users.clerkId, game.player2Id),
-          columns: { name: true },
-        })
-      : Promise.resolve(null),
-  ]);
+  // Full seat identity (real username + official icon + equipped name
+  // color) for both seats — one query via the shared resolver. A seat
+  // with no user row (never happens in RPS PvP, but defensively) falls
+  // back to null and the client keeps its label.
+  const identity = await getSeatIdentity(game.player1Id, game.player2Id);
+  const player1 = identity.player1;
+  const player2 = identity.player2;
 
   let newBalance;
   if (game.status === "finished" || game.status === "cancelled") {
@@ -76,6 +72,12 @@ export async function GET(req) {
   const myName = game.player1Id === userId ? player1?.name : player2?.name;
   const opponentName =
     game.player1Id === userId ? player2?.name : player1?.name;
+  const myIconKey = game.player1Id === userId ? player1?.iconKey : player2?.iconKey;
+  const myNameColor = game.player1Id === userId ? player1?.nameColor : player2?.nameColor;
+  const opponentIconKey =
+    game.player1Id === userId ? player2?.iconKey : player1?.iconKey;
+  const opponentNameColor =
+    game.player1Id === userId ? player2?.nameColor : player1?.nameColor;
 
   return NextResponse.json({
     success: true,
@@ -86,8 +88,16 @@ export async function GET(req) {
       player2Id: game.player2Id,
       player1Name: player1?.name ?? "Player 1",
       player2Name: player2?.name ?? "Player 2",
+      player1IconKey: player1?.iconKey ?? null,
+      player2IconKey: player2?.iconKey ?? null,
+      player1NameColor: player1?.nameColor ?? null,
+      player2NameColor: player2?.nameColor ?? null,
       myName: myName ?? "You",
       opponentName: opponentName ?? "Opponent",
+      myIconKey: myIconKey ?? null,
+      myNameColor: myNameColor ?? null,
+      opponentIconKey: opponentIconKey ?? null,
+      opponentNameColor: opponentNameColor ?? null,
       houseEdgePercent: HOUSE_EDGE_PERCENT,
       betAmount,
       pot,

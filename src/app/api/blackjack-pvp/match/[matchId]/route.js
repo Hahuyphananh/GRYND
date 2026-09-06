@@ -34,6 +34,7 @@ import { auth } from "@clerk/nextjs/server";
 import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
+  getMatchSeatIdentity,
   playAiTurn,
   viewerPlayerState,
 } from "../../../../../lib/blackjack-pvp/serverStore";
@@ -112,6 +113,13 @@ export async function GET(req, { params }) {
 
     const viewerIsPlayer1 = match.player1Id === userId;
 
+    // Real seat identity (username + official icon + equipped name
+    // color) for both seats. One query for both; AI seat stays null.
+    const identity = await getMatchSeatIdentity(
+      match.player1Id,
+      match.player2Id,
+    );
+
     // Active match hands stay seat-scrubbed — the in-play view still
     // shows the "Opponent Playing…" placeholder. Reveal happens
     // exclusively in the resolved `rounds` history array (below).
@@ -158,6 +166,15 @@ export async function GET(req, { params }) {
           id: match.id,
           player1Id: match.player1Id,
           player2Id: match.player2Id,
+          // Seat identity — real username / official icon / equipped
+          // name color (glow > premium chat color). Null for the AI
+          // seat; the client falls back to its localized label.
+          player1Name: identity.player1?.name ?? null,
+          player1IconKey: identity.player1?.iconKey ?? null,
+          player1NameColor: identity.player1?.nameColor ?? null,
+          player2Name: identity.player2?.name ?? null,
+          player2IconKey: identity.player2?.iconKey ?? null,
+          player2NameColor: identity.player2?.nameColor ?? null,
           isAi: Boolean(match.isAi),
           stakeAmount: Number(match.stakeAmount),
           status: match.status,

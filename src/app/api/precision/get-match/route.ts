@@ -6,10 +6,11 @@
 // immediately after a host creates a lobby.
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { users } from "../../../../db/schema";
+import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 import {
   precisionLobbyStore,
   precisionMatchStore,
@@ -17,18 +18,26 @@ import {
 import type { PrecisionState } from "../../../../lib/precision/types";
 
 /**
- * Server-authoritative prestige badge decoration for the players in a
- * precision state payload. Only the resolved label (or nothing) leaves
- * the server; raw prestige columns never reach the client.
+ * Server-authoritative seat-identity decoration for the players in a
+ * precision state payload: prestige badge + official Grynd icon key +
+ * equipped name color (battlepass glow wins; the Grynd+ chat color only
+ * surfaces for active members). Only the resolved labels leave the
+ * server; raw columns never reach the client. Non-user ids (the AI
+ * sentinel "AI_BOT") keep nulls so the client falls back to its label.
  */
 async function decoratePlayerBadges<T extends { userId: string }>(
   players: T[],
-): Promise<(T & { prestigeBadge: string | null })[]> {
+): Promise<(T & { prestigeBadge: string | null; iconKey: string | null; nameColor: string | null })[]> {
   const humanIds = players
-    .filter((p) => p.userId && p.userId !== "opponent")
+    .filter((p) => p.userId && p.userId !== "opponent" && p.userId !== "AI_BOT")
     .map((p) => p.userId);
   if (humanIds.length === 0) {
-    return players.map((p) => ({ ...p, prestigeBadge: null }));
+    return players.map((p) => ({
+      ...p,
+      prestigeBadge: null,
+      iconKey: null,
+      nameColor: null,
+    }));
   }
   const rows = await db
     .select({
@@ -36,10 +45,27 @@ async function decoratePlayerBadges<T extends { userId: string }>(
       xp: users.xp,
       prestigeLevel: users.prestigeLevel,
       showPrestigeBadge: users.showPrestigeBadge,
+      iconKey: users.selectedIcon,
+      chatColor: users.chatColor,
+      glowColor: glows.color,
+      isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
     })
     .from(users)
+    .leftJoin(
+      glows,
+      and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+    )
+    .leftJoin(
+      tokenSubscriptions,
+      and(
+        eq(tokenSubscriptions.clerkId, users.clerkId),
+        inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+      ),
+    )
     .where(inArray(users.clerkId, humanIds));
   const badgeByUser = new Map<string, string | null>();
+  const iconByUser = new Map<string, string | null>();
+  const colorByUser = new Map<string, string | null>();
   for (const row of rows) {
     badgeByUser.set(
       String(row.clerkId),
@@ -49,10 +75,19 @@ async function decoratePlayerBadges<T extends { userId: string }>(
         showPrestigeBadge: row.showPrestigeBadge,
       }),
     );
+    iconByUser.set(String(row.clerkId), row.iconKey || null);
+    colorByUser.set(
+      String(row.clerkId),
+      row.glowColor ||
+        (Boolean(row.isPremium) ? row.chatColor || null : null) ||
+        null,
+    );
   }
   return players.map((p) => ({
     ...p,
     prestigeBadge: badgeByUser.get(String(p.userId)) ?? null,
+    iconKey: iconByUser.get(String(p.userId)) ?? null,
+    nameColor: colorByUser.get(String(p.userId)) ?? null,
   }));
 }
 

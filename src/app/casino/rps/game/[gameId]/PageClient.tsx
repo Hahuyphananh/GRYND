@@ -22,6 +22,7 @@ import Footer from "../../../../../components/Footer";
 import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../../components/IconAvatar";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
@@ -66,6 +67,10 @@ export default function RPSPvpGamePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [myName, setMyName] = useState("You");
   const [opponentName, setOpponentName] = useState("Opponent");
+  const [myIconKey, setMyIconKey] = useState<string | null>(null);
+  const [myNameColor, setMyNameColor] = useState<string | null>(null);
+  const [opponentIconKey, setOpponentIconKey] = useState<string | null>(null);
+  const [opponentNameColor, setOpponentNameColor] = useState<string | null>(null);
   const [player1Id, setPlayer1Id] = useState<string | null>(null);
   const [player2Id, setPlayer2Id] = useState<string | null>(null);
   const [myChoice, setMyChoice] = useState<Choice | null>(null);
@@ -146,6 +151,10 @@ export default function RPSPvpGamePage() {
         setPlayer2Id(game.player2Id || null);
         setMyName(game.myName || "You");
         setOpponentName(game.opponentName || "Opponent");
+        setMyIconKey(game.myIconKey || null);
+        setMyNameColor(game.myNameColor || null);
+        setOpponentIconKey(game.opponentIconKey || null);
+        setOpponentNameColor(game.opponentNameColor || null);
         setMyChoice(game.myChoice || null);
         setOpponentChoice(game.opponentChoice || null);
         setRoundsWon1(game.roundsWon1 || 0);
@@ -328,11 +337,15 @@ export default function RPSPvpGamePage() {
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
         gameName="Rock Paper Scissors"
-        opponent={{ name: opponentName || "Opponent" }}
+        opponent={{
+          name: opponentName || "Opponent",
+          iconKey: opponentIconKey,
+        }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -542,8 +555,16 @@ export default function RPSPvpGamePage() {
 
         <div className="w-full max-w-2xl flex flex-col items-center gap-4">
           <div className="w-full flex items-center justify-between sm:justify-center gap-4 sm:gap-10 text-xs sm:text-sm text-[#a8f4ff] font-semibold px-2">
-            <span className="relative">{myName}<EmoteBubble emote={myEmote} side="mine" /></span>
-            <span className="relative">{opponentName}<EmoteBubble emote={incomingEmote} /></span>
+            <span className="relative inline-flex items-center gap-1.5">
+              <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
+              <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
+              <EmoteBubble emote={myEmote} side="mine" />
+            </span>
+            <span className="relative inline-flex items-center gap-1.5">
+              <IconAvatar iconKey={opponentIconKey} name={opponentName} size="h-4 w-4" />
+              <span style={opponentNameColor ? { color: opponentNameColor } : undefined}>{opponentName}</span>
+              <EmoteBubble emote={incomingEmote} />
+            </span>
           </div>
 
           <div className="flex items-center justify-center gap-4 sm:gap-8 flex-wrap">
@@ -661,13 +682,12 @@ export default function RPSPvpGamePage() {
       />
       </div>
       </CreatorResponsiveLayout>
-      </CreatorModeHost>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. The old inline finished block is
-          deleted — this is the single end-of-match experience. */}
+          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          recording; compact styling keeps it sized for the phone frame. */}
       {renderResult()}
+      </CreatorModeHost>
 
       <Footer />
     </div>

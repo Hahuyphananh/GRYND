@@ -88,14 +88,19 @@ export async function POST(req: Request) {
         })
         .where(eq(oddsGames.id, gameId));
 
-      // Track leaderboard — AI-mode wins/losses use the actual wager value
-      // for visibility, but the payout column on the game is 0.
-      await applyLeaderboardCounters({
-        clerkId: userId,
-        game: "odds",
-        betAmount: game.wager,
-        payout: recordedPayout,
-      }).catch(() => {});
+      // AI games are free play (wager is never deducted) — skip the stats
+      // pipeline entirely so beating the AI no longer records a phantom
+      // loss (payout 0) in user_stats / quests. Real PvP games settle via
+      // /api/odds/pvp/* instead. This route is AI-only (guarded above), so
+      // the isAi guard keeps it defensive.
+      if (!game.isAi) {
+        await applyLeaderboardCounters({
+          clerkId: userId,
+          game: "odds",
+          betAmount: game.wager,
+          payout: recordedPayout,
+        }).catch(() => {});
+      }
 
       return { winner, player1Won, payout: recordedPayout };
     });

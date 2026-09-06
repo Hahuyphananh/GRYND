@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { createOrJoin } from "../../../../lib/roulette-pvp/serverStore";
+import { attachSeatIdentity } from "../../../../lib/seatIdentity";
 import { logError } from "../../../../lib/logError";
 
 function normaliseMatch(match) {
@@ -102,7 +103,9 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(result.match),
+        // Seat identity (real name / icon / name color) merged in so
+        // the initial render is already correct before the first poll.
+        match: await attachSeatIdentity(normaliseMatch(result.match)),
         joined: Boolean(result.joined),
       },
     });

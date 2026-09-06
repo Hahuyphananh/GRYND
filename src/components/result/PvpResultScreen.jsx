@@ -127,6 +127,12 @@ export default function PvpResultScreen({
   onReturnToLobby = null,
   onDismiss = null,
   dismissLabel = "View Match Results",
+  // Compact creator-frame mode (UX: the shared result screen mounted
+  // INSIDE the Creator Mode recording viewport). The recording frame is
+  // a 390px-wide phone viewport zoomed to fill the output, so the panel
+  // and its type scale down to fit the narrow frame instead of rendering
+  // at desktop size.
+  compact = false,
 }) {
   const shouldReduce = useReducedMotion();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -193,11 +199,17 @@ export default function PvpResultScreen({
           role="dialog"
           aria-modal="true"
           aria-label={`Match result — ${style.label}`}
-          className="fixed inset-0 z-[95] flex items-center justify-center overflow-y-auto bg-black/80 px-3 py-6 backdrop-blur-sm sm:px-4"
+          className={`fixed inset-0 z-[95] flex items-center justify-center overflow-y-auto bg-black/80 px-3 py-6 backdrop-blur-sm sm:px-4 ${
+            compact ? "!px-2 !py-3" : ""
+          }`}
         >
           <motion.div
             {...withReducedMotion(shouldReduce, panelMotion)}
-            className={`relative w-full max-w-md rounded-2xl border-2 bg-gradient-to-b p-5 text-center sm:p-6 ${style.gradient}`}
+            className={`relative w-full rounded-2xl border-2 bg-gradient-to-b text-center ${style.gradient} ${
+              compact
+                ? "max-w-[22rem] p-3.5"
+                : "max-w-md p-5 sm:p-6"
+            }`}
           >
             {/* Outcome header */}
             <div className="relative">
@@ -207,30 +219,38 @@ export default function PvpResultScreen({
                 transition={{ type: "spring", stiffness: 280, damping: 14, delay: 0.08 }}
                 className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-black/30"
               >
-                <OutcomeIcon size={44} className={style.glow} aria-hidden="true" />
+                <OutcomeIcon size={compact ? 30 : 44} className={style.glow} aria-hidden="true" />
               </motion.div>
               <div
-                className={`text-4xl font-black uppercase tracking-[0.18em] sm:text-5xl ${style.accentText}`}
+                className={`font-black uppercase tracking-[0.18em] ${style.accentText} ${
+                  compact ? "text-2xl" : "text-4xl sm:text-5xl"
+                }`}
               >
                 {style.label}
               </div>
               <div className="mx-auto mt-1 h-1 w-24 rounded-full opacity-80" style={{}}>
                 <div className={`h-full w-full rounded-full ${style.borderTop}`} />
               </div>
-              <p className="mt-2 text-sm text-white/85">{headline ?? style.tagline}</p>
-              {subline && <p className="mx-auto mt-1 max-w-sm text-xs text-white/60">{subline}</p>}
+              <p className={`mt-2 text-white/85 ${compact ? "text-xs" : "text-sm"}`}>
+                {headline ?? style.tagline}
+              </p>
+              {subline && (
+                <p className={`mx-auto mt-1 max-w-sm text-white/60 ${compact ? "text-[10px]" : "text-xs"}`}>
+                  {subline}
+                </p>
+              )}
             </div>
 
             {/* Rewards — only rows whose data actually exists */}
             {hasRewards && (
               <div className="mx-auto mt-5 w-full max-w-xs space-y-2">
                 {tokenDelta !== null && (
-                  <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-4 py-2.5">
+                  <div className={`flex items-center justify-between rounded-xl border border-white/10 bg-black/25 ${compact ? "px-3 py-2" : "px-4 py-2.5"}`}>
                     <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
                       Tokens
                     </span>
                     <span
-                      className={`inline-flex items-center gap-1.5 text-lg font-black ${
+                      className={`inline-flex items-center gap-1.5 font-black ${compact ? "text-base" : "text-lg"} ${
                         tokenDelta > 0
                           ? "text-emerald-300"
                           : tokenDelta < 0

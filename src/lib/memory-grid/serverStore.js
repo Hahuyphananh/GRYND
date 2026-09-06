@@ -42,6 +42,7 @@
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
+import { applyLeaderboardCounters } from "../leaderboardCounters";
 import {
   memoryGridMatches,
   memoryGridRounds,
@@ -1294,28 +1295,38 @@ async function recordPvPResult(tx, match, winnerId, result) {
     result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId) return;
 
+  // Legacy per-seat counters — the public profile reads games_won /
+  // games_lost. The money/streak/daily counters (totalWon, totalWagered,
+  // biggestWin, daily_*, weekly_*, XP/level) are all maintained by
+  // applyLeaderboardCounters below; bumping them here too would double-
+  // count every settled match.
   await tx
     .update(users)
-    .set({ pvpWins: sql`${users.pvpWins} + 1` })
+    .set({ gamesWon: sql`${users.gamesWon} + 1` })
     .where(eq(users.clerkId, winnerId));
   await tx
     .update(users)
-    .set({
-      gamesWon: sql`${users.gamesWon} + 1`,
-      totalWon: sql`${users.totalWon} + ${Number(match.prizePaid) || 0}`,
-      biggestWin:
-        Number(match.prizePaid) > 0
-          ? sql`GREATEST(${users.biggestWin}, ${Number(match.prizePaid)})`
-          : sql`${users.biggestWin}`,
-    })
-    .where(eq(users.clerkId, winnerId));
-  await tx
-    .update(users)
-    .set({
-      gamesLost: sql`${users.gamesLost} + 1`,
-      totalWagered: sql`${users.totalWagered} + ${Number(match.stakeAmount)}`,
-    })
+    .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
+
+  // Canonical stats + quests pipeline (user_stats wins/losses/win_rate/
+  // total_bets, pvp_wins, wagered/won, streaks, battlepass XP, quest
+  // progress). Fire-and-forget on its own pool — never blocks settlement.
+  const stake = Number(match.stakeAmount) || 0;
+  const winnerPayout = Number(match.prizePaid) || 0;
+  applyLeaderboardCounters({
+    clerkId: winnerId,
+    game: "memory-grid",
+    betAmount: stake,
+    payout: winnerPayout,
+    isPvpWin: true,
+  }).catch(() => {});
+  applyLeaderboardCounters({
+    clerkId: loserId,
+    game: "memory-grid",
+    betAmount: stake,
+    payout: 0,
+  }).catch(() => {});
 
   // Permanent Prestige — server-authoritative PvP hook. This runs on the
   // same guarded single-execution path as the stats above (the match flips

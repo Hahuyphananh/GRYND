@@ -26,16 +26,28 @@ import { CacheKeys } from "./keys";
 export const LEADERBOARD_DEBOUNCE_SECONDS = 60;
 
 /**
- * Invalidate ALL leaderboard caches immediately.
+ * Invalidate ALL leaderboard caches immediately (including per-game boards).
  *
  * Used by flows that MUST be instantly fresh (the weekly reset and admin
  * cache-flush), where a stale ranking would be user-visible and misleading.
- *
- * We invalidate ALL leaderboard keys (all-time + weekly + wins + streaks)
- * because a single game can affect every leaderboard category.
  */
 export async function invalidateAllLeaderboards(): Promise<void> {
   await cacheDeletePattern(CacheKeys.leaderboard.all);
+}
+
+/**
+ * Purge the ranking boards every settlement can affect (all-time, weekly,
+ * wins, daily-streak). Per-game boards are deliberately excluded: a board
+ * for game X only changes when game X is played, so unrelated settlements
+ * must not force its full-table aggregate to recompute. It refreshes on its
+ * own read TTL instead.
+ */
+async function purgeLeaderboardRankings(): Promise<void> {
+  await Promise.all(
+    CacheKeys.leaderboard.rankingPatterns.map((pattern) =>
+      cacheDeletePattern(pattern),
+    ),
+  );
 }
 
 /**
@@ -60,7 +72,12 @@ export async function debouncedInvalidateLeaderboards(): Promise<void> {
   // purge now. won === false (another settlement already purged within the
   // window): skip.
   if (won === false) return;
-  await cacheDeletePattern(CacheKeys.leaderboard.all);
+  // Purge only the ranking domains — per-game boards (grynd:lb:game:*) are
+  // left to their read TTL (they only change when their own game is played,
+  // so purging them here would recompute full-table aggregates on every
+  // unrelated settlement burst). The weekly reset / admin flush still wipe
+  // everything via invalidateAllLeaderboards.
+  await purgeLeaderboardRankings();
 }
 
 /**

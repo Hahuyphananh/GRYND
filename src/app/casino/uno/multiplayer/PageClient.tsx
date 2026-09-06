@@ -19,6 +19,7 @@ import {
 import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import IconAvatar from "../../../../components/IconAvatar";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -813,6 +814,7 @@ export default function UnoMultiplayerPage() {
     return (
       <PvpResultScreen
         open
+        compact
         outcome={won ? "win" : "loss"}
         headline={headline}
         subline={subline}
@@ -966,7 +968,14 @@ export default function UnoMultiplayerPage() {
             >
               <p className="text-xs font-bold truncate">
                 <span className="relative inline-flex items-center gap-1">
-                  {player.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {player.name}
+                  {player.type === "ai" ? (
+                    <IconRobot size={14} />
+                  ) : (
+                    <IconAvatar iconKey={player.iconKey} name={player.name} size="h-4 w-4" />
+                  )}
+                  <span style={player.nameColor ? { color: player.nameColor } : undefined}>
+                    {player.name}
+                  </span>
                   {(player as any).prestigeBadge && (
                     <span className="ml-0.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
                       {(player as any).prestigeBadge}
@@ -1071,7 +1080,16 @@ export default function UnoMultiplayerPage() {
             key={entry.playerId}
             className={`rounded-xl px-2 py-1 border ${unoMultiTurnPlayerId === entry.playerId ? "border-[#FFD700] bg-[#FFD700]/20" : "border-white/25 bg-black/20"}`}
           >
-            <p className="text-[10px] font-semibold truncate">{entry.name}</p>
+            <p className="flex items-center justify-center gap-1 text-[10px] font-semibold truncate">
+              {entry.type === "ai" ? (
+                <IconRobot size={10} />
+              ) : (
+                <IconAvatar iconKey={entry.iconKey} name={entry.name} size="h-3 w-3" />
+              )}
+              <span className="truncate" style={entry.nameColor ? { color: entry.nameColor } : undefined}>
+                {entry.name}
+              </span>
+            </p>
             <p className="text-[10px] text-center">{entry.count} cards</p>
           </div>
         ))}
@@ -1386,7 +1404,15 @@ export default function UnoMultiplayerPage() {
                           <div
                             className={`w-28 h-12 rounded-xl border flex items-center justify-center text-xs font-semibold ${occupant.id === unoMultiMyId ? "bg-yellow-300 text-black border-yellow-100" : "bg-[#08142f] border-[#00e5ff]/35"}`}
                           >
-                            <span className="inline-flex items-center gap-1">{occupant.type === "ai" ? <IconRobot size={14} /> : <IconUser size={14} />} {occupant.name}
+                            <span className="inline-flex items-center gap-1">
+                              {occupant.type === "ai" ? (
+                                <IconRobot size={14} />
+                              ) : (
+                                <IconAvatar iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
+                              )}
+                              <span className="truncate" style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
+                                {occupant.name}
+                              </span>
                               {(occupant as any).prestigeBadge && (
                                 <span className="ml-0.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
                                   {(occupant as any).prestigeBadge}
@@ -1516,16 +1542,13 @@ export default function UnoMultiplayerPage() {
           portrait={portraitContent}
           landscape={landscapeContent}
         />
+
+        {/* Post-match result screen — shared PvpResultScreen (UX plan
+            P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+            recording; compact styling keeps it sized for the phone frame. */}
+        {renderResult()}
         </CreatorModeHost>
       )}
-
-      {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. The old bespoke end popup is
-          deleted — this is the single end-of-table experience; the
-          coordinated replay flow (15s window, both-players-agree) is
-          unchanged and surfaced via Play Again / Return to Lobby. */}
-      {renderResult()}
 
       <ReportModal
         isOpen={showReportModal && !!humanOpponent}

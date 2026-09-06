@@ -23,8 +23,9 @@ export const dynamic = "force-dynamic";
  * POST /api/crash-arena/crash-check
  *
  * Internal endpoint driven by the realtime server's crash sweep (see
- * `runCrashArenaCrashSweep` in realtime-server/server.js). Runs every
- * second and acts as the GAME CLOCK for every running Crash Poker hand:
+ * `runCrashArenaCrashSweep` in realtime-server/server.js). Runs on an
+ * adaptive cadence — every second while any hand is running, 15s idle —
+ * and acts as the GAME CLOCK for every running Crash Poker hand:
  *
  *   1. Checkpoint opening — the flight stops at every 0.25x checkpoint and
  *      players get CHECKPOINT_ACTION_DEADLINE_MS to decide. The curve is

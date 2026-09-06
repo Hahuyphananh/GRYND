@@ -1,8 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { db } from "../../../../db/client";import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import { db } from "../../../../db/client";
+import { dotsAndBoxesGames, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
+import { getSeatIdentity } from "../../../../lib/seatIdentity";
 
 import {
   ensureState,
@@ -53,21 +55,19 @@ export async function GET(req) {
     // edge for the current player before returning state.
     game = await settleAutoMoveIfNeeded(game);
 
-    const role = getPlayerRole(game, userId) || "spectator";    const [hostName, guestName, hostBadge, guestBadge] = await Promise.all([
-      db
-        .select({ name: users.name })
-        .from(users)
-        .where(eq(users.clerkId, game.hostClerkId))
-        .limit(1)
-        .then((rows) => rows[0]?.name || null),
-      game.guestClerkId
-        ? db
-            .select({ name: users.name })
-            .from(users)
-            .where(eq(users.clerkId, game.guestClerkId))
-            .limit(1)
-            .then((rows) => rows[0]?.name || null)
-        : null,
+    const role = getPlayerRole(game, userId) || "spectator";
+
+    // Full seat identity (real username + official icon + equipped name
+    // color) for both seats — one shared query. The AI seat (no users
+    // row) resolves to nulls and the client falls back to its label.
+    const identity = await getSeatIdentity(
+      game.hostClerkId,
+      game.guestClerkId,
+    );
+    const hostName = identity.player1?.name || null;
+    const guestName = identity.player2?.name || null;
+
+    const [hostBadge, guestBadge] = await Promise.all([
       db
         .select({
           xp: users.xp,
@@ -122,8 +122,13 @@ export async function GET(req) {
       data: {
         ...game,
         gameState,
-        role,        hostName: hostName || "Host",
+        role,
+        hostName: hostName || "Host",
         guestName: guestName || "Guest",
+        hostIconKey: identity.player1?.iconKey ?? null,
+        guestIconKey: identity.player2?.iconKey ?? null,
+        hostNameColor: identity.player1?.nameColor ?? null,
+        guestNameColor: identity.player2?.nameColor ?? null,
         hostPrestigeBadge: hostBadge || null,
         guestPrestigeBadge: guestBadge || null,
 

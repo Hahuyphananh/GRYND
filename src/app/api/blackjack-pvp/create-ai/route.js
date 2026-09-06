@@ -1,7 +1,11 @@
 // POST — create a free human-vs-AI Blackjack match.
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { createAiMatch, playAiTurn } from "../../../../lib/blackjack-pvp/serverStore";
+import {
+  attachSeatIdentity,
+  createAiMatch,
+  playAiTurn,
+} from "../../../../lib/blackjack-pvp/serverStore";
 
 function normaliseMatch(match) {
   if (!match) return null;
@@ -68,7 +72,9 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseMatch(match),
+        // Seat identity (real name / icon / name color) merged in so
+        // the initial render is already correct before the first poll.
+        match: await attachSeatIdentity(normaliseMatch(match)),
         joined: true,
         aiActions: Number(aiResult.actions || 0),
       },

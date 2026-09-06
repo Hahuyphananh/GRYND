@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { inArray } from "drizzle-orm";
-import { asc, db, eq, resolveExpiredTurn, diceFlushRooms } from "../_lib";import { users } from "../../../../db/schema";
+import { and, inArray } from "drizzle-orm";
+import { asc, db, eq, resolveExpiredTurn, diceFlushRooms } from "../_lib";
+import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { sql } from "drizzle-orm";
 
 
 async function enrichRoomPlayers(room) {
@@ -15,10 +18,27 @@ async function enrichRoomPlayers(room) {
       xp: users.xp,
       prestigeLevel: users.prestigeLevel,
       showPrestigeBadge: users.showPrestigeBadge,
+      iconKey: users.selectedIcon,
+      chatColor: users.chatColor,
+      glowColor: glows.color,
+      isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
     })
     .from(users)
+    .leftJoin(
+      glows,
+      and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+    )
+    .leftJoin(
+      tokenSubscriptions,
+      and(
+        eq(tokenSubscriptions.clerkId, users.clerkId),
+        inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES),
+      ),
+    )
     .where(inArray(users.clerkId, humanIds));
   const badgeByUser = new Map();
+  const iconByUser = new Map();
+  const colorByUser = new Map();
   for (const row of rows) {
     badgeByUser.set(
       String(row.clerkId),
@@ -28,6 +48,15 @@ async function enrichRoomPlayers(room) {
         showPrestigeBadge: row.showPrestigeBadge,
       }),
     );
+    iconByUser.set(String(row.clerkId), row.iconKey || "default");
+    // Equipped name color — battlepass glow wins; the Grynd+ chat
+    // color only surfaces for active members (chat-route precedence).
+    colorByUser.set(
+      String(row.clerkId),
+      row.glowColor ||
+        (Boolean(row.isPremium) ? row.chatColor || null : null) ||
+        null,
+    );
   }
   return {
     ...room,
@@ -36,7 +65,12 @@ async function enrichRoomPlayers(room) {
       players: players.map((p) =>
         p.isAI
           ? p
-          : { ...p, prestigeBadge: badgeByUser.get(String(p.userId)) || null },
+          : {
+              ...p,
+              prestigeBadge: badgeByUser.get(String(p.userId)) || null,
+              iconKey: iconByUser.get(String(p.userId)) || "default",
+              nameColor: colorByUser.get(String(p.userId)) || null,
+            },
       ),
     },
   };

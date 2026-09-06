@@ -38,6 +38,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
+import IconAvatar from "../../../../components/IconAvatar";
 import ReportModal from "../../../../components/ReportModal";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -201,7 +202,17 @@ function formatBetDisplay(bet) {
 // `displayOppBets` so it works during the spin animation too (those
 // memos fall back to the just-resolved round's `player1Bets` /
 // `player2Bets` snapshot when the server has cleared the live row).
-function LockedInBetsPanel({ displayMyBets, displayOppBets, spinning }) {
+function LockedInBetsPanel({
+  displayMyBets,
+  displayOppBets,
+  spinning,
+  myName,
+  oppName,
+  myIconKey,
+  oppIconKey,
+  myNameColor,
+  oppNameColor,
+}) {
   const renderColumn = (bets, accent) => {
     const entries = Object.entries(bets || {}).filter(
       ([, v]) => Number(v) > 0,
@@ -274,14 +285,20 @@ function LockedInBetsPanel({ displayMyBets, displayOppBets, spinning }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-yellow-200 mb-1.5">
-            You
+          <div className="mb-1.5 inline-flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-yellow-200">
+            <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
+            <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+              {myName}
+            </span>
           </div>
           {renderColumn(displayMyBets, "yellow")}
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-cyan-200 mb-1.5">
-            Opp
+          <div className="mb-1.5 inline-flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
+            <IconAvatar iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
+            <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+              {oppName}
+            </span>
           </div>
           {renderColumn(displayOppBets, "cyan")}
         </div>
@@ -995,6 +1012,41 @@ export default function RoulettePvpGamePage({ params }) {
   // ── Bet placement (PvP-aware: only allowed when match is bettable
   //    AND you haven't already submitted your bets for this round) ───
   const isPlayer1 = match?.player1Id === user?.id;
+
+  // Seat identity — real username + official Grynd icon + equipped name
+  // color, resolved server-side (getSeatIdentity). Null for the AI seat;
+  // the labels fall back to "You" / "GRYND AI" / "Opponent".
+  const mySeatIdentity = isPlayer1
+    ? {
+        name: match?.player1Name || null,
+        iconKey: match?.player1IconKey || null,
+        nameColor: match?.player1NameColor || null,
+      }
+    : {
+        name: match?.player2Name || null,
+        iconKey: match?.player2IconKey || null,
+        nameColor: match?.player2NameColor || null,
+      };
+  const oppSeatIdentity = match?.isAi
+    ? { name: null, iconKey: null, nameColor: null }
+    : isPlayer1
+      ? {
+          name: match?.player2Name || null,
+          iconKey: match?.player2IconKey || null,
+          nameColor: match?.player2NameColor || null,
+        }
+      : {
+          name: match?.player1Name || null,
+          iconKey: match?.player1IconKey || null,
+          nameColor: match?.player1NameColor || null,
+        };
+  const myDisplayName = mySeatIdentity.name || "You";
+  const oppDisplayName =
+    oppSeatIdentity.name || (match?.isAi ? "GRYND AI" : "Opponent");
+  const mySeatIcon = mySeatIdentity.iconKey;
+  const oppSeatIcon = oppSeatIdentity.iconKey;
+  const myNameColor = mySeatIdentity.nameColor;
+  const oppNameColor = oppSeatIdentity.nameColor;
   // The opponent is whoever occupies the seat we don't hold. Only
   // reportable once a real opponent has joined (player2Id set).
   const opponentClerkId = isPlayer1
@@ -1742,7 +1794,7 @@ export default function RoulettePvpGamePage({ params }) {
           ? prizePaid - stake
           : -stake;
 
-    const oppName = isAi ? "GRYND AI" : "Opponent";
+    const oppName = oppDisplayName;
     const headline = isDraw
       ? "Mutual wipeout — both players eliminated"
       : meWon
@@ -1759,11 +1811,12 @@ export default function RoulettePvpGamePage({ params }) {
     return (
       <PvpResultScreen
         open
+        compact
         outcome={outcome}
         headline={headline}
         subline={subline}
         gameName="Roulette PvP"
-        opponent={{ name: oppName, isAi }}
+        opponent={{ name: oppName, iconKey: oppSeatIcon, isAi }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -1789,7 +1842,7 @@ export default function RoulettePvpGamePage({ params }) {
                     ]
                   : []),
               ]),
-          { label: "Winner", value: isDraw ? "Draw" : meWon ? "You" : "Opponent" },
+          { label: "Winner", value: isDraw ? "Draw" : meWon ? "You" : oppName },
         ]}
         detailsContent={
           rounds.length > 0 ? (
@@ -1857,9 +1910,10 @@ export default function RoulettePvpGamePage({ params }) {
           seats={
             match.status === MATCH_STATUS.WAITING
               ? [
-                  { label: "You", name: "You", occupied: true },
+                  { label: "You", name: myDisplayName, occupied: true },
                   {
                     label: match.isAi ? "GRYND AI" : "Opponent",
+                    name: match.isAi ? "GRYND AI" : oppDisplayName,
                     occupied: false,
                   },
                 ]
@@ -1960,6 +2014,12 @@ export default function RoulettePvpGamePage({ params }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div>
+                    <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/70">
+                      <IconAvatar iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
+                      <span className="max-w-[90px] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+                        {myDisplayName}
+                      </span>
+                    </div>
                     <div
                       className={`text-xl font-bold tabular-nums transition-colors duration-200 ${
                         !Number.isFinite(myEffectivePoints)
@@ -2021,6 +2081,12 @@ export default function RoulettePvpGamePage({ params }) {
                     )}
                   </div>
                   <div>
+                    <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/70">
+                      <IconAvatar iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
+                      <span className="max-w-[90px] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+                        {oppDisplayName}
+                      </span>
+                    </div>
                     <div
                       className={`text-xl font-bold tabular-nums transition-colors duration-200 ${
                         !Number.isFinite(oppEffectivePoints)
@@ -2071,7 +2137,12 @@ export default function RoulettePvpGamePage({ params }) {
                     }`}
                   >
                     {myEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.3)]"><EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" /></span>}
-                    <span>You</span>
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <IconAvatar iconKey={mySeatIcon} name={myDisplayName} size="h-5 w-5" />
+                      <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+                        {myDisplayName}
+                      </span>
+                    </span>
                     {displayMyBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
                     ) : (
@@ -2086,7 +2157,12 @@ export default function RoulettePvpGamePage({ params }) {
                     }`}
                   >
                     {incomingEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]"><EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" /></span>}
-                    <span>Opp</span>
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <IconAvatar iconKey={oppSeatIcon} name={oppDisplayName} size="h-5 w-5" />
+                      <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+                        {oppDisplayName}
+                      </span>
+                    </span>
                     {displayOppBets ? (
                       <CheckIcon className="w-3.5 h-3.5 text-green-200" title="Submitted" />
                     ) : (
@@ -2113,6 +2189,12 @@ export default function RoulettePvpGamePage({ params }) {
                 displayMyBets={displayMyBets}
                 displayOppBets={displayOppBets}
                 spinning={spinning}
+                myName={myDisplayName}
+                oppName={oppDisplayName}
+                myIconKey={mySeatIcon}
+                oppIconKey={oppSeatIcon}
+                myNameColor={myNameColor}
+                oppNameColor={oppNameColor}
               />
             )}
 
@@ -2760,15 +2842,12 @@ export default function RoulettePvpGamePage({ params }) {
         </div>
       </div>
       </CreatorResponsiveLayout>
-      </CreatorModeHost>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3), mounted OUTSIDE CreatorModeHost so the recording
-          viewport never captures it. The old inline match-ended
-          banner is deleted — this is the single end-of-match
-          experience, and it can be dismissed to reveal the final
-          table underneath. */}
+          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          recording; compact styling keeps it sized for the phone frame. */}
       {renderMatchEnd()}
+      </CreatorModeHost>
 
       {/* Animations */}
       <style jsx>{`

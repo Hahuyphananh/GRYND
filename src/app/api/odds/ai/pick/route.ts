@@ -142,6 +142,7 @@ export async function POST(req: Request) {
           player1Won,
           payout: recordedPayout,
           wager: game.wager,
+          isAi: game.isAi,
         };
       }
 
@@ -160,8 +161,11 @@ export async function POST(req: Request) {
       };
     });
 
-    // Track leaderboard OUTSIDE the transaction to avoid deadlocks
-    if (result.gameStatus === "finished") {
+    // Track leaderboard OUTSIDE the transaction to avoid deadlocks.
+    // AI games are free play (wager never deducted) — skip the stats
+    // pipeline so beating the AI no longer records a phantom loss
+    // (payout 0) in user_stats / quests.
+    if (result.gameStatus === "finished" && !(result as any).isAi) {
       await applyLeaderboardCounters({
         clerkId: userId,
         game: "odds",

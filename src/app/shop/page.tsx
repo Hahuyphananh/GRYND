@@ -8,6 +8,7 @@ import ShopBuyClient, {
   type ShopPackage,
   type SubscriptionPlan,
 } from "../../components/ShopBuyClient";
+import ShopItemsClient from "../../components/ShopItemsClient";
 import { db } from "../../db";
 import { tokenPackages, stripeCheckoutSessions, tokenSubscriptionPlans } from "../../db/schema";
 import { resolvePackagePriceCents } from "../../lib/stripe/packages";
@@ -203,6 +204,10 @@ export default async function ShopPage() {
             <p className="mt-4 text-center text-xs text-[#9dd8ff]/50">
               Purchases are processed securely by Stripe. Grynd tokens are virtual and have no cash
               value — non-refundable.
+            </p>
+            <ShopItemsClient />
+            <p className="mt-4 text-center text-xs text-[#9dd8ff]/50">
+              Item Shop purchases are paid with Grynd tokens and have no cash value — non-refundable.
             </p>
           </>
         ) : (

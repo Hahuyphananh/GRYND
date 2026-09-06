@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
-import { chatMessages, specialTitles, tokenSubscriptions, users } from "../../../../db/schema";
+import { chatMessages, glows, specialTitles, tokenSubscriptions, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
@@ -96,6 +96,8 @@ export async function GET(req) {
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
         chatColor: users.chatColor,
+        selectedGlow: users.selectedGlow,
+        glowColor: glows.color,
         premiumStatus: tokenSubscriptions.status,
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
@@ -103,6 +105,7 @@ export async function GET(req) {
       })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
+      .leftJoin(glows, eq(glows.key, users.selectedGlow))
       .leftJoin(
         tokenSubscriptions,
         and(
@@ -150,6 +153,8 @@ export async function GET(req) {
         selectedStreakType,
         dailyStreakCurrent,
         dailyStreakBest,
+        selectedGlow,
+        glowColor,
         premiumStatus,
         xp,
         prestigeLevel,
@@ -162,10 +167,12 @@ export async function GET(req) {
         streakTitle: streakTitle || null,
         premium,
         premiumTitle: premium ? MEMBERSHIP_TITLE : null,
-        // Custom chat color is a membership perk — only surface it for members
+        // Name color precedence: an equipped battlepass glow (any member,
+        // catalog hex) outranks the Grynd+ free-form chat color. The custom
+        // chat color stays a membership perk — only surfaced for members
         // (the column is only ever set through the premium-gated API, but
         // defense in depth: never leak it for non-members).
-        chatColor: premium ? (msg.chatColor || null) : null,
+        chatColor: glowColor || (premium ? (msg.chatColor || null) : null),
       };
     });
 
@@ -216,12 +223,15 @@ export async function POST(req) {
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
         chatColor: users.chatColor,
+        selectedGlow: users.selectedGlow,
+        glowColor: glows.color,
         balance: users.balance,
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
         showPrestigeBadge: users.showPrestigeBadge,
       })
       .from(users)
+      .leftJoin(glows, eq(glows.key, users.selectedGlow))
       .where(eq(users.clerkId, userId))
       .limit(1);
 
@@ -288,7 +298,9 @@ export async function POST(req) {
           streakTitle,
           premium,
           premiumTitle: premium ? MEMBERSHIP_TITLE : null,
-          chatColor: premium ? (appUser?.chatColor || null) : null,
+          // Glow outranks the free-form membership chat color (see GET).
+          chatColor:
+            appUser?.glowColor || (premium ? (appUser?.chatColor || null) : null),
         },
         unlockedSpecialTitles,
       },

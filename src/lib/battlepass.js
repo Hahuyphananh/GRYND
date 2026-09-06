@@ -12,6 +12,7 @@
 // inside a single UPDATE).
 
 import { getNeonSql } from "../db/neon";
+import { getActiveXpMultiplier } from "./shopItems";
 
 export const MAX_LEVEL = 100;
 
@@ -94,8 +95,14 @@ function getSql() {
 // Atomically credit XP and recompute the battlepass level on both
 // `users` and `user_stats` (the two tables the level is read from).
 // Returns the new { level, xp } or null.
+//
+// An active 2× XP Boost (timed shop item) multiplies the granted XP — the
+// multiplier is looked up inside addExp so every XP source (quest claims,
+// onboarding bonuses, any future grant) honors the boost at this single
+// chokepoint.
 export async function addExp(userId, amount) {
-  const xp = Math.max(0, Math.floor(Number(amount) || 0));
+  const xpMultiplier = await getActiveXpMultiplier(userId);
+  const xp = Math.max(0, Math.floor(Number(amount) || 0)) * xpMultiplier;
   if (!xp || !userId) return null;
 
   const rows = await getSql()`

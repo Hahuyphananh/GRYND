@@ -9,6 +9,7 @@ import {
   subscribeToBigWins,
   subscribeToChatMessages,
 } from "../lib/realtime";
+import { upsertChatMessage } from "../lib/chatMessageList";
 import { IconCoin, IconConfetti, IconFlame, IconX } from "@tabler/icons-react";
 
 const MINIMUM_BIG_WIN = 1000000; // 1 million tokens maximum
@@ -185,10 +186,18 @@ export default function ChatWidget() {
     refresh();
   }, [room?.roomType, room?.roomId, isOpen]);
 
+  // Socket.IO fast path: senders broadcast their own POST response (the full
+  // enriched row) via room_event, so listeners append it in place instead of
+  // re-fetching the whole history. Events without a message payload (legacy
+  // tabs still on the old protocol) fall back to a full reload.
   useEffect(() => {
     if (!socket || !room || !isOpen) return;
     const roomKey = `chat:${room.roomType}:${room.roomId}`;
-    const handleChatUpdate = () => {
+    const handleChatUpdate = (payload) => {
+      if (payload?.message?.id != null) {
+        setMessages((prev) => upsertChatMessage(prev, payload.message));
+        return;
+      }
       loadMessages().catch(() => {});
     };
 
@@ -246,16 +255,17 @@ export default function ChatWidget() {
     return unsubscribe;
   }, [isOpen, activeTab]);
 
-  // Supabase Realtime: reload the global room whenever the backend inserts a
-  // message into it (e.g. a message written outside this client's socket
-  // path). The subscription is server-side filtered to room_type=global, so
-  // it only fires for the global chat — game-room chat stays on the socket
-  // `chat:updated` fast path above, cutting realtime message volume.
+  // Supabase Realtime safety net: append messages written outside this
+  // client's socket path. The WAL row is partial (no join-computed fields),
+  // so it merges under — never over — richer rows already in the list; the
+  // socket `chat:updated` broadcast above carries the full row. The
+  // subscription is server-side filtered to room_type=global, so it only
+  // fires for the global chat — game-room chat stays on the socket path.
   useEffect(() => {
     if (!isOpen || activeTab !== "chat" || !room || room.roomType !== "global") return;
     const unsubscribe = subscribeToChatMessages((row) => {
       if (row.roomType !== room.roomType || row.roomId !== room.roomId) return;
-      loadMessages().catch(() => {});
+      setMessages((prev) => upsertChatMessage(prev, row));
     });
     return unsubscribe;
   }, [isOpen, activeTab, room?.roomType, room?.roomId]);
@@ -302,11 +312,18 @@ export default function ChatWidget() {
       }
 
       setMessage("");
-      await loadMessages();
+      // Append the POST response in place (full enriched row) — no re-fetch
+      // of the history — and broadcast it so every client in the room
+      // appends instead of re-fetching too.
+      setMessages((prev) => upsertChatMessage(prev, data.message));
       socket?.emit("room_event", {
         roomId: `chat:${room.roomType}:${room.roomId}`,
         event: "chat:updated",
-        payload: { roomType: room.roomType, roomId: room.roomId },
+        payload: {
+          roomType: room.roomType,
+          roomId: room.roomId,
+          message: data.message,
+        },
       });
     } catch (err) {
       setError(err.message || "Failed to send message.");
@@ -324,11 +341,18 @@ export default function ChatWidget() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Moderation request failed.");
-      await loadMessages();
+      // Soft-delete locally and broadcast a patch so every client marks the
+      // message removed in place — no re-fetch of the history.
+      const patch = { id, isDeleted: true };
+      setMessages((prev) => upsertChatMessage(prev, patch));
       socket?.emit("room_event", {
         roomId: `chat:${room.roomType}:${room.roomId}`,
         event: "chat:updated",
-        payload: { roomType: room.roomType, roomId: room.roomId },
+        payload: {
+          roomType: room.roomType,
+          roomId: room.roomId,
+          message: patch,
+        },
       });
     } catch (err) {
       setError(err.message || "Could not moderate this message.");

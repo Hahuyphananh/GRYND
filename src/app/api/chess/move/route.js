@@ -140,6 +140,7 @@ export async function POST(req) {
             status: "finished",
             winnerId,
             result: isDraw ? "draw" : "win",
+            endedAt: new Date(),
           })
           .where(eq(chessGames.id, normalizedGameId));
 

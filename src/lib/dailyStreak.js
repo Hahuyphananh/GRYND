@@ -2,6 +2,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, userStats } from "../db/schema";
+import { consumeItem, hasItem } from "./shopItems";
 
 /**
  * Updates a user's daily login streak AND weekly streak.
@@ -72,8 +73,17 @@ export async function updateDailyStreak(clerkId) {
       newDailyCurrent = user.dailyStreakCurrent + 1;
       newDailyBest = Math.max(user.dailyStreakBest, newDailyCurrent);
     } else {
-      newDailyCurrent = 1;
-      newDailyBest = user.dailyStreakBest;
+      // Missed a day → the streak would reset. A Daily Streak Shield
+      // (consumable) absorbs exactly one missed day: it is consumed and the
+      // current streak is preserved instead of resetting.
+      const shielded = await consumeItem(user.id, "streak_shield", 1);
+      if (shielded) {
+        newDailyCurrent = user.dailyStreakCurrent;
+        newDailyBest = user.dailyStreakBest;
+      } else {
+        newDailyCurrent = 1;
+        newDailyBest = user.dailyStreakBest;
+      }
     }
   }
 
@@ -86,7 +96,8 @@ export async function updateDailyStreak(clerkId) {
     newWeeklyCurrent = 1;
     newWeeklyBest = 1;
   } else if (user.weekKey !== currentWeekKey) {
-    // New week → reset weekly streak
+    // New week → reset weekly streak (a Daily Streak Shield only protects
+    // the daily login streak, so the weekly reset is unaffected).
     newWeeklyCurrent = 1;
     newWeeklyBest = user.weeklyStreakBest;
   } else {
