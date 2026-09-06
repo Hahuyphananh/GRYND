@@ -105,8 +105,42 @@ function NavigationBar({ currentPath = "" }) {
 
   const isIOS = typeof window !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
+  // Re-read the equipped title from the server. Fired when the profile
+  // page equips/unequips a title so the navbar chip updates instantly.
+  // Also bumps the nav-meta cache timestamp so the short TTL cache can't
+  // serve the stale (previous) title afterwards.
+  const refreshTitleMeta = async () => {
+    try {
+      const titlesRes = await fetch("/api/titles", {
+        credentials: "include",
+      });
+      const titlesData = await titlesRes.json();
+      if (!titlesData.success) return;
+      setProfile((prev) => ({
+        ...prev,
+        // The equipped-title chip shows the Prestige badge first —
+        // always the server-resolved string, never client text.
+        selectedTitle:
+          titlesData.prestigeBadge ||
+          titlesData.selectedSpecialTitle ||
+          titlesData.selectedTitle ||
+          "",
+        streakTitle: titlesData.streakTitle || null,
+        prestigeBadge: titlesData.prestigeBadge || null,
+        prestige: Number(titlesData.prestige) || 0,
+        prestigeUnlocked: Boolean(titlesData.prestigeUnlocked),
+      }));
+      // Invalidate the cached meta so the next mount/refresh fetches
+      // fresh values instead of the pre-change title.
+      try {
+        sessionStorage.setItem(`navmeta:${user?.id ?? ""}:t`, "0");
+      } catch {}
+    } catch {}
+  };
+
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
+    const titleHandler = () => refreshTitleMeta();
     const balanceHandler = (event) => {
       const nextBalance = Number(event?.detail?.balance);
       if (Number.isFinite(nextBalance)) {
@@ -115,11 +149,11 @@ function NavigationBar({ currentPath = "" }) {
     };
 
     window.addEventListener("profileUpdated", handler);
-    window.addEventListener("titleUpdated", handler);
+    window.addEventListener("titleUpdated", titleHandler);
     window.addEventListener("balanceUpdated", balanceHandler);
     return () => {
       window.removeEventListener("profileUpdated", handler);
-      window.removeEventListener("titleUpdated", handler);
+      window.removeEventListener("titleUpdated", titleHandler);
       window.removeEventListener("balanceUpdated", balanceHandler);
     };
   }, []);
@@ -179,7 +213,7 @@ function NavigationBar({ currentPath = "" }) {
                   setProfile((prev) => ({
                     ...prev,
                     selectedTitle: meta.selectedTitle,
-                    streakTitle: meta.streakTitle || prev.streakTitle,
+                    streakTitle: meta.streakTitle ?? prev.streakTitle,
                     prestigeBadge: meta.prestigeBadge ?? prev.prestigeBadge,
                     prestige:
                       typeof meta.prestige === "number"
@@ -228,12 +262,13 @@ function NavigationBar({ currentPath = "" }) {
             if (nextLevel !== null) setLevel(nextLevel);
             setProfile((prev) => ({
               ...prev,
-              selectedTitle: nextTitle || prev.selectedTitle,
-              streakTitle: nextStreak || prev.streakTitle,
-              prestigeBadge: nextPrestigeBadge ?? prev.prestigeBadge,
-              prestige: nextPrestige || prev.prestige,
-              prestigeUnlocked:
-                nextPrestigeUnlocked || prev.prestigeUnlocked,
+              // Empty string means "no title equipped" — never fall back
+              // to the previous title, or unequipping would never clear.
+              selectedTitle: nextTitle,
+              streakTitle: nextStreak,
+              prestigeBadge: nextPrestigeBadge,
+              prestige: nextPrestige,
+              prestigeUnlocked: nextPrestigeUnlocked,
             }));
 
             // Store the cache regardless of partial failures; next reload

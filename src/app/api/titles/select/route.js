@@ -97,8 +97,13 @@ export async function POST(request) {
 
     await db
       .update(users)
+      // Equipping a level/VIP title clears every other title slot —
+      // the user can only ever display one title at a time.
       .set({
         selectedTitle: title,
+        selectedSpecialTitle: null,
+        selectedStreakType: null,
+        showPrestigeBadge: false,
       })
       .where(eq(users.id, dbUser.id));
 
