@@ -2,7 +2,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { crashArenaPlayers, crashArenaTables, crashArenaTransactions, users } from "../db/schema";
 import { CRASH_MAX_BUYIN, CRASH_MIN_WAGER, CRASH_MAX_WAGER, CRASH_MIN_BUYIN_MULTIPLIER } from "./games/crash/constants";
-import { computeBlinds } from "./crash-poker/roundSystem";
 
 export async function createOrJoinCrashArenaDestination({ userId, wager = 10, buyInAmount }: { userId: string; wager?: number; buyInAmount?: number }) {
   const wagerNum = Math.round(Number(wager) * 100) / 100;
@@ -29,8 +28,7 @@ export async function createOrJoinCrashArenaDestination({ userId, wager = 10, bu
       return { match: { id: open.id, tableId: open.id, playerId: player.id }, joined: true };
     }
 
-    const { smallBlind } = computeBlinds(wagerNum);
-    const [table] = await tx.insert(crashArenaTables).values({ name: `$${wagerNum} Crash Arena`, wagerAmount: wagerNum.toFixed(2), minimumBuyin: minimumBuyin.toFixed(2), maxPlayers: 6, hostId: user.id, status: "waiting", isAi: false, isPrivate: false, smallBlind: smallBlind.toFixed(2) }).returning();
+    const [table] = await tx.insert(crashArenaTables).values({ name: `$${wagerNum} Crash Arena`, wagerAmount: wagerNum.toFixed(2), minimumBuyin: minimumBuyin.toFixed(2), maxPlayers: 6, hostId: user.id, status: "waiting", isAi: false, isPrivate: false }).returning();
     const [funded] = await tx.update(users).set({ balance: sql`${users.balance} - ${buyIn}` }).where(and(eq(users.id, user.id), sql`${users.balance} >= ${buyIn}`)).returning({ balance: users.balance });
     if (!funded) return { error: "Insufficient balance", status: 400 };
     const [player] = await tx.insert(crashArenaPlayers).values({ tableId: table.id, userId: user.id, balance: buyIn.toFixed(2), status: "seated" }).returning();

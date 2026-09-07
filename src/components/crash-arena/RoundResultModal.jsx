@@ -4,17 +4,22 @@ import { motion } from "framer-motion";
 import { IconBomb, IconConfetti, IconFlag, IconTarget, IconTrophy } from "@tabler/icons-react";
 
 /**
- * RoundResultModal — shown when a Crash Poker hand ends. Displays the
- * player's own result (folded / busted / won the pot) plus who won and by
- * how much, then advances to the next hand (manual button or auto-dismiss).
+ * RoundResultModal — shown when a Crash Arena hand ends. Displays the
+ * ranked payout table (every folder gets a share by fold order; crash
+ * victims get nothing), the player's own result, and then advances to the
+ * next hand (manual button or auto-dismiss).
  *
- * Winner semantics (fold-order / pot rules):
+ * Winner semantics (v2 rank rules):
  *   • fold-out — exactly one player was still active when everyone else
- *     folded; they win the whole pot ("last player standing").
- *   • crash with 2+ active — the latest successful fold before the crash
- *     wins the whole pot; everyone still active busted.
+ *     folded; they take rank 1 and the pot is split by rank.
+ *   • crash with 2+ active — the LAST player to fold before the crash is
+ *     rank 1; remaining folders rank below by fold order; crash victims
+ *     get nothing.
  *   • nobody folded and 2+ active at the crash — no winner; the pot
  *     carries over to the next hand.
+ *
+ * Payout: pot − 5% fee, split by linear weights — rank r of R gets
+ * weight (R − r + 1).
  *
  * Rendered conditionally by ArenaTable:
  *   {phase === "settling" && results && <RoundResultModal ... />}
@@ -23,7 +28,7 @@ import { IconBomb, IconConfetti, IconFlag, IconTarget, IconTrophy } from "@table
  *   roundNumber — number of the hand that just ended
  *   results     — roundState.results from settleRound
  *   you         — the current player object (from roundState.players) or null
- *   wager       — table wager / big blind (used to show net profit / loss)
+ *   wager       — table wager / ante (used to show net profit / loss)
  *   pot         — the hand pot (used for the carry-over message)
  *   onNextRound — () => void — dismiss + advance to the next hand
  */
@@ -49,32 +54,33 @@ export default function RoundResultModal({
 
   const winner = results?.winner ?? null;
   const winnerMultiplier = results?.winnerMultiplier ?? null;
-  const payout = results?.payout ?? 0;
   const fee = results?.fee ?? 0;
-  const payoutGross = results?.payoutGross ?? payout + fee;
+  const payoutGross = results?.payoutGross ?? 0;
   const carryOver = results?.winner === null ? (results?.carryOver ?? pot) : 0;
-  // The crash caught 2+ active players (true) vs a fold-out (false) — used
-  // to word the winner banner correctly.
-  const crashedWithActive = Array.isArray(results?.activeAtCrash)
-    ? results.activeAtCrash.length > 0
-    : false;
-  // Fold-order win: the winner folded before the crash and outlasted every
-  // other folder (server marks winnerMultiplier = their fold checkpoint).
   const wonByFold = Boolean(results?.wonByFold);
+  // Ranked payouts — sorted rank 1 first (server-authoritative when
+  // provided; the local mirror computes the same numbers otherwise).
+  const payouts = Array.isArray(results?.payouts) ? results.payouts : [];
 
   const youWon = winner !== null && you?.name === winner;
+  const myPayout = you?.userId != null
+    ? payouts.find((p) => p.userId === you.userId)?.amount ?? 0
+    : 0;
+  const myRank = you?.userId != null
+    ? payouts.find((p) => p.userId === you.userId)?.rank ?? null
+    : null;
+  const youCommitted = you?.contributed ?? (you ? wager : 0);
   const youFolded = you?.folded && !youWon;
   const youBusted = you?.busted && !youWon;
-  const youCommitted = you?.contributed ?? (you ? wager : 0);
-  const net = payout - youCommitted;
-  const foldedPlayers = Array.isArray(results?.foldedPlayers) ? results.foldedPlayers : [];
+  const net = myPayout - youCommitted;
   const bustedPlayers = Array.isArray(results?.bustedPlayers) ? results.bustedPlayers : [];
-  // Poker all-in rule refunds: unmatched bets return to the players who
-  // funded them (an all-in winner only wins the tiers they matched).
-  const returns = Array.isArray(results?.returns) ? results.returns : [];
-  const myReturn = you?.userId != null
-    ? returns.find((r) => r.userId === you.userId)?.amount ?? 0
-    : 0;
+
+  const rankLabel = (rank) => {
+    if (rank === 1) return "1st";
+    if (rank === 2) return "2nd";
+    if (rank === 3) return "3rd";
+    return `${rank}th`;
+  };
 
   return (
     <motion.div
@@ -106,7 +112,7 @@ export default function RoundResultModal({
             <p className="inline-flex items-center gap-1.5 text-sm text-[#9dd8ff]">
               <IconTrophy size={16} className="text-[#FFD700]" />
               <span className="font-black text-[#FFD700]">{winner}{youWon ? " (You!)" : ""}</span>{" "}
-              {wonByFold ? "wins the pot — the last fold before the crash" : "wins the pot — everyone else folded"}
+              {wonByFold ? "wins the hand — last fold before the crash" : "wins the hand — last one standing"}
             </p>
             <p className="text-xs text-[#9dd8ff]/80 mt-1">
               {wonByFold ? (
@@ -116,14 +122,12 @@ export default function RoundResultModal({
                 </>
               ) : (
                 <>
-                  Last player standing at{" "}
-                  <span className="font-bold text-[#00ffa6]">{winnerMultiplier?.toFixed(2)}x</span>
-                  {" · "}Pot ${payoutGross.toLocaleString()}
+                  Everyone else folded {" · "}Pot ${payoutGross.toLocaleString()}
                 </>
               )}
             </p>
             <p className="mt-2 text-3xl font-black text-[#00ffa6] drop-shadow-[0_0_16px_rgba(0,255,166,0.6)]">
-              +${payout.toLocaleString()}
+              +${(payouts[0]?.amount ?? 0).toLocaleString()}
             </p>
             {fee > 0 && (
               <p className="text-[10px] text-[#9dd8ff]/60 mt-1">5% platform fee: ${fee.toLocaleString()}</p>
@@ -140,14 +144,73 @@ export default function RoundResultModal({
           </div>
         )}
 
+        {/* ── Ranked payout table ───────────────────────────────────── */}
+        {payouts.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-[#00e5ff]/25 bg-[#050d1f]/70 p-4">
+            <p className="text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-2">
+              Ranked payouts — the later you fold, the bigger your share
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {payouts.map((p) => (
+                <div
+                  key={p.userId ?? p.name ?? `rank-${p.rank}`}
+                  className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${
+                    p.userId === you?.userId
+                      ? "border border-[#FFD700]/40 bg-[#FFD700]/10"
+                      : "bg-white/[0.03]"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-[#d8fbff] font-semibold">
+                    <span
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                        p.rank === 1
+                          ? "bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40"
+                          : "bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/30"
+                      }`}
+                    >
+                      {rankLabel(p.rank)}
+                    </span>
+                    {p.name ?? "Player"}
+                    {p.userId === you?.userId ? " (You)" : ""}
+                  </span>
+                  <span className="font-black text-[#00ffa6] tabular-nums">
+                    +${Number(p.amount || 0).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+              {bustedPlayers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {bustedPlayers.map((name) => (
+                    <span
+                      key={`b-${name}`}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20"
+                    >
+                      {name}: busted — nothing
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── Your result ───────────────────────────────────────────── */}
         {you && (
-          <div className="mt-4 rounded-2xl border border-[#00e5ff]/25 bg-[#050d1f]/70 p-4">
+          <div className="mt-3 rounded-2xl border border-[#00e5ff]/25 bg-[#050d1f]/70 p-4">
             <p className="text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-2">Your Result</p>
             {youWon ? (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-[#d8fbff] font-bold">
-                  <IconTrophy size={16} className="mr-1 inline text-[#FFD700]" /> You won the pot
+                  <IconTrophy size={16} className="mr-1 inline text-[#FFD700]" /> Rank {myRank} — you won the hand
+                </span>
+                <span className="text-lg font-black text-[#00ffa6]">
+                  +${net.toLocaleString()} net
+                </span>
+              </div>
+            ) : myPayout > 0 ? (
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 text-sm text-[#d8fbff] font-bold">
+                  <IconFlag size={15} className="text-yellow-400" /> Rank {myRank} — you folded
                 </span>
                 <span className="text-lg font-black text-[#00ffa6]">
                   +${net.toLocaleString()} net
@@ -172,68 +235,17 @@ export default function RoundResultModal({
             ) : (
               <p className="text-sm text-[#9dd8ff]">You weren&apos;t in this hand.</p>
             )}
-            {youWon && (
+            {myPayout > 0 && (
               <p className="text-xs text-[#00ffa6]/80 mt-2">
-                Pot ${payoutGross.toLocaleString()} minus your ${youCommitted.toLocaleString()} committed ={" "}
-                <strong>+${net.toLocaleString()}</strong> profit <IconConfetti size={14} className="mb-0.5 ml-0.5 inline text-[#00ffa6]" />
+                Your ${youCommitted.toLocaleString()} ante returned ${myPayout.toLocaleString()} from the pot —{" "}
+                <strong>{net >= 0 ? "+" : ""}{net.toLocaleString()}</strong> net <IconConfetti size={14} className="mb-0.5 ml-0.5 inline text-[#00ffa6]" />
               </p>
             )}
-            {myReturn > 0 && (
-              <p className="text-xs text-[#00ffa6]/80 mt-2">
-                Side-pot refund: <strong>+${Number(myReturn).toLocaleString()}</strong> returned — opponents&apos;
-                extra bets beyond your all-in never count against you.
-              </p>
-            )}
-            {!youWon && (youFolded || youBusted) && !myReturn && (
+            {!youWon && myPayout === 0 && (youFolded || youBusted) && (
               <p className="text-xs text-[#9dd8ff]/60 mt-2">
-                Folders and busted players keep only what they already put in the pot.
+                Fold earlier and you lose only your ante — fold later to climb the ranks.
               </p>
             )}
-          </div>
-        )}
-
-        {/* ── Side-pot refunds (poker all-in rule) ──────────────────── */}
-        {returns.length > 0 && (
-          <div className="mt-3 rounded-xl border border-[#00ffa6]/20 bg-[#00ffa6]/5 px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider text-[#00ffa6]/70 mb-1 text-center">
-              Side-pot refunds
-            </p>
-            <div className="flex flex-wrap gap-1.5 justify-center">
-              {returns.map((r) => (
-                <span
-                  key={r.userId ?? r.name ?? "ret"}
-                  className="text-[10px] px-2 py-0.5 rounded-full bg-[#00ffa6]/10 text-[#00ffa6] border border-[#00ffa6]/25"
-                >
-                  {r.name ?? "Player"} +${Number(r.amount || 0).toLocaleString()}
-                </span>
-              ))}
-            </div>
-            <p className="text-[10px] text-[#9dd8ff]/60 mt-1 text-center">
-              Unmatched bets return to the players who made them — an all-in player only wins what they matched.
-            </p>
-          </div>
-        )}
-
-        {/* ── Everyone else (with their fold checkpoints) ───────────── */}
-        {(foldedPlayers.length > 0 || bustedPlayers.length > 0) && (
-          <div className="mt-3 flex flex-wrap gap-1.5 justify-center">
-            {foldedPlayers.map((fp) => (
-              <span
-                key={`f-${fp?.name ?? fp}`}
-                className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-              >
-                {fp?.name ?? fp}
-                {fp?.at != null && `: folded @${Number(fp.at).toFixed(2)}x`}
-              </span>
-            ))}
-            {bustedPlayers.map((name) => (
-              <span
-                key={`b-${name}`}
-                className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20"
-              >
-                {name}: busted
-              </span>
-            ))}
           </div>
         )}
 
@@ -255,4 +267,4 @@ export default function RoundResultModal({
       </motion.div>
     </motion.div>
   );
-}
+}

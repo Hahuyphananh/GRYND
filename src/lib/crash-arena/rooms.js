@@ -59,7 +59,7 @@ export const CRASH_ARENA_TABLE_UPDATED = "lobby:updated";
 /**
  * Socket event name for the dedicated `crashArena:updated` handler in
  * the realtime-server. Clients emit this after a successful API
- * mutation (start-round, cashout, crash/settle, join, leave) so the
+ * mutation (start-round, fold, crash/settle, join, leave) so the
  * realtime server can validate participation and relay
  * `CRASH_ARENA_TABLE_UPDATED` to the rest of the table instantly.
  */

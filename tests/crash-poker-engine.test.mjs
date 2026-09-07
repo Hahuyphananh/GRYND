@@ -1,27 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  computeBlinds,
-  computeOpeningContributions,
   createHand,
-  applyAction,
-  isCheckpointResolved,
-  openNextCheckpoint,
-  expireStaleActions,
-  resumeFlight,
+  applyFold,
   curveMultiplierAt,
-  hasCurveReachedNextCheckpoint,
   isCrashDueAt,
-  computePots,
   resolveHand,
   handFromEntries,
 } from "../src/lib/crash-poker/roundSystem.js";
-import {
-  FIRST_BETTING_CHECKPOINT,
-  CHECKPOINT_STEP,
-  checkpointMultiplier,
-  checkpointIndexAtOrBelow,
-} from "../src/lib/crash-poker/constants.js";
+import { CRASH_GROWTH_RATE, PLATFORM_FEE } from "../src/lib/crash-poker/constants.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -30,1027 +17,316 @@ const SIX_PLAYERS = Array.from({ length: 6 }, (_, i) => ({
   name: `P${i + 1}`,
 }));
 
-/** A brand-new hand with NO betting checkpoint open yet — the flight is
- * climbing from 1.00x toward the first 0.25x checkpoint (1.25x), which the
- * server sweep opens when the curve reaches it. */
-function freshHand({ players = SIX_PLAYERS, bigBlind = 10, dealerPosition = 0 } = {}) {
-  return createHand({ players, bigBlind, dealerPosition });
-}
-
-/** A hand mid-flight with the first betting checkpoint OPEN — the curve
- * reached 1.25x and the flight paused there for decisions. */
-function handAt(opts) {
-  return openNextCheckpoint(freshHand(opts));
-}
-
 function player(hand, userId) {
   return hand.players.find((p) => p.userId === userId);
 }
 
-// ── Blinds & opening contributions ─────────────────────────────────────────
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
 
-test("small blind is half the big blind", () => {
-  assert.equal(computeBlinds(10).smallBlind, 5);
-  assert.equal(computeBlinds(1).smallBlind, 0.5);
-  assert.equal(computeBlinds(0.01).smallBlind, 0.01); // floor at $0.01
-});
-
-test("opening contributions: SB posts SB, BB posts BB, everyone else posts SB (ante)", () => {
-  // Dealer = seat 0 (user 1) → SB = seat 1 (user 2), BB = seat 2 (user 3).
-  const contributions = computeOpeningContributions(SIX_PLAYERS, 0, 5, 10);
-  const byUser = Object.fromEntries(contributions.map((c) => [c.userId, c]));
-  assert.equal(byUser[3].amount, 10); // BB
-  assert.equal(byUser[3].role, "bb");
-  assert.equal(byUser[2].amount, 5); // SB
-  assert.equal(byUser[2].role, "sb");
-  for (const id of [1, 4, 5, 6]) {
-    assert.equal(byUser[id].amount, 5, `user ${id} posts the ante`);
-  }
-});
-
-test("heads-up (2 players): SB is the dealer, BB is the other seat", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  const hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
-  assert.equal(player(hand, 1).role, "sb");
-  assert.equal(player(hand, 1).contributed, 5);
-  assert.equal(player(hand, 2).role, "bb");
-  assert.equal(player(hand, 2).contributed, 10);
-});
-
-test("initial hand: NO checkpoint open — the flight flies to 1.25x before betting opens", () => {
-  // The hand starts with the curve climbing from 1.00x; the first betting
-  // checkpoint (1.25x) is opened lazily (server sweep / first action) once
-  // the curve reaches it — the rocket never offers betting mid-segment.
-  const hand = freshHand({ bigBlind: 10 });
-  assert.equal(hand.checkpointIndex, -1);
-  assert.equal(hand.bettingOpen, false);
-  assert.equal(hand.windowDeadlineAt, null);
-  assert.equal(hand.requiredBet, 10);
-  assert.equal(hand.pot, 5 * 5 + 10); // five antes of $5 + BB $10
-  // Opening the first checkpoint pauses the flight there with a fresh
-  // 30s stall-guard deadline for the decisions.
-  const opened = openNextCheckpoint(hand, hand.flightResumedAt + 1000);
-  assert.equal(opened.checkpointIndex, 0);
-  assert.equal(opened.bettingOpen, true);
-  // Fresh 30s stall-guard deadline for the new window.
-  assert.equal(opened.windowDeadlineAt, hand.flightResumedAt + 1000 + 30_000);
-});
-
-// ── Checkpoint math ─────────────────────────────────────────────────────────
-
-test("checkpoint multipliers step by 0.25 from 1.25", () => {
-  assert.equal(checkpointMultiplier(0), 1.25);
-  assert.equal(checkpointMultiplier(1), 1.5);
-  assert.equal(checkpointMultiplier(2), 1.75);
-  assert.equal(checkpointMultiplier(3), 2.0);
-  assert.equal(checkpointMultiplier(10), 1.25 + 10 * 0.25);
-  assert.equal(FIRST_BETTING_CHECKPOINT, 1.25);
-  assert.equal(CHECKPOINT_STEP, 0.25);
-});
-
-test("checkpoint index at-or-below a multiplier (crash can land between checkpoints)", () => {
-  assert.equal(checkpointIndexAtOrBelow(1.0), -1);
-  assert.equal(checkpointIndexAtOrBelow(1.24), -1);
-  assert.equal(checkpointIndexAtOrBelow(1.25), 0);
-  assert.equal(checkpointIndexAtOrBelow(1.37), 0); // between 1.25 and 1.50
-  assert.equal(checkpointIndexAtOrBelow(1.5), 1);
-  assert.equal(checkpointIndexAtOrBelow(2.0), 3);
-  assert.equal(checkpointIndexAtOrBelow(9.2), Math.floor((9.2 - 1.25) / 0.25));
-});
-
-// ── Betting actions ─────────────────────────────────────────────────────────
-
-test("call matches the required bet (non-blind player tops up ante → BB)", () => {
-  let hand = handAt({ bigBlind: 10 }); // user 4 has ante $5, must call $5
-  const res = applyAction(hand, { userId: 4, action: "call" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(player(hand, 4).contributed, 10);
-  assert.equal(player(hand, 4).lastAction, "call");
-  assert.equal(hand.pot, 40); // 35 opening + 5 call
-});
-
-test("a matched player's call is a check (no extra money)", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // BB player (user 3) is already matched at $10.
-  const res = applyAction(hand, { userId: 3, action: "call" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(player(hand, 3).contributed, 10);
-  assert.equal(player(hand, 3).lastAction, "check");
-  assert.equal(hand.pot, 35); // no money moved
-});
-
-test("fold removes the player and keeps their contribution", () => {
-  let hand = handAt({ bigBlind: 10 });
-  const res = applyAction(hand, { userId: 4, action: "fold" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(player(hand, 4).isActive, false);
-  assert.equal(player(hand, 4).folded, true);
-  assert.equal(player(hand, 4).foldedAtMultiplier, 1.25);
-  assert.equal(hand.pot, 35); // money stays in the pot
-});
-
-test("a raise raises the required contribution and re-opens other players", () => {
-  let hand = handAt({ bigBlind: 10 });
-  const res = applyAction(hand, { userId: 5, action: "raise", raiseTo: 25 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(hand.requiredBet, 25);
-  assert.equal(player(hand, 5).contributed, 25);
-  // Everyone else is now unmatched and can act again.
-  assert.equal(hand.bettingOpen, true);
-  assert.ok(!isCheckpointResolved(hand));
-  const others = hand.players.filter((p) => p.userId !== 5 && p.isActive);
-  assert.ok(others.every((p) => p.contributed < hand.requiredBet));
-});
-
-test("a raise below min (required bet + one big blind) is rejected", () => {
-  const hand = handAt({ bigBlind: 10 });
-  const res = applyAction(hand, { userId: 5, action: "raise", raiseTo: 15 });
-  assert.ok(res.error);
-  assert.match(res.error, /minimum raise/i);
-});
-
-test("a player cannot act twice at the same checkpoint without an intervening raise", () => {
-  let hand = handAt({ bigBlind: 10 });
-  const first = applyAction(hand, { userId: 4, action: "call" });
-  assert.ok(!first.error, first.error);
-  const second = applyAction(first.hand, { userId: 4, action: "fold" });
-  assert.ok(second.error);
-  assert.match(second.error, /already acted/i);
-});
-
-test("checkpoint resolves (betting closes) once every active player has acted", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // Every active player must act at checkpoint 0 — including the BB
-  // (user 3), whose blind only matches the bet. Matching alone doesn't
-  // close betting; the BB still gets a chance to check / raise / fold.
-  for (const id of [1, 2, 3, 4, 5, 6]) {
-    const res = applyAction(hand, { userId: id, action: "call" });
-    assert.ok(!res.error, res.error);
+/** Build a hand and fold a sequence of players: [userId, multiplier][] */
+function handWithFolds(folds, { players = SIX_PLAYERS, wager = 10, carryOver = 0 } = {}) {
+  let hand = createHand({ players, wager, carryOver });
+  for (const [userId, multiplier] of folds) {
+    const res = applyFold(hand, { userId, multiplier });
+    assert.ok(!res.error, `fold of user ${userId} failed: ${res.error}`);
     hand = res.hand;
   }
-  assert.equal(isCheckpointResolved(hand), true);
-  assert.equal(hand.bettingOpen, false);
+  return hand;
+}
+
+// ── Opening (flat ante) ────────────────────────────────────────────────────
+
+test("every player posts the wager as a flat ante — no blinds, no roles", () => {
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10 });
+  assert.equal(hand.wager, 10);
+  assert.equal(hand.pot, 60); // 6 × $10
+  for (const p of hand.players) {
+    assert.equal(p.contributed, 10);
+    assert.equal(p.lastAction, "ante");
+    assert.equal(p.allIn, false);
+    assert.equal(p.isActive, true);
+  }
+  // No roles/blinds ever appear on the hand.
+  assert.equal(hand.smallBlind, undefined);
+  assert.equal(hand.bigBlind, undefined);
+  assert.equal(hand.dealerPosition, undefined);
 });
 
-test("fold-out: when a fold leaves one active player the hand is over", () => {
+test("a short stack posts everything and is all-in on the ante; broke players sit out", () => {
+  const stackByUser = new Map([
+    [1, 50], // fine
+    [2, 3],  // short — all-in $3
+    [3, 0],  // broke — left out
+    [4, 50],
+    [5, 50],
+    [6, 0.01], // exactly the floor — all-in $0.01
+  ]);
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, stackByUser });
+  assert.equal(player(hand, 2).contributed, 3);
+  assert.equal(player(hand, 2).allIn, true);
+  assert.equal(player(hand, 3).contributed, 0);
+  assert.equal(player(hand, 3).isActive, false);
+  assert.equal(player(hand, 6).contributed, 0.01);
+  assert.equal(player(hand, 6).allIn, true);
+  assert.equal(hand.players.filter((p) => p.isActive).length, 5);
+  assert.equal(hand.pot, 10 + 3 + 10 + 10 + 0.01); // 33.01
+});
+
+test("carry-over is added to the pot", () => {
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, carryOver: 40 });
+  assert.equal(hand.pot, 100);
+  assert.equal(hand.carryOver, 40);
+});
+
+// ── The continuous curve ───────────────────────────────────────────────────
+
+test("the curve climbs continuously from 1.00x — no pauses, no checkpoints", () => {
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: 1_000_000 });
+  assert.ok(Math.abs(curveMultiplierAt(hand, hand.flightResumedAt) - 1.0) < 1e-9);
+  const at = curveMultiplierAt(hand, hand.flightResumedAt + 1000);
+  assert.ok(Math.abs(at - Math.exp(CRASH_GROWTH_RATE)) < 1e-6);
+  // It keeps climbing forever (never held at a checkpoint).
+  const later = curveMultiplierAt(hand, hand.flightResumedAt + 60_000);
+  assert.ok(later > at);
+});
+
+test("isCrashDueAt fires only once the curve reaches the crash point", () => {
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: 1_000_000 });
+  const crashPoint = 2.0;
+  // e^0.22 ≈ 1.246 < 2.0 at 1s → not due; e^(0.22·4) ≈ 2.41 ≥ 2.0 → due.
+  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 1000, crashPoint), false);
+  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 4000, crashPoint), true);
+});
+
+// ── Folding ────────────────────────────────────────────────────────────────
+
+test("a fold records the server-authoritative multiplier and keeps the ante in the pot", () => {
+  const hand = handWithFolds([[4, 1.5]]);
+  const p4 = player(hand, 4);
+  assert.equal(p4.folded, true);
+  assert.equal(p4.isActive, false);
+  assert.equal(p4.foldedAtMultiplier, 1.5);
+  assert.equal(p4.lastAction, "fold");
+  assert.equal(hand.pot, 60); // ante stays in the pot as dead money
+  assert.equal(hand.actions.length, 1);
+});
+
+test("a fold leaving exactly one active player ends the hand (fold-out)", () => {
   const two = [
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  // The curve reached 1.25x → the first checkpoint opened.
-  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
-  // A is SB ($5), B is BB ($10). A must call $5 to stay in.
-  const res = applyAction(hand, { userId: 1, action: "fold" });
+  const hand = createHand({ players: two, wager: 10 });
+  const res = applyFold(hand, { userId: 1, multiplier: 1.4 });
   assert.ok(!res.error, res.error);
   assert.equal(res.handOver, true);
   assert.equal(res.winnerUserId, 2);
 });
 
-// ── Settlement (the clean winner hook) ─────────────────────────────────────
-
-test("crash with 2+ active players: the latest successful fold wins (capped at matched tiers)", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // One player folds, everyone else stays in and crashes.
-  const fold = applyAction(hand, { userId: 4, action: "fold" });
-  hand = fold.hand;
-  const outcome = resolveHand(hand, 2.37); // crash between 2.25 and 2.50
-  // Fold-order rule: the only successful fold (user 4) wins — capped by
-  // the matched-tier rule at user 4's own $5 ante: the $5 tier ($30) goes
-  // to user 4, and the BB's unmatched $5 returns to user 3.
-  assert.equal(outcome.winnerUserId, 4);
-  assert.equal(outcome.payoutGross, 30);
-  assert.deepEqual(outcome.returns, [{ userId: 3, amount: 5 }]);
-  assert.equal(outcome.carryOver, 0);
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2, 3, 5, 6]);
+test("an all-in player is committed and cannot fold", () => {
+  const stackByUser = new Map([[1, 50], [2, 5]]); // B all-in at $5
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, stackByUser });
+  const res = applyFold(hand, { userId: 2, multiplier: 2.0 });
+  assert.ok(res.error);
+  assert.match(res.error, /all-in/i);
 });
 
-test("one active player left wins the pot (fold-order rule)", () => {
+test("a player who is not active (already folded / out of the hand) cannot fold", () => {
+  let hand = handWithFolds([[4, 1.5]]);
+  const res = applyFold(hand, { userId: 4, multiplier: 2.0 });
+  assert.ok(res.error);
+  assert.match(res.error, /not active/i);
+  // A broke player never entered the hand.
+  const stackByUser = new Map([[1, 50], [2, 0]]);
+  const broke = createHand({ players: SIX_PLAYERS, wager: 10, stackByUser });
+  const res2 = applyFold(broke, { userId: 2, multiplier: 1.5 });
+  assert.ok(res2.error);
+});
+
+// ── Settlement (rank-based payouts) ────────────────────────────────────────
+
+test("crash with nobody folded → the whole pot carries over", () => {
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10 });
+  const outcome = resolveHand(hand, 2.4);
+  assert.equal(outcome.winnerUserId, null);
+  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2, 3, 4, 5, 6]);
+  assert.equal(outcome.carryOver, 60);
+  assert.deepEqual(outcome.payouts, []);
+  assert.equal(outcome.rake, 0);
+});
+
+test("fold-out: the survivor ranks 1st and the pot splits by linear weights", () => {
+  // P1..P5 fold (P5 last), P6 survives. Ranks: P6, P5, P4, P3, P2, P1.
+  let hand = createHand({ players: SIX_PLAYERS, wager: 10 });
+  for (const [userId, mult] of [[1, 1.3], [2, 1.5], [3, 1.7], [4, 1.9], [5, 2.1]]) {
+    const res = applyFold(hand, { userId, multiplier: mult });
+    assert.ok(!res.error, res.error);
+    hand = res.hand;
+    // After P5 folds only P6 remains → hand over.
+    if (userId === 5) {
+      assert.equal(res.handOver, true);
+      assert.equal(res.winnerUserId, 6);
+    }
+  }
+  const outcome = resolveHand(hand, 3.0);
+  assert.equal(outcome.winnerUserId, 6);
+  assert.deepEqual(outcome.activeAtCrash, []);
+  assert.equal(outcome.carryOver, 0);
+  // Pot 60, fee 3, distributable 57. Weights 6,5,4,3,2,1 → sums to 21.
+  assert.equal(outcome.rake, 3);
+  assert.equal(outcome.payoutGross, 57);
+  const byUser = Object.fromEntries(outcome.payouts.map((p) => [p.userId, p]));
+  assert.equal(byUser[6].rank, 1);
+  assert.equal(byUser[6].amount, 16.29);
+  assert.equal(byUser[5].amount, 13.57);
+  assert.equal(byUser[4].amount, 10.86);
+  assert.equal(byUser[3].amount, 8.14);
+  assert.equal(byUser[2].amount, 5.43);
+  assert.equal(byUser[1].amount, 2.71);
+  // Every cent of the distributable pool is accounted for.
+  const total = outcome.payouts.reduce((s, p) => s + p.amount, 0);
+  assert.equal(total, 57);
+});
+
+test("crash with 2+ active: the LAST fold ranks 1st, remaining folders below, crash victims get nothing", () => {
+  // P1 folds 1.5, P2 folds 2.0, P3 folds 2.5; P4, P5, P6 crash.
+  const hand = handWithFolds([[1, 1.5], [2, 2.0], [3, 2.5]]);
+  const outcome = resolveHand(hand, 2.7);
+  assert.equal(outcome.winnerUserId, 3);
+  assert.deepEqual(outcome.activeAtCrash.sort(), [4, 5, 6]);
+  assert.equal(outcome.carryOver, 0);
+  assert.equal(outcome.rake, 3); // floor(60 × 5%)
+  assert.equal(outcome.payoutGross, 57);
+  const byUser = Object.fromEntries(outcome.payouts.map((p) => [p.userId, p]));
+  assert.equal(byUser[3].rank, 1);
+  assert.equal(byUser[3].amount, 28.5); // 57 × 3/6
+  assert.equal(byUser[2].rank, 2);
+  assert.equal(byUser[2].amount, 19);   // 57 × 2/6
+  assert.equal(byUser[1].rank, 3);
+  assert.equal(byUser[1].amount, 9.5);  // remainder
+  assert.equal(outcome.payouts.length, 3); // crash victims never appear
+  assert.equal(outcome.payouts.reduce((s, p) => s + p.amount, 0), 57);
+});
+
+test("a single folder against crashing players takes the whole pot", () => {
+  const hand = handWithFolds([[1, 2.0]]);
+  const outcome = resolveHand(hand, 2.5);
+  assert.equal(outcome.winnerUserId, 1);
+  assert.deepEqual(outcome.activeAtCrash.sort(), [2, 3, 4, 5, 6]);
+  assert.equal(outcome.payouts.length, 1);
+  assert.equal(outcome.payouts[0].amount, 57);
+  assert.equal(outcome.payouts[0].rank, 1);
+});
+
+test("same-multiplier folds: the fold recorded later in the action log ranks higher", () => {
+  // P2 and P3 both fold at 2.0 — P3's fold is logged after P2's.
+  const hand = handWithFolds([[2, 2.0], [3, 2.0]]);
+  const outcome = resolveHand(hand, 2.3);
+  assert.equal(outcome.winnerUserId, 3);
+  assert.equal(outcome.payouts[0].userId, 3);
+  assert.equal(outcome.payouts[1].userId, 2);
+});
+
+test("two-player hand: a fold leaves the survivor rank 1 and the folder rank 2", () => {
   const two = [
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
   ];
-  const hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
-  // B folds at 1.25x → A wins even if the crash comes later.
-  const folded = applyAction(hand, { userId: 2, action: "fold" });
-  assert.equal(folded.winnerUserId, 1);
-  const outcome = resolveHand(folded.hand, 4.0);
-  assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.carryOver, 0);
+  // A folds at 1.5 → B is the sole survivor → fold-out: B ranks 1st,
+  // A ranks 2nd. Pot 20, fee 1, distributable 19, weights 2:1 → 12.67 / 6.33.
+  const hand = handWithFolds([[1, 1.5]], { players: two });
+  const outcome = resolveHand(hand, 2.0);
+  assert.equal(outcome.winnerUserId, 2);
+  assert.deepEqual(outcome.activeAtCrash, []);
+  assert.equal(outcome.rake, Math.floor(20 * PLATFORM_FEE));
+  assert.equal(outcome.payouts[0].amount, 12.67);
+  assert.equal(outcome.payouts[1].amount, 6.33);
 });
 
-test("a fold recorded above the crash point is void (that checkpoint never opened)", () => {
-  // Crash at 1.37x — only checkpoint 0 (1.25x) ever opened. A fold at
-  // checkpoint 1 (1.50x) is void: the player is restored to active and
-  // busts with everyone else.
-  let hand = handAt({ bigBlind: 10 });
-  // Simulate an over-eager fold at checkpoint 1 (1.50x).
-  hand = {
-    ...hand,
-    checkpointIndex: 1,
-    players: hand.players.map((p) =>
-      p.userId === 3 ? { ...p, folded: true, foldedAtMultiplier: 1.5, isActive: false } : p,
-    ),
-  };
-  const outcome = resolveHand(hand, 1.37);
-  assert.equal(outcome.winnerUserId, null);
-  assert.ok(outcome.activeAtCrash.includes(3), "voided folder is active at the crash");
+test("payouts conserve every cent for any ranked count", () => {
+  for (const folds of [
+    [[1, 1.3]],
+    [[1, 1.3], [2, 1.5]],
+    [[1, 1.3], [2, 1.5], [3, 1.7]],
+    [[1, 1.3], [2, 1.5], [3, 1.7], [4, 1.9]],
+    [[1, 1.3], [2, 1.5], [3, 1.7], [4, 1.9], [5, 2.1]],
+  ]) {
+    const hand = handWithFolds(folds);
+    const outcome = resolveHand(hand, 9.2);
+    const total = round2(outcome.payouts.reduce((s, p) => s + p.amount, 0));
+    assert.equal(total, round2(hand.pot - Math.floor(hand.pot * PLATFORM_FEE)));
+    assert.equal(outcome.payouts.reduce((s, p) => s + p.rank * 0, 0), 0); // ranks present
+    const ranks = outcome.payouts.map((p) => p.rank);
+    assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b)); // 1, 2, 3, …
+  }
+});
+
+test("carry-over is included in the pot and split with the rank weights", () => {
+  // P1 folds; P2, P3 crash. Pot = 30 + 40 carry = 70; fee 3 → 67 to P1.
+  const hand = handWithFolds([[1, 2.0]], { players: SIX_PLAYERS.slice(0, 3), carryOver: 40 });
+  assert.equal(hand.pot, 70);
+  const outcome = resolveHand(hand, 2.5);
+  assert.equal(outcome.winnerUserId, 1);
+  assert.equal(outcome.rake, Math.floor(70 * PLATFORM_FEE));
+  assert.equal(outcome.payouts[0].amount, 67);
 });
 
 test("handFromEntries rebuilds a hand from persisted round + entries", () => {
   const hand = handFromEntries({
     round: {
-      checkpointIndex: 0,
-      requiredBet: 10,
-      bettingOpen: true,
-      smallBlind: 5,
       bigBlind: 10,
-      dealerPosition: 0,
-      handState: null,
+      handState: {
+        flightResumedAt: 1234,
+        actions: [{ userId: 3, action: "fold", multiplier: 1.5, at: "t" }],
+      },
     },
     entries: [
-      { userId: 1, contributed: 5, isActive: true, foldedAtMultiplier: null, lastAction: "ante", result: "pending" },
-      { userId: 2, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "bb", result: "pending" },
-      { userId: 3, contributed: 5, isActive: false, foldedAtMultiplier: 1.25, lastAction: "fold", result: "pending" },
+      { userId: 1, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "pending" },
+      { userId: 2, contributed: 5, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: true, result: "pending" },
+      { userId: 3, contributed: 10, isActive: false, foldedAtMultiplier: 1.5, lastAction: "fold", allIn: false, result: "pending" },
     ],
     carryOver: 0,
   });
-  assert.equal(hand.pot, 20);
-  assert.equal(hand.requiredBet, 10);
-  assert.equal(hand.players.find((p) => p.userId === 3).folded, true);
-  assert.equal(hand.players.find((p) => p.userId === 2).contributed, 10);
-});
-
-test("carry-over is included in the pot and carries in full when nobody folds", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  const hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0, carryOver: 40 });
-  assert.equal(hand.pot, 55); // SB 5 + BB 10 + carry 40
-  const outcome = resolveHand(hand, 3.0);
-  assert.equal(outcome.winnerUserId, null); // both still active, nobody folded
-  assert.deepEqual(outcome.returns, []);
-  assert.equal(outcome.carryOver, 55);
-});
-
-// ── Configurable blinds ────────────────────────────────────────────────────
-
-test("a per-table small blind override wins over the default ratio", () => {
-  assert.equal(computeBlinds(10, 4).smallBlind, 4);
-  assert.equal(computeBlinds(10, 2.5).smallBlind, 2.5);
-  // Invalid / missing overrides fall back to round(wager/2).
-  assert.equal(computeBlinds(10, null).smallBlind, 5);
-  assert.equal(computeBlinds(10, 0).smallBlind, 5);
-  assert.equal(computeBlinds(10, -3).smallBlind, 5);
-  // Still floored at $0.01.
-  assert.equal(computeBlinds(1, 0.001).smallBlind, 0.01);
-});
-
-test("createHand uses the table's small blind override", () => {
-  const hand = handAt({ bigBlind: 10, ...{} });
-  assert.equal(hand.smallBlind, 5);
-  const custom = createHand({
-    players: SIX_PLAYERS,
-    bigBlind: 10,
-    dealerPosition: 0,
-    smallBlind: 4,
-  });
-  assert.equal(custom.smallBlind, 4);
-  assert.equal(player(custom, 3).contributed, 10); // BB unchanged
-  assert.equal(player(custom, 2).contributed, 4);  // SB = 4
-  assert.equal(player(custom, 1).contributed, 4);  // ante = 4
-});
-
-// ── All-in support ─────────────────────────────────────────────────────────
-
-test("a call capped at the stack goes all-in instead of being rejected", () => {
-  let hand = handAt({ bigBlind: 10 }); // user 4: ante $5, needs $5 to call
-  const res = applyAction(hand, { userId: 4, action: "call", stack: 3 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  const p4 = player(hand, 4);
-  assert.equal(p4.contributed, 8); // 5 ante + 3 whole stack
-  assert.equal(p4.allIn, true);
-  assert.equal(p4.lastAction, "call");
-});
-
-test("a raise is capped at the stack (all-in shove)", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // user 5: ante $5, stack $12 → can only reach $17 total.
-  const res = applyAction(hand, { userId: 5, action: "raise", raiseTo: 25, stack: 12 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  const p5 = player(hand, 5);
-  assert.equal(p5.contributed, 17);
-  assert.equal(p5.allIn, true);
-  assert.equal(hand.requiredBet, 17);
-});
-
-test("an all-in shove below the minimum raise is legal", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // user 5: ante $5, stack $8 → shove to $13 total, below min $20 raise.
-  const res = applyAction(hand, { userId: 5, action: "raise", raiseTo: 50, stack: 8 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  const p5 = player(hand, 5);
-  assert.equal(p5.contributed, 13);
-  assert.equal(p5.allIn, true);
-});
-
-test("an all-in player is committed and can't act again", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // user 4 all-ins for $3 extra (total $8, below required $10).
-  let res = applyAction(hand, { userId: 4, action: "call", stack: 3 });
-  hand = res.hand;
-  // The all-in player is committed; everyone else (including the BB) must
-  // still act before the checkpoint resolves.
-  assert.equal(isCheckpointResolved(hand), false);
-  for (const id of [1, 2, 5, 6]) {
-    res = applyAction(hand, { userId: id, action: "call" });
-    assert.ok(!res.error, res.error);
-    hand = res.hand;
-  }
-  // The BB (user 3) is matched but hasn't acted — still blocking.
-  assert.equal(isCheckpointResolved(hand), false);
-  res = applyAction(hand, { userId: 3, action: "call" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(isCheckpointResolved(hand), true);
-  // All-in player cannot act at a later checkpoint either.
-  hand = openNextCheckpoint(hand);
-  assert.equal(hand.bettingOpen, true);
-  const later = applyAction(hand, { userId: 4, action: "fold" });
-  assert.ok(later.error);
-  assert.match(later.error, /all-in/i);
-});
-
-test("a fold-out leaves the all-in player as the winner (poker all-in rule caps the payout)", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
-  // A (SB $5) has only $3 left — all-in for $3 extra (total $8).
-  let res = applyAction(hand, { userId: 1, action: "call", stack: 3 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(player(hand, 1).allIn, true);
-  // B (BB $10) is matched but must still act — B checks, resolving 1.25x.
-  res = applyAction(hand, { userId: 2, action: "call" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(hand.bettingOpen, false);
-  // Open 1.50x — B folds there → A wins, but only the $8 he matched:
-  // A takes $16 (8 × 2), B's unmatched $2 returns to B.
-  hand = openNextCheckpoint(hand);
-  assert.equal(hand.bettingOpen, true);
-  res = applyAction(hand, { userId: 2, action: "fold" });
-  assert.equal(res.handOver, true);
-  assert.equal(res.winnerUserId, 1);
-  const outcome = resolveHand(res.hand, 4.0);
-  assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 16);
-  assert.equal(outcome.carryOver, 0);
-  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 2 }]);
-});
-
-test("all-in players bust with everyone else when the crash lands (nobody folded → carry)", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
-  let res = applyAction(hand, { userId: 1, action: "call", stack: 3 }); // A all-in $8
-  hand = res.hand;
-  res = applyAction(hand, { userId: 2, action: "call" }); // B calls $5 → $10
-  hand = res.hand;
-  const outcome = resolveHand(hand, 1.4); // crash just past 1.25x
-  assert.equal(outcome.winnerUserId, null); // 2 active, nobody folded → carry
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
-  assert.deepEqual(outcome.returns, []);
-  assert.equal(outcome.carryOver, hand.pot); // 18 — the full pot carries
-});
-
-test("opening contribution is capped at the stack (all-in on the blinds)", () => {
-  const stackByUser = new Map([
-    [1, 50], // fine
-    [2, 3],  // SB seat — short, all-in $3
-    [3, 40], // BB seat — short of $10, all-in $40... actually fine
-    [4, 50],
-    [5, 50],
-    [6, 0.01], // can just barely post the floor ante — all-in $0.01
-  ]);
-  const hand = createHand({
-    players: SIX_PLAYERS,
-    bigBlind: 10,
-    dealerPosition: 0,
-    stackByUser,
-  });
-  assert.equal(player(hand, 2).contributed, 3);
+  assert.equal(hand.pot, 25);
+  assert.equal(hand.wager, 10);
+  assert.equal(hand.flightResumedAt, 1234);
+  assert.equal(player(hand, 3).folded, true);
+  assert.equal(player(hand, 3).foldedAtMultiplier, 1.5);
   assert.equal(player(hand, 2).allIn, true);
-  assert.equal(player(hand, 3).contributed, 10); // full BB
-  assert.equal(player(hand, 3).allIn, false);
-  assert.equal(player(hand, 6).contributed, 0.01);
-  assert.equal(player(hand, 6).allIn, true);
-});
-
-test("a player with no stack is left out of the hand entirely", () => {
-  const stackByUser = new Map([
-    [1, 50],
-    [2, 0],  // broke — cannot play
-    [3, 40],
-    [4, 50],
-    [5, 50],
-    [6, 50],
-  ]);
-  const hand = createHand({
-    players: SIX_PLAYERS,
-    bigBlind: 10,
-    dealerPosition: 0,
-    stackByUser,
-  });
-  assert.equal(player(hand, 2).isActive, false);
-  assert.equal(player(hand, 2).contributed, 0);
-  assert.equal(hand.players.filter((p) => p.isActive).length, 5);
-});
-
-test("handFromEntries rebuilds the all-in flag from the entry row", () => {
-  const round = {
-    checkpointIndex: 0,
-    requiredBet: 10,
-    bettingOpen: true,
-    smallBlind: 5,
-    bigBlind: 10,
-    dealerPosition: 0,
-    handState: null,
-  };
-  const entries = [
-    { userId: 1, contributed: 8, isActive: true, foldedAtMultiplier: null, lastAction: "call", allIn: true, result: "pending" },
-    { userId: 2, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "bb", allIn: false, result: "pending" },
-  ];
-  const hand = handFromEntries({ round, entries, carryOver: 0 });
-  assert.equal(player(hand, 1).allIn, true);
-  assert.equal(player(hand, 1).actedThisCheckpoint, true);
-  assert.equal(player(hand, 2).allIn, false);
-  // The all-in player below the required bet is committed (never blocks),
-  // but the BB — matched yet not acted — blocks resolution until it acts.
-  assert.equal(player(hand, 2).actedThisCheckpoint, false);
-  assert.equal(isCheckpointResolved(hand), false);
-  // Once the BB's acted state is restored from the hand snapshot, the
-  // checkpoint resolves (all-in committed + BB checked).
-  const acted = handFromEntries({
-    round: { ...round, handState: { players: [{ userId: 2, actedThisCheckpoint: true }] } },
-    entries,
-    carryOver: 0,
-  });
-  assert.equal(player(acted, 2).actedThisCheckpoint, true);
-  assert.equal(isCheckpointResolved(acted), true);
-});
-
-// ── Side pots (poker-style tier accounting) ────────────────────────────────
-
-/** Build a hand with explicit per-player contributions (for tier tests). */
-function handWithContributions(specs, carryOver = 0) {
-  const players = specs.map((s) => ({
-    userId: s.userId,
-    name: `P${s.userId}`,
-    role: s.role ?? "ante",
-    contributed: s.contributed,
-    isActive: s.active !== false,
-    folded: Boolean(s.folded),
-    foldedAtMultiplier: s.folded ? (s.foldedAtMultiplier ?? 1.25) : null,
-    lastAction: s.lastAction ?? null,
-    actedThisCheckpoint: true,
-    allIn: Boolean(s.allIn),
-  }));
-  return {
-    bigBlind: 10,
-    smallBlind: 5,
-    dealerPosition: 0,
-    carryOver,
-    checkpointIndex: 0,
-    bettingOpen: true,
-    requiredBet: 10,
-    pot: players.reduce((sum, p) => sum + p.contributed, 0) + carryOver,
-    players,
-    actions: [],
-  };
-}
-
-test("computePots builds a main pot + side pot with correct eligibility", () => {
-  // A all-in $8 (short), B and C deep at $30.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 30 },
-    { userId: 3, contributed: 30 },
-  ]);
-  const pots = computePots(hand);
-  assert.equal(pots.length, 2);
-  // Main: $8 × 3 — everyone can win it.
-  assert.equal(pots[0].level, 8);
-  assert.equal(pots[0].amount, 24);
-  assert.deepEqual(pots[0].eligible, [1, 2, 3]);
-  // Side: ($30 − $8) × 2 — only B and C can win it.
-  assert.equal(pots[1].level, 30);
-  assert.equal(pots[1].amount, 44);
-  assert.deepEqual(pots[1].eligible, [2, 3]);
-});
-
-test("computePots includes the carry-over pot as its own bottom tier", () => {
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 30 },
-    { userId: 3, contributed: 30 },
-  ], 20);
-  const pots = computePots(hand, 20);
-  assert.equal(pots.length, 3);
-  assert.equal(pots[0].level, 0);
-  assert.equal(pots[0].amount, 20);
-  assert.deepEqual(pots[0].eligible, [1, 2, 3]);
-  assert.equal(pots[1].amount, 24);
-  assert.equal(pots[2].amount, 44);
-});
-
-test("fold-out: an all-in short-stack winner only takes the tiers they matched (poker all-in rule)", () => {
-  // A all-in $8. B and C both fold at $30. Per poker's all-in rule A wins
-  // ONLY the main pot ($8 × 3 = $24) — the $44 side pot (B and C's $22
-  // each) was never matched by A and returns to its funders.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 30, folded: true },
-    { userId: 3, contributed: 30, folded: true },
-  ]);
-  const outcome = resolveHand(hand, 4.0);
-  assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 24);
-  assert.equal(outcome.carryOver, 0);
-  assert.equal(outcome.pot, 68); // whole pot unchanged — returns come out of it
-  assert.deepEqual(
-    [...outcome.returns].sort((a, b) => a.userId - b.userId),
-    [
-      { userId: 2, amount: 22 },
-      { userId: 3, amount: 22 },
-    ],
-  );
-});
-
-test("fold-out: a deep winner takes the whole pot with no returns", () => {
-  // B (BB $10) is the only active player after A (SB $5) folds — B matched
-  // every tier, so nothing returns.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 5, folded: true },
-    { userId: 2, contributed: 10 },
-  ]);
-  const outcome = resolveHand(hand, 4.0);
-  assert.equal(outcome.winnerUserId, 2);
-  assert.equal(outcome.payoutGross, 15);
-  assert.deepEqual(outcome.returns, []);
-});
-
-test("fold-out heads-up: the survivor takes only the matched tier; the opponent's uncalled excess returns", () => {
-  // A (SB $5) wins when B (BB $10) folds. A only matched $5 of B's $10 —
-  // A takes the $10 main pot and B's unmatched $5 returns to B.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 5 },
-    { userId: 2, contributed: 10, folded: true },
-  ]);
-  const outcome = resolveHand(hand, 4.0);
-  assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 10);
-  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 5 }]);
-});
-
-test("fold-out with carry-over: the all-in winner takes the carry pot + matched tiers only", () => {
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 30, folded: true },
-    { userId: 3, contributed: 30, folded: true },
-  ], 20);
-  const outcome = resolveHand(hand, 4.0);
-  assert.equal(outcome.winnerUserId, 1);
-  // Carry-over $20 (contested by everyone) + main pot $24 = $44 for the
-  // all-in winner; the $44 side pot returns to B and C.
-  assert.equal(outcome.payoutGross, 44);
-  assert.equal(outcome.carryOver, 0);
-  assert.deepEqual(
-    [...outcome.returns].sort((a, b) => a.userId - b.userId),
-    [
-      { userId: 2, amount: 22 },
-      { userId: 3, amount: 22 },
-    ],
-  );
-});
-
-test("crash: the successful fold wins; crash victims lose their contributions", () => {
-  // A all-in $8, B deep $30, C folded after $8. Crash with A + B active →
-  // C's fold is the latest successful fold and wins — capped by the
-  // matched-tier rule at C's own $8: C takes the main pot ($24), and B's
-  // unmatched $22 returns to B.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 30 },
-    { userId: 3, contributed: 8, folded: true },
-  ]);
-  const outcome = resolveHand(hand, 1.4);
-  assert.equal(outcome.winnerUserId, 3);
-  assert.deepEqual(outcome.activeAtCrash, [1, 2]);
-  assert.equal(outcome.payoutGross, 24);
-  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 22 }]);
-  assert.equal(outcome.carryOver, 0);
-});
-
-test("crash: fully matched bets carry in full (no returns)", () => {
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 30 },
-    { userId: 3, contributed: 30 },
-  ]);
-  const outcome = resolveHand(hand, 1.4);
-  assert.equal(outcome.winnerUserId, null);
-  assert.deepEqual(outcome.returns, []);
-  assert.equal(outcome.carryOver, 68);
-});
-
-test("fold-out: multiple side-pot tiers beyond an all-in winner return slice by slice", () => {
-  // A all-in $10. B raises to $50, C calls $50, then both fold → A wins
-  // only the main pot ($10 × 3 = $30); the $40-per-player side tier
-  // ($80) was never matched by A and returns to B and C.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 10, allIn: true },
-    { userId: 2, contributed: 50, folded: true },
-    { userId: 3, contributed: 50, folded: true },
-  ]);
-  const outcome = resolveHand(hand, 4.0);
-  assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 30);
-  assert.equal(outcome.pot, 110);
-  assert.deepEqual(
-    [...outcome.returns].sort((a, b) => a.userId - b.userId),
-    [
-      { userId: 2, amount: 40 },
-      { userId: 3, amount: 40 },
-    ],
-  );
-});
-
-test("crash: the fold-order winner is capped at the tiers they matched (matched-tier rule)", () => {
-  // u1 all-in $8, u2 deep $50, u3 folded after $30. Crash with u1 + u2
-  // active → u3's fold is the latest and wins — but only the tiers u3
-  // matched: main $24 + $30-level side $44 = $68. u2's unmatched $20
-  // (the $50 tier) returns to u2.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 50 },
-    { userId: 3, contributed: 30, folded: true, foldedAtMultiplier: 1.25 },
-  ]);
-  const outcome = resolveHand(hand, 2.0);
-  assert.equal(outcome.winnerUserId, 3);
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
-  assert.equal(outcome.payoutGross, 68);
-  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 20 }]);
-  assert.equal(outcome.carryOver, 0);
-});
-
-test("crash: fold-order winner with multiple side tiers returns each unmatched tier to its funders", () => {
-  // u1 all-in $10, u2 deep $80, u3 folded after $30, u4 folded after $50.
-  // Crash with u1 + u2 active → u4 (latest fold) wins only the tiers ≤
-  // $50 ($40 + $60 + $40 = $140); u2's unmatched $30 returns to u2.
-  const hand = handWithContributions([
-    { userId: 1, contributed: 10, allIn: true },
-    { userId: 2, contributed: 80 },
-    { userId: 3, contributed: 30, folded: true, foldedAtMultiplier: 1.25 },
-    { userId: 4, contributed: 50, folded: true, foldedAtMultiplier: 1.5 },
-  ]);
-  const outcome = resolveHand(hand, 2.0);
-  assert.equal(outcome.winnerUserId, 4);
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
-  assert.equal(outcome.payoutGross, 140);
-  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 30 }]);
-  assert.equal(outcome.carryOver, 0);
-});
-
-test("crash: the latest successful fold before the crash wins (fold-order rule)", () => {
-  // P3 folded at 1.25x, P4 folded later at 1.50x. P1 + P2 stay in and
-  // crash → P4's fold is the latest, so P4 wins. P4 contributed $10 — the
-  // highest tier — so the matched-tier rule caps nothing: P4 takes the
-  // whole pot with no returns (regression: a fully-matched fold-order
-  // winner still takes everything).
-  const hand = handWithContributions([
-    { userId: 1, contributed: 8, allIn: true },
-    { userId: 2, contributed: 10 },
-    { userId: 3, contributed: 10, folded: true, foldedAtMultiplier: 1.25 },
-    { userId: 4, contributed: 10, folded: true, foldedAtMultiplier: 1.5 },
-  ]);
-  const outcome = resolveHand(hand, 2.0);
-  assert.equal(outcome.winnerUserId, 4);
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
-  assert.equal(outcome.payoutGross, 38);
-  assert.deepEqual(outcome.returns, []);
-  assert.equal(outcome.carryOver, 0);
-});
-
-test("same-checkpoint folds: the later fold in the action log wins", () => {
-  const four = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-    { userId: 3, name: "C" },
-    { userId: 4, name: "D" },
-  ];
-  let hand = openNextCheckpoint(createHand({ players: four, bigBlind: 10, dealerPosition: 0 }));
-  // P1 raises to $25 at checkpoint 0 (1.25x) — everyone else is now
-  // unmatched, so the checkpoint stays open across the folds below.
-  let res = applyAction(hand, { userId: 1, action: "raise", raiseTo: 25 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(hand.bettingOpen, true);
-  // P2 then P3 both fold at the SAME checkpoint (1.25x).
-  res = applyAction(hand, { userId: 2, action: "fold" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(hand.bettingOpen, true); // P3 + P4 still owe the call
-  res = applyAction(hand, { userId: 3, action: "fold" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  // Crash at 1.37x — P1 + P4 bust; P3 folded after P2 → P3 wins the pot.
-  // P3 only matched $10 (P1 raised to $25): P3 takes the tiers ≤ $10
-  // ($5-tier $20 + $10-tier $10 = $30) and P1's unmatched $15 returns.
-  const outcome = resolveHand(hand, 1.37);
-  assert.equal(outcome.winnerUserId, 3);
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 4]);
-  assert.equal(outcome.payoutGross, 30);
-  assert.deepEqual(outcome.returns, [{ userId: 1, amount: 15 }]);
-});
-
-test("crash below the first betting checkpoint: nobody wins, the pot carries over", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  const hand = createHand({ players: two, bigBlind: 10, dealerPosition: 0 });
-  const outcome = resolveHand(hand, 1.1); // crash before 1.25x ever opened
-  assert.equal(outcome.winnerUserId, null);
-  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
-  assert.equal(outcome.carryOver, hand.pot);
+  assert.equal(hand.actions.length, 1);
 });
 
 test("handFromEntries excludes a released (disconnected) player from the hand", () => {
   const hand = handFromEntries({
-    round: {
-      checkpointIndex: 0,
-      requiredBet: 10,
-      bettingOpen: true,
-      smallBlind: 5,
-      bigBlind: 10,
-      dealerPosition: 0,
-      handState: null,
-    },
+    round: { bigBlind: 10, handState: null },
     entries: [
-      { userId: 1, contributed: 5, isActive: true, foldedAtMultiplier: null, lastAction: "ante", result: "pending" },
-      // Disconnect cleanup marked the entry "lost" but left isActive true.
-      { userId: 2, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "bb", result: "lost" },
-      { userId: 3, contributed: 5, isActive: false, foldedAtMultiplier: 1.25, lastAction: "fold", result: "pending" },
+      { userId: 1, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "pending" },
+      // Disconnect cleanup marked the entry "lost".
+      { userId: 2, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "lost" },
     ],
     carryOver: 0,
   });
-  const p2 = hand.players.find((p) => p.userId === 2);
+  const p2 = player(hand, 2);
   assert.equal(p2.folded, false);
   assert.equal(p2.isActive, false);
-  // User 1 is the only active player → they win the fold-out, NOT the
-  // released player 2 (who was already refunded and marked left). The
-  // winner only matched $5 of user 2's $10: the matched $15 pot goes to
-  // user 1 and user 2's unmatched $5 returns to them.
-  const outcome = resolveHand(hand, 4.0);
+  // User 1 is the only active player → fold-out, they take the whole pot.
+  const outcome = resolveHand(hand, 2.0);
   assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 15);
-  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 5 }]);
+  assert.equal(outcome.payouts[0].amount, round2(20 - Math.floor(20 * PLATFORM_FEE)));
 });
 
-// ── Per-checkpoint action timers (stall guard) ─────────────────────────────
-
-test("createHand opens checkpoint 0 with a future action deadline", () => {
-  const hand = handAt({ bigBlind: 10 });
-  assert.ok(hand.windowDeadlineAt > Date.now());
-});
-
-// ── Pause-aware crash curve (the flight stops at every 0.25x checkpoint) ──
-
-test("curveMultiplierAt climbs exponentially from 1.00x before the first checkpoint", () => {
-  const hand = freshHand({ bigBlind: 10 });
-  // t=0 → 1.00x; after 1s → e^0.33 ≈ 1.39x (between 1.25 and 1.50).
-  assert.ok(Math.abs(curveMultiplierAt(hand, hand.flightResumedAt) - 1.0) < 1e-6);
-  const at = curveMultiplierAt(hand, hand.flightResumedAt + 1000);
-  assert.ok(Math.abs(at - Math.exp(0.33)) < 1e-3);
-});
-
-test("the flight PAUSES at the open checkpoint multiplier while a window is open", () => {
-  const hand = handAt({ bigBlind: 10 }); // checkpoint 0 open (1.25x)
-  // Well past the arrival moment, the curve is HELD at 1.25x — it never
-  // climbs during the betting window.
-  for (const later of [1000, 5000, 30_000]) {
-    assert.equal(curveMultiplierAt(hand, hand.flightResumedAt + later), 1.25);
-  }
-  assert.equal(isHandPausedLike(hand), true);
-});
-
-test("after a window closes the curve resumes from the checkpoint multiplier", () => {
-  let hand = handAt({ bigBlind: 10 }); // paused at 1.25x
-  // The window closes (everyone acted) → the flight resumes from the
-  // checkpoint multiplier at the close moment.
-  hand = { ...hand, bettingOpen: false };
-  const resumeAt = hand.flightResumedAt + 10_000; // window stayed open 10s
-  hand = resumeFlight(hand, resumeAt);
-  assert.equal(hand.bettingOpen, false);
-  assert.equal(hand.flightResumedAt, resumeAt);
-  // The curve climbs from 1.25x at the resume moment — the paused time is
-  // NOT counted.
-  assert.ok(Math.abs(curveMultiplierAt(hand, resumeAt) - 1.25) < 1e-6);
-  const later = curveMultiplierAt(hand, resumeAt + 1000);
-  assert.ok(Math.abs(later - 1.25 * Math.exp(0.33)) < 1e-3);
-});
-
-test("hasCurveReachedNextCheckpoint opens the next window once the segment finishes", () => {
-  const hand = freshHand({ bigBlind: 10 });
-  assert.equal(hasCurveReachedNextCheckpoint(hand, hand.flightResumedAt), false);
-  // After ~1.1s the curve crossed 1.25x — the next checkpoint is due.
-  assert.equal(hasCurveReachedNextCheckpoint(hand, hand.flightResumedAt + 1100), true);
-});
-
-test("isCrashDueAt: the crash fires only when the UNPAUSED curve reaches the crash point", () => {
-  const hand = freshHand({ bigBlind: 10 });
-  const crashPoint = 2.0;
-  // e^0.33 ≈ 1.39 < 2.0 at 1s → not due; e^0.99 ≈ 2.69 ≥ 2.0 at 3s → due.
-  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 1000, crashPoint), false);
-  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 3000, crashPoint), true);
-  // While a betting window is open the flight is paused BELOW the crash
-  // point — a paused hand is never "due" (the sweep would have crashed it
-  // before opening a window beyond the crash point).
-  const paused = handAt({ bigBlind: 10 });
-  assert.equal(isCrashDueAt(paused, paused.flightResumedAt + 60_000, crashPoint), false);
-});
-
-// Helper: the local pause check (isHandPaused is exported below via the
-// engine's isHandPaused — kept inline here to avoid re-deriving it).
-function isHandPausedLike(hand) {
-  return hand.bettingOpen && hand.checkpointIndex >= 0;
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-test("openNextCheckpoint refreshes the action deadline", async () => {
-  let hand = handAt({ bigBlind: 10 });
-  // Everyone acts (calls; the BB checks) → checkpoint resolves.
-  for (const id of [1, 2, 3, 4, 5, 6]) {
-    const res = applyAction(hand, { userId: id, action: "call" });
-    hand = res.hand;
-  }
-  assert.equal(hand.bettingOpen, false);
-  const oldDeadline = hand.windowDeadlineAt;
-  await sleep(2);
-  hand = openNextCheckpoint(hand);
-  assert.equal(hand.bettingOpen, true);
-  assert.ok(hand.windowDeadlineAt > oldDeadline);
-});
-
-test("a raise refreshes the action deadline for the re-opened window", async () => {
-  let hand = handAt({ bigBlind: 10 });
-  const oldDeadline = hand.windowDeadlineAt;
-  await sleep(2);
-  const res = applyAction(hand, { userId: 5, action: "raise", raiseTo: 25 });
-  hand = res.hand;
-  assert.ok(hand.windowDeadlineAt > oldDeadline);
-});
-
-test("expireStaleActions is a no-op before the deadline", () => {
-  let hand = handAt({ bigBlind: 10 });
-  const outcome = expireStaleActions(hand, Date.now() - 1000);
-  assert.deepEqual(outcome.autoFolded, []);
-  assert.equal(outcome.handOver, false);
-});
-
-test("expireStaleActions auto-folds only overdue unmatched players", () => {
-  // Dealer 0: SB user 2, BB user 3. Users 1, 2, 4, 5 call (matched); user 3
-  // (BB $10) is matched from the opening. Only user 6 stalls — still owes
-  // the ante call and never acted.
-  let hand = handAt({ bigBlind: 10 });
-  for (const id of [1, 2, 4, 5]) {
-    const res = applyAction(hand, { userId: id, action: "call" });
-    hand = res.hand;
-  }
-  // Deadline passed → user 6 (still unmatched, hasn't acted) auto-folds.
-  const outcome = expireStaleActions(hand, hand.windowDeadlineAt + 1000);
-  assert.deepEqual(outcome.autoFolded, [6]);
-  // The matched-but-silent BB (user 3) is auto-CHECKED, not folded.
-  assert.deepEqual(outcome.autoChecked, [3]);
-  assert.equal(player(outcome.hand, 6).folded, true);
-  assert.equal(player(outcome.hand, 6).foldedAtMultiplier, 1.25);
-  // Matched (BB + callers) players are untouched.
-  assert.equal(player(outcome.hand, 3).folded, false);
-  assert.equal(player(outcome.hand, 3).actedThisCheckpoint, true);
-  assert.equal(player(outcome.hand, 3).lastAction, "check");
-  assert.equal(player(outcome.hand, 1).folded, false);
-  assert.equal(player(outcome.hand, 4).folded, false);
-  assert.equal(player(outcome.hand, 5).folded, false);
-});
-
-test("a check doesn't close the checkpoint — a late raiser can still act", () => {
-  let hand = handAt({ bigBlind: 10 }); // dealer 0: SB user2, BB user3
-  // P1 matches (call $5 → $10). Others haven't acted yet.
-  let res = applyAction(hand, { userId: 1, action: "call" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  // Matching alone doesn't resolve the checkpoint.
-  assert.equal(hand.bettingOpen, true);
-  assert.equal(isCheckpointResolved(hand), false);
-  // A player who hasn't acted yet can still raise at this checkpoint.
-  res = applyAction(hand, { userId: 5, action: "raise", raiseTo: 25 });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(hand.requiredBet, 25);
-  // The raise re-opened everyone else (including P1).
-  assert.equal(player(hand, 1).actedThisCheckpoint, false);
-  assert.equal(hand.bettingOpen, true);
-});
-
-test("a matched player who stalls is auto-checked, not folded", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
-  // A (SB $5) calls → matched. B (BB $10) is matched but hasn't acted.
-  let res = applyAction(hand, { userId: 1, action: "call" });
-  assert.ok(!res.error, res.error);
-  hand = res.hand;
-  assert.equal(hand.bettingOpen, true);
-  // Deadline passes with B silent → B is auto-checked, never folded.
-  const outcome = expireStaleActions(hand, hand.windowDeadlineAt + 1000);
-  assert.deepEqual(outcome.autoChecked, [2]);
-  assert.deepEqual(outcome.autoFolded, []);
-  assert.equal(player(outcome.hand, 2).folded, false);
-  assert.equal(player(outcome.hand, 2).actedThisCheckpoint, true);
-  assert.equal(player(outcome.hand, 2).lastAction, "check");
-  // The checkpoint is now fully resolved.
-  assert.equal(outcome.hand.bettingOpen, false);
-});
-
-test("expireStaleActions never folds all-in players", () => {
-  let hand = handAt({ bigBlind: 10 });
-  // User 4 all-ins for $3 (total $8, below required $10) — committed.
-  let res = applyAction(hand, { userId: 4, action: "call", stack: 3 });
-  hand = res.hand;
-  // Others act; user 5 stalls.
-  for (const id of [1, 2, 6]) {
-    res = applyAction(hand, { userId: id, action: "call" });
-    hand = res.hand;
-  }
-  const outcome = expireStaleActions(hand, hand.windowDeadlineAt + 1000);
-  assert.deepEqual(outcome.autoFolded, [5]);
-  // The matched-but-silent BB (user 3) is auto-checked.
-  assert.deepEqual(outcome.autoChecked, [3]);
-  assert.equal(player(outcome.hand, 4).allIn, true);
-  assert.equal(player(outcome.hand, 4).folded, false);
-});
-
-test("expireStaleActions never folds a sole survivor", () => {
-  const two = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-  ];
-  let hand = openNextCheckpoint(createHand({ players: two, bigBlind: 10, dealerPosition: 0 }));
-  // B folds → A is the sole survivor (fold-out already determined).
-  const fold = applyAction(hand, { userId: 2, action: "fold" });
-  assert.equal(fold.handOver, true);
-  const outcome = expireStaleActions(fold.hand, fold.hand.windowDeadlineAt + 1000);
-  assert.deepEqual(outcome.autoFolded, []);
-  assert.equal(player(outcome.hand, 1).folded, false);
-});
-
-test("expireStaleActions can end the hand (auto-fold fold-out)", () => {
-  // Dealer 0: SB user 2, BB user 3. User 1 (dealer/ante) and user 2 fold;
-  // user 3 (BB $10) is matched. User 4 (ante $5) stalls → auto-folded,
-  // leaving user 3 as the sole survivor → hand over.
-  const four = [
-    { userId: 1, name: "A" },
-    { userId: 2, name: "B" },
-    { userId: 3, name: "C" },
-    { userId: 4, name: "D" },
-  ];
-  let hand = openNextCheckpoint(createHand({ players: four, bigBlind: 10, dealerPosition: 0 }));
-  let res = applyAction(hand, { userId: 1, action: "fold" });
-  hand = res.hand;
-  res = applyAction(hand, { userId: 2, action: "fold" });
-  hand = res.hand;
-  // Active: user 3 (matched BB), user 4 (unmatched, never acted).
-  const outcome = expireStaleActions(hand, hand.windowDeadlineAt + 1000);
-  assert.deepEqual(outcome.autoFolded, [4]);
-  // User 4's auto-fold leaves exactly user 3 active → hand over, C wins.
-  assert.equal(outcome.handOver, true);
-  assert.equal(outcome.winnerUserId, 3);
-});
+test("resolveHand with everyone released carries the pot", () => {
+  const hand = handFromEntries({
+    round: { bigBlind: 10, handState: null },
+    entries: [
+      { userId: 1, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "lost" },
+      { userId: 2, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "lost" },
+    ],
+    carryOver: 0,
+  });
+  const outcome = resolveHand(hand, 2.0);
+  assert.equal(outcome.winnerUserId, null);
+  assert.equal(outcome.carryOver, 20);
+});

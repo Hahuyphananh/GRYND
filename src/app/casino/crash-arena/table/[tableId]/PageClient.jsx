@@ -136,10 +136,8 @@ export default function TableRoomPage() {
     markReady,
     startNewRound,
     goToNextRound,
-    submitAction,
+    submitFold,
     currentMultiplier,
-    activeCheckpointIndex,
-    checkpointMultiplierFor,
     syncPlayers,
     syncWaitingPlayers,
     syncRoundFromServer,
@@ -154,9 +152,9 @@ export default function TableRoomPage() {
     wager: table?.wager || 10,
     roundNumber: 1,
     // Free practice tables (human vs the GRYND AI bot) drive the bot's
-    // cashout from the client — the hook watches the multiplier and
-    // resolves the bot through /api/crash-arena/ai-cashout. The bot's
-    // aggressiveness follows the difficulty picked in the lobby.
+    // fold from the client — the hook watches the multiplier and submits
+    // the bot's fold through /api/crash-arena/action (forBot: true). The
+    // bot's aggressiveness follows the difficulty picked in the lobby.
     isAi: table?.isAi || false,
     aiDifficulty: table?.aiDifficulty || "medium",
     // Private tables: only the host's client drives the AI seats (the
@@ -458,10 +456,8 @@ export default function TableRoomPage() {
           playerName={playerName}
           onStartRound={startNewRound}
           onNextRound={goToNextRound}
-          onSubmitAction={submitAction}
+          onFold={submitFold}
           currentMultiplier={currentMultiplier}
-          activeCheckpointIndex={activeCheckpointIndex}
-          checkpointMultiplierFor={checkpointMultiplierFor}
           onJoin={handleJoin}
           // Private tables: the invite code from the shared URL, or the
           // host's own code (tables API returns it to the host only).

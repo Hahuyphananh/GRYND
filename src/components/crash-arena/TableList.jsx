@@ -73,11 +73,8 @@ export default function TableList({
                   </div>
                   <p className="text-xs text-cyan-100/60 truncate mt-0.5">
                     {t.hostName ? `Host: ${t.hostName} · ` : ""}
-                    Big Blind <span className="text-amber-300 font-bold">${t.wager}</span>
-                    {t.smallBlind != null
-                      ? ` · Small Blind $${t.smallBlind}`
-                      : ""}{" "}
-                    · Pot ${(t.pot || 0).toLocaleString()} ·{" "}
+                    Ante <span className="text-amber-300 font-bold">${t.wager}</span>
+                    {" "}· Pot ${(t.pot || 0).toLocaleString()} ·{" "}
                     {t.playerCount}/{t.maxPlayers} players
                   </p>
                 </div>

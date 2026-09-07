@@ -5,47 +5,40 @@
 // as jsonb). The engine itself is JS for zero-friction unit tests; these
 // types let the TS API routes / settlement module work with it safely.
 
-export type CrashPokerRole = "sb" | "bb" | "ante";
-
 export interface CrashPokerPlayer {
   userId: number;
   name?: string | null;
-  role: CrashPokerRole;
   contributed: number;
   isActive: boolean;
   folded: boolean;
   foldedAtMultiplier: number | null;
   lastAction: string | null;
-  actedThisCheckpoint: boolean;
-  /** Committed their whole remaining stack — can no longer act. */
+  /** Committed their whole remaining stack — can no longer fold. */
   allIn: boolean;
 }
 
 export interface CrashPokerAction {
-  checkpointIndex: number;
-  multiplier: number;
   userId: number;
   action: string;
-  amount: number;
+  multiplier: number;
   at: string;
 }
 
 export interface CrashPokerHand {
-  bigBlind: number;
-  smallBlind: number;
-  dealerPosition: number;
+  /** The table wager — the flat ante every player posts. */
+  wager: number;
   carryOver: number;
-  checkpointIndex: number;
-  bettingOpen: boolean;
-  requiredBet: number;
   pot: number;
   players: CrashPokerPlayer[];
+  /** Chronological fold log (audit + fold-order tie-break). */
   actions: CrashPokerAction[];
-  /**
-   * Epoch-ms the current flight segment started (hand start, or the moment
-   * the last checkpoint closed). Drives the pause-aware crash curve.
-   */
+  /** Epoch-ms the curve started (hand start). Continuous — never re-anchors. */
   flightResumedAt: number | null;
-  /** Stall guard: epoch-ms deadline for the open checkpoint window. */
-  windowDeadlineAt: number | null;
 }
+
+/** One ranked payout at settlement (rank 1 = winner). */
+export interface CrashPokerPayout {
+  userId: number;
+  rank: number;
+  amount: number;
+}

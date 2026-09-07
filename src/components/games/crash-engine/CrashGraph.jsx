@@ -97,7 +97,10 @@ function toCanvasPoint(mult, maxMultiplier, w, h, pad) {
   const minY = pad;
 
   const elapsed = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
-  const MAX_TIME = 8;
+  // X-axis time span (seconds). With the slower growth rate (0.22), the
+  // max crash (9.2x) takes ln(9.2)/0.22 ≈ 10.1s — give headroom so the
+  // rocket never sits pinned at the right edge before it explodes.
+  const MAX_TIME = 12;
   const progress = Math.min(elapsed / MAX_TIME, 1);
   const x = minX + progress * (maxX - minX);
 
