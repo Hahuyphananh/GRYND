@@ -36,8 +36,9 @@ const READY_VOTES_NEEDED = 2;
  *
  * Round-start flow:
  *   • First round (no round played yet): seated players press "Start Round"
- *     (a ready vote). When 2+ players are ready a countdown begins and the
- *     round starts automatically — the button only ever starts the timer.
+ *     (a ready vote — AI bots never vote, so the threshold is the seated
+ *     human count, capped at 2). Once met a countdown begins and the round
+ *     starts automatically — the button only ever starts the timer.
  *   • Later rounds: no button — the countdown runs automatically and starts
  *     the next round for everyone at the same time.
  *
@@ -142,12 +143,17 @@ export default function ArenaTable({
   const isFirstRound = roundNumber === 1 && !hasAnyRound;
 
   const seatedCount = players.length;
-  // Seated AI bots are effectively ALWAYS ready — they never cast a vote
-  // (the host drives their actions), so counting them lets a host playing
-  // only against AIs start the first round with their own ready vote
-  // instead of being stuck forever at "1/2 ready".
-  const seatedBotCount = players.filter((p) => p.isBot).length;
-  const readyCount = readyVotes.length + seatedBotCount;
+  // Seated AI bots never cast a ready vote — the host's client drives
+  // their fold decisions. Bots counting as "effectively always ready"
+  // auto-started the first-round countdown the moment a second AI was
+  // added (or, on practice tables, the moment the human + bot sat
+  // down); a table should only start once the human clicks Start
+  // Round. The ready threshold is the seated HUMAN count (capped at
+  // READY_VOTES_NEEDED): one human (vs AIs) starts with a single
+  // click, while tables with 2+ humans still need 2 votes.
+  const humanSeatedCount = players.filter((p) => !p.isBot).length;
+  const readyCount = readyVotes.length;
+  const readyNeeded = Math.min(READY_VOTES_NEEDED, Math.max(1, humanSeatedCount));
   const youReady = you?.userId != null && readyVotes.includes(you.userId);
   // Server-scheduled next-round deadline (epoch ms) — written when a hand
   // settles. Every client counts down to the SAME wall-clock moment, so
@@ -155,15 +161,14 @@ export default function ArenaTable({
   // drift that could start a hand before a slow client's countdown ends).
   const nextRoundAt =
     roundState?.nextRoundAt ?? table?.nextRoundAt ?? null;
-  // Countdown runs once 2+ players are seated and (first round) 2+ are
-  // ready. AI practice tables skip the ready-vote gate entirely — the
-  // bot never votes, so the human + bot pair just count down. Later
-  // rounds always have a server-scheduled nextRoundAt.
+  // Countdown runs once 2+ players are seated and (first round) the
+  // ready threshold is met (seated humans, capped at 2 — AI bots never
+  // vote). Later rounds always have a server-scheduled nextRoundAt.
   const countdownActive =
     isWaiting &&
     !practiceStackEmpty &&
     seatedCount >= 2 &&
-    (nextRoundAt != null || !isFirstRound || isAi || readyCount >= READY_VOTES_NEEDED);
+    (nextRoundAt != null || !isFirstRound || readyCount >= readyNeeded);
 
   // ── Local UI state ──────────────────────────────────────────────────
 
@@ -297,7 +302,7 @@ export default function ArenaTable({
               : seatedCount < 2
                 ? "Waiting for another player…"
                 : isFirstRound
-                  ? `${readyCount}/${READY_VOTES_NEEDED} ready. Press Start Round`
+                  ? `${readyCount}/${readyNeeded} ready. Press Start Round`
                   : "Waiting…"}
           </div>
         )}
@@ -507,12 +512,13 @@ export default function ArenaTable({
               )}
 
               {/* First round: Start Round = ready vote. Starts the countdown
-                  only — never the rocket directly. Skipped on AI practice
-                  tables, where the human + bot pair auto-counts down. */}
-              {isFirstRound && isWaiting && !isAi && (
+                  only — never the rocket directly. Applies to AI practice
+                  tables too: the human + bot pair no longer auto-counts
+                  down, the human starts it. */}
+              {isFirstRound && isWaiting && (
                 youReady ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border border-[#00ffa6]/40 bg-[#00ffa6]/15 text-[#00ffa6]">
-                    <IconCircleCheck size={14} /> Ready ({readyCount}/{READY_VOTES_NEEDED})
+                    <IconCircleCheck size={14} /> Ready ({readyCount}/{readyNeeded})
                   </span>
                 ) : (
                   <button
