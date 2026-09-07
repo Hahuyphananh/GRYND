@@ -120,8 +120,10 @@ function evaluatePosition(game: Chess, aiColor: "w" | "b") {
   if (game.isCheckmate()) {
     return game.turn() === aiColor ? -999999 : 999999;
   }
-  if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition())
-    return 0;
+  // isDraw() already covers stalemate / insufficient material / threefold
+  // repetition — no need to re-check them separately (each check is a full
+  // move generation or history scan, and this runs at every leaf).
+  if (game.isDraw()) return 0;
 
   let score = 0;
   const board = game.board();
@@ -136,9 +138,9 @@ function evaluatePosition(game: Chess, aiColor: "w" | "b") {
       score += piece.color === aiColor ? val : -val;
     }
   }
-
-  const moveCount = game.moves().length;
-  score += game.turn() === aiColor ? moveCount * 2 : -moveCount * 2;
+  // NOTE: the old mobility bonus (game.moves().length) is gone — it cost a
+  // full move generation at every leaf, which dominated the search time on
+  // the main thread and froze the tab at higher levels.
   return score;
 }
 
@@ -163,8 +165,15 @@ function minimax(
   beta: number,
   maximizing: boolean,
   aiColor: "w" | "b",
+  deadline: number,
 ) {
   if (depth === 0 || game.isGameOver()) {
+    return evaluatePosition(game, aiColor);
+  }
+  // Hard CPU budget: once the deadline passes, stop searching this subtree
+  // and score it statically. The root loop drops incomplete depths, so the
+  // AI still answers fast even in the messiest middlegame.
+  if (Date.now() >= deadline) {
     return evaluatePosition(game, aiColor);
   }
 
@@ -174,7 +183,7 @@ function minimax(
     let best = -Infinity;
     for (const move of moves) {
       game.move(move);
-      const val = minimax(game, depth - 1, alpha, beta, false, aiColor);
+      const val = minimax(game, depth - 1, alpha, beta, false, aiColor, deadline);
       game.undo();
       best = Math.max(best, val);
       alpha = Math.max(alpha, val);
@@ -186,7 +195,7 @@ function minimax(
   let best = Infinity;
   for (const move of moves) {
     game.move(move);
-    const val = minimax(game, depth - 1, alpha, beta, true, aiColor);
+    const val = minimax(game, depth - 1, alpha, beta, true, aiColor, deadline);
     game.undo();
     best = Math.min(best, val);
     beta = Math.min(beta, val);
@@ -196,31 +205,61 @@ function minimax(
 }
 
 function pickBestMove(game: Chess, aiColor: "w" | "b", aiLevel: number) {
-  const depth = Math.min(5, Math.max(1, aiLevel + 1));
+  // The search runs synchronously on the main thread, so both the depth and
+  // the time budget are capped hard: the AI answers in well under a second
+  // and never pegs the CPU, even in a busy middlegame. Higher levels search
+  // deeper and get a slightly bigger budget, just within a cheap band.
+  const maxDepth = aiLevel <= 1 ? 1 : aiLevel <= 3 ? 2 : 3;
+  const budgetMs = aiLevel <= 1 ? 300 : aiLevel <= 3 ? 450 : 650;
+  const deadline = Date.now() + budgetMs;
   const maximizing = game.turn() === aiColor;
-  const moves = orderedMoves(game);
-  let bestMove = moves[0];
+  const scored = orderedMoves(game).map((move) => ({ move, score: 0 }));
+  let bestMove = scored[0].move;
   let bestScore = maximizing ? -Infinity : Infinity;
 
-  for (const move of moves) {
-    game.move(move);
-    const score = minimax(
-      game,
-      depth - 1,
-      -Infinity,
-      Infinity,
-      !maximizing,
-      aiColor,
-    );
-    game.undo();
-
-    if (
-      (maximizing && score > bestScore) ||
-      (!maximizing && score < bestScore)
-    ) {
-      bestScore = score;
-      bestMove = move;
+  // Iterative deepening: commit only FULLY completed depths, so the chosen
+  // move always comes from a search that finished cleanly. Each completed
+  // depth reorders the root moves by score (killer-move ordering), which
+  // prunes the next depth harder.
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    let depthBestMove = bestMove;
+    let depthBestScore = bestScore;
+    let completed = true;
+    for (const item of scored) {
+      if (Date.now() >= deadline) {
+        completed = false;
+        break;
+      }
+      game.move(item.move);
+      const score = minimax(
+        game,
+        depth - 1,
+        -Infinity,
+        Infinity,
+        !maximizing,
+        aiColor,
+        deadline,
+      );
+      game.undo();
+      if (Date.now() >= deadline) {
+        completed = false;
+        break;
+      }
+      item.score = score;
+      if (
+        (maximizing && score > depthBestScore) ||
+        (!maximizing && score < depthBestScore)
+      ) {
+        depthBestScore = score;
+        depthBestMove = item.move;
+      }
     }
+    if (!completed) break;
+    bestMove = depthBestMove;
+    bestScore = depthBestScore;
+    scored.sort((a, b) =>
+      maximizing ? b.score - a.score : a.score - b.score,
+    );
   }
 
   return bestMove;
@@ -501,7 +540,7 @@ export default function ChessAIPageInner() {
       setTimeout(() => {
         makeAIMMove(newGame);
         initCompleteRef.current = true;
-      }, 450);
+      }, 300);
     } else {
       initCompleteRef.current = true;
     }
@@ -582,7 +621,7 @@ export default function ChessAIPageInner() {
     // Switch clock to AI during its turn
     setActivePlayer(aiClockKey as "player1" | "player2");
 
-    const t = setTimeout(() => makeAIMMove(new Chess(game.fen())), 300);
+    const t = setTimeout(() => makeAIMMove(new Chess(game.fen())), 200);
     aiTimeoutRef.current = t;
     return () => clearTimeout(t);
   }, [game, aiColor, aiLevel]);
@@ -838,7 +877,7 @@ export default function ChessAIPageInner() {
       setTimeout(() => {
         makeAIMMove(newGame);
         initCompleteRef.current = true;
-      }, 450);
+      }, 300);
     } else {
       initCompleteRef.current = true;
     }

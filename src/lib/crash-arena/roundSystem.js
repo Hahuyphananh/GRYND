@@ -30,7 +30,7 @@
  * serverResults are provided.
  */
 
-import { computePots } from "../crash-poker/roundSystem";
+import { computePots, matchedTierPayout } from "../crash-poker/roundSystem";
 
 // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -341,10 +341,13 @@ function latestSuccessfulFoldLocal(players) {
  *
  * Winner = the sole active player left (everyone else folded), or — when the
  * crash catches 2+ active players — the LATEST successful fold before the
- * crash (the fold-order mechanic). The winner takes the whole pot minus the
- * 5% platform fee; folded players keep only their losses; there are no
- * side-pot returns. When nobody folded and 2+ players were active at the
- * crash, nobody wins and the pot carries over.
+ * crash (the fold-order mechanic). Either winner takes only the pot tiers
+ * they matched (the matched-tier rule: an all-in / short winner — or a
+ * fold-order winner who contributed less than the top bet — can't claim
+ * opponents' excess bets; unmatched tiers return to the players who funded
+ * them). The winner's share loses the 5% platform fee. When nobody folded
+ * and 2+ players were active at the crash, nobody wins and the pot carries
+ * over.
  *
  * When `serverResults` is provided (a hand that folded out on the server, or
  * a settled round reconciled over the socket) it is used verbatim — the
@@ -364,13 +367,14 @@ export function settleRound(state, serverResults = null) {
     // authoritative — this only drives the modal until the authoritative
     // results land.
     const pot = Number(state.pot);
-    const pots = computePots(
-      { players: state.players.map((p) => ({
+    const mappedHand = {
+      players: state.players.map((p) => ({
         ...p,
         isActive: p.isActive && !p.busted,
-      })), carryOver: state.carryOver },
-      state.carryOver,
-    );
+      })),
+      carryOver: state.carryOver,
+    };
+    const pots = computePots(mappedHand, state.carryOver);
     const winner =
       active.length === 1
         ? active[0]
@@ -385,7 +389,12 @@ export function settleRound(state, serverResults = null) {
     // relevant multiplier; a fold-out winner just needs the open checkpoint.
     const wonByFold = Boolean(winner?.folded);
     if (winner) {
-      const payoutGross = pot;
+      // Matched-tier rule: the winner (a fold-out survivor or the latest
+      // successful fold) takes only the pot tiers they contributed to;
+      // unmatched tiers return to the players who funded them.
+      const payout = matchedTierPayout(mappedHand, winner.userId, state.carryOver);
+      const payoutGross = payout ? payout.payoutGross : pot;
+      const returns = payout ? payout.returns : [];
       const fee = Math.floor(payoutGross * 0.05);
       results = {
         winner: winner.name,
@@ -401,7 +410,7 @@ export function settleRound(state, serverResults = null) {
         carryOver: 0,
         potDistributed: payoutGross - fee,
         allCashouts: [],
-        returns: [],
+        returns,
         pots,
         foldedPlayers,
         bustedPlayers,

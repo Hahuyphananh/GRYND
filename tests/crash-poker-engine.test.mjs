@@ -215,16 +215,18 @@ test("fold-out: when a fold leaves one active player the hand is over", () => {
 
 // ── Settlement (the clean winner hook) ─────────────────────────────────────
 
-test("crash with 2+ active players: the latest successful fold wins the whole pot", () => {
+test("crash with 2+ active players: the latest successful fold wins (capped at matched tiers)", () => {
   let hand = handAt({ bigBlind: 10 });
   // One player folds, everyone else stays in and crashes.
   const fold = applyAction(hand, { userId: 4, action: "fold" });
   hand = fold.hand;
   const outcome = resolveHand(hand, 2.37); // crash between 2.25 and 2.50
-  // Fold-order rule: the only successful fold (user 4) wins the whole pot.
+  // Fold-order rule: the only successful fold (user 4) wins — capped by
+  // the matched-tier rule at user 4's own $5 ante: the $5 tier ($30) goes
+  // to user 4, and the BB's unmatched $5 returns to user 3.
   assert.equal(outcome.winnerUserId, 4);
-  assert.equal(outcome.payoutGross, hand.pot);
-  assert.deepEqual(outcome.returns, []);
+  assert.equal(outcome.payoutGross, 30);
+  assert.deepEqual(outcome.returns, [{ userId: 3, amount: 5 }]);
   assert.equal(outcome.carryOver, 0);
   assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2, 3, 5, 6]);
 });
@@ -389,7 +391,7 @@ test("an all-in player is committed and can't act again", () => {
   assert.match(later.error, /all-in/i);
 });
 
-test("a fold-out leaves the all-in player as the winner (fold-order rule)", () => {
+test("a fold-out leaves the all-in player as the winner (poker all-in rule caps the payout)", () => {
   const two = [
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
@@ -405,8 +407,8 @@ test("a fold-out leaves the all-in player as the winner (fold-order rule)", () =
   assert.ok(!res.error, res.error);
   hand = res.hand;
   assert.equal(hand.bettingOpen, false);
-  // Open 1.50x — B folds there → A wins the whole pot despite being below
-  // the required bet.
+  // Open 1.50x — B folds there → A wins, but only the $8 he matched:
+  // A takes $16 (8 × 2), B's unmatched $2 returns to B.
   hand = openNextCheckpoint(hand);
   assert.equal(hand.bettingOpen, true);
   res = applyAction(hand, { userId: 2, action: "fold" });
@@ -414,7 +416,9 @@ test("a fold-out leaves the all-in player as the winner (fold-order rule)", () =
   assert.equal(res.winnerUserId, 1);
   const outcome = resolveHand(res.hand, 4.0);
   assert.equal(outcome.winnerUserId, 1);
+  assert.equal(outcome.payoutGross, 16);
   assert.equal(outcome.carryOver, 0);
+  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 2 }]);
 });
 
 test("all-in players bust with everyone else when the crash lands (nobody folded → carry)", () => {
@@ -574,9 +578,10 @@ test("computePots includes the carry-over pot as its own bottom tier", () => {
   assert.equal(pots[2].amount, 44);
 });
 
-test("fold-out: the sole survivor takes the whole pot (no returns to folders)", () => {
-  // A all-in $8. B and C both fold at $30 → A wins the WHOLE pot ($68):
-  // every folded contribution stays in the pot and goes to the survivor.
+test("fold-out: an all-in short-stack winner only takes the tiers they matched (poker all-in rule)", () => {
+  // A all-in $8. B and C both fold at $30. Per poker's all-in rule A wins
+  // ONLY the main pot ($8 × 3 = $24) — the $44 side pot (B and C's $22
+  // each) was never matched by A and returns to its funders.
   const hand = handWithContributions([
     { userId: 1, contributed: 8, allIn: true },
     { userId: 2, contributed: 30, folded: true },
@@ -584,9 +589,16 @@ test("fold-out: the sole survivor takes the whole pot (no returns to folders)", 
   ]);
   const outcome = resolveHand(hand, 4.0);
   assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 68);
+  assert.equal(outcome.payoutGross, 24);
   assert.equal(outcome.carryOver, 0);
-  assert.deepEqual(outcome.returns, []);
+  assert.equal(outcome.pot, 68); // whole pot unchanged — returns come out of it
+  assert.deepEqual(
+    [...outcome.returns].sort((a, b) => a.userId - b.userId),
+    [
+      { userId: 2, amount: 22 },
+      { userId: 3, amount: 22 },
+    ],
+  );
 });
 
 test("fold-out: a deep winner takes the whole pot with no returns", () => {
@@ -602,19 +614,20 @@ test("fold-out: a deep winner takes the whole pot with no returns", () => {
   assert.deepEqual(outcome.returns, []);
 });
 
-test("fold-out heads-up: the surviving player takes the whole pot", () => {
-  // A (SB $5) wins when B (BB $10) folds — A takes the whole $15 pot.
+test("fold-out heads-up: the survivor takes only the matched tier; the opponent's uncalled excess returns", () => {
+  // A (SB $5) wins when B (BB $10) folds. A only matched $5 of B's $10 —
+  // A takes the $10 main pot and B's unmatched $5 returns to B.
   const hand = handWithContributions([
     { userId: 1, contributed: 5 },
     { userId: 2, contributed: 10, folded: true },
   ]);
   const outcome = resolveHand(hand, 4.0);
   assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 15);
-  assert.deepEqual(outcome.returns, []);
+  assert.equal(outcome.payoutGross, 10);
+  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 5 }]);
 });
 
-test("fold-out with carry-over: the sole survivor takes the carry pot too", () => {
+test("fold-out with carry-over: the all-in winner takes the carry pot + matched tiers only", () => {
   const hand = handWithContributions([
     { userId: 1, contributed: 8, allIn: true },
     { userId: 2, contributed: 30, folded: true },
@@ -622,14 +635,24 @@ test("fold-out with carry-over: the sole survivor takes the carry pot too", () =
   ], 20);
   const outcome = resolveHand(hand, 4.0);
   assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 88); // carry $20 + every contribution
+  // Carry-over $20 (contested by everyone) + main pot $24 = $44 for the
+  // all-in winner; the $44 side pot returns to B and C.
+  assert.equal(outcome.payoutGross, 44);
   assert.equal(outcome.carryOver, 0);
-  assert.deepEqual(outcome.returns, []);
+  assert.deepEqual(
+    [...outcome.returns].sort((a, b) => a.userId - b.userId),
+    [
+      { userId: 2, amount: 22 },
+      { userId: 3, amount: 22 },
+    ],
+  );
 });
 
 test("crash: the successful fold wins; crash victims lose their contributions", () => {
   // A all-in $8, B deep $30, C folded after $8. Crash with A + B active →
-  // C's fold is the latest successful fold and wins the whole pot.
+  // C's fold is the latest successful fold and wins — capped by the
+  // matched-tier rule at C's own $8: C takes the main pot ($24), and B's
+  // unmatched $22 returns to B.
   const hand = handWithContributions([
     { userId: 1, contributed: 8, allIn: true },
     { userId: 2, contributed: 30 },
@@ -638,8 +661,8 @@ test("crash: the successful fold wins; crash victims lose their contributions", 
   const outcome = resolveHand(hand, 1.4);
   assert.equal(outcome.winnerUserId, 3);
   assert.deepEqual(outcome.activeAtCrash, [1, 2]);
-  assert.equal(outcome.payoutGross, 46);
-  assert.deepEqual(outcome.returns, []);
+  assert.equal(outcome.payoutGross, 24);
+  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 22 }]);
   assert.equal(outcome.carryOver, 0);
 });
 
@@ -655,9 +678,70 @@ test("crash: fully matched bets carry in full (no returns)", () => {
   assert.equal(outcome.carryOver, 68);
 });
 
+test("fold-out: multiple side-pot tiers beyond an all-in winner return slice by slice", () => {
+  // A all-in $10. B raises to $50, C calls $50, then both fold → A wins
+  // only the main pot ($10 × 3 = $30); the $40-per-player side tier
+  // ($80) was never matched by A and returns to B and C.
+  const hand = handWithContributions([
+    { userId: 1, contributed: 10, allIn: true },
+    { userId: 2, contributed: 50, folded: true },
+    { userId: 3, contributed: 50, folded: true },
+  ]);
+  const outcome = resolveHand(hand, 4.0);
+  assert.equal(outcome.winnerUserId, 1);
+  assert.equal(outcome.payoutGross, 30);
+  assert.equal(outcome.pot, 110);
+  assert.deepEqual(
+    [...outcome.returns].sort((a, b) => a.userId - b.userId),
+    [
+      { userId: 2, amount: 40 },
+      { userId: 3, amount: 40 },
+    ],
+  );
+});
+
+test("crash: the fold-order winner is capped at the tiers they matched (matched-tier rule)", () => {
+  // u1 all-in $8, u2 deep $50, u3 folded after $30. Crash with u1 + u2
+  // active → u3's fold is the latest and wins — but only the tiers u3
+  // matched: main $24 + $30-level side $44 = $68. u2's unmatched $20
+  // (the $50 tier) returns to u2.
+  const hand = handWithContributions([
+    { userId: 1, contributed: 8, allIn: true },
+    { userId: 2, contributed: 50 },
+    { userId: 3, contributed: 30, folded: true, foldedAtMultiplier: 1.25 },
+  ]);
+  const outcome = resolveHand(hand, 2.0);
+  assert.equal(outcome.winnerUserId, 3);
+  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
+  assert.equal(outcome.payoutGross, 68);
+  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 20 }]);
+  assert.equal(outcome.carryOver, 0);
+});
+
+test("crash: fold-order winner with multiple side tiers returns each unmatched tier to its funders", () => {
+  // u1 all-in $10, u2 deep $80, u3 folded after $30, u4 folded after $50.
+  // Crash with u1 + u2 active → u4 (latest fold) wins only the tiers ≤
+  // $50 ($40 + $60 + $40 = $140); u2's unmatched $30 returns to u2.
+  const hand = handWithContributions([
+    { userId: 1, contributed: 10, allIn: true },
+    { userId: 2, contributed: 80 },
+    { userId: 3, contributed: 30, folded: true, foldedAtMultiplier: 1.25 },
+    { userId: 4, contributed: 50, folded: true, foldedAtMultiplier: 1.5 },
+  ]);
+  const outcome = resolveHand(hand, 2.0);
+  assert.equal(outcome.winnerUserId, 4);
+  assert.deepEqual(outcome.activeAtCrash.sort(), [1, 2]);
+  assert.equal(outcome.payoutGross, 140);
+  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 30 }]);
+  assert.equal(outcome.carryOver, 0);
+});
+
 test("crash: the latest successful fold before the crash wins (fold-order rule)", () => {
   // P3 folded at 1.25x, P4 folded later at 1.50x. P1 + P2 stay in and
-  // crash → P4's fold is the latest, so P4 wins the whole pot.
+  // crash → P4's fold is the latest, so P4 wins. P4 contributed $10 — the
+  // highest tier — so the matched-tier rule caps nothing: P4 takes the
+  // whole pot with no returns (regression: a fully-matched fold-order
+  // winner still takes everything).
   const hand = handWithContributions([
     { userId: 1, contributed: 8, allIn: true },
     { userId: 2, contributed: 10 },
@@ -695,10 +779,13 @@ test("same-checkpoint folds: the later fold in the action log wins", () => {
   assert.ok(!res.error, res.error);
   hand = res.hand;
   // Crash at 1.37x — P1 + P4 bust; P3 folded after P2 → P3 wins the pot.
+  // P3 only matched $10 (P1 raised to $25): P3 takes the tiers ≤ $10
+  // ($5-tier $20 + $10-tier $10 = $30) and P1's unmatched $15 returns.
   const outcome = resolveHand(hand, 1.37);
   assert.equal(outcome.winnerUserId, 3);
   assert.deepEqual(outcome.activeAtCrash.sort(), [1, 4]);
-  assert.equal(outcome.payoutGross, 45);
+  assert.equal(outcome.payoutGross, 30);
+  assert.deepEqual(outcome.returns, [{ userId: 1, amount: 15 }]);
 });
 
 test("crash below the first betting checkpoint: nobody wins, the pot carries over", () => {
@@ -736,10 +823,13 @@ test("handFromEntries excludes a released (disconnected) player from the hand", 
   assert.equal(p2.folded, false);
   assert.equal(p2.isActive, false);
   // User 1 is the only active player → they win the fold-out, NOT the
-  // released player 2 (who was already refunded and marked left).
+  // released player 2 (who was already refunded and marked left). The
+  // winner only matched $5 of user 2's $10: the matched $15 pot goes to
+  // user 1 and user 2's unmatched $5 returns to them.
   const outcome = resolveHand(hand, 4.0);
   assert.equal(outcome.winnerUserId, 1);
-  assert.equal(outcome.payoutGross, 20);
+  assert.equal(outcome.payoutGross, 15);
+  assert.deepEqual(outcome.returns, [{ userId: 2, amount: 5 }]);
 });
 
 // ── Per-checkpoint action timers (stall guard) ─────────────────────────────

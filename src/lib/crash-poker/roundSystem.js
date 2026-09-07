@@ -17,8 +17,11 @@
 //     raises the required contribution for everyone still in the hand).
 //   • Settlement: the winner is decided by fold-order / pot rules in
 //     `resolveHand()` — the single, clean place to change the payout rules:
-//       - one active player left  → that player wins the pot (fold-out)
-//       - crash with 2+ active    → everyone active loses; pot carries over
+//       - a winner (fold-out survivor OR the latest successful fold) takes
+//         only the pot tiers they matched (matched-tier rule: unmatched
+//         tiers return to the players who funded them)
+//       - crash with 2+ active + no folds → everyone active loses; the
+//         full pot carries over
 //
 // Money truth lives in crash_arena_entries (server); `hand.players` mirrors
 // it for validation and settlement.
@@ -741,6 +744,57 @@ export function computePots(hand, carryOver = 0) {
 }
 
 /**
+ * Poker matched-tier payout: a hand winner takes ONLY the pot tiers they
+ * matched — the carry-over (level 0, contested by everyone equally), the
+ * main pot, and every side-pot tier up to their own contribution. Every
+ * tier above the winner's contribution was never matched by them
+ * (uncalled money), so it returns to the players who funded it, slice by
+ * slice — opponents' extra bets never land in the winner's pocket.
+ *
+ * Applies to BOTH winner paths: a fold-out survivor (possibly an all-in
+ * short stack) and a fold-order winner (the latest successful fold — they
+ * folded, but the cap is by contribution level, not by being active).
+ *
+ * @param {object} hand
+ * @param {number} winnerUserId the winner's user id
+ * @param {number} [carryOver] pot carried in from the previous hand
+ *   (defaults to hand.carryOver)
+ * @returns {{
+ *   winnerUserId: number|null, payoutGross: number,
+ *   pots: Array<{level, amount, funders, eligible}>,
+ *   returns: Array<{userId: number, amount: number}>
+ * } | null} null when the winner isn't found in the hand
+ */
+export function matchedTierPayout(hand, winnerUserId, carryOver = null) {
+  const co = carryOver != null ? Number(carryOver) : Number(hand?.carryOver ?? 0);
+  const winner = hand.players.find((p) => p.userId === winnerUserId);
+  if (!winner) return null;
+  const pots = computePots(hand, co);
+  const returns = [];
+  let payoutGross = 0;
+  for (const pot of pots) {
+    if (winner.contributed >= pot.level) {
+      // The winner matched this tier — they take it in full.
+      payoutGross += pot.amount;
+    } else {
+      // The winner never matched this tier: it's uncalled relative to them.
+      // Every funder gets their own slice back (each contributed exactly
+      // `pot.amount / funders.length` to this tier).
+      const perFunder = roundMoney(pot.amount / pot.funders.length);
+      for (const funderId of pot.funders) {
+        returns.push({ userId: funderId, amount: perFunder });
+      }
+    }
+  }
+  return {
+    winnerUserId: winner.userId,
+    pots,
+    payoutGross: roundMoney(payoutGross),
+    returns,
+  };
+}
+
+/**
  * THE WINNER-DETERMINATION HOOK.
  *
  * Decides the outcome of a hand given the server-authoritative crash
@@ -751,21 +805,27 @@ export function computePots(hand, carryOver = 0) {
  *   1. Any fold recorded at a checkpoint whose multiplier is ABOVE the crash
  *      point is void — that checkpoint never opened, so the player is
  *      restored to active (and busts with the rest).
- *   2. Exactly one active player → fold-out. That player wins the WHOLE pot
- *      (minus the platform fee applied at settlement) — every folded
- *      contribution and the carry-over tier included. Folded players lose
- *      only what they already contributed; nothing is returned to them.
+ *   2. Exactly one active player → fold-out. The survivor wins ONLY the
+ *      pot tiers they matched (the matched-tier rule): the main pot and
+ *      any side-pot tier up to their own contribution. Tiers beyond the
+ *      winner's contribution were never matched by them — that money
+ *      returns to the players who funded it (slice by slice), so an
+ *      all-in short stack can never claim the opponents' excess bets.
  *   3. Two or more active players at the crash → every active player loses.
  *      The pot then follows the fold-order mechanic:
  *        • at least one successful fold → the LATEST successful fold before
  *          the crash (highest checkpoint, then the fold recorded last within
- *          that checkpoint) wins the whole pot;
+ *          that checkpoint) wins the pot — capped by the SAME matched-tier
+ *          rule: they take only the tiers up to their own contribution, and
+ *          the unmatched excess returns to the players who funded it;
  *        • nobody folded → no winner: the whole pot carries over to the next
  *          hand.
  *
- * There are NO side-pot returns in any branch: folded players keep their
- * losses (they committed to the pot), a player who crashed can never win,
- * and the winner receives the pot exactly once (never a return + the pot).
+ * Side-pot returns therefore exist whenever a winner is crowned: unmatched
+ * tiers go back to the players who funded them (poker's "you only win what
+ * you matched"), whether the winner is a fold-out survivor or a fold-order
+ * winner. A player who crashed can never win, and no one ever receives a
+ * return AND a pot share.
  *
  * @param {object} hand
  * @param {number} crashMultiplier server-authoritative crash point
@@ -794,15 +854,20 @@ export function resolveHand(hand, crashMultiplier) {
   const pots = computePots(resolvedHand, hand.carryOver);
 
   if (active.length === 1) {
-    // Fold-out: the sole survivor wins the whole pot — no returns.
+    // Fold-out: the sole survivor wins the pot tiers they matched (the
+    // matched-tier rule) — an all-in / short winner can only claim the
+    // main pot and side pots up to their contribution; unmatched tiers
+    // return to the players who funded them. `pot` stays the whole pot —
+    // settlement derives the winner's payout as pot minus the returns.
+    const payout = matchedTierPayout(resolvedHand, active[0].userId, hand.carryOver);
     return {
       winnerUserId: active[0].userId,
       activeAtCrash: [],
       pot,
       carryOver: 0,
-      payoutGross: pot,
-      pots,
-      returns: [],
+      payoutGross: payout.payoutGross,
+      pots: payout.pots,
+      returns: payout.returns,
     };
   }
 
@@ -811,14 +876,20 @@ export function resolveHand(hand, crashMultiplier) {
   // fold-order mechanic then decides the pot.
   const folded = players.filter((p) => p.folded && p.foldedAtMultiplier != null);
   if (folded.length > 0) {
+    // Fold-order: the latest successful fold wins — but the SAME matched-
+    // tier rule caps their claim at what they contributed: a fold-order
+    // winner can never take chips they never matched, so the unmatched
+    // excess returns to the players who funded it.
+    const winnerId = latestSuccessfulFold(resolvedHand);
+    const payout = matchedTierPayout(resolvedHand, winnerId, hand.carryOver);
     return {
-      winnerUserId: latestSuccessfulFold(resolvedHand),
+      winnerUserId: winnerId,
       activeAtCrash: active.map((p) => p.userId),
       pot,
       carryOver: 0,
-      payoutGross: pot,
-      pots,
-      returns: [],
+      payoutGross: payout.payoutGross,
+      pots: payout.pots,
+      returns: payout.returns,
     };
   }
 
