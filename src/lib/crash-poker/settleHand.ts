@@ -1,21 +1,24 @@
 // src/lib/crash-poker/settleHand.ts
 //
-// Shared, server-authoritative settlement for a Crash Poker hand. Used by
-// BOTH the betting-action route (a fold-out ends the hand immediately) and
-// the settle route (the crash ended the hand). Winner determination is
-// delegated to `resolveHand()` in roundSystem.js — the single, clean hook for
-// the fold-order / pot rules — so neither route hardcodes payout logic.
+// Shared, server-authoritative settlement for a Crash Arena hand. Used by
+// BOTH the fold route (a fold-out ends the hand immediately) and the
+// settle/crash-check paths (the crash ended the hand). Outcome
+// determination is delegated to `resolveHand()` in roundSystem.js — the
+// single, clean hook for the rank / pot rules — so neither route hardcodes
+// payout logic.
 //
 // Settlement:
 //   1. Rebuilds the hand from the round row + entries (+ table carry-over).
-//   2. resolveHand() decides the winner by fold-order / pot rules:
-//        • a winner (fold-out survivor OR the latest successful fold)
-//          takes only the pot tiers they matched — unmatched tiers
-//          return to the players who funded them (matched-tier rule)
-//        • crash with 2+ active + no folds → nobody wins; the full pot
-//          carries over
-//   3. Marks entries won / folded / lost, credits the winner's table balance,
-//      writes WIN/RAKE transactions (real tables only), updates the table's
+//   2. resolveHand() ranks the players by fold order and splits the pot by
+//      linear weights:
+//        • rank 1 = sole survivor (fold-out) or the last fold before the
+//          crash — takes the biggest share (pot − 5% fee, weighted);
+//        • every other folder ranks below and takes a smaller share;
+//        • crash victims get NOTHING;
+//        • nobody folded + crash → nobody wins; the full pot carries over.
+//   3. Marks entries won / folded / lost, credits EVERY ranked player's
+//      table balance, writes one WIN transaction per ranked player (+ one
+//      RAKE on the winner) on real tables only, updates the table's
 //      carry-over, settles the round, re-opens the table, and broadcasts.
 
 import { db } from "../../db/client";
@@ -29,21 +32,15 @@ import {
 } from "../../db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
-import { handFromEntries, resolveHand, expireStaleActions } from "./roundSystem";
+import { handFromEntries, resolveHand } from "./roundSystem";
 import { PLATFORM_FEE, NEXT_ROUND_COUNTDOWN_MS } from "./constants";
 import { broadcastTableUpdate } from "../crash-arena/rooms";
 import { isCrashArenaAiBotId } from "../crash-arena/aiBot";
 import type { CrashPokerHand } from "./types";
 
-export interface CrashPokerPotTier {
-  level: number;
-  amount: number;
-  funders: number[];
-  eligible: number[];
-}
-
-export interface CrashPokerReturn {
+export interface CrashPokerPayout {
   userId: number;
+  rank: number;
   amount: number;
 }
 
@@ -53,12 +50,13 @@ export interface CrashPokerSettleResult {
   winnerUserId: number | null;
   pot: number;
   rake: number;
+  /** Rank-1 payout (the biggest share). */
   payout: number;
+  /** Distributable pool (pot − rake). */
   payoutGross: number;
   carryOver: number;
   activeAtCrash: number[];
-  pots: CrashPokerPotTier[];
-  returns: CrashPokerReturn[];
+  payouts: CrashPokerPayout[];
   crashPoint: number;
   seed: string | null;
   seedHash: string | null;
@@ -73,7 +71,7 @@ export interface CrashPokerSettleResult {
 }
 
 /**
- * Settle a Crash Poker hand. Idempotent: a round already marked "settled"
+ * Settle a Crash Arena hand. Idempotent: a round already marked "settled"
  * returns immediately with `alreadySettled: true`.
  *
  * @param roundId crash_arena_rounds.id
@@ -83,10 +81,10 @@ export async function settleCrashPokerHand(
 ): Promise<CrashPokerSettleResult> {
   // The ENTIRE settlement runs in one transaction that locks the round row
   // (`FOR UPDATE`) — two concurrent settle calls (crash + fold-out racing,
-  // the client settle + the auto-fold sweep) serialize here: the second
-  // caller waits, re-reads `status === "settled"`, and no-ops instead of
-  // double-crediting the winner. Every read (table, entries, carry-over)
-  // and every write (entries, balances, ledger, statuses) shares the lock.
+  // the client settle + the crash sweep) serialize here: the second caller
+  // waits, re-reads `status === "settled"`, and no-ops instead of
+  // double-crediting anyone. Every read (table, entries, carry-over) and
+  // every write (entries, balances, ledger, statuses) shares the lock.
   const outcome = await db.transaction(async (tx) => {
     const roundData = await tx
       .select()
@@ -110,9 +108,8 @@ export async function settleCrashPokerHand(
           pot: 0,
           carryOver: 0,
           activeAtCrash: [] as number[],
-          pots: [] as CrashPokerPotTier[],
+          payouts: [] as CrashPokerPayout[],
         },
-        returns: [] as CrashPokerReturn[],
         rake: 0,
         payout: 0,
         payoutGross: 0,
@@ -146,142 +143,94 @@ export async function settleCrashPokerHand(
     }
 
     const tableCarryOver = Number(table.carryOver ?? 0);
-    const handFromDb = handFromEntries({
+    const hand = handFromEntries({
       round,
       entries,
       carryOver: tableCarryOver,
     }) as CrashPokerHand;
-    // Stall guard: auto-fold players who never acted before their deadline
-    // (safe for fold-out settles — a sole survivor is never auto-folded).
-    const expired = expireStaleActions(handFromDb, Date.now());
-    const hand = expired.hand;
     const resolved = resolveHand(hand, crashPoint);
     const winnerUserId = resolved.winnerUserId;
-    const returns = resolved.returns ?? [];
-    const totalReturned = returns.reduce((sum, r) => sum + r.amount, 0);
+    const payouts = resolved.payouts ?? [];
 
     // ── Money math ────────────────────────────────────────────────────────
-    // The winner only receives the tiers they matched (pot − uncontested
-    // returns). The platform fee applies to that winnable amount.
-    let rake = 0;
+    // The whole pot (minus the 5% fee) is the distributable pool; every
+    // ranked player takes their weighted share (resolveHand already split
+    // it, conserving every cent).
+    let rake = resolved.rake;
     let payout = 0;
     let carryOver = resolved.carryOver;
-    const payoutGross = round2(resolved.pot - totalReturned);
     if (winnerUserId != null) {
-      rake = Math.floor(payoutGross * PLATFORM_FEE);
-      payout = payoutGross - rake;
+      payout = payouts.find((p) => p.userId === winnerUserId)?.amount ?? 0;
       carryOver = 0;
     }
 
-    // ── Mark entries (folded state from the resolved hand — voided folds
-    //    are restored to active and therefore "lost"), credit the winner,
-    //    write WIN/RAKE transactions, update carry-over, settle the round
-    //    and re-open the table — all under the same row lock. ─────────────
-    const foldedByUser = new Map(
-      hand.players
-        .filter((p) => p.folded)
-        .map((p) => [p.userId, true]),
-    );
-    const foldPointByUser = new Map(
-      hand.players
-        .filter((p) => p.folded)
-        .map((p) => [p.userId, p.foldedAtMultiplier]),
-    );
+    // ── Mark entries ──────────────────────────────────────────────────────
+    const rankedUserIds = new Set(payouts.map((p) => p.userId));
+    const activeAtCrashIds = new Set(resolved.activeAtCrash);
 
     const updatedEntries: CrashPokerSettleResult["entries"] = [];
     for (const entry of entries) {
       let result = "lost";
       if (entry.userId === winnerUserId) {
         result = "won";
-      } else if (foldedByUser.has(entry.userId)) {
+      } else if (rankedUserIds.has(entry.userId)) {
         result = "folded";
       }
-      const foldPoint = foldPointByUser.get(entry.userId);
-      const resolvedFoldPoint =
-        entry.foldedAtMultiplier != null
-          ? entry.foldedAtMultiplier
-          : foldPoint != null
-            ? String(foldPoint)
-            : null;
       await tx
         .update(crashArenaEntries)
         .set({
           result,
           isActive: false,
-          foldedAtMultiplier: resolvedFoldPoint,
         })
         .where(eq(crashArenaEntries.id, entry.id));
       updatedEntries.push({
         userId: entry.userId,
         result,
         contributed: Number(entry.contributed ?? 0),
-        // The checkpoint multiplier where this player folded — lets the UI
-        // render the fold order (and the winner's successful fold point).
+        // The multiplier where this player folded — lets the UI render the
+        // fold order (and the winner's successful fold point).
         foldedAtMultiplier:
-          resolvedFoldPoint != null ? Number(resolvedFoldPoint) : null,
+          entry.foldedAtMultiplier != null ? Number(entry.foldedAtMultiplier) : null,
       });
     }
 
-    // ── Credit the winner's table balance ────────────────────────────────
-    if (winnerUserId != null && payout > 0) {
+    // ── Credit EVERY ranked player's table balance ───────────────────────
+    for (const p of payouts) {
+      if (p.amount <= 0) continue;
       await tx
         .update(crashArenaPlayers)
-        .set({ balance: sql`${crashArenaPlayers.balance} + ${payout}` })
+        .set({ balance: sql`${crashArenaPlayers.balance} + ${p.amount}` })
         .where(
           and(
             eq(crashArenaPlayers.tableId, tableId),
-            eq(crashArenaPlayers.userId, winnerUserId),
+            eq(crashArenaPlayers.userId, p.userId),
           ),
         );
     }
 
-    // ── Side-pot returns: uncontested tiers go back to the players who
-    //    funded them (poker's "you can only win chips you matched"). ─────
-    for (const ret of returns) {
-      if (ret.amount <= 0) continue;
-      await tx
-        .update(crashArenaPlayers)
-        .set({ balance: sql`${crashArenaPlayers.balance} + ${ret.amount}` })
-        .where(
-          and(
-            eq(crashArenaPlayers.tableId, tableId),
-            eq(crashArenaPlayers.userId, ret.userId),
-          ),
-        );
-    }
-
-    // ── WIN / RAKE / RETURN transactions (real tables only — practice and
-    //    PRIVATE tables are virtual chips that never touch the ledger; bot
-    //    seats are reserved users whose table balances are virtual too, so
-    //    their wins/refunds are never ledgered). ───────────────────────────
+    // ── WIN / RAKE transactions (real tables only — practice and PRIVATE
+    //    tables are virtual chips that never touch the ledger; bot seats
+    //    are reserved users whose table balances are virtual too, so their
+    //    wins are never ledgered). ─────────────────────────────────────────
     if (!table.isAi && !table.isPrivate) {
-      if (winnerUserId != null && !(await isCrashArenaAiBotId(winnerUserId))) {
+      for (const p of payouts) {
+        if (p.amount <= 0) continue;
+        if (await isCrashArenaAiBotId(p.userId)) continue;
+        await tx.insert(crashArenaTransactions).values({
+          userId: p.userId,
+          tableId,
+          amount: p.amount.toFixed(2),
+          type: "WIN",
+          reason: `Won Crash Arena hand #${round.id} (rank ${p.rank} of ${payouts.length}, pot ${resolved.pot.toFixed(2)})`,
+        });
+      }
+      if (rake > 0 && winnerUserId != null && !(await isCrashArenaAiBotId(winnerUserId))) {
         await tx.insert(crashArenaTransactions).values({
           userId: winnerUserId,
           tableId,
-          amount: payout.toFixed(2),
-          type: "WIN",
-          reason: `Won Crash Poker hand #${round.id} (pot ${payoutGross.toFixed(2)})`,
-        });
-        if (rake > 0) {
-          await tx.insert(crashArenaTransactions).values({
-            userId: winnerUserId,
-            tableId,
-            amount: rake.toFixed(2),
-            type: "RAKE",
-            reason: `Platform fee (5%), hand #${round.id}`,
-          });
-        }
-      }
-      for (const ret of returns) {
-        if (ret.amount <= 0) continue;
-        if (await isCrashArenaAiBotId(ret.userId)) continue;
-        await tx.insert(crashArenaTransactions).values({
-          userId: ret.userId,
-          tableId,
-          amount: ret.amount.toFixed(2),
-          type: "RETURN",
-          reason: `Side-pot refund, hand #${round.id}`,
+          amount: rake.toFixed(2),
+          type: "RAKE",
+          reason: `Platform fee (5%), hand #${round.id}`,
         });
       }
     }
@@ -294,9 +243,20 @@ export async function settleCrashPokerHand(
       .where(eq(crashArenaTables.id, tableId));
 
     // ── Settle the round + re-open the table ─────────────────────────────
+    // The resolved hand (with payouts + winner) is persisted into hand_state
+    // so the tables poll can serve authoritative results to clients that
+    // missed the socket broadcast.
     await tx
       .update(crashArenaRounds)
-      .set({ status: "settled" })
+      .set({
+        status: "settled",
+        handState: {
+          ...hand,
+          winnerUserId,
+          payouts,
+          resolvedAt: Date.now(),
+        },
+      })
       .where(eq(crashArenaRounds.id, roundId));
 
     // Schedule the NEXT round start on an absolute wall-clock deadline
@@ -326,10 +286,9 @@ export async function settleCrashPokerHand(
       tableId,
       updatedEntries,
       resolved,
-      returns,
       rake,
       payout,
-      payoutGross,
+      payoutGross: resolved.payoutGross,
       winnerUserId,
       nextRoundAt,
       tableIsAi: table.isAi,
@@ -337,7 +296,7 @@ export async function settleCrashPokerHand(
     };
   });
 
-  const { round, tableId, updatedEntries, resolved, returns, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt, tableIsAi, tableIsPrivate } = outcome;
+  const { round, tableId, updatedEntries, resolved, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt, tableIsAi, tableIsPrivate } = outcome;
 
   // Best-effort fanout so the whole table reconciles instantly (after the
   // transaction committed).
@@ -350,22 +309,23 @@ export async function settleCrashPokerHand(
     payoutGross,
     carryOver: alreadySettled ? 0 : resolved.carryOver,
     crashPoint: Number(round.crashPoint ?? 0),
-    returns,
-    pots: resolved.pots,
+    winnerUserId,
+    payouts: resolved.payouts,
+    activeAtCrash: resolved.activeAtCrash,
     // Absolute epoch-ms of the next round start — clients count down to it.
     nextRoundAt:
       nextRoundAt != null ? nextRoundAt.getTime() : Date.now() + NEXT_ROUND_COUNTDOWN_MS,
   });
 
   // ── User stats + quests (real tables only, human participants) ──
-  // Crash Poker is a multi-player PvP table, so a settled hand is a PvP
-  // outcome. The winner records a PvP win and each "lost" participant a
-  // loss through the canonical applyLeaderboardCounters pipeline
-  // (user_stats wins/losses/win_rate, pvp_wins, quests). Folded entries
-  // are skipped — their money was largely returned via side-pot refunds,
-  // so they don't represent a settled win/loss. Practice/private tables
-  // use virtual chips and never touch real stats (mirrors the WIN/RAKE
-  // transaction gating). Fire-and-forget — never blocks settlement.
+  // Crash Arena is a multi-player PvP table, so a settled hand is a PvP
+  // outcome. The rank-1 winner records a PvP win and each "lost"
+  // participant a loss through the canonical applyLeaderboardCounters
+  // pipeline (user_stats wins/losses/win_rate, pvp_wins, quests). Folded
+  // entries are skipped — they received a ranked payout, so they don't
+  // represent a settled win/loss. Practice/private tables use virtual
+  // chips and never touch real stats (mirrors the WIN/RAKE transaction
+  // gating). Fire-and-forget — never blocks settlement.
   if (
     !alreadySettled &&
     !tableIsAi &&
@@ -389,8 +349,7 @@ export async function settleCrashPokerHand(
     payoutGross,
     carryOver: alreadySettled ? 0 : resolved.carryOver,
     activeAtCrash: resolved.activeAtCrash,
-    pots: resolved.pots,
-    returns,
+    payouts: resolved.payouts,
     crashPoint: Number(round.crashPoint ?? 0),
     seed: round.seed,
     seedHash: round.seedHash,
@@ -402,12 +361,7 @@ export async function settleCrashPokerHand(
   };
 }
 
-/** Round to 2 decimals (cents). */
-function round2(n: number): number {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
-
-// Best-effort stat side-effect for a settled Crash Poker hand. Resolves
+// Best-effort stat side-effect for a settled Crash Arena hand. Resolves
 // numeric user ids → clerk ids (applyLeaderboardCounters keys on clerk id),
 // records the winner as a PvP win and each "lost" participant as a loss.
 // AI-bot seats are skipped. Fire-and-forget; a failure never blocks the
@@ -459,4 +413,4 @@ async function recordCrashArenaStats(opts: {
       payout: 0,
     }).catch(() => {});
   }
-}
+}

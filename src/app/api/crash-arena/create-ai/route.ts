@@ -20,7 +20,6 @@ import {
   getOrCreateCrashArenaAiBot,
 } from "../../../../lib/crash-arena/aiBot";
 import { CRASH_AI_DIFFICULTIES } from "../../../../lib/crash-arena/botStrategy";
-import { computeBlinds } from "../../../../lib/crash-poker/roundSystem";
 
 /** Free practice stack the human starts with (chips are virtual). */
 const AI_PRACTICE_STACK_MULTIPLIER = 20; // 20× wager — ~20 rounds of practice
@@ -39,9 +38,9 @@ const AI_PRACTICE_STACK_MULTIPLIER = 20; // 20× wager — ~20 rounds of practic
  *   4. Seats BOTH players with free virtual balances — the wallet is
  *      never touched, no BUY_IN transaction is recorded.
  *
- * Rounds then run exactly like a real table (wager deducted from the
+ * Rounds then run exactly like a real table (ante deducted from the
  * virtual balances, pot, crash, settle) and the client drives the bot's
- * cashout through /api/crash-arena/ai-cashout.
+ * fold through /api/crash-arena/action (forBot: true).
  */
 export async function POST(req: Request) {
   try {
@@ -109,9 +108,8 @@ export async function POST(req: Request) {
     }
 
     // ── Create the practice table ──────────────────────────────────────────
-    // Configurable blinds: persist the Small Blind (default round(wager/2))
-    // so practice hands mirror real tables.
-    const { smallBlind } = computeBlinds(roundedWager);
+    // Every player posts the wager as a flat ante each hand — no blinds to
+    // persist (small_blind stays NULL).
     const [created] = await db
       .insert(crashArenaTables)
       .values({
@@ -123,7 +121,6 @@ export async function POST(req: Request) {
         status: "waiting",
         isAi: true,
         aiDifficulty,
-        smallBlind: smallBlind.toFixed(2),
       })
       .returning();
 

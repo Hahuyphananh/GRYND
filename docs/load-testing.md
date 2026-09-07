@@ -39,7 +39,7 @@ Load-test surfaces:
 |---|---|---|---|
 | `users` | Wallet + stats on ONE wide row | Wager: conditional atomic `UPDATE balance = balance − x WHERE clerk_id = ? AND balance >= x … RETURNING` (per game serverStore, e.g. `src/lib/tower-arena/serverStore.ts:376`). Settlement: `balance + payout` again. **Every settled bet additionally runs `applyLeaderboardCounters` (`src/lib/leaderboardCounters.js`)**: one big CTE updating `total_wagered`, `weekly_*`, streaks, XP/level on the same `users` row + upserting `user_stats`. Battle-pass grants may update the row again. | **High.** Same row updated ≥2× per wager. Same-user concurrent sessions serialize on the row lock. |
 | `user_stats` | Per-user aggregated counters | Upsert on every settlement (see above) | **High.** PK only; upsert from the CTE; no rankable indexes (see §4). |
-| `crash_arena_*` / PvP match tables (`*_matches`, `*_rounds`, `*_entries`, `*_players`) | Round/match state + money | Join = buy-in deduction + player row + transaction insert; `start-round` = one `db.transaction` (round row + N entry rows + N balance deductions + table flip); crash = mass payout updates across `users`/`crash_arena_players`/transactions; `cashout`/`settle` are client-driven POSTs | **High burst.** N players settle within seconds of each other (round-end spike). Tables are indexed well (status/created, per-user); risk is write volume, not lookups. |
+| `crash_arena_*` / PvP match tables (`*_matches`, `*_rounds`, `*_entries`, `*_players`) | Round/match state + money | Join = buy-in deduction + player row + transaction insert; `start-round` = one `db.transaction` (round row + N entry rows + N balance deductions + table flip); crash = mass payout updates across `users`/`crash_arena_players`/transactions; fold (`action`) and `settle` are client-driven POSTs | **High burst.** N players settle within seconds of each other (round-end spike). Tables are indexed well (status/created, per-user); risk is write volume, not lookups. |
 | `chat_messages` | Global chat | Insert per message; read-back by `(roomType, roomId, createdAt)` | **Medium.** Well indexed (`chat_messages_room_idx`); grows fastest of any table. Soak test watches index bloat. |
 | Leaderboards (reads) | `users`/`user_stats` + per-game tables | `fetchRankedRows` / `fetchGameLeaderboard` (`src/lib/leaderboardQueries.js`) — full-table window/aggregate when cache misses | **Medium-high on cache miss.** Cached 5 min with debounced (60 s) purge on settlement → under heavy settle load the full-table sorts recompute up to once/minute. |
 | `token_transactions` | Money-movement audit | Insert on purchase/spend/refund | Low; append-only, indexed `(clerk_id, created_at)`. |
@@ -66,9 +66,9 @@ Auth: every route below uses Clerk; send the session cookie header
 | Table detail | `/api/crash-arena/tables` | GET | + latest round + entries (N+1 per table) |
 | **Wager (create)** | `/api/crash-arena/create` | POST `{wager}` | insert table; stale-table cleanup |
 | **Wager (buy-in)** | `/api/crash-arena/join` | POST `{tableId, buyInAmount, joinCode?}` | **atomic balance debit + player row + transaction insert** |
-| Round start | `/api/crash-arena/start-round` | POST `{tableId}` | one tx: blinds debit all seated, round row, N entries |
-| **Cashout** | `/api/crash-arena/cashout` | POST `{roundId, cashoutMultiplier}` | entry update + broadcast |
-| **Settle** | `/api/crash-arena/settle` | POST `{roundId}` | `settleCrashPokerHand`: pot resolution, winner balance credit, counters (via `applyLeaderboardCounters`) |
+| Round start | `/api/crash-arena/start-round` | POST `{tableId}` | one tx: ante debit all seated, round row, N entries |
+| Fold | `/api/crash-arena/action` | POST `{tableId, action: "fold"}` | entry update (foldedAtMultiplier) + fold-out broadcast |
+| **Settle** | `/api/crash-arena/settle` | POST `{roundId}` | `settleCrashPokerHand`: ranked pot resolution, balance credits, counters (via `applyLeaderboardCounters`) |
 | History | `/api/get-bet-history` | GET | **21 fan-out queries** across game tables |
 | Leaderboard | `/api/leaderboard/all-time` etc. | GET `?category=&limit=&offset=` | Redis-cached; recompute on miss |
 | Per-game board | `/api/leaderboard/game?game=` | GET | cache; miss = full scan+group of that game table |
@@ -153,7 +153,7 @@ server-time budgets for a single request *excluding* think time.
 |---|---|---|---|---|
 | S1 | Ramp — wager path | Throughput ceiling of **create + buy-in (atomic balance debit)** under rising concurrency | `wagering.yml`: 0→80 VUs over 3 min | p95 ≤ 600 ms; error rate ≤ 1%; zero `400` beyond expected validation |
 | S2 | Sustained — read mix | Feeds under steady user load, incl. cache-hit leaderboards/history | `read-mix.yml`: 40 VUs, 5 min | p95 ≤ 800 ms reads; cache-hit ratio high (watch `grynd:lb:*` Redis misses) |
-| S3 | **Settlement burst** | Round-end spike: N players settle concurrently | Drive real full-table rounds (socket + HTTP driver, see §7); alternatively hit `cashout`+`settle` on staging rounds | p95 settle ≤ 1 s at 5× normal round-end rate; **no deadlocks/lock timeouts in logs** |
+| S3 | **Settlement burst** | Round-end spike: N players settle concurrently | Drive real full-table rounds (socket + HTTP driver, see §7); alternatively hit fold (`action`)+`settle` on staging rounds | p95 settle ≤ 1 s at 5× normal round-end rate; **no deadlocks/lock timeouts in logs** |
 | S4 | Same-user contention | Two concurrent sessions on one account (double-tap wager) | 20 accounts × 2 concurrent sessions placing wagers | Final balances consistent; no lost update (`balance` never < 0); both settlements credited exactly once |
 | S5 | Cache stampede | Leaderboard recompute right after a purge | `read-mix.yml` with settlements firing (trigger purge) | p95 on boards ≤ 2 s (recompute cost bounded — validates §4.3 need) |
 | S6 | Soak | 30+ min at 2× expected peak | extended read-mix + wagers | No monotonic latency drift; connection pool not exhausted; no index bloat surprises |

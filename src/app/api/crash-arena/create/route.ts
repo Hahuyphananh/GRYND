@@ -12,7 +12,6 @@ import {
   CRASH_MAX_WAGER,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
-import { computeBlinds } from "../../../../lib/crash-poker/roundSystem";
 import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
@@ -112,10 +111,8 @@ export async function POST(req: Request) {
     }
 
     // ── Create the brand-new table ───────────────────────────────────────────
-    // Configurable blinds: resolve the Small Blind once at creation (default
-    // ratio round(wager/2)) and persist it so every hand at this table uses
-    // the same blind structure.
-    const { smallBlind } = computeBlinds(roundedWager);
+    // Every player posts the wager as a flat ante each hand — no blinds to
+    // persist (small_blind stays NULL).
     // Private tables get an invite code — the ONLY way non-members can join
     // (the table URL alone no longer grants access). Public tables don't
     // need one (anyone can join from the lobby).
@@ -133,7 +130,6 @@ export async function POST(req: Request) {
         // shares the invite code (and may add AI seats there, like poker).
         isPrivate: privateTable,
         joinCode,
-        smallBlind: smallBlind.toFixed(2),
       })
       .returning();
 

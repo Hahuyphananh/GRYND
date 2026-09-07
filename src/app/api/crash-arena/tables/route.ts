@@ -229,31 +229,17 @@ export async function GET(req: Request) {
                 table.nextRoundAt != null
                   ? new Date(table.nextRoundAt).getTime()
                   : null,
-              // ── Crash Poker hand window ────────────────────────────────
-              smallBlind:
-                latestRound[0].smallBlind != null
-                  ? Number(latestRound[0].smallBlind)
-                  : null,
+              // big_blind keeps the table wager (the flat ante) — the
+              // poker-era columns (small_blind, dealer_position,
+              // checkpoint_index, required_bet, betting_open) are no
+              // longer populated, so only the wager is exposed here.
               bigBlind:
                 latestRound[0].bigBlind != null
                   ? Number(latestRound[0].bigBlind)
                   : null,
-              dealerPosition: latestRound[0].dealerPosition ?? null,
-              checkpointIndex: latestRound[0].checkpointIndex ?? -1,
-              requiredBet:
-                latestRound[0].requiredBet != null
-                  ? Number(latestRound[0].requiredBet)
-                  : 0,
-              bettingOpen: Boolean(latestRound[0].bettingOpen),
               handState: latestRound[0].handState ?? null,
-              // Stall-guard deadline (epoch ms) for the open checkpoint
-              // window — clients render the auto-fold countdown from it.
-              windowDeadlineAt:
-                (latestRound[0].handState as { windowDeadlineAt?: number } | null)
-                  ?.windowDeadlineAt ?? null,
-              // Epoch-ms the current flight segment started — drives the
-              // pause-aware curve so every client renders the same
-              // multiplier (paused at open checkpoints) at the same moment.
+              // Epoch-ms the hand started — the continuous-curve anchor
+              // every client renders the multiplier from.
               flightResumedAt:
                 (latestRound[0].handState as { flightResumedAt?: number } | null)
                   ?.flightResumedAt ?? null,
@@ -261,10 +247,6 @@ export async function GET(req: Request) {
               entries: roundEntries.map((e) => ({
                 userId: e.userId,
                 result: e.result,
-                cashoutMultiplier:
-                  e.cashoutMultiplier != null
-                    ? Number(e.cashoutMultiplier)
-                    : null,
                 contributed: Number(e.contributed ?? 0),
                 isActive: e.isActive !== false,
                 allIn: e.allIn === true,
@@ -296,8 +278,6 @@ export async function GET(req: Request) {
           maxPlayers: table.maxPlayers,
           status: table.status,
           carryOver: Number(table.carryOver ?? 0),
-          // Configurable per-table Small Blind (null = standard wager/2).
-          smallBlind: table.smallBlind != null ? Number(table.smallBlind) : null,
           isAi: table.isAi,
           // Private host-created tables: hidden from the public grid; only
           // the host may add AI seats to them.

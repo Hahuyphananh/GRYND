@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { IconBomb, IconCircleCheck, IconFlag } from "@tabler/icons-react";
+import { IconBomb, IconFlag } from "@tabler/icons-react";
 import IconAvatar from "../IconAvatar";
 
 
@@ -9,7 +9,7 @@ import IconAvatar from "../IconAvatar";
  *
  * Props:
  *   players  — array of { name, iconKey, balance, isYou?, isSittingOut?,
- *                        cashoutMultiplier?, busted?, isPlaying? }
+ *                        allIn?, folded?, foldedAtMultiplier?, busted?, isPlaying? }
  *   maxSeats — total seats at the table
  *   phase    — current round phase ("waiting" | "running" | "crashed" | "settling")
  *   onReport — (player) => void — opens the report modal for a seated opponent
@@ -29,7 +29,6 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
     if (player.allIn) return "border-[#ff4fd8]/50 bg-[#ff4fd8]/10 shadow-[0_0_12px_rgba(255,79,216,0.25)]";
     if (player.folded) return "border-yellow-500/40 bg-yellow-950/20 opacity-70 shadow-[0_0_12px_rgba(250,204,21,0.15)]";
     if (player.busted) return "border-red-500/40 bg-red-950/30 shadow-[0_0_12px_rgba(239,68,68,0.25)]";
-    if (player.cashoutMultiplier != null) return "border-[#00ffa6]/40 bg-[#00ffa6]/5 shadow-[0_0_12px_rgba(0,255,166,0.25)]";
     if (player.isPlaying && isLive) return "border-[#00e5ff]/40 bg-[#020617] shadow-[0_0_12px_rgba(0,229,255,0.18)] animate-pulse";
     return "border-[#00e5ff]/30 bg-[#020617] shadow-[0_0_12px_rgba(0,229,255,0.1)]";
   }
@@ -49,13 +48,10 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
           } else if (player.folded) {
             liveBadge = (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 font-bold">
-                <IconFlag size={12} className="mr-1 inline" /> Folded
-              </span>
-            );
-          } else if (player.cashoutMultiplier != null && !player.busted) {
-            liveBadge = (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#00ffa6]/15 text-[#00ffa6] border border-[#00ffa6]/30 font-bold">
-                <IconCircleCheck size={12} className="mr-1 inline" /> {player.cashoutMultiplier.toFixed(2)}x
+                <IconFlag size={12} className="mr-1 inline" />
+                {player.foldedAtMultiplier != null
+                  ? `Folded @${player.foldedAtMultiplier.toFixed(2)}x`
+                  : "Folded"}
               </span>
             );
           } else if (player.busted) {
@@ -87,9 +83,7 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
                     ? "border-[#FFD700] ring-2 ring-[#FFD700]/40"
                     : player.busted
                       ? "border-red-500/50"
-                      : player.cashoutMultiplier != null
-                        ? "border-[#00ffa6]/50"
-                        : "border-[#00e5ff]/40"
+                      : "border-[#00e5ff]/40"
                   : "border-gray-500/20 bg-transparent text-gray-500"
                 }`}
             >
@@ -119,8 +113,8 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             </span>
 
             {/* Difficulty badge (AI bots only) — easy / medium / hard
-                drives the bot's fold/call/raise aggressiveness, so it's
-                surfaced right on the seat card. */}
+                drives the bot's fold target, so it's surfaced right on
+                the seat card. */}
             {player?.isBot && player.aiDifficulty && (
               <span
                 className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
@@ -149,7 +143,7 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
               </span>
             )}
 
-            {/* Live round badge (cashout / busted / in-flight) */}
+            {/* Live round badge (folded / busted / in-flight) */}
             {liveBadge}
 
             {/* Host controls for AI seats — rename + remove. Only rendered

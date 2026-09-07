@@ -20,32 +20,29 @@ import { logError } from "../../../../lib/logError";
  *
  * Body: { tableId: number }
  *
- * Server-authoritative Crash Poker hand creation:
+ * Server-authoritative Crash Arena hand creation:
  *   1. Locks in all seated players who aren't sitting out.
- *   2. Assigns dealer / Small Blind / Big Blind seats (dealer rotates every
- *      hand) and posts each player's opening contribution — the Small Blind
- *      is the minimum opening contribution every non-blind player posts
- *      (the ante), the SB seat's ante IS their small blind, and the BB seat
- *      tops up to the Big Blind total. A player whose stack can't cover
- *      their blind/ante posts their whole stack and is all-in; a player
- *      with no stack at all is left out of the hand.
- *   3. Deducts opening contributions from each player's table balance —
- *      atomically inside one db.transaction (deductions, round row, entry
- *      rows and the table status flip commit or roll back together).
+ *   2. EVERY playing player posts the table wager as a flat ante (no
+ *      blinds, no dealer rotation). A player whose stack can't cover the
+ *      ante posts their whole stack and is all-in; a player with no stack
+ *      at all is left out of the hand.
+ *   3. Deducts the ante from each player's table balance — atomically
+ *      inside one db.transaction (deductions, round row, entry rows and
+ *      the table status flip commit or roll back together).
  *   4. Generates a cryptographically secure seed + crash point.
- *   5. Creates a crash_arena_rounds row carrying the hand state
- *      (checkpoint 0 = 1.25x open, required bet = big blind).
- *   6. Creates a crash_arena_entries row for each playing player with their
- *      contributed amount (and all-in flag when the blinds busted them).
+ *   5. Creates a crash_arena_rounds row carrying the hand state.
+ *   6. Creates a crash_arena_entries row for each playing player with
+ *      their contributed amount (and all-in flag when the ante busted
+ *      them).
  *   7. Updates the table status to "active".
  *
  * Returns the round ID, seed hash (commitment), the hand snapshot
- * (blinds, dealer, open checkpoint) and per-player contributions — and
- * NOTHING that reveals the crash point. The crash point + seed stay
- * server-only until the hand settles (provably-fair reveal); clients fly
- * the shared curve "blind" and learn the crash from the server broadcast.
- * `startedAt` (server epoch ms) lets clients align their curve to the
- * server's hand start so every player sees the same multiplier.
+ * (wager, carry-over, per-player contributions) — and NOTHING that
+ * reveals the crash point. The crash point + seed stay server-only until
+ * the hand settles (provably-fair reveal); clients fly the shared curve
+ * "blind" and learn the crash from the server broadcast. `startedAt`
+ * (server epoch ms) lets clients align their curve to the server's hand
+ * start so every player sees the same multiplier.
  */
 export async function POST(req: Request) {
   try {
@@ -150,36 +147,22 @@ export async function POST(req: Request) {
       }
     }
 
-    const bigBlind = Number(table.wagerAmount);
-    // Configurable blinds: the table's persisted Small Blind wins; the
-    // engine falls back to round(wager / 2) when it's NULL (tables created
-    // before the column existed).
-    const tableSmallBlind = table.smallBlind != null ? Number(table.smallBlind) : null;
+    const wager = Number(table.wagerAmount);
 
-    // ── Dealer rotation: dealer advances one seat every hand. ────────────
-    const roundCountData = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(crashArenaRounds)
-      .where(eq(crashArenaRounds.tableId, tableId));
-    const handNumber = Number(roundCountData[0]?.count ?? 0) + 1;
-    const dealerPosition = (handNumber - 1) % seatedPlayers.length;
-
-    // ── Build the hand (blinds + ante + checkpoint 0 open). Opening
-    //    contributions are capped at each player's server-authoritative
-    //    table balance, so a short stack posts everything (all-in) instead
-    //    of being rejected; a player with nothing to post is skipped. ─────
+    // ── Build the hand (flat ante = the wager for every playing player).
+    //    Antes are capped at each player's server-authoritative table
+    //    balance, so a short stack posts everything (all-in) instead of
+    //    being rejected; a player with nothing to post is skipped. ────────
     const carryOver = Number(table.carryOver ?? 0);
     const stackByUser = new Map(
       seatedPlayers.map((p) => [p.userId, Number(p.balance)]),
     );
-    // The hand's flight starts NOW (server epoch ms) — clients align their
+    // The hand's curve starts NOW (server epoch ms) — clients align their
     // curve to the round's createdAt; the few-ms skew is imperceptible.
     const startedAt = Date.now();
     const hand = createHand({
       players: seatedPlayers,
-      bigBlind,
-      dealerPosition,
-      smallBlind: tableSmallBlind,
+      wager,
       carryOver,
       stackByUser,
       startedAt,
@@ -197,7 +180,6 @@ export async function POST(req: Request) {
         ...player,
         newBalance,
         contribution: amount,
-        role: contribution.role,
         allIn: Boolean(contribution.allIn),
       });
     }
@@ -205,7 +187,7 @@ export async function POST(req: Request) {
     if (playerDeductions.length === 0) {
       return NextResponse.json({
         success: false,
-        error: "No player has chips to post the blinds",
+        error: "No player has chips to post the ante",
       }, { status: 400 });
     }
 
@@ -236,12 +218,11 @@ export async function POST(req: Request) {
           seedHash,
           crashPoint: crashPoint.toFixed(2),
           status: "running",
-          smallBlind: hand.smallBlind.toFixed(2),
-          bigBlind: hand.bigBlind.toFixed(2),
-          dealerPosition,
-          checkpointIndex: hand.checkpointIndex,
-          requiredBet: hand.requiredBet.toFixed(2),
-          bettingOpen: hand.bettingOpen,
+          // big_blind keeps the table wager (the flat ante); the poker-era
+          // columns (small_blind, dealer_position, checkpoint_index,
+          // required_bet, betting_open) are simply not populated anymore and
+          // fall back to their defaults.
+          bigBlind: hand.wager.toFixed(2),
           handState: hand,
         })
         .returning();
@@ -252,7 +233,7 @@ export async function POST(req: Request) {
           userId: pd.userId,
           result: "pending",
           contributed: pd.contribution.toFixed(2),
-          lastAction: pd.role === "bb" ? "bb" : pd.role === "sb" ? "sb" : "ante",
+          lastAction: "ante",
           isActive: true,
           allIn: pd.allIn,
         });
@@ -267,31 +248,22 @@ export async function POST(req: Request) {
     });
 
     // Best-effort fanout so the other players at the table learn the
-    // round id + hand instantly (client-driven fanout via
-    // crashArena:updated covers the separate-process deployment). NOTE:
-    // the crash point is deliberately NOT included — it must never reach
-    // clients before the crash.
+    // round id + hand instantly. NOTE: the crash point is deliberately NOT
+    // included — it must never reach clients before the crash.
     broadcastTableUpdate(tableId, {
       roundStarted: true,
       roundId: round.id,
       seedHash,
       startedAt,
       pot: hand.pot,
-      wager: bigBlind,
+      wager,
       hand: {
-        smallBlind: hand.smallBlind,
-        bigBlind: hand.bigBlind,
-        dealerPosition,
-        checkpointIndex: hand.checkpointIndex,
-        requiredBet: hand.requiredBet,
-        bettingOpen: hand.bettingOpen,
+        wager,
         carryOver,
         flightResumedAt: hand.flightResumedAt,
-        windowDeadlineAt: hand.windowDeadlineAt,
         contributions: playerDeductions.map((pd) => ({
           userId: pd.userId,
           amount: pd.contribution,
-          role: pd.role,
           allIn: pd.allIn,
         })),
       },
@@ -304,21 +276,14 @@ export async function POST(req: Request) {
         seedHash,                        // commitment — published before the hand
         startedAt,                       // server epoch ms — curve alignment
         pot: hand.pot,
-        wager: bigBlind,
+        wager,
         hand: {
-          smallBlind: hand.smallBlind,
-          bigBlind: hand.bigBlind,
-          dealerPosition,
-          checkpointIndex: hand.checkpointIndex,
-          requiredBet: hand.requiredBet,
-          bettingOpen: hand.bettingOpen,
+          wager,
           carryOver,
           flightResumedAt: hand.flightResumedAt,
-          windowDeadlineAt: hand.windowDeadlineAt,
           contributions: playerDeductions.map((pd) => ({
             userId: pd.userId,
             amount: pd.contribution,
-            role: pd.role,
             allIn: pd.allIn,
           })),
         },
@@ -347,4 +312,4 @@ export async function POST(req: Request) {
 /** Round to 2 decimals (cents). */
 function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
+}

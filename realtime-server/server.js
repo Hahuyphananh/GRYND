@@ -482,24 +482,6 @@ async function runCrashArenaStaleSweep() {
 // Start the periodic sweep (first tick after one interval).
 setInterval(runCrashArenaStaleSweep, CRASH_ARENA_SWEEP_INTERVAL_MS);
 
-// ── Crash Arena checkpoint auto-fold sweep ────────────────────────────
-// Stall guard: every Crash Poker hand has a `windowDeadlineAt` — how long
-// an unmatched player has to act once a betting checkpoint window opens.
-// This interval asks Next.js to auto-fold overdue players in running hands
-// whose deadline passed, so one staller can't freeze betting for the whole
-// table (the action/settle routes also enforce it lazily; this makes it
-// proactive for hands where nobody is acting at all).
-//
-// Same internal-route pattern as the stale-seat sweep: fetch the Next.js
-// route with the optional shared secret. Skipped entirely when no
-// crash-arena table room has any live socket (nothing to un-stall).
-const CRASH_ARENA_AUTOFOLD_INTERVAL_MS = 10_000;
-// Idle liveness cadence for the auto-fold sweep: while no hand is running
-// it backs off from 10s to 60s (the crash sweep below runs the same stall
-// guard at 1s while a hand is active, so this sweep is only a secondary
-// net — its cadence is not correctness-critical).
-const CRASH_ARENA_AUTOFOLD_IDLE_INTERVAL_MS = 60_000;
-
 // ── Adaptive sweep cadence ────────────────────────────────────────────
 // The crash sweep is the game clock for every running Crash Poker hand, so
 // it must tick at 1s while any hand is live. But when nothing is running it
@@ -517,7 +499,6 @@ let crashArenaLastStartSeenAt = 0;
 const CRASH_ARENA_START_SETTLE_MS = 5_000;
 
 let crashArenaCrashSweepTimer = null;
-let crashArenaAutoFoldSweepTimer = null;
 
 function scheduleCrashArenaCrashSweep(overrideDelayMs) {
   if (crashArenaCrashSweepTimer) clearTimeout(crashArenaCrashSweepTimer);
@@ -530,73 +511,6 @@ function scheduleCrashArenaCrashSweep(overrideDelayMs) {
         : CRASH_ARENA_CRASH_SWEEP_IDLE_INTERVAL_MS,
   );
 }
-
-function scheduleCrashArenaAutoFoldSweep(overrideDelayMs) {
-  if (crashArenaAutoFoldSweepTimer) clearTimeout(crashArenaAutoFoldSweepTimer);
-  crashArenaAutoFoldSweepTimer = setTimeout(
-    runCrashArenaAutoFoldSweep,
-    overrideDelayMs != null
-      ? overrideDelayMs
-      : crashArenaRunningHands > 0
-        ? CRASH_ARENA_AUTOFOLD_INTERVAL_MS
-        : CRASH_ARENA_AUTOFOLD_IDLE_INTERVAL_MS,
-  );
-}
-
-async function runCrashArenaAutoFoldSweep() {
-  try {
-    const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
-
-    // No live crash-arena rooms → nothing to un-stall, skip the round trip.
-    let hasLiveCrashArenaSockets = false;
-    const adapterRooms = io.sockets.adapter.rooms;
-    if (adapterRooms && typeof adapterRooms.entries === "function") {
-      for (const [roomId] of adapterRooms.entries()) {
-        if (
-          typeof roomId === "string" &&
-          roomId.startsWith(CRASH_ARENA_MATCH_ROOM_PREFIX)
-        ) {
-          hasLiveCrashArenaSockets = true;
-          break;
-        }
-      }
-    }
-    if (!hasLiveCrashArenaSockets) return;
-
-    const res = await fetch(`${baseUrl}/api/crash-arena/auto-fold`, {
-      method: "POST",
-      headers: crashArenaSweepHeaders(),
-      body: JSON.stringify({}),
-    });
-    const data = await res.json().catch(() => null);
-    if (!data || data.success !== true) {
-      console.warn("[crash-arena] auto-fold sweep rejected:", res.status);
-      return;
-    }
-    const folded = data.data?.autoFoldedByRound || {};
-    const roundIds = Object.keys(folded);
-    if (roundIds.length > 0) {
-      console.log(
-        "[crash-arena] auto-fold sweep folded",
-        roundIds.reduce((n, id) => n + (folded[id] || []).length, 0),
-        "stalled player(s) across",
-        roundIds.length,
-        "hand(s)",
-      );
-    }
-  } catch (err) {
-    console.warn(
-      "[crash-arena] auto-fold sweep failed:",
-      err && err.message ? err.message : err,
-    );
-  } finally {
-    // Re-arm on the adaptive cadence: 10s while hands run, 60s when idle.
-    scheduleCrashArenaAutoFoldSweep();
-  }
-}
-
-// Start the auto-fold sweep (first tick at the active cadence).
-scheduleCrashArenaAutoFoldSweep(CRASH_ARENA_AUTOFOLD_INTERVAL_MS);
 
 // ── Crash Arena crash sweep ───────────────────────────────────────────
 // The crash point is generated server-side at hand start and NEVER sent to
@@ -658,19 +572,6 @@ async function runCrashArenaCrashSweep() {
         sentAt: new Date().toISOString(),
       });
     }
-    // Checkpoint opens / stall-guard auto-resolves produced by the sweep
-    // (the flight pauses at every 0.25x checkpoint; clients mirror the
-    // open window + fold badges live instead of waiting for the 10s poll).
-    const updates = Array.isArray(data.data?.updates) ? data.data.updates : [];
-    for (const evt of updates) {
-      if (evt == null || evt.tableId == null) continue;
-      const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${evt.tableId}`;
-      io.to(roomId).emit("lobby:updated", {
-        tableId: evt.tableId,
-        ...evt,
-        sentAt: new Date().toISOString(),
-      });
-    }
     if (crashed.length > 0) {
       console.log(
         "[crash-arena] crash sweep settled",
@@ -679,15 +580,6 @@ async function runCrashArenaCrashSweep() {
         crashed.map((e) => `#${e.roundId}@${e.multiplier}x`).join(","),
       );
     }
-    if (updates.length > 0) {
-      logThrottled(
-        "crash:updates",
-        "[crash-arena] sweep pushed",
-        updates.length,
-        "checkpoint update(s)",
-      );
-    }
-
     // ── Reconcile the running-hand hint against ground truth ───────────
     // The sweep is the only place that sees the authoritative scanned
     // count, so it both raises the hint (a hand started without a socket
@@ -1548,7 +1440,7 @@ io.on("connection", (socket) => {
 
   // ── Crash Arena: table update ─────────────────────────────────
   // The client emits `crashArena:updated` after a successful API
-  // mutation (start-round, cashout, crash/settle, join, leave) so
+  // mutation (start-round, fold, crash/settle, join, leave) so
   // the rest of the table gets an instant `lobby:updated` push
   // instead of waiting for the 5s poll. Mirrors the `plinko:ready`
   // handler: rejects events from non-participant sockets and from

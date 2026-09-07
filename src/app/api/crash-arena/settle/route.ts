@@ -91,8 +91,8 @@ export async function POST(req: Request) {
             }
           : null,
         activeAtCrash: settled.activeAtCrash,
-        pots: settled.pots,
-        returns: settled.returns,
+        // Ranked payouts (rank 1 = winner) — replaces the old side-pot tiers.
+        payouts: settled.payouts,
         allResults: settled.entries,
       },
     });
