@@ -107,10 +107,10 @@ function applyServerEntries(state, entries = []) {
  *     page re-fetches the table roster.
  *
  * Hand-start model (all players synced):
- *   • First hand: seated players press "Start Round" (a ready vote). When
- *     2+ distinct players are ready the countdown begins, and on expiry
- *     `startNewRound()` fires — the button itself never triggers the rocket
- *     directly.
+ *   • First hand: seated players press "Start Round" (a ready vote — AI
+ *     bots never vote, so the threshold is the seated human count, capped
+ *     at 2). Once met the countdown begins, and on expiry `startNewRound()`
+ *     fires — the button itself never triggers the rocket directly.
  *   • Later hands: no button — the auto-start countdown just runs.
  *
  * Fold model (v2):
@@ -455,6 +455,36 @@ export default function useCrashArenaRound({
   }, []);
 
   /**
+   * Apply the server-authoritative round results (settle payload).
+   *
+   * Guards against re-settling the SAME hand more than once, which was
+   * making the results popup reappear mid-countdown with the previous
+   * hand's win:
+   *   • a fold that raced the crash returns results in the fold response
+   *     AND the crash sweep re-broadcasts them ~1s later;
+   *   • the 10s roster poll re-reads the settled round after the modal
+   *     was dismissed, and the SYNC_ROUND catch-up would settle it again.
+   *
+   * Once a round's results have been applied, `lastSyncedRef` is marked
+   * settled so every later arrival (socket broadcast or poll) is skipped.
+   */
+  const applyServerSettlement = useCallback((results, roundId) => {
+    if (!results) return;
+    if (roundId == null) return;
+    const rid = String(roundId);
+    const last = lastSyncedRef.current;
+    const alreadySettled = last && last.id === rid && last.status === "settled";
+    // While the results are still on screen (settling) a re-sent
+    // authoritative payload (fold response + crash sweep both carry it)
+    // is an upgrade over locally-mirrored numbers — apply it. Once the
+    // player advanced to the next hand (waiting), re-applying would
+    // resurrect the results popup mid-countdown, so skip.
+    if (alreadySettled && roundStateRef.current?.phase !== "settling") return;
+    lastSyncedRef.current = { id: rid, status: "settled" };
+    dispatch({ type: "SETTLE_FROM_SERVER", results });
+  }, []);
+
+  /**
    * Submit a FOLD for the current hand (or for a bot via `forBot`). The
    * server records the fold at the server-authoritative curve multiplier.
    *
@@ -516,7 +546,7 @@ export default function useCrashArenaRound({
         crashEngineRef.current?.triggerCrash?.(Number(d.crashMultiplier));
       }
       if (d.handOver && d.results) {
-        dispatch({ type: "SETTLE_FROM_SERVER", results: d.results });
+        applyServerSettlement(d.results, roundId);
       }
       // Tell the rest of the table instantly.
       if (socket) {
@@ -546,7 +576,7 @@ export default function useCrashArenaRound({
       }
       setBusy(false);
     }
-  }, [tableId, socket, handleCrash]);
+  }, [tableId, socket, handleCrash, applyServerSettlement]);
 
   /**
    * Assign a fresh fold target to every seated bot that doesn't have one
@@ -765,9 +795,12 @@ export default function useCrashArenaRound({
           serverAction: payload.action,
         });
       }
-      // A fold-out / crash settled the hand on the server — apply results.
+      // A fold-out / crash settled the hand on the server — apply results
+      // (only once per hand: the fold-response path may already have
+      // applied the same authoritative payload, and the poll re-reads the
+      // settled round after the modal was dismissed).
       if (payload?.handOver && payload?.results) {
-        dispatch({ type: "SETTLE_FROM_SERVER", results: payload.results });
+        applyServerSettlement(payload.results, currentRoundIdRef.current);
       }
       // A seated player pressed "Start Round" (first-round ready vote).
       if (payload?.ready && payload?.readyUserId) {
@@ -790,7 +823,7 @@ export default function useCrashArenaRound({
       socket.off("connect", joinRoom);
       socket.emit("leave_room", { roomId });
     };
-  }, [tableId, socket, syncRoundFromServer, handleCrash]);
+  }, [tableId, socket, syncRoundFromServer, handleCrash, applyServerSettlement]);
 
   // ── Player management (API calls) ────────────────────────────────────
 
