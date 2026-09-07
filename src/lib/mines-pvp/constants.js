@@ -745,6 +745,46 @@ export function calculateAiSettlement(match) {
   return null;
 }
 
+// ── AI pick pacing ──────────────────────────────────────────────────────
+// Minimum pause between the bot's two CONSECUTIVE picks (the odds
+// turn pattern gives the AI two tiles in a row, e.g. turns 2-3).
+// Without this the server auto-plays the second tile in the same
+// status poll that shows the first, so both land at once. The guard
+// is checked by BOTH the inline auto-play path
+// (fetchMatchWithAutoResolve) and the explicit /ai-turn trigger so
+// the pacing holds no matter which path fires first.
+export const AI_PICK_DELAY_MS = 1500;
+
+// Timestamp (ISO string or Date) of the bot's most recent pick, or
+// null if it hasn't picked yet. The chronological `picks` array is
+// scanned first (source of truth); the legacy `p2_picked_at` column
+// is the fallback because in every free AI match the bot occupies
+// player2, so it mirrors the bot's most recent pick.
+export function lastAiPickAt(match) {
+  if (!match) return null;
+  const picks = Array.isArray(match.picks) ? match.picks : [];
+  for (let i = picks.length - 1; i >= 0; i -= 1) {
+    const p = picks[i];
+    if (p && p.userId === MINES_AI_PLAYER_ID && p.pickedAt) {
+      return p.pickedAt;
+    }
+  }
+  return match.p2PickedAt ?? null;
+}
+
+// True when the bot is allowed to pick right now: either it has never
+// picked (first pick of the match — no pacing window) or its previous
+// pick happened at least AI_PICK_DELAY_MS ago. Pass `now` explicitly
+// in tests.
+export function aiPickDelayElapsed(match, now = Date.now()) {
+  const last = lastAiPickAt(match);
+  if (!last) return true;
+  const ts =
+    last instanceof Date ? last.getTime() : new Date(last).getTime();
+  if (!Number.isFinite(ts)) return true;
+  return now - ts >= AI_PICK_DELAY_MS;
+}
+
 // ── AI cell-selection strategy ────────────────────────────────────────
 // The bot picks a cell for its turn. Strategy:
 //   1. If only mines remain (safeTilesRemaining <= 0), the bot

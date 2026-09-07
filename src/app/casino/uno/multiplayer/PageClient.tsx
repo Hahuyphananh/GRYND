@@ -1534,6 +1534,7 @@ export default function UnoMultiplayerPage() {
         <CreatorModeHost
           autoStart={Boolean(game)}
           autoStop={Boolean(endPopup)}
+          autoStopOnIdle
           gameLabel="uno-multiplayer"
           backToLobbyHref="/uno/multiplayer"
         >

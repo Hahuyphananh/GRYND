@@ -13,6 +13,11 @@
 //     autoStopDelayMs={1600}     // optional: keep recording this long
 //                                //   after the game ends so the
 //                                //   result/winner animation is captured
+//     autoStopOnIdle             // optional: stop immediately when the
+//                                //   game leaves its live state without a
+//                                //   result (e.g. a mid-game "return to
+//                                //   lobby" button clears `game`) — use
+//                                //   when autoStart reflects the live game
 //     gameLabel="plinko-duel"    // used in the downloaded filename
 //     backToLobbyHref={"/casino/plinko"} // optional: adds a "Go back to
 //                                //   lobby" button to the result panel
@@ -46,6 +51,7 @@ export default function CreatorModeHost({
   autoStart = false,
   autoStop = false,
   autoStopDelayMs = undefined,
+  autoStopOnIdle = false,
   gameLabel = "game",
   // Optional: when set, the finished-recording result panel shows a
   // "Go back to lobby" button navigating to this href (e.g. "/casino/tower-arena").
@@ -69,6 +75,7 @@ export default function CreatorModeHost({
       autoStart={autoStart}
       autoStop={autoStop}
       autoStopDelayMs={autoStopDelayMs}
+      autoStopOnIdle={autoStopOnIdle}
       gameLabel={gameLabel}
     >
       {children}

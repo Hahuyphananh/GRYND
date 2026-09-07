@@ -583,8 +583,12 @@ export default function ArenaTable({
           players are committed and ride the curve). Fold anytime: your
           ante stays in the pot as dead money and your fold rank decides
           your share. ═══ */}
+      {/* crash-arena-fold-first: in the creator phone frame this moves the
+          fold action up, directly under the curve canvas (see globals.css) —
+          the one button you click during the round stays on screen next to
+          the rocket. */}
       {isRunning && youInHand && !youAllIn && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FFD700]/30 bg-[#0a1a2e]/90 p-3 backdrop-blur-md shadow-[0_0_20px_rgba(255,215,0,0.15)]">
+        <div className="crash-arena-fold-first flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FFD700]/30 bg-[#0a1a2e]/90 p-3 backdrop-blur-md shadow-[0_0_20px_rgba(255,215,0,0.15)]">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs uppercase tracking-wider text-[#9dd8ff]/70 font-black">
               You&apos;re in — fold anytime to bank your rank
@@ -609,11 +613,18 @@ export default function ArenaTable({
       {/* data-creator-stack: in the portrait (9:16) creator frame this stays
           the phone-style stacked column (canvas first, sidebar below) via the
           shared portrait-stacking CSS. Desktop + landscape/square unchanged. */}
-      <div data-creator-stack className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
+      {/* crash-arena-board-first: in the creator phone frame the whole game
+          area moves to the TOP of the stacked column (above the status bars)
+          so the recorded clip leads with the curve — the rocket is clearly
+          visible instead of being pushed below the fold by the header HUD. */}
+      <div data-creator-stack className="crash-arena-board-first flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
         {/* Main game canvas — hosts CrashEngine. The 4:3 ratio matches
             CrashGraph's internal 800×600 coordinate space, so the canvas
-            scales uniformly and stays centered on every screen size. */}
-        <div className="relative mx-auto flex w-full max-w-[720px] aspect-[4/3] items-center justify-center rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden">
+            scales uniformly and stays centered on every screen size. On
+            short screens (mobile/tablet, below lg) it is additionally
+            capped by the viewport height so the whole curve + rocket stay
+            on screen with the fold control — desktop keeps 720px. */}
+        <div className="relative mx-auto flex w-full max-w-[720px] max-lg:max-w-[min(720px,calc((100svh_-_19rem)_*_4/3))] aspect-[4/3] items-center justify-center rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden">
           {children || (
             <div className="text-center px-4">
               <IconRocket size={56} className="mb-4 text-[#00e5ff]" />

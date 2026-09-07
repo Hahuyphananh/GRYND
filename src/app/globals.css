@@ -57,6 +57,43 @@ body {
   order: 1 !important;
 }
 
+/* Crash Arena creator phone-frame: the curve canvas is the star of the
+   recording, so inside the phone viewport the game area (canvas + players
+   sidebar) and the fold control move ABOVE the status bars. Without this
+   the header HUD (status/timer/risk/pot bars) pushed the 4:3 canvas to
+   the bottom edge of the phone viewport — the rocket flew below the fold
+   and was cut off in the recorded clip. Now the recording leads with the
+   curve (rocket clearly visible in the top of the frame) and the Fold
+   button sits directly underneath, both still full-size and clickable.
+   Scoped to the phone wrapper — desktop + normal mobile unchanged. */
+[data-creator-phone] .crash-arena-board-first {
+  order: -2 !important;
+}
+[data-creator-phone] .crash-arena-fold-first {
+  order: -1 !important;
+}
+/* The players sidebar under the canvas is secondary to the curve in the
+   phone frame — cap it short (it scrolls internally) so a full table of
+   six players never pushes the Fold control below the recording fold. */
+[data-creator-phone] .crash-arena-player-sidebar {
+  max-height: 9rem !important;
+}
+
+/* Creator frame: hide ephemeral per-turn feedback that covers the board
+   (chess AI's "Your Turn" / "AI's Turn" popup, the "CHECK!" popup and
+   the red capture flash) plus the board-shake animation. They are cues
+   for the live player; in a recorded creator clip they block the view
+   and distract viewers. Scoped to the creator shell, so normal
+   (non-creator) play keeps every one of them. */
+[data-creator-layout] .chess-turn-banner,
+[data-creator-layout] .chess-check-banner,
+[data-creator-layout] .chess-capture-flash {
+  display: none !important;
+}
+[data-creator-layout] .chess-board-wrap.animate-board-shake {
+  animation: none !important;
+}
+
 /* ── Creator Mode frame fill ─────────────────────────────────────────
    <CreatorResponsiveLayout> drops the game page straight into the
    recording frame. These rules make the game's page root fill the frame
@@ -491,6 +528,31 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 .animate-bomb-explode {
   animation: bombExplode 0.4s ease-out;
+}
+
+/* One-shot "landed" cue for a tile the moment its pick is revealed.
+   A quick brightness flash + scale pop makes the paced pick rhythm
+   visible (each tile visibly lands before the next one is allowed).
+   Runs once on mount, so a tile that stays revealed never replays. */
+@keyframes tileReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+    filter: brightness(2);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.1);
+    filter: brightness(1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-tile-reveal {
+  animation: tileReveal 0.4s ease-out;
 }
 
 /* Light mode palette overrides (dark mode keeps original colors) */

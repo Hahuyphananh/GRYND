@@ -1441,10 +1441,13 @@ export default function UnoGamePage() {
       {/* Only the actual game + its result popup are recorded — the nav,
           footer and the `!game` lobby/finder stay outside (or unrecorded:
           autoStart is false in the lobby). Recording starts when a real
-          hand is active and stops once the result is shown. */}
+          hand is active, stops once the result is shown, and — via
+          autoStopOnIdle — also stops immediately when the mid-game
+          "Lobby" button clears `game`, so the lobby is never recorded. */}
       <CreatorModeHost
         autoStart={Boolean(game)}
         autoStop={Boolean(endPopup)}
+        autoStopOnIdle
         gameLabel="neon-flush"
         backToLobbyHref="/uno"
       >

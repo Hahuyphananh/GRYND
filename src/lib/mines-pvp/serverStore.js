@@ -62,6 +62,7 @@ import {
   TERMINAL_STATES,
   ROUND_TIMER_SECONDS,
   activePickerForMatch,
+  aiPickDelayElapsed,
   chooseAiCell,
   computePayout,
   decideOutcome,
@@ -231,6 +232,15 @@ export async function playAiTurn({ userId, matchId }) {
   // Check if the AI already picked (idempotency)
   const historyCells = pickHistoryCells(match);
   if (historyCells.includes(match.p2Pick) && match.status !== MATCH_STATUS.P2_TURN) {
+    return { match, justResolved: false, alreadyPlayed: true };
+  }
+
+  // AI pick pacing: the odds turn pattern gives the bot two
+  // CONSECUTIVE picks (turns 2-3, 6-7, …). If its previous pick was
+  // within AI_PICK_DELAY_MS, hold off — the client retriggers after
+  // the delay so the two tiles land one at a time instead of both at
+  // once. Idempotent: the caller can safely retry.
+  if (!aiPickDelayElapsed(match)) {
     return { match, justResolved: false, alreadyPlayed: true };
   }
 
@@ -1273,6 +1283,14 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     ) {
       const expectedPicker = activePickerForMatch(match);
       if (expectedPicker && expectedPicker === match.player2Id) {
+        // AI pick pacing: the status poll that shows the bot's first
+        // tile would otherwise also auto-play its second (consecutive)
+        // tile, landing both at once. Hold off until the pacing
+        // window after its previous pick has elapsed; a later poll
+        // (or the client's delayed /ai-turn retrigger) takes it.
+        if (!aiPickDelayElapsed(match)) {
+          return { match };
+        }
         // It's the bot's turn. Make its pick inline.
         const { cellIndex } = chooseAiCell(match);
         const idx = Number(cellIndex);
