@@ -8,9 +8,12 @@
 //
 // Settlement:
 //   1. Rebuilds the hand from the round row + entries (+ table carry-over).
-//   2. resolveHand() decides the winner by fold-order rules:
-//        • one active player left → they win the pot minus the 5% fee
-//        • crash with 2+ active    → nobody wins; the full pot carries over
+//   2. resolveHand() decides the winner by fold-order / pot rules:
+//        • a winner (fold-out survivor OR the latest successful fold)
+//          takes only the pot tiers they matched — unmatched tiers
+//          return to the players who funded them (matched-tier rule)
+//        • crash with 2+ active + no folds → nobody wins; the full pot
+//          carries over
 //   3. Marks entries won / folded / lost, credits the winner's table balance,
 //      writes WIN/RAKE transactions (real tables only), updates the table's
 //      carry-over, settles the round, re-opens the table, and broadcasts.

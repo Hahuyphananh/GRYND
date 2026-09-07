@@ -69,6 +69,12 @@ export default function RoundResultModal({
   const net = payout - youCommitted;
   const foldedPlayers = Array.isArray(results?.foldedPlayers) ? results.foldedPlayers : [];
   const bustedPlayers = Array.isArray(results?.bustedPlayers) ? results.bustedPlayers : [];
+  // Poker all-in rule refunds: unmatched bets return to the players who
+  // funded them (an all-in winner only wins the tiers they matched).
+  const returns = Array.isArray(results?.returns) ? results.returns : [];
+  const myReturn = you?.userId != null
+    ? returns.find((r) => r.userId === you.userId)?.amount ?? 0
+    : 0;
 
   return (
     <motion.div
@@ -172,11 +178,39 @@ export default function RoundResultModal({
                 <strong>+${net.toLocaleString()}</strong> profit <IconConfetti size={14} className="mb-0.5 ml-0.5 inline text-[#00ffa6]" />
               </p>
             )}
-            {!youWon && (youFolded || youBusted) && (
+            {myReturn > 0 && (
+              <p className="text-xs text-[#00ffa6]/80 mt-2">
+                Side-pot refund: <strong>+${Number(myReturn).toLocaleString()}</strong> returned — opponents&apos;
+                extra bets beyond your all-in never count against you.
+              </p>
+            )}
+            {!youWon && (youFolded || youBusted) && !myReturn && (
               <p className="text-xs text-[#9dd8ff]/60 mt-2">
                 Folders and busted players keep only what they already put in the pot.
               </p>
             )}
+          </div>
+        )}
+
+        {/* ── Side-pot refunds (poker all-in rule) ──────────────────── */}
+        {returns.length > 0 && (
+          <div className="mt-3 rounded-xl border border-[#00ffa6]/20 bg-[#00ffa6]/5 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-[#00ffa6]/70 mb-1 text-center">
+              Side-pot refunds
+            </p>
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {returns.map((r) => (
+                <span
+                  key={r.userId ?? r.name ?? "ret"}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-[#00ffa6]/10 text-[#00ffa6] border border-[#00ffa6]/25"
+                >
+                  {r.name ?? "Player"} +${Number(r.amount || 0).toLocaleString()}
+                </span>
+              ))}
+            </div>
+            <p className="text-[10px] text-[#9dd8ff]/60 mt-1 text-center">
+              Unmatched bets return to the players who made them — an all-in player only wins what they matched.
+            </p>
           </div>
         )}
 
