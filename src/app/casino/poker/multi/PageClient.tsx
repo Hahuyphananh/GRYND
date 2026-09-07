@@ -2934,7 +2934,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
   const raiseH = isCreatorMode ? 48 : 44;        // primary action slightly taller
   const raiseTextBase = isCreatorMode ? "text-lg" : "text-base";
   const iconSize = isCreatorMode ? 16 : 14;
-    <>
+  const actionDockNode = (() => {
+    return (
+      <>
       {game && !game.waiting && game.stage !== "showdown" && (() => {
   const me = game.players.find((p) => p.id === myId);
   const isMyTurnNow = game.players[game.currentTurn]?.id === myId;
@@ -2954,7 +2956,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* ───────────────────────────── */}
       {/* DESKTOP BOTTOM-CENTER DOCK */}
       {/* ───────────────────────────── */}
-      <div className={`hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-[${dockBottom}] z-50`}>
+      <div className={`hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-[${dockMargin}px] z-50`}>
         <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-[#ff00cc]/25 bg-[#050510]/90 px-3 py-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(255,0,204,0.2)] backdrop-blur-xl">
 
           {/* Fold — bigger and more visible in creator mode */}
@@ -3185,6 +3187,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 })()}
     </>
   );
+})();
 
   // Public-game queue — pinned to the frame bottom-left (fixed → frame-relative
   // inside the creator recording root).
