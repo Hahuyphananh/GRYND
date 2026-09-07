@@ -93,6 +93,10 @@ export function useCreatorMode() {
  * @param {boolean} autoStop        — flip to true when the game ends (result state)
  * @param {number}  autoStopDelayMs — keep recording this long after the game
  *                                    ends to capture the result/winner animation
+ * @param {boolean} autoStopOnIdle  — stop recording immediately when autoStart
+ *                                    flips back to false (the game left its
+ *                                    live state without reaching a result,
+ *                                    e.g. a mid-game "return to lobby" button)
  * @param {string}  gameLabel       — used for the downloaded filename
  * @param {React.ReactNode} children
  */
@@ -100,6 +104,7 @@ export default function CreatorModeProvider({
   autoStart = false,
   autoStop = false,
   autoStopDelayMs = DEFAULT_AUTO_STOP_DELAY_MS,
+  autoStopOnIdle = false,
   gameLabel = "game",
   children,
 }) {
@@ -370,6 +375,21 @@ export default function CreatorModeProvider({
     start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, enabled]);
+
+  // Stop when the game leaves its live state WITHOUT reaching a result
+  // (autoStop) — e.g. a mid-game "Return to lobby" button that clears
+  // `game`, flipping autoStart back to false. Stop NOW so the lobby is
+  // never recorded. Opt-in via `autoStopOnIdle` because a few games
+  // legitimately toggle autoStart between rounds (multi-round tables like
+  // crash-arena: autoStart = roundState?.phase === "running").
+  const wasAutoStartRef = useRef(false);
+  useEffect(() => {
+    const prev = wasAutoStartRef.current;
+    wasAutoStartRef.current = autoStart;
+    if (!enabled || !autoStopOnIdle || !prev || autoStart) return;
+    stopCreatorRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, autoStopOnIdle, enabled]);
 
   // Stop when the game reaches its completed/result state (autoStop flips
   // true). Recording keeps running for the grace period so the result /

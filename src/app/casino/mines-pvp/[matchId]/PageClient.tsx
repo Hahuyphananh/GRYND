@@ -70,6 +70,7 @@ import {
   MATCH_STATUS,
   RESULT,
   GRID_CELLS,
+  AI_PICK_DELAY_MS,
 } from "../../../../lib/mines-pvp/constants";
 
 // ── Animation: bomb glyph (reused from solo mines) ──────────────────
@@ -199,6 +200,10 @@ type PlayerSeatProps = {
   tiles: number;
   wagerLabel: string;
   thinking: boolean;
+  // Optional label for the opponent's thinking indicator (defaults to
+  // "Picking"). AI matches pass "AI thinking" so the animated dots
+  // read as the bot deliberating over its second tile.
+  thinkingLabel?: string;
   isWinner: boolean;
   emote: { kind?: string; value?: string; key?: string } | null;
   emoteSide: "mine" | "incoming";
@@ -216,6 +221,7 @@ function PlayerSeat({
   tiles,
   wagerLabel,
   thinking,
+  thinkingLabel,
   isWinner,
   emote,
   emoteSide,
@@ -247,13 +253,29 @@ function PlayerSeat({
           <EmoteBubble emote={emote} side={emoteSide} />
         </span>
         {thinking && (
-          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
-            <span
-              className={`h-1.5 w-1.5 animate-pulse rounded-full ${
-                isMe ? "bg-cyan-300" : "bg-fuchsia-300"
-              }`}
-            />
-            {isMe ? "Your turn" : "Picking"}
+          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
+            {isMe ? (
+              <>
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
+                Your turn
+              </>
+            ) : (
+              <>
+                {/* Subtle rippling dots while the opponent picks —
+                    the staggered pulse reads as the AI thinking over
+                    its next tile during the paced pause. */}
+                <span className="flex items-center gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-fuchsia-300"
+                      style={{ animationDelay: `${i * 180}ms` }}
+                    />
+                  ))}
+                </span>
+                {thinkingLabel || "Picking"}
+              </>
+            )}
           </span>
         )}
         {isWinner && (
@@ -851,6 +873,20 @@ export default function MinesPvpMatchPage({
           setError(data?.error || (flagMode ? "Flag failed" : "Pick failed"));
           return;
         }
+        // The odds pattern gives each player two CONSECUTIVE turns
+        // (e.g. turns 4-5 for the first player). When the server says
+        // it's still our turn right after our pick, we're in the
+        // second half of our own pair — the board should hold for
+        // AI_PICK_DELAY_MS before the next pick is allowed so every
+        // reveal lands with the same rhythm as the AI's paced pair.
+        // (A flag is terminal, so its response never reports a pick
+        // state and this stays false.)
+        const isConsecutiveTurn = Boolean(
+          data?.data?.match &&
+            (data.data.match.status === MATCH_STATUS.P1_TURN ||
+              data.data.match.status === MATCH_STATUS.P2_TURN) &&
+            data.data.match.currentTurnUserId === myUserId,
+        );
         // Fanout the broadcast to BOTH the per-match room (so the
         // opponent's match view refetches inside ~50 ms) and the
         // lobby room (so the open-lobbies list drops a now-active
@@ -870,25 +906,75 @@ export default function MinesPvpMatchPage({
         });
         // Server-side AI trigger: if this is a free AI match and the
         // human just picked, trigger the bot's response so it plays
-        // immediately rather than waiting for the status poll.
+        // immediately rather than waiting for the status poll. The
+        // odds turn pattern gives the bot two CONSECUTIVE picks, so
+        // after its first tile lands we pause for AI_PICK_DELAY_MS
+        // and then hand it the second one — the two tiles appear one
+        // at a time instead of both at once. The server store
+        // enforces the same pacing window, so no path can jump ahead.
         if (match?.isAi) {
+          // Whose turn the bot's response left behind: the AI id when
+          // its second (consecutive) pick is still pending, the human
+          // id when the turn already passed back, or null when the
+          // match resolved (mine hit / terminal).
+          let aiTurnUserId = null;
           try {
-            await fetch(`/api/mines-pvp/match/${matchId}/ai-turn`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({}),
-            });
+            const aiRes = await fetch(
+              `/api/mines-pvp/match/${matchId}/ai-turn`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({}),
+              },
+            );
+            const aiData = await aiRes.json();
+            aiTurnUserId =
+              aiData?.data?.match?.currentTurnUserId ?? null;
           } catch {
             // Best-effort: status polling will recover if this fails.
           }
+          // Surface the bot's first tile now.
+          await fetchStatus();
+          // Only pace when the bot still has a tile to play — this is
+          // true exactly after the bot's first of its two consecutive
+          // picks. Turns where the human picks twice in a row skip
+          // this wait (the human's own consecutive turns get their
+          // own rhythm hold below) so the AI flow never locks the
+          // human out of their second pick.
+          if (aiTurnUserId && aiTurnUserId !== myUserId) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, AI_PICK_DELAY_MS),
+            );
+            try {
+              await fetch(`/api/mines-pvp/match/${matchId}/ai-turn`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({}),
+              });
+            } catch {
+              // Best-effort: status polling will recover if this fails.
+            }
+          }
         }
         await fetchStatus();
+        // Same rhythm for our own consecutive turns: when the server
+        // says it's still our turn, hold the board for AI_PICK_DELAY_MS
+        // so the revealed tile visibly lands before the next pick is
+        // allowed (mirrors the AI's paced pair above). The 20 s turn
+        // deadline is untouched — this only gates when the board
+        // re-enables, not the server-side window.
+        if (isConsecutiveTurn) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, AI_PICK_DELAY_MS),
+          );
+        }
       } finally {
         setBusy(false);
       }
     },
-    [busy, fetchStatus, flagMode, isMyTurn, match, matchId, myPicks, opponentPicks, posthog, socket],
+    [busy, fetchStatus, flagMode, isMyTurn, match, matchId, myPicks, myUserId, opponentPicks, posthog, socket],
   );
 
   const handleCancel = useCallback(async () => {
@@ -953,9 +1039,19 @@ export default function MinesPvpMatchPage({
   function safeCellContent(entry: PickEntry | undefined) {
     const hint =
       entry && typeof entry.hint === "number" ? entry.hint : null;
+    // Seat-tinted diamond so a glance at the board shows whose
+    // territory is whose: player1 picks stay cyan, player2 picks
+    // (the AI in free matches, or the opponent seat in PvP) render
+    // fuchsia — mirroring the seat accents everywhere else on this
+    // page. The hint number stays viewer-private as before.
+    const diamondColor =
+      entry?.seat === "player2" ? "text-fuchsia-300" : "text-cyan-300";
+    // One-shot reveal cue: the span mounts the moment this pick lands
+    // on the board, so the scale/flash pop plays exactly once per
+    // landed tile (it stays mounted afterwards and never replays).
     return (
-      <span className="relative inline-flex items-center justify-center">
-        <IconDiamondFilled size={22} className="text-cyan-300" />
+      <span className="relative inline-flex items-center justify-center animate-tile-reveal">
+        <IconDiamondFilled size={22} className={diamondColor} />
         {hint !== null && (
           <span
             className={`absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-black tabular-nums ${hintBadgeClass(
@@ -1503,6 +1599,7 @@ export default function MinesPvpMatchPage({
         tiles={opponentPicks.length}
         wagerLabel={wagerLabel}
         thinking={inPickState && !isMyTurn}
+        thinkingLabel={isAi ? "AI thinking" : "Picking"}
         isWinner={oppWon}
         emote={incomingEmote}
         emoteSide="incoming"

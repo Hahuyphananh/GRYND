@@ -157,10 +157,92 @@ export const buttonPulse = (color = "rgba(34,211,238,0.4)") => ({
   transition: { duration: 1.5, ease: "easeOut" },
 });
 
+// ── Creator Mode confetti ─────────────────────────────────────────────
+// canvas-confetti's default canvas is appended to <body> as a fixed,
+// full-window overlay. The Creator Mode recorder only ever captures the
+// game container ([data-creator-recording]), so body-level confetti never
+// appeared in recordings — the win celebration was silently missing from
+// every creator clip. When a creator frame is live, fire into a canvas
+// INSIDE that frame instead: the recorder composites live <canvas>
+// elements into each recorded frame, so confetti shows up in the video
+// exactly as it does on screen.
+//
+// The canvas is sized to the frame's logical resolution (the recording
+// output size, e.g. 1080×1920), which also makes it crisper than the DOM
+// it floats over. It is removed a few seconds after the last burst so it
+// never lingers in the DOM — and can never be mistaken for a game canvas
+// by the recorder's source-mode detection when a future capture starts.
+let creatorConfettiCanvas: HTMLCanvasElement | null = null;
+let creatorConfettiCleanupTimer: ReturnType<typeof setTimeout> | null =
+  null;
+
+/** Lazily create (and cache) a full-frame confetti canvas inside the
+ *  active creator recording frame. Returns null when Creator Mode's
+ *  recording container isn't in the DOM (normal play — the default
+ *  body-level canvas is used instead). */
+function getCreatorConfettiCanvas(): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const frame = document.querySelector<HTMLElement>(
+    "[data-creator-recording]",
+  );
+  if (!frame) return null;
+  if (creatorConfettiCanvas && frame.contains(creatorConfettiCanvas)) {
+    return creatorConfettiCanvas;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.className = "grynd-creator-confetti";
+  canvas.setAttribute("aria-hidden", "true");
+  const s = canvas.style;
+  s.position = "absolute";
+  s.top = "0";
+  s.left = "0";
+  s.width = "100%";
+  s.height = "100%";
+  s.pointerEvents = "none";
+  // Above the game's own result overlays (shared result screens use
+  // z-[95]) so confetti rains over the WIN/LOSS popup like it does in
+  // normal play (the default body canvas uses z-index 100).
+  s.zIndex = "999";
+  canvas.width = Math.max(1, Math.round(frame.clientWidth));
+  canvas.height = Math.max(1, Math.round(frame.clientHeight));
+  frame.appendChild(canvas);
+  creatorConfettiCanvas = canvas;
+  return canvas;
+}
+
+/** Remove the in-frame confetti canvas once the burst(s) have decayed. */
+function scheduleCreatorConfettiCleanup(): void {
+  if (creatorConfettiCleanupTimer) clearTimeout(creatorConfettiCleanupTimer);
+  creatorConfettiCleanupTimer = setTimeout(() => {
+    creatorConfettiCleanupTimer = null;
+    if (creatorConfettiCanvas?.isConnected) creatorConfettiCanvas.remove();
+    creatorConfettiCanvas = null;
+  }, 4000);
+}
+
 // Confetti trigger helper
 export async function fireConfetti(options = {}) {
   try {
     const confetti = (await import("canvas-confetti")).default;
+    const creatorCanvas = getCreatorConfettiCanvas();
+    if (creatorCanvas) {
+      // Canvas-confetti renders in CSS pixels (no devicePixelRatio
+      // scaling), so a canvas that already matches the frame's layout
+      // size needs no auto-resize — it is exactly the recorded area.
+      const fire = confetti.create(creatorCanvas, {
+        resize: false,
+        useWorker: true,
+      });
+      scheduleCreatorConfettiCleanup();
+      fire({
+        particleCount: 80,
+        spread: 100,
+        origin: { x: 0.5, y: 0.3 },
+        colors: ["#fbbf24", "#a855f7", "#22d3ee", "#f472b6", "#34d399"],
+        ...options,
+      });
+      return;
+    }
     confetti({
       particleCount: 80,
       spread: 100,

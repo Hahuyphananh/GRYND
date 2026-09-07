@@ -532,6 +532,20 @@ export default function KenoPvpMatchPage({ params }) {
     }
   }, [matchId, socket, goToLobby]);
 
+  // Emote wiring must be called on EVERY render (rules of hooks), so it
+  // lives ABOVE the loading/match early returns below — the old position
+  // skipped it on the loading paint and React threw "Rendered more hooks
+  // than during the previous render" the moment the first status poll
+  // landed (i.e. right after starting any match). selfId stays null until
+  // the match loads; the socket room only joins once matchId resolves,
+  // so no emote can arrive before then.
+  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
+    socket,
+    roomId: matchId ? `keno:emote:${matchId}` : null,
+    eventName: "keno:emote",
+    selfId: match ? (match.viewerIsPlayer1 ? "player1" : "player2") : null,
+  });
+
   if (loading && !match) {
     return (
       <div className="min-h-screen bg-[#001933] text-white flex items-center justify-center">
@@ -557,12 +571,6 @@ export default function KenoPvpMatchPage({ params }) {
   }
 
   const me = match.viewerIsPlayer1 ? "player1" : "player2";
-  const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
-    socket,
-    roomId: matchId ? `keno:emote:${matchId}` : null,
-    eventName: "keno:emote",
-    selfId: me,
-  });
   const opponent = match.viewerIsPlayer1 ? "player2" : "player1";
   const myWins = match.viewerIsPlayer1 ? match.roundsWonPlayer1 : match.roundsWonPlayer2;
   const oppWins = match.viewerIsPlayer1 ? match.roundsWonPlayer2 : match.roundsWonPlayer1;

@@ -68,6 +68,11 @@ import {
   seatForPickNumber,
   activeSeatForMatch,
   activePickerForMatch,
+  // AI pick pacing
+  AI_PICK_DELAY_MS,
+  MINES_AI_PLAYER_ID,
+  lastAiPickAt,
+  aiPickDelayElapsed,
 } from "../src/lib/mines-pvp/constants.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1119,6 +1124,111 @@ test("rowColToCellIndex <-> cellIndexToRowCol round-trip for every cell", () => 
     assert.deepEqual(rc, { row: Math.floor(cell / 5), col: cell % 5 });
     assert.equal(rowColToCellIndex(rc.row, rc.col), cell);
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// AI pick pacing — lastAiPickAt / aiPickDelayElapsed
+// ════════════════════════════════════════════════════════════════════════
+
+function aiMatchRow({ picks = [], p2PickedAt = null }) {
+  return {
+    isAi: true,
+    player1Id: "human",
+    player2Id: MINES_AI_PLAYER_ID,
+    picks,
+    p2PickedAt,
+  };
+}
+
+function aiPick({ userId = MINES_AI_PLAYER_ID, pickedAt }) {
+  return { userId, seat: "player2", cell: 0, isMine: false, pickedAt };
+}
+
+const NOW = Date.UTC(2026, 0, 1, 12, 0, 0);
+
+// lastAiPickAt — reads the bot's most recent pick from the
+// chronological picks array, falling back to p2_picked_at.
+
+test("lastAiPickAt: null when the bot has never picked", () => {
+  assert.equal(lastAiPickAt(aiMatchRow({})), null);
+  assert.equal(lastAiPickAt(null), null);
+});
+
+test("lastAiPickAt: falls back to p2_picked_at when picks is empty", () => {
+  const pickedAt = new Date(NOW);
+  const m = aiMatchRow({ p2PickedAt: pickedAt });
+  assert.equal(lastAiPickAt(m), pickedAt);
+  // String p2PickedAt also works (DB rows may surface either shape).
+  const ts = pickedAt.toISOString();
+  assert.equal(lastAiPickAt(aiMatchRow({ p2PickedAt: ts })), ts);
+});
+
+test("lastAiPickAt: scans the picks array for the bot's entries only", () => {
+  const botTs = new Date(NOW + 10_000).toISOString();
+  const humanTs = new Date(NOW + 99_999).toISOString();
+  const m = aiMatchRow({
+    picks: [aiPick({ pickedAt: humanTs }), aiPick({ pickedAt: botTs })],
+  });
+  assert.equal(lastAiPickAt(m), botTs);
+});
+
+test("lastAiPickAt: human entries never count, even as the last entry", () => {
+  const humanTs = new Date(NOW + 10_000).toISOString();
+  const m = aiMatchRow({
+    picks: [
+      aiPick({
+        userId: "human",
+        seat: "player1",
+        pickedAt: humanTs,
+      }),
+    ],
+  });
+  assert.equal(lastAiPickAt(m), null);
+});
+
+// aiPickDelayElapsed — the pacing gate for the bot's two consecutive
+// picks (turns 2-3, 6-7, …).
+
+test("aiPickDelayElapsed: true when the bot has never picked", () => {
+  assert.equal(aiPickDelayElapsed(aiMatchRow({}), NOW), true);
+});
+
+test("aiPickDelayElapsed: true once the delay window has elapsed", () => {
+  const m = aiMatchRow({
+    picks: [aiPick({ pickedAt: new Date(NOW).toISOString() })],
+  });
+  assert.equal(aiPickDelayElapsed(m, NOW + AI_PICK_DELAY_MS), true);
+  assert.equal(aiPickDelayElapsed(m, NOW + AI_PICK_DELAY_MS + 1), true);
+});
+
+test("aiPickDelayElapsed: false while inside the delay window", () => {
+  const m = aiMatchRow({
+    picks: [aiPick({ pickedAt: new Date(NOW).toISOString() })],
+  });
+  assert.equal(aiPickDelayElapsed(m, NOW), false);
+  assert.equal(aiPickDelayElapsed(m, NOW + AI_PICK_DELAY_MS - 1), false);
+});
+
+test("aiPickDelayElapsed: ignores human picks when pacing (bot pair only)", () => {
+  // Human picked just now, bot picked long ago → bot is clear to go.
+  const m = aiMatchRow({
+    picks: [
+      aiPick({ pickedAt: new Date(NOW - 60_000).toISOString() }),
+      aiPick({
+        userId: "human",
+        seat: "player1",
+        pickedAt: new Date(NOW).toISOString(),
+      }),
+    ],
+  });
+  assert.equal(aiPickDelayElapsed(m, NOW), true);
+});
+
+test("aiPickDelayElapsed: malformed timestamp does not wedge the bot", () => {
+  const m = aiMatchRow({
+    picks: [aiPick({ pickedAt: "not-a-date" })],
+  });
+  assert.equal(aiPickDelayElapsed(m, NOW), true);
 });
 
 console.log("\n? All Mines Duel engine tests passed!\n");

@@ -111,7 +111,7 @@
     "eslint": "^8.52.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.26",
     "postcss-cli": "^11.0.1",
     "prettier": "^3.8.3",

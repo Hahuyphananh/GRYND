@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
+import { computePayouts } from "../../../lib/pokerPots";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
@@ -70,6 +71,9 @@ type Player = {
   currentBet: number;
   seatIndex?: number; // UI seat index (0..5)
   hasActed?: boolean;
+  // Total chips contributed to the current pot this hand (cumulative
+  // across betting rounds). Reset each hand; drives side-pot splits.
+  committed: number;
   // Seat identity — resolved server-side (game-state GET).
   iconKey?: string | null;
   nameColor?: string | null;
@@ -87,6 +91,13 @@ type Game = {
   smallBlind: number;
   bigBlind: number;
   winnerId?: string;
+  // Final awards for the just-finished hand: main-pot winner first,
+  // then any side-pot winners (see computePayouts in pokerPots.ts).
+  payouts?: { playerId: string; amount: number }[];
+  // True when the hand ended because everyone else folded (the pot
+  // winner's cards are kept hidden in the popup — they may have
+  // bluffed).
+  wonByFold?: boolean;
   replayVisible: boolean;
   dealerIndex: number;
   inviteCode?: string;
@@ -710,6 +721,7 @@ export default function PokerPage() {
       lastAction: "",
       currentBet: 0,
       hasActed: false,
+      committed: 0,
     }));
 
     // Setup blinds
@@ -717,10 +729,12 @@ export default function PokerPage() {
     const bbIndex = (game.dealerIndex + 2) % players.length;
     players[sbIndex].stack -= game.smallBlind;
     players[sbIndex].currentBet = game.smallBlind;
+    players[sbIndex].committed = game.smallBlind;
     players[sbIndex].lastAction = "Small Blind";
 
     players[bbIndex].stack -= game.bigBlind;
     players[bbIndex].currentBet = game.bigBlind;
+    players[bbIndex].committed = game.bigBlind;
     players[bbIndex].lastAction = "Big Blind";
 
     // Sync tableStack with blind deductions
@@ -762,6 +776,8 @@ export default function PokerPage() {
       roundStarter: firstActorIndex,
       waiting: false,
       lastAggressorIndex: firstActorIndex,
+      payouts: [],
+      wonByFold: false,
     };
     setGame(nextGame);
     saveGameState(nextGame);
@@ -1059,13 +1075,16 @@ export default function PokerPage() {
     const activePlayers = players.filter((p) => !p.hasFolded);
     if (activePlayers.length === 1) {
       const winner = activePlayers[0];
+      // Last player standing takes the whole pot (standard rule).
+      const payouts = computePayouts(players, game?.community ?? []);
+      const winAmount = payouts[0]?.amount ?? pot;
       const updatedPlayers = players.map((p) =>
-        p.id === winner.id ? { ...p, stack: p.stack + pot } : p,
+        p.id === winner.id ? { ...p, stack: p.stack + winAmount } : p,
       );
 
       if (winner.id === myId) {
         audioRef.current.playWin();
-        setTableStack((prev) => prev + pot);
+        setTableStack((prev) => prev + winAmount);
         fetchUserTokens();
       } else {
         audioRef.current.playLose();
@@ -1078,6 +1097,8 @@ export default function PokerPage() {
             ...g,
             players: updatedPlayers,
             winnerId: winner.id,
+            payouts,
+            wonByFold: true,
             pot: 0,
             stage: "showdown",
             replayVisible: true,
@@ -1124,6 +1145,7 @@ export default function PokerPage() {
         const actual = Math.min(toCall, current.stack);
         current.stack -= actual;
         current.currentBet += actual;
+        current.committed += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
         if (current.stack <= 0 && current.seatIndex != null) {
@@ -1146,6 +1168,7 @@ export default function PokerPage() {
       const actual = Math.min(betSize, current.stack);
       current.stack -= actual;
       current.currentBet += actual;
+      current.committed += actual;
       potNew += actual;
       current.lastAction = `Bet ${betSize}`;
       game.lastAggressorIndex = currentIndex;
@@ -1171,6 +1194,7 @@ export default function PokerPage() {
       const actual = Math.min(chipsNeeded, current.stack);
       current.stack -= actual;
       current.currentBet += actual;
+      current.committed += actual;
       potNew += actual;
       current.lastAction =
         chipsNeeded > 0 ? `Raised to ${current.currentBet}` : "Call";
@@ -1198,6 +1222,7 @@ export default function PokerPage() {
         const actual = Math.min(toCall, current.stack);
         current.stack -= actual;
         current.currentBet += actual;
+        current.committed += actual;
         potNew += actual;
         current.lastAction = `Called ${actual}`;
         if (current.stack <= 0 && current.seatIndex != null) {
@@ -1352,34 +1377,26 @@ export default function PokerPage() {
 
   function showdown() {
     if (!game) return;
-    const active = game.players.filter((p) => !p.hasFolded);
-    let winner = active[0],
-      best = -1;
-    active.forEach((p) => {
-      const label = evaluateHand(p.hand, game.community);
-      let score = 1;
-      if (label.includes("Royal")) score = 10;
-      else if (label.includes("Straight Flush")) score = 9;
-      else if (label.includes("Four")) score = 8;
-      else if (label.includes("Full")) score = 7;
-      else if (label.includes("Flush")) score = 6;
-      else if (label.includes("Straight")) score = 5;
-      else if (label.includes("Three")) score = 4;
-      else if (label.includes("Two Pair")) score = 3;
-      else if (label.includes("Pair")) score = 2;
-      if (score > best) {
-        best = score;
-        winner = p;
-      }
+    // Main pot + side pots, split from each player's committed chips.
+    // payouts[0] is the main-pot winner (best hand overall); the rest
+    // are side-pot winners. The sum of all awards always equals the
+    // full pot.
+    const payouts = computePayouts(game.players, game.community);
+    const mainWinnerId = payouts[0]?.playerId ?? null;
+    const mainWinner = game.players.find((p) => p.id === mainWinnerId);
+    const updated = game.players.map((p) => {
+      const win = payouts.find((w) => w.playerId === p.id);
+      return win ? { ...p, stack: p.stack + win.amount } : p;
     });
 
-    const updated = game.players.map((p) =>
-      p.id === winner.id ? { ...p, stack: p.stack + game.pot } : p,
-    );
+    // My total winnings across the main pot + any side pots I took.
+    const myWinnings = payouts
+      .filter((w) => w.playerId === myId)
+      .reduce((s, w) => s + w.amount, 0);
 
-    if (winner.id === myId) {
+    if (myWinnings > 0) {
       audioRef.current.playWin();
-      setTableStack((prev) => prev + game.pot);
+      setTableStack((prev) => prev + myWinnings);
       fetchUserTokens();
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ["#ffd700", "#ff00cc", "#00e5ff"] });
       setTimeout(() => confetti({ particleCount: 60, spread: 120, origin: { y: 0.4 }, colors: ["#ffd700", "#ffffff"] }), 300);
@@ -1391,12 +1408,14 @@ export default function PokerPage() {
       {
         ...game,
         players: updated,
-        winnerId: winner.id,
+        winnerId: mainWinnerId ?? undefined,
+        payouts,
+        wonByFold: false,
         pot: 0,
         stage: "showdown",
         replayVisible: true,
       },
-      `${winner.name} wins at showdown`,
+      mainWinner ? `${mainWinner.name} wins at showdown` : "Showdown complete",
     );
     setGame(nextGame);
     saveGameState(nextGame);
@@ -1430,6 +1449,7 @@ export default function PokerPage() {
       currentBet: 0,
       hasFolded: false,
       lastAction: "",
+      committed: 0,
     }));
 
     const nextGame: Game = {
@@ -1443,6 +1463,8 @@ export default function PokerPage() {
       roundStarter: undefined,
       stage: "pre-flop",
       winnerId: undefined,
+      payouts: [],
+      wonByFold: false,
       replayVisible: false,
       smallBlind: newSmallBlind,
       bigBlind: newBigBlind,
@@ -2293,28 +2315,159 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           })}
         </AnimatePresence>
 
-        {/* ── Winner celebration overlay ── */}
+        {/* ── Winner popup: who won, the pot they won, any side-pot
+            winners, and the pot winner's cards (hidden when the pot
+            was won by everyone folding — they may have bluffed). ── */}
         <AnimatePresence>
-          {game?.winnerId && game?.stage === "showdown" && (
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 200, damping: 15 }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"
-            >
+          {game?.winnerId && game?.stage === "showdown" && (() => {
+            const winner = game.players.find((p) => p.id === game.winnerId);
+            const payouts = Array.isArray(game.payouts)
+              ? game.payouts
+              : [];
+            const wonByFold = Boolean(game.wonByFold);
+            const winnerTotal = payouts
+              .filter((w) => w.playerId === game.winnerId)
+              .reduce((s, w) => s + w.amount, 0);
+            // Other players who took chips (side pots) besides the
+            // main-pot winner.
+            const others = payouts.filter(
+              (w) => w.playerId !== game.winnerId && w.amount > 0,
+            );
+            const winnerCards = (winner?.hand ?? []).filter(
+              (c): c is Card => !!c && !!c.suit && !!c.value,
+            );
+            const handLabel =
+              !wonByFold && winner && winnerCards.length > 0
+                ? evaluateHand(winnerCards, game.community)
+                : "";
+            return (
               <motion.div
-                animate={{
-                  scale: [1, 1.05, 1],
-                  rotate: [0, 2, -2, 0],
-                }}
-                transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse" }}
-                className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)]"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] w-[300px] sm:w-[340px]"
               >
-                <span className="inline-flex items-center gap-2"><IconCrown size={40} /> WINNER!</span>
+                <div className="rounded-2xl border-2 border-yellow-400/60 bg-[#0a0a1a]/95 p-4 text-center shadow-[0_0_40px_rgba(255,215,0,0.35)] backdrop-blur-xl">
+                  <div className="flex items-center justify-center gap-2 text-yellow-300 drop-shadow-[0_0_12px_rgba(255,215,0,0.7)]">
+                    <IconCrown size={18} />
+                    <span className="text-xs font-black uppercase tracking-[0.3em]">Winner</span>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-center gap-2">
+                    {!winner?.isAI && (
+                      <IconAvatar
+                        iconKey={winner?.iconKey}
+                        name={winner?.name || "?"}
+                        size="h-6 w-6"
+                      />
+                    )}
+                    <span
+                      className="max-w-[220px] truncate text-lg font-black text-white"
+                      style={
+                        winner?.nameColor
+                          ? { color: winner.nameColor }
+                          : undefined
+                      }
+                    >
+                      {winner?.name || "Unknown"}
+                    </span>
+                  </div>
+                  {payouts.length > 0 && (
+                    <div className="mt-1 text-sm font-bold text-yellow-200">
+                      +{winnerTotal.toLocaleString()}{" "}
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-yellow-200/70">
+                        won
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Side pots — other players who won chips */}
+                  {others.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2">
+                      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-white/40">
+                        Side pots
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {others.map((w) => {
+                          const op = game.players.find(
+                            (p) => p.id === w.playerId,
+                          );
+                          return (
+                            <div
+                              key={w.playerId}
+                              className="flex items-center justify-between gap-2 text-xs"
+                            >
+                              <span className="flex min-w-0 items-center gap-1.5 truncate text-white/85">
+                                {!op?.isAI && (
+                                  <IconAvatar
+                                    iconKey={op?.iconKey}
+                                    name={op?.name || "?"}
+                                    size="h-4 w-4"
+                                  />
+                                )}
+                                <span
+                                  className="truncate"
+                                  style={
+                                    op?.nameColor
+                                      ? { color: op.nameColor }
+                                      : undefined
+                                  }
+                                >
+                                  {op?.name || "Player"}
+                                </span>
+                              </span>
+                              <span className="shrink-0 font-bold text-emerald-300">
+                                +{w.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Winner's cards — hidden when won by fold */}
+                  <div className="mt-3 flex flex-col items-center gap-2">
+                    {wonByFold ? (
+                      <div className="text-xs font-bold text-white/50">
+                        Won by fold — cards kept hidden
+                      </div>
+                    ) : winnerCards.length > 0 ? (
+                      <>
+                        <div className="flex justify-center gap-1.5">
+                          {winnerCards.map((card, i) => (
+                            <div
+                              key={i}
+                              className={`w-9 h-14 sm:w-12 sm:h-16 rounded bg-white flex items-center justify-center text-base sm:text-lg font-bold shadow ${
+                                card.suit === "♥" || card.suit === "♦"
+                                  ? "text-red-600"
+                                  : "text-black"
+                              }`}
+                            >
+                              {card.value}
+                              <span className="text-[10px]">{card.suit}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {handLabel && (
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-200/80">
+                            {handLabel}
+                          </div>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+
+                  <button
+                    onClick={replayHand}
+                    className="mt-3 w-full bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-4 py-2 rounded-lg font-bold text-black transition hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_20px_rgba(255,0,204,0.5)]"
+                  >
+                    Replay Hand
+                  </button>
+                </div>
               </motion.div>
-            </motion.div>
-          )}
+            );
+          })()}
         </AnimatePresence>
 
         {/* ── Community cards on the table ── */}

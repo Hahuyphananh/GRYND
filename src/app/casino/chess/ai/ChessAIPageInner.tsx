@@ -926,13 +926,14 @@ export default function ChessAIPageInner() {
       <CreatorModeHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai">
       <CreatorResponsiveLayout>
 
-      {/* Turn Banner */}
+      {/* Turn Banner — chess-turn-banner: hidden in creator mode (see
+          globals.css) since the popup covers the board in recorded clips. */}
       <AnimatePresence>
         {turnBanner && (
           <motion.div
             key="turn-banner"
             {...turnBannerAnim}
-            className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
+            className="chess-turn-banner fixed left-1/2 top-1/3 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-amber-400 bg-gradient-to-r from-amber-700 to-orange-700 px-10 py-6 shadow-[0_0_60px_rgba(251,191,36,0.5)]"
           >
             <motion.div
               initial={{ scale: 0 }}
@@ -956,7 +957,8 @@ export default function ChessAIPageInner() {
         )}
       </AnimatePresence>
 
-      {/* Check Banner */}
+      {/* Check Banner — chess-check-banner: hidden in creator mode (see
+          globals.css) — same reason as the turn banner. */}
       <AnimatePresence>
         {isInCheck && !gameOver && (
           <motion.div
@@ -964,7 +966,7 @@ export default function ChessAIPageInner() {
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
-            className="fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
+            className="chess-check-banner fixed left-1/2 top-24 z-40 -translate-x-1/2 rounded-xl border-2 border-red-500 bg-red-900/80 px-6 py-2 shadow-[0_0_24px_rgba(255,0,0,0.4)]"
           >
             <span className="inline-flex items-center gap-2 text-lg font-bold text-red-300 tracking-wider"><IconAlertTriangle size={20} /> CHECK!</span>
           </motion.div>
@@ -1041,8 +1043,11 @@ export default function ChessAIPageInner() {
                 </div>
               </div>
 
-              {/* BOARD */}
-              <div className={`relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+              {/* BOARD — chess-board-wrap: the shake effect is disabled in
+                  creator mode (see globals.css); the board itself is kept. */}
+              <div className={`chess-board-wrap relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+                {/* chess-capture-flash: hidden in creator mode (see
+                    globals.css) so recorded clips don't flash the board. */}
                 <AnimatePresence>
                   {captureFlash && (
                     <motion.div
@@ -1050,7 +1055,7 @@ export default function ChessAIPageInner() {
                       animate={{ opacity: 0 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.4 }}
-                      className="absolute inset-0 z-10 rounded-2xl bg-red-500 pointer-events-none"
+                      className="chess-capture-flash absolute inset-0 z-10 rounded-2xl bg-red-500 pointer-events-none"
                     />
                   )}
                 </AnimatePresence>
