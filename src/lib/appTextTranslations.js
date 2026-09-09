@@ -21,13 +21,13 @@ export const APP_TEXT_TRANSLATIONS = {
       tokensTitle: "Your free tokens",
       tokensDesc: "You start with 1,000 tokens. Play skill-based games and win more.",
       playTitle: "Start playing",
-      playDesc: "Head to the casino and pick your first game.",
+      playDesc: "Head to the games hub and pick your first game.",
       searchTitle: "Search the lobby",
       searchDesc: "Type a game name to find it in seconds.",
       filtersTitle: "Filter games",
       filtersDesc: "Sort by popular, skill, or newest to find what you like.",
       gamesTitle: "Pick a game",
-      gamesDesc: "Every game here is skill-based. Play to win tokens.",
+      gamesDesc: "Every game here puts your decisions to the test. Play to win tokens.",
       firstGameTitle: "Jump in!",
       firstGameDesc: "Tap any game card to start playing. Good luck!",
     },
@@ -40,8 +40,8 @@ export const APP_TEXT_TRANSLATIONS = {
       vsAi: "vs AI",
       online: "1v1 Online",
       freePlay: "Free Play",
-      freePlayHint: "No tokens are wagered. Playing vs AI is free.",
-      wager: "Wager",
+      freePlayHint: "No tokens are staked. Playing vs AI is free.",
+      wager: "Stake",
       loading: "Loading...",
       startGame: "Start Game",
       searching: "Searching...",
@@ -262,29 +262,44 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "LVL",
     },
     home: {
-      title: "Game Lobby",
-      subtitle: "Compete. Outplay. Win.",
+      title: "PICK YOUR BATTLE",
+      title_line1: "PICK YOUR",
+      title_line2: "BATTLE",
+      subtitle: "Real opponents, real stakes — find your duel and prove it.",
       search_placeholder: "Search for a game...",
       popular_games: "Most popular games",
       all_games: "All games",
       play_now: "Play now",
       view_leaderboard: "See leaderboard for",
-      description: "Discover skill-based games where your ability decides the outcome!",
+      description: "Every game here is a head-to-head duel. Compete, climb the leaderboard, and prove who's better.",
       more_games: "More games",
       landing: {
-        title: "Test your skills and claim the prize pool",
-        subtitle: "Skill games, live PvP duels, and exclusive rewards",
-        start_betting: "Start Playing",
-        discover_casino: "Explore the Games",
+        title: "Think you're good? Prove it.",
+        title_line1: "THINK YOU'RE GOOD?",
+        title_line2: "PROVE IT.",
+        subtitle:
+          "Challenge real players in competitive skill games. Make the right decisions, climb the leaderboard, and build your GRYND.",
+        start_betting: "PLAY FREE",
+        discover_casino: "EXPLORE GAMES",
+        trust_real_pvp: "REAL PvP",
+        trust_compete: "COMPETE",
+        trust_climb: "CLIMB",
+        trust_free_start: "FREE START",
+        you_label: "YOU",
+        opponent_label: "OPPONENT",
       },
       game_cards: {
         roulette_alt: "Roulette table with chips",
+        roulette_desc:
+          "Same wheel, one winner. Remove numbers and deny your opponent's targets.",
         blackjack_alt: "Best-of-3 PvP Blackjack table",
-        blackjack_desc: "Head-to-head Best-of-3 Blackjack",
+        blackjack_desc:
+          "Best-of-3 head-to-head. Read the table, time your swaps, outplay the seat across from you.",
         poker_alt: "Poker table with cards and chips",
-        poker_desc: "Play against AI or other players in intense poker matches",
+        poker_desc: "Real players, one table. Bluff, read, and stack up.",
         plinko_alt: "Plinko game with falling chips",
-        plinko_desc: "Watch the chips fall and multiply your winnings!",
+        plinko_desc:
+          "Duel on the same peg field — 3 balls each. Pick your launch and out-score your rival.",
       },
       errors: {
         manage_tokens: "Unable to manage your tokens",
@@ -312,11 +327,21 @@ export const APP_TEXT_TRANSLATIONS = {
       // ── Value-proposition strip ─────────────────────────
       value_props: {
         skill_based_title: "100% Skill-Based",
-        skill_based_desc: "No luck, no house edge. Your ability decides every outcome.",
+        skill_based_desc:
+          "Face real opponents and let your decisions decide who wins.",
         free_tokens_title: "Free Virtual Tokens",
         free_tokens_desc: "Start with tokens on signup. No real money needed to play.",
         multiplayer_title: "Multiplayer Competition",
         multiplayer_desc: "Challenge friends and climb the global leaderboard.",
+        prove_skill_title: "Prove Your Skill",
+        prove_skill_desc:
+          "Your decisions matter. Compete, improve, and prove what you can do.",
+        real_opponents_title: "Real Opponents",
+        real_opponents_desc:
+          "Challenge other players instead of playing meaningless matches.",
+        build_rep_title: "Build Your Rep",
+        build_rep_desc:
+          "Win, progress, climb, and build your competitive identity.",
       },
       // ── "How It Works" section ──────────────────────────
       how_it_works_title: "How It Works",
@@ -327,10 +352,41 @@ export const APP_TEXT_TRANSLATIONS = {
         claim_tokens_desc: "Get daily login rewards and bonus tokens to start playing.",
         play_win_title: "Play & Win",
         play_win_desc: "Compete in skill-based games and climb the leaderboard.",
+        pick_game_title: "Pick a Game",
+        pick_game_desc: "Choose your duel from the full game roster.",
+        find_opponent_title: "Find an Opponent",
+        find_opponent_desc:
+          "Matchmaking pairs you with a real player on the same stake.",
+        make_move_title: "Make Your Move",
+        make_move_desc: "Your decisions decide every round.",
+        win_progress_title: "Win & Progress",
+        win_progress_desc:
+          "Take the pot, earn XP, and climb the leaderboard.",
+        run_it_back_title: "Run It Back",
+        run_it_back_desc: "Rematch instantly and keep proving yourself.",
       },
-      pick_your_game_subtitle: "Skill-based multiplayer: compete against real players",
+      pick_your_battle: "PICK YOUR BATTLE",
+      pick_your_game_subtitle:
+        "Real opponents, real stakes — find your duel and prove it.",
+      pvp_badge: "1v1 PvP",
+      play_pvp: "Play PvP",
       play_now_overlay: "Play Now",
       push_intro: "Free virtual tokens, no real money required",
+      // ── Homepage leaderboard section ───────────────────────
+      best_of: {
+        title: "WHO'S ACTUALLY THE BEST?",
+        subtitle:
+          "Real players, real ranks — this week's top competitors by wins.",
+        view_all: "View Full Leaderboard",
+        wins_label: "wins",
+        error: "Couldn't load the leaderboard right now.",
+      },
+      // ── Final call-to-action section ───────────────────────
+      final_cta: {
+        title: "YOUR GRYND STARTS NOW.",
+        subtitle: "Join the arena, pick your battle, and prove what you can do.",
+        play: "PLAY FREE",
+      },
       // ── Term & Conditions modal chrome & body ───────────
       terms: {
         title: "Terms & Conditions",
@@ -380,7 +436,7 @@ export const APP_TEXT_TRANSLATIONS = {
         play_game: "Play {count} games of {game}",
         win_any: "Win {count} games",
         win_game: "Win {count} games of {game}",
-        wager: "Wager {amount} tokens",
+        wager: "Stake {amount} tokens",
         multiplier: "Win with a {x}x+ multiplier",
         streak: "Win {count} games in a row",
         diversify: "Win in {count} different games",
@@ -407,16 +463,23 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       // ── Casino lobby chrome (sort + filter + no-results) ───
       casino_lobby: {
+        filter_by: "Filter By",
         sort_by: "Sort By",
         filter_all: "All Games",
+        filter_duels: "1v1 Duels",
+        filter_multiplayer: "Multiplayer",
         filter_popular: "Popular Games",
-        filter_skill: "Skill-Based Games",
-        filter_newest: "Newest Games",
+        sort_featured: "Featured",
+        sort_most_played: "Most Played",
+        sort_az: "A–Z",
+        sort_newest: "Newest",
+        play: "Play",
         no_results_title: "No games match your search.",
         no_results_hint: "Try a different keyword or change the filter.",
         play_vs_ai: "Play vs AI",
         badge_hot: "HOT",
         badge_new: "NEW",
+        pvp_multi_badge: "Multiplayer",
         recently_played: "Recently Played",
         play_again: "Play again",
         recently_played_empty: "Games you play will show up here.",
@@ -425,8 +488,7 @@ export const APP_TEXT_TRANSLATIONS = {
       // ── Unified matchmaking waiting screen (full-screen takeover) ──
       matchWaiting: {
         searching_title: "Searching for a match…",
-        waiting_title: "Waiting for an opponent",
-        ready_title: "Match found!",
+        waiting_title: "Waiting for an opponent",      ready_title : "OPPONENT FOUND",
         seconds: "sec",
         connected: "Connected",
         open: "Open",
@@ -440,29 +502,39 @@ export const APP_TEXT_TRANSLATIONS = {
       },
     },
     games: {
-      roulette_desc: "Place your bets on numbers, colors, or sections",
+      roulette_desc:
+        "Shared wheel, shrinking board. Remove numbers, steal points, and outplay your opponent.",
       blackjack_name: "Blackjack",
       poker_name: "Poker",
       plinko_name: "Plinko",
-      blackjack_desc: "Best-of-3 PvP Blackjack against a real opponent",
+      blackjack_desc:
+        "Best-of-3 head-to-head. Read the table, time your swaps, and outplay the seat across from you.",
       mines_pvp_name: "Mines Duel",
-      mines_pvp_desc: "Stake tokens and face another player on a shared 5×5 board. Host picks the mine count. Winner takes 1.9×, house takes 0.1×.",
+      mines_pvp_desc:
+        "Stake tokens and face another player on a shared 5×5 board. Host picks the mine count. Winner takes 1.9× their stake; a 5% platform fee applies.",
       memory_grid_name: "Memory Grid",
-      memory_grid_desc: "Stake tokens and race another player on a shared 4×4 memory grid. Flip two cards to match pairs. A match keeps your turn, winner takes 1.9×.",
-      plinko_desc: "Watch your chip fall and multiply winnings!",
-      poker_desc: "Play against AI or other players",
-      crash_arena_desc: "Join a table, post the blinds, and bet against the crash curve. Last player standing takes the pot.",
-      chess_desc: "Play strategic matches against other players",
+      memory_grid_desc:
+        "Stake tokens and race another player on a shared 4×4 memory grid. Flip two cards to match pairs. A match keeps your turn, winner takes 1.9× their stake; a 5% platform fee applies.",
+      plinko_desc:
+        "Same peg field, 3 balls each. Pick your launch and out-score your rival.",
+      poker_desc:
+        "Multiplayer Texas Hold'em. Bluff, read the table, and outplay the room.",
+      crash_arena_desc:
+        "Join a table, post the blinds, and hold against the crash curve. Last player standing takes the pot.",
+      chess_desc: "Outthink your opponent move by move.",
       keno_desc: "1v1 Keno Catch Duel. Both players chase the same 10-ball draw and time their taps in the perfect window. Best-of-5, out-catch your rival, take the pot.",
-      uno_desc: "Challenge AI in this fast strategic game.",
-      rps_desc: "Challenge a rival in this fast strategic game.",
+      uno_desc:
+        "Fast card duels. Match colors and numbers to outplay your rival — online or vs the AI.",
+      rps_desc:
+        "Best-of-7 mind games. Predict, counter, and out-psych your rival.",
       tower_arena_desc: "Competitive shared-tower survival for 2–6 players. Place blocks, avoid the collapse, and be the last one standing.",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
       dice_flush_desc: "Roll five dice, lock in combos, and outscore your rival in this strategic dice showdown.",
       odds_desc: "Each player picks a hidden number, then predicts the opponent's. Closest predictions earn points. Range shrinks 100 → 50 → 25 → 12 → 6 → 3.",
       odds_name: "Odds",
       precision_name: "Precision",
-      precision_desc: "Wager tokens and face another player in a 1v1 precision duel. Test your reaction time and race to take the match.",
+      precision_desc:
+        "Stake tokens in a 1v1 reaction duel. Stop closest to the target and take the match.",
       precision: {
         // Lobby client wrapper
         lobby_title: "Precision",
@@ -491,8 +563,8 @@ export const APP_TEXT_TRANSLATIONS = {
         duel_in_progress: "Duel in progress",
         setting_up: "Setting up",
         match_label: "Precision · Match #{id}",
-        wager_tokens: "Wager {wager} tokens",
-        wager_tokens_inline: "Wager {wager} {tokens}",
+        wager_tokens: "Stake {wager} tokens",
+        wager_tokens_inline: "Stake {wager} {tokens}",
         lobby_button: "Lobby",
         resign: "Resign",
         your_turn: "Your turn",
@@ -1043,11 +1115,11 @@ export const APP_TEXT_TRANSLATIONS = {
       chess: {
         title: "♟ Chess Arena: Challenge Players",
         create_game_title: "Create Multiplayer Game",
-        create_game_desc: "Select a stake and timer, then create your game. Winner gets the pot minus 10% house fee.",
+        create_game_desc: "Select a stake and timer, then create your game. Winner gets the pot minus a 10% platform fee.",
         choose_stake: "1) Choose Stake",
         choose_timer: "2) Choose Timer",
-        stake_value: "${amount} Stake",
-        pot_info: "Pot: ${pot} · Winner gets ~${win} (after 10% house fee)",
+        stake_value: "{amount} Stake",
+        pot_info: "Pot: ${pot} · Winner gets ~${win} (after 10% platform fee)",
         create_button: "Create Game",
         create_loading: "Creating...",
         ai_section_title: "Play vs AI",
@@ -1095,7 +1167,20 @@ export const APP_TEXT_TRANSLATIONS = {
       bet_amount: "Bet amount",
     },
     leaderboard: {
-      title: "Leaderboard",
+      title: "WHO'S ACTUALLY THE BEST?",
+      subtitle: "Where do you stand? Who do you need to beat?",
+      your_rank: "Your rank",
+      unranked: "Unranked",
+      climb_ranks: "Climb the ranks",
+      defend_spot: "Defend your spot",
+      keep_grinding: "Keep grinding",
+      top_of_board: "Top of the board — everyone is chasing you.",
+      in_top_10: "You're in the top 10. Defend your spot.",
+      spots_from_top_10: "{n} spots from the top 10. Keep grinding.",
+      unranked_hint: "Play a game to claim your spot on the board.",
+      empty_title: "No players ranked yet",
+      empty_hint: "Be the first — play a game and take the top spot.",
+      my_profile: "View my profile",
       top_10: "Show Top 10",
       top_100: "Show Top 100",
       overall: "Overall",
@@ -1139,10 +1224,10 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     onboarding: {
       welcome: {
-        kicker: "Welcome to",
-        title: "GRYND",
+        kicker: "Your first GRYND",
+        title: "STARTS NOW",
         subtitle:
-          "The competitive PvP arena. Face real players in fast, fair, skill-based games — and climb your way to the top.",
+          "You're ready to compete. You start with 1,000 free tokens — pick your first battle and prove you're the best.",
         play: "Let's Play",
         skip: "Skip Tutorial",
       },
@@ -1152,7 +1237,7 @@ export const APP_TEXT_TRANSLATIONS = {
         playTitle: "Play",
         playDesc: "Compete head-to-head against real players in PvP games.",
         outplayTitle: "Outplay",
-        outplayDesc: "Skill, timing and strategy decide every match — not luck.",
+        outplayDesc: "Skill, timing and strategy decide every match.",
         progressTitle: "Progress",
         progressDesc: "Every match earns XP toward your Battle Pass, cosmetics and rewards.",
       },
@@ -1161,7 +1246,7 @@ export const APP_TEXT_TRANSLATIONS = {
         title: "How tokens work",
         lead: "Tokens are your Grynd balance — what you play with.",
         areTitle: "What they are",
-        areDesc: "Tokens are the in-game currency every player starts with.",
+        areDesc: "Every new player starts with 1,000 free tokens already in their balance.",
         whereTitle: "Where to find them",
         whereDesc: "Your balance is always visible at the top-right of the screen.",
         usedTitle: "What they're for",
@@ -1180,7 +1265,7 @@ export const APP_TEXT_TRANSLATIONS = {
         s2Title: "Match",
         s2Desc: "The match starts the moment both players are ready.",
         s3Title: "Play",
-        s3Desc: "Outplay your rival with pure skill.",
+        s3Desc: "Outplay your rival.",
         s4Title: "Win or lose",
         s4Desc: "The winner takes the prize. Both players earn XP.",
       },
@@ -1225,6 +1310,10 @@ export const APP_TEXT_TRANSLATIONS = {
         point3: "Finish to earn a first-match XP bonus",
         cta: "Start Free Match",
         alt: "Not now — explore Grynd",
+        homeCta: "PLAY YOUR FIRST MATCH",
+        lobbyTitle: "PICK YOUR FIRST BATTLE",
+        lobbyCta: "START FREE MATCH",
+        dismiss: "Dismiss",
       },
       replay: "Replay tutorial",
     },
@@ -1251,13 +1340,13 @@ export const APP_TEXT_TRANSLATIONS = {
       tokensTitle: "Vos jetons gratuits",
       tokensDesc: "Vous démarrez avec 1 000 jetons. Jouez à des jeux de compétence et gagnez-en plus.",
       playTitle: "Commencer à jouer",
-      playDesc: "Rendez-vous au casino pour choisir votre premier jeu.",
+      playDesc: "Rendez-vous sur le hub de jeux pour choisir votre premier jeu.",
       searchTitle: "Rechercher dans le lobby",
       searchDesc: "Tapez un nom de jeu pour le trouver en quelques secondes.",
       filtersTitle: "Filtrer les jeux",
       filtersDesc: "Triez par populaire, compétence ou nouveauté.",
       gamesTitle: "Choisissez un jeu",
-      gamesDesc: "Tous les jeux reposent sur la compétence. Jouez pour gagner des jetons.",
+      gamesDesc: "Tous les jeux mettent vos décisions à l'épreuve. Jouez pour gagner des jetons.",
       firstGameTitle: "C'est parti !",
       firstGameDesc: "Touchez une carte de jeu pour commencer. Bonne chance !",
     },
@@ -1490,30 +1579,44 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "NIV",
     },
     home: {
-      title: "Jeux d'habileté",
-      subtitle: "Affrontez. Surpassez. Gagnez.",
+      title: "CHOISIS TON COMBAT",
+      title_line1: "CHOISIS TON",
+      title_line2: "COMBAT",
+      subtitle: "De vrais adversaires, de vrais enjeux — choisis ton duel et prouve-le.",
       search_placeholder: "Rechercher un jeu...",
       popular_games: "Jeux les plus populaires",
       all_games: "Tous les jeux",
       play_now: "Jouer maintenant",
       view_leaderboard: "Voir le leaderboard de",
-      description: "Découvrez nos jeux d'habileté et mettez vos compétences à l'épreuve!",
+      description: "Chaque jeu ici est un duel en tête-à-tête. Affronte, grimpe au classement et prouve qui est le meilleur.",
       more_games: "Plus de jeux",
       landing: {
-        title: "Testez vos habilités et gagnez gros",
+        title: "Tu penses être bon ? Prouve-le.",
+        title_line1: "TU PENSES ÊTRE BON ?",
+        title_line2: "PROUVE-LE.",
         subtitle:
-          "Des jeux d'habilités, des duels PvP en direct et des récompenses exclusives",
-        start_betting: "Commencer à jouer",
-        discover_casino: "Explorer les jeux",
+          "Affronte de vrais joueurs dans des jeux d'habileté compétitifs. Prends les bonnes décisions, grimpe au classement et construis ton GRYND.",
+        start_betting: "JOUER GRATUITEMENT",
+        discover_casino: "EXPLORER LES JEUX",
+        trust_real_pvp: "PvP RÉEL",
+        trust_compete: "COMPÈTE",
+        trust_climb: "GRIMPE",
+        trust_free_start: "DÉMARRAGE GRATUIT",
+        you_label: "TOI",
+        opponent_label: "ADVERSAIRE",
       },
       game_cards: {
         roulette_alt: "Table de roulette avec jetons",
+        roulette_desc:
+          "Même roue, un seul gagnant. Retire des numéros et bloque les cibles de ton adversaire.",
         blackjack_alt: "Table de Blackjack PvP en Best of 3",
-        blackjack_desc: "Blackjack PvP en best of 3 : affrontement direct sans croupier",
+        blackjack_desc:
+          "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
         poker_alt: "Table de poker avec cartes et jetons",
-        poker_desc: "Affrontez l'IA ou d'autres joueurs dans des parties intenses de poker",
+        poker_desc: "De vrais joueurs, une table. Bluffe, lis et empile.",
         plinko_alt: "Jeu Plinko avec des jetons qui tombent",
-        plinko_desc: "Regardez tomber les balles et multipliez vos gains!",
+        plinko_desc:
+          "Duel sur le même champ de picots — 3 balles chacun. Choisis ton tir et bats ton rival.",
       },
       errors: {
         manage_tokens: "Impossible de gérer vos tokens",
@@ -1541,11 +1644,21 @@ export const APP_TEXT_TRANSLATIONS = {
       // ── Value-proposition strip ─────────────────────────
       value_props: {
         skill_based_title: "100% basé sur l'habileté",
-        skill_based_desc: "Pas de chance, pas d'avantage de la maison. Votre habileté décide chaque résultat.",
+        skill_based_desc:
+          "Affronte de vrais adversaires et laisse tes décisions décider du vainqueur.",
         free_tokens_title: "Tokens virtuels gratuits",
         free_tokens_desc: "Commencez avec des tokens à l'inscription. Aucun argent réel n'est nécessaire pour jouer.",
         multiplayer_title: "Compétition multijoueur",
         multiplayer_desc: "Affrontez vos amis et grimpez au classement mondial.",
+        prove_skill_title: "Prouve ton habileté",
+        prove_skill_desc:
+          "Tes décisions comptent. Compète, progresse et prouve ce que tu sais faire.",
+        real_opponents_title: "De vrais adversaires",
+        real_opponents_desc:
+          "Affronte d'autres joueurs au lieu de parties sans enjeu.",
+        build_rep_title: "Construis ta réputation",
+        build_rep_desc:
+          "Gagne, progresse, grimpe et forge ton identité compétitive.",
       },
       // ── "How It Works" section ──────────────────────────
       how_it_works_title: "Comment ça marche",
@@ -1556,10 +1669,42 @@ export const APP_TEXT_TRANSLATIONS = {
         claim_tokens_desc: "Recevez des récompenses quotidiennes et des bonus pour commencer à jouer.",
         play_win_title: "Jouez & Gagnez",
         play_win_desc: "Affrontez des adversaires dans des jeux d'habileté et grimpez au classement.",
+        pick_game_title: "Choisis un jeu",
+        pick_game_desc: "Choisis ton duel dans tout le catalogue.",
+        find_opponent_title: "Trouve un adversaire",
+        find_opponent_desc:
+          "Le matchmaking te met face à un vrai joueur avec la même mise.",
+        make_move_title: "Fais ton move",
+        make_move_desc: "Tes décisions décident de chaque manche.",
+        win_progress_title: "Gagne & progresse",
+        win_progress_desc:
+          "Empoche le pot, gagne de l'XP et grimpe au classement.",
+        run_it_back_title: "Rejoue",
+        run_it_back_desc: "Rematch immédiat — continue de te prouver.",
       },
-      pick_your_game_subtitle: "Multijoueur d'habileté : affrontez de vrais joueurs",
+      pick_your_battle: "CHOISIS TON COMBAT",
+      pick_your_game_subtitle:
+        "De vrais adversaires, de vrais enjeux — choisis ton duel et prouve-le.",
+      pvp_badge: "1v1 PvP",
+      play_pvp: "Jouer en PvP",
       play_now_overlay: "Jouer maintenant",
       push_intro: "Tokens virtuels gratuits, pas d'argent réel requis",
+      // ── Section classement de la page d'accueil ──────────
+      best_of: {
+        title: "QUI EST VRAIMENT LE MEILLEUR ?",
+        subtitle:
+          "De vrais joueurs, de vrais classements — les meilleurs compétiteurs de la semaine.",
+        view_all: "Voir le classement complet",
+        wins_label: "victoires",
+        error: "Impossible de charger le classement pour le moment.",
+      },
+      // ── Section appel à l'action finale ───────────────────
+      final_cta: {
+        title: "TON GRYND COMMENCE MAINTENANT.",
+        subtitle:
+          "Rejoins l'arène, choisis ton combat et prouve ce que tu sais faire.",
+        play: "JOUER GRATUITEMENT",
+      },
       // ── Term & Conditions modal chrome & body ───────────
       terms: {
         title: "Conditions Générales",
@@ -1634,16 +1779,23 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       // ── Casino lobby chrome (sort + filter + no-results) ───
       casino_lobby: {
+        filter_by: "Filtrer par",
         sort_by: "Trier par",
         filter_all: "Tous les jeux",
+        filter_duels: "Duels 1v1",
+        filter_multiplayer: "Multijoueur",
         filter_popular: "Jeux populaires",
-        filter_skill: "Jeux d'habileté",
-        filter_newest: "Jeux les plus récents",
+        sort_featured: "En vedette",
+        sort_most_played: "Les plus joués",
+        sort_az: "A–Z",
+        sort_newest: "Nouveautés",
+        play: "Jouer",
         no_results_title: "Aucun jeu ne correspond à votre recherche.",
         no_results_hint: "Essayez un autre mot-clé ou changez le filtre.",
         play_vs_ai: "Jouer contre l'IA",
         badge_hot: "HOT",
         badge_new: "NOUVEAU",
+        pvp_multi_badge: "Multijoueur",
         recently_played: "Récemment joués",
         play_again: "Rejouer",
         recently_played_empty: "Les jeux auxquels vous jouez apparaîtront ici.",
@@ -1667,22 +1819,31 @@ export const APP_TEXT_TRANSLATIONS = {
       },
     },
     games: {
-      roulette_desc: "Placez vos paris sur les numéros, couleurs ou sections",
+      roulette_desc:
+        "Roue partagée, plateau qui rétrécit. Retirez des numéros, volez des points et dépassez votre adversaire.",
       blackjack_name: "Blackjack",
       poker_name: "Poker",
       plinko_name: "Plinko",
-      blackjack_desc: "Blackjack PvP en best of 3 : affrontement direct sans croupier",
+      blackjack_desc:
+        "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
       mines_pvp_name: "Mines Duel",
-      mines_pvp_desc: "Misez des tokens et affrontez un autre joueur sur un plateau 5×5 partagé. L'hôte choisit le nombre de mines. Le gagnant remporte 1,9×, la maison prélève 0,1×.",
+      mines_pvp_desc:
+        "Misez des tokens et affrontez un autre joueur sur un plateau 5×5 partagé. L'hôte choisit le nombre de mines. Le gagnant remporte 1,9× sa mise ; des frais de plateforme de 5 % s'appliquent.",
       memory_grid_name: "Memory Grid",
-      memory_grid_desc: "Misez des tokens et affrontez un autre joueur sur une grille mémoire 4×4 partagée. Retournez deux cartes pour trouver des paires. Une paire garde votre tour, le gagnant remporte 1,9×.",
-      plinko_desc: "Regardez tomber votre jeton et multipliez vos gains !",
-      poker_desc: "Affrontez l'IA ou d'autres joueurs",
-      crash_arena_desc: "Rejoignez une table, postez les blinds et misez contre la courbe du crash. Le dernier joueur en lice remporte le pot.",
-      chess_desc: "Affrontez d'autres joueurs dans un match d'échecs",
+      memory_grid_desc:
+        "Misez des tokens et affrontez un autre joueur sur une grille mémoire 4×4 partagée. Retournez deux cartes pour trouver des paires. Une paire garde votre tour, le gagnant remporte 1,9× sa mise ; des frais de plateforme de 5 % s'appliquent.",
+      plinko_desc:
+        "Même champ de picots, 3 balles chacun. Choisis ton tir et bats ton rival.",
+      poker_desc:
+        "Texas Hold'em multijoueur. Bluffe, lis la table et domine la salle.",
+      crash_arena_desc:
+        "Rejoignez une table, postez les blinds et tenez face à la courbe du crash. Le dernier joueur en lice remporte le pot.",
+      chess_desc: "Dépasse ton adversaire coup par coup.",
       keno_desc: "Duel 1v1 Keno Catch. Les deux joueurs poursuivent le même tirage de 10 boules et calent leur appui dans la fenêtre parfaite. Meilleur des 5, attrapez plus que votre rival et empochez le pot.",
-      uno_desc: "Défie l’IA dans ce jeu rapide et stratégique.",
-      rps_desc: "Affronte un rival dans ce jeu rapide et stratégique.",
+      uno_desc:
+        "Duel de cartes rapide. Assortis couleurs et numéros pour battre ton rival — en ligne ou contre l'IA.",
+      rps_desc:
+        "Jeux d'esprit en best of 7. Prédit, contre et prends ton rival au piège.",
       tower_arena_desc:
         "Survie de tour partagée en compétition pour 2 à 6 joueurs. Placez des blocs, évitez l'effondrement et soyez le dernier debout.",
       yahtzee_desc:
@@ -1692,7 +1853,8 @@ export const APP_TEXT_TRANSLATIONS = {
       odds_desc: "Chaque joueur choisit un nombre secret, puis prédit celui de l'adversaire. Les prédictions les plus proches rapportent des points. Plage : 100 → 50 → 25 → 12 → 6 → 3.",
       odds_name: "Cotes",
       precision_name: "Precision",
-      precision_desc: "Misez des tokens et affrontez un autre joueur dans un duel de précision 1v1. Testez votre temps de réaction et remportez la partie.",
+      precision_desc:
+        "Mise des tokens dans un duel de réaction 1v1. Arrête-toi au plus près de la cible et remporte la partie.",
       precision: {
         // Lobby client wrapper
         lobby_title: "Precision",
@@ -1972,7 +2134,20 @@ export const APP_TEXT_TRANSLATIONS = {
       bet_amount: "Montant de mise",
     },
     leaderboard: {
-      title: "Classement",
+      title: "QUI EST VRAIMENT LE MEILLEUR ?",
+      subtitle: "Où te situes-tu ? Qui dois-tu battre ?",
+      your_rank: "Ton classement",
+      unranked: "Non classé",
+      climb_ranks: "Monter au classement",
+      defend_spot: "Défends ta place",
+      keep_grinding: "Continue de grinder",
+      top_of_board: "En tête du classement — tout le monde te court après.",
+      in_top_10: "Tu es dans le top 10. Défends ta place.",
+      spots_from_top_10: "{n} places du top 10. Continue de grinder.",
+      unranked_hint: "Joue une partie pour prendre ta place au classement.",
+      empty_title: "Aucun joueur classé pour l'instant",
+      empty_hint: "Sois le premier — joue une partie et prends la première place.",
+      my_profile: "Voir mon profil",
       top_10: "Afficher le Top 10",
       top_100: "Afficher le Top 100",
       overall: "Global",
@@ -2016,10 +2191,10 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     onboarding: {
       welcome: {
-        kicker: "Bienvenue sur",
-        title: "GRYND",
+        kicker: "Ton premier GRYND",
+        title: "C'EST PARTI",
         subtitle:
-          "L'arène PvP compétitive. Affronte de vrais joueurs dans des jeux rapides, équitables et basés sur la compétence — et grimpe jusqu'au sommet.",
+          "Tu es prêt à te battre. Tu démarres avec 1 000 jetons gratuits — choisis ton premier combat et prouve que tu es le meilleur.",
         play: "C'est parti",
         skip: "Passer le tutoriel",
       },
@@ -2029,7 +2204,7 @@ export const APP_TEXT_TRANSLATIONS = {
         playTitle: "Joue",
         playDesc: "Affronte de vrais joueurs en duel dans des jeux PvP.",
         outplayTitle: "Dépasse",
-        outplayDesc: "La compétence, le timing et la stratégie décident de chaque match — pas la chance.",
+        outplayDesc: "La compétence, le timing et la stratégie décident de chaque match.",
         progressTitle: "Progresse",
         progressDesc:
           "Chaque match rapporte de l'XP vers ton Battle Pass, des cosmétiques et des récompenses.",
@@ -2039,7 +2214,7 @@ export const APP_TEXT_TRANSLATIONS = {
         title: "Comment fonctionnent les tokens",
         lead: "Les tokens sont ton solde Grynd — c'est avec eux que tu joues.",
         areTitle: "Ce que c'est",
-        areDesc: "Les tokens sont la monnaie du jeu avec laquelle chaque joueur commence.",
+        areDesc: "Chaque nouveau joueur démarre avec 1 000 jetons gratuits déjà crédités sur son solde.",
         whereTitle: "Où les trouver",
         whereDesc: "Ton solde est toujours visible en haut à droite de l'écran.",
         usedTitle: "À quoi ils servent",
@@ -2058,7 +2233,7 @@ export const APP_TEXT_TRANSLATIONS = {
         s2Title: "Match",
         s2Desc: "Le match commence dès que les deux joueurs sont prêts.",
         s3Title: "Joue",
-        s3Desc: "Dépasse ton rival grâce à ta compétence.",
+        s3Desc: "Dépasse ton rival.",
         s4Title: "Gagne ou perds",
         s4Desc: "Le gagnant remporte le prix. Les deux joueurs gagnent de l'XP.",
       },
@@ -2104,6 +2279,10 @@ export const APP_TEXT_TRANSLATIONS = {
         point3: "Termine pour gagner un bonus d'XP de bienvenue",
         cta: "Commencer le match gratuit",
         alt: "Pas maintenant — explorer Grynd",
+        homeCta: "JOUER MON PREMIER MATCH",
+        lobbyTitle: "CHOISIS TON PREMIER COMBAT",
+        lobbyCta: "LANCER LE MATCH GRATUIT",
+        dismiss: "Fermer",
       },
       replay: "Rejouer le tutoriel",
     },
@@ -2130,13 +2309,13 @@ export const APP_TEXT_TRANSLATIONS = {
       tokensTitle: "Tus fichas gratis",
       tokensDesc: "Empiezas con 1.000 fichas. Juega juegos de habilidad y gana más.",
       playTitle: "Empieza a jugar",
-      playDesc: "Ve al casino y elige tu primer juego.",
+      playDesc: "Ve al centro de juegos y elige tu primer juego.",
       searchTitle: "Buscar en el lobby",
       searchDesc: "Escribe el nombre de un juego para encontrarlo en segundos.",
       filtersTitle: "Filtrar juegos",
       filtersDesc: "Ordena por popular, habilidad o novedad.",
       gamesTitle: "Elige un juego",
-      gamesDesc: "Todos los juegos son de habilidad: juega para ganar fichas.",
+      gamesDesc: "Todos los juegos ponen a prueba tus decisiones. Juega para ganar fichas.",
       firstGameTitle: "¡Entra!",
       firstGameDesc: "Toca una tarjeta de juego para empezar. ¡Buena suerte!",
     },
@@ -2371,30 +2550,44 @@ export const APP_TEXT_TRANSLATIONS = {
       level_short: "NVL",
     },
     home: {
-      title: "Juegos de habilidad",
-      subtitle: "Compite. Supérate. Gana.",
+      title: "ELIGE TU BATALLA",
+      title_line1: "ELIGE TU",
+      title_line2: "BATALLA",
+      subtitle: "Rivales reales, apuestas reales — elige tu duelo y demuéstralo.",
       search_placeholder: "Buscar un juego...",
       popular_games: "Juegos más populares",
       all_games: "Todos los juegos",
       play_now: "Jugar ahora",
       view_leaderboard: "Ver clasificación de",
-      description: "Descubre nuestros juegos de habilidad y pon a prueba tu destreza.",
+      description: "Cada juego aquí es un duelo cara a cara. Compite, escala en la clasificación y demuestra quién es el mejor.",
       more_games: "Más juegos",
       landing: {
-        title: "Prueba tus habilidades y gana en grande",
+        title: "¿Crees que eres bueno? Demuéstralo.",
+        title_line1: "¿CREES QUE ERES BUENO?",
+        title_line2: "DEMUÉSTRALO.",
         subtitle:
-          "Juegos de habilidad, duelos PvP en vivo y recompensas exclusivas",
-        start_betting: "Comenzar a jugar",
-        discover_casino: "Explorar los juegos",
+          "Reta a jugadores reales en juegos de habilidad competitivos. Toma buenas decisiones, escala en la clasificación y construye tu GRYND.",
+        start_betting: "JUEGO GRATIS",
+        discover_casino: "EXPLORAR JUEGOS",
+        trust_real_pvp: "PvP REAL",
+        trust_compete: "COMPITE",
+        trust_climb: "ESCALA",
+        trust_free_start: "COMIENZO GRATIS",
+        you_label: "TÚ",
+        opponent_label: "RIVAL",
       },
       game_cards: {
         roulette_alt: "Mesa de ruleta con fichas",
+        roulette_desc:
+          "Misma ruleta, un ganador. Retira números y bloquea los objetivos de tu rival.",
         blackjack_alt: "Mesa de Blackjack PvP al mejor de 3",
-        blackjack_desc: "Blackjack PvP al mejor de 3: enfrentamiento directo sin crupier",
+        blackjack_desc:
+          "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
         poker_alt: "Mesa de póker con cartas y fichas",
-        poker_desc: "Juega contra IA u otros jugadores en partidas intensas de póker",
+        poker_desc: "Jugadores reales, una mesa. Farolea, lee y acumula.",
         plinko_alt: "Juego Plinko con fichas cayendo",
-        plinko_desc: "¡Mira caer las fichas y multiplica tus ganancias!",
+        plinko_desc:
+          "Duelo en el mismo campo de clavijas: 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
       },
       errors: {
         manage_tokens: "No se pudieron administrar tus fichas",
@@ -2422,11 +2615,21 @@ export const APP_TEXT_TRANSLATIONS = {
       // ── Value-proposition strip ─────────────────────────
       value_props: {
         skill_based_title: "100% basado en habilidad",
-        skill_based_desc: "Sin suerte, sin ventaja de la casa. Tu habilidad decide cada resultado.",
+        skill_based_desc:
+          "Enfréntate a rivales reales y deja que tus decisiones decidan quién gana.",
         free_tokens_title: "Fichas virtuales gratis",
         free_tokens_desc: "Empieza con fichas al registrarte. No necesitas dinero real para jugar.",
         multiplayer_title: "Competición multijugador",
         multiplayer_desc: "Reta a tus amigos y escala en la clasificación global.",
+        prove_skill_title: "Demuestra tu habilidad",
+        prove_skill_desc:
+          "Tus decisiones importan. Compite, mejora y demuestra lo que puedes hacer.",
+        real_opponents_title: "Rivales reales",
+        real_opponents_desc:
+          "Reta a otros jugadores en lugar de partidas sin sentido.",
+        build_rep_title: "Construye tu reputación",
+        build_rep_desc:
+          "Gana, progresa, escala y construye tu identidad competitiva.",
       },
       // ── "How It Works" section ──────────────────────────
       how_it_works_title: "Cómo funciona",
@@ -2437,10 +2640,43 @@ export const APP_TEXT_TRANSLATIONS = {
         claim_tokens_desc: "Recibe recompensas diarias y fichas de bonificación para empezar a jugar.",
         play_win_title: "Juega y Gana",
         play_win_desc: "Compite en juegos de habilidad y escala en la clasificación.",
+        pick_game_title: "Elige un juego",
+        pick_game_desc: "Elige tu duelo de todo el catálogo.",
+        find_opponent_title: "Encuentra un rival",
+        find_opponent_desc:
+          "El emparejamiento te pondrá contra un jugador real con la misma apuesta.",
+        make_move_title: "Haz tu movimiento",
+        make_move_desc: "Tus decisiones deciden cada ronda.",
+        win_progress_title: "Gana y progresa",
+        win_progress_desc:
+          "Llévate el bote, gana XP y escala en la clasificación.",
+        run_it_back_title: "Repítelo",
+        run_it_back_desc:
+          "Revancha al instante — sigue demostrando de qué estás hecho.",
       },
-      pick_your_game_subtitle: "Multijugador de habilidad: compite contra jugadores reales",
+      pick_your_battle: "ELIGE TU BATALLA",
+      pick_your_game_subtitle:
+        "Rivales reales, apuestas reales — elige tu duelo y demuéstralo.",
+      pvp_badge: "1v1 PvP",
+      play_pvp: "Jugar PvP",
       play_now_overlay: "Jugar ahora",
       push_intro: "Fichas virtuales gratis, no se requiere dinero real",
+      // ── Sección de clasificación de la página de inicio ──
+      best_of: {
+        title: "¿QUIÉN ES REALMENTE EL MEJOR?",
+        subtitle:
+          "Jugadores reales, puestos reales — los mejores competidores de la semana.",
+        view_all: "Ver clasificación completa",
+        wins_label: "victorias",
+        error: "No se pudo cargar la clasificación ahora mismo.",
+      },
+      // ── Sección de llamada a la acción final ─────────────
+      final_cta: {
+        title: "TU GRYND EMPIEZA AHORA.",
+        subtitle:
+          "Únete a la arena, elige tu batalla y demuestra lo que puedes hacer.",
+        play: "JUEGO GRATIS",
+      },
       // ── Term & Conditions modal chrome & body ───────────
       terms: {
         title: "Términos y Condiciones",
@@ -2515,15 +2751,22 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       // ── Casino lobby chrome (sort + filter + no-results) ───
       casino_lobby: {
+        filter_by: "Filtrar por",
         sort_by: "Ordenar por",
         filter_all: "Todos los juegos",
+        filter_duels: "Duelos 1v1",
+        filter_multiplayer: "Multijugador",
         filter_popular: "Juegos populares",
-        filter_skill: "Juegos de habilidad",
-        filter_newest: "Juegos más recientes",
+        sort_featured: "Destacados",
+        sort_most_played: "Más jugados",
+        sort_az: "A–Z",
+        sort_newest: "Nuevos",
+        play: "Jugar",
         no_results_title: "Ningún juego coincide con tu búsqueda.",
         no_results_hint: "Prueba con otra palabra clave o cambia el filtro.",
         play_vs_ai: "Jugar contra la IA",
         badge_hot: "POPULAR",
+        pvp_multi_badge: "Multijugador",
         badge_new: "NUEVO",
         recently_played: "Jugados recientemente",
         play_again: "Jugar de nuevo",
@@ -2548,22 +2791,31 @@ export const APP_TEXT_TRANSLATIONS = {
       },
     },
     games: {
-      roulette_desc: "Haz tus apuestas en números, colores o secciones",
+      roulette_desc:
+        "Ruleta compartida, tablero que se encoge. Retira números, roba puntos y supera a tu rival.",
       blackjack_name: "Blackjack",
       poker_name: "Póker",
       plinko_name: "Plinko",
-      blackjack_desc: "Blackjack PvP al mejor de 3: enfrentamiento directo sin crupier",
+      blackjack_desc:
+        "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
       mines_pvp_name: "Mines Duel",
-      mines_pvp_desc: "Apuesta fichas y enfréntate a otro jugador en un tablero 5×5 compartido. El anfitrión elige la cantidad de minas. El ganador se lleva 1,9×, la casa se queda 0,1×.",
+      mines_pvp_desc:
+        "Apuesta fichas y enfréntate a otro jugador en un tablero 5×5 compartido. El anfitrión elige la cantidad de minas. El ganador se lleva 1,9× su apuesta; se aplica una tarifa de plataforma del 5 %.",
       memory_grid_name: "Memory Grid",
-      memory_grid_desc: "Apuesta fichas y enfréntate a otro jugador en una cuadrícula de memoria 4×4 compartida. Voltea dos cartas para encontrar parejas. Una pareja mantiene tu turno, el ganador se lleva 1,9×.",
-      plinko_desc: "¡Mira caer tu ficha y multiplica tus ganancias!",
-      poker_desc: "Juega contra la IA u otros jugadores",
-      crash_arena_desc: "Únete a una mesa, publica las ciegas y apuesta contra la curva del crash. El último jugador en pie se lleva el bote.",
-      chess_desc: "Juega partidas estratégicas contra otros jugadores",
+      memory_grid_desc:
+        "Apuesta fichas y enfréntate a otro jugador en una cuadrícula de memoria 4×4 compartida. Voltea dos cartas para encontrar parejas. Una pareja mantiene tu turno, el ganador se lleva 1,9× su apuesta; se aplica una tarifa de plataforma del 5 %.",
+      plinko_desc:
+        "Mismo campo de clavijas, 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
+      poker_desc:
+        "Texas Hold'em multijugador. Farolea, lee la mesa y domina la sala.",
+      crash_arena_desc:
+        "Únete a una mesa, publica las ciegas y aguanta contra la curva del crash. El último jugador en pie se lleva el bote.",
+      chess_desc: "Supera a tu oponente jugada a jugada.",
       keno_desc: "Duelo 1v1 de Keno Catch: ambos jugadores persiguen el mismo sorteo de 10 bolas y aciertan el momento perfecto. Mejor de 5, atrapa más que tu rival y llévate el premio.",
-      uno_desc: "Desafía a la IA en este juego rápido y estratégico.",
-      rps_desc: "Enfréntate a un rival en este juego rápido y estratégico.",
+      uno_desc:
+        "Duelos de cartas rápidos. Iguala colores y números para superar a tu rival — en línea o contra la IA.",
+      rps_desc:
+        "Juego mental al mejor de 7. Predice, contraataca y supera a tu rival.",
       tower_arena_desc: "Supervivencia competitiva de torre compartida para 2 a 6 jugadores. Coloca bloques, evita el derrumbe y sé el último en pie.",
       yahtzee_desc:
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
@@ -2572,7 +2824,8 @@ export const APP_TEXT_TRANSLATIONS = {
       odds_desc: "Cada jugador elige un número oculto y luego predice el del oponente: las predicciones más cercanas suman puntos. Rango: 100 → 50 → 25 → 12 → 6 → 3.",
       odds_name: "Probabilidades",
       precision_name: "Precision",
-      precision_desc: "Apuesta fichas y enfréntate a otro jugador en un duelo de precisión 1v1. Pon a prueba tu tiempo de reacción y gana la partida.",
+      precision_desc:
+        "Apuesta fichas en un duelo de reflejos 1v1. Detente lo más cerca del objetivo y gana la partida.",
       precision: {
         // Lobby client wrapper
         lobby_title: "Precision",
@@ -2852,7 +3105,20 @@ export const APP_TEXT_TRANSLATIONS = {
       bet_amount: "Monto de apuesta",
     },
     leaderboard: {
-      title: "Clasificación",
+      title: "¿QUIÉN ES REALMENTE EL MEJOR?",
+      subtitle: "¿Dónde estás? ¿A quién tienes que superar?",
+      your_rank: "Tu clasificación",
+      unranked: "Sin clasificar",
+      climb_ranks: "Sube posiciones",
+      defend_spot: "Defiende tu puesto",
+      keep_grinding: "Sigue grindando",
+      top_of_board: "Líder de la tabla — todos te persiguen.",
+      in_top_10: "Estás en el top 10. Defiende tu puesto.",
+      spots_from_top_10: "A {n} puestos del top 10. Sigue grindando.",
+      unranked_hint: "Juega una partida para ganar tu puesto en la tabla.",
+      empty_title: "Aún no hay jugadores clasificados",
+      empty_hint: "Sé el primero — juega una partida y toma el primer puesto.",
+      my_profile: "Ver mi perfil",
       top_10: "Mostrar Top 10",
       top_100: "Mostrar Top 100",
       overall: "Global",
@@ -2896,10 +3162,10 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     onboarding: {
       welcome: {
-        kicker: "Bienvenido a",
-        title: "GRYND",
+        kicker: "Tu primer GRYND",
+        title: "EMPIEZA YA",
         subtitle:
-          "El arena PvP competitiva. Enfréntate a jugadores reales en juegos rápidos, justos y basados en la habilidad — y sube hasta la cima.",
+          "Estás listo para competir. Empiezas con 1.000 fichas gratis — elige tu primera batalla y demuestra que eres el mejor.",
         play: "A jugar",
         skip: "Saltar tutorial",
       },
@@ -2909,7 +3175,7 @@ export const APP_TEXT_TRANSLATIONS = {
         playTitle: "Juega",
         playDesc: "Compite cara a cara contra jugadores reales en juegos PvP.",
         outplayTitle: "Supera",
-        outplayDesc: "La habilidad, el timing y la estrategia deciden cada partida — no la suerte.",
+        outplayDesc: "La habilidad, el timing y la estrategia deciden cada partida.",
         progressTitle: "Progresa",
         progressDesc:
           "Cada partida otorga XP hacia tu Battle Pass, cosméticos y recompensas.",
@@ -2919,7 +3185,7 @@ export const APP_TEXT_TRANSLATIONS = {
         title: "Cómo funcionan los tokens",
         lead: "Los tokens son tu saldo de Grynd — con lo que juegas.",
         areTitle: "Qué son",
-        areDesc: "Los tokens son la moneda del juego con la que todo jugador empieza.",
+        areDesc: "Cada jugador nuevo empieza con 1.000 fichas gratis ya en su saldo.",
         whereTitle: "Dónde encontrarlos",
         whereDesc: "Tu saldo siempre es visible en la esquina superior derecha de la pantalla.",
         usedTitle: "Para qué sirven",
@@ -2938,7 +3204,7 @@ export const APP_TEXT_TRANSLATIONS = {
         s2Title: "Match",
         s2Desc: "La partida empieza en cuanto ambos jugadores están listos.",
         s3Title: "Juega",
-        s3Desc: "Supera a tu rival con pura habilidad.",
+        s3Desc: "Supera a tu rival.",
         s4Title: "Gana o pierde",
         s4Desc: "El ganador se lleva el premio. Ambos jugadores ganan XP.",
       },
@@ -2983,6 +3249,10 @@ export const APP_TEXT_TRANSLATIONS = {
         point3: "Termina para ganar un bonus de XP por tu primera partida",
         cta: "Empezar partida gratuita",
         alt: "Ahora no — explorar Grynd",
+        homeCta: "JUGAR MI PRIMER PARTIDO",
+        lobbyTitle: "ELIGE TU PRIMERA BATALLA",
+        lobbyCta: "EMPEZAR PARTIDO GRATIS",
+        dismiss: "Cerrar",
       },
       replay: "Repetir tutorial",
     },

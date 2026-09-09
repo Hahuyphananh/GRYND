@@ -919,12 +919,12 @@ export default function BlackjackPvpMatchPage({
         ? "Evenly matched — the tiebreak round couldn't split you"
         : `${oppName} took the match ${oppRounds}–${myRounds} rounds`;
     const subline = isAi
-      ? "Free practice match — no tokens were wagered or awarded."
+      ? "Free practice match — no tokens were staked or awarded."
       : draw
-        ? `Tiebreak round tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% house fee each).`
+        ? `Tiebreak round tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% platform fee each).`
         : won
           ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
-          : `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`;
+          : `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`;
 
     return (
       <PvpResultScreen
@@ -949,12 +949,12 @@ export default function BlackjackPvpMatchPage({
           ...(isAi
             ? []
             : [
-                { label: "Wager", value: `${stake.toLocaleString()} tokens` },
+                { label: "Stake", value: `${stake.toLocaleString()} tokens` },
                 { label: "Pot", value: `${pot.toLocaleString()} tokens` },
                 ...(won
                   ? [
                       { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
-                      { label: "House fee", value: `${houseFee.toLocaleString()} tokens` },
+                      { label: "Platform fee", value: `${houseFee.toLocaleString()} tokens` },
                     ]
                   : []),
               ]),
@@ -1000,7 +1000,7 @@ export default function BlackjackPvpMatchPage({
             </div>
           ) : null
         }
-        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/blackjack") }}
+        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/blackjack") }}
         onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResult(false)}
         dismissLabel="View Match Results"

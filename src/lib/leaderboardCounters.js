@@ -56,7 +56,14 @@ export async function applyLeaderboardCounters({
           weekly_wins = weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
           pvp_wins = pvp_wins + CASE WHEN ${isPvpWin} THEN 1 ELSE 0 END,
           xp = LEAST(2147483647, xp + ${betExp}),
-          level = LEAST(${MAX_LEVEL}, GREATEST(1, FLOOR((SQRT(21025 + 20 * (xp::bigint + ${betExp})) - 135) / 10)::int))
+          level = LEAST(${MAX_LEVEL}, GREATEST(1, FLOOR((SQRT(21025 + 20 * (xp::bigint + ${betExp})) - 135) / 10)::int)),
+          -- Result-screen progression: persist the facts of this settlement
+          -- so PvpResultScreen can show real +XP / rank movement via
+          -- /api/user/stats + /api/leaderboard/my-rank (migration 0151).
+          last_settled_xp = ${betExp},
+          last_settled_xp_at = NOW(),
+          last_settled_wins_delta = CASE WHEN ${isWin} THEN 1 ELSE 0 END,
+          last_settled_losses_delta = CASE WHEN ${isWin} THEN 0 ELSE 1 END
       WHERE clerk_id = ${clerkId}
       RETURNING id, level, xp
     )

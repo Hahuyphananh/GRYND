@@ -177,7 +177,7 @@ export default function Footer() {
           <button
             onClick={scrollToTop}
             aria-label="Scroll to top"
-            className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-[#00e5ff]/40 bg-[#030712]/90 text-[#00e5ff] shadow-[0_0_16px_rgba(0,229,255,0.3)] backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:border-[#00e5ff]/70 hover:shadow-[0_0_24px_rgba(0,229,255,0.6)] active:scale-95"
+            className="fixed bottom-24 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-[#00e5ff]/40 bg-[#030712]/90 text-[#00e5ff] shadow-[0_0_16px_rgba(0,229,255,0.3)] backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:border-[#00e5ff]/70 hover:shadow-[0_0_24px_rgba(0,229,255,0.6)] active:scale-95 sm:bottom-6 sm:right-6"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

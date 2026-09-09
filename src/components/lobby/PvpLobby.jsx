@@ -119,7 +119,7 @@ export function confirmLargeStake(stake, balance) {
   const isLargeVsBalance = Number.isFinite(bal) && bal > 0 && amount > bal * 0.1;
   if (!isLargeAbsolute && !isLargeVsBalance) return true;
   return window.confirm(
-    `You're about to wager ${amount.toLocaleString()} tokens — that's ${
+    `You're about to stake ${amount.toLocaleString()} tokens — that's ${
       isLargeVsBalance ? "more than 10% of your balance" : "a large amount"
     }. Continue?`,
   );
@@ -425,7 +425,7 @@ export function PvpLobby({
         <div className="grid items-end gap-3 md:grid-cols-[1.1fr_auto_1fr]">
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-              Wager
+              Stake
             </label>
             {stakeOptions.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
@@ -448,7 +448,7 @@ export function PvpLobby({
               min={stakeMin}
               max={stakeInputMax}
               value={stake}
-              aria-label="Wager amount"
+              aria-label="Stake amount"
               onChange={(e) =>
                 onStakeChange?.(Math.max(stakeMin, Number(e.target.value) || 0))
               }

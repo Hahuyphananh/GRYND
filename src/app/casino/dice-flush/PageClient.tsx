@@ -859,7 +859,7 @@ export default function DiceFlushPage() {
                 <>
                   Once all 12 categories are filled, the player whose
                   claimed categories total the most wins the pot (minus
-                  the house fee). Reach 63 in your own upper section for
+                  the platform fee). Reach 63 in your own upper section for
                   a +35 bonus. Play vs AI free to practice.
                 </>
               ),
@@ -887,8 +887,8 @@ export default function DiceFlushPage() {
         </div>
         {mode === "pvp" ? (
           <div className="flex flex-wrap gap-2">
-            <label htmlFor="dice-flush-wager" className="sr-only">Wager amount</label>
-            <input id="dice-flush-wager" type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Wager" />
+            <label htmlFor="dice-flush-wager" className="sr-only">Stake amount</label>
+            <input id="dice-flush-wager" type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Stake" />
             <button onClick={createGame} className="rounded-lg bg-[#00e5ff] px-4 py-2 font-bold text-black hover:bg-[#00e5ff]/80 transition">Create PvP</button>
             <button onClick={fetchGames} className="rounded-lg bg-[#a855f7] px-4 py-2 font-bold text-white hover:bg-[#a855f7]/80 transition">Refresh</button>
           </div>
@@ -896,7 +896,7 @@ export default function DiceFlushPage() {
           <>
             <div className="rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 p-3 text-center">
               <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#f5ff3b]"><IconDeviceGamepad2 size={14} /> Free Play</p>
-              <p className="text-[10px] text-[#f5ff3b]/70 mt-1">No tokens are wagered. Playing vs AI is free.</p>
+              <p className="text-[10px] text-[#f5ff3b]/70 mt-1">No tokens are staked. Playing vs AI is free.</p>
             </div>
             <button onClick={playAI} className="mt-3 w-full rounded-lg bg-[#f5ff3b] px-4 py-2 font-bold text-black hover:bg-[#f5ff3b]/80 transition">Play vs AI</button>
           </>
@@ -1340,7 +1340,7 @@ export default function DiceFlushPage() {
                 ? "You took the match with the higher total"
                 : "The final total wasn't enough this time"
             }
-            subline={opponent?.isAI ? "Free practice match — no tokens were wagered." : undefined}
+            subline={opponent?.isAI ? "Free practice match — no tokens were staked." : undefined}
             opponent={{
               name: opponent?.name || "Opponent",
               iconKey: opponent?.iconKey || null,

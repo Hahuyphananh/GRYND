@@ -1216,7 +1216,7 @@ export default function LaneRushDuelMatchPage({ params }) {
       ]}
       details={[
         ...(match.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-        { label: "Wager", value: `${stakeNumber.toLocaleString()} tokens` },
+        { label: "Stake", value: `${stakeNumber.toLocaleString()} tokens` },
         { label: "Winner", value: drawMatch ? "Draw" : wonMatch ? "You" : oppDisplayName },
       ]}
       playAgain={{ onClick: () => router.push("/casino/lane-runner") }}

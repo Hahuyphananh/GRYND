@@ -154,7 +154,7 @@ function Die({ duration, delay, lift }: { duration: string; delay: string; lift:
 }
 
 const QUICK_LINKS = [
-  { label: "Casino", href: "/casino" },
+  { label: "Games", href: "/games" },
   { label: "Rankings", href: "/classement" },
   { label: "Profile", href: "/profil" },
 ];
@@ -216,7 +216,7 @@ export default function NotFound() {
         {/* Slot machine */}
         <div className="mt-8 rounded-3xl border-2 border-[#00e5ff]/35 bg-[#0b224f]/85 px-6 py-7 shadow-[0_0_45px_rgba(0,229,255,0.2)] backdrop-blur-sm sm:px-10 sm:py-9">
           <p className="animate-shimmer-elegant bg-gradient-to-r from-[#00e5ff] via-[#f5ff3b] to-[#00e5ff] bg-clip-text text-sm font-black uppercase tracking-[0.35em] text-transparent">
-            Bad Beat
+            Off the Board
           </p>
 
           <div className="mt-5 flex items-center justify-center gap-3 sm:gap-4">
@@ -244,8 +244,8 @@ export default function NotFound() {
         </h1>
 
         <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-[#9dd8ff] sm:text-lg">
-          The reels landed on 404. This page has been dealt out of the deck. It may have
-          been moved, renamed, or never existed at all.
+          This match doesn't exist. The page may have been moved, renamed, or
+          never spawned at all.
         </p>
 
         {/* Actions */}

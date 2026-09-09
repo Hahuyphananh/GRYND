@@ -5,10 +5,18 @@
  * plan P3-3 / "reward moment").
  *
  * Every PvP game replaces its bespoke WIN/LOSS/DRAW popup with this shared
- * full-screen result overlay. It is 100% prop-driven: the component never
- * computes or invents rewards — games pass the REAL values already returned
- * by their existing match APIs, and any section (XP, Battle Pass, Prestige,
- * duration, opponent, details…) is simply hidden when its data is absent.
+ * full-screen result overlay. It never computes or invents rewards — games
+ * pass the REAL values already returned by their existing match APIs, and
+ * any section (XP, Battle Pass, Prestige, duration, opponent, details…) is
+ * simply hidden when its data is absent.
+ *
+ * Two live progression values are read from the platform's OWN endpoints
+ * when the game doesn't pass them explicitly: the player's current win
+ * streak (/api/user/stats) and their true weekly leaderboard rank
+ * (/api/leaderboard/weekly). Both are real server numbers, fire-and-forget
+ * (a failure or unranked state simply hides the chip — the result screen is
+ * never blocked), and games can override either via the `streak` / `rank`
+ * props to skip the fetch.
  *
  * Adapter pattern per game:
  *   1. Detect the finished state exactly as today (status === "finished",
@@ -52,6 +60,10 @@ function formatDuration(totalSeconds) {
 
 function formatTokens(n) {
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function formatNumber(n) {
+  return Number(n || 0).toLocaleString();
 }
 
 const OUTCOME_STYLES = {
@@ -133,6 +145,11 @@ export default function PvpResultScreen({
   // and its type scale down to fit the narrow frame instead of rendering
   // at desktop size.
   compact = false,
+  // Real progression values (optional). When a game passes these, the
+  // screen renders them verbatim and skips the matching live fetch.
+  streak = null,
+  rank = null,
+  rankDelta = null,
 }) {
   const shouldReduce = useReducedMotion();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -171,9 +188,105 @@ export default function PvpResultScreen({
     fn();
   };
 
+  // Live progression — real numbers from the platform's own endpoints,
+  // fetched only when the game didn't pass its own values. Fire-and-forget:
+  // any failure leaves the chips hidden and never blocks the result screen.
+  const [liveStreak, setLiveStreak] = useState(null);
+  const [liveRank, setLiveRank] = useState(null);
+  const [liveRankDelta, setLiveRankDelta] = useState(null);
+  const [liveXp, setLiveXp] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    // Fresh screen per match — never carry values from a previous result.
+    setLiveStreak(null);
+    setLiveRank(null);
+    setLiveRankDelta(null);
+    setLiveXp(null);
+
+    // Current win streak + XP granted by the most recent settled match,
+    // both from the platform's own stats endpoint. Streak is only
+    // meaningful on a win (a settled loss resets it to 0 server-side); XP
+    // is granted on every settled wager and gated by a freshness window so
+    // a stale grant (old match / Monday weekly reset) is never shown as
+    // this match's XP.
+    const fetchStats = () =>
+      fetch("/api/user/stats", {
+        credentials: "include",
+        signal: controller.signal,
+      })
+        .then((res) => res.json().catch(() => null))
+        .then((data) => {
+          const stats = data?.userStats ?? {};
+          if (streak === null && outcome === "win") {
+            const s = Number(stats.currentStreak ?? 0);
+            if (Number.isFinite(s) && s > 0) setLiveStreak(s);
+          }
+          if (xp === null) {
+            const earned = Number(stats.lastXpEarned ?? 0);
+            const at = stats.lastXpEarnedAt
+              ? new Date(stats.lastXpEarnedAt).getTime()
+              : null;
+            if (
+              Number.isFinite(earned) &&
+              earned > 0 &&
+              at !== null &&
+              Date.now() - at < 3 * 60 * 1000
+            ) {
+              setLiveXp(earned);
+            }
+          }
+        })
+        .catch(() => {});
+
+    fetchStats();
+    // One retry: some settle paths apply the counters fire-and-forget, so
+    // the result can reach the client a moment before the XP write lands.
+    const retry = setTimeout(() => {
+      if (xp === null) fetchStats();
+    }, 1200);
+
+    // True weekly rank + the movement caused by the most recent settled
+    // match (server-authoritative deltas written at settlement time, read
+    // via /api/leaderboard/my-rank). Wins only — a loss screen leads with
+    // the run-it-back path, never salt. A rank beyond the top 100 stays
+    // hidden.
+    if (rank === null && outcome === "win") {
+      fetch("/api/leaderboard/my-rank", {
+        credentials: "include",
+        signal: controller.signal,
+      })
+        .then((res) => res.json().catch(() => null))
+        .then((data) => {
+          const r = Number(data?.rank);
+          const d = Number(data?.delta);
+          if (Number.isFinite(r) && r > 0 && r <= 100) {
+            setLiveRank(r);
+            if (Number.isFinite(d)) setLiveRankDelta(d);
+          }
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      clearTimeout(retry);
+      controller.abort();
+    };
+  }, [open, outcome, streak, rank, xp]);
+
+  const displayStreak = streak ?? (outcome === "win" ? liveStreak : null);
+  const displayRank = rank ?? liveRank;
+  const displayRankDelta = rankDelta ?? liveRankDelta;
+  const displayXp = xp ?? liveXp;
+  // A 1-win streak is not a streak worth celebrating — start at 2.
+  const showStreak = displayStreak !== null && Number(displayStreak) >= 2;
+  const showRank =
+    outcome === "win" && displayRank !== null && Number(displayRank) > 0;
+
   const hasRewards =
     tokenDelta !== null ||
-    xp !== null ||
+    displayXp !== null ||
     (Array.isArray(progress) && progress.length > 0);
 
   const rows = [
@@ -221,21 +334,132 @@ export default function PvpResultScreen({
               >
                 <OutcomeIcon size={compact ? 30 : 44} className={style.glow} aria-hidden="true" />
               </motion.div>
-              <div
-                className={`font-black uppercase tracking-[0.18em] ${style.accentText} ${
-                  compact ? "text-2xl" : "text-4xl sm:text-5xl"
+              {/* Outcome chip — a compact eyebrow, never the hero. The
+                  achievement line below carries the emotional weight. */}
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] ${
+                  outcome === "win"
+                    ? "border-emerald-300/50 bg-emerald-400/15 text-emerald-300"
+                    : outcome === "loss"
+                      ? "border-red-300/50 bg-red-400/15 text-red-300"
+                      : "border-cyan-300/50 bg-cyan-400/15 text-cyan-300"
                 }`}
               >
-                {style.label}
-              </div>
-              <div className="mx-auto mt-1 h-1 w-24 rounded-full opacity-80" style={{}}>
+                <OutcomeIcon size={14} aria-hidden="true" />
+                {outcome === "win" ? "YOU WON" : outcome === "loss" ? "DEFEAT" : "DRAW"}
+              </span>
+              <div className="mx-auto mt-2 h-0.5 w-16 rounded-full opacity-60">
                 <div className={`h-full w-full rounded-full ${style.borderTop}`} />
               </div>
-              <p className={`mt-2 text-white/85 ${compact ? "text-xs" : "text-sm"}`}>
-                {headline ?? style.tagline}
-              </p>
+              {/* Hero — "YOU BEAT @PLAYER" (win) / "DEFEATED BY @PLAYER"
+                  (loss). Only when the opponent is a real player with a
+                  name (never for AI, never fabricated); otherwise the
+                  outcome itself is the hero. The game's own headline
+                  (scores, rounds…) drops below as the supporting line. */}
+              {outcome === "win" &&
+                opponent &&
+                !opponent.isAi &&
+                opponent.name &&
+                opponent.name !== "Opponent" &&
+                opponent.name !== "GRYND AI" ? (
+                <>
+                  <p
+                    className={`font-black uppercase tracking-[0.15em] text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)] ${
+                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
+                    }`}
+                  >
+                    You beat
+                  </p>
+                  <p
+                    className={`truncate font-black text-[#f5ff3b] drop-shadow-[0_0_16px_rgba(255,215,0,0.55)] ${
+                      compact ? "text-2xl" : "text-4xl sm:text-5xl"
+                    }`}
+                  >
+                    @{opponent.name}
+                  </p>
+                  {/* Game-specific line (rounds, score, pot…) stays visible
+                      under the beat line — it's real match data. */}
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              ) : outcome === "loss" &&
+                opponent &&
+                !opponent.isAi &&
+                opponent.name &&
+                opponent.name !== "Opponent" &&
+                opponent.name !== "GRYND AI" ? (
+                <>
+                  <p
+                    className={`font-black uppercase tracking-[0.15em] text-red-300 drop-shadow-[0_0_12px_rgba(248,113,113,0.55)] ${
+                      compact ? "mt-2 text-sm" : "mt-2 text-lg sm:text-xl"
+                    }`}
+                  >
+                    Defeated by
+                  </p>
+                  <p
+                    className={`truncate font-black text-white/95 ${
+                      compact ? "text-2xl" : "text-4xl sm:text-5xl"
+                    }`}
+                  >
+                    @{opponent.name}
+                  </p>
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              ) : outcome === "win" ? (
+                <>
+                  <h2
+                    className={`font-black uppercase tracking-wide text-emerald-300 drop-shadow-[0_0_16px_rgba(52,211,153,0.6)] ${
+                      compact ? "mt-2 text-2xl" : "mt-2 text-4xl sm:text-5xl"
+                    }`}
+                  >
+                    You won the match
+                  </h2>
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              ) : outcome === "loss" ? (
+                <>
+                  <h2
+                    className={`font-black uppercase tracking-wide text-red-300 drop-shadow-[0_0_14px_rgba(248,113,113,0.5)] ${
+                      compact ? "mt-2 text-2xl" : "mt-2 text-4xl sm:text-5xl"
+                    }`}
+                  >
+                    Match lost
+                  </h2>
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h2
+                    className={`font-black uppercase tracking-wide text-cyan-300 drop-shadow-[0_0_14px_rgba(34,211,238,0.6)] ${
+                      compact ? "mt-2 text-2xl" : "mt-2 text-4xl sm:text-5xl"
+                    }`}
+                  >
+                    Draw
+                  </h2>
+                  {headline && headline !== style.tagline && (
+                    <p className={`mt-1.5 text-white/75 ${compact ? "text-[11px]" : "text-sm"}`}>
+                      {headline}
+                    </p>
+                  )}
+                </>
+              )}
               {subline && (
-                <p className={`mx-auto mt-1 max-w-sm text-white/60 ${compact ? "text-[10px]" : "text-xs"}`}>
+                <p className={`mx-auto mt-2 max-w-sm text-white/60 ${compact ? "text-[10px]" : "text-xs"}`}>
                   {subline}
                 </p>
               )}
@@ -264,13 +488,13 @@ export default function PvpResultScreen({
                     </span>
                   </div>
                 )}
-                {xp !== null && (
+                {displayXp !== null && (
                   <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-4 py-2.5">
                     <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
                       XP
                     </span>
                     <span className="inline-flex items-center gap-1.5 text-lg font-black text-cyan-300">
-                      +{formatTokens(xp)}
+                      +{formatTokens(displayXp)}
                       <IconStar size={18} className="text-[#00e5ff]" aria-hidden="true" />
                     </span>
                   </div>
@@ -294,6 +518,27 @@ export default function PvpResultScreen({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Progression chips — real streak + weekly rank, hidden when
+                absent or when the game passed nothing. */}
+            {(showStreak || showRank) && (
+              <div className="mx-auto mt-4 flex w-full max-w-xs flex-wrap items-center justify-center gap-2">
+                {showStreak && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/50 bg-amber-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-amber-300">
+                    <span aria-hidden="true">🔥</span>
+                    {formatNumber(showStreak)} win streak
+                  </span>
+                )}
+                {showRank && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-3 py-1 text-xs font-black uppercase tracking-wider text-[#00e5ff]">
+                    <IconTrophy size={14} aria-hidden="true" />
+                    {displayRankDelta !== null && Number(displayRankDelta) > 0
+                      ? `RANK \u2191 ${formatNumber(displayRankDelta)} \u00b7 #${formatNumber(displayRank)}`
+                      : `WEEKLY RANK #${formatNumber(displayRank)}`}
+                  </span>
+                )}
               </div>
             )}
 
@@ -355,7 +600,7 @@ export default function PvpResultScreen({
                     disabled={navigating}
                     className="w-full rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
                   >
-                    {playAgain.label || "Play Again"}
+                    {playAgain.label || "RUN IT BACK"}
                   </button>
                 )}
                 {rematch && (

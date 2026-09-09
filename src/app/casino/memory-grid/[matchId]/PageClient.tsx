@@ -1190,12 +1190,12 @@ export default function MemoryGridMatchPage({
         ? `${oppName} out-remembered you ${oppScore ?? 0}–${myScore ?? 0}`
         : "Evenly matched — the tiebreak couldn't split you";
     const subline = isAi
-      ? "Free practice match — no tokens were wagered."
+      ? "Free practice match — no tokens were staked."
       : viewerWon
         ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
         : viewerLost
-          ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
-          : `Tiebreak tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% house fee each).`;
+          ? `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`
+          : `Tiebreak tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% platform fee each).`;
 
     return (
       <PvpResultScreen
@@ -1221,11 +1221,11 @@ export default function MemoryGridMatchPage({
           ...(isAi
             ? []
             : [
-                { label: "Wager", value: `${stake.toLocaleString()} tokens` },
+                { label: "Stake", value: `${stake.toLocaleString()} tokens` },
                 ...(viewerWon
                   ? [
                       { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
-                      { label: "House fee", value: `${houseFee.toLocaleString()} tokens` },
+                      { label: "Platform fee", value: `${houseFee.toLocaleString()} tokens` },
                     ]
                   : []),
               ]),
@@ -1272,7 +1272,7 @@ export default function MemoryGridMatchPage({
             </div>
           ) : null
         }
-        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/memory-grid") }}
+        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/memory-grid") }}
         onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResult(false)}
         dismissLabel="View Match Results"

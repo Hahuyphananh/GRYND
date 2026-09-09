@@ -8,5 +8,11 @@ export const OG_BASE_URL = (
   "https://www.grynd.mywire.org"
 ).replace(/\/+$/, "");
 
+/**
+ * Absolute base URL for the production site — same value as metadataBase in
+ * src/app/layout.tsx. Used by pages that need the full canonical origin.
+ */
+export const SITE_URL = OG_BASE_URL;
+
 /** Absolute URL for a public OG image path (e.g. "/og-image.png"). */
 export const ogImageUrl = (path: string) => `${OG_BASE_URL}${path}`;

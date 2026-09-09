@@ -47,11 +47,28 @@ function parse(raw) {
 }
 
 /** Record a game play (gameLabel key, e.g. "plinko-duel"). Most recent
- *  first, deduped, capped at MAX_RECENT. */
+ *  first, deduped, capped at MAX_RECENT. Also fires the server-side
+ *  per-game counter (/api/game-plays) that powers the lobby's "Most
+ *  Played" sort — same real "session started" signal, best-effort and
+ *  fire-and-forget so it can never block or break the game start. */
 export function recordPlayedGame(gameLabel) {
   if (!gameLabel || typeof gameLabel !== "string") return;
   const next = [gameLabel, ...parse(readRaw()).filter((k) => k !== gameLabel)];
   writeRaw(next.slice(0, MAX_RECENT));
+
+  // Server-side play counter (casino lobby "Most Played"). Non-blocking:
+  // failures are ignored — recently-played and the game itself don't
+  // depend on this. Deduped per edge (autoStart flips once per session).
+  try {
+    fetch("/api/game-plays", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameLabel }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // fetch unavailable — skip the counter entirely
+  }
 }
 
 /** Most-recently-played game labels, newest first. */

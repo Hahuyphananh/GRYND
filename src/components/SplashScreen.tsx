@@ -4,10 +4,31 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import PageSkeleton from "./skeletons/PageSkeleton";
 
+// sessionStorage key — the splash is a first-load brand moment, not a
+// per-navigation overlay. Showing it on every route change was pure cost:
+// a 2.2s full-viewport skeleton + fade on every page the user visits.
+const SPLASH_SEEN_KEY = "grynd:splash:seen:v1";
+
 export default function SplashScreen() {
-  const [show, setShow] = useState(true);
+  const [show, setShow] = useState(false);
 
   useEffect(() => {
+    // Once per browser session (per tab). Returning visitors / in-app
+    // navigations skip the overlay entirely and get the page immediately.
+    let seen = false;
+    try {
+      seen = window.sessionStorage.getItem(SPLASH_SEEN_KEY) === "1";
+    } catch {
+      // storage unavailable — still show the splash this once
+    }
+    if (seen) return;
+    try {
+      window.sessionStorage.setItem(SPLASH_SEEN_KEY, "1");
+    } catch {
+      // ignore
+    }
+    setShow(true);
+
     // Dismiss on a timer once hydration completes. If something throws
     // during hydration the effect never runs, so also dismiss on the
     // window `load` event and on a hard cap — the splash must never be

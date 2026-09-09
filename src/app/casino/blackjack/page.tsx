@@ -5,7 +5,7 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   title: "Blackjack PvP | GRYND",
   description:
-    "Play Blackjack PvP on GRYND. Best-of-3 head-to-head duels against a real opponent. Pick a stake, match another player and win the pot.",
+    "Play Blackjack PvP on GRYND. Best-of-3 head-to-head duels against a real opponent. Read the table, time your swaps, and outplay the seat across from you.",
   openGraph: { images: [ogImageUrl("/images/og/blackjack.jpg")] },
 };
 

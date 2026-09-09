@@ -831,7 +831,7 @@ export default function UnoMultiplayerPage() {
             ? [{ label: "Table code", value: unoMultiTableCode }]
             : []),
           ...(bet > 0
-            ? [{ label: "Wager", value: `${bet.toLocaleString()} tokens` }]
+            ? [{ label: "Stake", value: `${bet.toLocaleString()} tokens` }]
             : []),
           ...(payout !== null
             ? [{ label: "Pot", value: `${pot.toLocaleString()} tokens` }]

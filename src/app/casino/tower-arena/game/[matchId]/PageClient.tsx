@@ -1684,7 +1684,7 @@ export default function TowerArenaMatchPage() {
                 ? []
                 : [
                     {
-                      label: "Wager",
+                      label: "Stake",
                       value: `${Number(myFinalResult.wager || 0).toLocaleString()} tokens`,
                     },
                   ]),
@@ -2164,7 +2164,7 @@ export default function TowerArenaMatchPage() {
               ? []
               : [
                   {
-                    label: "Wager",
+                    label: "Stake",
                     value: `${Number(resignResult.wager || 0).toLocaleString()} tokens`,
                   },
                 ]),

@@ -849,7 +849,7 @@ export default function UnoGamePage() {
                     ? "Replay requested"
                     : gameMode === "online"
                       ? "Replay"
-                      : "Play again"}
+                      : "RUN IT BACK"}
                 </button>
                 <button
                   onClick={closeToUnoLobby}
@@ -933,9 +933,9 @@ export default function UnoGamePage() {
               heading: "Modes",
               body: (
                 <>
-                  Play vs AI for free (no tokens wagered), or go 1v1
-                  online for a wagered match. Winner takes the pot minus
-                  the house fee.
+                  Play vs AI for free (no tokens staked), or go 1v1
+                  online for a staked match. Winner takes the pot minus
+                  the platform fee.
                 </>
               ),
             },

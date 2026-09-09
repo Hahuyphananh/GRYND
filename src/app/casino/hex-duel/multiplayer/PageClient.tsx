@@ -186,12 +186,12 @@ export default function HexDuelMultiplayerPage() {
         {/* Wager controls */}
         <div className="mb-6 flex flex-wrap items-end gap-3">
           <div>
-            <label className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">Wager</label>
+            <label className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">Stake</label>
             <input
               type="number"
               value={wager}
               min={0}
-              aria-label="Wager amount"
+              aria-label="Stake amount"
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === "") { setWager(0); return; }
@@ -199,7 +199,7 @@ export default function HexDuelMultiplayerPage() {
               }}
               onBlur={() => { if (!wager || wager < 1) setWager(50); }}
               className="w-28 rounded-lg bg-black/30 border border-white/20 px-3 py-1.5 text-sm focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition"
-              placeholder="Wager"
+              placeholder="Stake"
             />
           </div>
 

@@ -2487,9 +2487,9 @@ export default function PlinkoPvpMatchPage({
         : `${winnerName} won by ${pointDiff} point${pointDiff !== 1 ? "s" : ""}`;
 
     const subline = isAi
-      ? "Free practice match — no tokens were wagered or paid out."
+      ? "Free practice match — no tokens were staked or paid out."
       : isDraw && houseFee > 0
-        ? `Each player refunded ${(stake * 0.95).toFixed(2)} tokens (5% house fee).`
+        ? `Each player refunded ${(stake * 0.95).toFixed(2)} tokens (5% platform fee).`
         : undefined;
 
     const decidedRound = match.currentBall > REQUIRED_BALLS
@@ -2520,10 +2520,10 @@ export default function PlinkoPvpMatchPage({
           ...(isAi || isDraw
             ? []
             : [
-                { label: "Wager", value: `${stake.toFixed(2)} tokens` },
+                { label: "Stake", value: `${stake.toFixed(2)} tokens` },
                 { label: "Prize paid", value: `${prizePaid.toFixed(2)} tokens` },
                 ...(houseFee > 0
-                  ? [{ label: "House fee", value: `${houseFee.toFixed(2)} tokens` }]
+                  ? [{ label: "Platform fee", value: `${houseFee.toFixed(2)} tokens` }]
                   : []),
               ]),
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : winnerName || "Opponent" },

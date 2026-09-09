@@ -1064,10 +1064,10 @@ export default function ChessGamePage() {
         ]}
         details={[
           { label: "Game ID", value: String(gameId) },
-          { label: "Wager", value: `${bet.toLocaleString()} tokens` },
+          { label: "Stake", value: `${bet.toLocaleString()} tokens` },
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : oppName },
         ]}
-        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/chess") }}
+        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/chess") }}
         onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResultPopup(false)}
         dismissLabel="View Match Results"

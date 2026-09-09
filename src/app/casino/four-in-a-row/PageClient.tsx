@@ -178,11 +178,11 @@ export default function FourInARowLobbyPage() {
             ),
           },
           {
-            heading: "Wager",
+            heading: "Stake",
             body: (
               <>
-                Both players wager the same amount; the winner takes the
-                pot minus the house fee. Play vs AI free to practice.
+                Both players stake the same amount; the winner takes the
+                pot minus the platform fee. Play vs AI free to practice.
               </>
             ),
           },

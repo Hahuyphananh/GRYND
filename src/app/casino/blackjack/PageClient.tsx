@@ -477,7 +477,7 @@ export default function BlackjackPvpLobbyPage() {
                 body: (
                   <>
                     First to <b>2 round wins</b> takes the pot, minus a
-                    2.5% house fee. Ties are replayed.
+                    2.5% platform fee. Ties are replayed.
                   </>
                 ),
               },
@@ -516,7 +516,7 @@ export default function BlackjackPvpLobbyPage() {
           </b>{" "}
           {t(
             "blackjackPvp.lobby.descTail",
-            "with hidden hands. Closest to 21 without busting wins the round. First to 2 round wins takes the pot minus a 2.5% house fee.",
+            "with hidden hands. Closest to 21 without busting wins the round. First to 2 round wins takes the pot minus a 2.5% platform fee.",
           )}
         </p>
 

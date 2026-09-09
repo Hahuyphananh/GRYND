@@ -28,6 +28,12 @@ export async function GET() {
       weeklyProfit: users.weeklyProfit,
       weeklyWins: users.weeklyWins,
       pvpWins: users.pvpWins,
+      // XP granted by the most recent settled wager + when it happened
+      // (written by applyLeaderboardCounters, migration 0151). Result
+      // screens use these with a freshness window so "+N XP" is the real
+      // grant from this match, never a stale or invented number.
+      lastXpEarned: users.lastSettledXp,
+      lastXpEarnedAt: users.lastSettledXpAt,
       winRate: sql<number>`CASE WHEN ${users.totalWagered} > 0 THEN ((${users.totalWon}::numeric / ${users.totalWagered}::numeric) * 100) ELSE 0 END`,
       // Game-result record, maintained incrementally by
       // applyLeaderboardCounters (same source as the leaderboard boards).

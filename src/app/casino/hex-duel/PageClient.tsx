@@ -207,7 +207,7 @@ function WagerModal({
   const canAfford = wager > 0 && wager <= balance;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Place Wager">
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Set Stake">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
       <div
         className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 p-4 sm:p-6
@@ -226,7 +226,7 @@ function WagerModal({
         <h2 className="text-center text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400 mb-1">
           HEX DUEL
         </h2>
-        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-3">Place Your Wager</p>
+        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-3">Set Your Stake</p>
 
         {/* How to Play — rules modal at the top of the lobby */}
         <div className="mb-4 text-center">
@@ -311,24 +311,24 @@ function WagerModal({
           </div>
         ) : (
           <div className="mb-5 text-center p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <p className="text-xs text-amber-300 font-medium">Sign in to wager real tokens</p>
+            <p className="text-xs text-amber-300 font-medium">Sign in to stake tokens</p>
             <p className="text-[10px] text-slate-400 mt-1">You can still play for fun!</p>
           </div>
         )}        {!playForFun && (queueMode === "ai" ? (
           <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
             <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300"><IconDeviceGamepad2 size={13} /> Free Play</p>
-            <p className="text-[10px] text-cyan-100/70">No tokens are wagered. Playing vs AI is free.</p>
+            <p className="text-[10px] text-cyan-100/70">No tokens are staked. Playing vs AI is free.</p>
           </div>
         ) : (
           <div className="mb-4">
-            <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Wager Amount</label>
+            <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Stake Amount</label>
             <input
               type="number" value={wager} min={1} max={balance}
-              aria-label="Wager amount"
+              aria-label="Stake amount"
               onChange={(e) => setWager(Number(e.target.value) || 0)}
               className="w-full rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm
                 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition mb-3"
-              placeholder="Enter wager..."
+              placeholder="Enter stake..."
             />
             <div className="flex gap-1.5">
               {CHIP_VALUES.map((amount) => (
@@ -386,10 +386,10 @@ function WagerModal({
           ) : (
             <span className="inline-flex items-center gap-2">
               {queueMode === "multiplayer"
-                ? <><IconGlobe size={16} /> {playForFun ? "Create Multiplayer (Fun)" : `Wager ${wager} Tokens (Multiplayer)`}</>
+                ? <><IconGlobe size={16} /> {playForFun ? "Create Multiplayer (Fun)" : `Stake ${wager} Tokens (Multiplayer)`}</>
                 : queueMode === "ai"
                   ? <><IconDeviceGamepad2 size={16} /> Free Play vs AI</>
-                  : <>{playForFun ? <><IconDeviceGamepad2 size={16} /> Play for Fun</> : <><IconCoins size={16} /> Wager {wager} Tokens vs AI</>}</>}
+                  : <>{playForFun ? <><IconDeviceGamepad2 size={16} /> Play for Fun</> : <><IconCoins size={16} /> Stake {wager} Tokens vs AI</>}</>}
             </span>
           )}
         </button>
@@ -433,7 +433,7 @@ function ResignConfirmation({
             : "You will forfeit this game."}
         </p>
         {gameMode === "real" && !noRealTokensWagered && (
-          <p className="mb-4 text-[11px] text-yellow-400/80">You will lose your wagered tokens.</p>
+          <p className="mb-4 text-[11px] text-yellow-400/80">You will lose your staked tokens.</p>
         )}
         <div className="flex gap-3">
           <button

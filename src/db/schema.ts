@@ -305,6 +305,16 @@ export const users = pgTable("users", {
   weeklyWon: bigint("weekly_won", { mode: "number" }).default(0).notNull(),
   weeklyProfit: bigint("weekly_profit", { mode: "number" }).default(0).notNull(),
   weeklyWins: integer("weekly_wins").default(0).notNull(),
+  // Result-screen progression (written by applyLeaderboardCounters on every
+  // settled wager — see migration 0151): the XP the last settlement granted
+  // (wager XP × active boost) and the weekly win/loss delta it applied, so
+  // result screens can show real "+N XP" and "RANK ↑ N" numbers without
+  // per-game payload changes. last_settled_xp_at gates freshness — a stale
+  // grant (old match, Monday weekly reset) is never shown as this match's.
+  lastSettledXp: integer("last_settled_xp"),
+  lastSettledXpAt: timestamp("last_settled_xp_at"),
+  lastSettledWinsDelta: integer("last_settled_wins_delta").default(0).notNull(),
+  lastSettledLossesDelta: integer("last_settled_losses_delta").default(0).notNull(),
   // Daily responsible-play counters (UTC day). daily_net = daily_won -
   // daily_wagered mirrors the bet-history tokenDiff sum the daily-loss
   // guard used to compute. Written only on real-money settlement
@@ -527,6 +537,16 @@ export const battlepassClaims = pgTable(
     userIdx: index("battlepass_claims_user_idx").on(table.userId),
   })
 );
+
+// Per-game play counter (casino lobby "Most Played" sort). One row per
+// game label; incremented by /api/game-plays POST when a real game session
+// starts (see migration 0152).
+export const gamePlays = pgTable("game_plays", {
+  id: serial("id").primaryKey(),
+  gameLabel: varchar("game_label", { length: 64 }).notNull().unique(),
+  plays: integer("plays").notNull().default(0),
+  lastPlayedAt: timestamp("last_played_at"),
+});
 
 export const userStats = pgTable("user_stats", {
   userId: integer("user_id")
