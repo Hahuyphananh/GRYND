@@ -3179,7 +3179,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60
               ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
-              <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Bet $20</span>
+              <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Bet 20</span>
             </button>
           )}
 
@@ -3318,7 +3318,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   ${isCreatorMode ? `h-[${buttonH}px]` : `h-11`}
                 `}
               >
-                <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Quick Bet $20</span>
+                <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Quick Bet 20</span>
               </button>
             </div>
           )}

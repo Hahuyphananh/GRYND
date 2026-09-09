@@ -1801,12 +1801,12 @@ export default function RoulettePvpGamePage({ params }) {
         ? `You out-bet ${oppName} on the wheel`
         : `${oppName} out-bet you on the wheel`;
     const subline = isAi
-      ? "Free practice match — no tokens were wagered or awarded."
+      ? "Free practice match — no tokens were staked or awarded."
       : isDraw
         ? "Both players were wiped out on the same spin. Stakes refunded in full."
         : meWon
           ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
-          : `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`;
+          : `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`;
 
     return (
       <PvpResultScreen
@@ -1833,12 +1833,12 @@ export default function RoulettePvpGamePage({ params }) {
           ...(isAi
             ? []
             : [
-                { label: "Wager", value: `${stake.toLocaleString()} tokens` },
+                { label: "Stake", value: `${stake.toLocaleString()} tokens` },
                 { label: "Pot", value: `${pot.toLocaleString()} tokens` },
                 ...(meWon
                   ? [
                       { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
-                      { label: "House fee", value: `${houseFee.toLocaleString()} tokens` },
+                      { label: "Platform fee", value: `${houseFee.toLocaleString()} tokens` },
                     ]
                   : []),
               ]),
@@ -1879,7 +1879,7 @@ export default function RoulettePvpGamePage({ params }) {
             </div>
           ) : null
         }
-        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/roulette") }}
+        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/roulette") }}
         onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResult(false)}
         dismissLabel="View Match Results"
@@ -2676,7 +2676,7 @@ export default function RoulettePvpGamePage({ params }) {
                       <TrophyIcon className="w-4 h-4 text-yellow-400" title="Match" />
                       <span>Match</span>
                     </h3>
-                    <p>Always 3 rounds. The player with the most match points wins. Ties after Round 3 trigger Sudden Death. 2.5% house fee.</p>
+                    <p>Always 3 rounds. The player with the most match points wins. Ties after Round 3 trigger Sudden Death. 2.5% platform fee.</p>
                   </div>
                   <div>
                     <h3 className="text-yellow-400 font-semibold inline-flex items-center gap-1.5">

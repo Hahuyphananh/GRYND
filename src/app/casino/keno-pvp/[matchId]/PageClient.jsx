@@ -219,6 +219,7 @@ export default function KenoPvpMatchPage({ params }) {
         setError(json.error || "Failed to load match");
         return;
       }
+      setError(null);
       const resolvedRounds = json.data.rounds || [];
       setMatch(json.data.match);
       setRounds(resolvedRounds);
@@ -276,7 +277,12 @@ export default function KenoPvpMatchPage({ params }) {
       }
       lastStatusRef.current = m;
     } catch {
-      // Silent — poll retries.
+      // Network failure (e.g. ERR_INTERNET_DISCONNECTED): surface it and
+      // clear the loading state so the page never sits on a blank
+      // "Loading match…" screen forever. The poll keeps retrying and
+      // clears the error once connectivity returns.
+      setLoading(false);
+      setError("Can't reach the server — check your connection. Retrying…");
     }
   }, [matchId, router, triggerVictoryFlash, triggerWinConfetti]);
 
@@ -1518,7 +1524,7 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
       details={
         [
           ...(match.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-          { label: "Wager", value: `${stakeTokens.toLocaleString()} tokens` },
+          { label: "Stake", value: `${stakeTokens.toLocaleString()} tokens` },
           ...(iWon
             ? [{ label: "Payout", value: `${(Number(match.prizePaid) || 0).toLocaleString()} tokens` }]
             : []),
@@ -1574,7 +1580,7 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
           })}
         </div>
       }
-      playAgain={{ label: "Play Again", onClick: onLobby }}
+      playAgain={{ label: "RUN IT BACK", onClick: onLobby }}
       onReturnToLobby={() => router.push("/casino")}
     />
   );

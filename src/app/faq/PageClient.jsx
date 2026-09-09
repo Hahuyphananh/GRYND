@@ -55,11 +55,11 @@ const faqSections = [
     questions: [
       {
         q: "Are the games skill-based or luck?",
-        a: "GRYND games are skill-based. Outcomes are decided by your decisions, strategy, and reactions — not by a house edge or random chance. This is a core promise of the platform, and it's why every game shows its rules and mechanics up front.",
+        a: "GRYND is a competitive PvP platform. Every match pits you against a real opponent, and your decisions, strategy, and reactions decide who wins. Some games include chance elements (like a wheel spin or a ball draw) — but both players play the same game, and the better player wins more often. Every game shows its rules and mechanics up front.",
       },
       {
         q: "What's the difference between playing vs AI and PvP?",
-        a: "Playing against AI (fun mode) wagers no tokens — it's free practice. PvP matches stake tokens against a real opponent. In PvP duels, the winner takes 1.9× their stake and the house keeps 0.1× as a platform fee. Draws refund both players.",
+        a: "Playing against AI (fun mode) stakes no tokens — it's free practice. PvP matches stake tokens against a real opponent. In PvP duels, the winner takes 1.9× their stake; a 5% platform fee applies. Draws refund both players.",
       },
       {
         q: "How do leaderboards and rankings work?",
@@ -80,8 +80,8 @@ const faqSections = [
         a: "If you disconnect during a PvP match, the match resolves according to its resign/forfeit rules — typically a loss or a refund depending on the game and match state. Check the match status before starting a new game so you don't double-wager.",
       },
       {
-        q: "What counts as a \u201cbig win\u201d?",
-        a: "Wins of 1 million tokens or more are featured in the live Big Wins feed in the chat — a fun way to see the platform's biggest payouts as they happen.",
+        q: "What counts as a top win?",
+        a: "Wins of 1 million tokens or more are featured in the live Top Wins feed in the chat — a fun way to see the platform's biggest wins as they happen.",
       },
     ],
   },
@@ -90,7 +90,7 @@ const faqSections = [
     questions: [
       {
         q: "How do levels, titles, and streaks work?",
-        a: "Your VIP level rises as your total wagered grows, unlocking milestone titles you can equip on your profile. Daily streaks build with consecutive daily logins — the longer the streak, the better the daily reward — and top streaks earn their own titles.",
+        a: "Your VIP level rises as your total staked grows, unlocking milestone titles you can equip on your profile. Daily streaks build with consecutive daily logins — the longer the streak, the better the daily reward — and top streaks earn their own titles.",
       },
       {
         q: "How do referrals work?",

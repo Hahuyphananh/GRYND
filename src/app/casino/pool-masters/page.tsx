@@ -4,7 +4,7 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   title: "Pool Masters | GRYND",
   description:
-    "Play Pool Masters on GRYND. A strategic 1v1 game of pool. Wager tokens, sink the 8-ball and win the pot.",
+    "Play Pool Masters on GRYND. A strategic 1v1 game of pool. Stake tokens, sink the 8-ball and beat your opponent.",
 };
 
 export default function Page() {

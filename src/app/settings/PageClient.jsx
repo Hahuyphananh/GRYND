@@ -594,6 +594,7 @@ export default function SettingsPageClient() {
                   { key: "daily", label: "Daily reward reminders", desc: "Nudge when your daily bonus is ready." },
                   { key: "summary", label: "Weekly summaries", desc: "Your wins, losses and net for the week." },
                   { key: "progress", label: "Progress updates", desc: "Level-ups, big wins, streak encouragement." },
+
                 ].map((opt) => (
                   <label
                     key={opt.key}

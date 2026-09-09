@@ -391,7 +391,7 @@ export default function ConnectFourGamePage() {
         ? `Four in a row! You beat ${oppName}`
         : `${oppName} connected four first`;
     const subline = game.isAiGame
-      ? "Free practice match — no tokens were wagered."
+      ? "Free practice match — no tokens were staked."
       : isDraw
         ? "Board filled with no winner. Both stakes refunded in full."
         : playerWon
@@ -419,7 +419,7 @@ export default function ConnectFourGamePage() {
           ...(game.isAiGame || bet === 0
             ? []
             : [
-                { label: "Wager", value: `${bet.toFixed(2)} tokens` },
+                { label: "Stake", value: `${bet.toFixed(2)} tokens` },
                 ...(playerWon
                   ? [
                       {

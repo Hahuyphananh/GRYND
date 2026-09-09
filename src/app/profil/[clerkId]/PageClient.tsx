@@ -228,6 +228,27 @@ export default function PublicProfilePage() {
               <p className="text-sm text-gray-400 mt-1">
                 Level {profile.level} · {Number(profile.xp).toLocaleString()} XP
               </p>
+              {/* Competitive identity strip — every number is real
+                  leaderboard-record data (same source as /classement). */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">
+                <span className="text-green-300">
+                  {Number(profile.record?.wins || 0)}W
+                </span>
+                <span className="text-red-300/90">
+                  {Number(profile.record?.losses || 0)}L
+                </span>
+                <span className="text-white/60">
+                  {Number(profile.record?.winRate || 0).toFixed(1)}% win rate
+                </span>
+                {(Number(profile.record?.currentStreak || 0)) > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[#f5ff3b]">
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
+                    </svg>
+                    {Number(profile.record.currentStreak)} win streak
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 Member since {new Date(profile.createdAt).toLocaleDateString()}
               </p>

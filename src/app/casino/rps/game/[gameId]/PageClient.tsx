@@ -356,12 +356,12 @@ export default function RPSPvpGamePage() {
         ]}
         details={[
           { label: "Match ID", value: String(gameId) },
-          { label: "Wager", value: `${betAmount.toLocaleString()} tokens` },
+          { label: "Stake", value: `${betAmount.toLocaleString()} tokens` },
           ...(winner === "you"
             ? [
                 { label: "Prize paid", value: `${winnerPayout ?? 0} tokens` },
                 ...(typeof houseFee === "number"
-                  ? [{ label: "House fee", value: `${houseFee} tokens` }]
+                  ? [{ label: "Platform fee", value: `${houseFee} tokens` }]
                   : []),
               ]
             : []),
@@ -418,7 +418,7 @@ export default function RPSPvpGamePage() {
             </div>
           ) : null
         }
-        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/rps") }}
+        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/rps") }}
         onReturnToLobby={() => router.push("/casino")}
       />
     );

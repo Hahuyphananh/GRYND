@@ -325,8 +325,12 @@ function NavigationBar({ currentPath = "" }) {
   }, [mobileMenuOpen]);
 
   useEffect(() => {
+    // Deploy check: one HEAD request per 5 minutes, skipped entirely while
+    // the tab is hidden (no need to poll for a new version in the
+    // background — the check resumes when the tab is visible again).
     const interval = setInterval(
       async () => {
+        if (document.visibilityState !== "visible") return;
         try {
           const response = await fetch(window.location.href, {
             method: "HEAD",
@@ -400,7 +404,7 @@ function NavigationBar({ currentPath = "" }) {
             wide screens; the old max-w-7xl (1280px) capped it and forced
             the logo/right side to be squeezed. */}
         <UIPro01NavShell className="mx-auto max-w-[1440px] px-3 sm:px-4">
-          <div className="flex h-24 items-center justify-between gap-2">
+          <div className="flex h-16 items-center justify-between gap-2 sm:h-20 md:h-24">
             {/* shrink-0: the navbar flex row must never squeeze the logo —
                 at laptop widths (≈768–1100px) it collapsed to 0px wide and
                 the logo vanished entirely. */}
@@ -424,7 +428,7 @@ function NavigationBar({ currentPath = "" }) {
                 alt="GRYND Logo"
                 width={92}
                 height={95}
-                className="h-[74px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[82px]"
+                className="h-[52px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[68px] md:h-[82px]"
               />
             </Link>
 

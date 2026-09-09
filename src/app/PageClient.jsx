@@ -6,7 +6,6 @@ import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
 import ReviewWall from "../components/reviews/ReviewWall";
-import AnimatedBgSvgs from "../components/AnimatedBgSvgs";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import IconAvatar from "../components/IconAvatar";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
@@ -16,7 +15,6 @@ import Img1 from "../images/roulette.webp";
 import Img2 from "../images/blackjack-div.webp";
 import Img3 from "../images/poker.jpg";
 import Img4 from "../images/plinko-div.webp";
-import HeroBg from "../images/casino-bg.png";
 import {
   fadeIn,
   fadeUp,
@@ -41,13 +39,12 @@ import {
 
 function MainComponent() {
   const router = useRouter();
-  const { isLoaded, isSignedIn, getToken, signOut } = useAuth();
+  const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
-  const [userTokens, setUserTokens] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [betInProgress, setBetInProgress] = useState(false);
-  const [jwt, setJwt] = useState(null);
+  // Note: the balance lives in the navbar (single source of truth). The
+  // home page deliberately does NOT fetch /api/get-user-tokens itself — the
+  // navbar already does that on every page, and a duplicate fetch here was
+  // pure waste (its state was never read by any UI).
   const [dailyRewardCooldown, setDailyRewardCooldown] = useState(false);
   const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
@@ -90,6 +87,18 @@ function MainComponent() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
+  // Weekly leaderboard (top 5) — REAL data from /api/leaderboard/weekly.
+  // The section renders nothing but a link if the fetch fails: we never
+  // fabricate ranks, wins, or player counts.
+  const [leaderboard, setLeaderboard] = useState({
+    items: [],
+    loading: true,
+    error: null,
+  });
+  // First-match recovery nudge — shown to signed-in accounts that never
+  // finished onboarding (abandoned the /welcome flow mid-way). Real signal
+  // from /api/onboarding/status; dismissible per session.
+  const [firstMatchNudge, setFirstMatchNudge] = useState(false);
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
@@ -188,9 +197,6 @@ function MainComponent() {
           q.id === questId ? { ...q, claimed: true } : q
         ),
       }));
-      if (typeof data.reward === "number" && data.reward > 0) {
-        setUserTokens((prev) => (prev ?? 0) + data.reward);
-      }
     } catch (err) {
       console.error("[QUESTS_CLAIM_ERROR]", err);
       setQuestError("Failed to claim quest");
@@ -408,8 +414,6 @@ function MainComponent() {
         return;
       }
 
-      setUserTokens((prev) => prev + data.reward + (data.milestoneBonus || 0));
-
       setClaimedDay(data.claimedDay);
 
       // Update streak display with real leaderboard values & next reward day
@@ -483,79 +487,128 @@ function MainComponent() {
     }
   };
 
+  // Live-stats ticker: only poll while the tab is actually visible — a
+  // backgrounded tab (the norm on mobile) doesn't need fresh numbers and
+  // shouldn't burn the network/battery on them.
   useEffect(() => {
-    fetchLiveStats();
-    const id = setInterval(fetchLiveStats, 30000);
-    return () => clearInterval(id);
+    let id = null;
+    const start = () => {
+      fetchLiveStats();
+      id = setInterval(fetchLiveStats, 30000);
+    };
+    const stop = () => {
+      if (id) {
+        clearInterval(id);
+        id = null;
+      }
+    };
+    const onVisibility = () =>
+      document.visibilityState === "visible" ? start() : stop();
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
+  // First-time recovery: a brand-new account that bailed out of the
+  // /welcome flow lands on the home page with no path back into their first
+  // match. If the server says onboarding isn't complete, surface a nudge
+  // that jumps straight into the free first match (that page re-checks the
+  // flag itself, so no false starts). Never shown to returning players.
   useEffect(() => {
-    if (!user) return;
-    fetchFriendPresence();
-    // Friend presence is social chrome, not game state. Throttled from 30s
-    // to 60s (and the endpoint now caches per user) to cut idle read load.
-    const id = setInterval(fetchFriendPresence, 60000);
-    return () => clearInterval(id);
-  }, [user]);
-
-  const fetchUserTokens = async () => {
-    if (!user || !jwt) return;
-
-    setLoading(true);
-    setError(null);
-
+    if (!isLoaded || !isSignedIn) {
+      setFirstMatchNudge(false);
+      return;
+    }
+    let cancelled = false;
+    const dismissKey = "grynd:first-match:nudge:dismissed";
     try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`,
-        },
-        credentials: "include",
-      });
-
-      if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
-      const data = await res.json();
-
-      if (!data.success || !data.data) {
-        const initRes = await fetch("/api/initialize-user-tokens", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt}`,
-          },
-          credentials: "include",
-        });
-        if (!initRes.ok) throw new Error(`Init failed: ${initRes.status}`);
-
-        const finalRes = await fetch("/api/get-user-tokens", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt}`,
-          },
-          credentials: "include",
-        });
-
-        const finalData = await finalRes.json();
-        if (finalData.success) {
-          setUserTokens(finalData.data.balance);
-        }
-      } else {
-        setUserTokens(data.data.balance);
+      if (sessionStorage.getItem(dismissKey) === "1") {
+        setFirstMatchNudge(false);
+        return;
       }
-    } catch (err) {
-      console.error("Token fetch error:", err);
-      setError(t("home.errors.manage_tokens"));
-      setUserTokens(null);
-    } finally {
-      setLoading(false);
+    } catch {
+      // sessionStorage unavailable — still allow the nudge
+    }
+    fetch("/api/onboarding/status", { credentials: "include" })
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (cancelled) return;
+        setFirstMatchNudge(
+          Boolean(data?.success && data.onboardingCompleted === false),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setFirstMatchNudge(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn]);
+
+  const dismissFirstMatchNudge = () => {
+    setFirstMatchNudge(false);
+    try {
+      sessionStorage.setItem("grynd:first-match:nudge:dismissed", "1");
+    } catch {
+      // ignore
     }
   };
 
   useEffect(() => {
-    if (user && jwt) fetchUserTokens();
-  }, [user, jwt]);
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(
+          "/api/leaderboard/weekly?limit=5&category=wins",
+          { cache: "no-store" },
+        );
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && Array.isArray(data.items)) {
+          setLeaderboard({ items: data.items, loading: false, error: null });
+        } else {
+          setLeaderboard({ items: [], loading: false, error: "load_failed" });
+        }
+      } catch {
+        if (!cancelled) {
+          setLeaderboard({ items: [], loading: false, error: "load_failed" });
+        }
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    // Friend presence is social chrome, not game state. Throttled from 30s
+    // to 60s (and the endpoint now caches per user) to cut idle read load.
+    // Only poll while the tab is visible — background tabs don't need it.
+    let id = null;
+    const start = () => {
+      fetchFriendPresence();
+      id = setInterval(fetchFriendPresence, 60000);
+    };
+    const stop = () => {
+      if (id) {
+        clearInterval(id);
+        id = null;
+      }
+    };
+    const onVisibility = () =>
+      document.visibilityState === "visible" ? start() : stop();
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [user]);
 
   const useRevealOnScroll = (deps = []) => {
     useEffect(() => {
@@ -611,19 +664,20 @@ function MainComponent() {
         initial={fadeInVariant.initial}
         animate={fadeInVariant.animate}
         transition={fadeInVariant.transition}
-        className="relative mt-8 px-6 sm:px-4 min-h-[55vh] sm:min-h-[65vh] md:min-h-[70vh] flex items-center overflow-hidden"
+        className="relative mt-4 px-4 sm:mt-8 sm:px-4 min-h-[52vh] sm:min-h-[65vh] md:min-h-[70vh] flex items-center overflow-hidden"
       >
         {/* Interactive SVG casino background — replaces the old static MP4.
             Layered depth field with cursor parallax, press ripples, and a
             magnetic orb. Includes its own mobile static fallback. */}
         <InteractiveCasinoBg />
 
-        {/* Animated SVG overlays (chips, cards, dice, sparkles, …) */}
-        <AnimatedBgSvgs />
-
         {/* Dark overlay for readability — pointer-events-none so the cursor
             orb in InteractiveCasinoBg (z-0 underneath) still receives
-            pointermove events. */}
+            pointermove events. The chips/cards/dice depth layer that used
+            to live here (AnimatedBgSvgs, 10 infinite framer-motion loops)
+            was removed: InteractiveCasinoBg already draws the same motif,
+            and this layer sat beneath the dark overlay so it was never
+            visible on top of it. */}
         <div className="absolute inset-0 bg-black/70 z-10 pointer-events-none" />
         <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,0.15),transparent_60%)] mix-blend-screen" />
 
@@ -632,10 +686,20 @@ function MainComponent() {
             initial={fadeUpVariant.initial}
             animate={fadeUpVariant.animate}
             transition={fadeUpVariant.transition}
-            className="mb-4 text-3xl sm:text-5xl md:text-6xl font-black sm:font-extrabold text-[#f5ff3b] tracking-widest uppercase"
-            style={{ textShadow: "0 0 14px rgba(255,215,0,0.45)" }}
+            className="mb-4 text-[1.75rem] leading-[1.15] sm:text-5xl md:text-6xl font-black sm:font-extrabold tracking-[0.08em] sm:tracking-widest uppercase"
           >
-            {t("home.landing.title")}
+            <span
+              className="block text-[#f5ff3b]"
+              style={{ textShadow: "0 0 14px rgba(255,215,0,0.45)" }}
+            >
+              {t("home.landing.title_line1")}
+            </span>
+            <span
+              className="mt-1 block text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] via-[#7cefff] to-[#ff4fd8]"
+              style={{ filter: "drop-shadow(0 0 14px rgba(0,229,255,0.5))" }}
+            >
+              {t("home.landing.title_line2")}
+            </span>
           </motion.h1>
 
           <motion.p
@@ -645,7 +709,7 @@ function MainComponent() {
               ...fadeUpVariant.transition,
               delay: shouldReduceMotion ? 0 : 0.05,
             }}
-            className="mb-8 text-xl text-[#d8fbff] drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]"
+            className="mb-7 mx-auto max-w-2xl text-base sm:text-xl text-[#d8fbff] drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]"
           >
             {t("home.landing.subtitle")}
           </motion.p>
@@ -666,7 +730,7 @@ function MainComponent() {
             >
               <UIPro06PrimaryButton
                 href="/sign-up"
-                className="inline-block w-full sm:w-auto rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-8 py-4 text-lg font-bold text-[#1f1700] transition-all shadow-[0_0_35px_rgba(245,255,59,0.5)] hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                className="inline-block w-full sm:w-auto rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-6 py-3.5 text-lg font-bold text-[#1f1700] transition-all shadow-[0_0_35px_rgba(245,255,59,0.5)] hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                 aria-label={t("home.landing.start_betting")}
               >
                 {t("home.landing.start_betting")}
@@ -683,34 +747,87 @@ function MainComponent() {
             >
               <UIPro07SecondaryButton
                 href="/games"
-                className="inline-block rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-6 py-3 text-base font-semibold text-[#041125] transition-all shadow-[0_0_35px_rgba(255,79,216,0.5)] hover:shadow-[0_0_55px_rgba(255,79,216,0.75)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4fd8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+                className="inline-block w-full sm:w-auto rounded-lg border border-[#ff4fd8]/40 bg-gradient-to-r from-[#a855f7] to-[#ff4fd8] px-6 py-3.5 text-base font-semibold text-[#041125] transition-all shadow-[0_0_35px_rgba(255,79,216,0.5)] hover:shadow-[0_0_55px_rgba(255,79,216,0.75)] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4fd8] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
                 aria-label={t("home.landing.discover_casino")}
               >
                 {t("home.landing.discover_casino")}
               </UIPro07SecondaryButton>
             </motion.div>
           </div>
-          <p className="text-sm text-[#7dd3fc]/70">{t("home.push_intro")}</p>
+          {/* Trust / value signals — every claim maps to a real capability:
+              PvP duels, matchmaking + leaderboards, weekly ranks, free start. */}
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+            {[
+              { key: "home.landing.trust_real_pvp", cls: "text-[#00e5ff] border-[#00e5ff]/40" },
+              { key: "home.landing.trust_compete", cls: "text-[#f5ff3b] border-[#f5ff3b]/40" },
+              { key: "home.landing.trust_climb", cls: "text-[#00ffa6] border-[#00ffa6]/40" },
+              { key: "home.landing.trust_free_start", cls: "text-[#ff4fd8] border-[#ff4fd8]/40" },
+            ].map((item) => (
+              <span
+                key={item.key}
+                className={`rounded-full border bg-black/40 px-3 py-1 text-[10px] sm:text-xs font-black uppercase tracking-[0.18em] backdrop-blur-sm ${item.cls}`}
+              >
+                {t(item.key)}
+              </span>
+            ))}
+          </div>
           </motion.div>
         </div>
       </motion.section>
 
+      {/* First-match recovery — only for accounts that abandoned onboarding */}
+      {firstMatchNudge && (
+        <div className="mx-auto max-w-7xl px-4 py-4 reveal">
+          <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-5 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
+            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[#00e5ff]">
+                  ✦ {t("onboarding.welcome.kicker")}
+                </p>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-[#f5ff3b] sm:text-3xl">
+                  {t("onboarding.welcome.title")}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm text-[#d8fbff]">
+                  {t("onboarding.welcome.subtitle")}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  href="/casino/rps/play-ai?onboarding=1"
+                  className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a214d]"
+                >
+                  {t("onboarding.firstMatch.homeCta")}
+                </Link>
+                <button
+                  type="button"
+                  onClick={dismissFirstMatchNudge}
+                  aria-label={t("onboarding.firstMatch.dismiss")}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Value Proposition Strip */}
       <div className="mx-auto max-w-7xl px-4 py-6 reveal">          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-[#00e5ff]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#00e5ff]/35 hover:shadow-[0_0_20px_rgba(0,229,255,0.1)]">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 00-4 4c0 1.5.8 2.8 2 3.5V9a2 2 0 012-2h4a2 2 0 012 2v.5c1.2-.7 2-2 2-3.5a4 4 0 00-4-4z"/><path d="M9 22h6M12 18v4"/><circle cx="12" cy="12" r="3"/></svg>
-            <h2 className="text-lg font-bold text-[#00e5ff] mb-1">{t("home.value_props.skill_based_title")}</h2>
-            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.skill_based_desc")}</p>
+            <svg className="w-10 h-10 mx-auto mb-3 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            <h2 className="text-lg font-bold text-[#00e5ff] mb-1">{t("home.value_props.prove_skill_title")}</h2>
+            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.prove_skill_desc")}</p>
           </div>
           <div className="rounded-xl border border-[#f5ff3b]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#f5ff3b]/35 hover:shadow-[0_0_20px_rgba(245,255,59,0.1)]">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="6" x2="12" y2="12"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-            <h2 className="text-lg font-bold text-[#f5ff3b] mb-1">{t("home.value_props.free_tokens_title")}</h2>
-            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.free_tokens_desc")}</p>
+            <svg className="w-10 h-10 mx-auto mb-3 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <h2 className="text-lg font-bold text-[#f5ff3b] mb-1">{t("home.value_props.real_opponents_title")}</h2>
+            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.real_opponents_desc")}</p>
           </div>
           <div className="rounded-xl border border-[#ff4fd8]/20 bg-[#040d24]/60 p-6 text-center backdrop-blur-sm transition-all hover:border-[#ff4fd8]/35 hover:shadow-[0_0_20px_rgba(255,79,216,0.1)]">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#ff4fd8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            <h2 className="text-lg font-bold text-[#ff4fd8] mb-1">{t("home.value_props.multiplayer_title")}</h2>
-            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.multiplayer_desc")}</p>
+            <svg className="w-10 h-10 mx-auto mb-3 text-[#ff4fd8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M7 3H4a2 2 0 00-2 2v0a4 4 0 005 3"/><path d="M17 3h3a2 2 0 012 2v0a4 4 0 01-5 3"/><path d="M12 4v5"/></svg>
+            <h2 className="text-lg font-bold text-[#ff4fd8] mb-1">{t("home.value_props.build_rep_title")}</h2>
+            <p className="text-sm text-[#7dd3fc]">{t("home.value_props.build_rep_desc")}</p>
           </div>
         </div>
       </div>
@@ -739,22 +856,30 @@ function MainComponent() {
 
       {/* How It Works */}
       <div className="mx-auto max-w-7xl px-4 pb-8 reveal">
-        <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">{t("home.how_it_works_title")}</h2>          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#00e5ff]/15 border border-[#00e5ff]/30 text-[#00e5ff] text-xl font-bold mb-3">1</div>
-            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t("home.how_it_works_steps.create_account_title")}</h3>
-            <p className="text-sm text-[#7dd3fc]">{t("home.how_it_works_steps.create_account_desc")}</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#f5ff3b]/15 border border-[#f5ff3b]/30 text-[#f5ff3b] text-xl font-bold mb-3">2</div>
-            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t("home.how_it_works_steps.claim_tokens_title")}</h3>
-            <p className="text-sm text-[#7dd3fc]">{t("home.how_it_works_steps.claim_tokens_desc")}</p>
-          </div>
-          <div className="flex flex-col items-center text-center p-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#ff4fd8]/15 border border-[#ff4fd8]/30 text-[#ff4fd8] text-xl font-bold mb-3">3</div>
-            <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t("home.how_it_works_steps.play_win_title")}</h3>
-            <p className="text-sm text-[#7dd3fc]">{t("home.how_it_works_steps.play_win_desc")}</p>
-          </div>
+        <h2 className="text-2xl font-bold text-center text-[#f5ff3b] mb-8">{t("home.how_it_works_title")}</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            { num: "01", titleKey: "home.how_it_works_steps.pick_game_title", descKey: "home.how_it_works_steps.pick_game_desc", color: "#00e5ff" },
+            { num: "02", titleKey: "home.how_it_works_steps.find_opponent_title", descKey: "home.how_it_works_steps.find_opponent_desc", color: "#f5ff3b" },
+            { num: "03", titleKey: "home.how_it_works_steps.make_move_title", descKey: "home.how_it_works_steps.make_move_desc", color: "#ff4fd8" },
+            { num: "04", titleKey: "home.how_it_works_steps.win_progress_title", descKey: "home.how_it_works_steps.win_progress_desc", color: "#00ffa6" },
+            { num: "05", titleKey: "home.how_it_works_steps.run_it_back_title", descKey: "home.how_it_works_steps.run_it_back_desc", color: "#a855f7" },
+          ].map((step) => (
+            <div key={step.num} className="flex flex-col items-center text-center p-4">
+              <div
+                className="flex items-center justify-center w-12 h-12 rounded-full text-xl font-bold mb-3"
+                style={{
+                  color: step.color,
+                  backgroundColor: `${step.color}1a`,
+                  border: `1px solid ${step.color}55`,
+                }}
+              >
+                {step.num}
+              </div>
+              <h3 className="text-base font-semibold text-[#d8fbff] mb-1">{t(step.titleKey)}</h3>
+              <p className="text-sm text-[#7dd3fc]">{t(step.descKey)}</p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -762,8 +887,9 @@ function MainComponent() {
         <section className="mb-16 reveal">
           <div className="mb-3">
             <h2 className="text-2xl font-bold text-[#f5ff3b]">
-              {t("home.title")}. Pick Your Game
-            </h2>              <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.pick_your_game_subtitle")}</p>
+              {t("home.pick_your_battle")}
+            </h2>
+            <p className="mt-1 text-sm text-[#7dd3fc]">{t("home.pick_your_game_subtitle")}</p>
           </div>
 
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4 reveal-stagger">
@@ -781,20 +907,23 @@ function MainComponent() {
                 <Image
                   src={Img1}
                   alt={t("home.game_cards.roulette_alt")}
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
-                {/* Quick-play overlay */}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    {t("home.play_now_overlay")}
-                  </span>
-                </div>
+                {/* PvP badge — this game is a real 1v1 duel */}
+                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
+                  {t("home.pvp_badge")}
+                </span>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
                 {t("games.roulette_name")}
               </h3>
-              <p className="text-[#9dd8ff]">{t("games.roulette_desc")}</p>
+              <p className="text-[#9dd8ff]">{t("home.game_cards.roulette_desc")}</p>
+              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
+                <span>{t("home.play_pvp")}</span>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </div>
               {renderFriendWidget("roulette")}
             </motion.a>
 
@@ -812,14 +941,14 @@ function MainComponent() {
                 <Image
                   src={Img2}
                   alt={t("home.game_cards.blackjack_alt")}
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    {t("home.play_now_overlay")}
-                  </span>
-                </div>
+                {/* PvP badge — this game is a real 1v1 duel */}
+                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
+                  {t("home.pvp_badge")}
+                </span>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
                 {t("games.blackjack_name")}
@@ -827,6 +956,10 @@ function MainComponent() {
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.blackjack_desc")}
               </p>
+              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
+                <span>{t("home.play_pvp")}</span>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </div>
               {renderFriendWidget("blackjack")}
             </motion.a>
 
@@ -844,19 +977,23 @@ function MainComponent() {
                 <Image
                   src={Img3}
                   alt={t("home.game_cards.poker_alt")}
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    {t("home.play_now_overlay")}
-                  </span>
-                </div>
+                {/* PvP badge — this game is a real 1v1 duel */}
+                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
+                  {t("home.pvp_badge")}
+                </span>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.poker_name")}</h3>
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.poker_desc")}
               </p>
+              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
+                <span>{t("home.play_pvp")}</span>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </div>
               {renderFriendWidget("poker")}
             </motion.a>
 
@@ -874,19 +1011,23 @@ function MainComponent() {
                 <Image
                   src={Img4}
                   alt={t("home.game_cards.plinko_alt")}
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <span className="flex items-center gap-2 rounded-lg bg-[#00e5ff]/90 px-4 py-2 text-sm font-bold text-[#030817]">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                    {t("home.play_now_overlay")}
-                  </span>
-                </div>
+                {/* PvP badge — this game is a real 1v1 duel */}
+                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
+                  {t("home.pvp_badge")}
+                </span>
               </div>
               <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.plinko_name")}</h3>
               <p className="text-[#9dd8ff]">
                 {t("home.game_cards.plinko_desc")}
               </p>
+              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
+                <span>{t("home.play_pvp")}</span>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </div>
               {renderFriendWidget("plinko")}
             </motion.a>
           </div>
@@ -902,6 +1043,108 @@ function MainComponent() {
             >
               {t("home.more_games")}
             </a>
+          </div>
+        </section>
+
+        {/* Leaderboard — real weekly data, never fabricated */}
+        <section className="mb-16 reveal">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-[#f5ff3b]">
+                {t("home.best_of.title")}
+              </h2>
+              <p className="mt-1 text-sm text-[#7dd3fc]">
+                {t("home.best_of.subtitle")}
+              </p>
+            </div>
+            <Link
+              href="/classement"
+              className="hidden shrink-0 rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10 sm:inline-block"
+            >
+              {t("home.best_of.view_all")}
+            </Link>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-[#00e5ff]/25 bg-[#040d24]/60 backdrop-blur-sm">
+            {leaderboard.loading ? (
+              <div className="space-y-3 p-6">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className="flex animate-pulse items-center gap-4"
+                  >
+                    <div className="h-8 w-8 rounded-full bg-white/10" />
+                    <div className="h-4 flex-1 rounded bg-white/10" />
+                    <div className="h-4 w-16 rounded bg-white/10" />
+                  </div>
+                ))}
+              </div>
+            ) : leaderboard.error || leaderboard.items.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 p-8 text-center">
+                <p className="text-sm text-[#7dd3fc]/70">
+                  {t("home.best_of.error")}
+                </p>
+                <Link
+                  href="/classement"
+                  className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10"
+                >
+                  {t("home.best_of.view_all")}
+                </Link>
+              </div>
+            ) : (
+              <ul className="divide-y divide-[#00e5ff]/10">
+                {leaderboard.items.map((item, i) => (
+                  <li key={item.clerk_id || `${item.rank}-${i}`}>
+                    <Link
+                      href={`/profil/${encodeURIComponent(item.clerk_id)}`}
+                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[#00e5ff]/5 sm:px-6"
+                    >
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+                          i === 0
+                            ? "border border-[#f5ff3b]/50 bg-[#f5ff3b]/20 text-[#f5ff3b]"
+                            : i === 1
+                              ? "border border-slate-300/40 bg-slate-300/10 text-slate-200"
+                              : i === 2
+                                ? "border border-amber-600/50 bg-amber-700/20 text-amber-400"
+                                : "border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff]"
+                        }`}
+                      >
+                        {item.rank}
+                      </span>
+                      <IconAvatar
+                        iconKey={item.icon_key || null}
+                        name={item.user?.name || item.name}
+                        size="h-9 w-9"
+                        showFrame={false}
+                        className="border border-white/20"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#c9f7ff]">
+                        {item.user?.name || item.name}
+                        {item.prestigeBadge && (
+                          <span className="ml-2 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">
+                            {item.prestigeBadge}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 text-sm font-bold text-green-300">
+                        {Number(item.weekly_wins || 0).toLocaleString()}{" "}
+                        {t("home.best_of.wins_label")}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="mt-4 flex justify-center sm:hidden">
+            <Link
+              href="/classement"
+              className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10"
+            >
+              {t("home.best_of.view_all")}
+            </Link>
           </div>
         </section>
 
@@ -926,6 +1169,29 @@ function MainComponent() {
           <ReviewWall limit={6} />
         </section>
       </div>
+
+      {/* Final CTA — your GRYND starts now */}
+      <section className="mx-auto max-w-7xl px-4 py-16 reveal">
+        <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/30 bg-gradient-to-br from-[#041125] to-[#0b1f45] px-6 py-14 text-center shadow-[0_0_50px_rgba(0,229,255,0.15)] sm:px-12">
+          <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-96 -translate-x-1/2 rounded-full bg-[#00e5ff]/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 right-1/4 h-40 w-72 rounded-full bg-[#ff4fd8]/10 blur-3xl" />
+          <h2 className="relative text-2xl font-black uppercase tracking-widest text-[#f5ff3b] drop-shadow-[0_0_18px_rgba(245,255,59,0.5)] sm:text-4xl">
+            {t("home.final_cta.title")}
+          </h2>
+          <p className="relative mx-auto mt-3 max-w-xl text-sm text-[#9dd8ff] sm:text-base">
+            {t("home.final_cta.subtitle")}
+          </p>
+          <div className="relative mt-8 flex justify-center">
+            <UIPro06PrimaryButton
+              href="/sign-up"
+              className="inline-block rounded-lg border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-10 py-4 text-lg font-bold text-[#1f1700] transition-all shadow-[0_0_35px_rgba(245,255,59,0.5)] hover:shadow-[0_0_55px_rgba(245,255,59,0.8)] hover:scale-105 animate-primary-cta-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+              aria-label={t("home.final_cta.play")}
+            >
+              {t("home.final_cta.play")}
+            </UIPro06PrimaryButton>
+          </div>
+        </div>
+      </section>
 
       {isSignedIn && (
         <div className="fixed left-4 top-20 z-50">

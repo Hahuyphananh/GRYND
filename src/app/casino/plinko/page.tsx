@@ -5,7 +5,7 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   title: "Plinko | GRYND",
   description:
-    "Play Plinko on GRYND. Drop the chip and watch it fall to multiply your winnings.",
+    "Play Plinko PvP on GRYND. Duel on the same peg field — 3 balls each. Pick your launch and out-score your rival.",
   openGraph: { images: [ogImageUrl("/images/og/plinko.jpg")] },
 };
 

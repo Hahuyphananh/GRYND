@@ -234,10 +234,10 @@ export default function PrecisionLobbyPage() {
             heading: "1v1 duel",
             body: (
               <>
-                Face another player at the same wager. Both players stop
+                Face another player at the same stake. Both players stop
                 independently. The round goes to whoever stopped
                 closest to the target. First to 3 rounds wins the match
-                and the pot (minus the house fee).
+                and the pot (minus the platform fee).
               </>
             ),
           },

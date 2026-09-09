@@ -23,7 +23,7 @@ const sections = [
     title: "How We Use Your Information",
     content: [
       "We use your information to provide, maintain, and improve our services. This includes processing wagers and payouts, calculating rankings and leaderboards, displaying your profile and game history, running the chat and review features, sending account and marketing emails, detecting fraudulent or abusive behavior, and complying with legal obligations.",
-      "Public information: your display name, profile picture, level, titles, streaks, and gameplay statistics are shown publicly on leaderboards, rankings, profiles, the Big Wins feed, and (for approved reviews) the reviews page. Your email address and date of birth are never displayed publicly.",
+      "Public information: your display name, profile picture, level, titles, streaks, and gameplay statistics are shown publicly on leaderboards, rankings, profiles, the Top Wins feed, and (for approved reviews) the reviews page. Your email address and date of birth are never displayed publicly.",
       "We do not sell your personal information, and we do not use it for advertising or to track you across other websites.",
     ],
   },

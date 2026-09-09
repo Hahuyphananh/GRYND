@@ -197,7 +197,7 @@ export default function DotsAndBoxesLobbyPage() {
               <>
                 When every line is drawn, the player with the most
                 completed boxes wins the match and the pot (minus the
-                house fee).
+                platform fee).
               </>
             ),
           },

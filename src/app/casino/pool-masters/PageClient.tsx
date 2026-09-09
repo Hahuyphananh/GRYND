@@ -114,7 +114,7 @@ export default function PoolLobbyPage() {
   return (
     <PvpLobbyPage
       title="Pool Masters Lobby"
-      subtitle="Create or join a wagered 1v1 pool match, or play the AI for free."
+      subtitle="Create or join a staked 1v1 pool match, or play the AI for free."
       icon={<IconTarget className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="pool-masters"
       rules={{
@@ -124,7 +124,7 @@ export default function PoolLobbyPage() {
             heading: "1v1 8-ball pool",
             body: (
               <>
-                Compete head-to-head over a wagered game of 8-ball pool.
+                Compete head-to-head over a staked game of 8-ball pool.
                 Take turns shooting. Pocket your group of balls, then the
                 8-ball to win the match.
               </>
@@ -134,8 +134,8 @@ export default function PoolLobbyPage() {
             heading: "Wager & pot",
             body: (
               <>
-                Both players wager the same amount. The winner takes the
-                pot minus the house fee.
+                Both players stake the same amount. The winner takes the
+                pot minus the platform fee.
               </>
             ),
           },

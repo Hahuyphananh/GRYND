@@ -514,7 +514,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
                 label: "View Battle Pass",
                 onClick: () => router.push("/battlepass"),
               }}
-              rematch={{ label: "Play Again", onClick: restartAfterFirstMatch }}
+              rematch={{ label: "RUN IT BACK", onClick: restartAfterFirstMatch }}
               onReturnToLobby={() => router.push("/casino/rps")}
             />
           ) : (
@@ -526,7 +526,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
               open
               outcome={wonMatch ? "win" : "loss"}
               headline={wonMatch ? "You win the best of 7!" : "The AI wins the best of 7."}
-              subline="Free practice match — no tokens were wagered."
+              subline="Free practice match — no tokens were staked."
               gameName="RPS vs AI"
               opponent={{ name: "AI", iconKey: null, isAi: true }}
               summary={[

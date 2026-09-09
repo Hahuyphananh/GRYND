@@ -34,6 +34,22 @@ export async function GET(request) {
       me = items.find((item) => item.clerk_id === userId) || null;
     }
 
+    // Signed-in user outside the paged window: resolve their TRUE rank with
+    // an uncached per-user query (the query layer computes `me` against the
+    // full ranked set, not the paged slice). Keeps cached responses public.
+    if (userId && !me) {
+      try {
+        const meResult = await fetchWinsLeaderboard({
+          limit,
+          offset,
+          clerkId: userId,
+        });
+        me = meResult.me || null;
+      } catch (err) {
+        console.error(" Failed to load my leaderboard rank:", err);
+      }
+    }
+
     return Response.json({ items, me, limit, offset }, {
       headers: {
         "Cache-Control": "public, s-maxage=30, stale-while-revalidate=15",

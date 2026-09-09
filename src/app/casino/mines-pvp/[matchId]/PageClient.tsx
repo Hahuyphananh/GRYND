@@ -1361,7 +1361,7 @@ export default function MinesPvpMatchPage({
       : iWon
         ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
         : iLost
-          ? `You lost your ${stake.toFixed(2)} stake. House kept ${houseFee.toFixed(2)}.`
+          ? `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`
           : null;
 
     const p1Summary = match.players?.p1 ?? null;
@@ -1393,9 +1393,9 @@ export default function MinesPvpMatchPage({
         ]}
         details={[
           { label: "Match ID", value: String(match.id) },
-          { label: "Wager", value: `${stake.toFixed(2)} tokens` },
+          { label: "Stake", value: `${stake.toFixed(2)} tokens` },
           { label: "Prize", value: `${prizePaid.toFixed(2)} tokens` },
-          { label: "House fee", value: `${houseFee.toFixed(2)} tokens` },
+          { label: "Platform fee", value: `${houseFee.toFixed(2)} tokens` },
           { label: "Winner", value: iWon ? "You" : iLost ? "Opponent" : "Draw" },
         ]}
         playAgain={{ onClick: () => router.push("/casino/mines-pvp") }}

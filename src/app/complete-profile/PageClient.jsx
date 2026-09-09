@@ -66,7 +66,7 @@ export default function CompleteProfilePage() {
             Complete Your Profile
           </h1>
           <p className="text-gray-600">
-            We need to verify your age to comply with gambling regulations.
+            We need to verify your age before you can play.
           </p>
         </div>
 

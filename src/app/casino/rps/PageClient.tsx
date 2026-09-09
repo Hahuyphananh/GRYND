@@ -196,11 +196,11 @@ export default function RPSLobbyPage() {
             ),
           },
           {
-            heading: "Wager",
+            heading: "Stake",
             body: (
               <>
-                Both players wager the same amount; the best-of-7 winner
-                takes the pot minus the house fee. Play vs AI for free to
+                Both players stake the same amount; the best-of-7 winner
+                takes the pot minus the platform fee. Play vs AI for free to
                 practice.
               </>
             ),

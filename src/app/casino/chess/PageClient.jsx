@@ -337,7 +337,7 @@ export default function ChessLobby() {
               body: (
                 <>
                   Pick a stake and a move timer before creating your
-                  game. The winner takes the pot minus a 10% house fee.
+                  game. The winner takes the pot minus a 10% platform fee.
                 </>
               ),
             },
@@ -360,7 +360,7 @@ export default function ChessLobby() {
           Create Multiplayer Game
         </h2>
         <p className="text-white/80 mb-5">
-          Select a stake and timer, then create your game. Winner gets the pot minus 10% house fee.
+          Select a stake and timer, then create your game. Winner gets the pot minus 10% platform fee.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -455,7 +455,7 @@ export default function ChessLobby() {
             {/* Pot preview */}
             {stakeNum > 0 && selectedTimer && (
               <div className="mt-1 w-full bg-emerald-900/20 border border-emerald-400/30 text-emerald-300 p-2 rounded text-sm text-center">
-                Pot: ${(stakeNum * 2).toLocaleString()} · Winner gets ~${(stakeNum * 2 * 0.9).toLocaleString(undefined, { maximumFractionDigits: 2 })} (after 10% house fee)
+                Pot: ${(stakeNum * 2).toLocaleString()} · Winner gets ~${(stakeNum * 2 * 0.9).toLocaleString(undefined, { maximumFractionDigits: 2 })} (after 10% platform fee)
               </div>
             )}
             </div>

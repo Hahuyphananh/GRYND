@@ -266,7 +266,7 @@ export default function RoulettePvpLobbyPage() {
           death. Single shared spin per round, but the wheel shrinks:
           Round 2 kills 13–24, Round 3 kills 13–36. Pay 10 match
           points to remove any number, and guess your opponent&apos;s
-          biggest wager to steal 15 points. 2.5% house fee.
+          biggest wager to steal 15 points. 2.5% platform fee.
         </>
       }
       icon={
@@ -332,8 +332,8 @@ export default function RoulettePvpLobbyPage() {
             ),
           },
           {
-            heading: "House fee",
-            body: <>2.5% house fee on the pot.</>,
+            heading: "Platform fee",
+            body: <>2.5% platform fee on the pot.</>,
           },
         ],
       }}

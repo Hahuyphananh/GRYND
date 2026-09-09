@@ -230,8 +230,8 @@ export default function TowerArenaLobbyPage() {
             body: (
               <>
                 Final placement follows elimination order — the last player
-                standing wins. The prize pool is the combined wagers minus
-                the house rake, split by placement.
+                standing wins. The prize pool is the combined stakes minus
+                the platform rake, split by placement.
               </>
             ),
           },
@@ -315,7 +315,7 @@ export default function TowerArenaLobbyPage() {
               </p>
             </div>
             <div>
-              <p className="text-white/50">House rake</p>
+              <p className="text-white/50">Platform rake</p>
               <p className="font-bold text-white/70">
                 {Number(preview.houseFee).toLocaleString()}
               </p>

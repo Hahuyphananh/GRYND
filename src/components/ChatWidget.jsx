@@ -224,11 +224,11 @@ export default function ChatWidget() {
       const res = await fetch("/api/chat/big-wins", {
         cache: "no-store",
       });
-      if (!res.ok) throw new Error("Unable to load big wins.");
+      if (!res.ok) throw new Error("Unable to load top wins.");
       const data = await res.json();
       setBigWins(data.wins || []);
     } catch (err) {
-      setError(err.message || "Failed to load big wins.");
+      setError(err.message || "Failed to load top wins.");
     } finally {
       setIsLoadingBigWins(false);
     }
@@ -416,7 +416,7 @@ export default function ChatWidget() {
                     : "text-yellow-300/70 hover:bg-yellow-500/10 hover:text-yellow-200"
                 }`}
               >
-                <IconConfetti size={14} className="mb-0.5 mr-1 inline" /> Big Wins
+                <IconConfetti size={14} className="mb-0.5 mr-1 inline" /> Top Wins
               </button>
               <button
                 type="button"
@@ -561,14 +561,14 @@ export default function ChatWidget() {
             <>
               <div
                 role="region"
-                aria-label="Big wins feed"
+                aria-label="Top wins feed"
                 tabIndex={0}
                 className="mb-2 h-[45vh] max-h-72 overflow-y-auto rounded border border-yellow-400/20 bg-black/60 p-2 shadow-inner shadow-yellow-500/10"
               >
                 {isLoadingBigWins ? (
-                  <p className="text-yellow-400/40 text-center py-4">Loading big wins...</p>
+                  <p className="text-yellow-400/40 text-center py-4">Loading top wins...</p>
                 ) : bigWins.length === 0 ? (
-                  <p className="text-yellow-400/40 text-center py-4">No big wins yet (≥{formatNumber(MINIMUM_BIG_WIN)} tokens).</p>
+                  <p className="text-yellow-400/40 text-center py-4">No top wins yet (≥{formatNumber(MINIMUM_BIG_WIN)} tokens).</p>
                 ) : (
                   bigWins.map((win) => (
                     <div
@@ -588,7 +588,7 @@ export default function ChatWidget() {
                         <div className="flex items-center gap-2 text-[11px]">
                           <span className="text-slate-400">{win.game}</span>
                           <span className="text-yellow-400/60">|</span>
-                          <span className="text-slate-400">Bet: {formatNumber(win.betAmount)}</span>
+                          <span className="text-slate-400">Stake: {formatNumber(win.betAmount)}</span>
                         </div>
                         <div className="text-right">
                           <div className="text-lg font-bold text-yellow-400">
@@ -607,7 +607,7 @@ export default function ChatWidget() {
                 )}
               </div>
               <p className="mb-2 text-[11px] text-yellow-400/60">
-                <IconConfetti size={14} className="mb-0.5 mr-1 inline" /> Big Wins feed shows wins of {formatNumber(MINIMUM_BIG_WIN)}+ tokens.
+                <IconConfetti size={14} className="mb-0.5 mr-1 inline" /> Top Wins feed shows wins of {formatNumber(MINIMUM_BIG_WIN)}+ tokens.
               </p>
               <button
                 type="button"

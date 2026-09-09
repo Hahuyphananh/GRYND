@@ -362,10 +362,10 @@ export default function BattlepassPageClient() {
                     🎲
                   </div>
                   <div>
-                    <div className="font-medium text-white">Wager tokens</div>
+                    <div className="font-medium text-white">Stake tokens</div>
                     <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      Earn 1 XP per 10 tokens wagered on any game. The bigger
-                      the bet, the faster you level up.
+                      Earn 1 XP per 10 tokens staked on any game. The bigger
+                      the stake, the faster you level up.
                     </div>
                   </div>
                 </div>

@@ -556,7 +556,7 @@ const prefersReducedMotion = useReducedMotion();
           { label: "Game ID", value: String(gameId) },
           ...(bet > 0
             ? [
-                { label: "Wager", value: `${bet.toFixed(2)} tokens` },
+                { label: "Stake", value: `${bet.toFixed(2)} tokens` },
                 ...(playerWon
                   ? [
                       {
@@ -569,7 +569,7 @@ const prefersReducedMotion = useReducedMotion();
             : []),
           { label: "Winner", value: isDraw ? "Draw" : playerWon ? "You" : opponentName },
         ]}
-        playAgain={{ label: "Play Again", onClick: () => router.push("/casino/dots-and-boxes") }}
+        playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/dots-and-boxes") }}
         onReturnToLobby={() => router.push("/casino")}
       />
     );

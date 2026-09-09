@@ -1525,7 +1525,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       ? `You sank the 8-ball — ${oppName} beaten`
       : `${oppName} sank the 8-ball first`;
     const subline = aiMode
-      ? "Free practice match — no tokens were wagered."
+      ? "Free practice match — no tokens were staked."
       : won
         ? `Your ${wager.toFixed(2)} stake back plus ${(prizePaid - wager).toFixed(2)} in winnings.`
         : `You lost your ${wager.toFixed(2)} stake.`;
@@ -1548,12 +1548,12 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           ...(aiMode || wager === 0
             ? []
             : [
-                { label: "Wager", value: `${wager.toFixed(2)} tokens` },
+                { label: "Stake", value: `${wager.toFixed(2)} tokens` },
                 ...(won
                   ? [
                       { label: "Prize paid", value: `${prizePaid.toFixed(2)} tokens` },
                       ...(houseFee > 0
-                        ? [{ label: "House fee", value: `${houseFee.toFixed(2)} tokens` }]
+                        ? [{ label: "Platform fee", value: `${houseFee.toFixed(2)} tokens` }]
                         : []),
                     ]
                   : []),
@@ -1561,7 +1561,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           { label: "Winner", value: won ? "You" : oppName },
         ]}
         playAgain={{
-          label: aiMode ? "Play Again" : "Find New Match",
+          label: aiMode ? "RUN IT BACK" : "Find New Match",
           onClick: handleRematch,
         }}
         onReturnToLobby={handleReturnToLobby}

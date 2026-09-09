@@ -120,7 +120,7 @@ function PrecisionResultPopupImpl({
       ]}
       details={[
         ...(wager > 0
-          ? [{ label: "Wager", value: `${formatTokens(wager)} tokens` }]
+          ? [{ label: "Stake", value: `${formatTokens(wager)} tokens` }]
           : []),
         ...(payout > 0
           ? [

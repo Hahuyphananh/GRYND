@@ -131,7 +131,7 @@ export default function OddsPage() {
                 body: (
                   <>
                     The player with the most points after all rounds
-                    takes the pot (minus the house fee).
+                    takes the pot (minus the platform fee).
                   </>
                 ),
               },
@@ -501,7 +501,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         <>
           <div className="mb-4 rounded-lg border-2 border-dashed border-amber-400/40 bg-amber-500/10 p-3 text-center">
             <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
-            <p className="mt-1 text-[10px] text-amber-200/70">No tokens are wagered. Playing vs AI is free.</p>
+            <p className="mt-1 text-[10px] text-amber-200/70">No tokens are staked. Playing vs AI is free.</p>
           </div>
           <button
             onClick={startGame}
@@ -519,7 +519,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Pick Your Number</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} <IconCoins size={12} className="inline" />
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Stake {wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span>. It stays
@@ -623,7 +623,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="text-3xl mb-1"><IconCrystalBall size={36} className="text-fuchsia-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Predict Your Opponent</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wager} <IconCoins size={12} className="inline" />
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Stake {wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
@@ -744,7 +744,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             onClick={handlePlayAgain}
             className="mt-4 w-full rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 px-6 py-3 font-bold text-black shadow-lg transition-all hover:scale-105"
           >
-            Play Again
+            RUN IT BACK
           </button>
         </div>
       )}
@@ -1428,7 +1428,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {!resuming && !gameId && !interactiveState && (
         <>
           <div className="mb-4 text-center text-sm">
-            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">Wager</span>
+            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">Stake</span>
             <div className="mt-2 flex flex-wrap justify-center gap-1.5">
               {[10, 25, 50, 100, 250, 500].map((v) => (
                 <button
@@ -1447,7 +1447,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <input
               id="odds-pvp-wager"
               type="number"
-              aria-label="Wager amount"
+              aria-label="Stake amount"
               className="mt-2 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
               value={wager}
               onChange={(e) => setWager(Number(e.target.value))}
@@ -1481,7 +1481,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                       {game.player1Name}
                     </p>
                     <p className="text-sm text-white/50">
-                      Wager: <span className="text-yellow-300 font-semibold">{game.wager}</span> <IconCoins size={12} className="inline" />
+                      Stake: <span className="text-yellow-300 font-semibold">{game.wager}</span> <IconCoins size={12} className="inline" />
                     </p>
                   </div>
                   <button
@@ -1514,7 +1514,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             {message || "Waiting for opponent..."}
           </p>
           <p className="text-sm text-white/40 mt-2">
-            Wager: {wagerLocked} <IconCoins size={12} className="inline" />
+            Stake: {wagerLocked} <IconCoins size={12} className="inline" />
           </p>
           <button
             onClick={cancelGame}
@@ -1531,7 +1531,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Pick Your Number</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Stake {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span>. It stays
@@ -1657,7 +1657,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="text-3xl mb-1"><IconCrystalBall size={36} className="text-fuchsia-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Predict Your Opponent</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Wager {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Stake {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
@@ -2323,7 +2323,7 @@ function OddsGameDisplay({
             oppLabel === "AI"
               ? []
               : [
-                  { label: "Wager", value: String(wager) },
+                  { label: "Stake", value: String(wager) },
                   { label: "Pot", value: String(payout) },
                 ]
           }
