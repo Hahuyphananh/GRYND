@@ -12,25 +12,27 @@
 //   * streak_shield — EV ≈ the login rewards a missed-day reset would
 //     destroy: the escalating 25×day reward (avg ~187/day over a 14-day
 //     cycle, up to 350 on day 14) + milestone bonuses + streak-title
-//     progress. Priced at 200, comfortably above the average, below the
-//     day-14 top-end so high-streak players still buy.
+//     progress. Priced at 800 (≈ two days of an active player's income),
+//     comfortably above the average daily reward, below the multi-hundred
+//     milestone value so high-streak players still buy.
 //
 //   * xp_boost_2x_24h — EV ≈ extra battlepass XP for 24h (+200–500 XP for
 //     an average active day). XP is progression-only (rewards are
 //     cosmetics + functional items, not cashable tokens), so its EV is
-//     soft; 150 is a cheap impulse price that still burns balance.
+//     soft; 500 stays the cheap impulse price but is still a real sink
+//     against the 5,000-token starting balance.
 //
 //   * quest_boost_3 — EV ≈ 3 × average daily quest reward (~80) = 240
-//     tokens, plus the doubled quest XP. Priced at 280: above the token EV
-//     (house keeps the edge) but still attractive because the XP rides
-//     along.
+//     tokens returned, plus the doubled quest XP. Priced at 1,000: well
+//     above the token EV (house keeps the edge) but still attractive
+//     because the doubled XP rides along.
 
 export const SHOP_ITEMS = [
   {
     key: "streak_shield",
     name: "Daily Streak Shield",
     desc: "Protects your daily login streak for one missed day",
-    price: 200,
+    price: 800,
     category: "consumable",
     badge: "Retention",
     color: "#38bdf8",
@@ -39,7 +41,7 @@ export const SHOP_ITEMS = [
     key: "xp_boost_2x_24h",
     name: "2× XP Boost",
     desc: "Double all battlepass XP for 24 hours",
-    price: 150,
+    price: 500,
     category: "timed",
     hours: 24,
     badge: "Progression",
@@ -49,7 +51,7 @@ export const SHOP_ITEMS = [
     key: "quest_boost_3",
     name: "Quest Boost",
     desc: "Your next 3 quest claims pay double tokens",
-    price: 280,
+    price: 1000,
     category: "consumable",
     qtyPerUse: 3,
     badge: "Economy",
