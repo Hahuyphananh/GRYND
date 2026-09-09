@@ -10,56 +10,7 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import IconAvatar from "../../components/IconAvatar";
 import { useTranslation } from "../../hooks/useTranslation";
 
-function getNextMondayReset() {
-  const now = new Date();
-  const day = now.getUTCDay();
-  // Days until next Monday (Monday = 1, so if today is Monday it's 7 days, otherwise days until Monday)
-  const daysUntilMonday = day === 1 ? 7 : (8 - day) % 7;
-  const nextMonday = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() + daysUntilMonday,
-    0, 0, 0, 0
-  ));
-  return nextMonday;
-}
-
-function useWeeklyCountdown() {
-  const [timeLeft, setTimeLeft] = useState("");
-
-  useEffect(() => {
-    function update() {
-      const now = Date.now();
-      const reset = getNextMondayReset().getTime();
-      const diff = reset - now;
-
-      if (diff <= 0) {
-        setTimeLeft("Resetting...");
-        return;
-      }
-
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      const parts = [];
-      if (days > 0) parts.push(`${days}d`);
-      parts.push(`${String(hours).padStart(2, "0")}h`);
-      parts.push(`${String(minutes).padStart(2, "0")}m`);
-      parts.push(`${String(seconds).padStart(2, "0")}s`);
-      setTimeLeft(parts.join(" "));
-    }
-
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return timeLeft;
-}
-
-const TABS = ["weekly", "all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
+const TABS = ["all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
 
 // Per-game leaderboards (mirrors GAME_LEADERBOARD_KEYS in
 // src/lib/leaderboardQueries.js).
@@ -98,8 +49,6 @@ const ALL_TIME_CATEGORIES = [
   "current_streak",
   "biggest_win",
 ];
-// No weekly PvP counter exists, so pvp_wins is all-time only.
-const WEEKLY_CATEGORIES = ALL_TIME_CATEGORIES.filter((c) => c !== "pvp_wins");
 
 const CATEGORY_LABELS = {
   wins: "Wins",
@@ -112,10 +61,6 @@ const CATEGORY_LABELS = {
   current_streak: "Current Streak",
   biggest_win: "Biggest Win",
 };
-
-// Win-rate boards only rank players with a real sample size (the query
-// layer enforces the same floors).
-const MIN_GAMES_FOR_WIN_RATE = { weekly: 5, "all-time": 10 };
 
 function formatNumber(n) {
   return Number(n || 0).toLocaleString();
@@ -147,8 +92,7 @@ function getMetricValue(item, tab, category) {
     return `${formatNumber(item[field])} days`;
   }
 
-  const weekly = tab === "weekly";
-  const field = (name) => item[weekly ? `weekly_${name}` : name];
+  const field = (name) => item[name];
 
   switch (category) {
     case "win_rate":
@@ -258,12 +202,12 @@ function Podium({ items, myClerkId, tab, category }) {
           <Link
             key={`${item.clerk_id}-${item.rank}`}
             href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-            className={`group relative flex flex-col items-center rounded-xl border px-2 py-3 text-center transition-all hover:bg-white/5 sm:px-3 sm:py-4 ${
+            className={`group relative flex flex-col items-center rounded-xl border px-2 py-3 text-center transition-all hover:bg-white/10 sm:px-3 sm:py-4 ${
               isFirst
-                ? "border-[#f5ff3b]/50 bg-[#f5ff3b]/10 shadow-[0_0_20px_rgba(245,255,59,0.15)] sm:-translate-y-2"
+                ? "border-[#f5ff3b]/50 bg-[#f5ff3b]/20 shadow-[0_0_20px_rgba(245,255,59,0.15)] sm:-translate-y-2"
                 : item.rank === 2
-                  ? "border-slate-300/30 bg-slate-300/5"
-                  : "border-amber-600/30 bg-amber-700/5"
+                  ? "border-slate-300/30 bg-slate-300/10"
+                  : "border-amber-600/30 bg-amber-700/10"
             } ${isMe ? "ring-2 ring-[#00e5ff]" : ""}`}
           >
             <span
@@ -320,8 +264,7 @@ function rankStatus(rank, t) {
 export default function LeaderboardPage() {
   const { t } = useTranslation();
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
-  const weeklyCountdown = useWeeklyCountdown();
-  const [tab, setTab] = useState("weekly");
+  const [tab, setTab] = useState("all-time");
   const [category, setCategory] = useState("wins");
   const [game, setGame] = useState("chess");
   const [reloadKey, setReloadKey] = useState(0);
@@ -329,7 +272,7 @@ export default function LeaderboardPage() {
   const selectTab = (next) => {
     setTab(next);
     // pvp_wins is all-time only — fall back to the headline metric on the
-    // weekly board (and on tabs with no categories).
+    // other tabs (which have no categories).
     if (next !== "all-time" && category === "pvp_wins") setCategory("wins");
   };
   // Per-game boards always rank by wins.
@@ -343,8 +286,6 @@ export default function LeaderboardPage() {
   const myClerkId = isSignedIn ? user?.id : null;
 
   const endpoint = useMemo(() => {
-    if (tab === "weekly")
-      return `/api/leaderboard/weekly?limit=50&category=${category}`;
     if (tab === "per-game")
       return `/api/leaderboard/game?game=${game}&limit=50`;
     if (tab === "daily-current")
@@ -414,9 +355,15 @@ export default function LeaderboardPage() {
   return (
     <div className="relative min-h-screen text-[#c9f7ff]">
       <InteractiveCasinoBg variant="subtle" />
+      {/* Fade the casino artwork back so the board reads clearly. Painted
+          above the z-0 background but below the z-10 content. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0 bg-[#030815]/60"
+        aria-hidden="true"
+      />
 
       <NavigationBar currentPath="/classement" />
-      <div className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
+      <div className="relative z-10 mx-auto max-w-6xl px-4 py-24 sm:px-6">
         <header className="mb-6 text-center">
           <h1 className="text-3xl font-bold text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-4xl">
             {t("leaderboard.title")}
@@ -425,16 +372,6 @@ export default function LeaderboardPage() {
             {t("leaderboard.subtitle")}
           </p>
         </header>
-
-        {tab === "weekly" && weeklyCountdown && (
-          <div className="mb-4 flex justify-center">
-            <div className="inline-flex items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#0a214d]/90 px-4 py-2 text-sm">
-              <svg className="w-4 h-4 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-              <span className="text-gray-300">Weekly reset in:</span>
-              <span className="font-mono font-bold text-[#f5ff3b]">{weeklyCountdown}</span>
-            </div>
-          </div>
-        )}
 
         {/* Tab bar — scrolls horizontally on mobile instead of wrapping. */}
         <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
@@ -446,17 +383,15 @@ export default function LeaderboardPage() {
                 aria-pressed={tab === x}
                 className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
               >
-                {x === "weekly"
-                  ? "Weekly"
-                  : x === "all-time"
-                    ? "All-Time"
-                    : x === "daily-current"
-                      ? <span>Daily Streak <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg></span>
+                {x === "all-time"
+                  ? "All-Time"
+                  : x === "daily-current"
+                    ? <span>Daily Streak <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg></span>
                       : x === "daily-best"
                         ? <span>Best Streak <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
                         : x === "weekly-streak"
                           ? <span>Weekly Streak <svg className="w-4 h-4 inline text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
-                          : <span>Weekly Best <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>}
+                          : <span>Weekly Best Streak <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>}
               </button>
             ))}
           </div>
@@ -481,7 +416,7 @@ export default function LeaderboardPage() {
           !isStreakTab(tab) && (
             <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
               <div className="flex w-max min-w-full gap-2 sm:flex-wrap sm:justify-center">
-                {(tab === "weekly" ? WEEKLY_CATEGORIES : ALL_TIME_CATEGORIES).map((x) => (
+                {ALL_TIME_CATEGORIES.map((x) => (
                   <button
                     key={x}
                     onClick={() => setCategory(x)}
@@ -499,16 +434,14 @@ export default function LeaderboardPage() {
         {!isStreakTab(tab) && !isPerGameTab(tab) && category === "win_rate" && (
           <p className="mb-4 text-center text-xs text-cyan-200/70">
             Win-rate board — players with at least{" "}
-            <span className="font-bold text-[#f5ff3b]">
-              {tab === "weekly" ? MIN_GAMES_FOR_WIN_RATE.weekly : MIN_GAMES_FOR_WIN_RATE["all-time"]} games
-            </span>{" "}
-            played this {tab === "weekly" ? "week" : "season"} only.
+            <span className="font-bold text-[#f5ff3b]">10 games</span>{" "}
+            played this season only.
           </p>
         )}
 
         {/* ── YOUR RANK — where you stand, always in view ─────────────── */}
         {showRankCard && (
-          <div className="mx-auto mb-6 max-w-2xl rounded-lg border border-[#00e5ff]/50 bg-[#0a214d]/90 p-4 shadow-[0_0_24px_rgba(0,229,255,0.15)] sm:p-5">
+          <div className="mx-auto mb-6 max-w-2xl rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] p-4 shadow-[0_0_24px_rgba(0,229,255,0.15)] sm:p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[#f5ff3b]">
                 <svg className="h-4 w-4 text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v9a5 5 0 01-10 0V4z"/><path d="M7 9h10"/><path d="M9 4V2M15 4V2"/></svg>
@@ -537,9 +470,9 @@ export default function LeaderboardPage() {
                 </p>
                 {/* Real board record (weekly/all-time/per-game/streak rows all
                     return it) */}
-                <RecordLine item={me} weekly={tab === "weekly"} />
+                <RecordLine item={me} />
                 {statusLine && (
-                  <p className="mt-2 inline-flex rounded-md border border-[#00e5ff]/40 bg-[#08142f]/80 px-3 py-1.5 text-xs font-semibold text-[#00e5ff]">
+                  <p className="mt-2 inline-flex rounded-md border border-[#00e5ff]/40 bg-[#08142f] px-3 py-1.5 text-xs font-semibold text-[#00e5ff]">
                     {statusLine}
                   </p>
                 )}
@@ -568,38 +501,38 @@ export default function LeaderboardPage() {
             {myStats && (
               <>
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
-                  <div className="rounded-md bg-[#08142f]/80 px-3 py-2 text-center">
+                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-green-300">
                       {formatNumber(myStats.gamesWon)}W{" "}
                       <span className="text-red-300/90">{formatNumber(myStats.gamesLost)}L</span>
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Games won / lost</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f]/80 px-3 py-2 text-center">
+                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-[#00e5ff]">
                       {Number(myStats.gameWinRate || 0).toFixed(1)}%
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Win rate</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f]/80 px-3 py-2 text-center">
+                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
                     <div className="text-lg font-bold">
                       {formatNumber(myStats.gamesPlayed)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Games played</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f]/80 px-3 py-2 text-center">
+                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-[#f5ff3b]">
                       {formatNumber(myStats.currentStreak)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Current win streak</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f]/80 px-3 py-2 text-center">
+                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-[#f5ff3b]">
                       {formatNumber(myStats.bestStreak)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Best win streak</div>
                   </div>
-                  <div className="rounded-md bg-[#08142f]/80 px-3 py-2 text-center">
+                  <div className="rounded-md bg-[#08142f] px-3 py-2 text-center">
                     <div className="truncate text-sm font-bold">
                       {myStats.favoriteGame || "N/A"}
                     </div>
@@ -628,7 +561,7 @@ export default function LeaderboardPage() {
           />
         )}
 
-        <div className="w-full overflow-x-auto rounded-lg border border-[#00e5ff]/50 bg-[#08142f]/95 p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
+        <div className="w-full overflow-x-auto rounded-lg border border-[#00e5ff]/50 bg-[#08142f] p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
           {error && (
             <div className="mb-4 flex flex-col items-center gap-3 rounded-md border border-red-400/40 bg-red-950/40 px-4 py-3 text-center text-sm text-red-200 sm:flex-row sm:justify-between">
               <span>{error}</span>
@@ -731,7 +664,7 @@ export default function LeaderboardPage() {
                                     </span>
                                   )}
                                 </span>
-                                <RecordLine item={item} weekly={tab === "weekly"} />
+                                <RecordLine item={item} />
                               </span>
                             </Link>
                             {isMe && (
@@ -755,7 +688,7 @@ export default function LeaderboardPage() {
 
         {/* Competitive CTA — the board should make you want to play. */}
         {!loading && !error && (
-          <div className="mx-auto mt-6 flex max-w-2xl flex-col items-center gap-4 rounded-lg border border-[#f5ff3b]/30 bg-gradient-to-br from-[#0a214d]/95 to-[#08142f]/95 p-6 text-center shadow-[0_0_24px_rgba(245,255,59,0.1)] sm:flex-row sm:justify-between sm:text-left">
+          <div className="mx-auto mt-6 flex max-w-2xl flex-col items-center gap-4 rounded-lg border border-[#f5ff3b]/30 bg-gradient-to-br from-[#0a214d] to-[#08142f] p-6 text-center shadow-[0_0_24px_rgba(245,255,59,0.1)] sm:flex-row sm:justify-between sm:text-left">
             <div>
               <h2 className="text-lg font-bold uppercase tracking-wide text-[#f5ff3b]">
                 {t("leaderboard.climb_ranks")}
@@ -773,7 +706,9 @@ export default function LeaderboardPage() {
           </div>
         )}
       </div>
-      <Footer />
+      <div className="relative z-10">
+        <Footer />
+      </div>
     </div>
   );
 }

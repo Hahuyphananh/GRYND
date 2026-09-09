@@ -192,6 +192,15 @@ function buildAllTimeConfig(category, columns) {
       ELSE 0
     END
   `;
+  const games = userStatsMetric(columns, "total_bets", {
+    defaultValue: "0",
+    cast: "int",
+  });
+  const winRate = winRateExpression({ wins, losses });
+  const currentStreak = userStatsMetric(columns, "current_streak", {
+    defaultValue: "0",
+    cast: "int",
+  });
 
   const miniStats = allTimeMiniStatsFields(columns);
   const configs = {
@@ -271,6 +280,15 @@ function buildWeeklyConfig(category, columns) {
       ELSE 0
     END
   `;
+  const weeklyGames = `(${weeklyWins}::int + ${weeklyLosses}::int)`;
+  const weeklyWinRate = winRateExpression({
+    wins: weeklyWins,
+    losses: weeklyLosses,
+  });
+  const weeklyCurrentStreak = userStatsMetric(columns, "weekly_game_streak", {
+    defaultValue: "0",
+    cast: "int",
+  });
 
   const miniStats = weeklyMiniStatsFields(columns);
   const configs = {
