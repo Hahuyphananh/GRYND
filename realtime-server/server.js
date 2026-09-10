@@ -60,12 +60,19 @@ app.get("/health", (_req, res) => {
 // ── Server-to-server emit ──────────────────────────────────────────────
 // Lets the Next.js backend push events to socket rooms (e.g. admin
 // notifications when a player report / contact message is inserted). The
-// Next.js side calls this via src/lib/adminNotify.ts. Guarded by the same
-// optional REALTIME_INTERNAL_SECRET convention used by the crash-arena
-// sweep (skipped when the env var is unset, e.g. local dev).
+// Next.js side calls this via src/lib/adminNotify.ts. The endpoint is
+// authenticated with REALTIME_INTERNAL_SECRET (same secret as the
+// crash-arena sweep): it FAILS CLOSED — a missing/invalid secret returns
+// 401, so /emit is never exposed unauthenticated.
 app.post("/emit", (req, res) => {
   const secret = process.env.REALTIME_INTERNAL_SECRET;
-  if (secret && req.headers["x-internal-secret"] !== secret) {
+  if (!secret) {
+    return res.status(503).json({
+      success: false,
+      error: "REALTIME_INTERNAL_SECRET is not configured",
+    });
+  }
+  if (req.headers["x-internal-secret"] !== secret) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
   const { room, event, payload } = req.body || {};
