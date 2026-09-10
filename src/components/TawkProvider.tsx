@@ -53,7 +53,7 @@ export default function TawkProvider() {
         // Recompute if Tawk ever changes this loader:
         //   curl -s https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq | openssl dgst -sha384 -binary | openssl base64 -A
         s1.integrity =
-          "sha384-85iaQQWsN0Z1+J2zm9cVwOLh1BRLojg82hsrSqV9sygdywnYJcqnylqIgIt12gbX";
+          "sha384-btJ+tUFYAkFoBqDb5E+bY7Zwp2l3dVKd0olPDHuOQla/201qMQZvFPeT/mh32+o7";
         s1.crossOrigin = "anonymous";
 
         s0.parentNode?.insertBefore(s1, s0);

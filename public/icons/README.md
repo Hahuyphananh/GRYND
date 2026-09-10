@@ -28,10 +28,11 @@ is equipped with the default icon (granted on account creation and by migration
 ## Artwork status
 
 Icon artwork is generated separately (ComfyUI-based development pipeline, **not**
-part of the app's runtime). Until `default.webp` is produced, the app continues
-to work: `src/components/IconAvatar.tsx` falls back to a letter avatar via its
-`onError` handler when an asset file is missing. **No placeholder artwork should
-be committed here** — add real artwork only when it is available.
+part of the app's runtime). The default icon ships as a copy of the first
+official artwork (`gryndicon1.webp`) so `/icons/default.webp` resolves in
+production instead of 404-ing to the letter-avatar fallback. Replace it with
+dedicated default artwork when it is available — keep the file at
+`/public/icons/default.webp`.
 
 ## Adding an icon (architecture-ready, purchases not yet implemented)
 
