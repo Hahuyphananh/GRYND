@@ -127,7 +127,12 @@ export async function POST(req: Request) {
       // clerkId no longer matches the session. Reassociate the existing row
       // to this session's clerkId so the account (balance, stats, items)
       // survives an instance switch instead of becoming "User not found".
-      if ((error as { code?: string })?.code === "23505") {
+      // Drizzle wraps the pg error (which carries code "23505") in a
+      // DrizzleQueryError under `cause`, so check both surfaces.
+      const pgCode =
+        (error as { code?: string })?.code ??
+        (error as { cause?: { code?: string } })?.cause?.code;
+      if (pgCode === "23505") {
         const existingByEmail = await db
           .select({ id: users.id })
           .from(users)
