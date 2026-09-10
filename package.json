@@ -131,7 +131,7 @@
     "fast-uri": "^3.1.5",
     "shell-quote": "^1.10.0",
     "dompurify": "^3.4.13",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "brace-expansion": "^5.0.9",
     "undici": "^7.29.0",
     "socket.io-parser": "^4.2.7"
