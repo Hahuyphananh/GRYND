@@ -88,7 +88,7 @@ These are separate infrastructure issues that need to be addressed:
    - `NEXT_PUBLIC_SOCKET_URL` - Must point to your realtime server URL
 
 2. **Realtime Server (realtime-server/.env or Render):**
-   - `CLIENT_URL` - Must include your Vercel production URL
+   - `CLIENT_URL` - Must include your Vercel production URL (`https://www.grynd.dedyn.io`)
    - `CLERK_SECRET_KEY` - Required for authentication
 
 ### Deployment Checklist

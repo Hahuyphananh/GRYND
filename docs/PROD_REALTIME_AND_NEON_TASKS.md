@@ -5,7 +5,7 @@ This file groups all high-priority production tasks into a single deployable pla
 ## Realtime verification tasks
 
 1. Set `NEXT_PUBLIC_SOCKET_URL` in Vercel to `https://casino-app-2wnk.onrender.com`.
-2. Set `CLIENT_URL` in Render to your exact Vercel production URL (comma-separate preview URLs if needed).
+2. Set `CLIENT_URL` in Render to your exact Vercel production URL (`https://www.grynd.dedyn.io`; comma-separate preview URLs if needed).
 3. Ensure `CLERK_SECRET_KEY` is set on Render realtime service.
 4. Verify `GET /health` returns `allowedOrigins`, `clerkConfigured: true`, and `wsPath: /socket.io`.
 
