@@ -14,7 +14,7 @@
 // deployed site via GRYND_URL:
 //
 //   npm run verify:legal-pages
-//   GRYND_URL=https://www.grynd.mywire.org npm run verify:legal-pages
+//   GRYND_URL=https://www.grynd.dedyn.io npm run verify:legal-pages
 //   GRYND_URL=http://localhost:3100 node qa/terms-page-check.mjs
 
 import { chromium } from "playwright";
