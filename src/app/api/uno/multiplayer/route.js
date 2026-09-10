@@ -273,6 +273,7 @@ function aiChooseColor(hand) {
 
 async function settleWinner(room, winnerId) {
   if (!winnerId || !room?.activeState) return;
+  if (room.activeState.settled) return;
   const winner = room.activeState.players.find((p) => p.id === winnerId);
   if (!winner || winner.type === "ai" || !winner.userId) return;
 
@@ -283,6 +284,7 @@ async function settleWinner(room, winnerId) {
     .update(users)
     .set({ balance: sql`${users.balance} + ${payout}` })
     .where(eq(users.id, winner.userId));
+  room.activeState.settled = true;
 }
 
 function serializeGameForUser(room, userId) {

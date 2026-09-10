@@ -120,12 +120,35 @@ export async function POST(req: Request) {
         .onConflictDoNothing({ target: users.clerkId })
         .returning();
     } catch (error) {
-      // Email belongs to a *different* account (not the webhook race, which
-      // is covered by the clerk_id conflict target above).
+      // Email is taken by an existing local row. The webhook race is covered
+      // by the clerk_id conflict target above, so a 23505 here means the email
+      // belongs to a row created under a *different* Clerk account — e.g. an
+      // old instance (dev keys / previous clerk.grynd deployment) whose
+      // clerkId no longer matches the session. Reassociate the existing row
+      // to this session's clerkId so the account (balance, stats, items)
+      // survives an instance switch instead of becoming "User not found".
       if ((error as { code?: string })?.code === "23505") {
+        const existingByEmail = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+
+        if (existingByEmail.length === 0) {
+          throw error;
+        }
+
+        await db
+          .update(users)
+          .set({ clerkId, name: preferredName, email })
+          .where(eq(users.id, existingByEmail[0].id));
+
         return NextResponse.json(
-          { error: "An account with this email already exists in local DB" },
-          { status: 409 },
+          {
+            message: "User re-associated with current Clerk account",
+            user: { id: existingByEmail[0].id, clerkId },
+          },
+          { status: 200 },
         );
       }
       throw error;
