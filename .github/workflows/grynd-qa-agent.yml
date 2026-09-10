@@ -48,7 +48,7 @@ jobs:
         id: browser
         continue-on-error: true
         env:
-          GRYND_URL: https://www.grynd.mywire.org/
+          GRYND_URL: https://www.grynd.dedyn.io/
         run: node qa/smoke-test.mjs
 
       - name: Check whether AI is needed
@@ -89,7 +89,7 @@ jobs:
         if: steps.check.outputs.needs_fix == 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GRYND_URL: https://www.grynd.mywire.org/
+          GRYND_URL: https://www.grynd.dedyn.io/
         run: node .github/qa-agent.mjs
 
       - name: Check AI changes
@@ -120,7 +120,7 @@ jobs:
         id: rebrowser
         continue-on-error: true
         env:
-          GRYND_URL: https://www.grynd.mywire.org/
+          GRYND_URL: https://www.grynd.dedyn.io/
         run: node qa/smoke-test.mjs
 
       - name: Create fix branch
