@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconX } from "@tabler/icons-react";
 
-// Name glow picker — mirrors ChooseBannerModal. Lists the glows the user
+// Name glow picker — mirrors ChooseIconModal. Lists the glows the user
 // OWNS (via /api/user/glows → user_glows). Clicking an owned glow equips it
 // (users.selected_glow via /api/user/glow/select); "No Glow" clears it.
 // Glow colors always come from the catalog hex — never user-supplied.

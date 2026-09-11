@@ -1,9 +1,9 @@
 // src/lib/emotes.ts
 //
 // Central server authority for the official Grynd animated emote system
-// (mirrors src/lib/banners.ts + src/lib/icons.ts).
+// (mirrors src/lib/icons.ts).
 //
-// Architecture (same pattern as the official banners / icons):
+// Architecture (same pattern as the official icons):
 //   * `emotes` catalog table      — enabled keys + official asset paths
 //   * `user_emotes` ownership     — one row per (user_id, emote_key)
 //   * `users.equipped_emotes`     — ordered JSONB array of equipped keys
@@ -236,9 +236,9 @@ async function battlepassEmoteLevelByKeyMap(): Promise<Map<string, number>> {
 /**
  * Grant every emote Battle Pass reward at or below `level`, idempotently
  * (duplicate grants are no-ops via the user_emotes unique constraint).
- * Called from the same Battle Pass reconciliation points as
- * grantBattlepassBanners (addExp, the /api/battlepass page load, and the
- * leaderboard counters). An emote that unlocks becomes OWNED but is never
+ * Called from the same Battle Pass reconciliation points as the title /
+ * glow grants (addExp, the /api/battlepass page load, and the leaderboard
+ * counters). An emote that unlocks becomes OWNED but is never
  * auto-equipped — the player chooses to add it to their loadout.
  */
 export async function grantBattlepassEmotes(userId: number, level: number) {

@@ -10,11 +10,9 @@
 //   * malformed / unknown / null icon key  → official default icon
 //   * missing artwork file (asset not added yet or moved) → letter-avatar
 //     fallback via the <img> onError handler (never blocks a render)
-//   * compatible with the Grynd+ AvatarFrame system (frame prop = avatar_frame
-//     key); sizing/layout is controlled by the caller via `size` / `className`.
+//   * sizing/layout is controlled by the caller via `size` / `className`.
 
 import { useEffect, useState } from "react";
-import AvatarFrame from "./AvatarFrame";
 import {
   DEFAULT_ICON_KEY,
   iconAssetUrl,
@@ -26,9 +24,6 @@ export default function IconAvatar({
   name,
   size = "h-14 w-14",
   className = "",
-  frame,
-  showFrame = true,
-  rounded = "",
 }: {
   /** Official Grynd icon key. Anything invalid resolves to the default icon. */
   iconKey?: string | null;
@@ -38,12 +33,6 @@ export default function IconAvatar({
   size?: string;
   /** Extra classes applied to the <img> (keep it an avatar shape). */
   className?: string;
-  /** Grynd+ avatar_frame key; passed through to AvatarFrame. */
-  frame?: string | null;
-  /** Set false to skip the AvatarFrame ring entirely. */
-  showFrame?: boolean;
-  /** Extra classes for the outer ring wrapper. */
-  rounded?: string;
 }) {
   const effectiveKey = isIconKey(iconKey) ? iconKey : DEFAULT_ICON_KEY;
   const src = iconAssetUrl(effectiveKey);
@@ -79,14 +68,6 @@ export default function IconAvatar({
       className={`shrink-0 overflow-hidden rounded-full object-cover ${size} ${className}`}
     />
   );
-
-  if (showFrame && frame) {
-    return (
-      <AvatarFrame frame={frame} className={size}>
-        {avatarEl}
-      </AvatarFrame>
-    );
-  }
 
   return avatarEl;
 }

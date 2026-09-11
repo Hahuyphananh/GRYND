@@ -7,20 +7,16 @@ import { motion } from "framer-motion";
 import NavigationBar from "../../../components/navigation-bar";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
-import AvatarFrame from "../../../components/AvatarFrame";
 import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
 import UserStatsTabs from "../../../components/UserStatsTabs";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
-import ProfileBanner from "../../../components/ProfileBanner";
 
 type PublicUser = {
   clerkId: string;
   name: string;
   selectedIcon: string | null;
   profileAccent: string | null;
-  selectedBanner: string | null;
-  avatarFrame: string | null;
   level: number;
   xp: number;
   gamesWon: number;
@@ -180,9 +176,7 @@ export default function PublicProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8 ${
-            profile.selectedBanner ? "pt-28" : ""
-          }`}
+          className="relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8"
           style={
             profile.profileAccent
               ? {
@@ -192,20 +186,13 @@ export default function PublicProfilePage() {
               : undefined
           }
         >
-          <ProfileBanner
-            bannerKey={profile.selectedBanner}
-            className="absolute inset-x-0 top-0"
-            heightClass="h-20"
-          />
           <div className="flex items-center gap-4">
-            <AvatarFrame frame={profile.avatarFrame}>
-              <IconAvatar
-                iconKey={profile.selectedIcon}
-                name={profile.name}
-                size="h-20 w-20"
-                className="border-2 border-[#FFD700]"
-              />
-            </AvatarFrame>
+            <IconAvatar
+              iconKey={profile.selectedIcon}
+              name={profile.name}
+              size="h-20 w-20"
+              className="border-2 border-[#FFD700]"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{profile.name}</h1>

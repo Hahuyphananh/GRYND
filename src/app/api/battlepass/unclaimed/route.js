@@ -3,9 +3,10 @@
 // GET /api/battlepass/unclaimed
 //
 // Lightweight count of battlepass rewards the player has REACHED but not
-// yet claimed (banner/emote cosmetics only — the ownership-tracked
-// types). Powers the navbar "rewards ready" badge + toast nudge without
-// paying for the full 100-level track. Anonymous visitors get 0.
+// yet claimed (emote/title/glow cosmetics + functional rewards — the
+// ownership-tracked types). Powers the navbar "rewards ready" badge +
+// toast nudge without paying for the full 100-level track. Anonymous
+// visitors get 0.
 
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
@@ -37,14 +38,12 @@ export async function GET() {
     // premium rewards are still excluded from the count either way.
     const isPremium = await isPremiumMember(userId);
 
-    const [bannerRows, emoteRows, titleRows, glowRows, claimRows] = await Promise.all([
-      sql`SELECT banner_key FROM user_banners WHERE user_id = ${dbUserId}`,
+    const [emoteRows, titleRows, glowRows, claimRows] = await Promise.all([
       sql`SELECT emote_key FROM user_emotes WHERE user_id = ${dbUserId}`,
       sql`SELECT title_key FROM user_special_titles WHERE user_id = ${dbUserId}`,
       sql`SELECT glow_key FROM user_glows WHERE user_id = ${dbUserId}`,
       sql`SELECT level, reward_type FROM battlepass_claims WHERE user_id = ${dbUserId}`,
     ]);
-    const ownedBannerKeys = new Set(bannerRows.map((row) => row.banner_key));
     const ownedEmoteKeys = new Set(emoteRows.map((row) => row.emote_key));
     const ownedTitleKeys = new Set(titleRows.map((row) => row.title_key));
     const ownedGlowKeys = new Set(glowRows.map((row) => row.glow_key));
@@ -63,26 +62,20 @@ export async function GET() {
           reward.type === "shield";
         const isGlow = reward.type === "color";
         const owned =
-          reward.type === "banner"
-            ? ownedBannerKeys.has(reward.key)
-            : reward.type === "emote"
-              ? ownedEmoteKeys.has(reward.key)
-              : isTitle
-                ? ownedTitleKeys.has(reward.key)
-                : isGlow
-                  ? ownedGlowKeys.has(reward.key)
-                  : isFunctional
-                    ? functionalClaims.has(`${lvl}:${reward.type}`)
-                    : false;
+          reward.type === "emote"
+            ? ownedEmoteKeys.has(reward.key)
+            : isTitle
+              ? ownedTitleKeys.has(reward.key)
+              : isGlow
+                ? ownedGlowKeys.has(reward.key)
+                : isFunctional
+                  ? functionalClaims.has(`${lvl}:${reward.type}`)
+                  : false;
         const premiumLocked = reward.premium === true && !isPremium && !owned;
         if (
           !owned &&
           !premiumLocked &&
-          (reward.type === "banner" ||
-            reward.type === "emote" ||
-            isTitle ||
-            isGlow ||
-            isFunctional)
+          (reward.type === "emote" || isTitle || isGlow || isFunctional)
         ) {
           claimableLevels.push(lvl);
         }

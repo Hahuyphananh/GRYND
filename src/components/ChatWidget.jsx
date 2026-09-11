@@ -490,7 +490,11 @@ export default function ChatWidget() {
                           </span>
                           {msg.premium ? (
                             <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]">
-                              GRYND+
+                              {msg.tier === "high_roller"
+                                ? "HIGH ROLLER"
+                                : msg.tier === "pro"
+                                  ? "GRYND PRO"
+                                  : "GRYND+"}
                             </span>
                           ) : null}
                           {msg.equippedTitle ? (

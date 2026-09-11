@@ -9,7 +9,6 @@ import {
   isIconKey,
 } from "../../../lib/iconAssets";
 import { getIconByKey } from "../../../lib/icons";
-import { resolveSelectedBannerKey } from "../../../lib/banners";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions";
 
 export async function POST(req: Request) {
@@ -35,8 +34,6 @@ export async function POST(req: Request) {
           selectedIcon: DEFAULT_ICON_KEY,
           nameColor: null,
           profileAccent: null,
-          selectedBanner: null,
-          avatarFrame: null,
           streakTitle: null,
           selectedStreakType: null,
           dailyStreakCurrent: 0,
@@ -55,7 +52,6 @@ export async function POST(req: Request) {
         glowColor: glows.color,
         isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
         profileAccent: users.profileAccent,
-        avatarFrame: users.avatarFrame,
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
@@ -99,8 +95,6 @@ export async function POST(req: Request) {
       if (!catalog) selectedIcon = DEFAULT_ICON_KEY;
     }
 
-    const selectedBanner = await resolveSelectedBannerKey(clerkId);
-
     // Compute streak title
     const streakInfo = computeEquippedStreakTitle({
       selectedStreakType: user.selectedStreakType,
@@ -124,8 +118,6 @@ export async function POST(req: Request) {
             user.glowColor ||
             (Boolean(user.isPremium) ? user.chatColor || null : null),
           profileAccent: user.profileAccent,
-          selectedBanner,
-          avatarFrame: user.avatarFrame,
           streakTitle: streakInfo.title,
           selectedStreakType: user.selectedStreakType,
           dailyStreakCurrent: user.dailyStreakCurrent,

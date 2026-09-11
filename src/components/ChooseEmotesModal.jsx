@@ -3,7 +3,7 @@
 // src/components/ChooseEmotesModal.jsx
 //
 // The ONLY way a player manages their in-game emote loadout. Mirrors
-// ChooseIconModal / ChooseBannerModal (same modal shell + Grynd styling).
+// ChooseIconModal (same modal shell + Grynd styling).
 //
 // Shows:
 //   * the nine Equipped slots (ordered — the game picker shows exactly this

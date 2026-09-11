@@ -329,15 +329,10 @@ export const users = pgTable("users", {
   // Custom chat name color (Grynd+ perk). Only settable by active members —
   // enforced in /api/user/chat-color. Null = default color.
   chatColor: varchar("chat_color", { length: 7 }),
-  // Grynd+ profile customization suite (accent / banner / avatar frame).
+  // Grynd+ profile accent.
   // Only writable by active members — enforced in
   // /api/user/profile-customization. Null = default styling.
   profileAccent: varchar("profile_accent", { length: 7 }),
-  // Legacy arbitrary URL field retained for compatibility only. Official
-  // profile banners use selectedBanner + the banners/userBanners catalogs.
-  profileBanner: text("profile_banner"),
-  selectedBanner: varchar("selected_banner", { length: 120 }),
-  avatarFrame: varchar("avatar_frame", { length: 40 }),
   // Official Grynd icon the user has equipped. Resolved through the
   // official icon catalog (src/lib/icons.ts) — never an arbitrary URL.
   // Defaults to the official default icon key; NULL/invalid/disabled
@@ -510,9 +505,9 @@ export const userItemEffects = pgTable(
 // PER-LEVEL BATTLEPASS CLAIM JOURNAL
 // ==============================================================================
 // Records which functional battlepass rewards (xp_boost / quest_boost /
-// shield) a player has claimed at each level. Banner/emote/title ownership
-// lives in their own tables (user_banners / user_emotes /
-// user_special_titles); the functional rewards have no other home, and
+// shield) a player has claimed at each level. Emote/title ownership lives
+// in their own tables (user_emotes / user_special_titles); the functional
+// rewards have no other home, and
 // since the track contains many identical items at different levels (ten
 // streak shields), the (user, level, type) uniqueness is what makes each
 // one claimable exactly once. Written only by POST /api/battlepass/claim.
@@ -689,45 +684,10 @@ export const userGlows = pgTable(
   })
 );
 
-// OFFICIAL GRYND PROFILE BANNER CATALOG + OWNERSHIP
-// Banner keys are stable public cosmetic identifiers. Asset paths are trusted
-// catalog data and are never accepted from clients.
-export const banners = pgTable("banners", {
-  id: serial("id").primaryKey(),
-  key: varchar("key", { length: 120 }).notNull().unique(),
-  name: varchar("name", { length: 255 }).notNull(),
-  description: text("description").notNull().default(""),
-  assetPath: text("asset_path").notNull(),
-  rarity: varchar("rarity", { length: 40 }).notNull().default("Common"),
-  enabled: boolean("enabled").notNull().default(true),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const userBanners = pgTable(
-  "user_banners",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    bannerKey: varchar("banner_key", { length: 120 }).notNull(),
-    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    uniqUserBanner: unique("user_banners_user_banner_unique").on(
-      table.userId,
-      table.bannerKey,
-    ),
-    userBannerIdx: index("user_banners_user_idx").on(table.userId, table.bannerKey),
-  }),
-);
-
 // OFFICIAL GRYND ANIMATED EMOTE CATALOG + OWNERSHIP + LOADOUT
 // ==============================================================================
-// Same architecture as the official banners: a catalog table, a per-user
-// ownership join table, and an ordered loadout column on `users`. Emote keys
+// Catalog table, a per-user ownership join table, and an ordered loadout
+// column on `users`. Emote keys
 // are stable public cosmetic identifiers; asset paths are trusted catalog
 // data and are never accepted from clients. GG / NICE MOVE are permanent
 // text system emotes (not in this catalog) and stay out of the 9-slot

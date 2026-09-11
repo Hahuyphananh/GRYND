@@ -111,7 +111,7 @@ test("reward track covers exactly levels 1-100 with reserved slots", () => {
   }
 });
 
-test("rewards contain valid fields and only official banner image rewards", () => {
+test("rewards contain valid fields and only official owned types", () => {
   const supportedTypes = new Set([
     "color",
     "title",
@@ -120,7 +120,6 @@ test("rewards contain valid fields and only official banner image rewards", () =
     "shield",
     "refund",
     "grynd",
-    "banner",
     "emote",
   ]);
   for (const entry of BATTLEPASS_REWARDS) {
@@ -128,23 +127,27 @@ test("rewards contain valid fields and only official banner image rewards", () =
       assert.ok(supportedTypes.has(reward.type), `unsupported reward at level ${entry.level}`);
       assert.ok(reward.type && reward.name && reward.desc, `incomplete reward at level ${entry.level}`);
       assert.ok(reward.rarity, `missing rarity at level ${entry.level}`);
-      if (reward.type === "banner") {
+      if (reward.type === "emote") {
         assert.equal(typeof reward.key, "string");
         assert.match(reward.key, /^[a-z0-9][a-z0-9._-]{0,119}$/);
-        assert.ok(!reward.key.includes("/"), "banner reward must use a stable key");
+        assert.ok(!reward.key.includes("/"), "emote reward must use a stable key");
+      }
+      if (reward.type === "shield") {
+        assert.equal(typeof reward.value, "number", `shield reward at level ${entry.level} must have a numeric value`);
       }
     }
   }
 });
 
-test("level 3 contains the official Neon Grid banner reward", () => {
+test("level 3 contains the Daily Streak Shield reward", () => {
   assert.deepEqual(rewardsForLevel(3), [
     {
-      type: "banner",
-      key: "neon-grid",
-      name: "Neon Grid",
-      desc: "Unlock the Neon Grid profile banner",
+      type: "shield",
+      name: "Daily Streak Shield",
+      desc: "Protects your daily streak for one missed day",
+      value: 1,
       rarity: "Common",
+      premium: true,
     },
   ]);
 });
