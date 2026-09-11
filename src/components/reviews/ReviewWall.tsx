@@ -143,7 +143,6 @@ export default function ReviewWall({ limit = 9 }: { limit?: number }) {
                   iconKey={r.iconKey}
                   name={r.username}
                   size="h-6 w-6"
-                  showFrame={false}
                 />
                 <span className="font-semibold text-[#c9f7ff]/80">{r.username || "Player"}</span>
                 <span className="ml-auto rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">

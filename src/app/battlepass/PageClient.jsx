@@ -10,7 +10,6 @@ import {
   REWARD_RARITIES,
   REWARD_TYPES,
 } from "../../lib/battlepassRewards";
-import { bannerAssetUrl } from "../../lib/bannerAssets";
 import { emoteAssetUrl } from "../../lib/emoteAssets";
 
 function formatNumber(n) {
@@ -32,12 +31,11 @@ export default function BattlepassPageClient() {
   const [pass, setPass] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [failedBannerRewards, setFailedBannerRewards] = useState({});
   const [failedEmoteRewards, setFailedEmoteRewards] = useState({});
   // Prestige tier that just unlocked and is being celebrated (null = none).
   const [prestigeCelebrated, setPrestigeCelebrated] = useState(null);
   // Per-reward claim state — rewards are NEVER auto-granted; the player
-  // clicks "Claim" on each reached banner/emote reward.
+  // clicks "Claim" on each reached emote reward.
   const [claimingKey, setClaimingKey] = useState(null);
   const [claimError, setClaimError] = useState(null);
 
@@ -541,28 +539,6 @@ export default function BattlepassPageClient() {
                                     {reward.name}
                                   </span>
                                 </div>
-                                {reward.type === "banner" && (
-                                  <div className="mt-1 aspect-[3/1] w-full overflow-hidden rounded border border-white/10 bg-[#08142f]">
-                                    {bannerAssetUrl(reward.key) && !failedBannerRewards[reward.key] ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={bannerAssetUrl(reward.key)}
-                                        alt=""
-                                        className="h-full w-full object-cover"
-                                        onError={() =>
-                                          setFailedBannerRewards((previous) => ({
-                                            ...previous,
-                                            [reward.key]: true,
-                                          }))
-                                        }
-                                      />
-                                    ) : (
-                                      <span className="flex h-full items-center justify-center text-[8px] text-white/40">
-                                        Artwork coming soon
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
                                 {reward.type === "emote" && (
                                   <div className="mt-1 flex h-12 items-center justify-center overflow-hidden rounded border border-white/10 bg-[#08142f]">
                                     {emoteAssetUrl(reward.key) && !failedEmoteRewards[reward.key] ? (
@@ -610,8 +586,7 @@ export default function BattlepassPageClient() {
                                     ✦ Grynd+ Premium
                                   </div>
                                 )}
-                                {(reward.type === "banner" ||
-                                  reward.type === "emote" ||
+                                {(reward.type === "emote" ||
                                   reward.type === "title" ||
                                   reward.type === "color" ||
                                   reward.type === "xp_boost" ||
@@ -622,7 +597,7 @@ export default function BattlepassPageClient() {
                                       Unlocked
                                     </div>
                                   )}
-                                {(reward.type === "banner" ||
+                                {(reward.type === "emote" ||
                                   reward.type === "emote" ||
                                   reward.type === "title" ||
                                   reward.type === "color" ||

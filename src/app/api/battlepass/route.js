@@ -29,7 +29,6 @@ export async function GET() {
     let dbUserId = null;
     let prestigeLevel = 0;
     let prestigeNetWins = 0;
-    let ownedBannerKeys = new Set();
     let ownedEmoteKeys = new Set();
     let ownedTitleKeys = new Set();
     let ownedGlowKeys = new Set();
@@ -61,10 +60,6 @@ export async function GET() {
         // existing ownership so previously-unlocked rewards (e.g. from the
         // old auto-grant era) still show as "Unlocked" and are never
         // revoked.
-        const ownedRows = await sql`
-          SELECT banner_key FROM user_banners WHERE user_id = ${dbUserId}
-        `;
-        ownedBannerKeys = new Set(ownedRows.map((row) => row.banner_key));
         const ownedEmoteRows = await sql`
           SELECT emote_key FROM user_emotes WHERE user_id = ${dbUserId}
         `;
@@ -104,7 +99,6 @@ export async function GET() {
     for (let level = 1; level <= MAX_LEVEL; level++) {
       const reached = level <= progress.level;
       const rewards = rewardsForLevel(level).map((reward) => {
-        const isBanner = reward.type === "banner";
         const isEmote = reward.type === "emote";
         const isTitle = reward.type === "title";
         const isGlow = reward.type === "color";
@@ -113,17 +107,15 @@ export async function GET() {
           reward.type === "quest_boost" ||
           reward.type === "shield";
         const owned =
-          isBanner && dbUserId
-            ? ownedBannerKeys.has(reward.key)
-            : isEmote && dbUserId
-              ? ownedEmoteKeys.has(reward.key)
-              : isTitle && dbUserId
-                ? ownedTitleKeys.has(reward.key)
-                : isGlow && dbUserId
-                  ? ownedGlowKeys.has(reward.key)
-                  : isFunctional && dbUserId
-                    ? functionalClaims.has(`${level}:${reward.type}`)
-                    : false;
+          isEmote && dbUserId
+            ? ownedEmoteKeys.has(reward.key)
+            : isTitle && dbUserId
+              ? ownedTitleKeys.has(reward.key)
+              : isGlow && dbUserId
+                ? ownedGlowKeys.has(reward.key)
+                : isFunctional && dbUserId
+                  ? functionalClaims.has(`${level}:${reward.type}`)
+                  : false;
         // Premium rewards are locked for non-members UNLESS already owned
         // (grandfathered owners keep their rewards visible + unlocked).
         const premium = reward.premium === true;
@@ -135,7 +127,7 @@ export async function GET() {
           !owned &&
           !locked &&
           reached &&
-          (isBanner || isEmote || isTitle || isGlow || isFunctional);
+          (isEmote || isTitle || isGlow || isFunctional);
         if (claimable) unclaimedCount += 1;
         return { ...reward, premium, locked, claimed: owned, claimable };
       });
@@ -155,8 +147,9 @@ export async function GET() {
         ...progress,
         ...prestigeStatus,
         levels,
-        // Number of banner/emote rewards the player has reached but not
-        // yet claimed — drives the navbar nudge + "rewards ready" chip.
+        // Number of emote/title/glow/functional rewards the player has
+        // reached but not yet claimed — drives the navbar nudge + "rewards
+        // ready" chip.
         unclaimedCount,
         // True when the viewer holds an active Grynd+ membership — lets the
         // page render the premium track's lock state and subscribe CTA.

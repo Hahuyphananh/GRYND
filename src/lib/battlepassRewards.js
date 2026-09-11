@@ -3,7 +3,7 @@
 // Per-level battlepass rewards. Small rewards early, rare rewards at the
 // end. Official image-based rewards reference stable catalog keys.
 //
-// Reserved-empty levels (future icons, frames, banners, and other cosmetics):
+// Reserved-empty levels (future icons, frames, and other cosmetics):
 //   9, 17, 27, 36, 49, 61, 67, 73, 86, 93, 97
 // (6, 13, 22, 31, 42, 56 and 81 used to be reserved-empty too, but now hold
 // the official animated emote rewards — the 7 Battle Pass Noto emotes.)
@@ -17,7 +17,6 @@ export const REWARD_TYPES = {
   shield: { label: "Streak Shield", color: "#38bdf8" },
   refund: { label: "Loss Refund", color: "#f472b6" },
   grynd: { label: "Grynd+ Days", color: "#a78bfa" },
-  banner: { label: "Profile Banner", color: "#22d3ee" },
   emote: { label: "Animated Emote", color: "#22d3ee" },
 };
 
@@ -36,7 +35,7 @@ export const REWARD_RARITIES = {
 const REWARDS = [
   [1, [{ type: "color", key: "cyan", name: "Cyan Glow", desc: "Unlock the cyan name glow", value: "#00e5ff", rarity: "Common" }]],
   [2, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
-  [3, [{ type: "banner", key: "neon-grid", name: "Neon Grid", desc: "Unlock the Neon Grid profile banner", rarity: "Common" }]],
+  [3, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [4, [{ type: "title", key: "bp_pass_starter", name: "Pass Starter", desc: "Battlepass-exclusive title", rarity: "Common" }]],
   [5, [{ type: "color", key: "lime", name: "Lime Glow", desc: "Unlock the lime name glow", value: "#a3e635", rarity: "Common" }]],
   [6, [{ type: "emote", key: "hype", name: "Hype Emote", desc: "Unlock the animated Hype emote for in-game use", rarity: "Common" }]],
@@ -139,15 +138,15 @@ export const RESERVED_LEVELS = [9, 17, 27, 36, 49, 61, 67, 73, 86, 93, 97];
 //     streak shields — 34 slots) + the 4 Silver-and-up animated emotes
 //     (skull, thumbs up, clap, star). These are the high-value rewards
 //     members can actually claim (they grant the item-shop inventory).
-//   * Free: all titles, all name glows, the Neon Grid banner, the 3 early
-//     emotes (hype, victory, party), and the Level-100 capstone — the free
-//     track still reads as a complete progression, and free players still
-//     get claimable titles.
+//   * Free: all titles, all name glows, the 3 early emotes (hype, victory,
+//     party), and the Level-100 capstone — the free track still reads as a
+//     complete progression, and free players still get claimable titles.
 //
-// Note: refund / grynd rewards stay on the free track as decoration — they
-// have no grant path yet (loss refunds need a settlement hook; Grynd+ days
-// need membership-day logic). Gating them would show locked rewards nobody
-// can claim.
+// Note: the Daily Streak Shield at level 3 is premium (like every shield),
+// so non-members see it locked until they subscribe. refund / grynd rewards
+// stay on the free track as decoration — they have no grant path yet (loss
+// refunds need a settlement hook; Grynd+ days need membership-day logic).
+// Gating them would show locked rewards nobody can claim.
 //
 // Grandfathering: ownership is checked BEFORE the premium gate in the claim
 // route, so anyone who already earned a premium reward keeps it forever —

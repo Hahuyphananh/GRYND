@@ -5,7 +5,6 @@ import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
-import { resolveSelectedBannerKey } from "../../../../lib/banners";
 import { getLevelFromXp } from "../../../../lib/battlepass";
 import {
   getPrestigeStatus,
@@ -39,11 +38,9 @@ export async function GET(req: NextRequest) {
         clerkId: users.clerkId,
         name: users.name,
         selectedIcon: users.selectedIcon,
-        // Grynd+ cosmetics — public by design (that's the point of showing
-        // them off). Cosmetic display data only.
+        // Grynd+ accent — public by design (that's the point of showing it
+        // off). Cosmetic display data only.
         profileAccent: users.profileAccent,
-        selectedBanner: users.selectedBanner,
-        avatarFrame: users.avatarFrame,
         level: users.level,
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
@@ -110,8 +107,6 @@ export async function GET(req: NextRequest) {
       if (!catalog) safeIcon = DEFAULT_ICON_KEY;
     }
 
-    const selectedBanner = await resolveSelectedBannerKey(clerkId);
-
     // Battlepass level is derived from XP (wagering + quests), not the
     // possibly-stale stored level column.
     const battlepassLevel = getLevelFromXp(Number(user.xp) || 0);
@@ -137,7 +132,6 @@ export async function GET(req: NextRequest) {
         ...safeUser,
         level: battlepassLevel,
         selectedIcon: safeIcon,
-        selectedBanner,
         prestige: prestige.prestige,
         prestigeNetWins: prestige.prestigeNetWins,
         nextPrestigeRequirement: prestige.nextPrestigeRequirement,

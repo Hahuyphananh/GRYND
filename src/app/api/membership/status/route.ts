@@ -13,12 +13,16 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
-import { findActiveSubscription } from "../../../../lib/stripe/subscriptions";
+import { findActiveSubscription, TIER_BY_PLAN_KEY } from "../../../../lib/stripe/subscriptions";
 
 export const runtime = "nodejs";
 
-/** Title shown next to members' names (Grynd+ exclusive). */
-export const MEMBERSHIP_TITLE = "GRYND+ Elite";
+/** Titles shown next to members' names, by tier. */
+export const MEMBERSHIP_TITLES = {
+  grynd_plus: "GRYND+ Elite",
+  pro: "GRYND PRO",
+  high_roller: "GRYND HIGH ROLLER",
+} as const;
 
 export async function GET() {
   const { userId } = await auth();
@@ -30,6 +34,10 @@ export async function GET() {
   if (!subscription) {
     return NextResponse.json({ success: true, active: false });
   }
+
+  // Tier from the plan key — unknown keys still count as the base tier so a
+  // paying member is never silently downgraded.
+  const tier = TIER_BY_PLAN_KEY[subscription.planKey] ?? "grynd_plus";
 
   // The user's saved chat color (Grynd+ perk) so the profile picker can
   // initialize from it.
@@ -43,11 +51,12 @@ export async function GET() {
     success: true,
     active: true,
     planKey: subscription.planKey,
+    tier,
     status: subscription.status,
     currentPeriodEnd: subscription.currentPeriodEnd
       ? subscription.currentPeriodEnd.toISOString()
       : null,
-    title: MEMBERSHIP_TITLE,
+    title: MEMBERSHIP_TITLES[tier],
     chatColor: userRow?.chatColor ?? null,
   });
 }

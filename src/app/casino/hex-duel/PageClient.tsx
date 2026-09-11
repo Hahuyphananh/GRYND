@@ -549,7 +549,7 @@ function PlayerCard({
         <span className="relative flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>
           {/* Official Grynd icon — falls back to a letter circle when
               the key is missing/invalid. */}
-          <IconAvatar iconKey={iconKey} name={label} size="h-6 w-6" showFrame={false} />
+          <IconAvatar iconKey={iconKey} name={label} size="h-6 w-6" />
           <span className="truncate" style={nameColor ? { color: nameColor } : undefined}>
             {label}
           </span>

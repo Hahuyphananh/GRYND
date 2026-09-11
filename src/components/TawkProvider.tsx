@@ -72,7 +72,13 @@ export default function TawkProvider() {
           window.Tawk_API.setAttributes?.(
             {
               premium: active,
-              premiumTier: active ? "grynd+" : null,
+              premiumTier: active
+                ? data?.tier === "high_roller"
+                  ? "high-roller"
+                  : data?.tier === "pro"
+                    ? "pro"
+                    : "grynd+"
+                : null,
             },
             () => {},
           );

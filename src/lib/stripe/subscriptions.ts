@@ -13,14 +13,21 @@
 //   * resolveSubscriptionPlanPriceCents(plan) — authoritative display price,
 //     preferring the product's active recurring Stripe price.
 //   * findActiveSubscription(clerkId) — the user's current subscription.
+//   * getMembershipTier(clerkId) — the user's tier (free | grynd_plus | pro |
+//     high_roller) resolved from the active subscription's plan key. Higher
+//     tiers also earn monthly perk grants (see TIER_MONTHLY_GRANTS) credited
+//     by the webhook alongside the token grant.
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
   tokenSubscriptionCredits,
   tokenSubscriptionPlans,
   tokenSubscriptions,
   tokenTransactions,
+  userItemEffects,
+  userItems,
+  users,
 } from "../../db/schema";
 import { getStripe } from "../stripe";
 import { MANAGED_PAYMENTS_TAX_CODE } from "./packages";
@@ -38,6 +45,44 @@ export type SubscriptionPlanBundle = {
 
 /** Statuses that count as "the user currently has an active subscription". */
 export const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"];
+
+/** Membership tiers, ordered low → high. */
+export type MembershipTier = "grynd_plus" | "pro" | "high_roller";
+
+/**
+ * Tier resolution: subscription plan key → membership tier. Unknown/legacy
+ * plan keys keep behaving as the base tier so an active paid membership is
+ * never silently downgraded to "no perks".
+ */
+export const TIER_BY_PLAN_KEY: Record<string, MembershipTier> = {
+  "grynd-plus": "grynd_plus",
+  "grynd-pro": "pro",
+  "grynd-high-roller": "high_roller",
+};
+
+/**
+ * The `perks` advertised on the higher-tier Shop cards that are granted
+ * mechanically per paid invoice (besides the token grant): Daily Streak
+ * Shields + a 3× XP boost window. Credited inside the same transaction as the
+ * monthly token grant so a given paid invoice always delivers the full
+ * reward exactly once (idempotent on the invoice id).
+ */
+export const TIER_MONTHLY_GRANTS: Record<
+  string,
+  { streakShields: number; xpBoost3xHours: number }
+> = {
+  "grynd-pro": { streakShields: 3, xpBoost3xHours: 48 },
+  "grynd-high-roller": { streakShields: 5, xpBoost3xHours: 96 },
+};
+
+/** The user's current membership tier, or null when they have no active plan. */
+export async function getMembershipTier(
+  clerkId: string
+): Promise<MembershipTier | null> {
+  const sub = await findActiveSubscription(clerkId);
+  if (!sub) return null;
+  return TIER_BY_PLAN_KEY[sub.planKey] ?? "grynd_plus";
+}
 
 /**
  * Guarantee the plan has a Stripe Product + recurring monthly Price, creating
@@ -278,6 +323,56 @@ export async function grantSubscriptionInvoiceTokens(params: {
       referenceId: invoiceId,
       note: `Subscription ${planKey}`,
     });
+
+    // Higher tiers also grant monthly consumable perks inside the same
+    // transaction (sales copy lives in the plan's `perks` column). Uses the
+    // same write shapes as the shop/battlepass (user_items upsert +
+    // user_item_effects extend-or-activate), so exempted monthly shields/XP
+    // boost never add a second, unaccounted source of inventory writes.
+    const tierGrant = TIER_MONTHLY_GRANTS[planKey];
+    if (tierGrant) {
+      const [appUser] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.clerkId, clerkId))
+        .limit(1);
+      if (appUser) {
+        if (tierGrant.streakShields > 0) {
+          await tx
+            .insert(userItems)
+            .values({
+              userId: appUser.id,
+              itemKey: "streak_shield",
+              qty: tierGrant.streakShields,
+            })
+            .onConflictDoUpdate({
+              target: [userItems.userId, userItems.itemKey],
+              set: {
+                qty: sql`${userItems.qty} + ${tierGrant.streakShields}`,
+                updatedAt: new Date(),
+              },
+            });
+        }
+        if (tierGrant.xpBoost3xHours > 0) {
+          await tx
+            .insert(userItemEffects)
+            .values({
+              userId: appUser.id,
+              effectKey: "xp_boost_3x_48h",
+              expiresAt: new Date(
+                Date.now() + tierGrant.xpBoost3xHours * 3600 * 1000
+              ),
+            })
+            .onConflictDoUpdate({
+              target: [userItemEffects.userId, userItemEffects.effectKey],
+              set: {
+                expiresAt: sql`GREATEST(${userItemEffects.expiresAt}, now()) + make_interval(hours => ${tierGrant.xpBoost3xHours})`,
+                updatedAt: new Date(),
+              },
+            });
+        }
+      }
+    }
 
     return true;
   });

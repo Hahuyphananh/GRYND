@@ -9,10 +9,14 @@ import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { sanitizeString } from "../../../../lib/security/validation";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
-import { ACTIVE_SUBSCRIPTION_STATUSES, isPremiumMember } from "../../../../lib/stripe/subscriptions";
+import { ACTIVE_SUBSCRIPTION_STATUSES, getMembershipTier, TIER_BY_PLAN_KEY } from "../../../../lib/stripe/subscriptions";
 
-// Membership title shown next to members' names in chat.
-const MEMBERSHIP_TITLE = "GRYND+ Elite";
+// Membership title shown next to members' names in chat, by tier.
+const MEMBERSHIP_TITLES = {
+  grynd_plus: "GRYND+ Elite",
+  pro: "GRYND PRO",
+  high_roller: "GRYND HIGH ROLLER",
+};
 
 const ALLOWED_ROOM_TYPES = new Set(["global", "game"]);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -99,6 +103,7 @@ export async function GET(req) {
         selectedGlow: users.selectedGlow,
         glowColor: glows.color,
         premiumStatus: tokenSubscriptions.status,
+        planKey: tokenSubscriptions.planKey,
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
         showPrestigeBadge: users.showPrestigeBadge,
@@ -146,7 +151,13 @@ export async function GET(req) {
         showPrestigeBadge: msg.showPrestigeBadge,
       });
       const primaryTitle = prestigeBadge || specialTitle || regularTitle || null;
-      const premium = Boolean(msg.premiumStatus);
+      // Tier from the joined subscription row: an active plan key maps to a
+      // known tier; unknown keys still count as the base membership (never
+      // silently downgrade a paying user).
+      const tier = msg.planKey
+        ? TIER_BY_PLAN_KEY[msg.planKey] || "grynd_plus"
+        : null;
+      const premium = tier !== null;
 
       // Remove extra fields we added for computation
       const {
@@ -156,6 +167,7 @@ export async function GET(req) {
         selectedGlow,
         glowColor,
         premiumStatus,
+        planKey,
         xp,
         prestigeLevel,
         showPrestigeBadge,
@@ -166,7 +178,8 @@ export async function GET(req) {
         equippedTitle: primaryTitle,
         streakTitle: streakTitle || null,
         premium,
-        premiumTitle: premium ? MEMBERSHIP_TITLE : null,
+        tier,
+        premiumTitle: premium ? MEMBERSHIP_TITLES[tier] || null : null,
         // Name color precedence: an equipped battlepass glow (any member,
         // catalog hex) outranks the Grynd+ free-form chat color. The custom
         // chat color stays a membership perk — only surfaced for members
@@ -235,7 +248,8 @@ export async function POST(req) {
       .where(eq(users.clerkId, userId))
       .limit(1);
 
-    const premium = await isPremiumMember(userId);
+    const tier = await getMembershipTier(userId);
+    const premium = tier !== null;
     const displayName = appUser?.name?.trim() || "Player";
     // Official Grynd icon only. A malformed/legacy value can never reach a
     // live <img> — fall back to the official default key.
@@ -297,7 +311,9 @@ export async function POST(req) {
           equippedTitle,
           streakTitle,
           premium,
-          premiumTitle: premium ? MEMBERSHIP_TITLE : null,
+          tier,
+          premiumTitle:
+            premium && tier ? MEMBERSHIP_TITLES[tier] || null : null,
           // Glow outranks the free-form membership chat color (see GET).
           chatColor:
             appUser?.glowColor || (premium ? (appUser?.chatColor || null) : null),

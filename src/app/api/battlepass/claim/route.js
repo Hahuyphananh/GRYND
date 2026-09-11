@@ -6,8 +6,8 @@
 // validation only: the reward must exist in the track at or below the
 // player's current level. Supports every ownership-tracked reward type:
 //
-//   * banner / emote  — key-based cosmetics (user_banners / user_emotes)
-//   * title           — battlepass-exclusive special titles
+//   * emote                — key-based cosmetics (user_emotes)
+//   * title                — battlepass-exclusive special titles
 //                       (user_special_titles via unlockTitle)
 //   * xp_boost / quest_boost / shield — functional rewards granted into
 //                       the item-shop inventory (user_item_effects /
@@ -23,7 +23,6 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
-import { unlockBanner } from "../../../../lib/banners";
 import { unlockEmote } from "../../../../lib/emotes";
 import { unlockTitle } from "../../../../lib/specialTitles";
 import { unlockGlow } from "../../../../lib/glows";
@@ -38,7 +37,6 @@ import {
 // Reward types that can be granted. The functional types carry no key —
 // they're disambiguated by the track level in the request.
 const CLAIMABLE_TYPES = new Set([
-  "banner",
   "emote",
   "title",
   "color",
@@ -90,7 +88,7 @@ export async function POST(req) {
     );
 
     // Locate the claimed reward:
-    //   * key-based types (banner/emote/title) — first matching entry at or
+    //   * key-based types (emote/title/color) — first matching entry at or
     //     below the player's level (existing behavior).
     //   * functional types (xp_boost/quest_boost/shield) — the EXACT track
     //     level in the request (they have no key, and each identical entry
@@ -145,14 +143,7 @@ export async function POST(req) {
     // this reward keeps claiming it forever — even non-members whose
     // membership lapsed. Premium status only blocks NEW claims.
     let owned = false;
-    if (type === "banner") {
-      const ownedRows = await sql`
-        SELECT 1 FROM user_banners
-         WHERE user_id = ${dbUserId} AND banner_key = ${key}
-         LIMIT 1
-      `;
-      owned = ownedRows.length > 0;
-    } else if (type === "emote") {
+    if (type === "emote") {
       const ownedRows = await sql`
         SELECT 1 FROM user_emotes
          WHERE user_id = ${dbUserId} AND emote_key = ${key}
@@ -195,9 +186,7 @@ export async function POST(req) {
     }
 
     // ── Grant ──
-    if (type === "banner") {
-      await unlockBanner(dbUserId, key);
-    } else if (type === "emote") {
+    if (type === "emote") {
       await unlockEmote(dbUserId, key);
     } else if (type === "title") {
       await unlockTitle(dbUserId, key);
@@ -206,7 +195,7 @@ export async function POST(req) {
     } else {
       // Functional rewards: grant the inventory item / timed effect, then
       // record the per-level claim so the identical entry can't be claimed
-      // twice. (For title/banner/emote the ownership row IS the record.)
+      // twice. (For title/emote/color the ownership row IS the record.)
       if (type === "xp_boost") {
         const mult = Number(reward.value?.multiplier) || 2;
         const hours = Number(reward.value?.hours) || 24;

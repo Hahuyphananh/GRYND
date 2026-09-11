@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../lib/security/idempotency";
-import { isPremiumMember } from "../../../lib/stripe/subscriptions";
+import { getMembershipTier } from "../../../lib/stripe/subscriptions";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { updateDailyStreak } from "../../../lib/dailyStreak";
 import { hasItem } from "../../../lib/shopItems";
@@ -142,12 +142,15 @@ export async function POST(req) {
       }
     }
 
-    //  Calculate reward AFTER reset logic. Grynd+ members earn +50% on the
-    //  daily login reward (perk: login bonus multiplier).
-    const premium = await isPremiumMember(userId);
+    //  Calculate reward AFTER reset logic. Members earn a bonus on the daily
+    //  login reward scaled by tier: Grynd+ +50%, Grynd Pro +75%, Grynd High
+    //  Roller +100% (perk: login bonus multiplier).
+    const tier = await getMembershipTier(userId);
     const baseReward = LOGIN_REWARD_PER_DAY * rewardData.currentDay;
-    const reward = Math.round(baseReward * (premium ? 1.5 : 1));
-    const premiumBonus = premium ? reward - baseReward : 0;
+    const tierMultiplier =
+      tier === "high_roller" ? 2 : tier === "pro" ? 1.75 : tier === "grynd_plus" ? 1.5 : 1;
+    const reward = Math.round(baseReward * tierMultiplier);
+    const premiumBonus = reward - baseReward;
 
     await db
       .update(users)
@@ -234,7 +237,7 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       reward,
-      premium,
+      premium: tier !== null,
       premiumBonus,
       claimedDay: rewardData.currentDay,
       nextDay,

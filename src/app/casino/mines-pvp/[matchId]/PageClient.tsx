@@ -242,7 +242,7 @@ function PlayerSeat({
         <span className="relative flex min-w-0 items-center gap-2">
           {/* Official Grynd icon — falls back to a letter circle when
               the key is missing/invalid. */}
-          <IconAvatar iconKey={iconKey} name={name} size="h-7 w-7" showFrame={false} />
+          <IconAvatar iconKey={iconKey} name={name} size="h-7 w-7" />
           <span
             className="truncate text-sm font-bold text-white/90"
             style={nameColor ? { color: nameColor } : undefined}
