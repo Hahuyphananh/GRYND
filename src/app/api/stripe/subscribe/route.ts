@@ -129,9 +129,12 @@ export async function POST(req: NextRequest) {
     success_url: `${baseUrl}/shop?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/shop?checkout=cancelled`,
     allow_promotion_codes: true,
-    // Same Managed Payments opt-out as checkout: the app collects no tax and
-    // plans may lack a tax_code, which Managed Payments would reject.
-    managed_payments: { enabled: false },
+    // Managed Payments is enabled by default on the account and is the
+    // merchant of record for Grynd subscriptions too (plans are created via
+    // Checkout, which Managed Payments supports). The plan product now carries
+    // the eligible tax code txcd_10103100 (see subscriptions.ts), so the
+    // recurring checkout runs WITH Managed Payments enabled.
+    managed_payments: { enabled: true },
     integration_identifier: `grynd_subscribe_${randomSuffix()}`,
   });
 
