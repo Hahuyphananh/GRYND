@@ -55,6 +55,8 @@ export async function ensureSubscriptionPlanStripe(
 
   // If only the price id is known (e.g. pasted from the Dashboard), resolve
   // its product so we never create a duplicate product for an existing price.
+  // A binding can go stale when switching test -> live keys: the id no longer
+  // resolves, so clear it and create a fresh product + price below (self-heal).
   if (!productId && priceId) {
     try {
       const price = await stripe.prices.retrieve(priceId);
@@ -63,7 +65,8 @@ export async function ensureSubscriptionPlanStripe(
         changed = true;
       }
     } catch {
-      // fall through to creating a product below
+      priceId = null;
+      changed = true;
     }
   }
 

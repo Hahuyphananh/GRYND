@@ -76,6 +76,33 @@ export async function ensurePackageStripe(
   let priceId = pkg.stripePriceId;
   let changed = false;
 
+  if (productId) {
+    // Reusing an existing product. Bindings can go stale (e.g. created under
+    // test keys, then switched to live keys — the ids no longer resolve). If
+    // the product is unreachable, clear the doomed binding and fall through to
+    // creating a fresh product + price below, so the live switch self-heals
+    // instead of failing. Otherwise reconcile the tax code to the Managed
+    // Payments-eligible code (pre-MSP products were created with the
+    // ineligible `txcd_99999999` and would make Managed Payments checkout 400).
+    try {
+      await stripe.products.retrieve(productId);
+      try {
+        const updated = await stripe.products.update(productId, {
+          tax_code: MANAGED_PAYMENTS_TAX_CODE,
+        });
+        if (typeof updated.default_price === "string" && !priceId) {
+          priceId = updated.default_price;
+        }
+      } catch {
+        // Non-fatal: the price resolution below still works / later retries.
+      }
+    } catch {
+      productId = null;
+      priceId = null;
+      changed = true;
+    }
+  }
+
   if (!productId) {
     // Managed Payments (merchant of record — on by default on this account)
     // requires every product to carry a tax code eligible for Managed Payments.
@@ -99,22 +126,6 @@ export async function ensurePackageStripe(
       priceId = product.default_price;
     }
     changed = true;
-  } else {
-    // Reusing an existing product: reconcile its tax code to the Managed
-    // Payments-eligible code. Products bound before Managed Payments was
-    // enabled were created with `txcd_99999999` (ineligible) and would make
-    // the checkout 400 — re-point them to the eligible code so Managed
-    // Payments can charge for this package.
-    try {
-      const updated = await stripe.products.update(productId, {
-        tax_code: MANAGED_PAYMENTS_TAX_CODE,
-      });
-      if (typeof updated.default_price === "string" && !priceId) {
-        priceId = updated.default_price;
-      }
-    } catch {
-      // Non-fatal: the price resolution below still works / later retries.
-    }
   }
 
   if (!priceId) {
