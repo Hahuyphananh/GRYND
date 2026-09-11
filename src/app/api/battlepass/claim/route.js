@@ -22,13 +22,24 @@
 // lapses.
 
 import { auth } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 import { getNeonSql } from "../../../../db/neon";
+import { db } from "../../../../db";
+import {
+  tokenSubscriptionPlans,
+  stripeCheckoutSessions,
+} from "../../../../db/schema";
 import { unlockEmote } from "../../../../lib/emotes";
 import { unlockTitle } from "../../../../lib/specialTitles";
 import { unlockGlow } from "../../../../lib/glows";
 import { getLevelFromXp } from "../../../../lib/battlepass";
 import { rewardsForLevel } from "../../../../lib/battlepassRewards";
-import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
+import { getStripe, getBaseUrl } from "../../../../lib/stripe";
+import {
+  isPremiumMember,
+  ensureSubscriptionPlanStripe,
+  findActiveSubscription,
+} from "../../../../lib/stripe/subscriptions";
 import {
   activateTimedEffect,
   grantItem,
@@ -40,6 +51,7 @@ const CLAIMABLE_TYPES = new Set([
   "emote",
   "title",
   "color",
+  "grynd",
   "xp_boost",
   "quest_boost",
   "shield",
@@ -50,6 +62,11 @@ const FUNCTIONAL_GRANTS = {
   quest_boost: { itemKey: "quest_boost_3" },
   shield: { itemKey: "streak_shield" },
 };
+
+/** 8 random lowercase letters suffix for the checkout integration_identifier. */
+function randomSuffix() {
+  return Math.random().toString(36).slice(2, 10).toLowerCase();
+}
 
 export async function POST(req) {
   try {
@@ -95,7 +112,7 @@ export async function POST(req) {
     //     is a distinct claimable reward).
     let rewardLevel = null;
     let reward = null;
-    const isFunctional = type in FUNCTIONAL_GRANTS;
+    const isFunctional = type in FUNCTIONAL_GRANTS || type === "grynd";
     if (isFunctional) {
       if (!Number.isInteger(levelParam) || levelParam < 1 || levelParam > level) {
         return Response.json(
@@ -192,6 +209,87 @@ export async function POST(req) {
       await unlockTitle(dbUserId, key);
     } else if (type === "color") {
       await unlockGlow(dbUserId, key);
+    } else if (type === "grynd") {
+      // Membership-trial reward ("X Days of Grynd+"): send the player to a
+      // Stripe subscription checkout with a FREE trial of `days` days. The
+      // card is set up during checkout but nothing is charged until the
+      // trial ends. The trial subscription (status "trialing") counts as an
+      // active membership — badges/tier work immediately; the first monthly
+      // tokens are granted by the webhook on the first PAID invoice.
+      const days = Math.min(30, Math.max(1, Number(reward.value) || 7));
+      const active = await findActiveSubscription(userId);
+      if (active) {
+        return Response.json(
+          {
+            success: false,
+            error:
+              "You already have an active membership — this free-trial reward applies to a new membership.",
+            code: "already_subscribed",
+          },
+          { status: 409 },
+        );
+      }
+      const plan = await db
+        .select()
+        .from(tokenSubscriptionPlans)
+        .where(eq(tokenSubscriptionPlans.key, "grynd-plus"))
+        .limit(1)
+        .then((rows) => rows[0]);
+      if (!plan || !plan.enabled) {
+        throw new Error("grynd-plus plan is missing or disabled");
+      }
+      const resolvedPriceId = (
+        await ensureSubscriptionPlanStripe({
+          id: plan.id,
+          key: plan.key,
+          name: plan.name,
+          monthlyTokens: Number(plan.monthlyTokens),
+          priceCents: plan.priceCents,
+          stripeProductId: plan.stripeProductId,
+          stripePriceId: plan.stripePriceId,
+        })
+      ).priceId;
+      const baseUrl = getBaseUrl();
+      const session = await getStripe().checkout.sessions.create({
+        mode: "subscription",
+        line_items: [{ price: resolvedPriceId, quantity: 1 }],
+        client_reference_id: userId,
+        metadata: { clerkId: userId, planKey: plan.key, battlepassTrialDays: days },
+        subscription_data: {
+          metadata: { clerkId: userId, planKey: plan.key, battlepassTrialDays: days },
+          trial_period_days: days,
+        },
+        success_url: `${baseUrl}/battlepass?checkout=success`,
+        cancel_url: `${baseUrl}/battlepass?checkout=cancelled`,
+        allow_promotion_codes: true,
+        managed_payments: { enabled: true },
+        integration_identifier: `grynd_bp_trial_${randomSuffix()}`,
+      });
+      await db
+        .insert(stripeCheckoutSessions)
+        .values({
+          sessionId: session.id,
+          clerkId: userId,
+          packageKey: plan.key,
+          sessionMode: "subscription",
+          tokenAmount: 0,
+          amountCents: plan.priceCents,
+          currency: "usd",
+          paymentStatus: "open",
+          fulfilled: false,
+        })
+        .onConflictDoNothing({ target: stripeCheckoutSessions.sessionId });
+      await sql`
+        INSERT INTO battlepass_claims (user_id, level, reward_type, reward_key)
+        VALUES (${dbUserId}, ${rewardLevel}, 'grynd', NULL)
+        ON CONFLICT DO NOTHING
+      `;
+      return Response.json({
+        success: true,
+        alreadyClaimed: false,
+        claimed,
+        checkoutUrl: session.url ?? null,
+      });
     } else {
       // Functional rewards: grant the inventory item / timed effect, then
       // record the per-level claim so the identical entry can't be claimed

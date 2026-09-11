@@ -70,7 +70,8 @@ export default function BattlepassPageClient() {
     const isFunctional =
       reward.type === "xp_boost" ||
       reward.type === "quest_boost" ||
-      reward.type === "shield";
+      reward.type === "shield" ||
+      reward.type === "grynd";
     const key = `${reward.type}:${reward.key ?? `lvl${level}`}`;
     setClaimingKey(key);
     setClaimError(null);
@@ -87,6 +88,12 @@ export default function BattlepassPageClient() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         setClaimError(data.error || "Could not claim this reward.");
+        return;
+      }
+      // Grynd+ Days rewards hand back a Stripe checkout URL (free trial) —
+      // mirror the claimed state locally, then send the player to Stripe.
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
         return;
       }
       // Update the pass IN PLACE so the claimed reward flips to "Unlocked"
