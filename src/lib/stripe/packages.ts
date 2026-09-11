@@ -18,6 +18,15 @@ import { db } from "../../db/client";
 import { tokenPackages } from "../../db/schema";
 import { getStripe } from "../stripe";
 
+/**
+ * Product tax code eligible for Managed Payments (`txcd_10103100` — SaaS,
+ * electronic download, personal use). Managed Payments (merchant of record)
+ * is enabled for Grynd's one-time checkout and requires every product to use
+ * an eligible tax code; the generic `txcd_99999999` e-services code is not
+ * eligible and makes Managed Payments checkout fail.
+ */
+export const MANAGED_PAYMENTS_TAX_CODE = "txcd_10103100";
+
 export type PackagePriceBundle = {
   id: number;
   key: string;
@@ -68,17 +77,44 @@ export async function ensurePackageStripe(
   let changed = false;
 
   if (!productId) {
+    // Managed Payments (merchant of record — on by default on this account)
+    // requires every product to carry a tax code eligible for Managed Payments.
+    // `txcd_10103100` (SaaS — electronic download, personal use) is eligible;
+    // the general e-services code `txcd_99999999` is not and made one-time
+    // checkout 400. The product and its default one-time price are created in
+    // one call via `default_price_data`; the returned `default_price` becomes
+    // the session's price id (blueprint: Managed Payments settings).
     const product = await stripe.products.create({
       name: `${pkg.name} — Grynd Tokens`,
       description: getPackageDescription(pkg.key),
-      // Managed Payments (on by default) rejects checkout for products without
-      // a tax code. `txcd_99999999` is Stripe's general tax code for
-      // electronically supplied services — the right fit for virtual tokens.
-      tax_code: "txcd_99999999",
+      tax_code: MANAGED_PAYMENTS_TAX_CODE,
+      default_price_data: {
+        unit_amount: pkg.priceCents,
+        currency: "usd",
+      },
       metadata: { packageKey: pkg.key },
     });
     productId = product.id;
+    if (typeof product.default_price === "string") {
+      priceId = product.default_price;
+    }
     changed = true;
+  } else {
+    // Reusing an existing product: reconcile its tax code to the Managed
+    // Payments-eligible code. Products bound before Managed Payments was
+    // enabled were created with `txcd_99999999` (ineligible) and would make
+    // the checkout 400 — re-point them to the eligible code so Managed
+    // Payments can charge for this package.
+    try {
+      const updated = await stripe.products.update(productId, {
+        tax_code: MANAGED_PAYMENTS_TAX_CODE,
+      });
+      if (typeof updated.default_price === "string" && !priceId) {
+        priceId = updated.default_price;
+      }
+    } catch {
+      // Non-fatal: the price resolution below still works / later retries.
+    }
   }
 
   if (!priceId) {

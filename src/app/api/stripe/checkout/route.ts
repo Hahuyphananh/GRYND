@@ -136,12 +136,12 @@ export async function POST(req: NextRequest) {
 
   const stripe = getStripe();
 
-  // Managed Payments is enabled by default on the account and requires every
-  // line item's product to carry a tax_code — the token-pack products don't
-  // have one, which made one-time checkout 400 with "product tax code is
-  // missing". The app collects no tax, so opt this session out of Managed
-  // Payments (Stripe's own suggested remedy) while still setting tax codes on
-  // newly created products (packages.ts) for future-proofing.
+  // Managed Payments is enabled by default on the account and is the merchant
+  // of record for Grynd's digital products. Every product now carries an
+  // eligible tax code (txcd_10103100 — see packages.ts), so the session runs
+  // WITH Managed Payments enabled: `managed_payments[enabled]=true`. Stripe
+  // handles sales tax, VAT/GST, fraud, disputes, and support for the
+  // transaction. The session is created as a one-time `payment` checkout.
   let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
   try {
     session = await stripe.checkout.sessions.create({
@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
       success_url: `${baseUrl}/shop?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/shop?checkout=cancelled`,
       allow_promotion_codes: true,
-      managed_payments: { enabled: false },
+      managed_payments: { enabled: true },
       integration_identifier: `grynd_checkout_${randomSuffix()}`,
     });
   } catch (err) {
