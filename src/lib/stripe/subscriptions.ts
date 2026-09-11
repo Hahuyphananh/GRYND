@@ -23,6 +23,7 @@ import {
   tokenTransactions,
 } from "../../db/schema";
 import { getStripe } from "../stripe";
+import { MANAGED_PAYMENTS_TAX_CODE } from "./packages";
 import { creditUserBalance } from "../tokens/creditTokens";
 
 export type SubscriptionPlanBundle = {
@@ -70,12 +71,34 @@ export async function ensureSubscriptionPlanStripe(
     }
   }
 
+  if (productId) {
+    // Same stale-binding self-heal as packages.ts: if the persisted product no
+    // longer resolves (e.g. test-mode binding after switching to live keys),
+    // clear it so a fresh product + recurring price is minted below. Valid
+    // products get their tax code reconciled to the Managed Payments-eligible
+    // code (pre-MSP plans used the ineligible `txcd_99999999`).
+    try {
+      await stripe.products.retrieve(productId);
+      try {
+        await stripe.products.update(productId, {
+          tax_code: MANAGED_PAYMENTS_TAX_CODE,
+        });
+      } catch {
+        // Non-fatal: recurring price resolution below still works.
+      }
+    } catch {
+      productId = null;
+      priceId = null;
+      changed = true;
+    }
+  }
+
   if (!productId) {
     const product = await stripe.products.create({
       name: `${plan.name} — Grynd Subscription`,
       description: "Monthly Grynd+ membership. Virtual tokens; no cash value; non-refundable.",
-      // Same Managed Payments compliance as packages.ts (see note there).
-      tax_code: "txcd_99999999",
+      // Same Managed Payments-eligible tax code as packages.ts (txcd_10103100).
+      tax_code: MANAGED_PAYMENTS_TAX_CODE,
       metadata: { planKey: plan.key },
     });
     productId = product.id;
