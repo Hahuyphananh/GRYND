@@ -13,3 +13,5 @@ services:
         sync: false
       - key: CLERK_SECRET_KEY
         sync: false
+      - key: REALTIME_INTERNAL_SECRET
+        sync: false
