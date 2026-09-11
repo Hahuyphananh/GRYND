@@ -105,7 +105,8 @@ export async function GET() {
         const isFunctional =
           reward.type === "xp_boost" ||
           reward.type === "quest_boost" ||
-          reward.type === "shield";
+          reward.type === "shield" ||
+          reward.type === "grynd";
         const owned =
           isEmote && dbUserId
             ? ownedEmoteKeys.has(reward.key)

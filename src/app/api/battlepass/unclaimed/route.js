@@ -59,7 +59,8 @@ export async function GET() {
         const isFunctional =
           reward.type === "xp_boost" ||
           reward.type === "quest_boost" ||
-          reward.type === "shield";
+          reward.type === "shield" ||
+          reward.type === "grynd";
         const isGlow = reward.type === "color";
         const owned =
           reward.type === "emote"
