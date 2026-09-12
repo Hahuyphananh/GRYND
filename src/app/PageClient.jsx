@@ -76,6 +76,7 @@ function MainComponent() {
   const [quests, setQuests] = useState({ daily: [], weekly: [] });
   const [questsLoading, setQuestsLoading] = useState(false);
   const [claimingQuestId, setClaimingQuestId] = useState(null);
+  const [rerollingQuestId, setRerollingQuestId] = useState(null);
   const [questError, setQuestError] = useState(null);
   const [claimedDay, setClaimedDay] = useState(null);
   // Battlepass widget — level, next reward and progress toward it.
@@ -202,6 +203,40 @@ function MainComponent() {
       setQuestError("Failed to claim quest");
     } finally {
       setClaimingQuestId(null);
+    }
+  };
+
+  const rerollQuest = async (questId) => {
+    if (rerollingQuestId || claimingQuestId) return;
+    setRerollingQuestId(questId);
+    setQuestError(null);
+    try {
+      const res = await fetch("/api/quests/reroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ questId }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setQuestError(data.error || "Failed to reroll quest");
+        return;
+      }
+      // Swap the rerolled quest in place (daily only — the server keeps
+      // the same slot, refreshed content, reset progress).
+      setQuests((prev) => ({
+        daily: prev.daily.map((q) =>
+          q.id === questId
+            ? { ...q, ...data.quest, id: data.quest.questId, claimed: !!data.quest.claimed }
+            : q
+        ),
+        weekly: prev.weekly,
+      }));
+    } catch (err) {
+      console.error("[QUESTS_REROLL_ERROR]", err);
+      setQuestError("Failed to reroll quest");
+    } finally {
+      setRerollingQuestId(null);
     }
   };
 
@@ -1353,7 +1388,18 @@ function MainComponent() {
                                     ? `${Number(q.progress).toLocaleString()} / ${Number(q.target).toLocaleString()}`
                                     : `${Number(q.progress)} / ${Number(q.target)}`}
                               </span>
-                              {done && !q.claimed ? (
+                              <div className="flex items-center gap-1.5">
+                                {challengeTab === "daily" && !q.claimed && (
+                                  <button
+                                    onClick={() => rerollQuest(q.id)}
+                                    disabled={!!rerollingQuestId || !!claimingQuestId}
+                                    title={t("home.challenges.reroll") || "Swap for a fresh quest (uses a Quest Reroll)"}
+                                    className="rounded-md border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-1.5 py-1 text-[10px] font-bold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/25 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                                  >
+                                    {rerollingQuestId === q.id ? "…" : "⟳"}
+                                  </button>
+                                )}
+                                {done && !q.claimed ? (
                                 <button
                                   onClick={() => claimQuest(q.id)}
                                   disabled={!!claimingQuestId}
@@ -1372,6 +1418,7 @@ function MainComponent() {
                                   {pct}%
                                 </span>
                               )}
+                              </div>
                             </div>
                           </div>
                         );

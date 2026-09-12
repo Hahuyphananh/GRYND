@@ -72,6 +72,7 @@ type StripeInvoiceObject = {
   subscription?: string | null;
   period_start?: number | null;
   period_end?: number | null;
+  amount_paid?: number | null;
 };
 
 export async function POST(req: Request) {
@@ -318,6 +319,18 @@ async function recordSubscriptionFromCheckout(session: StripeSession) {
  */
 async function grantSubscriptionTokens(invoice: StripeInvoiceObject) {
   if (!invoice.subscription) {
+    return;
+  }
+
+  // Paid-token gate: only grant the membership token award on invoices that
+  // actually paid. A $0 invoice (e.g. a free-trial period starts with a $0
+  // "paid" invoice) must not print tokens — the first real charge grants on
+  // its own paid invoice, and the credit is still idempotent per invoice id.
+  if (typeof invoice.amount_paid === "number" && !(invoice.amount_paid > 0)) {
+    auditLog("stripe_subscription_no_payment_skip", {
+      invoiceId: invoice.id,
+      amountPaid: invoice.amount_paid,
+    });
     return;
   }
 

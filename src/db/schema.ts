@@ -353,6 +353,14 @@ export const users = pgTable("users", {
     .$type<string[]>()
     .notNull()
     .default(sql`'[]'::jsonb`),
+  // Equipped cosmetics (framed map of category → cosmetic key). Touchable
+  // ONLY through src/lib/cosmetics.ts equip/clear after catalog + ownership
+  // validation — never directly writable by the client. Mirrors the
+  // selected_glow / selected_icon catalog-backed equip pattern.
+  equippedCosmetics: jsonb("equipped_cosmetics")
+    .$type<Record<string, string>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   // Responsible-play setting: per-player daily loss limit (tokens).
   // Null = global default, 0 = warnings disabled, > 0 = custom threshold.
   dailyLossLimit: integer("daily_loss_limit"),
@@ -533,6 +541,55 @@ export const battlepassClaims = pgTable(
   })
 );
 
+// COSMETIC CATALOG + OWNERSHIP (token-priced, server-authoritative)
+// ==============================================================================
+// Catalog rows are display-only to the client (GET /api/cosmetics); purchase
+// (POST /api/cosmetics/buy) and equip (POST /api/cosmetics/equip) always
+// re-resolve the row server-side. `price_tokens` IS NULL on non-shop items
+// (battlepass / prestige-gated); `unlock_condition` records that gate for
+// display. Categories are the shop's "Cosmetics" section and the profile/
+// chat/render surfaces: profile_frame, badge, avatar_effect, username_effect,
+// chat_effect, profile_glow, prestige_effect.
+export const cosmetics = pgTable(
+  "cosmetics",
+  {
+    id: serial("id").primaryKey(),
+    key: varchar("key", { length: 120 }).notNull().unique(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description").notNull().default(""),
+    category: varchar("category", { length: 40 }).notNull(),
+    rarity: varchar("rarity", { length: 40 }).notNull().default("Common"),
+    priceTokens: integer("price_tokens"),
+    visual: jsonb("visual").$type<Record<string, unknown>>().notNull().default({}),
+    unlockCondition: varchar("unlock_condition", { length: 40 }),
+    enabled: boolean("enabled").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    catalogIdx: index("cosmetics_catalog_idx").on(table.enabled, table.category, table.sortOrder),
+  })
+);
+
+// Cosmetic ownership. Written only by server-side grants (shop purchase /
+// battlepass claim / eligible grants) — never by the client.
+export const userCosmetics = pgTable(
+  "user_cosmetics",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    cosmeticKey: varchar("cosmetic_key", { length: 120 }).notNull(),
+    source: varchar("source", { length: 40 }).notNull().default("shop"),
+    unlockedAt: timestamp("unlocked_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqUserCosmetic: unique("user_cosmetics_user_key_unique").on(table.userId, table.cosmeticKey),
+    userIdx: index("user_cosmetics_user_idx").on(table.userId),
+  })
+);
 // Per-game play counter (casino lobby "Most Played" sort). One row per
 // game label; incremented by /api/game-plays POST when a real game session
 // starts (see migration 0152).
@@ -3689,6 +3746,7 @@ export const tokenTransactionTypeEnum = pgEnum("token_transaction_type", [
   "purchase",
   "spend",
   "refund",
+  "reward",
 ]);
 
 export const tokenTransactions = pgTable(

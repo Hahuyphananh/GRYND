@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../db/client";
-import { glows, tokenSubscriptions, users } from "../../../db/schema";
+import { glows, tokenSubscriptions, users, cosmetics } from "../../../db/schema";
 import { computeEquippedStreakTitle } from "../../../lib/streakTitles";
 import {
   DEFAULT_ICON_KEY,
@@ -38,6 +38,7 @@ export async function POST(req: Request) {
           selectedStreakType: null,
           dailyStreakCurrent: 0,
           dailyStreakBest: 0,
+          equippedCosmetics: {},
         },
       });
     }
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
         selectedStreakType: users.selectedStreakType,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
+        equippedCosmetics: users.equippedCosmetics,
       })
       .from(users)
       .leftJoin(
@@ -102,6 +104,36 @@ export async function POST(req: Request) {
       dailyStreakBest: user.dailyStreakBest,
     });
 
+    // Equipped cosmetics (category → catalog metadata + visual payload) so the
+    // client can render profile frames / badges / effects. Server-written only
+    // (src/lib/cosmetics.ts); disabled or missing keys are dropped here.
+    const equippedMap: Record<string, string> = user.equippedCosmetics || {};
+    const equippedKeys = Object.values(equippedMap).filter(Boolean);
+    const equippedCosmetics: Record<
+      string,
+      { key: string; name: string; visual: Record<string, unknown> }
+    > = {};
+    if (equippedKeys.length > 0) {
+      const cosmeticRows = await db
+        .select({
+          key: cosmetics.key,
+          name: cosmetics.name,
+          category: cosmetics.category,
+          visual: cosmetics.visual,
+        })
+        .from(cosmetics)
+        .where(
+          and(inArray(cosmetics.key, equippedKeys), eq(cosmetics.enabled, true)),
+        );
+      for (const row of cosmeticRows) {
+        equippedCosmetics[row.category] = {
+          key: row.key,
+          name: row.name,
+          visual: row.visual,
+        };
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -122,6 +154,7 @@ export async function POST(req: Request) {
           selectedStreakType: user.selectedStreakType,
           dailyStreakCurrent: user.dailyStreakCurrent,
           dailyStreakBest: user.dailyStreakBest,
+          equippedCosmetics,
         },
       },
       { status: 200 },

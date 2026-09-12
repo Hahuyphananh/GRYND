@@ -141,6 +141,9 @@ export default function ProfilePage() {
   const [isGlowPickerOpen, setIsGlowPickerOpen] = useState(false);
   const [selectedGlowColor, setSelectedGlowColor] = useState(null);
   const [selectedGlowName, setSelectedGlowName] = useState(null);
+  // Equipped cosmetics (category → { key, name, visual }) from the official
+  // cosmetics catalog — profile frame / badge / effects. Server-written only.
+  const [equippedCosmetics, setEquippedCosmetics] = useState({});
   // In-game emote loadout manager (owned animated emotes, max 9).
   const [isEmotesManagerOpen, setIsEmotesManagerOpen] = useState(false);
 
@@ -333,6 +336,7 @@ export default function ProfilePage() {
       const selectedIcon = tokensData.data.selectedIcon || "";
       const profileAccent = tokensData.data.profileAccent || null;
       setProfileInfo({ name, email, selectedIcon, profileAccent });
+      setEquippedCosmetics(tokensData.data.equippedCosmetics || {});
       setEditForm((prev) => ({ ...prev, name, email }));
       // Sync the customization picker with the saved value.
       setCosmetics({
@@ -1116,6 +1120,13 @@ export default function ProfilePage() {
                 onClick={() => setIsIconPickerOpen(true)}
                 aria-label="Change your Grynd icon"
                 title="Change your Grynd icon"
+                style={
+                  equippedCosmetics?.profile_frame?.visual?.color
+                    ? {
+                        boxShadow: `0 0 0 2px ${equippedCosmetics.profile_frame.visual.color}, 0 0 18px ${equippedCosmetics.profile_frame.visual.color}88`,
+                      }
+                    : undefined
+                }
                 className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               >
                 <IconAvatar
@@ -1143,6 +1154,18 @@ export default function ProfilePage() {
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
                       {membership.title || "GRYND+ Elite"}
+                    </span>
+                  )}
+                  {equippedCosmetics?.badge && (
+                    <span
+                      className="rounded-full border px-2 py-0.5 text-xs font-semibold"
+                      style={{
+                        borderColor: `${equippedCosmetics.badge.visual?.color ?? "#f5c542"}99`,
+                        backgroundColor: `${equippedCosmetics.badge.visual?.color ?? "#f5c542"}1a`,
+                        color: equippedCosmetics.badge.visual?.color ?? "#f5c542",
+                      }}
+                    >
+                      {equippedCosmetics.badge.name}
                     </span>
                   )}
                   {(prestigeBadge.display ||

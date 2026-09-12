@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../lib/security/idempotency";
-import { getMembershipTier } from "../../../lib/stripe/subscriptions";
+import { getMembershipTier, dailyTokenBonus } from "../../../lib/stripe/subscriptions";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { updateDailyStreak } from "../../../lib/dailyStreak";
 import { hasItem } from "../../../lib/shopItems";
@@ -152,10 +152,16 @@ export async function POST(req) {
     const reward = Math.round(baseReward * tierMultiplier);
     const premiumBonus = reward - baseReward;
 
+    // Pro / High Roller daily token drop — a small flat bonus on top of the
+    // login reward (50 Pro, 100 High Roller). Pure economy perk; never tied
+    // to wagering, matchmaking or payouts.
+    const membershipDailyBonus = dailyTokenBonus(tier);
+    const totalReward = reward + membershipDailyBonus;
+
     await db
       .update(users)
       .set({
-        balance: sql`${users.balance} + ${reward}`,
+        balance: sql`${users.balance} + ${totalReward}`,
       })
       .where(eq(users.id, uid));
 
@@ -170,7 +176,7 @@ export async function POST(req) {
       })
       .where(eq(userLoginRewards.userId, uid));
 
-    const updatedBalance = Number(dbUser.balance || 0) + reward;
+    const updatedBalance = Number(dbUser.balance || 0) + totalReward;
     const unlockedSpecialTitles = await checkUnlocks(userId, "login_claim", {
       balanceAfter: updatedBalance,
     });
@@ -239,6 +245,7 @@ export async function POST(req) {
       reward,
       premium: tier !== null,
       premiumBonus,
+      membershipDailyBonus,
       claimedDay: rewardData.currentDay,
       nextDay,
       unlockedSpecialTitles,

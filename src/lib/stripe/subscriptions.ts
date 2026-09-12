@@ -84,6 +84,107 @@ export async function getMembershipTier(
   return TIER_BY_PLAN_KEY[sub.planKey] ?? "grynd_plus";
 }
 
+// ── Tier benefit config (pure data; consumed by the XP / quest / prestige /
+//    daily-claim chokepoints below and by game hooks) ─────────────────────────
+// Membership is convenience/progression, never pay-to-win: XP boosts, extra
+// quest slots, prestige progress and small daily claims never affect RNG,
+// odds, matchmaking fairness or token cash value.
+
+/** Multiplier applied to ALL battlepass XP for a tier (free = 1). */
+export const TIER_XP_MULTIPLIER: Record<MembershipTier | "free", number> = {
+  free: 1,
+  grynd_plus: 1.15,
+  pro: 1.35,
+  high_roller: 1.7,
+};
+
+/** Extra daily quest slots over the base 3 (weekly always stays at 2). */
+export const TIER_DAILY_QUEST_SLOT_BONUS: Record<MembershipTier, number> = {
+  grynd_plus: 0,
+  pro: 1,
+  high_roller: 2,
+};
+
+/** Prestige progression multiplier (reduces the net-wins requirement). */
+export const TIER_PRESTIGE_MULTIPLIER: Record<MembershipTier, number> = {
+  grynd_plus: 1,
+  pro: 1,
+  high_roller: 1.2,
+};
+
+/** Small daily token bonus added on top of the login reward per tier. */
+export const TIER_DAILY_TOKEN_BONUS: Record<MembershipTier, number> = {
+  grynd_plus: 0,
+  pro: 50,
+  high_roller: 100,
+};
+
+export function membershipXpMultiplier(tier: MembershipTier | null): number {
+  return TIER_XP_MULTIPLIER[tier ?? "free"] ?? 1;
+}
+
+export function dailyQuestSlotBonus(tier: MembershipTier | null): number {
+  return tier ? TIER_DAILY_QUEST_SLOT_BONUS[tier] ?? 0 : 0;
+}
+
+export function prestigeMultiplier(tier: MembershipTier | null): number {
+  return tier ? TIER_PRESTIGE_MULTIPLIER[tier] ?? 1 : 1;
+}
+
+export function dailyTokenBonus(tier: MembershipTier | null): number {
+  return tier ? TIER_DAILY_TOKEN_BONUS[tier] ?? 0 : 0;
+}
+
+/**
+ * The membership XP multiplier for a Clerk id (1 when the user has no active
+ * membership). Used by XP-grant chokepoints that only have the Clerk id.
+ */
+export async function getMembershipXpMultiplierByClerkId(
+  clerkId: string
+): Promise<number> {
+  return membershipXpMultiplier(await getMembershipTier(clerkId));
+}
+
+/**
+ * The membership XP multiplier for a local user id (1 when free). Efficient
+ * single-query resolution — used by the user id XP path (addExp).
+ */
+export async function getMembershipXpMultiplierByUserId(
+  userId: number
+): Promise<number> {
+  const [row] = await db
+    .select({ clerkId: users.clerkId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row) return 1;
+  return membershipXpMultiplier(await getMembershipTier(row.clerkId));
+}
+
+/**
+ * Daily quest slot count for a user id — the base 3 plus the tier bonus
+ * (weekly slots are NOT tier-dependent and stay at 2). Server-authoritative.
+ */
+export async function dailyQuestSlotsForUser(userId: number): Promise<number> {
+  const [row] = await db
+    .select({ clerkId: users.clerkId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row) return 3;
+  return 3 + dailyQuestSlotBonus(await getMembershipTier(row.clerkId));
+}
+
+/**
+ * The High Roller prestige progression multiplier for a Clerk id (1 for
+ * everyone else). Consumed by src/lib/prestige.js.
+ */
+export async function getPrestigeMultiplierByClerkId(
+  clerkId: string
+): Promise<number> {
+  return prestigeMultiplier(await getMembershipTier(clerkId));
+}
+
 /**
  * Guarantee the plan has a Stripe Product + recurring monthly Price, creating
  * what's missing and persisting the resulting ids back onto

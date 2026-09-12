@@ -9,6 +9,13 @@ export default function Page() {
       <InteractiveCasinoBg variant="subtle" />
       <SignUp
         fallbackRedirectUrl="/sync"
+        localization={{
+          signUp: {
+            start: {
+              title: "Sign up to Grynd",
+            },
+          },
+        }}
         appearance={{
           variables: {
             colorPrimary: "#00fff7",

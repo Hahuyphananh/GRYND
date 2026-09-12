@@ -26,6 +26,28 @@ function rewardColor(reward) {
   );
 }
 
+// Reward types the player explicitly claims (vs. pure display entries).
+// Functional types claim by track level; cosmetic types claim by catalog key.
+const CLAIMABLE_UI_TYPES = new Set([
+  "emote",
+  "title",
+  "color",
+  "xp_boost",
+  "quest_boost",
+  "shield",
+  "tokens",
+  "battlepass_xp",
+  "quest_reroll",
+  "badge",
+  "profile_frame",
+  "avatar_effect",
+  "username_effect",
+  "chat_effect",
+  "profile_glow",
+  "prestige_effect",
+  "cosmetic",
+]);
+
 export default function BattlepassPageClient() {
   const { t } = useTranslation();
   const [pass, setPass] = useState(null);
@@ -64,14 +86,18 @@ export default function BattlepassPageClient() {
 
   const claimReward = async (reward, level) => {
     if (claimingKey) return;
-    // Functional rewards (xp_boost / quest_boost / shield) have no key —
-    // they're disambiguated by their track level, so include it in the
-    // claim payload so each identical entry is claimed exactly once.
+    // Functional rewards (xp_boost / quest_boost / shield / tokens /
+    // battlepass_xp / quest_reroll / grynd) have no key — they're
+    // disambiguated by their track level, so include it in the claim payload
+    // so each identical entry is claimed exactly once.
     const isFunctional =
       reward.type === "xp_boost" ||
       reward.type === "quest_boost" ||
       reward.type === "shield" ||
-      reward.type === "grynd";
+      reward.type === "grynd" ||
+      reward.type === "tokens" ||
+      reward.type === "battlepass_xp" ||
+      reward.type === "quest_reroll";
     const key = `${reward.type}:${reward.key ?? `lvl${level}`}`;
     setClaimingKey(key);
     setClaimError(null);
@@ -593,24 +619,13 @@ export default function BattlepassPageClient() {
                                     ✦ Grynd+ Premium
                                   </div>
                                 )}
-                                {(reward.type === "emote" ||
-                                  reward.type === "title" ||
-                                  reward.type === "color" ||
-                                  reward.type === "xp_boost" ||
-                                  reward.type === "quest_boost" ||
-                                  reward.type === "shield") &&
+                                {CLAIMABLE_UI_TYPES.has(reward.type) &&
                                   reward.claimed && (
                                     <div className="text-[9px] font-semibold text-emerald-300">
                                       Unlocked
                                     </div>
                                   )}
-                                {(reward.type === "emote" ||
-                                  reward.type === "emote" ||
-                                  reward.type === "title" ||
-                                  reward.type === "color" ||
-                                  reward.type === "xp_boost" ||
-                                  reward.type === "quest_boost" ||
-                                  reward.type === "shield") &&
+                                {CLAIMABLE_UI_TYPES.has(reward.type) &&
                                   reward.claimable && (
                                     <button
                                       type="button"

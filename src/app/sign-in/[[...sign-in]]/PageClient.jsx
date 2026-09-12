@@ -15,6 +15,13 @@ export default function Page() {
       <InteractiveCasinoBg variant="subtle" />
       <SignIn
         fallbackRedirectUrl={redirectUrl && redirectUrl.startsWith("/") ? redirectUrl : "/sync"}
+        localization={{
+          signIn: {
+            start: {
+              title: "Sign in to Grynd",
+            },
+          },
+        }}
         appearance={{
           variables: {
             colorPrimary: "#00fff7",
