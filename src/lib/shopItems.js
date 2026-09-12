@@ -10,7 +10,7 @@
 // shop is a net token sink (never a token printer):
 //
 //   * streak_shield — EV ≈ the login rewards a missed-day reset would
-//     destroy: the escalating 25×day reward (avg ~187/day over a 14-day
+//     destroy: the escalating daily reward (avg ~187/day over a 14-day
 //     cycle, up to 350 on day 14) + milestone bonuses + streak-title
 //     progress. Priced at 800 (≈ two days of an active player's income),
 //     comfortably above the average daily reward, below the multi-hundred
@@ -26,6 +26,27 @@
 //     tokens returned, plus the doubled quest XP. Priced at 1,000: well
 //     above the token EV (house keeps the edge) but still attractive
 //     because the doubled XP rides along.
+//
+//   * quest_xp_boost_3 — like quest_boost_3 but doubles the quest XP (not
+//     the token reward): EV is soft progression-only, priced at 1,200.
+//
+//   * quest_reroll — swap one daily quest for a fresh one (progress resets).
+//     EV is close to zero in tokens; priced at 1,500 for the convenience.
+//
+//   * xp_boost_3x_12h — a stockpiled 3× XP window. Bought as a consumable
+//     charge and ACTIVATED via POST /api/shop/items/use (duplicate
+//     activation is refused while an instance is already running).
+//
+// Every timed window is a `xp_boost_{multiplier}x_{hours}h` effect key so
+// the single XP multiplier path (getActiveXpMultiplier*) reads them all.
+//
+// ── Membership XP integration ──────────────────────────────────────────────
+// Membership tiers add a flat XP multiplier (Grynd+ ×1.15 / Pro ×1.35 /
+// High Roller ×1.70, see src/lib/stripe/subscriptions.ts). It is applied
+// HERE, inside the same chokepoints the timed boosts use, so every XP source
+// (settled wagers, quest claims, onboarding) honors it without each caller
+// resolving the tier. This is pure progression — membership never touches
+// RNG, odds or win payouts.
 
 export const SHOP_ITEMS = [
   {
@@ -34,8 +55,12 @@ export const SHOP_ITEMS = [
     desc: "Protects your daily login streak for one missed day",
     price: 800,
     category: "consumable",
+    qtyPerUse: 1,
     badge: "Retention",
     color: "#38bdf8",
+    rarity: "Common",
+    enabled: true,
+    sortOrder: 1,
   },
   {
     key: "xp_boost_2x_24h",
@@ -46,6 +71,9 @@ export const SHOP_ITEMS = [
     hours: 24,
     badge: "Progression",
     color: "#a3e635",
+    rarity: "Common",
+    enabled: true,
+    sortOrder: 2,
   },
   {
     key: "quest_boost_3",
@@ -56,8 +84,54 @@ export const SHOP_ITEMS = [
     qtyPerUse: 3,
     badge: "Economy",
     color: "#34d399",
+    rarity: "Common",
+    enabled: true,
+    sortOrder: 3,
   },
-];
+  {
+    key: "quest_xp_boost_3",
+    name: "Quest XP Boost",
+    desc: "Your next 3 quest claims pay double quest XP",
+    price: 1200,
+    category: "consumable",
+    qtyPerUse: 3,
+    badge: "Progression",
+    color: "#a78bfa",
+    rarity: "Rare",
+    enabled: true,
+    sortOrder: 4,
+  },
+  {
+    key: "quest_reroll",
+    name: "Quest Reroll",
+    desc: "Swap one daily quest for a fresh one",
+    price: 1500,
+    category: "consumable",
+    qtyPerUse: 1,
+    badge: "Convenience",
+    color: "#fbbf24",
+    rarity: "Rare",
+    enabled: true,
+    sortOrder: 5,
+  },
+  {
+    key: "xp_boost_3x_12h",
+    name: "3× XP Boost (12h)",
+    desc: "Stockpile: triple all battlepass XP for 12 hours. Activate it after buying.",
+    price: 800,
+    category: "consumable",
+    qtyPerUse: 1,
+    effect: {
+      effectKey: "xp_boost_3x_12h",
+      hours: 12,
+    },
+    badge: "Progression",
+    color: "#f472b6",
+    rarity: "Epic",
+    enabled: true,
+    sortOrder: 6,
+  },
+].filter((i) => i.enabled !== false);
 
 export function shopItemByKey(key) {
   return SHOP_ITEMS.find((i) => i.key === key) || null;
@@ -156,13 +230,15 @@ export function xpBoostMultiplierFromKey(effectKey) {
 
 /**
  * Returns the highest XP multiplier among the user's active timed boosts
- * (2 for a 2× boost, 3 for a 3× boost, 1 when none is active). Checks by
- * local user id.
+ * (2 for a 2× boost, 3 for a 3× boost, 1 when none is active), compounded
+ * with the membership tier's flat multiplier (Grynd+ ×1.15 / Pro ×1.35 /
+ * High Roller ×1.70). Checks by local user id.
  */
 export async function getActiveXpMultiplier(userId) {
   const { db } = await import("../db");
   const { eq, sql } = await import("drizzle-orm");
-  const { userItemEffects } = await import("../db/schema");
+  const { userItemEffects, users } = await import("../db/schema");
+  const { getMembershipXpMultiplierByUserId } = await import("./stripe/subscriptions");
 
   const rows = await db
     .select({ effectKey: userItemEffects.effectKey })
@@ -175,18 +251,22 @@ export async function getActiveXpMultiplier(userId) {
   for (const row of rows) {
     multiplier = Math.max(multiplier, xpBoostMultiplierFromKey(row.effectKey));
   }
-  return multiplier;
+
+  // Membership tier is a flat multiplier on top of any timed boost.
+  return Math.round(multiplier * (await getMembershipXpMultiplierByUserId(userId)) * 100) / 100;
 }
 
 /**
- * Returns the active XP-boost multiplier for a user looked up by Clerk id
- * (used by the wager-XP settlement path, which only has the Clerk id).
- * Returns 1 when no boost is active.
+ * Returns the active XP multiplier (timed boost × membership tier) for a
+ * user looked up by Clerk id (used by the wager-XP settlement path, which
+ * only has the Clerk id). Returns 1 when no boost is active and no
+ * membership is held.
  */
 export async function getActiveXpMultiplierByClerkId(clerkId) {
   const { db } = await import("../db");
   const { sql } = await import("drizzle-orm");
   const { userItemEffects, users } = await import("../db/schema");
+  const { getMembershipXpMultiplierByClerkId } = await import("./stripe/subscriptions");
 
   const rows = await db
     .select({ effectKey: userItemEffects.effectKey })
@@ -200,7 +280,8 @@ export async function getActiveXpMultiplierByClerkId(clerkId) {
   for (const row of rows) {
     multiplier = Math.max(multiplier, xpBoostMultiplierFromKey(row.effectKey));
   }
-  return multiplier;
+
+  return Math.round(multiplier * (await getMembershipXpMultiplierByClerkId(clerkId)) * 100) / 100;
 }
 
 /**
@@ -250,4 +331,49 @@ export async function activateTimedEffect(userId, effectKey, hours) {
       },
     });
   return true;
+}
+
+/**
+ * True when a timed effect is currently running for the user. Used as the
+ * duplicate-activation guard by POST /api/shop/items/use — a stockpiled
+ * boost refuses to activate a second copy while one is already running.
+ */
+export async function hasActiveEffect(userId, effectKey) {
+  const { db } = await import("../db");
+  const { sql } = await import("drizzle-orm");
+  const { userItemEffects } = await import("../db/schema");
+
+  const rows = await db
+    .select({ id: userItemEffects.id })
+    .from(userItemEffects)
+    .where(
+      sql`${userItemEffects.userId} = ${userId} AND ${userItemEffects.effectKey} = ${effectKey} AND ${userItemEffects.expiresAt} > now()`
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Server-authoritative "use item" flow for stockpiled boosts: atomically
+ * consumes one inventory charge and starts (or extends) the timed effect.
+ * Callers MUST guard duplicate activation first (claimIdempotency +
+ * hasActiveEffect) so an already-running boost can't be double-spent.
+ * Returns the new effect expiry, or null when the charge wasn't owned.
+ */
+export async function useItemAsEffect(userId, itemKey, effectKey, hours) {
+  const charged = await consumeItem(userId, itemKey, 1);
+  if (!charged) return null;
+  await activateTimedEffect(userId, effectKey, hours);
+
+  const { db } = await import("../db");
+  const { sql } = await import("drizzle-orm");
+  const { userItemEffects } = await import("../db/schema");
+  const [row] = await db
+    .select({ expiresAt: userItemEffects.expiresAt })
+    .from(userItemEffects)
+    .where(
+      sql`${userItemEffects.userId} = ${userId} AND ${userItemEffects.effectKey} = ${effectKey}`
+    )
+    .limit(1);
+  return row?.expiresAt?.toISOString() ?? null;
 }

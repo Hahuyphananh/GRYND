@@ -67,12 +67,16 @@ export function prestigeRequirementForLevel(prestigeLevel) {
  *  - outcome "draw" never changes state.
  *  - ineligible (below Level 100) players never change state.
  *  - a loss can never reduce level; net wins floor at 0.
+ *  - `requirementMultiplier` (membership Prestige perk, 1 by default) lowers
+ *    the effective net-wins requirement: effReq = ceil(req / multiplier).
+ *    High Rollers progress ~20% faster — progression, never gameplay odds.
  */
 export function computePrestigeTransition({
   prestigeLevel = 0,
   prestigeNetWins = 0,
   outcome,
   eligible,
+  requirementMultiplier = 1,
 }) {
   const level = Math.max(0, Math.floor(Number(prestigeLevel) || 0));
   const netWins = Math.max(0, Math.floor(Number(prestigeNetWins) || 0));
@@ -83,7 +87,10 @@ export function computePrestigeTransition({
 
   if (outcome === "win") {
     if (level >= MAX_PRESTIGE_LEVEL) return { level, netWins, delta: 0 };
-    const requirement = PRESTIGE_REQUIREMENTS[level];
+    const rawRequirement = PRESTIGE_REQUIREMENTS[level];
+    const multiplier = Math.max(1, Number(requirementMultiplier) || 1);
+    const requirement =
+      multiplier > 1 ? Math.ceil(rawRequirement / multiplier) : rawRequirement;
     const next = netWins + 1;
     if (next >= requirement) {
       // Tier up: level +1, progress resets to 0 (single +1 steps always
@@ -203,11 +210,21 @@ export async function applyPrestigeResult({ clerkId, outcome, source, sourceId, 
     if (!user) return { applied: false, reason: "user-not-found", delta: 0 };
 
     const eligible = getBattlepassProgress(Number(user.xp) || 0).level >= 100;
+    // High Roller membership perk: faster prestige progression (pure
+    // progression — never gameplay odds). Resolved here so the transition math
+    // and the journal row both reflect the correct requirement.
+    const { getPrestigeMultiplierByClerkId } = await import(
+      "./stripe/subscriptions"
+    );
+    const requirementMultiplier = eligible
+      ? await getPrestigeMultiplierByClerkId(clerkId)
+      : 1;
     const next = computePrestigeTransition({
       prestigeLevel: Number(user.prestigeLevel) || 0,
       prestigeNetWins: Number(user.prestigeNetWins) || 0,
       outcome,
       eligible,
+      requirementMultiplier,
     });
 
     // Claim the event BEFORE mutating state. If another settlement for this

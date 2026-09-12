@@ -21,6 +21,13 @@ export type ShopItem = {
   color: string | null;
   owned: number | null;
   activeUntil: string | null;
+  // Stockpiled boost (bought as inventory, activated later).
+  activatable?: boolean;
+  effectKey?: string | null;
+  effectHours?: number | null;
+  // Where the consumable is used ("shop" = activate here, "quests" = use in
+  // the Quests page).
+  scope?: string;
 };
 
 type ShopItemsPayload = {
@@ -42,6 +49,7 @@ async function loadItems(): Promise<ShopItemsPayload | null> {
 export default function ShopItemsClient() {
   const [payload, setPayload] = useState<ShopItemsPayload | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
+  const [activating, setActivating] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -78,6 +86,30 @@ export default function ShopItemsClient() {
     }
   }
 
+  async function activate(itemKey: string, name: string) {
+    setError(null);
+    setSuccess(null);
+    setActivating(itemKey);
+    try {
+      const res = await fetch("/api/shop/items/use", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Could not activate item. Please try again.");
+        return;
+      }
+      setSuccess(`${name} activated!`);
+      await refresh();
+    } catch {
+      setError("Could not activate item. Please try again.");
+    } finally {
+      setActivating(null);
+    }
+  }
+
   if (!payload || !payload.success || !payload.items?.length) return null;
 
   const balance = payload.balance;
@@ -106,9 +138,12 @@ export default function ShopItemsClient() {
           const isTimed = item.category === "timed";
           const owned = item.owned ?? 0;
           const activeUntil = item.activeUntil;
-          const active =
-            isTimed && activeUntil ? new Date(activeUntil).getTime() > Date.now() : false;
+          const active = Boolean(activeUntil) && new Date(activeUntil!).getTime() > Date.now();
+          const isActivatable = Boolean(item.activatable);
+          const canActivate = isActivatable && owned > 0 && !active;
           const buyLabel = buying === item.key ? "Buying…" : `Buy — ${item.price.toLocaleString()} tokens`;
+          const activateLabel =
+            activating === item.key ? "Activating…" : "Activate";
 
           return (
             <div
@@ -136,20 +171,24 @@ export default function ShopItemsClient() {
               </div>
 
               <div className="mt-2 min-h-[1.25rem] text-xs">
-                {isTimed ? (
-                  active ? (
-                    <span className="text-[#a3e635]">
-                      Active — expires {new Date(activeUntil!).toLocaleDateString()}{" "}
-                      {new Date(activeUntil!).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  ) : (
-                    <span className="text-[#9dd8ff]/50">Not active</span>
-                  )
+                {active ? (
+                  <span className="text-[#a3e635]">
+                    Active — expires{" "}
+                    {new Date(activeUntil!).toLocaleDateString()}{" "}
+                    {new Date(activeUntil!).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                ) : isActivatable && owned > 0 ? (
+                  <span className="text-[#f472b6]">Ready to activate × {owned}</span>
+                ) : isTimed ? (
+                  <span className="text-[#9dd8ff]/50">Not active</span>
                 ) : owned > 0 ? (
-                  <span className="text-[#34d399]">Owned × {owned}</span>
+                  <span className="text-[#34d399]">
+                    Owned × {owned}
+                    {item.scope === "quests" ? " — use on the Quests page" : ""}
+                  </span>
                 ) : (
                   <span className="text-[#9dd8ff]/50">Not owned</span>
                 )}
@@ -158,11 +197,22 @@ export default function ShopItemsClient() {
               <button
                 type="button"
                 onClick={() => buy(item.key, item.name)}
-                disabled={buying !== null}
+                disabled={buying !== null || activating !== null}
                 className="mt-4 w-full rounded-xl bg-[#00e5ff] px-4 py-2 font-semibold text-[#040d24] transition-colors hover:bg-[#33ebff] disabled:opacity-60"
               >
                 {buyLabel}
               </button>
+
+              {canActivate && (
+                <button
+                  type="button"
+                  onClick={() => activate(item.key, item.name)}
+                  disabled={buying !== null || activating !== null}
+                  className="mt-2 w-full rounded-xl border border-[#f472b6]/60 px-4 py-2 font-semibold text-[#f472b6] transition-colors hover:bg-[#f472b6]/10 disabled:opacity-60"
+                >
+                  {activateLabel}
+                </button>
+              )}
             </div>
           );
         })}

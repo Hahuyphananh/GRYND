@@ -42,18 +42,29 @@ export async function GET() {
 
     const balance = user.length ? Number(user[0].balance ?? 0) : 0;
 
-    const items = SHOP_ITEMS.map((item) => ({
-      key: item.key,
-      name: item.name,
-      desc: item.desc,
-      price: item.price,
-      category: item.category,
-      badge: item.badge ?? null,
-      color: item.color ?? null,
-      owned: item.category === "timed" ? null : owned.items[item.key] ?? 0,
-      activeUntil:
-        item.category === "timed" ? owned.effects[item.key] ?? null : null,
-    }));
+    const items = SHOP_ITEMS.map((item) => {
+      const isTimed = item.category === "timed";
+      const effectKey =
+        item.effect?.effectKey ?? (isTimed ? item.key : null);
+      return {
+        key: item.key,
+        name: item.name,
+        desc: item.desc,
+        price: item.price,
+        category: item.category,
+        badge: item.badge ?? null,
+        color: item.color ?? null,
+        owned: isTimed ? null : owned.items[item.key] ?? 0,
+        activeUntil: effectKey ? owned.effects[effectKey] ?? null : null,
+        // Stockpiled boost: bought as inventory, started later via
+        // POST /api/shop/items/use. `scope` helps the UI nudge the player to
+        // the right page for consumables that act elsewhere.
+        activatable: Boolean(item.effect),
+        effectKey,
+        effectHours: item.effect?.hours ?? item.hours ?? null,
+        scope: item.key === "quest_reroll" ? "quests" : "shop",
+      };
+    });
 
     return Response.json({ success: true, balance, items });
   } catch (err) {

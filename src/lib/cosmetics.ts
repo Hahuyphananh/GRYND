@@ -1,0 +1,320 @@
+// src/lib/cosmetics.ts
+//
+// Central authority for the official Grynd cosmetics catalog — server-owned
+// table `cosmetics` (seeded by migration 0156). Mirrors src/lib/glows.ts
+// (catalog + ownership + equip pattern), except a cosmetic's equippable
+// value is a fixed `visual` payload (cssClass / color) rendered by the
+// client.
+//
+// Rules enforced here (server-side only):
+//   * Any equipped cosmetic must resolve through the official catalog AND
+//     be owned by the user (a row in `user_cosmetics`).
+//   * Only catalog rows with `price_tokens` set are purchasable from the
+//     Shop. Unpurchasable rows (e.g. Prestige Aura/Crown with an
+//     `unlock_condition`) are granted through battlepass/eligibility.
+//   * `unlock_condition` rows (currently `prestige`) additionally require
+//     the condition to be met before they can be purchased or equipped.
+//   * `users.equipped_cosmetics` is a jsonb map of category → cosmetic key;
+//     it is written ONLY through the equip/clear functions here.
+//   * Spends are a single atomic debit + ledger row (`spend`,
+//     reference_type `cosmetic`) — same discipline as the shop item buys.
+
+import { and, asc, eq, sql } from "drizzle-orm";
+import { db } from "../db";
+import { cosmetics, userCosmetics, users, tokenTransactions } from "../db/schema";
+
+export const COSMETIC_KEY_REGEX = /^[a-z0-9][a-z0-9._-]{0,119}$/;
+
+// Categories that map 1:1 onto `equipped_cosmetics` slots.
+export const COSMETIC_CATEGORIES = [
+  "profile_frame",
+  "badge",
+  "avatar_effect",
+  "username_effect",
+  "chat_effect",
+  "profile_glow",
+  "prestige_effect",
+] as const;
+
+export type CosmeticCategory = (typeof COSMETIC_CATEGORIES)[number];
+
+/** A row from the official `cosmetics` catalog. */
+export type CosmeticRow = typeof cosmetics.$inferSelect;
+
+/** All enabled catalog rows (deterministic sort_order). */
+export async function getEnabledCosmetics(): Promise<CosmeticRow[]> {
+  return db
+    .select()
+    .from(cosmetics)
+    .where(eq(cosmetics.enabled, true))
+    .orderBy(asc(cosmetics.sortOrder), asc(cosmetics.id));
+}
+
+/** Catalog rows the Shop can actually sell (they carry a token price). */
+export async function getShopCosmetics(): Promise<CosmeticRow[]> {
+  return db
+    .select()
+    .from(cosmetics)
+    .where(and(eq(cosmetics.enabled, true), sql`${cosmetics.priceTokens} IS NOT NULL`))
+    .orderBy(asc(cosmetics.sortOrder), asc(cosmetics.id));
+}
+
+/** Look up a single enabled catalog row by key. */
+export async function getCosmeticByKey(key: string): Promise<CosmeticRow | null> {
+  const [row] = await db
+    .select()
+    .from(cosmetics)
+    .where(and(eq(cosmetics.key, key), eq(cosmetics.enabled, true)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Does the user currently satisfy `unlock_condition`? Currently the only
+ * condition is `prestige` (prestige progression earned, not purchasable).
+ */
+export async function meetsUnlockCondition(
+  userId: number,
+  condition: string | null,
+): Promise<boolean> {
+  if (!condition) return true;
+  if (condition === "prestige") {
+    const [row] = await db
+      .select({ prestigeLevel: users.prestigeLevel })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return Boolean(row && Number(row.prestigeLevel) >= 1);
+  }
+  return false;
+}
+
+/**
+ * Check whether an unlock condition is satisfiable so the Shop can label
+ * locked items ("Requires Prestige") without blocking gift-guard purchases.
+ * Separate from meetsUnlockCondition to keep the purchase path atomic.
+ */
+
+/**
+ * Idempotently grant ownership of `key` (validated against the catalog) to
+ * `userId`. Returns { granted, alreadyOwned, missing } so battlepass claims
+ * can skip cleanly when the catalog is missing a key (never errors).
+ */
+export async function grantCosmetic(
+  userId: number,
+  key: string,
+  source = "battlepass",
+): Promise<{ granted: boolean; alreadyOwned: boolean; missing: boolean }> {
+  const catalog = await getCosmeticByKey(key);
+  if (!catalog) return { granted: false, alreadyOwned: false, missing: true };
+
+  const existing = await db
+    .select({ id: userCosmetics.id })
+    .from(userCosmetics)
+    .where(and(eq(userCosmetics.userId, userId), eq(userCosmetics.cosmeticKey, key)))
+    .limit(1);
+  if (existing.length) return { granted: false, alreadyOwned: true, missing: false };
+
+  await db.insert(userCosmetics).values({ userId, cosmeticKey: key, source });
+  return { granted: true, alreadyOwned: false, missing: false };
+}
+
+export type BuyCosmeticResult =
+  | { ok: true; cosmeticKey: string; name: string; balance: number }
+  | { ok: false; error: string; status?: number; code?: string };
+
+/**
+ * Server-authoritative token purchase of a cosmetic. Validates, in order:
+ *   1. key is well-formed,
+ *   2. cosmetic exists in the catalog AND is enabled AND has a price,
+ *   3. the user exists and has paid enough tokens,
+ *   4. the unlock condition (e.g. prestige) is met.
+ * Then atomically: debit balance, write the `spend` ledger row, insert the
+ * ownership row (unique constraint = idempotency), and return the result.
+ */
+export async function buyCosmetic(
+  clerkId: string,
+  key: unknown,
+): Promise<BuyCosmeticResult> {
+  if (typeof key !== "string" || !COSMETIC_KEY_REGEX.test(key.trim())) {
+    return { ok: false, error: "Invalid cosmetic key.", status: 400 };
+  }
+  const trimmed = key.trim();
+
+  const catalog = await getCosmeticByKey(trimmed);
+  const price = catalog?.priceTokens ?? null;
+  if (!catalog || price === null || Number(price) <= 0) {
+    return { ok: false, error: "Cosmetic not available.", status: 400 };
+  }
+
+  const appUser = await db.query.users.findFirst({
+    where: eq(users.clerkId, clerkId),
+    columns: { id: true, balance: true },
+  });
+  if (!appUser) {
+    return { ok: false, error: "User not found", status: 404 };
+  }
+  if (!(await meetsUnlockCondition(appUser.id, catalog.unlockCondition))) {
+    return { ok: false, error: "Unlock condition not met.", status: 403 };
+  }
+
+  return db.transaction(async (tx) => {
+    const balance = Number(appUser.balance ?? 0);
+    if (balance < price) {
+      return { ok: false, error: "Insufficient balance", status: 400, code: "INSUFFICIENT_BALANCE" };
+    }
+
+    await tx
+      .update(users)
+      .set({ balance: sql`${users.balance} - ${price}` })
+      .where(eq(users.id, appUser.id));
+
+    // Ledger — same type/reference shape as the shop-item route.
+    await tx.insert(tokenTransactions).values({
+      clerkId,
+      type: "spend",
+      amount: -price,
+      referenceType: "cosmetic",
+      referenceId: trimmed,
+      note: catalog.name,
+    });
+
+    await tx
+      .insert(userCosmetics)
+      .values({ userId: appUser.id, cosmeticKey: trimmed, source: "shop" })
+      .onConflictDoNothing({
+        target: [userCosmetics.userId, userCosmetics.cosmeticKey],
+      });
+
+    return { ok: true, cosmeticKey: trimmed, name: catalog.name, balance: balance - price };
+  });
+}
+
+export type OwnedCosmetic = {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  rarity: string;
+  visual: Record<string, unknown>;
+  unlockCondition: string | null;
+  unlockedAt: Date;
+  equipped: boolean;
+};
+
+/** All cosmetics a user owns, joined with catalog metadata + equip state. */
+export async function getOwnedCosmetics(clerkId: string): Promise<OwnedCosmetic[]> {
+  const appUser = await db.query.users.findFirst({
+    where: eq(users.clerkId, clerkId),
+    columns: { id: true, equippedCosmetics: true },
+  });
+  if (!appUser) return [];
+
+  const rows = await db
+    .select({
+      key: userCosmetics.cosmeticKey,
+      unlockedAt: userCosmetics.unlockedAt,
+      cosmetic: cosmetics,
+    })
+    .from(userCosmetics)
+    .innerJoin(cosmetics, eq(userCosmetics.cosmeticKey, cosmetics.key))
+    .where(eq(userCosmetics.userId, appUser.id))
+    .orderBy(asc(cosmetics.sortOrder), asc(cosmetics.id));
+
+  const equipped = appUser.equippedCosmetics || {};
+  const map = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (row.cosmetic && row.cosmetic.enabled) map.set(row.key, row);
+  }
+
+  return Array.from(map.values()).map((row) => ({
+    key: row.key,
+    name: row.cosmetic!.name,
+    description: row.cosmetic!.description,
+    category: row.cosmetic!.category,
+    rarity: row.cosmetic!.rarity,
+    visual: row.cosmetic!.visual,
+    unlockCondition: row.cosmetic!.unlockCondition,
+    unlockedAt: row.unlockedAt,
+    equipped: equipped[row.cosmetic!.category] === row.key,
+  }));
+}
+
+export type EquipCosmeticResult =
+  | { ok: true; equippedCosmetics: Record<string, string> }
+  | { ok: false; error: string; status?: number };
+
+/**
+ * Server-authoritative equip. Accepts a key or null. When null (or "none"),
+ * the optional `category` clears that one slot; without a category, clears
+ * the whole map. When a key is given the cosmetic must exist, be owned, and
+ * its unlock condition met. Writes the whole `equipped_cosmetics` map.
+ */
+export async function equipCosmetic(
+  clerkId: string,
+  keyOrNull: unknown,
+  categoryArg?: unknown,
+): Promise<EquipCosmeticResult> {
+  const appUser = await db.query.users.findFirst({
+    where: eq(users.clerkId, clerkId),
+    columns: { id: true, equippedCosmetics: true },
+  });
+  if (!appUser) {
+    return { ok: false, error: "User not found", status: 404 };
+  }
+  const equipped = { ...(appUser.equippedCosmetics || {}) };
+
+  const isClear = keyOrNull === null || keyOrNull === undefined;
+  const clearAll = isClear && categoryArg === undefined;
+  if (isClear && categoryArg !== null && categoryArg !== undefined) {
+    const category = String(categoryArg);
+    if (!(COSMETIC_CATEGORIES as readonly string[]).includes(category)) {
+      return { ok: false, error: "Invalid category.", status: 400 };
+    }
+    if (clearAll) {
+      // fall through below
+    }
+    delete equipped[category];
+    await db
+      .update(users)
+      .set({ equippedCosmetics: equipped })
+      .where(eq(users.id, appUser.id));
+    return { ok: true, equippedCosmetics: equipped };
+  }
+  if (clearAll) {
+    await db
+      .update(users)
+      .set({ equippedCosmetics: {} })
+      .where(eq(users.id, appUser.id));
+    return { ok: true, equippedCosmetics: {} };
+  }
+
+  if (typeof keyOrNull !== "string" || !COSMETIC_KEY_REGEX.test(keyOrNull.trim())) {
+    return { ok: false, error: "Invalid cosmetic key.", status: 400 };
+  }
+  const key = keyOrNull.trim();
+
+  const catalog = await getCosmeticByKey(key);
+  if (!catalog) {
+    return { ok: false, error: "Cosmetic not available.", status: 400 };
+  }
+  if (!(await meetsUnlockCondition(appUser.id, catalog.unlockCondition))) {
+    return { ok: false, error: "Unlock condition not met.", status: 403 };
+  }
+
+  const owned = await db
+    .select({ id: userCosmetics.id })
+    .from(userCosmetics)
+    .where(and(eq(userCosmetics.userId, appUser.id), eq(userCosmetics.cosmeticKey, key)))
+    .limit(1);
+  if (!owned.length) {
+    return { ok: false, error: "You do not own this cosmetic.", status: 403 };
+  }
+
+  equipped[catalog.category] = key;
+  await db
+    .update(users)
+    .set({ equippedCosmetics: equipped })
+    .where(eq(users.id, appUser.id));
+  return { ok: true, equippedCosmetics: equipped };
+}

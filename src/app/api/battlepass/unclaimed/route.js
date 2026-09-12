@@ -11,7 +11,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { getLevelFromXp } from "../../../../lib/battlepass";
-import { rewardsForLevel } from "../../../../lib/battlepassRewards";
+import {
+  rewardsForLevel,
+  COSMETIC_REWARD_TYPES,
+} from "../../../../lib/battlepassRewards";
 import { isPremiumMember } from "../../../../lib/stripe/subscriptions";
 
 export async function GET() {
@@ -38,15 +41,18 @@ export async function GET() {
     // premium rewards are still excluded from the count either way.
     const isPremium = await isPremiumMember(userId);
 
-    const [emoteRows, titleRows, glowRows, claimRows] = await Promise.all([
-      sql`SELECT emote_key FROM user_emotes WHERE user_id = ${dbUserId}`,
-      sql`SELECT title_key FROM user_special_titles WHERE user_id = ${dbUserId}`,
-      sql`SELECT glow_key FROM user_glows WHERE user_id = ${dbUserId}`,
-      sql`SELECT level, reward_type FROM battlepass_claims WHERE user_id = ${dbUserId}`,
-    ]);
+    const [emoteRows, titleRows, glowRows, cosmeticRows, claimRows] =
+      await Promise.all([
+        sql`SELECT emote_key FROM user_emotes WHERE user_id = ${dbUserId}`,
+        sql`SELECT title_key FROM user_special_titles WHERE user_id = ${dbUserId}`,
+        sql`SELECT glow_key FROM user_glows WHERE user_id = ${dbUserId}`,
+        sql`SELECT cosmetic_key FROM user_cosmetics WHERE user_id = ${dbUserId}`,
+        sql`SELECT level, reward_type FROM battlepass_claims WHERE user_id = ${dbUserId}`,
+      ]);
     const ownedEmoteKeys = new Set(emoteRows.map((row) => row.emote_key));
     const ownedTitleKeys = new Set(titleRows.map((row) => row.title_key));
     const ownedGlowKeys = new Set(glowRows.map((row) => row.glow_key));
+    const ownedCosmeticKeys = new Set(cosmeticRows.map((row) => row.cosmetic_key));
     const functionalClaims = new Set(
       claimRows.map((row) => `${row.level}:${row.reward_type}`),
     );
@@ -56,12 +62,16 @@ export async function GET() {
     for (let lvl = 1; lvl <= level; lvl += 1) {
       for (const reward of rewardsForLevel(lvl)) {
         const isTitle = reward.type === "title";
+        const isGlow = reward.type === "color";
+        const isCosmetic = COSMETIC_REWARD_TYPES.has(reward.type);
         const isFunctional =
           reward.type === "xp_boost" ||
           reward.type === "quest_boost" ||
           reward.type === "shield" ||
-          reward.type === "grynd";
-        const isGlow = reward.type === "color";
+          reward.type === "grynd" ||
+          reward.type === "tokens" ||
+          reward.type === "battlepass_xp" ||
+          reward.type === "quest_reroll";
         const owned =
           reward.type === "emote"
             ? ownedEmoteKeys.has(reward.key)
@@ -69,14 +79,16 @@ export async function GET() {
               ? ownedTitleKeys.has(reward.key)
               : isGlow
                 ? ownedGlowKeys.has(reward.key)
-                : isFunctional
-                  ? functionalClaims.has(`${lvl}:${reward.type}`)
-                  : false;
+                : isCosmetic
+                  ? ownedCosmeticKeys.has(reward.key)
+                  : isFunctional
+                    ? functionalClaims.has(`${lvl}:${reward.type}`)
+                    : false;
         const premiumLocked = reward.premium === true && !isPremium && !owned;
         if (
           !owned &&
           !premiumLocked &&
-          (reward.type === "emote" || isTitle || isGlow || isFunctional)
+          (reward.type === "emote" || isTitle || isGlow || isFunctional || isCosmetic)
         ) {
           claimableLevels.push(lvl);
         }

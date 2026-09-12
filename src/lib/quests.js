@@ -313,7 +313,13 @@ export async function ensureQuestsForPeriod(clerkId, userId, periodType, periodK
   const rand = createQuestRng(clerkId, periodType, periodKey);
   const weights = await skillTierWeights(userId);
   const recent = await recentSignatures(userId, periodType);
-  const slots = questSlots(periodType);
+  // Daily quest slots scale with membership tier (base 3 + tier bonus);
+  // weekly slots are always the flat 2.
+  let slots = questSlots(periodType);
+  if (periodType === "daily") {
+    const { dailyQuestSlotsForUser } = await import("./stripe/subscriptions");
+    slots = await dailyQuestSlotsForUser(userId);
+  }
   const rolled = [];
 
   for (let slot = 0; slot < slots; slot++) {
@@ -468,6 +474,11 @@ export async function claimQuest(clerkId, questId) {
 
   let xp = expForQuest(reward);
 
+  // Quest XP Boost (separate consumable): doubles ONLY the quest XP on this
+  // claim — the token reward is untouched. One charge per claim.
+  const xpBoosted = await consumeItem(userId, "quest_xp_boost_3", 1);
+  if (xpBoosted) xp = xp * 2;
+
   await getSql()`
     UPDATE user_quests SET claimed = true WHERE id = ${q.id}
   `;
@@ -480,5 +491,75 @@ export async function claimQuest(clerkId, questId) {
   if (xp > 0) {
     await addExp(userId, xp);
   }
-  return { questId: q.id, reward, xp, boosted };
+  return { questId: q.id, reward, xp, boosted, xpBoosted };
+}
+
+// ── Rerolling ──────────────────────────────────────────────────────
+
+/**
+ * Swap one daily quest for a fresh one, consuming a `quest_reroll` charge.
+ * Server-authoritative: the new quest is generated from a deterministic seed
+ * scoped to (player, slot, day) so the client can't choose its content, and
+ * the range duplicate-avoidance logic keeps it sensible. Only unclaimed
+ * daily quests may be rerolled. The charge is consumed BEFORE the swap (and
+ * discarded if the swap can't be produced), and a duplicate activation of
+ * the same slot on the same day resolves to the same rerolled quest.
+ */
+export async function rerollQuest(clerkId, questId) {
+  const userId = await userIdByClerkId(clerkId);
+  if (!userId) throw new Error("User not found");
+
+  const rows = await getSql()`
+    SELECT * FROM user_quests
+    WHERE id = ${Number(questId)} AND user_id = ${userId}
+    LIMIT 1
+  `;
+  if (!rows.length) throw new Error("Quest not found");
+  const q = rows[0];
+  if (q.period_type !== "daily") throw new Error("Only daily quests can be rerolled");
+  if (q.claimed) throw new Error("Quest already claimed");
+
+  // Consume first (atomic) — if the user has no charge, no re-roll happens.
+  const charged = await consumeItem(userId, "quest_reroll", 1);
+  if (!charged) throw new Error("You don't own a Quest Reroll");
+
+  const periodKey = dailyPeriodKey();
+  const rand = createQuestRng(clerkId, "daily", `${periodKey}:reroll:${q.slot}`);
+  const recent = await recentSignatures(userId, "daily");
+
+  const fresh = rollQuest({
+    rand,
+    tier: q.tier || "medium",
+    periodType: "daily",
+    recent,
+    fallbackIndex: Number(q.slot) || 0,
+  });
+  recent.add(fresh.signature);
+
+  await getSql()`
+    UPDATE user_quests
+    SET quest_type = ${fresh.questType},
+        game_key = ${fresh.gameKey},
+        target = ${fresh.target},
+        reward = ${fresh.reward},
+        progress = 0,
+        meta = '{}'::jsonb,
+        claimed = false
+    WHERE id = ${q.id}
+  `;
+
+  const updated = await getSql()`
+    SELECT * FROM user_quests WHERE id = ${q.id} LIMIT 1
+  `;
+  return {
+    questId: q.id,
+    periodType: updated[0]?.period_type,
+    slot: updated[0]?.slot,
+    questType: updated[0]?.quest_type,
+    gameKey: updated[0]?.game_key,
+    target: Number(updated[0]?.target),
+    reward: Number(updated[0]?.reward),
+    progress: Number(updated[0]?.progress || 0),
+    claimed: !!updated[0]?.claimed,
+  };
 }

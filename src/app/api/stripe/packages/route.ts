@@ -28,12 +28,14 @@ export async function GET() {
         badge: tokenPackages.badge,
         featured: tokenPackages.featured,
         stripeProductId: tokenPackages.stripeProductId,
+        stripePriceId: tokenPackages.stripePriceId,
       })
       .from(tokenPackages)
       .where(eq(tokenPackages.enabled, true))
       .orderBy(asc(tokenPackages.sortOrder));
 
-    // Resolve each offer's real price (Stripe-backed where possible).
+    // Resolve each offer's real price (the persisted Stripe price where one
+    // exists — the route never returns the id, only the cents).
     const resolved = await Promise.all(
       rows.map(async (r) => {
         const priceCents = await resolvePackagePriceCents({
@@ -42,7 +44,7 @@ export async function GET() {
           name: r.name,
           priceCents: Number(r.priceCents ?? 0),
           stripeProductId: r.stripeProductId,
-          stripePriceId: null,
+          stripePriceId: r.stripePriceId,
         });
         return {
           ...r,

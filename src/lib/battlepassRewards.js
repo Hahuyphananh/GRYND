@@ -3,8 +3,10 @@
 // Per-level battlepass rewards. Small rewards early, rare rewards at the
 // end. Official image-based rewards reference stable catalog keys.
 //
-// Reserved-empty levels (future icons, frames, and other cosmetics):
-//   9, 17, 27, 36, 49, 61, 67, 73, 86, 93, 97
+// Level 100 holds the capstone; the former reserved-empty levels (9, 17,
+// 27, 36, 49, 61, 67, 73, 86, 93, 97) now carry escalating token rewards
+// (24,800 tokens total across the track) and a handful of cosmetic grants
+// (badges / frames / effects) are seeded at milestone levels.
 // (6, 13, 22, 31, 42, 56 and 81 used to be reserved-empty too, but now hold
 // the official animated emote rewards — the 7 Battle Pass Noto emotes.)
 
@@ -18,7 +20,25 @@ export const REWARD_TYPES = {
   refund: { label: "Loss Refund", color: "#f472b6" },
   grynd: { label: "Grynd+ Days", color: "#a78bfa" },
   emote: { label: "Animated Emote", color: "#22d3ee" },
+  tokens: { label: "Tokens", color: "#f5c542" },
+  battlepass_xp: { label: "BP XP", color: "#a3e635" },
+  quest_reroll: { label: "Quest Reroll", color: "#fbbf24" },
+  cosmetic: { label: "Cosmetic", color: "#a78bfa" },
 };
+
+// The cosmetic reward types share one grant mechanism (user_cosmetics
+// ownership through src/lib/cosmetics.ts). Kept as explicit type names so
+// tracks stay readable and the UI legend can label each one.
+export const COSMETIC_REWARD_TYPES = new Set([
+  "badge",
+  "profile_frame",
+  "avatar_effect",
+  "username_effect",
+  "chat_effect",
+  "profile_glow",
+  "prestige_effect",
+  "cosmetic",
+]);
 
 // Reward rarity colors (matches the title rarity ladder).
 export const REWARD_RARITIES = {
@@ -41,6 +61,7 @@ const REWARDS = [
   [6, [{ type: "emote", key: "hype", name: "Hype Emote", desc: "Unlock the animated Hype emote for in-game use", rarity: "Common" }]],
   [7, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
   [8, [{ type: "color", key: "violet", name: "Violet Glow", desc: "Unlock the violet name glow", value: "#a78bfa", rarity: "Common" }]],
+  [9, [{ type: "tokens", name: "250 Tokens", desc: "Steady supply on the road to the top", value: 250, rarity: "Common" }]],
   [10, [{ type: "title", key: "bp_token_shuffler", name: "Token Shuffler", desc: "Battlepass-exclusive title", rarity: "Common" }]],
   [11, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [12, [{ type: "color", key: "rose", name: "Rose Glow", desc: "Unlock the rose name glow", value: "#f472b6", rarity: "Common" }]],
@@ -48,15 +69,18 @@ const REWARDS = [
   [14, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 3 quest claims pay double", value: 3, rarity: "Common" }]],
   [15, [{ type: "color", key: "amber", name: "Amber Glow", desc: "Unlock the amber name glow", value: "#fbbf24", rarity: "Common" }]],
   [16, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
+  [17, [{ type: "tokens", name: "400 Tokens", desc: "Steady supply on the road to the top", value: 400, rarity: "Common" }]],
   [18, [{ type: "title", key: "bp_quest_completist", name: "Quest Completist", desc: "Battlepass-exclusive title", rarity: "Common" }]],
   [19, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 500 tokens", value: 500, rarity: "Common" }]],
-  [20, [{ type: "color", key: "emerald", name: "Emerald Glow", desc: "Unlock the emerald name glow", value: "#34d399", rarity: "Common" }]],
+  [20, [{ type: "color", key: "emerald", name: "Emerald Glow", desc: "Unlock the emerald name glow", value: "#34d399", rarity: "Common" },
+    { type: "badge", key: "badge-grynd-og", name: "GRYND OG", desc: "Earned the old-school way. Show it off.", rarity: "Common" }]],
   [21, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [22, [{ type: "emote", key: "party", name: "Party Emote", desc: "Unlock the animated Party emote for in-game use", rarity: "Bronze" }]],
   [23, [{ type: "color", key: "crimson", name: "Crimson Glow", desc: "Unlock the crimson name glow", value: "#f87171", rarity: "Common" }]],
   [24, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
   [25, [{ type: "title", key: "bp_wager_warrior", name: "Wager Warrior", desc: "Battlepass-exclusive title", rarity: "Bronze" }]],
   [26, [{ type: "color", key: "sky", name: "Sky Glow", desc: "Unlock the sky name glow", value: "#38bdf8", rarity: "Common" }]],
+  [27, [{ type: "tokens", name: "650 Tokens", desc: "Steady supply on the road to the top", value: 650, rarity: "Bronze" }]],
   [28, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 3 quest claims pay double", value: 3, rarity: "Common" }]],
   [29, [{ type: "color", key: "magenta", name: "Magenta Glow", desc: "Unlock the magenta name glow", value: "#e879f9", rarity: "Common" }]],
   [30, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
@@ -65,6 +89,7 @@ const REWARDS = [
   [33, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 750 tokens", value: 750, rarity: "Common" }]],
   [34, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 24h", value: { multiplier: 2, hours: 24 }, rarity: "Common" }]],
   [35, [{ type: "title", key: "bp_streak_sentinel", name: "Streak Sentinel", desc: "Battlepass-exclusive title", rarity: "Bronze" }]],
+  [36, [{ type: "tokens", name: "900 Tokens", desc: "Steady supply on the road to the top", value: 900, rarity: "Bronze" }]],
   [37, [{ type: "color", key: "gold", name: "Gold Glow", desc: "Unlock the gold name glow", value: "#facc15", rarity: "Common" }]],
   [38, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 5 quest claims pay double", value: 5, rarity: "Bronze" }]],
   [39, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
@@ -77,7 +102,9 @@ const REWARDS = [
   [46, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 5 quest claims pay double", value: 5, rarity: "Bronze" }]],
   [47, [{ type: "grynd", name: "3 Days of Grynd+", desc: "Free Grynd+ membership for 3 days", value: 3, rarity: "Silver" }]],
   [48, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 48h", value: { multiplier: 2, hours: 48 }, rarity: "Bronze" }]],
-  [50, [{ type: "title", key: "bp_glow_bearer", name: "Glow Bearer", desc: "Battlepass-exclusive title", rarity: "Silver" }]],
+  [49, [{ type: "tokens", name: "1,300 Tokens", desc: "Steady supply on the road to the top", value: 1300, rarity: "Bronze" }]],
+  [50, [{ type: "title", key: "bp_glow_bearer", name: "Glow Bearer", desc: "Battlepass-exclusive title", rarity: "Silver" },
+    { type: "badge", key: "badge-veteran", name: "Battle Pass Vet", desc: "Conquered the Battle Pass. Twice or more.", rarity: "Rare" }]],
   [51, [{ type: "color", key: "royal", name: "Royal Glow", desc: "Unlock the royal name glow", value: "#818cf8", rarity: "Common" }]],
   [52, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [53, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 1,500 tokens", value: 1500, rarity: "Bronze" }]],
@@ -87,47 +114,60 @@ const REWARDS = [
   [57, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 5 quest claims pay double", value: 5, rarity: "Bronze" }]],
   [58, [{ type: "title", key: "bp_lucky_gambit", name: "Lucky Gambit", desc: "Battlepass-exclusive title", rarity: "Gold" }]],
   [59, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
-  [60, [{ type: "color", key: "golden_flame", name: "Golden Flame", desc: "Unlock the golden flame name glow", value: "#fde047", rarity: "Common" }]],
+  [60, [{ type: "color", key: "golden_flame", name: "Golden Flame", desc: "Unlock the golden flame name glow", value: "#fde047", rarity: "Common" },
+    { type: "profile_frame", key: "frame-neon-edge", name: "Neon Edge Frame", desc: "A cyan neon frame around your profile avatar.", rarity: "Common" }]],
+  [61, [{ type: "tokens", name: "1,800 Tokens", desc: "Steady supply on the road to the top", value: 1800, rarity: "Silver" }]],
   [62, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 72h", value: { multiplier: 2, hours: 72 }, rarity: "Silver" }]],
   [63, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 1,500 tokens", value: 1500, rarity: "Silver" }]],
   [64, [{ type: "grynd", name: "7 Days of Grynd+", desc: "Free Grynd+ membership for 7 days", value: 7, rarity: "Gold" }]],
   [65, [{ type: "color", key: "aurora", name: "Aurora Glow", desc: "Unlock the aurora name glow", value: "#67e8f9", rarity: "Common" }]],
   [66, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 7 quest claims pay double", value: 7, rarity: "Silver" }]],
+  [67, [{ type: "tokens", name: "2,200 Tokens", desc: "Steady supply on the road to the top", value: 2200, rarity: "Silver" }]],
   [68, [{ type: "title", key: "bp_battlepass_titan", name: "Battlepass Titan", desc: "Battlepass-exclusive title", rarity: "Gold" }]],
   [69, [{ type: "xp_boost", name: "3× XP Boost", desc: "Triple battlepass XP for 48h", value: { multiplier: 3, hours: 48 }, rarity: "Gold" }]],
   [70, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [71, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 2,500 tokens", value: 2500, rarity: "Silver" }]],
   [72, [{ type: "color", key: "inferno", name: "Inferno Glow", desc: "Unlock the inferno name glow", value: "#f97316", rarity: "Common" }]],
+  [73, [{ type: "tokens", name: "2,700 Tokens", desc: "Steady supply on the road to the top", value: 2700, rarity: "Gold" }]],
   [74, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 7 quest claims pay double", value: 7, rarity: "Silver" }]],
   [75, [{ type: "title", key: "bp_high_roller_legend", name: "High Roller Legend", desc: "Battlepass-exclusive title", rarity: "Elite" }]],
   [76, [{ type: "grynd", name: "7 Days of Grynd+", desc: "Free Grynd+ membership for 7 days", value: 7, rarity: "Gold" }]],
   [77, [{ type: "xp_boost", name: "2× XP Boost", desc: "Double battlepass XP for 96h", value: { multiplier: 2, hours: 96 }, rarity: "Gold" }]],
   [78, [{ type: "color", key: "nebula", name: "Nebula Glow", desc: "Unlock the nebula name glow", value: "#c084fc", rarity: "Common" }]],
   [79, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
-  [80, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 2,500 tokens", value: 2500, rarity: "Gold" }]],
+  [80, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 2,500 tokens", value: 2500, rarity: "Gold" },
+    { type: "avatar_effect", key: "avatar-pulse", name: "Status Pulse", desc: "A steady pulse behind your avatar.", rarity: "Rare" }]],
   [81, [{ type: "emote", key: "star", name: "Star Emote", desc: "Unlock the animated Star emote for in-game use", rarity: "Elite" }]],
   [82, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 7 quest claims pay double", value: 7, rarity: "Gold" }]],
   [83, [{ type: "title", key: "bp_aurora_master", name: "Aurora Master", desc: "Battlepass-exclusive title", rarity: "Mythic" }]],
   [84, [{ type: "xp_boost", name: "3× XP Boost", desc: "Triple battlepass XP for 72h", value: { multiplier: 3, hours: 72 }, rarity: "Gold" }]],
   [85, [{ type: "color", key: "solar_flare", name: "Solar Flare", desc: "Unlock the solar flare name glow", value: "#fdba74", rarity: "Common" }]],
+  [86, [{ type: "tokens", name: "3,600 Tokens", desc: "Steady supply on the road to the top", value: 3600, rarity: "Gold" }]],
   [87, [{ type: "grynd", name: "14 Days of Grynd+", desc: "Free Grynd+ membership for 14 days", value: 14, rarity: "Elite" }]],
   [88, [{ type: "shield", name: "Daily Streak Shield", desc: "Protects your daily streak for one missed day", value: 1, rarity: "Common" }]],
   [89, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 10 quest claims pay double", value: 10, rarity: "Gold" }]],
-  [90, [{ type: "color", key: "starfire", name: "Starfire Glow", desc: "Unlock the starfire name glow", value: "#fde68a", rarity: "Common" }]],
+  [90, [{ type: "color", key: "starfire", name: "Starfire Glow", desc: "Unlock the starfire name glow", value: "#fde68a", rarity: "Common" },
+    { type: "profile_glow", key: "profile-aura", name: "Profile Aura", desc: "A soft aura ringing the whole profile card.", rarity: "Rare" }]],
   [91, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 5,000 tokens", value: 5000, rarity: "Elite" }]],
   [92, [{ type: "xp_boost", name: "3× XP Boost", desc: "Triple battlepass XP for 72h", value: { multiplier: 3, hours: 72 }, rarity: "Elite" }]],
+  [93, [{ type: "tokens", name: "4,500 Tokens", desc: "Steady supply on the road to the top", value: 4500, rarity: "Elite" }]],
   [94, [{ type: "shield", name: "Ultimate Streak Shield", desc: "Protects your streak for 3 missed days", value: 3, rarity: "Elite" }]],
   [95, [{ type: "color", key: "celestial", name: "Celestial Glow", desc: "Unlock the celestial name glow", value: "#93c5fd", rarity: "Common" }]],
   [96, [{ type: "quest_boost", name: "Quest Boost", desc: "Next 10 quest claims pay double", value: 10, rarity: "Elite" }]],
+  [97, [{ type: "tokens", name: "6,500 Tokens", desc: "Steady supply on the road to the top", value: 6500, rarity: "Elite" }]],
   [98, [{ type: "xp_boost", name: "3× XP Boost", desc: "Triple battlepass XP for 96h", value: { multiplier: 3, hours: 96 }, rarity: "Elite" }]],
   [99, [{ type: "refund", name: "Loss Refund", desc: "Refund one losing bet up to 10,000 tokens", value: 10000, rarity: "Mythic" }]],
   [100, [
     { type: "title", key: "bp_grynd_pass_legend", name: "GRYND PASS LEGEND", desc: "The ultimate battlepass title", rarity: "Overlord" },
     { type: "color", key: "golden_name", name: "Golden Name Glow", desc: "Permanent golden name glow — the mark of a legend", value: "#f5ff3b", rarity: "Overlord" },
+    { type: "chat_effect", key: "chat-shimmer", name: "Legend Chat Name", desc: "Golden shimmer on your chat name.", rarity: "Epic" },
   ]],
 ];
 
-export const RESERVED_LEVELS = [9, 17, 27, 36, 49, 61, 67, 73, 86, 93, 97];
+// Formerly empty placeholder levels — their slots were reserved for future
+// cosmetics and are now filled with escalating token rewards (24,800 tokens
+// total at the current escalation).
+export const RESERVED_LEVELS = [];
 
 // ── Premium track (Grynd+ membership) ─────────────────────────────────────
 // Rewards gated behind an active Grynd+ subscription. The split reuses the

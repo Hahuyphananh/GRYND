@@ -28,12 +28,13 @@ import { db } from "../../../../db";
 import {
   tokenSubscriptionPlans,
   stripeCheckoutSessions,
+  tokenTransactions,
 } from "../../../../db/schema";
 import { unlockEmote } from "../../../../lib/emotes";
 import { unlockTitle } from "../../../../lib/specialTitles";
 import { unlockGlow } from "../../../../lib/glows";
-import { getLevelFromXp } from "../../../../lib/battlepass";
-import { rewardsForLevel } from "../../../../lib/battlepassRewards";
+import { getLevelFromXp, addExp } from "../../../../lib/battlepass";
+import { rewardsForLevel, COSMETIC_REWARD_TYPES } from "../../../../lib/battlepassRewards";
 import { getStripe, getBaseUrl } from "../../../../lib/stripe";
 import {
   isPremiumMember,
@@ -44,6 +45,8 @@ import {
   activateTimedEffect,
   grantItem,
 } from "../../../../lib/shopItems";
+import { grantCosmetic } from "../../../../lib/cosmetics";
+import { creditUserBalance } from "../../../../lib/tokens/creditTokens";
 
 // Reward types that can be granted. The functional types carry no key —
 // they're disambiguated by the track level in the request.
@@ -55,12 +58,17 @@ const CLAIMABLE_TYPES = new Set([
   "xp_boost",
   "quest_boost",
   "shield",
+  "tokens",
+  "battlepass_xp",
+  "quest_reroll",
+  ...COSMETIC_REWARD_TYPES,
 ]);
 // Functional reward types → item-shop inventory mapping.
 const FUNCTIONAL_GRANTS = {
   xp_boost: null, // handled specially (effect key encodes multiplier×hours)
   quest_boost: { itemKey: "quest_boost_3" },
   shield: { itemKey: "streak_shield" },
+  quest_reroll: { itemKey: "quest_reroll" },
 };
 
 /** 8 random lowercase letters suffix for the checkout integration_identifier. */
@@ -112,7 +120,11 @@ export async function POST(req) {
     //     is a distinct claimable reward).
     let rewardLevel = null;
     let reward = null;
-    const isFunctional = type in FUNCTIONAL_GRANTS || type === "grynd";
+    const isFunctional =
+      type in FUNCTIONAL_GRANTS ||
+      type === "grynd" ||
+      type === "tokens" ||
+      type === "battlepass_xp";
     if (isFunctional) {
       if (!Number.isInteger(levelParam) || levelParam < 1 || levelParam > level) {
         return Response.json(
@@ -178,6 +190,13 @@ export async function POST(req) {
       const ownedRows = await sql`
         SELECT 1 FROM user_glows
          WHERE user_id = ${dbUserId} AND glow_key = ${key}
+         LIMIT 1
+      `;
+      owned = ownedRows.length > 0;
+    } else if (COSMETIC_REWARD_TYPES.has(type)) {
+      const ownedRows = await sql`
+        SELECT 1 FROM user_cosmetics
+         WHERE user_id = ${dbUserId} AND cosmetic_key = ${key}
          LIMIT 1
       `;
       owned = ownedRows.length > 0;
@@ -290,6 +309,40 @@ export async function POST(req) {
         claimed,
         checkoutUrl: session.url ?? null,
       });
+    } else if (type === "tokens") {
+      // Token rewards: ONE atomic transaction — credit the balance (through
+      // creditUserBalance), write the `reward` ledger row (Battle Pass), and
+      // journal the per-level claim so the reward can't be claimed twice.
+      const amount = Math.min(100000, Math.max(1, Math.floor(Number(reward.value) || 0)));
+      await db.transaction(async (tx) => {
+        await creditUserBalance(userId, amount, tx);
+        await tx.insert(tokenTransactions).values({
+          clerkId: userId,
+          type: "reward",
+          amount,
+          referenceType: "battlepass",
+          referenceId: String(rewardLevel),
+          note: reward.name,
+        });
+        await sql`
+          INSERT INTO battlepass_claims (user_id, level, reward_type, reward_key)
+          VALUES (${dbUserId}, ${rewardLevel}, 'tokens', NULL)
+          ON CONFLICT DO NOTHING
+        `;
+      });
+    } else if (type === "battlepass_xp") {
+      // Flat Battle Pass XP (already routed through addExp's boost math).
+      await addExp(dbUserId, Number(reward.value) || 0);
+      await sql`
+        INSERT INTO battlepass_claims (user_id, level, reward_type, reward_key)
+        VALUES (${dbUserId}, ${rewardLevel}, 'battlepass_xp', NULL)
+        ON CONFLICT DO NOTHING
+      `;
+    } else if (COSMETIC_REWARD_TYPES.has(type)) {
+      // Cosmetic track rewards: ownership row in user_cosmetics IS the
+      // record (same as emote/title/color above). Key validated against the
+      // catalog inside grantCosmetic; missing catalog keys are skipped.
+      await grantCosmetic(dbUserId, key, "battlepass");
     } else {
       // Functional rewards: grant the inventory item / timed effect, then
       // record the per-level claim so the identical entry can't be claimed

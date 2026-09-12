@@ -1,4 +1,4 @@
-{
+﻿{
   "version": "7",
   "dialect": "postgresql",
   "entries": [
@@ -966,6 +966,13 @@
       "version": "7",
       "when": 1800000000000,
       "tag": "0150_memory_grid_decimal_scores",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1800000001000,
+      "tag": "0156_economy_rebalance_cosmetics",
       "breakpoints": true
     }
   ]
