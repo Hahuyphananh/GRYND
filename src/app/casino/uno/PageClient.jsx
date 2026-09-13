@@ -1453,8 +1453,8 @@ export default function UnoGamePage() {
       >
       <CreatorView
         normal={normalView}
-        portrait={portraitContent}
-        landscape={landscapeContent}
+        portrait={!game ? normalView : portraitContent}
+        landscape={!game ? normalView : landscapeContent}
       />
       </CreatorModeHost>
       <Footer />

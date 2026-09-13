@@ -358,6 +358,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
         autoStart={phase !== "picking"}
         autoStop={matchOver}
         gameLabel="rock-paper-scissors-ai"
+        backToLobbyHref="/casino/rps"
       >
       <CreatorResponsiveLayout>
       {/* data-creator-stack-swap: in the portrait (9:16) creator frame this

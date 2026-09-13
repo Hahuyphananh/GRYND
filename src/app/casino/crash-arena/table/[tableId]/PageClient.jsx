@@ -448,6 +448,7 @@ export default function TableRoomPage() {
             roundState?.phase === "settling"
           }
           gameLabel="crash-arena"
+          backToLobbyHref="/casino/crash-arena"
         >
         <CreatorResponsiveLayout>
         <ArenaTable

@@ -1194,6 +1194,7 @@ export default function ChessGamePage() {
         autoStart={Boolean(gameData && gameData.status === "in_progress")}
         autoStop={Boolean(gameData && (gameData.status === "finished" || gameData.status === "expired"))}
         gameLabel="chess"
+        backToLobbyHref="/casino/chess"
       >
         <CreatorView
           normal={desktopContent}

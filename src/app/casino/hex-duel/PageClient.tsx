@@ -3063,6 +3063,7 @@ export default function HexDuelPage() {
             autoStart={Boolean(showGame)}
             autoStop={Boolean(isGameOver || effectiveWinner)}
             gameLabel="hex-duel"
+            backToLobbyHref="/casino/hex-duel"
           >
             <CreatorView
               normal={desktopContent}

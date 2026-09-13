@@ -744,6 +744,7 @@ const prefersReducedMotion = useReducedMotion();
         autoStart={game?.status === "in_progress"}
         autoStop={game?.status === "finished" || game?.status === "cancelled"}
         gameLabel="dots-and-boxes"
+        backToLobbyHref="/casino/dots-and-boxes"
       >
       <CreatorView normal={<motion.div
         initial={{ opacity: 0, y: 8 }}
