@@ -1,8 +1,0 @@
-node_modules/
-package-lock.json
-dist/
-output/
-media/
-.analysis-frames/
-input-samples/
-manifests/analysis/

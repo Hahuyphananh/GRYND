@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { unoGames, users } from "../../../../db/schema";
-import { and, eq, isNull, ne, desc } from "drizzle-orm";
+import { and, eq, isNull, ne, desc, or } from "drizzle-orm";
 
 export async function GET() {
   const { userId } = await auth();
@@ -23,12 +23,14 @@ export async function GET() {
       );
     }
 
+    // Fetch other users' waiting games (to join)
     const waitingGames = await db
       .select({
         id: unoGames.id,
         betAmount: unoGames.betAmount,
         createdAt: unoGames.createdAt,
         hostName: users.name,
+        userId: unoGames.userId,
       })
       .from(unoGames)
       .innerJoin(users, eq(unoGames.userId, users.id))
@@ -41,6 +43,27 @@ export async function GET() {
       )
       .orderBy(desc(unoGames.createdAt));
 
+    // Fetch current user's own waiting game (to resume/cancel)
+    const myWaitingGame = await db
+      .select({
+        id: unoGames.id,
+        betAmount: unoGames.betAmount,
+        createdAt: unoGames.createdAt,
+        hostName: users.name,
+        userId: unoGames.userId,
+      })
+      .from(unoGames)
+      .innerJoin(users, eq(unoGames.userId, users.id))
+      .where(
+        and(
+          eq(unoGames.status, "waiting"),
+          isNull(unoGames.player2Id),
+          eq(unoGames.userId, currentUser.id),
+        ),
+      )
+      .orderBy(desc(unoGames.createdAt))
+      .limit(1);
+
     const currentBalance = parseFloat(currentUser.balance);
     const games = waitingGames.map((game) => {
       const bet = parseFloat(game.betAmount);
@@ -52,6 +75,20 @@ export async function GET() {
         canAfford: currentBalance >= bet,
       };
     });
+
+    // Add user's own waiting game with isMine flag
+    if (myWaitingGame.length > 0) {
+      const game = myWaitingGame[0];
+      const bet = parseFloat(game.betAmount);
+      games.unshift({
+        id: game.id,
+        betAmount: game.betAmount,
+        hostName: game.hostName,
+        createdAt: game.createdAt,
+        canAfford: currentBalance >= bet,
+        isMine: true,
+      });
+    }
 
     return new Response(JSON.stringify({ success: true, data: games }), {
       status: 200,

@@ -83,3 +83,6 @@ load-test/tokens.csv
 
 # Database backups (contain real user data — never commit them)
 /backups/
+
+# Added by ggshield
+.cache_ggshield

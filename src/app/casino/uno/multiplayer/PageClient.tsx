@@ -256,7 +256,7 @@ export default function UnoMultiplayerPage() {
     };
   }, [socket]);
 
-  const hydrateUnoTableGame = (tableGame: any) => {
+  const hydrateUnoTableGame = (tableGame: any, fullSyncData: any = null) => {
     if (!tableGame?.id) return;
     setGame({ id: tableGame.id, role: tableGame.role });
     setUnoMultiBackendMode(tableGame.mode || "table");
@@ -274,56 +274,92 @@ export default function UnoMultiplayerPage() {
     const myTurn = tableGame.turnPlayerId === tableGame.role;
     setIsPlayerTurn(Boolean(myTurn));
     setMessage(myTurn ? "Your turn" : "Opponent turn...");
+
+    // Handle game end from full sync data (if provided)
+    if (fullSyncData) {
+      if (fullSyncData.status === "finished" && !endPopup) {
+        const youWon = fullSyncData.data?.winner === fullSyncData.data?.role;
+        setMessage(youWon ? "You won the match!" : "You lost the match.");
+        openEndPopup(youWon ? "win" : "loss", "finished", fullSyncData.data?.pot);
+      } else if (fullSyncData.shouldReturnToLobby || !fullSyncData.data?.role) {
+        setMessage("Game over.");
+        openEndPopup("loss", "finished", fullSyncData.data?.pot);
+      }
+    }
   };
 
+  // Single unified polling for both room state (lobby) and active game
+  // Replaces the dual-interval approach (roomSyncRef + game sync) to eliminate
+  // race conditions and redundant fetches.
   useEffect(() => {
     if (!unoMultiTableCode) return;
-    roomSyncRef.current = setInterval(async () => {
+
+    let currentInterval: NodeJS.Timeout | null = null;
+    let lastKnownStarted = false;
+
+    const poll = async () => {
       try {
+        // Single endpoint returns both room + active game (if started)
         const res = await fetch(`/api/uno/multiplayer?code=${unoMultiTableCode}`, {
           method: "GET",
           credentials: "include",
         });
         const data = await res.json();
-        if (!data.success) {
-          setUnoMultiMessage(data.error || "Unable to sync room");
-          return;
-        }
+        if (!data.success) return;
 
+        // Update room state (players, settings, host)
         setUnoMultiPlayers(data.room.players || []);
         setUnoMultiSettings((prev) => ({
           ...prev,
           ...(data.room.settings || {}),
         }));
         setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
+
+        // Keep myId stable - prefer userId match, fallback to previous ID
         const me =
           data.room.players.find((p: any) => p.userId === data.currentUserId) ||
           data.room.players.find((p: any) => p.id === unoMultiMyId);
         if (me) setUnoMultiMyId(me.id);
 
-        if (data.room.started) {
+        const roomStarted = Boolean(data.room.started);
+
+        // If room just transitioned to started, or we're already in-game
+        if (roomStarted || game?.id) {
           setUnoMultiStarted(true);
-          const syncRes = await fetch("/api/uno/multiplayer", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              action: "sync-active-game",
-              code: unoMultiTableCode,
-            }),
-          });
-          const syncData = await syncRes.json();
-          if (syncData.success && syncData.game) hydrateUnoTableGame(syncData.game);
+          // Also fetch active game state if we don't have it or game just started
+          if (!game?.id || roomStarted !== lastKnownStarted) {
+            const syncRes = await fetch("/api/uno/multiplayer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                action: "sync-active-game",
+                code: unoMultiTableCode,
+              }),
+            });
+            const syncData = await syncRes.json();
+            if (syncData.success && syncData.game) {
+              hydrateUnoTableGame(syncData.game, syncData);
+            }
+          }
         }
+
+        lastKnownStarted = roomStarted;
       } catch (error) {
-        console.error("Unable to sync UNO multiplayer room", error);
+        console.error("Unable to sync UNO multiplayer room/game", error);
       }
-    }, 2500);
+    };
+
+    // Initial immediate poll
+    poll();
+
+    // Poll every 2s (covers both lobby updates and in-game state)
+    currentInterval = setInterval(poll, 2000);
 
     return () => {
-      if (roomSyncRef.current) clearInterval(roomSyncRef.current);
+      if (currentInterval) clearInterval(currentInterval);
     };
-  }, [unoMultiTableCode, unoMultiMyId]);
+  }, [unoMultiTableCode, game?.id]);
 
   useEffect(() => {
     if (!unoMultiTableCode) return;
@@ -345,54 +381,6 @@ export default function UnoMultiplayerPage() {
     };
     syncSkip();
   }, [unoMultiSkipRound, unoMultiTableCode]);
-
-  useEffect(() => {
-    if (!game?.id) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/uno/multiplayer/check-game", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: unoMultiTableCode }),
-        });
-
-        const data = await res.json();
-        if (!data.success) return;
-        if (data.status === "finished" && !endPopup) {
-          const youWon = data.data?.winner === data.data?.role;
-          setMessage(youWon ? "You won the match!" : "You lost the match.");
-          openEndPopup(youWon ? "win" : "loss", "finished", data.data?.pot);
-          return;
-        }
-        if (data.shouldReturnToLobby || !data.data?.role) {
-          setMessage("Game over.");
-          openEndPopup("loss", "finished", data.data?.pot);
-          return;
-        }
-
-        setPlayerHand(data.data.playerHand || []);
-        setTopCard(data.data.topCard || null);
-        setGame((prev: any) => ({
-          ...prev,
-          currentColor: data.data.currentColor,
-        }));
-        setUnoMultiHandCounts(Array.isArray(data.data.handCounts) ? data.data.handCounts : []);
-        setUnoMultiTurnPlayerId(data.data.turnPlayerId || null);
-        setIsPlayerTurn(data.data.turnPlayerId === data.data.role);
-        setTurnHistory((prev) => {
-          const last = prev[prev.length - 1];
-          const sameCard =
-            last?.color === data.data.topCard?.color && last?.value === data.data.topCard?.value;
-          return sameCard ? prev : [...prev, data.data.topCard];
-        });
-      } catch (error) {
-        console.error("Unable to sync multiplayer game", error);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [game?.id, unoMultiTableCode]);
 
   const createUnoMultiplayerTable = async () => {
     try {
@@ -424,7 +412,7 @@ export default function UnoMultiplayerPage() {
     }
   };
 
-  const joinUnoPublicTable = async (tableCode: string) => {
+const joinUnoPublicTable = async (tableCode: string) => {
     try {
       const res = await fetch("/api/uno/multiplayer", {
         method: "POST",
@@ -438,12 +426,15 @@ export default function UnoMultiplayerPage() {
         return;
       }
 
-      const myPlayer =
-        data.room.players.find((p: any) => p.userId === data.currentUserId) ||
-        data.room.players[data.room.players.length - 1];
+      // Use joinedPlayerId from API response (player was added to room during join)
+      const joinedPlayerId = data.joinedPlayerId;
+      const myPlayer = joinedPlayerId
+        ? data.room.players.find((p) => p.id === joinedPlayerId)
+        : data.room.players.find((p) => p.userId === data.currentUserId);
+
       setUnoMultiTableCode(data.room.code);
       setUnoMultiPlayers(data.room.players || []);
-      setUnoMultiHostId(data.room.players.find((p: any) => p.isHost)?.id ?? null);
+      setUnoMultiHostId(data.room.players.find((p) => p.isHost)?.id ?? null);
       setUnoMultiMyId(myPlayer?.id ?? null);
       setUnoMultiStarted(Boolean(data.room.started));
       setUnoMultiSettings((prev) => ({
@@ -479,7 +470,15 @@ export default function UnoMultiplayerPage() {
 
   const meSeated = mePlayer?.seatIndex !== null && mePlayer?.seatIndex !== undefined;
 
-  const sitAsHuman = async (seatIndex: number) => {
+const sitAsHuman = async (seatIndex: number) => {
+    // Optimistic update - immediately show as seated
+    setUnoMultiPlayers((prev) =>
+      prev.map((p) =>
+        p.id === unoMultiMyId ? { ...p, seatIndex } : p
+      )
+    );
+    setShowSeatPopup(false);
+
     try {
       const res = await fetch("/api/uno/multiplayer", {
         method: "POST",
@@ -492,13 +491,28 @@ export default function UnoMultiplayerPage() {
         }),
       });
       const data = await res.json();
-      if (!data.success) return setUnoMultiMessage(data.error || "Unable to sit.");
+      if (!data.success) {
+        setUnoMultiMessage(data.error || "Unable to sit.");
+        // Revert optimistic update on error
+        setUnoMultiPlayers((prev) =>
+          prev.map((p) =>
+            p.id === unoMultiMyId ? { ...p, seatIndex: null } : p
+          )
+        );
+        return;
+      }
       setUnoMultiPlayers(data.room.players || []);
-      const me = data.room.players.find((p: any) => p.userId === data.currentUserId);
+      const me = data.room.players.find((p) => p.userId === data.currentUserId);
       if (me) setUnoMultiMyId(me.id);
-      setShowSeatPopup(false);
     } catch (error) {
       console.error("Unable to sit as human", error);
+      setUnoMultiMessage("Connection error. Please try again.");
+      // Revert optimistic update
+      setUnoMultiPlayers((prev) =>
+        prev.map((p) =>
+          p.id === unoMultiMyId ? { ...p, seatIndex: null } : p
+        )
+      );
     }
   };
 
@@ -1039,12 +1053,12 @@ export default function UnoMultiplayerPage() {
         <button
           onClick={drawCard}
           disabled={!isPlayerTurn || loading}
-          className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-2.5 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border-2 border-[#38fcfc]/80 bg-gradient-to-r from-[#00e5ff] to-[#38fcfc] px-6 py-3 font-black uppercase tracking-wider text-[#031026] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 min-h-[44px] min-w-[140px]"
         >
           {t("neonFlush.drawCard")}
         </button>
         <button
-          className="rounded-xl border-2 border-[#FF2D9B]/60 bg-[#FF2D9B]/15 px-5 py-2.5 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.25)] opacity-80 transition-all hover:opacity-100"
+          className="rounded-xl border-2 border-[#FF2D9B]/60 bg-[#FF2D9B]/15 px-6 py-3 font-black uppercase tracking-wider text-[#ff7ac2] shadow-[0_0_14px_rgba(255,45,155,0.25)] opacity-80 transition-all hover:opacity-100 min-h-[44px] min-w-[120px]"
         >
           {t("neonFlush.flush")}
         </button>
@@ -1183,15 +1197,15 @@ export default function UnoMultiplayerPage() {
   );
 
   // Portrait (9:16) — phone-style: compact header, the table circle
-  // filling the middle, controls + history pinned at the bottom.
+  // filling the frame width (1:1 circle fills 9/16 of height), controls + history pinned at the bottom.
   const portraitContent = (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
       <ShellHeader className="flex flex-col gap-1.5">
         {creatorHeaderNode}
       </ShellHeader>
-      <ShellMain className="overflow-hidden">
-        <div className="relative flex h-full w-full flex-col items-center justify-center px-3 py-2">
-          <div className="relative h-full max-h-full w-full rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]" style={{ aspectRatio: "1 / 1", maxWidth: "min(100%, 100vh)" }}>
+      <ShellMain className="flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 w-full min-h-0 overflow-hidden relative flex items-center justify-center px-2 py-2">
+          <div className="relative w-full aspect-square rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]" style={{ maxWidth: "100%" }}>
             {tableCircleInnerNode}
             {colorPickerNode}
             {opponentsStripNode}
@@ -1429,7 +1443,7 @@ export default function UnoMultiplayerPage() {
                             disabled={Boolean(occupant)}
                             className="w-28 h-12 rounded-xl border border-dashed text-xs border-[#00e5ff]/45 hover:bg-[#00e5ff]/20"
                           >
-                            {!meSeated ? "Sit as Human" : isHost ? "+ Add AI" : "Open seat"}
+                            {meSeated ? (isHost ? "+ Add AI" : "Occupied") : "Claim Seat"}
                           </button>
                         )
                       ) : (
