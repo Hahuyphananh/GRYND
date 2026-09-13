@@ -10,8 +10,9 @@
 //   • Opening: EVERY player posts the table wager as a flat ante. No
 //     blinds, no dealer rotation, no roles. A short stack posts everything
 //     and is all-in from the start; a player with no stack is left out.
-//   • The curve: climbs continuously from 1.00x (multiplier = e^(rate·t))
-//     — no betting checkpoints, no deadlines. Anyone can fold at ANY
+//   • The curve: climbs continuously from 1.00x along a piecewise-linear
+//     slowdown (see CRASH_CURVE_SEGMENTS in constants.js) — no betting
+//     checkpoints, no deadlines. Anyone can fold at ANY
 //     moment; the fold's multiplier is the server-authoritative curve value
 //     at the moment the server accepts it. The ONE exception: an accepted
 //     fold freezes the curve (pauseHandOnFold) for FOLD_PAUSE_MS so the
@@ -27,7 +28,7 @@
 //     Nobody folded + crash → the whole pot carries over to the next hand.
 
 import {
-  CRASH_GROWTH_RATE,
+  crashMultiplierAtTime,
   FOLD_PAUSE_MS,
   PLATFORM_FEE,
   roundMoney,
@@ -115,23 +116,26 @@ export function createHand({
     pausedTotalMs: 0,
     pausedSince: null,
     pausedUntil: null,
+    // When a fold-out (hand over) is being resolved, the wall-clock moment
+    // the API will settle it — until then actions are rejected ("hand
+    // ending") and clients stay frozen on the fold-out pause.
+    settlePendingAt: null,
   };
 }
 
 /**
- * The multiplier the shared curve shows at a wall-clock moment.
- * multiplier = e^(GROWTH_RATE · (now − startedAt)) — continuous except for
- * accepted folds, which freeze the curve for FOLD_PAUSE_MS. This function
- * is pause-aware: while a pause window is open (pausedSince set) the
- * elapsed time freezes at the fold moment; once the window closes the
- * progress is re-based so the frozen interval adds nothing.
+ * The multiplier the shared curve shows at a wall-clock moment. The curve is
+ * the piecewise-linear slowdown in constants.js (crashMultiplierAtTime) —
+ * continuous except for accepted folds, which freeze it for FOLD_PAUSE_MS.
+ * This function is pause-aware: while a pause window is open (pausedSince
+ * set) the elapsed time freezes at the fold moment; once the window closes
+ * the progress is re-based so the frozen interval adds nothing.
  *
  * @param {object} hand
  * @param {number} [now] epoch ms
- * @param {number} [growthRate]
  * @returns {number}
  */
-export function curveMultiplierAt(hand, now = Date.now(), growthRate = CRASH_GROWTH_RATE) {
+export function curveMultiplierAt(hand, now = Date.now()) {
   const resumedAt = Number(hand?.flightResumedAt ?? now);
   const pausedTotalMs = Number(hand?.pausedTotalMs ?? 0);
   const pausedSince = hand?.pausedSince != null ? Number(hand.pausedSince) : null;
@@ -141,7 +145,7 @@ export function curveMultiplierAt(hand, now = Date.now(), growthRate = CRASH_GRO
     elapsedMs -= Math.max(0, now - pausedSince);
   }
   const elapsed = Math.max(0, elapsedMs / 1000);
-  return Math.exp(growthRate * elapsed);
+  return crashMultiplierAtTime(elapsed);
 }
 
 /**
@@ -151,13 +155,12 @@ export function curveMultiplierAt(hand, now = Date.now(), growthRate = CRASH_GRO
  * @param {object} hand
  * @param {number} now epoch ms
  * @param {number} crashPoint the server-authoritative crash multiplier
- * @param {number} [growthRate]
  * @returns {boolean}
  */
-export function isCrashDueAt(hand, now, crashPoint, growthRate = CRASH_GROWTH_RATE) {
+export function isCrashDueAt(hand, now, crashPoint) {
   const cp = Number(crashPoint);
   if (!Number.isFinite(cp) || cp <= 1) return false;
-  return curveMultiplierAt(hand, now, growthRate) >= cp;
+  return curveMultiplierAt(hand, now) >= cp;
 }
 
 /**
@@ -353,6 +356,10 @@ export function handFromEntries({ round, entries, carryOver = 0 }) {
       saved.pausedSince != null ? Number(saved.pausedSince) : null,
     pausedUntil:
       saved.pausedUntil != null ? Number(saved.pausedUntil) : null,
+    // Deferred fold-out settle deadline (see the action route): restored so
+    // the crash-check sweep settles it if the process restarts mid-window.
+    settlePendingAt:
+      saved.settlePendingAt != null ? Number(saved.settlePendingAt) : null,
   };
 }
 
