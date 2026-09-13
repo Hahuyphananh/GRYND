@@ -598,7 +598,7 @@ const prefersReducedMotion = useReducedMotion();
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.2, duration: 0.5 }}
-      className="w-full flex justify-center"
+      className="w-full h-full flex items-center justify-center"
     >
       <DotsAndBoxesBoard
         drawnH={drawnH}
@@ -619,12 +619,12 @@ const prefersReducedMotion = useReducedMotion();
       />
     </motion.div>
   );
-  const dbShell = (
+const dbShell = (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
       <ShellHeader className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Dots &amp; Boxes</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Dots & Boxes</p>
             <p className="truncate text-xs text-white/70">
               {game?.hostName || "Host"} vs {game?.guestName || "Guest"}
             </p>
@@ -643,7 +643,11 @@ const prefersReducedMotion = useReducedMotion();
         </div>
       </ShellHeader>
 
-      <ShellMain className="justify-center">{dbBoardNode}</ShellMain>
+      <ShellMain className="flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 w-full min-h-0 overflow-hidden">
+          {dbBoardNode}
+        </div>
+      </ShellMain>
 
       <ShellAside>
         <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-white/50">

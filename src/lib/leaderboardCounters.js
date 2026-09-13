@@ -3,6 +3,8 @@ import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidat
 import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
 import { getActiveXpMultiplierByClerkId } from "./shopItems";
+import { sendBigWinEmail, sendLossStreakEmail } from "./emails/behavior";
+import { sendProgressionEmail } from "./emails/progression";
 
 let _sql = null;
 function getSql() {
@@ -38,6 +40,19 @@ export async function applyLeaderboardCounters({
   const betExp =
     expForWager(bet) * (await getActiveXpMultiplierByClerkId(clerkId));
 
+  // Fetch user's current level and email BEFORE the update to detect level up
+  const userBefore = await getSql()`
+    SELECT id, level, email, name, current_streak
+    FROM users
+    WHERE clerk_id = ${clerkId}
+    LIMIT 1
+  `;
+
+  const previousLevel = userBefore?.[0]?.level ?? 1;
+  const userEmail = userBefore?.[0]?.email;
+  const userName = userBefore?.[0]?.name;
+  const previousStreak = userBefore?.[0]?.current_streak ?? 0;
+
   const counterRows = await getSql()`
     WITH updated_user AS (
       UPDATE users
@@ -65,7 +80,7 @@ export async function applyLeaderboardCounters({
           last_settled_wins_delta = CASE WHEN ${isWin} THEN 1 ELSE 0 END,
           last_settled_losses_delta = CASE WHEN ${isWin} THEN 0 ELSE 1 END
       WHERE clerk_id = ${clerkId}
-      RETURNING id, level, xp
+      RETURNING id, level, xp, email, name, current_streak, biggest_win
     )
     INSERT INTO user_stats (
       user_id,
@@ -140,6 +155,41 @@ export async function applyLeaderboardCounters({
 
   // Battlepass rewards are NOT auto-granted on settlement — the player
   // claims them on the battlepass page once they reach the level.
+
+  const userRow = counterRows?.[0];
+  const newLevel = userRow?.level ?? previousLevel;
+  const currentStreak = userRow?.current_streak ?? (isWin ? 1 : -1);
+
+  // Send emails (fire-and-forget, don't block settlement)
+  if (userEmail) {
+    // Level up email
+    if (newLevel > previousLevel) {
+      try {
+        await sendProgressionEmail({ clerkId, email: userEmail, name: userName }, newLevel);
+      } catch (err) {
+        console.error("[applyLeaderboardCounters] Level up email failed:", err);
+      }
+    }
+
+    // Big win email (10x multiplier or 1M+ tokens)
+    if (multiplier >= 10 || win >= 1_000_000) {
+      try {
+        await sendBigWinEmail({ clerkId, email: userEmail, name: userName }, win);
+      } catch (err) {
+        console.error("[applyLeaderboardCounters] Big win email failed:", err);
+      }
+    }
+
+    // Loss streak email (3+ losses in a row)
+    // current_streak: positive for wins, 0 after first loss, -1 after second, -2 after third, etc.
+    if (!isWin && currentStreak <= -3) {
+      try {
+        await sendLossStreakEmail({ clerkId, email: userEmail, name: userName });
+      } catch (err) {
+        console.error("[applyLeaderboardCounters] Loss streak email failed:", err);
+      }
+    }
+  }
 
   if (multiplier >= 10) {
     await getSql()`

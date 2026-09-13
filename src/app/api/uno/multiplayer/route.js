@@ -541,11 +541,28 @@ export async function POST(request) {
         room: { ...tableSummary(room), players: room.players },
       });
 
+    // Add player to room with seatIndex: null (at table but not seated)
+    const joinIdentity = await seatIdentityForUser(user);
+    const newPlayer = {
+      id: `${user.id}-${Date.now()}`,
+      userId: user.id,
+      name: user.name,
+      type: "human",
+      seatIndex: null,
+      isHost: false,
+      skipNextRound: false,
+      prestigeBadge: prestigeBadgeForUser(user),
+      iconKey: joinIdentity.iconKey,
+      nameColor: joinIdentity.nameColor,
+    };
+    room.players.push(newPlayer);
+
     return Response.json({
       success: true,
       currentUserId: user.id,
       room: { ...tableSummary(room), players: room.players },
       needsSeatSelection: true,
+      joinedPlayerId: newPlayer.id,
     });
   }
 

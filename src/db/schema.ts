@@ -300,6 +300,7 @@ export const users = pgTable("users", {
   weeklyStreakBest: integer("weekly_streak_best").default(0).notNull(),
   weekKey: varchar("week_key", { length: 8 }),
   lastLoginDate: date("last_login_date"),
+  lastDailyRewardClaimed: date("last_daily_reward_claimed"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),
   weeklyWon: bigint("weekly_won", { mode: "number" }).default(0).notNull(),

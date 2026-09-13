@@ -172,14 +172,14 @@ function DuelTower({
     pointsForSafePick(laneIdx, pathKey, difficulty);
 
   return (
-    <div className="flex-1 rounded-2xl border border-white/10 bg-slate-950/80 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <div className="flex-1 flex flex-col rounded-2xl border border-white/10 bg-slate-950/80 p-3 min-h-0">
+      <div className="shrink-0 mb-2 flex items-center justify-between gap-2">
         <span
           className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${chip}`}
         >
           {label}
         </span>
-        <span className="rounded-full bg-black/40 px-2.5 py-1 text-xs font-black text-white">
+        <span className="shrink-0 rounded-full bg-black/40 px-2.5 py-1 text-xs font-black text-white">
           {held
             ? `BANKED L${lane}`
             : lane >= MAX_LANES
@@ -188,7 +188,7 @@ function DuelTower({
         </span>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="flex-1 flex flex-col gap-1.5 min-h-0 overflow-hidden">
         {rowsTopFirst.map((laneIdx) => {
           const isCurrent = laneIdx === lane;
           const isCompleted = laneIdx < lane;
@@ -232,7 +232,7 @@ function DuelTower({
           return (
             <div
               key={laneIdx}
-              className={`relative rounded-lg border p-1.5 ${
+              className={`relative flex-1 flex flex-col min-h-0 rounded-lg border p-1.5 ${
                 isBanked
                   ? "border-amber-300/60 bg-amber-400/10"
                   : isCurrent
@@ -244,7 +244,7 @@ function DuelTower({
                       : "border-white/10 bg-black/20"
               }`}
             >
-              <div className="mb-1.5 flex items-center justify-between text-[10px]">
+              <div className="shrink-0 mb-1.5 flex items-center justify-between text-[10px]">
                 <span className="font-semibold text-white/70">
                   Level {laneIdx + 1}
                 </span>
@@ -314,9 +314,10 @@ function DuelTower({
               ))}
 
               <div
-                className="grid gap-1.5"
+                className="flex-1 grid gap-1.5 min-h-0"
                 style={{
                   gridTemplateColumns: `repeat(${tiles}, minmax(0, 1fr))`,
+                  gridAutoRows: "1fr",
                 }}
               >
                 {Array.from({ length: tiles }, (_, tileIdx) => {
@@ -384,7 +385,7 @@ function DuelTower({
                       whileTap={tileCanPick ? { scale: 0.94 } : undefined}
                       onClick={() => tileCanPick && onPick(tileIdx)}
                       disabled={!tileCanPick}
-                      className={`h-6 md:h-7 rounded border text-[10px] font-bold transition-all ${cls}`}
+                      className={`h-full rounded border text-[10px] font-bold transition-all ${cls}`}
                     >
                       {glyph}
                     </motion.button>
@@ -1318,7 +1319,7 @@ export default function LaneRushDuelMatchPage({ params }) {
   );
   const creatorTower = (
     <>
-<div className="flex flex-col gap-3">
+<div className="h-full flex-1 flex flex-col gap-3 min-h-0">
               <DuelTower
                 label="Your tower"
                 tone="cyan"

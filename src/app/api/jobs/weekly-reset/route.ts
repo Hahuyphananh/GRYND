@@ -1,7 +1,42 @@
 import { sql } from "../../../../db/sql";
 import { invalidateAllLeaderboards } from "../../../../lib/redis/invalidation";
+import { sendWeeklySummaryEmail } from "../../../../lib/emails/summary";
 
 export async function GET() {
+  // Fetch weekly stats BEFORE resetting, then send summary emails
+  const weeklyStatsResult = await sql`
+    SELECT u.clerk_id as "clerkId", u.email,
+           us.weekly_wagered as "totalWins",
+           us.weekly_won as "totalLosses",
+           us.weekly_profit as "net",
+           to_char(NOW(), 'IYYY-"W"IW') as "periodKey"
+    FROM users u
+    JOIN user_stats us ON us.user_id = u.id
+    WHERE COALESCE(us.weekly_wagered, 0) <> 0
+       OR COALESCE(us.weekly_won, 0) <> 0
+       OR COALESCE(us.weekly_profit, 0) <> 0
+       OR COALESCE(us.weekly_wins, 0) <> 0
+  `;
+
+  const weeklyStats = weeklyStatsResult.rows ?? [];
+
+  // Send weekly summary emails (fire-and-forget)
+  for (const row of weeklyStats) {
+    try {
+      await sendWeeklySummaryEmail(
+        { clerkId: row.clerkId, email: row.email },
+        {
+          totalWins: Number(row.totalWins),
+          totalLosses: Number(row.totalLosses),
+          net: Number(row.net),
+          periodKey: row.periodKey,
+        }
+      );
+    } catch (err) {
+      console.error("[weekly-reset] Weekly summary email failed:", err);
+    }
+  }
+
   // Only touch rows with any nonzero weekly activity — a full-table UPDATE
   // writes a new tuple for EVERY user (even inactive ones) via MVCC, so the
   // WHERE guard skips the vast majority of rows and avoids the write + lock

@@ -609,7 +609,7 @@ export default function ConnectFourGamePage() {
           key={`drop-${col}`}
           onClick={() => playColumn(col)}
           disabled={!canPlay || getDropRow(game?.board || [], col) < 0}
-          className="four-in-a-row-drop-button"
+          className="four-in-a-row-drop-button min-h-[44px] min-w-[44px]"
           title={`Drop in column ${col + 1}`}
         >
           ↓
@@ -658,15 +658,19 @@ export default function ConnectFourGamePage() {
         </div>
       </ShellHeader>
 
-      <ShellMain className="flex-col justify-center">
-        <div className="w-full max-w-[560px] px-2">{c4BoardNode}</div>
+      <ShellMain className="flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 w-full min-h-0 overflow-hidden px-2">
+          {c4BoardNode}
+        </div>
+        <div className="shrink-0 px-2 py-2 space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-white/50">
+            Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
+          </p>
+          {c4DropControlsNode}
+        </div>
       </ShellMain>
 
       <ShellAside>
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
-          Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
-        </p>
-        {c4DropControlsNode}
         <div className="mt-3 flex justify-center">
           <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
         </div>

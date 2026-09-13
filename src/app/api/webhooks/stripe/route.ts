@@ -37,6 +37,7 @@ import {
   tokenSubscriptionPlans,
   tokenSubscriptions,
   tokenTransactions,
+  users,
 } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getStripe, getStripeWebhookSecret } from "../../../../lib/stripe";
@@ -44,6 +45,7 @@ import { creditUserBalance } from "../../../../lib/tokens/creditTokens";
 import { grantSubscriptionInvoiceTokens } from "../../../../lib/stripe/subscriptions";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
+import { sendDepositProcessingEmail, sendDepositSuccessEmail, sendWithdrawalRequestedEmail, sendWithdrawalDelayEmail } from "../../../../lib/emails/payments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -193,6 +195,8 @@ async function updateStatus(sessionId: string, paymentStatus: string) {
  * the credit is skipped.
  */
 async function fulfill(session: StripeSession) {
+  let rowData: { clerkId: string; tokenAmount: number; packageKey: string | null; amountCents: number } | null = null;
+
   await db.transaction(async (tx) => {
     const row = await tx
       .select()
@@ -211,6 +215,14 @@ async function fulfill(session: StripeSession) {
       // Already credited for this session — idempotent replay, skip.
       return;
     }
+
+    // Capture data for post-transaction use
+    rowData = {
+      clerkId: row.clerkId,
+      tokenAmount: Number(row.tokenAmount),
+      packageKey: row.packageKey,
+      amountCents: row.amountCents,
+    };
 
     // Credit the server-resolved token amount, then mark fulfilled inside
     // the same transaction so a crash can't credit without marking.
@@ -237,15 +249,37 @@ async function fulfill(session: StripeSession) {
         updatedAt: new Date(),
       })
       .where(eq(stripeCheckoutSessions.sessionId, session.id));
-
-    auditLog("stripe_payment_completed", {
-      userId: row.clerkId,
-      packageKey: row.packageKey,
-      sessionId: session.id,
-      tokenAmount: Number(row.tokenAmount),
-      amountCents: row.amountCents,
-    });
   });
+
+  // Send deposit success email (outside transaction, fire-and-forget)
+  if (rowData && session.metadata?.clerkId) {
+    try {
+      const userRow = await db
+        .select({ email: users.email, name: users.name })
+        .from(users)
+        .where(eq(users.clerkId, session.metadata.clerkId))
+        .limit(1);
+      if (userRow[0]?.email) {
+        await sendDepositSuccessEmail(
+          { clerkId: session.metadata.clerkId, email: userRow[0].email, name: userRow[0].name },
+          rowData.tokenAmount
+        );
+      }
+    } catch (err) {
+      console.error("[stripe webhook] Deposit success email failed:", err);
+    }
+  }
+
+  // Audit log (fire-and-forget)
+  if (rowData) {
+    auditLog("stripe_payment_completed", {
+      userId: rowData.clerkId,
+      packageKey: rowData.packageKey,
+      sessionId: session.id,
+      tokenAmount: rowData.tokenAmount,
+      amountCents: rowData.amountCents,
+    });
+  }
 }
 
 /**
@@ -384,5 +418,22 @@ async function grantSubscriptionTokens(invoice: StripeInvoiceObject) {
       invoiceId: invoice.id,
       tokenAmount: Number(plan.monthlyTokens),
     });
+
+    // Send subscription deposit success email (fire-and-forget)
+    try {
+      const userRow = await db
+        .select({ email: users.email, name: users.name })
+        .from(users)
+        .where(eq(users.clerkId, clerkId))
+        .limit(1);
+      if (userRow[0]?.email) {
+        await sendDepositSuccessEmail(
+          { clerkId, email: userRow[0].email, name: userRow[0].name },
+          Number(plan.monthlyTokens)
+        );
+      }
+    } catch (err) {
+      console.error("[stripe webhook] Subscription deposit email failed:", err);
+    }
   }
 }

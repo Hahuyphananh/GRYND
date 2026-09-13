@@ -16,6 +16,15 @@ import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import IconAvatar from "../../../../components/IconAvatar";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
+// Shared creator-mode presentation layer (admin-only).
+import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import {
+  CreatorView,
+  CreatorModeShell,
+  ShellHeader,
+  ShellMain,
+  ShellAside,
+} from "../../../../components/creator-mode/CreatorModeLayout";
 
 const HUMAN_PLAYER = 1 as const;
 const AI_PLAYER = 2 as const;
@@ -329,166 +338,210 @@ export default function FourInARowVsAiPage() {
 
   const canPlay = status === "playing" && !aiThinking;
 
+  // Creator mode signals
+  const isGameActive = status === "playing";
+  const isGameEnded = status !== "playing";
+
+  /* Creator Mode bespoke 9:16 portrait: board large, status on top, controls below. */
+  const creatorStatus = (
+    <>
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+              <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
+              <span
+                className="text-xs text-white/70"
+                style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}
+              >
+                {myDisplayName}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-purple-400" />
+              <span className="text-xs text-white/70">AI</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wider text-white/50">
+              Status
+            </p>
+            <p
+              className={`text-sm font-semibold ${
+                status === "won"
+                  ? "text-green-300"
+                  : status === "lost"
+                    ? "text-red-300"
+                    : status === "draw"
+                      ? "text-amber-300"
+                      : aiThinking
+                        ? "text-fuchsia-300"
+                        : "text-cyan-200"
+              }`}
+            >
+              {statusText}
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const creatorBoard = (
+    <>
+      <div className="bg-[#0b224f]/85 border border-[#00e5ff]/25 rounded-2xl shadow-[0_0_28px_rgba(0,229,255,0.15)] p-3 sm:p-4">
+        {/* Drop buttons */}
+        <div className="four-in-a-row-drop-controls mb-3 grid grid-cols-7 gap-2">
+          {Array.from({ length: 7 }).map((_, col) => (
+            <button
+              key={`ai-drop-${col}`}
+              onClick={() => handleHumanMove(col)}
+              disabled={!canPlay || getDropRow(board, col) < 0}
+              className="four-in-a-row-drop-button"
+              title={`Drop in column ${col + 1}`}
+            >
+              ↓
+            </button>
+          ))}
+        </div>
+
+        {/* Board */}
+        <div className="four-in-a-row-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
+          {board.map((row, rowIndex) =>
+            row.map((value, colIndex) => {
+              const isDropping =
+                dropAnim?.row === rowIndex &&
+                dropAnim?.col === colIndex;
+              return (
+                <Disc
+                  key={`${rowIndex}-${colIndex}`}
+                  value={value}
+                  className={isDropping ? "four-in-a-row-ai-fall" : ""}
+                  style={
+                    isDropping
+                      ? ({
+                          ["--fiar-drop-distance" as string]: `${(rowIndex + 1) * 56}px`,
+                        } as CSSProperties)
+                      : undefined
+                  }
+                />
+              );
+            }),
+          )}
+        </div>
+      </div>
+    </>
+  );
+
+  const creatorControls = (
+    <>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-white/50 uppercase tracking-wider text-[10px]">
+            Score
+          </span>
+          <span className="text-green-300 font-semibold">
+            {score.wins}W
+          </span>
+          <span className="text-red-300 font-semibold">
+            {score.losses}L
+          </span>
+          <span className="text-amber-300 font-semibold">
+            {score.draws}D
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={resetGame}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors"
+          >
+            New Game
+          </button>
+          <button
+            onClick={() => router.push("/casino/four-in-a-row")}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 transition-colors"
+          >
+            Back to Lobby
+          </button>
+        </div>
+        <p className="text-center text-[10px] text-white/30">
+          AI difficulty: casual · Uses win/block/threat heuristic
+        </p>
+      </div>
+    </>
+  );
+
+  const portraitContent = (
+    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
+      <ShellHeader className="space-y-2">{creatorStatus}</ShellHeader>
+      <ShellMain className="h-full items-start overflow-y-auto px-2">{creatorBoard}</ShellMain>
+      <ShellAside className="space-y-3">{creatorControls}</ShellAside>
+    </CreatorModeShell>
+  );
+
+  const desktopContent = (
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-center mb-1 text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 via-purple-400 to-indigo-500 drop-shadow-[0_0_18px_rgba(168,85,247,0.55)] tracking-wide">
+          FOUR-IN-A-ROW vs AI
+        </h1>
+      </motion.div>
+      <p className="text-center text-xs text-white/60 mb-3">
+        Free play · No wager · You go first as{" "}
+        <span className="text-sky-300 font-semibold">Blue</span>, AI plays as{" "}
+        <span className="text-purple-300 font-semibold">Purple</span>.
+      </p>
+      {creatorStatus}
+      {creatorBoard}
+      {creatorControls}
+      {/* End-of-match result screen */}
+      {isGameEnded && (
+        <PvpResultScreen
+          open
+          outcome={status === "won" ? "win" : status === "draw" ? "draw" : "loss"}
+          headline={
+            status === "won"
+              ? "Great play. Congratulations!"
+              : status === "lost"
+                ? "The AI got you this round."
+                : "Board is full. It's a draw."
+          }
+          subline="Free practice match — no tokens were staked."
+          gameName="Four-in-a-Row vs AI"
+          opponent={{ name: "AI", iconKey: null, isAi: true }}
+          summary={[
+            { label: "Session", value: `${score.wins}W – ${score.losses}L – ${score.draws}D` },
+            { label: "Moves", value: String(countPieces(board)) },
+          ]}
+          playAgain={{ label: "New Game", onClick: resetGame }}
+          onReturnToLobby={() => router.push("/casino/four-in-a-row")}
+        />
+      )}
+    </>
+  );
+
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="four-in-a-row-viewport mx-auto mt-2 max-w-3xl sm:mt-3 pb-4">
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
+        <CreatorModeHost
+          autoStart={isGameActive}
+          autoStop={isGameEnded}
+          autoStopDelayMs={2000}
+          gameLabel="four-in-a-row-ai"
+          backToLobbyHref="/casino/four-in-a-row"
         >
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-center mb-1 text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 via-purple-400 to-indigo-500 drop-shadow-[0_0_18px_rgba(168,85,247,0.55)] tracking-wide">
-            FOUR-IN-A-ROW vs AI
-          </h1>
-        </motion.div>
-        <p className="text-center text-xs text-white/60 mb-3">
-          Free play · No wager · You go first as{" "}
-          <span className="text-sky-300 font-semibold">Blue</span>, AI plays as{" "}
-          <span className="text-purple-300 font-semibold">Purple</span>.
-        </p>
-
-        <div className="bg-[#0b224f]/85 border border-[#00e5ff]/25 rounded-2xl shadow-[0_0_28px_rgba(0,229,255,0.15)] p-3 sm:p-4">
-          {/* Header stats row */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
-                <span
-                  className="text-xs text-white/70"
-                  style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}
-                >
-                  {myDisplayName}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-purple-400" />
-                <span className="text-xs text-white/70">AI</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-wider text-white/50">
-                Status
-              </p>
-              <p
-                className={`text-sm font-semibold ${
-                  status === "won"
-                    ? "text-green-300"
-                    : status === "lost"
-                      ? "text-red-300"
-                      : status === "draw"
-                        ? "text-amber-300"
-                        : aiThinking
-                          ? "text-fuchsia-300"
-                          : "text-cyan-200"
-                }`}
-              >
-                {statusText}
-              </p>
-            </div>
-          </div>
-
-          {/* Drop buttons */}
-          <div className="four-in-a-row-drop-controls mb-3 grid grid-cols-7 gap-2">
-            {Array.from({ length: 7 }).map((_, col) => (
-              <button
-                key={`ai-drop-${col}`}
-                onClick={() => handleHumanMove(col)}
-                disabled={!canPlay || getDropRow(board, col) < 0}
-                className="four-in-a-row-drop-button"
-                title={`Drop in column ${col + 1}`}
-              >
-                ↓
-              </button>
-            ))}
-          </div>
-
-          {/* Board */}
-          <div className="four-in-a-row-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
-            {board.map((row, rowIndex) =>
-              row.map((value, colIndex) => {
-                const isDropping =
-                  dropAnim?.row === rowIndex &&
-                  dropAnim?.col === colIndex;
-                return (
-                  <Disc
-                    key={`${rowIndex}-${colIndex}`}
-                    value={value}
-                    className={isDropping ? "four-in-a-row-ai-fall" : ""}
-                    style={
-                      isDropping
-                        ? ({
-                            ["--fiar-drop-distance" as string]: `${(rowIndex + 1) * 56}px`,
-                          } as CSSProperties)
-                        : undefined
-                    }
-                  />
-                );
-              }),
-            )}
-          </div>
-
-          {/* Footer controls */}
-          <div className="mt-4 flex flex-wrap items-center gap-3 justify-between">
-            <div className="flex items-center gap-3 text-xs">
-              <span className="text-white/50 uppercase tracking-wider text-[10px]">
-                Score
-              </span>
-              <span className="text-green-300 font-semibold">
-                {score.wins}W
-              </span>
-              <span className="text-red-300 font-semibold">
-                {score.losses}L
-              </span>
-              <span className="text-amber-300 font-semibold">
-                {score.draws}D
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={resetGame}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors"
-              >
-                New Game
-              </button>
-              <button
-                onClick={() => router.push("/casino/four-in-a-row")}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 transition-colors"
-              >
-                Back to Lobby
-              </button>
-            </div>
-          </div>
-
-          <p className="mt-3 text-center text-[10px] text-white/30">
-            AI difficulty: casual · Uses win/block/threat heuristic
-          </p>
-        </div>
-
-        {/* End-of-match result screen */}
-        {status !== "playing" && (
-          <PvpResultScreen
-            open
-            outcome={status === "won" ? "win" : status === "draw" ? "draw" : "loss"}
-            headline={
-              status === "won"
-                ? "Great play. Congratulations!"
-                : status === "lost"
-                  ? "The AI got you this round."
-                  : "Board is full. It's a draw."
-            }
-            subline="Free practice match — no tokens were staked."
-            gameName="Four-in-a-Row vs AI"
-            opponent={{ name: "AI", iconKey: null, isAi: true }}
-            summary={[
-              { label: "Session", value: `${score.wins}W – ${score.losses}L – ${score.draws}D` },
-              { label: "Moves", value: String(countPieces(board)) },
-            ]}
-            playAgain={{ label: "New Game", onClick: resetGame }}
-            onReturnToLobby={() => router.push("/casino/four-in-a-row")}
+          <CreatorView
+            normal={desktopContent}
+            portrait={portraitContent}
+            landscape={desktopContent}
           />
-        )}
+        </CreatorModeHost>
       </div>
 
       <style jsx global>{`
