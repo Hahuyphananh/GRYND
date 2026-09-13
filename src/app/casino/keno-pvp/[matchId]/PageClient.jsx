@@ -33,10 +33,8 @@ import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost
 import {
   CreatorView,
   CreatorModeShell,
-  ShellHeader,
   ShellMain,
-  ShellAside,
-  useCreatorModeLayout,
+  CreatorPhoneFrame,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 import {
   getSharedAudioContext,
@@ -78,25 +76,6 @@ const FLASH_LABEL = {
   caught: { text: "CAUGHT!", cls: "text-emerald-300 border-emerald-400/60 bg-emerald-500/15" },
   missed: { text: "MISSED", cls: "text-red-300 border-red-400/60 bg-red-500/15" },
 };
-
-// Creator-mode board sizer: the keno board (tile grid + points table) is
-// taller than it is wide, so portrait caps by the width and landscape /
-// square by a tighter fraction of the height so it always fits. Reads
-// the shell layout context — must be rendered inside <CreatorModeShell />.
-function KenoBoardStage({ children }) {
-  const { width, height, isPortrait } = useCreatorModeLayout();
-  const cap = isPortrait
-    ? Math.max(300, Math.min(width, height) * 0.94 - 32)
-    : Math.max(300, Math.min(width, height) * 0.72 - 80);
-  return (
-    <div
-      className="flex w-full flex-col items-center justify-center"
-      style={{ maxWidth: cap }}
-    >
-      {children}
-    </div>
-  );
-}
 
 export default function KenoPvpMatchPage({ params }) {
   const router = useRouter();
@@ -663,11 +642,13 @@ export default function KenoPvpMatchPage({ params }) {
     </div>
   );
 
-  // Keno board — the main play visual. Tiles are FLUID here so the
-  // board fills the creator frame; the normal page keeps its fixed
-  // tile sizes.
+  // Keno board — the main play visual. The creator frame lays the game
+  // out at phone width (see CreatorPhoneFrame below), so the board uses
+  // the classic 8-col × 5-row keno grid with fluid tiles: it fills the
+  // phone width and only 5 rows tall, so the board is the big dominant
+  // element instead of a small centered box.
   const boardNode = (
-    <div className="rounded-2xl border border-[#00e5ff]/35 bg-[#050d1f]/70 p-4 sm:p-5">
+    <div className="rounded-2xl border border-[#00e5ff]/35 bg-[#050d1f]/70 p-3 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold uppercase tracking-wider text-[#7cefff]">
           <span className="inline-flex items-center gap-1.5"><PoolBallIcon size={16} className="text-[#00e5ff]" /> Keno Board 1–{KENO_POOL_SIZE}</span>
@@ -681,7 +662,7 @@ export default function KenoPvpMatchPage({ params }) {
           )}
         </span>
       </div>
-      <div className="grid grid-cols-5 sm:grid-cols-8 gap-2 sm:gap-2.5 justify-items-center">
+      <div className="grid grid-cols-8 gap-1.5 sm:gap-2 justify-items-center">
         {Array.from({ length: KENO_POOL_SIZE }, (_, i) => i + 1).map((num) => {
           const ball = schedule.find((b) => b.number === num);
           const released = ball && serverNow >= ball.releaseMs;
@@ -771,45 +752,41 @@ export default function KenoPvpMatchPage({ params }) {
     </div>
   );
 
-  // Tickets
-  const ticketsNode = (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div className="rounded-2xl border border-[#00ffa6]/30 bg-[#050d1f]/70 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-[#00ffa6]">
-            {me === "player1" ? "Your ticket" : p1Name + "'s ticket"}
-            {me === "player1" ? " (You)" : ""}
-          </h3>
-          <span className="text-xs text-white/60">{myStats.score} pts</span>
+  // Compact tickets strip for the phone frame — two small side-by-side
+  // cards keep the caught-numbers info (and the opponent's live catch
+  // count) visible without the vertical space a full stack would eat, so
+  // header → board → status all stay above the fold in portrait.
+  const creatorTicketsNode = (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="rounded-xl border border-[#00ffa6]/30 bg-[#050d1f]/70 p-2.5">
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#00ffa6]">You</span>
+          <span className="shrink-0 text-[10px] font-black text-[#00ffa6]">{myStats.score} pts</span>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {(match.myCatches || []).length === 0 && (
-            <p className="text-xs text-white/40">Catch some tiles!</p>
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {(match.myCatches || []).length === 0 ? (
+            <p className="text-[10px] text-white/40">Catch some tiles!</p>
+          ) : (
+            (match.myCatches || []).map((c) => (
+              <span
+                key={c.number}
+                className="rounded-md border border-[#00ffa6]/50 bg-[#00ffa6]/15 px-1.5 py-0.5 text-[11px] font-bold leading-none text-[#00ffa6]"
+              >
+                {c.number}
+              </span>
+            ))
           )}
-          {(match.myCatches || []).map((c) => (
-            <span
-              key={c.number}
-              className="px-2.5 py-1 rounded-lg border text-sm font-bold bg-[#00ffa6]/15 text-[#00ffa6] border-[#00ffa6]/50"
-            >
-              {c.number}
-            </span>
-          ))}
         </div>
       </div>
-      <div className="rounded-2xl border border-[#FFD700]/30 bg-[#050d1f]/70 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-[#FFD700]">
-            {me === "player2" ? "Your ticket" : p2Name + "'s ticket"}
-            {me === "player2" ? " (You)" : ""}
-          </h3>
-          <span className="text-xs text-white/60">
-            {me === "player2" ? `${myStats.score} pts` : `${match.opponentCatchCount} caught`}
+      <div className="rounded-xl border border-[#FFD700]/30 bg-[#050d1f]/70 p-2.5">
+        <div className="flex items-center justify-between gap-1">
+          <span className="truncate text-[10px] font-bold uppercase tracking-wider text-[#FFD700]">{oppName}</span>
+          <span className="shrink-0 text-[10px] font-black text-[#FFD700]">
+            {match.opponentCatchCount} caught
           </span>
         </div>
-        <p className="text-xs text-white/40">
-          {me === "player2"
-            ? "Catch some balls!"
-            : `Opponent has caught ${match.opponentCatchCount} ball${match.opponentCatchCount === 1 ? "" : "s"} so far…`}
+        <p className="mt-1.5 text-[10px] leading-snug text-white/40">
+          Opponent&apos;s ticket stays hidden until each round ends.
         </p>
       </div>
     </div>
@@ -849,12 +826,12 @@ export default function KenoPvpMatchPage({ params }) {
         <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
           <span className="inline-flex items-center gap-1 rounded-full border border-[#00ffa6]/40 bg-[#00ffa6]/15 px-2 py-0.5 text-[#00ffa6]">
             <IconAvatar iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-3.5 w-3.5" />
-            <span style={myNameColor ? { color: myNameColor } : undefined}>
+            <span className="max-w-[7rem] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
               {me === "player1" ? p1Name : p2Name} {myPts}
             </span>
           </span>
           <span className="inline-flex items-center gap-1 rounded-full border border-[#FFD700]/40 bg-[#FFD700]/15 px-2 py-0.5 text-[#FFD700]">
-            <span style={oppNameColor ? { color: oppNameColor } : undefined}>
+            <span className="max-w-[7rem] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
               {oppName} {oppPts}
             </span>
             <IconAvatar iconKey={oppSeatIcon} name={oppName} size="h-3.5 w-3.5" />
@@ -876,44 +853,43 @@ export default function KenoPvpMatchPage({ params }) {
     </>
   );
 
-  // Portrait (9:16) — phone-style: compact header, board filling the
-  // middle, status/controls pinned below.
+  // Creator-mode phone screen (same treatment as Blackjack / Memory Grid
+  // / Pool Masters): the whole game is laid out at a real phone width
+  // (390px) inside <CreatorPhoneFrame> and `zoom`ed up to fill the
+  // selected recording frame — so the board fills the frame and the
+  // status / tickets sit directly below it like a mobile app, instead of
+  // a desktop page shrunken into a small centered box. The 8-col classic
+  // keno grid (5 rows) keeps the board compact enough that header → board
+  // → hint → tickets all fit the phone viewport in portrait.
+  const creatorGameNode = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 px-3 pb-1.5 pt-2">{compactHeaderNode}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
+        <div className="w-full">{boardNode}</div>
+        <div className="mt-3 w-full">{roundStatusNode}</div>
+        <div className="mt-3 w-full">{creatorTicketsNode}</div>
+      </div>
+      {leaveNode && <div className="shrink-0 px-3 pb-3">{leaveNode}</div>}
+    </div>
+  );
+
+  // Portrait (9:16) — the phone screen fills the frame edge-to-edge, so
+  // the board is as big as the frame allows.
   const portraitContent = (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        {compactHeaderNode}
-      </ShellHeader>
-      <ShellMain className="flex-col overflow-hidden">
-        <div className="flex h-full w-full flex-col items-center justify-center px-3 py-2">
-          <KenoBoardStage>
-            {boardNode}
-          </KenoBoardStage>
-        </div>
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
       </ShellMain>
-      <ShellAside className="space-y-2">
-        {roundStatusNode}
-        {ticketsNode}
-        {leaveNode}
-      </ShellAside>
     </CreatorModeShell>
   );
 
-  // Landscape (16:9) / square (1:1) — board fills the height with the
-  // status/controls in a right rail.
+  // Landscape (16:9) / square (1:1) — the same phone screen, fitted and
+  // centered inside the frame (ShellMain centers its children).
   const landscapeContent = (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
       <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col items-center justify-center p-4">
-          <KenoBoardStage>
-            {boardNode}
-          </KenoBoardStage>
-        </div>
+        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
       </ShellMain>
-      <ShellAside className="space-y-2">
-        {roundStatusNode}
-        {ticketsNode}
-        {leaveNode}
-      </ShellAside>
     </CreatorModeShell>
   );
 
