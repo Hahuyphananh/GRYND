@@ -147,6 +147,9 @@ export default function TableRoomPage() {
     buyChips,
     busy,
     error: roundError,
+    myTip,
+    revealedSignals,
+    foldPause,
   } = useCrashArenaRound({
     tableId,
     wager: table?.wager || 10,
@@ -468,6 +471,13 @@ export default function TableRoomPage() {
           onAddAi={handleAddAi}
           onRemoveAi={handleRemoveAi}
           onRenameAi={handleRenameAi}
+          // Private per-hand insight (signals): your tip + everyone's
+          // revealed tips travel from the round hook.
+          myTip={myTip}
+          revealedSignals={revealedSignals}
+          // Server-authoritative fold pause — the curve froze for the reveal;
+          // ArenaTable renders the "who folded + tip" card over the curve.
+          foldPause={foldPause}
           // Private tables are virtual chips — the buy-in is play money the
           // player chooses freely, so it's NOT capped by the wallet balance.
           maxBalance={table?.isPrivate ? null : userBalance}

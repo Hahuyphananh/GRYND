@@ -5,6 +5,8 @@
 // as jsonb). The engine itself is JS for zero-friction unit tests; these
 // types let the TS API routes / settlement module work with it safely.
 
+import type { CrashSignal } from "../games/crash/signals";
+
 export interface CrashPokerPlayer {
   userId: number;
   name?: string | null;
@@ -15,6 +17,12 @@ export interface CrashPokerPlayer {
   lastAction: string | null;
   /** Committed their whole remaining stack — can no longer fold. */
   allIn: boolean;
+  /**
+   * Private per-hand insight (see src/lib/games/crash/signals.ts). Set for
+   * every entered player; kept server-side / per-owner until the owner
+   * folds or the hand crashes, then revealed to the table.
+   */
+  signal?: CrashSignal | null;
 }
 
 export interface CrashPokerAction {

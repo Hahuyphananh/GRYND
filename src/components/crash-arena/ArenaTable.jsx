@@ -89,6 +89,19 @@ export default function ArenaTable({
   playerName = "You",
   maxBalance = null,
   busy = false,
+  // Private per-hand insight (signals):
+  //   myTip            — THIS caller's private tip for the running hand
+  //                      (only while the hand runs and only for the owner)
+  //   revealedSignals  — { [userId]: CrashSignal } tips that have gone
+  //                      public (folded seats while running; all seats once
+  //                      the hand settles)
+  myTip = null,
+  revealedSignals = null,
+  // Server-authoritative fold pause: { from, until, fold } — the server
+  // froze the curve for FOLD_PAUSE_MS after an accepted fold so everyone
+  // can read who folded + their revealed insight before the rocket resumes.
+  // `until` is the absolute epoch-ms every client resumes at together.
+  foldPause = null,
   children,
 }) {
   const {
@@ -240,6 +253,26 @@ export default function ArenaTable({
   }, [players, isRunning]);
 
   const showResultModal = phase === "settling" && results && !resultDismissed && !!you;
+
+  // ── Fold-pause read-out ──────────────────────────────────────────────
+  // Seconds left until the server's absolute resume moment — drives the
+  // countdown on the paused reveal card (which the hook auto-clears when
+  // the deadline passes or the hand leaves "running").
+  const [pauseSecondsLeft, setPauseSecondsLeft] = useState(0);
+  useEffect(() => {
+    if (!foldPause || !isRunning) {
+      setPauseSecondsLeft(0);
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      const left = Math.max(0, Number(foldPause.until) - Date.now());
+      setPauseSecondsLeft(Math.ceil(left / 1000));
+      if (left > 0) raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [foldPause, isRunning]);
 
   // ── Round audio ────────────────────────────────────────────────────
   // One shot per round settle: crash sweep, then victory if the local
@@ -597,6 +630,18 @@ export default function ArenaTable({
               Ante <strong className="text-[#00ffa6]">${Number(you?.contributed || 0).toLocaleString()}</strong> committed ·
               current curve <strong className="text-[#d8fbff]">{Number(currentMultiplier).toFixed(2)}x</strong>
             </span>
+            {/* Your PRIVATE per-hand insight — you see it only while the hand
+                runs; the moment you fold it goes public to the whole table
+                (and stays hidden while you keep it to yourself). */}
+            {myTip && (
+              <span className="text-[11px] text-[#00e5ff]/90">
+                Insight: <strong className="text-[#d8fbff]">{myTip.claim}</strong> ·{" "}
+                <strong className="text-[#00ffa6]">{myTip.tier}</strong>
+                <span className="text-[#9dd8ff]/60">
+                  {" "}(~{Math.round(myTip.accuracy * 100)}% accurate — the pot pays fold order, not accuracy)
+                </span>
+              </span>
+            )}
           </div>
           <button
             onClick={() => onFold?.()}
@@ -641,19 +686,70 @@ export default function ArenaTable({
             </div>
           )}
 
-        {/* Live fold overlay during running — shows on top of CrashEngine */}
+        {/* Live fold overlay during running — shows on top of CrashEngine.
+            Each fold also reveals the folder's private insight to the
+            table (folded = shown), so the tip travels with the banner. */}
         {isRunning && liveFolds.length > 0 && (
-            <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 max-w-[180px]">
-              {liveFolds.map((p) => (
-                <div
-                  key={p.name}
-                  className="text-xs px-2 py-1 rounded-lg font-bold backdrop-blur-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 transition-all duration-300"
-                >
-                  {p.name}{p.isYou ? " (You)" : ""}: folded @{p.foldedAtMultiplier?.toFixed(2)}x
-                </div>
-              ))}
+            <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 max-w-[200px]">
+              {liveFolds.map((p) => {
+                const sig =
+                  p.userId != null && revealedSignals
+                    ? revealedSignals[p.userId]
+                    : null;
+                return (
+                  <div
+                    key={p.name}
+                    className="text-xs px-2 py-1 rounded-lg font-bold backdrop-blur-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 transition-all duration-300"
+                  >
+                    <span>{p.name}{p.isYou ? " (You)" : ""}: folded @{p.foldedAtMultiplier?.toFixed(2)}x</span>
+                    {sig && (
+                      <span className="block text-[10px] font-semibold text-[#FFD700]/90 normal-case">
+                        Insight: {sig.claim} · {sig.tier}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
+
+        {/* Fold-pause reveal — the server froze the curve for FOLD_PAUSE_MS
+            after an accepted fold: EVERYONE reads who folded + their revealed
+            insight before the rocket resumes. Centered over the curve with a
+            countdown to the shared resume moment (absolute `until`, so every
+            client resumes at the same wall-clock instant). */}
+        {isRunning && foldPause && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
+            <div className="flex flex-col items-center gap-1 rounded-2xl border border-[#FFD700]/40 bg-[#050d1f]/90 px-7 py-5 backdrop-blur-md shadow-[0_0_30px_rgba(255,215,0,0.25)]">
+              <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] font-black text-[#FFD700]/90">
+                <IconClock size={13} /> Paused
+              </span>
+              {foldPause.fold && (
+                <span className="text-sm font-black text-[#d8fbff]">
+                  {foldPause.fold.isYou
+                    ? "You folded"
+                    : `${foldPause.fold.name || "A player"} folded`}{" "}
+                  @{" "}
+                  <span className="text-[#FFD700]">
+                    {Number(foldPause.fold.multiplier || foldPause.from).toFixed(2)}x
+                  </span>
+                </span>
+              )}
+              {foldPause.fold?.signal && (
+                <span className="text-xs font-bold text-[#00ffa6] text-center">
+                  Insight: {foldPause.fold.signal.claim} ·{" "}
+                  <span className="text-[#d8fbff]">{foldPause.fold.signal.tier}</span>
+                  <span className="block text-[10px] font-semibold text-[#9dd8ff]/60 normal-case">
+                    ~{Math.round((foldPause.fold.signal.accuracy || 0) * 100)}% accurate — revealed on the fold
+                  </span>
+                </span>
+              )}
+              <span className="mt-1 text-[11px] font-bold text-[#9dd8ff]/70 tabular-nums">
+                Curve frozen — resuming in {pauseSecondsLeft}s
+              </span>
+            </div>
+          </div>
+        )}
         </div>
 
         {/* Toggleable poker-style players sidebar */}
@@ -759,6 +855,10 @@ export default function ArenaTable({
           you={you}
           wager={wager}
           pot={pot}
+          // Authoritative crash multiplier: the live roundState value (set
+          // by the crash broadcast) or, for a result popup reached purely
+          // via the poll catch-up, the revealed crash point from the round.
+          crashMultiplier={crashMultiplier ?? (table?.latestRound?.crashPoint ?? null)}
           onNextRound={handleNextRound}
         />
       )}

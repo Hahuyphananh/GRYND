@@ -14,8 +14,10 @@ import {
   applyFold,
   curveMultiplierAt,
   isCrashDueAt,
+  pauseHandOnFold,
 } from "../../../../lib/crash-poker/roundSystem";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
+import { roundMoney } from "../../../../lib/crash-poker/constants";
 import {
   resolveCrashArenaAiBotId,
   isCrashArenaAiBotClerkId,
@@ -257,6 +259,25 @@ export async function POST(req: Request) {
       }
       const nextHand = result.hand;
 
+      // ── Fold pause (server-authoritative freeze): an accepted fold that
+      //    does NOT end the hand freezes the shared curve for FOLD_PAUSE_MS
+      //    so every player gets time to read the reveal. The pause window is
+      //    persisted with the hand (the crash-clock math runs through it) and
+      //    broadcast to every client as an ABSOLUTE `until` deadline, so all
+      //    clients freeze at the exact same frozen multiplier for the exact
+      //    same window. A fold-out ends the hand immediately — no pause.
+      let pause: { from: number; until: number } | null = null;
+      const persistedHand = result.handOver
+        ? nextHand
+        : pauseHandOnFold(nextHand, now);
+
+      if (!result.handOver) {
+        pause = {
+          from: roundMoney(foldMultiplier),
+          until: Number(persistedHand.pausedUntil),
+        };
+      }
+
       // ── Persist the fold (same transaction, under the row lock). ───────
       const actingHandPlayer = nextHand.players.find((p) => p.userId === actingUserId);
       await tx
@@ -274,7 +295,7 @@ export async function POST(req: Request) {
       await tx
         .update(crashArenaRounds)
         .set({
-          handState: nextHand,
+          handState: persistedHand,
         })
         .where(eq(crashArenaRounds.id, roundId));
 
@@ -285,6 +306,7 @@ export async function POST(req: Request) {
         result,
         actingHandPlayer,
         actingUserId,
+        pause,
       };
     });
 
@@ -304,6 +326,7 @@ export async function POST(req: Request) {
           activeAtCrash: settled.activeAtCrash,
           payouts: settled.payouts,
           entries: settled.entries,
+          signals: settled.signals,
           // Absolute epoch-ms of the next round start — every client counts
           // down to the same moment (the settle scheduled it).
           nextRoundAt: settled.nextRoundAt,
@@ -331,7 +354,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { table, hand, result, actingHandPlayer, actingUserId } = outcome;
+    const { table, hand, result, actingHandPlayer, actingUserId, pause } = outcome;
 
     // ── A fold-out (one active player left) settles NOW, AFTER the
     //    transaction committed — settleCrashPokerHand takes its own row
@@ -349,20 +372,25 @@ export async function POST(req: Request) {
         activeAtCrash: settled.activeAtCrash,
         payouts: settled.payouts,
         entries: settled.entries,
+        signals: settled.signals,
         // Absolute epoch-ms of the next round start — every client counts
         // down to the same moment (the settle scheduled it).
         nextRoundAt: settled.nextRoundAt,
       };
     }
 
-    // Best-effort fanout so the whole table sees the fold instantly.
+    // Best-effort fanout so the whole table sees the fold instantly. The
+    // folding player's PRIVATE insight is now public — folded equals shown.
     broadcastTableUpdate(table.id, {
       action: {
         userId: actingUserId,
         action: "fold",
         contributed: actingHandPlayer?.contributed ?? 0,
         foldedAtMultiplier: actingHandPlayer?.foldedAtMultiplier ?? null,
+        signal: actingHandPlayer?.signal ?? null,
       },
+      // Absolute pause window every client freezes inside (absent on fold-out).
+      ...(pause ? { pause } : {}),
       ...(results ? { handOver: true, results } : {}),
     });
 
@@ -375,7 +403,9 @@ export async function POST(req: Request) {
           action: "fold",
           contributed: actingHandPlayer?.contributed ?? 0,
           foldedAtMultiplier: actingHandPlayer?.foldedAtMultiplier ?? null,
+          signal: actingHandPlayer?.signal ?? null,
         },
+        ...(pause ? { pause } : {}),
         handOver: Boolean(results),
         ...(results ? { results } : {}),
       },

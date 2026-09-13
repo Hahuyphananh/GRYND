@@ -1,7 +1,8 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { IconBomb, IconConfetti, IconFlag, IconTarget, IconTrophy } from "@tabler/icons-react";
+import { IconBomb, IconConfetti, IconFlag, IconTarget, IconTrophy, IconEye } from "@tabler/icons-react";
+import { signalContainsCrash } from "../../lib/games/crash/signals";
 
 /**
  * RoundResultModal — shown when a Crash Arena hand ends. Displays the
@@ -38,6 +39,9 @@ export default function RoundResultModal({
   you = null,
   wager = 0,
   pot = 0,
+  // Authoritative crash multiplier (revealed after the crash) — used to
+  // score each player's insight (hit / miss) in the calibration panel.
+  crashMultiplier = null,
   onNextRound,
 }) {
   // Auto-dismiss after 8 seconds so hands keep flowing.
@@ -246,6 +250,69 @@ export default function RoundResultModal({
                 Fold earlier and you lose only your ante — fold later to climb the ranks.
               </p>
             )}
+          </div>
+        )}
+
+        {/* ── Insights revealed ───────────────────────────────────── */}
+        {/* Every entered seat's private insight — public once the hand
+            settles (each insight also became public the moment its owner
+            folded). Scored against the revealed crash multiplier so players
+            can calibrate against the published accuracy table. */}
+        {Array.isArray(results?.signals) && results.signals.length > 0 && (
+          <div className="mt-3 rounded-2xl border border-[#ff4fd8]/25 bg-[#050d1f]/70 p-4">
+            <p className="text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-2">
+              Insights revealed — calibrate: strong ≈ 72%, medium ≈ 58%, weak ≈ 46%
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {results.signals.map((s, idx) => {
+                const hit =
+                  s?.signal && crashMultiplier != null
+                    ? signalContainsCrash(s.signal, crashMultiplier)
+                    : null;
+                const tierStyle =
+                  s?.signal?.tier === "strong"
+                    ? "text-[#FFD700]"
+                    : s?.signal?.tier === "medium"
+                      ? "text-[#00e5ff]"
+                      : "text-[#9dd8ff]/70";
+                return (
+                  <div
+                    key={s.userId ?? idx}
+                    className="flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-sm bg-white/[0.03]"
+                  >
+                    <span className="flex items-center gap-2 min-w-0 text-[#d8fbff] font-semibold truncate shrink-0">
+                      <IconEye size={14} className="shrink-0 text-[#ff4fd8]" />
+                      {s.name ?? "Player"}
+                      {s.userId === you?.userId ? " (You)" : ""}
+                    </span>
+                    <span className="min-w-0 truncate text-[11px] text-[#9dd8ff]/90">
+                      {s?.signal ? (
+                        <>
+                          {s.signal.claim} · <strong className={tierStyle}>{s.signal.tier}</strong>
+                        </>
+                      ) : (
+                        "no insight"
+                      )}
+                    </span>
+                    <span
+                      className={`shrink-0 text-xs font-black ${
+                        hit === true
+                          ? "text-[#00ffa6]"
+                          : hit === false
+                            ? "text-red-400"
+                            : "text-[#9dd8ff]/40"
+                      }`}
+                    >
+                      {hit == null ? "—" : hit ? "✓ hit" : "✗ miss"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[10px] text-[#9dd8ff]/50">
+              Your insight is private until you fold or the hand crashes — the pot
+              pays fold order, not accuracy.
+            </p>
           </div>
         )}
 
