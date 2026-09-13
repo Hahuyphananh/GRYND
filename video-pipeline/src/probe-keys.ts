@@ -1,0 +1,13 @@
+import * as M from './manifest.js';
+import * as T from './analysis/types.js';
+type GK<T> = { [K in keyof T]: 1 };
+type Show<T, N extends string> = { __name__: N; __keys__: GK<T> };
+declare const s1: Show<M.EditManifest, 'EditManifest'>;
+declare const s2: Show<M.Beat, 'Beat'>;
+declare const s3: Show<M.PayoffBeat, 'PayoffBeat'>;
+declare const s4: Show<T.GameplayAnalysis, 'GameplayAnalysis'>;
+declare const s5: Show<T.GameplayEvent, 'GameplayEvent'>;
+declare const s6: Show<T.ImportantMoment, 'ImportantMoment'>;
+declare const s7: Show<M.Importance, 'Importance'>;
+declare const s8: Show<T.Importance, 'T_Importance'>;
+void [s1,s2,s3,s4,s5,s6,s7,s8];

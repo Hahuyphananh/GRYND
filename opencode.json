@@ -1,0 +1,14 @@
+﻿{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "capcut": {
+        "type": "local",
+        "command": [
+          "node",
+          "C:/Users/client/capcut-mcp/src/server.js"
+        ]
+      }
+    }
+  }
+}

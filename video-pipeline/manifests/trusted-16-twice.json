@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "source": "grynd-blackjack-2026-09-05-17-43-24.mp4",
+  "output": "grynd-blackjack-2026-09-05-17-43-24--trusted-16-twice.mp4",
+  "format": { "width": 1080, "height": 1920, "fps": 30 },
+  "headline": "bro trusted 16 TWICE",
+  "beats": [
+    { "sourceStart": 0.5, "sourceEnd": 4.5, "scale": 1.0, "importance": "normal", "label": "hook-table" },
+    { "sourceStart": 5.5, "sourceEnd": 9.2, "scale": 1.0, "importance": "normal", "label": "conflict" },
+    { "sourceStart": 10.0, "sourceEnd": 13.4, "scale": 1.1, "importance": "important", "label": "decision-16" },
+    { "sourceStart": 14.3, "sourceEnd": 17.0, "scale": 1.15, "importance": "highlight", "label": "first-bust" },
+    { "sourceStart": 20.3, "sourceEnd": 23.0, "scale": 1.0, "importance": "normal", "label": "second-hand" },
+    { "sourceStart": 28.0, "sourceEnd": 30.8, "scale": 1.2, "importance": "highlight", "label": "final-bust" }
+  ],
+  "payoff": {
+    "sourceStart": 28.0,
+    "sourceEnd": 30.8,
+    "scale": 1.2,
+    "text": "BUSTED"
+  }
+}
