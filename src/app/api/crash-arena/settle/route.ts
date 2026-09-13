@@ -4,7 +4,8 @@ import { crashArenaRounds } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
-import { crashDueAtMs } from "../../../../lib/games/crash/generateCrashPoint";
+import { isCrashDueAt } from "../../../../lib/crash-poker/roundSystem";
+import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
 import { logError } from "../../../../lib/logError";
 
 /**
@@ -44,25 +45,37 @@ export async function POST(req: Request) {
     // ── Early-settlement guard: a running hand can only be settled once
     //    its deterministic crash time has passed. Fold-out settlements are
     //    NOT routed here (the action/auto-fold routes settle those via
-    //    settleCrashPokerHand directly), so this guard is crash-only. ────
+    //    settleCrashPokerHand directly), so this guard is crash-only. The
+    //    check runs through the pause-aware engine: an open fold pause freezes
+    //    the curve, so the crash is simply not due while the reveal window is
+    //    still open. ────────────────────────────────────────────────────────
     const [roundData] = await db
-      .select({ status: crashArenaRounds.status, createdAt: crashArenaRounds.createdAt, crashPoint: crashArenaRounds.crashPoint })
+      .select({
+        status: crashArenaRounds.status,
+        crashPoint: crashArenaRounds.crashPoint,
+        handState: crashArenaRounds.handState,
+      })
       .from(crashArenaRounds)
       .where(eq(crashArenaRounds.id, Number(roundId)))
       .limit(1);
     if (!roundData) {
       return NextResponse.json({ success: false, error: "Round not found" }, { status: 404 });
     }
-    if (roundData.status === "running") {
+    if (
+      roundData.status === "running" &&
+      roundData.handState &&
+      typeof roundData.handState === "object"
+    ) {
       const cp = Number(roundData.crashPoint);
-      if (Number.isFinite(cp) && cp > 0) {
-        const dueAt = crashDueAtMs(roundData.createdAt, cp);
-        if (Date.now() < dueAt) {
-          return NextResponse.json({
-            success: false,
-            error: "The crash hasn't happened yet",
-          }, { status: 400 });
-        }
+      if (
+        Number.isFinite(cp) &&
+        cp > 0 &&
+        !isCrashDueAt(roundData.handState as CrashPokerHand, Date.now(), cp)
+      ) {
+        return NextResponse.json({
+          success: false,
+          error: "The crash hasn't happened yet",
+        }, { status: 400 });
       }
     }
 

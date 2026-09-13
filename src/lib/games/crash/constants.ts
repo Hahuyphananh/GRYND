@@ -14,13 +14,13 @@
  * what every client renders. Kept here so the server routes and the shared
  * client curve import one source of truth instead of two drifting literals.
  *
- * Set to 0.22 (was 0.33) so the curve climbs SLOWER — players get a longer
- * decision window to fold at the moment they choose. Time to any multiplier
- * scales by 0.33/0.22 ≈ 1.5x: a mean crash (~5.2x) takes ~7.5s, the max
- * crash (9.2x) ~10s. Tunable — one constant here + its mirror in
- * src/lib/crash-poker/constants.js.
+ * Set to 0.11 (was 0.22) so the curve climbs SLOWER — players get a longer
+ * decision window to fold AND enough time to read the private insights
+ * revealed at each fold. Time to any multiplier scales by 0.22/0.11 = 2x:
+ * a mean crash (~5.2x) takes ~15s, the max crash (9.2x) ~20s. Tunable —
+ * one constant here + its mirror in src/lib/crash-poker/constants.js.
  */
-export const CRASH_GROWTH_RATE = 0.22;
+export const CRASH_GROWTH_RATE = 0.11;
 
 /** Minimum crash multiplier. */
 export const CRASH_MIN = 1.2;

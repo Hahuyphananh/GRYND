@@ -11,9 +11,13 @@
 //     blinds, no dealer rotation, no roles. A short stack posts everything
 //     and is all-in from the start; a player with no stack is left out.
 //   • The curve: climbs continuously from 1.00x (multiplier = e^(rate·t))
-//     — NO betting checkpoints, NO pauses, NO deadlines. Anyone can fold
-//     at ANY moment; the fold's multiplier is the server-authoritative
-//     curve value at the moment the server accepts it.
+//     — no betting checkpoints, no deadlines. Anyone can fold at ANY
+//     moment; the fold's multiplier is the server-authoritative curve value
+//     at the moment the server accepts it. The ONE exception: an accepted
+//     fold freezes the curve (pauseHandOnFold) for FOLD_PAUSE_MS so the
+//     table can read the reveal. The pause is real — the crash clock stops
+//     (pausedSince/pausedUntil/pausedTotalMs) and the serving loop resumes
+//     it (resumePauseIfDue) before any due check.
 //   • Actions: FOLD only (all-in players are committed and can't fold).
 //   • Settlement (resolveHand): rank the players by fold order — rank 1 is
 //     the sole survivor (fold-out) or the LAST player to fold before the
@@ -22,7 +26,12 @@
 //     split by linear weights: rank r of R takes weight (R − r + 1).
 //     Nobody folded + crash → the whole pot carries over to the next hand.
 
-import { CRASH_GROWTH_RATE, PLATFORM_FEE, roundMoney } from "./constants.js";
+import {
+  CRASH_GROWTH_RATE,
+  FOLD_PAUSE_MS,
+  PLATFORM_FEE,
+  roundMoney,
+} from "./constants.js";
 
 /**
  * Create a brand-new hand.
@@ -36,6 +45,9 @@ import { CRASH_GROWTH_RATE, PLATFORM_FEE, roundMoney } from "./constants.js";
  *   opening; a player below the $0.01 floor can't play)
  * @param {number} [opts.startedAt] server epoch-ms the hand started — the
  *   curve anchor (defaults to now)
+ * @param {Map<number, object>} [opts.signalsByUser] private per-hand
+ *   insights (CrashSignal) dealt to entered seats, keyed by userId — see
+ *   src/lib/games/crash/signals.ts
  * @returns {object} the initial hand state
  */
 export function createHand({
@@ -44,6 +56,7 @@ export function createHand({
   carryOver = 0,
   stackByUser = null,
   startedAt = null,
+  signalsByUser = null,
 }) {
   const ante = roundMoney(Number(wager));
   const handPlayers = players.map((p) => {
@@ -71,6 +84,12 @@ export function createHand({
       foldedAtMultiplier: null,
       allIn: Boolean(allIn),
       lastAction: cannotPlay ? null : "ante",
+      // A player who can't afford the ante is out of the hand and got no
+      // insight; everyone else keeps theirs private until they fold or the
+      // hand crashes.
+      signal: cannotPlay
+        ? null
+        : (signalsByUser?.get(p.userId) ?? null),
     };
   });
 
@@ -89,16 +108,23 @@ export function createHand({
     pot,
     players: handPlayers,
     actions: [],
-    // The curve is continuous from the hand start — no checkpoint pauses,
+    // The curve is continuous from the hand start — no betting checkpoints,
     // so the flight never re-anchors.
     flightResumedAt: startedAtMs,
+    // Fold-pause bookkeeping (see pauseHandOnFold / resumePauseIfDue).
+    pausedTotalMs: 0,
+    pausedSince: null,
+    pausedUntil: null,
   };
 }
 
 /**
  * The multiplier the shared curve shows at a wall-clock moment.
- * multiplier = e^(GROWTH_RATE · (now − startedAt)) — continuous, never
- * paused (the new game has no betting checkpoints).
+ * multiplier = e^(GROWTH_RATE · (now − startedAt)) — continuous except for
+ * accepted folds, which freeze the curve for FOLD_PAUSE_MS. This function
+ * is pause-aware: while a pause window is open (pausedSince set) the
+ * elapsed time freezes at the fold moment; once the window closes the
+ * progress is re-based so the frozen interval adds nothing.
  *
  * @param {object} hand
  * @param {number} [now] epoch ms
@@ -107,7 +133,14 @@ export function createHand({
  */
 export function curveMultiplierAt(hand, now = Date.now(), growthRate = CRASH_GROWTH_RATE) {
   const resumedAt = Number(hand?.flightResumedAt ?? now);
-  const elapsed = Math.max(0, (now - resumedAt) / 1000);
+  const pausedTotalMs = Number(hand?.pausedTotalMs ?? 0);
+  const pausedSince = hand?.pausedSince != null ? Number(hand.pausedSince) : null;
+  let elapsedMs = now - resumedAt - pausedTotalMs;
+  if (pausedSince != null && Number.isFinite(pausedSince)) {
+    // Freeze at the fold: no progress while the window is open.
+    elapsedMs -= Math.max(0, now - pausedSince);
+  }
+  const elapsed = Math.max(0, elapsedMs / 1000);
   return Math.exp(growthRate * elapsed);
 }
 
@@ -125,6 +158,71 @@ export function isCrashDueAt(hand, now, crashPoint, growthRate = CRASH_GROWTH_RA
   const cp = Number(crashPoint);
   if (!Number.isFinite(cp) || cp <= 1) return false;
   return curveMultiplierAt(hand, now, growthRate) >= cp;
+}
+
+/**
+ * Freeze the curve after an accepted fold: the whole table gets FOLD_PAUSE_MS
+ * to read who folded and their revealed insight before the flight resumes.
+ * The callers (fold route, socket broadcast) MUST agree on one shared
+ * absolute `pausedUntil` deadline so every client freezes for the same
+ * window. Any pause that is already open is EXTENDED to the new fold's
+ * deadline (a second fold during a pause re-opens the window for everyone).
+ *
+ * Pure — returns a new hand with the pause fields set; persist it.
+ *
+ * @param {object} hand
+ * @param {number} [now] epoch ms of this fold's acceptance
+ * @param {number} [pauseMs] window length (default FOLD_PAUSE_MS)
+ * @returns {object} hand with pausedSince/pausedUntil set
+ */
+export function pauseHandOnFold(hand, now = Date.now(), pauseMs = FOLD_PAUSE_MS) {
+  const pausedSince =
+    hand?.pausedSince != null ? Number(hand.pausedSince) : null;
+  const existingUntil =
+    hand?.pausedUntil != null ? Number(hand.pausedUntil) : null;
+  const deadline = Math.max(
+    existingUntil != null && Number.isFinite(existingUntil) ? existingUntil : 0,
+    now + Number(pauseMs),
+  );
+  return {
+    ...hand,
+    pausedSince: pausedSince != null && Number.isFinite(pausedSince) ? pausedSince : now,
+    pausedUntil: deadline,
+  };
+}
+
+/**
+ * Close the fold-pause window once it has elapsed. The consumed pause time
+ * (now − pausedSince) is folded into pausedTotalMs and the window clears, so
+ * the crash clock resumes from the exact frozen multiplier. The serving loop
+ * (crash-check) calls this BEFORE every due/crash check — a crash that is
+ * due the moment the window closes settles immediately, never while frozen.
+ *
+ * @param {object} hand
+ * @param {number} [now] epoch ms
+ * @returns {{ hand: object, resumed: boolean }} `resumed:true` when the
+ *   window just closed — callers should persist the returned hand so the
+ *   pause accounting lands in the DB once.
+ */
+export function resumePauseIfDue(hand, now = Date.now()) {
+  const pausedUntil = hand?.pausedUntil != null ? Number(hand.pausedUntil) : null;
+  if (pausedUntil == null || !Number.isFinite(pausedUntil) || now < pausedUntil) {
+    return { hand, resumed: false };
+  }
+  const pausedSince = hand?.pausedSince != null ? Number(hand.pausedSince) : null;
+  const consumed =
+    pausedSince != null && Number.isFinite(pausedSince)
+      ? Math.max(0, now - pausedSince)
+      : 0;
+  return {
+    hand: {
+      ...hand,
+      pausedTotalMs: Number(hand.pausedTotalMs ?? 0) + consumed,
+      pausedSince: null,
+      pausedUntil: null,
+    },
+    resumed: true,
+  };
 }
 
 /**
@@ -231,6 +329,9 @@ export function handFromEntries({ round, entries, carryOver = 0 }) {
         e.foldedAtMultiplier != null ? Number(e.foldedAtMultiplier) : null,
       allIn: e.allIn === true,
       lastAction: e.lastAction ?? null,
+      // The private insight dealt for this hand (persisted in hand_state);
+      // absent on legacy hands → null means "no insight, nothing to reveal".
+      signal: savedP.signal ?? null,
     };
   });
   return {
@@ -245,6 +346,13 @@ export function handFromEntries({ round, entries, carryOver = 0 }) {
     // back to the round creation time by callers that need the curve.
     flightResumedAt:
       saved.flightResumedAt != null ? Number(saved.flightResumedAt) : null,
+    // Fold-pause bookkeeping (persisted with the handState; missing on
+    // legacy hands → zeroes, i.e. no pause).
+    pausedTotalMs: Number(saved.pausedTotalMs ?? 0),
+    pausedSince:
+      saved.pausedSince != null ? Number(saved.pausedSince) : null,
+    pausedUntil:
+      saved.pausedUntil != null ? Number(saved.pausedUntil) : null,
   };
 }
 

@@ -11,7 +11,9 @@ import { eq, ne, and, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { generateRoundSeed } from "../../../../lib/games/crash/generateSeed";
 import { generateCrashPoint } from "../../../../lib/games/crash/generateCrashPoint";
+import { dealSignals } from "../../../../lib/games/crash/signals";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
+import { resolveCrashArenaAiBotIds } from "../../../../lib/crash-arena/aiBot";
 import { createHand } from "../../../../lib/crash-poker/roundSystem";
 import { logError } from "../../../../lib/logError";
 
@@ -198,6 +200,34 @@ export async function POST(req: Request) {
     const { seed, hash: seedHash } = generateRoundSeed();
     const crashPoint = generateCrashPoint(seed);
 
+    // ── Deal private per-hand insights (signals) ─────────────────────────
+    // Every player who actually entered the hand gets exactly one private
+    // insight (quality tier + crash-zone claim), drawn server-side. Humans
+    // draw from the symmetric 30/40/30 distribution; bot seats draw from
+    // their difficulty's distribution (hard bots reveal stronger reads).
+    // Insights are attached ONLY to the hand snapshot stored server-side —
+    // they are never in the broadcast / start response. Each player learns
+    // theirs via the per-caller tables poll, and they become public the
+    // moment their owner folds or at the crash.
+    const aiBotIds = new Set((await resolveCrashArenaAiBotIds()).keys());
+    // All-in seats (short stack posted everything on the opening) are
+    // committed — they can't fold, so an insight would be dead weight; they
+    // are dealt no signal.
+    const signalsByUser = dealSignals(
+      playerDeductions
+        .filter((pd) => !pd.allIn)
+        .map((pd) => ({
+          userId: pd.userId,
+          isBot: aiBotIds.has(pd.userId),
+          aiDifficulty: pd.aiDifficulty ?? table.aiDifficulty ?? "medium",
+        })),
+      crashPoint,
+    );
+    for (const hp of hand.players) {
+      const signal = signalsByUser.get(hp.userId);
+      if (signal) hp.signal = signal;
+    }
+
     // ── Apply every money move atomically: balance deductions, the round
     //    row (hand state), the entry rows and the table status flip either
     //    all commit or all roll back — a crash mid-way can never leave the
@@ -269,6 +299,19 @@ export async function POST(req: Request) {
       },
     });
 
+    // Private insight for the caller only (best-effort here — the tables
+    // poll also delivers it per-caller, but returning it inline lets the
+    // starter see their tip immediately without a second request).
+    let myTip: unknown = null;
+    if (callerId) {
+      const [callerRow] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.clerkId, callerId))
+        .limit(1);
+      myTip = callerRow ? signalsByUser.get(callerRow.id) ?? null : null;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -277,6 +320,7 @@ export async function POST(req: Request) {
         startedAt,                       // server epoch ms — curve alignment
         pot: hand.pot,
         wager,
+        myTip,                           // THIS caller's private insight (null when not entered)
         hand: {
           wager,
           carryOver,

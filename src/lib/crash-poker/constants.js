@@ -12,11 +12,21 @@
  * Exponential growth rate of the crash curve: multiplier = e^(rate·t).
  * MUST match `CRASH_GROWTH_RATE` in src/lib/games/crash/constants.ts (the
  * server routes import that one; the pure engine keeps a copy so it stays
- * importable by the plain-JS test runner). Set slower (0.22, was 0.33) so
- * the curve climbs gently and players have a real window to decide when
- * to fold.
+ * importable by the plain-JS test runner). Set slower (0.11, was 0.22)
+ * so the curve climbs gently and players have a real window to decide
+ * when to fold — and to read the private insights revealed at each fold.
  */
-export const CRASH_GROWTH_RATE = 0.22;
+export const CRASH_GROWTH_RATE = 0.11;
+
+/**
+ * How long the shared curve freezes after EVERY accepted fold, so the whole
+ * table gets time to read who folded and their revealed insight before the
+ * rocket resumes. The pause is server-authoritative: the crash clock stops
+ * (pausedSince/pausedUntil/pausedTotalMs on the hand), the crash-check
+ * sweep resumes it and every client freezes until the SAME absolute
+ * `pausedUntil` deadline broadcast with the fold.
+ */
+export const FOLD_PAUSE_MS = 3000;
 
 /**
  * Crash multiplier bounds (mirror of src/lib/games/crash/constants.ts —

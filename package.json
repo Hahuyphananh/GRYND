@@ -44,6 +44,7 @@
     "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
     "test:crash-poker-engine": "node --test tests/crash-poker-engine.test.mjs",
+    "test:crash-signals": "node --import tsx --test tests/crash-signals.test.mjs",
     "loadtest:read-mix": "artillery run load-test/scenarios/read-mix.yml",
     "loadtest:wagering": "artillery run load-test/scenarios/wagering.yml"
   },

@@ -7,8 +7,14 @@ import {
   isCrashDueAt,
   resolveHand,
   handFromEntries,
+  pauseHandOnFold,
+  resumePauseIfDue,
 } from "../src/lib/crash-poker/roundSystem.js";
-import { CRASH_GROWTH_RATE, PLATFORM_FEE } from "../src/lib/crash-poker/constants.js";
+import {
+  CRASH_GROWTH_RATE,
+  PLATFORM_FEE,
+  FOLD_PAUSE_MS,
+} from "../src/lib/crash-poker/constants.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -82,22 +88,130 @@ test("carry-over is added to the pot", () => {
 
 // ── The continuous curve ───────────────────────────────────────────────────
 
-test("the curve climbs continuously from 1.00x — no pauses, no checkpoints", () => {
+test("the curve climbs continuously from 1.00x at hand start", () => {
   const hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: 1_000_000 });
   assert.ok(Math.abs(curveMultiplierAt(hand, hand.flightResumedAt) - 1.0) < 1e-9);
   const at = curveMultiplierAt(hand, hand.flightResumedAt + 1000);
   assert.ok(Math.abs(at - Math.exp(CRASH_GROWTH_RATE)) < 1e-6);
-  // It keeps climbing forever (never held at a checkpoint).
+  // It keeps climbing forever (no checkpoint holds it).
   const later = curveMultiplierAt(hand, hand.flightResumedAt + 60_000);
   assert.ok(later > at);
+});
+
+// ── Fold pauses (the server freezes the curve for the reveal) ─────────────
+
+test("a fold pause freezes the multiplier for FOLD_PAUSE_MS, then resumes from the same value", () => {
+  const t0 = 1_000_000;
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: t0 });
+  const foldAt = t0 + 2000;
+  const frozen = curveMultiplierAt(hand, foldAt); // exp(rate·2)
+  const paused = pauseHandOnFold(hand, foldAt);
+
+  assert.equal(paused.pausedSince, foldAt);
+  assert.equal(paused.pausedUntil, foldAt + FOLD_PAUSE_MS);
+
+  // Mid-window: the curve is FROZEN at the fold multiplier.
+  assert.ok(Math.abs(curveMultiplierAt(paused, foldAt + 1000) - frozen) < 1e-9);
+  // At the deadline the hold still stands (pause window is open until `until`).
+  assert.ok(Math.abs(curveMultiplierAt(paused, foldAt + FOLD_PAUSE_MS) - frozen) < 1e-9);
+
+  // Resume the instant the window closes: the clock re-bases so the frozen
+  // interval adds nothing to the crash timeline.
+  const after = foldAt + FOLD_PAUSE_MS + 500;
+  const { hand: resumed, resumed: didResume } = resumePauseIfDue(paused, after);
+  assert.equal(didResume, true);
+  assert.equal(resumed.pausedSince, null);
+  assert.equal(resumed.pausedUntil, null);
+  assert.equal(resumed.pausedTotalMs, FOLD_PAUSE_MS + 500); // foldAt → after
+  assert.ok(Math.abs(curveMultiplierAt(resumed, after) - frozen) < 1e-9);
+
+  // Later: the curve keeps climbing from the frozen value.
+  const later = curveMultiplierAt(resumed, after + 1000);
+  assert.ok(Math.abs(later - Math.exp(CRASH_GROWTH_RATE * 3.0)) < 1e-6);
+  assert.ok(later > frozen);
+});
+
+test("a fold during an open pause EXTENDS the window; the curve stays frozen", () => {
+  const t0 = 1_000_000;
+  const hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: t0 });
+  const foldAt = t0 + 2000;
+  const frozen = curveMultiplierAt(hand, foldAt);
+  const paused = pauseHandOnFold(hand, foldAt);
+
+  // Second fold while the first window is open — extends the deadline.
+  const secondFoldAt = foldAt + 1000;
+  const extended = pauseHandOnFold(paused, secondFoldAt);
+  assert.equal(extended.pausedSince, foldAt); // window stays anchored at entry
+  assert.equal(extended.pausedUntil, secondFoldAt + FOLD_PAUSE_MS);
+
+  // Between the old deadline and the new one the hand is STILL paused.
+  const between = foldAt + FOLD_PAUSE_MS + 500; // past first window
+  const { resumed: early } = resumePauseIfDue(extended, between);
+  assert.equal(early, false);
+  assert.ok(Math.abs(curveMultiplierAt(extended, between) - frozen) < 1e-9);
+
+  // Once the extended window ends, the pause closes and the curve resumes
+  // from the exact frozen multiplier.
+  const { hand: resumed, resumed: didResume } = resumePauseIfDue(
+    extended,
+    extended.pausedUntil + 1000,
+  );
+  assert.equal(didResume, true);
+  assert.equal(resumed.pausedTotalMs, extended.pausedUntil - foldAt + 1000);
+  assert.ok(Math.abs(curveMultiplierAt(resumed, extended.pausedUntil + 1000) - frozen) < 1e-9);
+});
+
+test("no pause fields → curveMultiplierAt is a plain continuous flight (legacy hands)", () => {
+  const t0 = 1_000_000;
+  const hand = {
+    flightResumedAt: t0,
+    players: SIX_PLAYERS,
+  };
+  const at = curveMultiplierAt(hand, t0 + 1000);
+  assert.ok(Math.abs(at - Math.exp(CRASH_GROWTH_RATE)) < 1e-6);
+  const { resumed } = resumePauseIfDue(hand, t0 + 1000);
+  assert.equal(resumed, false);
+});
+
+test("handFromEntries restores the fold-pause fields", () => {
+  const hand = handFromEntries({
+    round: {
+      bigBlind: 10,
+      handState: {
+        flightResumedAt: 1234,
+        pausedSince: 2000,
+        pausedUntil: 5000,
+        pausedTotalMs: 3000,
+      },
+    },
+    entries: [
+      { userId: 1, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "pending" },
+    ],
+    carryOver: 0,
+  });
+  assert.equal(hand.pausedSince, 2000);
+  assert.equal(hand.pausedUntil, 5000);
+  assert.equal(hand.pausedTotalMs, 3000);
+  // Missing on legacy hands → zeros, i.e. no pause (plain continuous flight).
+  const legacy = handFromEntries({
+    round: { bigBlind: 10, handState: null },
+    entries: [
+      { userId: 1, contributed: 10, isActive: true, foldedAtMultiplier: null, lastAction: "ante", allIn: false, result: "pending" },
+    ],
+    carryOver: 0,
+  });
+  assert.equal(legacy.pausedSince, null);
+  assert.equal(legacy.pausedUntil, null);
+  assert.equal(legacy.pausedTotalMs, 0);
 });
 
 test("isCrashDueAt fires only once the curve reaches the crash point", () => {
   const hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: 1_000_000 });
   const crashPoint = 2.0;
-  // e^0.22 ≈ 1.246 < 2.0 at 1s → not due; e^(0.22·4) ≈ 2.41 ≥ 2.0 → due.
-  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 1000, crashPoint), false);
-  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + 4000, crashPoint), true);
+  // Rate-agnostic: crash at 2.0 lands at t = ln(2)/GROWTH_RATE (~6.3s at 0.11).
+  const dueAtMs = (Math.log(2) / CRASH_GROWTH_RATE) * 1000;
+  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + dueAtMs - 1000, crashPoint), false);
+  assert.equal(isCrashDueAt(hand, hand.flightResumedAt + dueAtMs + 1000, crashPoint), true);
 });
 
 // ── Folding ────────────────────────────────────────────────────────────────

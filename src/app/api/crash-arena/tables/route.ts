@@ -171,6 +171,13 @@ export async function GET(req: Request) {
           (p) => p.tableId === table.id && p.status === "waiting",
         );
 
+        const mySeat = internalUserId != null
+          ? players.find((p) => p.userId === internalUserId)
+          : undefined;
+        const myWait = internalUserId != null
+          ? waiting.find((p) => p.userId === internalUserId)
+          : undefined;
+
         // Latest round. In lobby mode we only need the status string (for
         // the LIVE badge); the lobby never reads the full round, so we do a
         // lightweight status-only select and skip the entries N+1. The
@@ -209,6 +216,59 @@ export async function GET(req: Request) {
             const roundSettled =
               latestRound[0].status === "settled" ||
               latestRound[0].status === "crashed";
+
+            // ── Private per-hand insights (signals) ──────────────────────
+            // The hand snapshot carries one private `signal` per entered
+            // player. While the hand runs ONLY the owner may see theirs
+            // (myTip, below); everybody else's stays server-side. An
+            // insight becomes public the moment its owner folds (fed into
+            // revealedSignals), and ALL of them are public once the hand
+            // settles. The hand_state handed to clients is therefore
+            // sanitized (signals stripped) and the private/public views are
+            // exposed explicitly.
+            const rawHandState = (latestRound[0].handState ?? null) as
+              | {
+                  players?: Array<{
+                    userId?: number;
+                    signal?: unknown;
+                    folded?: boolean;
+                    foldedAtMultiplier?: number | null;
+                  }>;
+                }
+              | null
+              | undefined;
+            const handRunning = latestRound[0].status === "running";
+            const signalByUser = new Map<number, unknown>();
+            let revealedUserIds: number[] = [];
+            if (rawHandState && Array.isArray(rawHandState.players)) {
+              for (const hp of rawHandState.players) {
+                if (hp?.signal != null && hp.userId != null) {
+                  signalByUser.set(hp.userId, hp.signal);
+                }
+              }
+              // Running: only folded seats' insights are public. Settled:
+              // the hand is over — every entered seat's insight is public.
+              revealedUserIds = handRunning
+                ? rawHandState.players
+                    .filter((hp) => hp?.folded && hp.userId != null)
+                    .map((hp) => hp.userId as number)
+                : rawHandState.players
+                    .filter((hp) => hp?.userId != null)
+                    .map((hp) => hp.userId as number);
+            }
+            // Cloned handState with every `signal` stripped — a client can
+            // only ever learn an insight through myTip / revealedSignals /
+            // the settle payload, never by reading the shared snapshot.
+            const sanitizedHandState = rawHandState
+              ? {
+                  ...rawHandState,
+                  players: (rawHandState.players ?? []).map((p) => ({
+                    ...p,
+                    signal: undefined,
+                  })),
+                }
+              : null;
+
             latestRoundInfo = {
               id: latestRound[0].id,
               status: latestRound[0].status,
@@ -237,7 +297,20 @@ export async function GET(req: Request) {
                 latestRound[0].bigBlind != null
                   ? Number(latestRound[0].bigBlind)
                   : null,
-              handState: latestRound[0].handState ?? null,
+              handState: sanitizedHandState,
+              // THIS caller's private insight for the running hand — only
+              // delivered to the seated owner, and only while the hand runs
+              // (at settle the broadcast + revealedSignals expose everyone).
+              myTip:
+                handRunning && mySeat
+                  ? (signalByUser.get(mySeat.userId) ?? null)
+                  : null,
+              // Insights revealed so far — folded seats' tips while the hand
+              // runs; every entered seat's tips once it has settled.
+              revealedSignals: revealedUserIds.map((userId) => ({
+                userId,
+                signal: signalByUser.get(userId) ?? null,
+              })),
               // Epoch-ms the hand started — the continuous-curve anchor
               // every client renders the multiplier from.
               flightResumedAt:
@@ -262,13 +335,6 @@ export async function GET(req: Request) {
 
         // Sum of player balances at table
         const pot = players.reduce((sum, p) => sum + Number(p.balance), 0);
-
-        const mySeat = internalUserId != null
-          ? players.find((p) => p.userId === internalUserId)
-          : undefined;
-        const myWait = internalUserId != null
-          ? waiting.find((p) => p.userId === internalUserId)
-          : undefined;
 
         return {
           id: table.id,

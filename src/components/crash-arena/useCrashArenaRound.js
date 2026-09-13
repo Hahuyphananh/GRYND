@@ -135,7 +135,7 @@ function applyServerEntries(state, entries = []) {
  *   submitFold(forBot, forBotUserId)
  *   joinTable(amount), leaveTable(), exitTable(), buyChips(name, amount)
  *   syncPlayers(), syncWaitingPlayers(), syncRoundFromServer(roundInfo)
- *   currentMultiplier, busy, error
+ *   currentMultiplier, busy, error, myTip, revealedSignals, foldPause
  */
 export default function useCrashArenaRound({
   tableId,
@@ -183,6 +183,106 @@ export default function useCrashArenaRound({
   // User ids of seated players who pressed "Start Round" for the first
   // hand. Shared across clients via socket broadcasts.
   const [readyVotes, setReadyVotes] = useState([]);
+
+  // ── Private per-hand insight (signals) ─────────────────────────────
+  // `myTip` = THIS caller's private insight for the running hand
+  // (delivered per-caller by the tables poll / start-round response).
+  // `revealedSignals` = tips that have gone public: folded seats' tips
+  // while the hand runs, and every entered seat's tips once it settles.
+  const [myTip, setMyTip] = useState(null);
+  const [revealedSignals, setRevealedSignals] = useState(null);
+  // Ref mirror so stable callbacks can merge reveals without stale closures.
+  const revealedSignalsRef = useRef(null);
+
+  const mergeRevealedSignals = useCallback((list) => {
+    if (!Array.isArray(list) || list.length === 0) return;
+    const cur = revealedSignalsRef.current || {};
+    let next = null;
+    for (const r of list) {
+      if (!r || r.userId == null || !r.signal) continue;
+      const prev = cur[r.userId];
+      if (prev?.archetype !== r.signal.archetype || prev?.tier !== r.signal.tier) {
+        next = next || { ...cur };
+        next[r.userId] = r.signal;
+      }
+    }
+    if (next) {
+      revealedSignalsRef.current = next;
+      setRevealedSignals(next); // new object identity → re-render
+    }
+  }, []);
+
+  const resetSignals = useCallback(() => {
+    revealedSignalsRef.current = {};
+    setRevealedSignals({});
+    setMyTip(null);
+  }, []);
+
+  // ── Fold pause (server-authoritative freeze) ─────────────────────────
+  // Every accepted fold freezes the shared curve for FOLD_PAUSE_MS so the
+  // whole table can read who folded + their revealed insight before the
+  // rocket resumes. `foldPause` carries the frozen multiplier, the ABSOLUTE
+  // resume deadline the server broadcast (so every client holds the SAME
+  // value for the SAME window), and the fold's display data. `curveSegment`
+  // is the live flight anchor the CrashEngine renders from — re-anchored on
+  // every freeze and every resume so the engine's cap/hold machinery pins
+  // the curve at the server's value.
+  const [foldPause, setFoldPause] = useState(null);
+  const [curveSegment, setCurveSegment] = useState({ from: 1, resumedAt: null });
+  // Key of the flight anchor (roundNumber:startedAt) the segment was last
+  // reset for — a pause freeze must survive re-renders of the same hand.
+  const lastAnchorKeyRef = useRef(null);
+
+  /**
+   * Freeze the flight after an accepted fold, using the pause window the
+   * server broadcast with the fold response/broadcast.
+   *
+   * @param {{from: number, until: number}} pause
+   * @param {{userId: number, foldedAtMultiplier?: number|null, signal?: object|null}} serverAction
+   */
+  const applyFoldPause = useCallback((pause, serverAction) => {
+    if (!pause || !serverAction?.userId) return;
+    if (!Number.isFinite(Number(pause.until)) || !Number.isFinite(Number(pause.from))) return;
+    if (Number(pause.from) < 1) return;
+    const rs = roundStateRef.current;
+    if (!rs || rs.phase !== "running") return;
+    const foldPlayer = (rs.players || []).find((p) => p.userId === serverAction.userId) ?? null;
+    // Snap the segment anchor to the frozen value NOW: with curveCap pinned
+    // to it, even a client a few ticks behind holds exactly this multiplier.
+    setCurveSegment({ from: Number(pause.from), resumedAt: Date.now() });
+    setFoldPause({
+      from: Number(pause.from),
+      until: Number(pause.until),
+      fold: {
+        userId: serverAction.userId,
+        name: foldPlayer?.name ?? null,
+        isYou: Boolean(foldPlayer?.isYou),
+        isBot: Boolean(foldPlayer?.isBot),
+        multiplier:
+          serverAction.foldedAtMultiplier != null
+            ? Number(serverAction.foldedAtMultiplier)
+            : Number(pause.from),
+        signal: serverAction.signal ?? null,
+      },
+    });
+  }, []);
+
+  // Resume the flight the instant the server's absolute pause deadline hits:
+  // re-anchor the segment to the frozen multiplier at that exact moment.
+  useEffect(() => {
+    if (!foldPause) return;
+    const until = foldPause.until;
+    const delay = Math.max(0, until - Date.now());
+    const timer = setTimeout(() => {
+      setCurveSegment((seg) =>
+        seg.from === foldPause.from
+          ? { from: foldPause.from, resumedAt: until }
+          : seg,
+      );
+      setFoldPause(null);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [foldPause]);
 
   // ── Reducer ──────────────────────────────────────────────────────────
 
@@ -412,6 +512,29 @@ export default function useCrashArenaRound({
   // Keep a live mirror of roundState for stable callbacks.
   roundStateRef.current = roundState;
 
+  // A hand that leaves "running" (crash, settle, fold-out) ends the pause
+  // immediately — the results/explosion already took over the screen.
+  useEffect(() => {
+    if (roundState.phase !== "running" && foldPause) {
+      setFoldPause(null);
+    }
+  }, [roundState.phase, foldPause]);
+
+  // Anchor the flight at the start of every new hand. Each hand has its own
+  // absolute startedAt, so the segment (and any leftover pause) resets
+  // exactly once per hand without touching the freeze applied mid-hand.
+  useEffect(() => {
+    if (roundState.phase !== "running") return;
+    const key = `${roundState.roundNumber}:${roundState.startedAt ?? ""}`;
+    if (lastAnchorKeyRef.current === key) return;
+    lastAnchorKeyRef.current = key;
+    setCurveSegment({
+      from: 1,
+      resumedAt: roundState.flightResumedAt ?? roundState.startedAt,
+    });
+    setFoldPause(null);
+  }, [roundState.phase, roundState.roundNumber, roundState.startedAt, roundState.flightResumedAt]);
+
   // Prune ready votes that belong to players who are no longer seated.
   useEffect(() => {
     const seatedIds = new Set(
@@ -538,6 +661,16 @@ export default function useCrashArenaRound({
         type: "FOLD",
         serverAction: d.action,
       });
+      // Our own fold (or a bot seat we drive) just went public — the
+      // insight is revealed the moment the fold is accepted.
+      if (d.action?.signal) {
+        mergeRevealedSignals([{ userId: d.action.userId, signal: d.action.signal }]);
+      }
+      // The server froze the curve for the fold reveal — hold it at the
+      // broadcast multiplier until the absolute `until` deadline.
+      if (d.pause) {
+        applyFoldPause(d.pause, d.action);
+      }
       // The fold raced the crash and lost — the server settled the hand at
       // its deterministic crash moment. Record the crash locally (actual
       // multiplier) and animate the explosion before the results land.
@@ -547,6 +680,8 @@ export default function useCrashArenaRound({
       }
       if (d.handOver && d.results) {
         applyServerSettlement(d.results, roundId);
+        // Every entered seat's insight is public once the hand settles.
+        mergeRevealedSignals(d.results.signals);
       }
       // Tell the rest of the table instantly.
       if (socket) {
@@ -558,6 +693,7 @@ export default function useCrashArenaRound({
             contributed: d.action.contributed,
             foldedAtMultiplier: d.action.foldedAtMultiplier ?? null,
           },
+          ...(d.pause ? { pause: d.pause } : {}),
           ...(d.handOver && d.results
             ? { handOver: true, results: d.results }
             : {}),
@@ -576,7 +712,7 @@ export default function useCrashArenaRound({
       }
       setBusy(false);
     }
-  }, [tableId, socket, handleCrash, applyServerSettlement]);
+  }, [tableId, socket, handleCrash, applyServerSettlement, mergeRevealedSignals, applyFoldPause]);
 
   /**
    * Assign a fresh fold target to every seated bot that doesn't have one
@@ -652,6 +788,12 @@ export default function useCrashArenaRound({
       currentRoundIdRef.current = roundId;
       lastSyncedRef.current = { id: String(roundId), status: "running" };
       setReadyVotes([]);
+      // A fresh hand deals fresh private insights — clear the previous
+      // round's revealed tips and take our new private tip (the starter
+      // gets theirs inline; everyone else's arrives on the first poll).
+      revealedSignalsRef.current = {};
+      setRevealedSignals({});
+      setMyTip(data.data.myTip ?? null);
       botFoldTargetsRef.current = new Map();
       botInFlightRef.current = new Set();
       dispatch({
@@ -684,6 +826,9 @@ export default function useCrashArenaRound({
     setReadyVotes([]);
     currentMultiplierRef.current = 1.0;
     setCurrentMultiplier(1.0);
+    revealedSignalsRef.current = {};
+    setRevealedSignals({});
+    setMyTip(null);
     botFoldTargetsRef.current = new Map();
     botInFlightRef.current = new Set();
   }, []);
@@ -700,6 +845,13 @@ export default function useCrashArenaRound({
     if (!roundInfo?.id) return;
     const roundId = String(roundInfo.id);
     const roundStatus = roundInfo.status;
+
+    // Private insight delivery: `myTip` (this caller's running-hand tip)
+    // and `revealedSignals` (public tips — folded seats while running,
+    // all seats once settled) travel with the round snapshot so a client
+    // that missed the live broadcast still reconciles them on the poll.
+    mergeRevealedSignals(roundInfo.revealedSignals);
+    if (roundInfo.myTip != null) setMyTip(() => roundInfo.myTip);
 
     // Skip only when this exact round AND status were already
     // reconciled — a status flip (running → settled) must re-reconcile
@@ -739,7 +891,7 @@ export default function useCrashArenaRound({
         crashEngineRef.current?.triggerCrash?.(cp);
       }
     }
-  }, [wager]);
+  }, [wager, mergeRevealedSignals]);
 
   // ── Realtime room wiring ─────────────────────────────────────────────
 
@@ -760,6 +912,10 @@ export default function useCrashArenaRound({
       // Another player started a hand — start ours with the same
       // server-authoritative hand snapshot immediately.
       if (payload?.roundStarted) {
+        // Fresh hand → fresh private insights for everyone.
+        revealedSignalsRef.current = {};
+        setRevealedSignals({});
+        setMyTip(null);
         syncRoundFromServer({
           id: payload.roundId,
           status: "running",
@@ -788,12 +944,21 @@ export default function useCrashArenaRound({
         handleCrash(Number(payload.multiplier));
         crashEngineRef.current?.triggerCrash?.(Number(payload.multiplier));
       }
-      // Another player folded — mirror it live.
+      // Another player folded — mirror it live. The folder's private
+      // insight went public the moment the fold was accepted, so reveal it.
       if (payload?.action?.userId) {
         dispatch({
           type: "REMOTE_FOLD",
           serverAction: payload.action,
         });
+        if (payload.action.signal) {
+          mergeRevealedSignals([{ userId: payload.action.userId, signal: payload.action.signal }]);
+        }
+        // The server froze the curve for the reveal — hold it until the
+        // same absolute deadline the acting player is holding to.
+        if (payload?.pause) {
+          applyFoldPause(payload.pause, payload.action);
+        }
       }
       // A fold-out / crash settled the hand on the server — apply results
       // (only once per hand: the fold-response path may already have
@@ -801,6 +966,8 @@ export default function useCrashArenaRound({
       // settled round after the modal was dismissed).
       if (payload?.handOver && payload?.results) {
         applyServerSettlement(payload.results, currentRoundIdRef.current);
+        // Every entered seat's insight is public once the hand settles.
+        mergeRevealedSignals(payload.results.signals);
       }
       // A seated player pressed "Start Round" (first-round ready vote).
       if (payload?.ready && payload?.readyUserId) {
@@ -823,7 +990,7 @@ export default function useCrashArenaRound({
       socket.off("connect", joinRoom);
       socket.emit("leave_room", { roomId });
     };
-  }, [tableId, socket, syncRoundFromServer, handleCrash, applyServerSettlement]);
+  }, [tableId, socket, syncRoundFromServer, handleCrash, applyServerSettlement, mergeRevealedSignals, applyFoldPause]);
 
   // ── Player management (API calls) ────────────────────────────────────
 
@@ -1015,21 +1182,28 @@ export default function useCrashArenaRound({
   // point stays null (server-only until the crash): the engine flies blind
   // and the hook triggers the explosion when the server announces the crash.
   //
-  // The curve is CONTINUOUS in v2 (no checkpoint pauses): curveFrom = 1,
-  // curveCap = null, and the flight never re-anchors.
+  // The curve is CONTINUOUS in v2 (no betting checkpoints) EXCEPT for fold
+  // pauses: during a pause the engine is fed curveFrom = the frozen
+  // multiplier, a freshly-snapped anchor, and curveCap = the same value, so
+  // its cap/hold machinery pins the flight at the server's frozen multiplier
+  // for every client. On resume the anchor re-snaps to the frozen value at
+  // the server's absolute deadline and the curve keeps climbing from there.
   const crashEngineProps = useMemo(() => {
+    const running = roundState.phase === "running";
+    const isPaused = running && foldPause != null;
     return {
       crashPoint: roundState.crashPoint || null,
       startedAt: roundState.startedAt,
-      running: roundState.phase === "running",
-      curveFrom: 1,
-      curveResumedAt: roundState.flightResumedAt ?? roundState.startedAt,
-      curveCap: null,
+      running,
+      curveFrom: curveSegment.from,
+      curveResumedAt:
+        curveSegment.resumedAt ?? roundState.flightResumedAt ?? roundState.startedAt,
+      curveCap: isPaused ? foldPause.from : null,
       onCashout: () => {},
       onCrash: handleCrash,
       onMultiplierUpdate: handleMultiplierUpdate,
     };
-  }, [roundState.crashPoint, roundState.startedAt, roundState.phase, roundState.flightResumedAt, handleCrash, handleMultiplierUpdate]);
+  }, [roundState.crashPoint, roundState.startedAt, roundState.phase, roundState.flightResumedAt, curveSegment, foldPause, handleCrash, handleMultiplierUpdate]);
 
   return {
     roundState,
@@ -1050,5 +1224,8 @@ export default function useCrashArenaRound({
     currentMultiplier,
     busy,
     error,
+    myTip,
+    revealedSignals,
+    foldPause,
   };
 }

@@ -37,6 +37,7 @@ import { PLATFORM_FEE, NEXT_ROUND_COUNTDOWN_MS } from "./constants";
 import { broadcastTableUpdate } from "../crash-arena/rooms";
 import { isCrashArenaAiBotId } from "../crash-arena/aiBot";
 import type { CrashPokerHand } from "./types";
+import type { CrashSignal } from "../games/crash/signals";
 
 export interface CrashPokerPayout {
   userId: number;
@@ -64,6 +65,13 @@ export interface CrashPokerSettleResult {
     userId: number;
     result: string;
     contributed: number;
+    foldedAtMultiplier: number | null;
+  }[];
+  /** Every entered seat's insight + fold point — ALL public at settle. */
+  signals: {
+    userId: number;
+    name: string | null;
+    signal: CrashSignal | null;
     foldedAtMultiplier: number | null;
   }[];
   /** Absolute epoch-ms of the next round start (null when already settled). */
@@ -104,6 +112,7 @@ export async function settleCrashPokerHand(
         round,
         tableId: round.tableId,
         updatedEntries: [] as CrashPokerSettleResult["entries"],
+        signals: [] as CrashPokerSettleResult["signals"],
         resolved: {
           pot: 0,
           carryOver: 0,
@@ -151,6 +160,15 @@ export async function settleCrashPokerHand(
     const resolved = resolveHand(hand, crashPoint);
     const winnerUserId = resolved.winnerUserId;
     const payouts = resolved.payouts ?? [];
+
+    // Every entered seat's insight + fold point — ALL public at settlement
+    // (the hand has ended, so there is no smaller privacy scope left).
+    const signals: CrashPokerSettleResult["signals"] = (hand.players ?? []).map((p) => ({
+      userId: p.userId,
+      name: p.name ?? null,
+      signal: p.signal ?? null,
+      foldedAtMultiplier: p.foldedAtMultiplier ?? null,
+    }));
 
     // ── Money math ────────────────────────────────────────────────────────
     // The whole pot (minus the 5% fee) is the distributable pool; every
@@ -245,7 +263,8 @@ export async function settleCrashPokerHand(
     // ── Settle the round + re-open the table ─────────────────────────────
     // The resolved hand (with payouts + winner) is persisted into hand_state
     // so the tables poll can serve authoritative results to clients that
-    // missed the socket broadcast.
+    // missed the socket broadcast. The fold-pause fields are cleared — a
+    // settled hand has no curve clock left.
     await tx
       .update(crashArenaRounds)
       .set({
@@ -255,6 +274,9 @@ export async function settleCrashPokerHand(
           winnerUserId,
           payouts,
           resolvedAt: Date.now(),
+          pausedSince: null,
+          pausedUntil: null,
+          pausedTotalMs: 0,
         },
       })
       .where(eq(crashArenaRounds.id, roundId));
@@ -285,6 +307,7 @@ export async function settleCrashPokerHand(
       round,
       tableId,
       updatedEntries,
+      signals,
       resolved,
       rake,
       payout,
@@ -296,7 +319,7 @@ export async function settleCrashPokerHand(
     };
   });
 
-  const { round, tableId, updatedEntries, resolved, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt, tableIsAi, tableIsPrivate } = outcome;
+  const { round, tableId, updatedEntries, signals, resolved, rake, payout, payoutGross, winnerUserId, alreadySettled, nextRoundAt, tableIsAi, tableIsPrivate } = outcome;
 
   // Best-effort fanout so the whole table reconciles instantly (after the
   // transaction committed).
@@ -312,6 +335,8 @@ export async function settleCrashPokerHand(
     winnerUserId,
     payouts: resolved.payouts,
     activeAtCrash: resolved.activeAtCrash,
+    // Every entered seat's insight — all public once the hand is over.
+    signals,
     // Absolute epoch-ms of the next round start — clients count down to it.
     nextRoundAt:
       nextRoundAt != null ? nextRoundAt.getTime() : Date.now() + NEXT_ROUND_COUNTDOWN_MS,
@@ -354,6 +379,7 @@ export async function settleCrashPokerHand(
     seed: round.seed,
     seedHash: round.seedHash,
     entries: updatedEntries,
+    signals,
     nextRoundAt:
       outcome.nextRoundAt != null
         ? outcome.nextRoundAt.getTime()

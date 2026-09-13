@@ -9,6 +9,7 @@ import { eq, inArray } from "drizzle-orm";
 import {
   handFromEntries,
   isCrashDueAt,
+  resumePauseIfDue,
 } from "../../../../lib/crash-poker/roundSystem";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
@@ -110,11 +111,41 @@ export async function POST(req: NextRequest) {
         carryOver: Number(table.carryOver ?? 0),
       }) as CrashPokerHand;
 
+      // ── Fold-pause resume: close any elapsed pause window BEFORE the due
+      //    check. The pause stops the crash clock (curveMultiplierAt freezes
+      //    while paused), so a crash that is due the moment the window closes
+      //    settles right here — never while the reveal is on screen. Persist
+      //    the resume under the row lock so a fold that re-opens the pause at
+      //    the same instant can't be clobbered by our write. ───────────────
+      const { hand: handForDue, resumed } = resumePauseIfDue(hand, now);
+      if (resumed) {
+        await db.transaction(async (tx) => {
+          const lockedRound = await tx
+            .select()
+            .from(crashArenaRounds)
+            .where(eq(crashArenaRounds.id, round.id))
+            .limit(1)
+            .for("update");
+          if (!lockedRound.length) return;
+          const lockedHand = lockedRound[0].handState;
+          if (!lockedHand || typeof lockedHand !== "object") return;
+          const { hand: freshResumed, resumed: fresh } = resumePauseIfDue(
+            lockedHand as CrashPokerHand,
+            now,
+          );
+          if (!fresh) return; // a fold re-opened the pause meanwhile
+          await tx
+            .update(crashArenaRounds)
+            .set({ handState: freshResumed })
+            .where(eq(crashArenaRounds.id, round.id));
+        });
+      }
+
       // ── Crash: the continuous curve reached the crash point → settle. ──
       if (
         Number.isFinite(crashPoint) &&
         crashPoint > 0 &&
-        isCrashDueAt(hand, now, crashPoint)
+        isCrashDueAt(handForDue, now, crashPoint)
       ) {
         const settled = await settleCrashPokerHand(round.id);
         if (settled.alreadySettled) continue;
