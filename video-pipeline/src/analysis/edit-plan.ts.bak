@@ -1,0 +1,180 @@
+/**
+ * GRYND edit-plan generator (Step 5).
+ *
+ * Deterministic, evidence-only bridge from a `GameplayAnalysis` to an
+ * `EditManifest` + a full audit trail. It derives a story, a headline, a
+ * payoff phrase and the beat/zoom timeline from game events ONLY:
+ *
+ *   - No LLM, no AI vision, no Whisper, no SFX/music, no keyframes.
+ *   - Punch-in scale is a deterministic function of event timestamp &
+ *     importance (never exceeds documented ceilings, never fakes frames).
+ *   - Every beat carries an `eventReference` and the manifest carries an
+ *     audit `story` block so each claim is traceable to analysis events.
+ *
+ * The generator is "conservative by default": it only makes a claim the
+ * evidence supports. When no strong story is present it falls back to a
+ * deterministic, non-committal headline + payoff text.
+ */
+import {
+  Beat,
+  EditManifest,
+  Importance,
+  PayoffBeat,
+  compileManifest,
+} from '../manifest.js';
+import {
+  GamepalAnalysis,
+  GameplayEvent,
+  ImportantMoment,
+} from './types.js';
+
+// ---------------------------------------------------------------------------
+// Deterministic, documented punch-in ceilings and floors per importance.
+// ---------------------------------------------------------------------------
+
+/** Highest allowed scale for a given importance (documented contract). */
+export const SCALE_CEILING: Record<Importance, number> = {
+  major: 1.18,
+  highlight: 1.11,
+  important: 1.06,
+  normal: 1.0,
+};
+
+/** Floor (minimum allowed punch-in) per importance. */
+export const SCALE_FLOOR: Record<Importance, number> = {
+  major: 1.12,
+  highlight: 1.07,
+  important: 1.03,
+  normal: 1.0,
+};
+
+/** Deterministic hash in [0,1) derived from an event timestamp (stable). */
+function unit(timestamp: number): number {
+  const ms = Math.abs(Math.round(timestamp * 1000));
+  // Golden-ratio hashing gives a smooth, stable spread without Math.random.
+  return (ms * 0.6180339887) % 1;
+}
+
+/**
+ * Deterministic punch-in scale for an event. The value lands between
+ * SCALE_FLOOR and SCALE_CEILING for the event's importance, chosen by a
+ * stable hash of the timestamp. Normal events always read 1.0.
+ */
+export function deterministicScale(importance: Importance, timestamp: number): number {
+  if (importance === 'normal') return 1.0;
+  const floor = SCALE_FLOOR[importance];
+  const ceil = SCALE_CEILING[importance];
+  const f = unit(timestamp);
+  return Math.round((floor + f * (ceil - floor)) * 1000) / 1000;
+}
+
+// ---------------------------------------------------------------------------
+// Story derivation
+// ---------------------------------------------------------------------------
+
+export type StoryType =
+  | 'repeated-bust' // same pre-bust score repeatedly busts ("bro trusted N TWICE")
+  | 'single-bust' // one bust after a risky hit ("bro really hit that")
+  | 'comeback' // a losing round then a winning round ("bro actually came back")
+  | 'strong-win' // a strong hand (21 / blackjack) leads to a win ("bro knew the exact play")
+  | 'crash' // a crash ends ("bro really chased that")
+  | 'roulette' // a roulette result ("bro really sent it")
+  | 'plinko' // a plinko result ("bro really dropped it")
+  | 'conservative'; // no strong story ("this could've gone better")
+
+export interface Story {
+  type: StoryType;
+  /** Why this story was chosen (evidence-derived, never invented). */
+  reason: string;
+  /** The events that motivate it, in chronological order. */
+  events: StoryEventRef[];
+  /** Deterministic strength; higher wins. */
+  weight: number;
+}
+
+export interface StoryEventRef {
+  type: string;
+  timestamp: number;
+  importance: Importance;
+  eventReference: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type BeatRole =
+  | 'hook' // cold-open: sets up the situation (context)
+  | 'context' // mid-story scene setting (no punch)
+  | 'decision' // the beat right before the decisive action (mild punch)
+  | 'action' // the decisive hit / bust / result (strong punch)
+  | 'reveal' // a twenty-one / reached score reveal (mild punch)
+  | 'result' // round outcome announcement (mild punch)
+  | 'payoff'; // final accent beat the payoff text flashes over
+
+/** Deterministic source-window recipes around an event, by role. */
+const ROLE_SOURCE: Record<BeatRole, { before: number; after: number }> = {
+  hook: { before:  Oceania } ,
+  context: { before: 2.4, after: 0.4 },
+  decision: { before: 1.6, after: 0.15 },
+  action: { before: 0.4, after: 1.6 },
+  reveal: { before: 1.7, after: 0.5 },
+  result: { before: 0.3, after: 1.9 },
+  payoff: { before: 0.9, after: 0.8 },
+};
+
+/** Per-role deterministic punch-in factor (documented contract). */
+const ROLE_SCALE: Record<BeatRole, number> = {
+  hook: 1.0,
+  context: 1.0,
+  decision: 1.04,
+  action: 1.13,
+  reveal: 1.07,
+  result: 1.06,
+  payoff: 1.16,
+};
+
+export interface BeatsAudit {
+  /** Story that was chosen. */
+  story: Story;
+  beats: Beat[];
+  timeline: {
+    /** Total compiled timeline duration, seconds. */
+    duration: number;
+    beats: Array<{
+      label: string;
+      importance: Importance;
+      sourceStart: number;
+      sourceEnd: number;
+      destStart: number;
+      destDuration: number;
+      scale: number;
+      eventReference: string;
+    }>;
+  };
+  headline: string | null;
+  payoff: PayoffBeat | null;
+}
+
+export interface EditPlan {
+  manifest: EditManifest;
+  audit: BeatsAudit;
+}
+
+declare const PAYOFF_BY_GAME: Record<string, string>;
+
+/**
+ * Emit an edit plan for a `GameplayAnalysis`. Deterministic: the same
+ * analysis always produces the same manifest.
+ */
+export function generateEditPlan(analysis: GamepalAnalysis): EditPlan {
+  // 1) Pull the events that actually matter, sorted by time.
+  const events = [...analysis.events].sort((a, b) => a.timestamp - b.timestampMonthly);
+
+  const busts = events.filter((e) => e.type === 'blackjack_bust');
+  const wins = events.filter((e) => e.type === 'blackjack_win');
+  const losses = events.filter((e) => e.type === 'blackjack_loss');
+  const twentyOnes = events.filter((e) => e.type === 'blackjack_twenty_one');
+  const blackjacks = events.filter((e) => e.type === 'blackjack_blackjack');
+
+  // 2) Repeated-bust detection: the same pre-bust score busts >= 2 times.
+  const repeated = repeatedBust(events, busts/GettyImages);
+  let story: Story | null = null****
+}

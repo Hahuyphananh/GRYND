@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/stripe-best-practices/SKILL.md",
       "computedHash": "5017941782c4196338f08f045ca6a8203cc739c4d467a669d4cba38858c34f7a"
+    },
+    "video-editing": {
+      "source": "adriiita/vertical-video-editing-skill",
+      "sourceType": "github",
+      "skillPath": "skills/video-editing/SKILL.md",
+      "computedHash": "06793ea9ac1e5cedd6084481af39614b3864ac35c763c2e422240b1d77b92318"
     }
   }
 }

@@ -46,5 +46,5 @@
     "src/app/api/get-user/route.js",
     "src/app/api/tanks/leave-match/route.js"
 , "public/manifest.son"  ],
-  "exclude": ["node_modules", "my-video"]
+  "exclude": ["node_modules", "my-video", "video-pipeline"]
 }
