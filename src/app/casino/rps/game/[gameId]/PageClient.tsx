@@ -457,6 +457,7 @@ export default function RPSPvpGamePage() {
         autoStart={status === "matched" || status === "active"}
         autoStop={status === "finished" || status === "cancelled"}
         gameLabel="rock-paper-scissors"
+        backToLobbyHref="/casino/rps"
       >
       <CreatorResponsiveLayout>
       {/* data-creator-stack-swap: in the portrait (9:16) creator frame this

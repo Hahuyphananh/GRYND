@@ -1947,6 +1947,7 @@ export default function RoulettePvpGamePage({ params }) {
           match?.status === MATCH_STATUS.CANCELLED
         }
         gameLabel="roulette"
+        backToLobbyHref="/casino/roulette"
       >
       <CreatorResponsiveLayout>
       {/* data-creator-stack-swap: inside the creator phone viewport

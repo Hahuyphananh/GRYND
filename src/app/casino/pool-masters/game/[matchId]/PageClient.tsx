@@ -2067,6 +2067,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
         autoStart={started && balls.length > 0}
         autoStop={Boolean(winner)}
         gameLabel="pool-masters"
+        backToLobbyHref="/casino/pool-masters"
       >
         <CreatorView
           normal={isPortrait ? mobilePortraitContent : desktopContent}

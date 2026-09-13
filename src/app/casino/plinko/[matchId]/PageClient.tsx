@@ -2829,6 +2829,7 @@ export default function PlinkoPvpMatchPage({
         autoStart={isReady || isLaunchable}
         autoStop={isFinished || isCancelled}
         gameLabel="plinko-duel"
+        backToLobbyHref="/casino/plinko"
       >
         <CreatorView
           // Normal mode: the desktop game renders completely unchanged.

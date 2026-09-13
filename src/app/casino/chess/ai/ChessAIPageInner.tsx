@@ -923,7 +923,7 @@ export default function ChessAIPageInner() {
           recorded — nav stays outside the shared CreatorModeHost
           recording viewport. Recording auto-starts when the battle is
           live and stops once the result popup has been captured. */}
-      <CreatorModeHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai">
+      <CreatorModeHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai" backToLobbyHref="/casino/chess">
       <CreatorResponsiveLayout>
 
       {/* Turn Banner — chess-turn-banner: hidden in creator mode (see

@@ -772,6 +772,7 @@ export default function ConnectFourGamePage() {
     autoStart={game?.status === "in_progress"}
     autoStop={game?.status === "finished" || game?.status === "cancelled"}
     gameLabel="four-in-a-row"
+    backToLobbyHref="/casino/four-in-a-row"
   >
   <CreatorView normal={<motion.div
   initial={{ opacity: 0, y: 8 }}

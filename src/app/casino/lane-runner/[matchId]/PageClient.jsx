@@ -1555,6 +1555,7 @@ export default function LaneRushDuelMatchPage({ params }) {
           autoStart={Boolean(match && match.status === "active")}
           autoStop={Boolean(finished || cancelled)}
           gameLabel="lane-rush-duel"
+          backToLobbyHref="/casino/lane-runner"
         >
           <CreatorView
             normal={desktopContent}

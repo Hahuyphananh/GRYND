@@ -1343,6 +1343,7 @@ export default function MemoryGridMatchPage({
         // the recording automatically.
         autoStop={match?.status === MATCH_STATUS.CANCELLED}
         gameLabel="memory-grid"
+        backToLobbyHref="/casino/memory-grid"
       >
       <CreatorView
         normal={

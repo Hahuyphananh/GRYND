@@ -487,12 +487,6 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const userWon = gameOver && finalWinner === "player1";  const userDrew = gameOver && finalWinner === "";
   return (
     <div>
-      <CreatorModeHost
-        autoStart={Boolean(gameId && interactiveState)}
-        autoStop={Boolean(gameOver)}
-        gameLabel="odds"
-      >
-      <CreatorResponsiveLayout>
       {resuming && (
         <p className="text-center text-white/40 py-8">Loading...</p>
       )}
@@ -514,6 +508,14 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         </>
       )}
 
+      {gameId && interactiveState && (
+      <CreatorModeHost
+        autoStart={Boolean(gameId && interactiveState)}
+        autoStop={Boolean(gameOver)}
+        gameLabel="odds"
+        backToLobbyHref="/casino/odds"
+      >
+      <CreatorResponsiveLayout>
       {gameId && interactiveState && !gameOver && interactiveState.phase === "pick" && (
         <div className="mb-4 rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
             <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
@@ -750,6 +752,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       )}
       </CreatorResponsiveLayout>
       </CreatorModeHost>
+      )}
     </div>
   );
 }
@@ -1414,12 +1417,6 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // ── Render ──
   return (
     <div>
-      <CreatorModeHost
-        autoStart={Boolean(myGameId && interactiveState && !waitingForOpponent)}
-        autoStop={Boolean(gameOver)}
-        gameLabel="odds"
-      >
-      <CreatorResponsiveLayout>
       {resuming && (
         <p className="text-center text-white/40 py-8">Loading...</p>
       )}
@@ -1500,6 +1497,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         </>
       )}
 
+      {gameId && (
+      <CreatorModeHost
+        autoStart={Boolean(myGameId && interactiveState && !waitingForOpponent)}
+        autoStop={Boolean(gameOver)}
+        gameLabel="odds"
+        backToLobbyHref="/casino/odds"
+      >
+      <CreatorResponsiveLayout>
       {/* WAITING for opponent */}
       {gameId && !interactiveState && (
         <div className="text-center py-8">
@@ -1888,6 +1893,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       />
       </CreatorResponsiveLayout>
       </CreatorModeHost>
+      )}
     </div>
   );
 }

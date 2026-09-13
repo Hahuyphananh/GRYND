@@ -912,6 +912,7 @@ export default function DiceFlushPage() {
         autoStart={Boolean(game) && game.state === "playing"}
         autoStop={Boolean(game) && game.state === "finished"}
         gameLabel="dice-flush"
+        backToLobbyHref="/casino/dice-flush"
       >
       <CreatorResponsiveLayout>
       {game && (<div className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-4 backdrop-blur">
