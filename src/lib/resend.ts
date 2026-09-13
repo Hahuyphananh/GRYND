@@ -24,7 +24,11 @@ function getSmtpTransport() {
     port,
     secure: process.env.SMTP_SECURE === "true" || port === 465,
     auth: user ? { user, pass } : undefined,
-  });
+    connectionOptions: {
+      family: Number(process.env.SMTP_FAMILY || "4"),
+    },
+    tls: process.env.SMTP_TLS_INSECURE === "true" ? { rejectUnauthorized: false } : undefined,
+  } as nodemailer.TransportOptions);
   return smtpTransport;
 }
 
