@@ -237,7 +237,7 @@ export default function useCrashArenaRound({
    * Freeze the flight after an accepted fold, using the pause window the
    * server broadcast with the fold response/broadcast.
    *
-   * @param {{from: number, until: number}} pause
+   * @param {{from: number, until: number, handOver?: boolean}} pause
    * @param {{userId: number, foldedAtMultiplier?: number|null, signal?: object|null}} serverAction
    */
   const applyFoldPause = useCallback((pause, serverAction) => {
@@ -253,6 +253,9 @@ export default function useCrashArenaRound({
     setFoldPause({
       from: Number(pause.from),
       until: Number(pause.until),
+      // A fold-out (hand over) freeze must NOT auto-resume once `until`
+      // passes — the sweep settles the hand at that deadline instead.
+      handOver: pause.handOver === true,
       fold: {
         userId: serverAction.userId,
         name: foldPlayer?.name ?? null,
@@ -269,8 +272,12 @@ export default function useCrashArenaRound({
 
   // Resume the flight the instant the server's absolute pause deadline hits:
   // re-anchor the segment to the frozen multiplier at that exact moment.
+  // A fold-out freeze (handOver) NEVER resumes — the crash-check sweep
+  // settles the hand at `until`, and the phase leaving "running" (the
+  // clear-effect below) drops the pause when the results take over.
   useEffect(() => {
     if (!foldPause) return;
+    if (foldPause.handOver) return;
     const until = foldPause.until;
     const delay = Math.max(0, until - Date.now());
     const timer = setTimeout(() => {

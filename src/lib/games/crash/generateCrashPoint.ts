@@ -9,7 +9,11 @@
  * Pattern follows laneRunner.js: SHA-256 → first 13 hex chars → float.
  */
 import crypto from "node:crypto";
-import { CRASH_MIN, CRASH_RANGE, CRASH_GROWTH_RATE } from "./constants";
+import {
+  CRASH_MIN,
+  CRASH_RANGE,
+  timeToCrashMultiplier,
+} from "./constants";
 
 /** Maximum value of a 13-hex-digit number (0x1fffffffffffff). */
 const MAX_ROLL = 0x1fffffffffffff;
@@ -65,12 +69,13 @@ export function generateVerifiableCrashPoint(seed: string) {
 /**
  * The wall-clock moment a hand's curve reaches its crash point.
  *
- * multiplier(t) = e^(GROWTH_RATE·t), so the time to reach `crashPoint` is
- * ln(crashPoint) / GROWTH_RATE seconds after the round started. This is a
- * pure server-side function of the round's creation time + crash point — the
- * crash point itself is NEVER sent to clients before the crash; only this
- * deterministic deadline is used server-side (action cut-off, crash sweep)
- * so ordering is fixed by server time and cannot be exploited by latency.
+ * The curve is the piecewise-linear slowdown in constants.ts, so the time
+ * to reach `crashPoint` is timeToCrashMultiplier(crashPoint) seconds after
+ * the round started. This is a pure server-side function of the round's
+ * creation time + crash point — the crash point itself is NEVER sent to
+ * clients before the crash; only this deterministic deadline is used
+ * server-side (action cut-off, crash sweep) so ordering is fixed by server
+ * time and cannot be exploited by latency.
  *
  * @param createdAt  round creation time (Date, ISO string, or epoch ms)
  * @param crashPoint the hand's server-authoritative crash multiplier
@@ -78,7 +83,7 @@ export function generateVerifiableCrashPoint(seed: string) {
  */
 export function crashDueAtMs(createdAt: Date | string | number, crashPoint: number): number {
   const startMs = new Date(createdAt).getTime();
-  const seconds = Math.log(Math.max(Number(crashPoint) || 1, 1.0001)) / CRASH_GROWTH_RATE;
+  const seconds = timeToCrashMultiplier(Number(crashPoint));
   return startMs + seconds * 1000;
 }
 

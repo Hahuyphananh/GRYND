@@ -1,15 +1,11 @@
 "use client";
 import React, { useRef, useImperativeHandle, forwardRef } from "react";
-import { CRASH_GROWTH_RATE } from "../../../lib/games/crash/constants";
+import { CRASH_CURVE_MAX_TIME, timeToCrashMultiplier } from "../../../lib/games/crash/constants";
 
 // ── Drawing constants ──────────────────────────────────────────────────
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
 export const GRAPH_PADDING = 40;
-// Single source of truth for the curve growth rate — shared with the
-// server (src/lib/games/crash/constants.ts → crashDueAtMs) so the crash
-// moment computed server-side lands exactly on the curve clients render.
-export const GROWTH_RATE = CRASH_GROWTH_RATE;
 // Y-axis upper bound when the crash point is unknown to the client
 // (Crash Poker hides it until the crash) — high enough that any crash
 // point within the game's range (max 9.2x) stays on the chart.
@@ -96,11 +92,11 @@ function toCanvasPoint(mult, maxMultiplier, w, h, pad) {
   const maxY = h - pad;
   const minY = pad;
 
-  const elapsed = Math.log(Math.max(mult, 1.0001)) / GROWTH_RATE;
-  // X-axis time span (seconds). At the current growth rate (0.11) the max
-  // crash (9.2x) takes ln(9.2)/0.11 ≈ 20.2s — give headroom so the rocket
-  // never sits pinned at the right edge before it explodes.
-  const MAX_TIME = 22;
+  const elapsed = timeToCrashMultiplier(mult);
+  // X-axis time span (seconds): the curve's full timeline (~100.5s to the
+  // 9.2x ceiling) — plus ~20% headroom so the rocket never sits pinned at
+  // the right edge before it explodes.
+  const MAX_TIME = 120;
   const progress = Math.min(elapsed / MAX_TIME, 1);
   const x = minX + progress * (maxX - minX);
 

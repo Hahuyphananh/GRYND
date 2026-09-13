@@ -42,6 +42,16 @@ export interface CrashPokerHand {
   actions: CrashPokerAction[];
   /** Epoch-ms the curve started (hand start). Continuous — never re-anchors. */
   flightResumedAt: number | null;
+  /** Fold-pause bookkeeping (see pauseHandOnFold / resumePauseIfDue). */
+  pausedTotalMs?: number;
+  pausedSince?: number | null;
+  pausedUntil?: number | null;
+  /**
+   * Deferred fold-out settle deadline (epoch ms): set by the action route
+   * when a fold leaves one active player — the hand freezes and the
+   * crash-check sweep settles it at this moment. Null on running hands.
+   */
+  settlePendingAt?: number | null;
 }
 
 /** One ranked payout at settlement (rank 1 = winner). */

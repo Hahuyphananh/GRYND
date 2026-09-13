@@ -561,14 +561,22 @@ async function runCrashArenaCrashSweep() {
 
     const crashed = Array.isArray(data.data?.crashed) ? data.data.crashed : [];
     for (const evt of crashed) {
-      if (evt == null || evt.tableId == null || evt.multiplier == null) continue;
+      if (evt == null || evt.tableId == null) continue;
       const roomId = `${CRASH_ARENA_MATCH_ROOM_PREFIX}${evt.tableId}`;
+      // Folds-out (kind "fold-out") carry NO crash multiplier — the hand
+      // ended by fold-out, not by crashing, so the realtime payload omits
+      // `crashed`/`multiplier` and just hands over the results.
+      const isFoldOut = evt.kind === "fold-out";
       io.to(roomId).emit("lobby:updated", {
         tableId: evt.tableId,
-        crashed: true,
-        multiplier: evt.multiplier,
-        handOver: true,
-        results: evt.results || null,
+        ...(isFoldOut
+          ? { handOver: true, results: evt.results || null }
+          : {
+              crashed: true,
+              multiplier: evt.multiplier,
+              handOver: true,
+              results: evt.results || null,
+            }),
         sentAt: new Date().toISOString(),
       });
       // Keep the lobby grid's LIVE badge in sync too.
@@ -584,7 +592,13 @@ async function runCrashArenaCrashSweep() {
         "[crash-arena] crash sweep settled",
         crashed.length,
         "hand(s)",
-        crashed.map((e) => `#${e.roundId}@${e.multiplier}x`).join(","),
+        crashed
+          .map((e) =>
+            e.multiplier == null
+              ? `#${e.roundId} (fold-out)`
+              : `#${e.roundId}@${e.multiplier}x`,
+          )
+          .join(","),
       );
     }
     // ── Reconcile the running-hand hint against ground truth ───────────

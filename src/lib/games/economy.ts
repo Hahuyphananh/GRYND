@@ -16,8 +16,10 @@
 // IMPORTANT: the plain-JS constants files under src/lib/*-pvp/constants.js
 // (which are imported by the `node --test` engine tests WITHOUT tsx) keep
 // their own inlined copies of these values with a "must match" comment —
-// the same convention crash-poker uses for CRASH_GROWTH_RATE. Keep them in
-// lockstep with this file.
+// the same convention crash-poker uses for its shared pieces (see the
+// crash multiplier curve, mirrored between src/lib/crash-poker/constants.js
+// and src/lib/games/crash/constants.ts). Keep them in lockstep with this
+// file.
 
 /** Hard ceiling for any single wager (tokens). ~$100 at 1,000 tokens/$. */
 export const GLOBAL_MAX_BET = 100_000;

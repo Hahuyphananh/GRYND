@@ -15,6 +15,7 @@ import { dealSignals } from "../../../../lib/games/crash/signals";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 import { resolveCrashArenaAiBotIds } from "../../../../lib/crash-arena/aiBot";
 import { createHand } from "../../../../lib/crash-poker/roundSystem";
+import { CRASH_START_DELAY_MS } from "../../../../lib/crash-poker/constants";
 import { logError } from "../../../../lib/logError";
 
 /**
@@ -159,9 +160,12 @@ export async function POST(req: Request) {
     const stackByUser = new Map(
       seatedPlayers.map((p) => [p.userId, Number(p.balance)]),
     );
-    // The hand's curve starts NOW (server epoch ms) — clients align their
-    // curve to the round's createdAt; the few-ms skew is imperceptible.
-    const startedAt = Date.now();
+    // The hand's curve starts in `CRASH_START_DELAY_MS` (server epoch ms):
+    // during this "hint window" clients show the player their private
+    // insights before the rocket takes off. Clients align their curve to
+    // `startedAt`; because it lies in the future they see 1.00x until the
+    // anchor passes.
+    const startedAt = Date.now() + CRASH_START_DELAY_MS;
     const hand = createHand({
       players: seatedPlayers,
       wager,

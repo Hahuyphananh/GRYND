@@ -2,10 +2,13 @@
 import { useRef, useCallback, useEffect } from "react";
 import { toCanvasPoint } from "./CrashGraph";
 import {
+  crashMultiplierAtTime,
+  timeToCrashMultiplier,
+} from "../../../lib/games/crash/constants";
+import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
   GRAPH_PADDING,
-  GROWTH_RATE,
   DEFAULT_MAX_MULTIPLIER,
 } from "./CrashGraph";
 
@@ -125,13 +128,16 @@ export default function useCrashAnimation({
     // Align the curve to the server's flight segment start (epoch ms): the
     // animation begins `elapsed` ms into the curve instead of at t=0, so a
     // client that received the broadcast late still renders the same
-    // multiplier everyone else sees at that moment. Never starts in the
-    // future. The segment anchor is the hand's flightResumedAt (= startedAt
-    // at hand start); it advances live when a betting window closes.
+    // multiplier everyone else sees at that moment. The segment anchor is
+    // the hand's flightResumedAt (= startedAt at hand start); it advances
+    // live when a pause window closes. NOTE: the anchor may lie in the
+    // FUTURE (the new-round hint window — the server delays startedAt), so
+    // this client's start time is set in the future too; the elapsed clamp
+    // in the loop pins the curve at 1.00x until the anchor is reached.
     const startedAtMs = Number(startedAtRef.current) || 0;
     const anchorMs = Number(curveRef.current.resumedAt) || startedAtMs || 0;
     const startTime = anchorMs
-      ? performance.now() - Math.max(0, Date.now() - anchorMs)
+      ? performance.now() + (anchorMs - Date.now())
       : performance.now();
 
     stateRef.current = {
@@ -155,20 +161,30 @@ export default function useCrashAnimation({
       const c = curveRef.current;
 
       // Segment re-anchor: the server resumed the flight at a NEW moment
-      // (a betting window closed → flightResumedAt advanced). Restart the
-      // curve from the checkpoint multiplier at that moment instead of
-      // continuing from the hand start — otherwise the paused time would
-      // inflate the multiplier.
+      // (a fold-pause window closed → flightResumedAt advanced, or the hand
+      // started with a future anchor). Restart the curve from the frozen
+      // multiplier at that moment instead of continuing from the hand
+      // start — otherwise the paused time would inflate the multiplier. The
+      // new anchor may lie in the FUTURE (hint window) — elapsed is clamped
+      // in the loop so the curve holds 1.00x until it is reached.
       const anchorMs = Number(c.resumedAt) || Number(startedAtRef.current) || 0;
       if (anchorMs && s.segmentAnchorMs !== anchorMs) {
         s.segmentAnchorMs = anchorMs;
-        s.segmentStartTime = performance.now() - Math.max(0, Date.now() - anchorMs);
+        s.segmentStartTime = performance.now() + (anchorMs - Date.now());
         s.segmentFrom = Number(c.from) || 1;
       }
 
-      const elapsedSeconds = (now - s.segmentStartTime) / 1000;
+      const elapsedSeconds = Math.max(0, (now - s.segmentStartTime) / 1000);
+      // Piecewise-linear slowdown: climb from this segment's start
+      // multiplier, but on the SHARED curve — the elapsed time here is
+      // relative to the segment's own anchor (hand start, or the moment a
+      // fold-pause window closed), and the segment's start multiplier is a
+      // point ON that curve, so we translate it back to curve-seconds and
+      // read the curve forward from there.
       let deterministicMultiplier =
-        s.segmentFrom * Math.exp(GROWTH_RATE * elapsedSeconds);
+        crashMultiplierAtTime(
+          timeToCrashMultiplier(s.segmentFrom) + elapsedSeconds,
+        );
       // Pause at an open betting checkpoint: hold the multiplier at the
       // cap while the window is open — the curve stops at every 0.25x
       // increment so players can decide without the rocket racing away.

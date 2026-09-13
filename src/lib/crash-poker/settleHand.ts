@@ -1,8 +1,9 @@
 // src/lib/crash-poker/settleHand.ts
 //
 // Shared, server-authoritative settlement for a Crash Arena hand. Used by
-// BOTH the fold route (a fold-out ends the hand immediately) and the
-// settle/crash-check paths (the crash ended the hand). Outcome
+// the crash-check sweep (the crash ended the hand, or a fold-out's grace
+// deadline passed — the sweep owns fold-out settlement since the action
+// route only freezes the hand and stamps settlePendingAt). Outcome
 // determination is delegated to `resolveHand()` in roundSystem.js — the
 // single, clean hook for the rank / pot rules — so neither route hardcodes
 // payout logic.
@@ -264,7 +265,9 @@ export async function settleCrashPokerHand(
     // The resolved hand (with payouts + winner) is persisted into hand_state
     // so the tables poll can serve authoritative results to clients that
     // missed the socket broadcast. The fold-pause fields are cleared — a
-    // settled hand has no curve clock left.
+    // settled hand has no curve clock left — and the deferred fold-out
+    // deadline (settlePendingAt) is stamped null so the sweep can't
+    // double-settle.
     await tx
       .update(crashArenaRounds)
       .set({
@@ -277,6 +280,7 @@ export async function settleCrashPokerHand(
           pausedSince: null,
           pausedUntil: null,
           pausedTotalMs: 0,
+          settlePendingAt: null,
         },
       })
       .where(eq(crashArenaRounds.id, roundId));

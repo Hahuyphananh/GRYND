@@ -269,6 +269,14 @@ export async function GET(req: Request) {
                 }
               : null;
 
+            // The flightResumedAt is the moment the curve started climbing
+            // (hand start, possibly delayed for the hint window). Both the
+            // client curve anchor and the `startedAt` field carry this value
+            // so clients see 1.00x until the anchor passes.
+            const handFlightResumedAt =
+              (latestRound[0].handState as { flightResumedAt?: number } | null)
+                ?.flightResumedAt ?? null;
+
             latestRoundInfo = {
               id: latestRound[0].id,
               status: latestRound[0].status,
@@ -279,10 +287,12 @@ export async function GET(req: Request) {
                 : null,
               seedHash: latestRound[0].seedHash ?? null,
               createdAt: latestRound[0].createdAt,
-              // Server epoch ms when the hand started — clients align
-              // their crash curve to it so every player renders the
-              // same multiplier at the same moment.
-              startedAt: new Date(latestRound[0].createdAt).getTime(),
+              // Server epoch ms when the curve started — clients align
+              // to it so every player renders the same multiplier.
+              // Prefers the explicit flightResumedAt (which may lie in the
+              // future when a hint window is active) and falls back to the
+              // round's creation time for legacy rows.
+              startedAt: handFlightResumedAt ?? new Date(latestRound[0].createdAt).getTime(),
               // Server-scheduled next-round deadline (epoch ms) — every
               // client counts down to the same moment.
               nextRoundAt:
@@ -311,11 +321,9 @@ export async function GET(req: Request) {
                 userId,
                 signal: signalByUser.get(userId) ?? null,
               })),
-              // Epoch-ms the hand started — the continuous-curve anchor
-              // every client renders the multiplier from.
-              flightResumedAt:
-                (latestRound[0].handState as { flightResumedAt?: number } | null)
-                  ?.flightResumedAt ?? null,
+              // Epoch-ms the curve started (hand start, possibly delayed
+              // by the hint window); also used as `startedAt` above.
+              flightResumedAt: handFlightResumedAt,
               carryOver: Number(table.carryOver ?? 0),
               entries: roundEntries.map((e) => ({
                 userId: e.userId,

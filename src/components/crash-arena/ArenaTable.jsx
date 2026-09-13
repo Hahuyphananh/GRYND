@@ -26,7 +26,7 @@ import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import CrashRiskMeter from "./CrashRiskMeter";
 import { playCrash, playVictory, playDefeat } from "../../lib/gameAudio";
 
-const ROUND_START_COUNTDOWN = 12; // seconds between rounds / after ready votes
+const ROUND_START_COUNTDOWN = 8; // seconds between rounds / after ready votes
 const READY_VOTES_NEEDED = 2;
 
 /**
@@ -273,6 +273,33 @@ export default function ArenaTable({
     tick();
     return () => cancelAnimationFrame(raf);
   }, [foldPause, isRunning]);
+
+  // ── Hint window ─────────────────────────────────────────────────────
+  // The server delays each hand's curve start (flightResumedAt is in the
+  // FUTURE by CRASH_START_DELAY_MS) so players can read their private
+  // insight BEFORE the rocket takes off. While the future anchor is still
+  // ahead — same absolute value every client derives — the fold bar is
+  // hidden and a hint card counts down to lift-off. Curves can't be folded
+  // during the window anyway (the fold route rejects actions before the
+  // anchor), so hiding the button matches the server truth.
+  const hintStartAt =
+    (roundState?.flightResumedAt ?? roundState?.startedAt ?? 0) || 0;
+  const [hintSecondsLeft, setHintSecondsLeft] = useState(0);
+  const hintActive = isRunning && hintStartAt > Date.now();
+  useEffect(() => {
+    if (!hintActive) {
+      setHintSecondsLeft(0);
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      const left = Math.max(0, hintStartAt - Date.now());
+      setHintSecondsLeft(Math.ceil(left / 1000));
+      if (left > 0) raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [hintActive, hintStartAt]);
 
   // ── Round audio ────────────────────────────────────────────────────
   // One shot per round settle: crash sweep, then victory if the local
@@ -620,7 +647,7 @@ export default function ArenaTable({
           fold action up, directly under the curve canvas (see globals.css) —
           the one button you click during the round stays on screen next to
           the rocket. */}
-      {isRunning && youInHand && !youAllIn && (
+      {isRunning && youInHand && !youAllIn && !hintActive && (
         <div className="crash-arena-fold-first flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FFD700]/30 bg-[#0a1a2e]/90 p-3 backdrop-blur-md shadow-[0_0_20px_rgba(255,215,0,0.15)]">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs uppercase tracking-wider text-[#9dd8ff]/70 font-black">
@@ -745,7 +772,40 @@ export default function ArenaTable({
                 </span>
               )}
               <span className="mt-1 text-[11px] font-bold text-[#9dd8ff]/70 tabular-nums">
-                Curve frozen — resuming in {pauseSecondsLeft}s
+                {foldPause.handOver
+                  ? "Hand over — settling payouts…"
+                  : `Curve frozen — resuming in ${pauseSecondsLeft}s`}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Hint window — the curve hasn't started climbing yet (the server
+            delays the anchor so the table can read the private insights
+            first). The rocket sits at 1.00x and a hint card counts down to
+            lift-off; the fold bar is hidden until the anchor is reached. */}
+        {hintActive && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
+            <div className="flex flex-col items-center gap-1 rounded-2xl border border-[#00e5ff]/40 bg-[#050d1f]/90 px-6 py-4 backdrop-blur-md shadow-[0_0_30px_rgba(0,229,255,0.2)]">
+              <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] font-black text-[#00e5ff]/90">
+                <IconBook size={13} /> Your tip
+              </span>
+              {myTip ? (
+                <>
+                  <span className="text-sm font-black text-[#d8fbff] text-center max-w-[260px]">
+                    {myTip.claim}
+                  </span>
+                  <span className="text-xs font-bold text-[#00ffa6] text-center">
+                    {myTip.tier} · ~{Math.round((myTip.accuracy || 0) * 100)}% accurate
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm font-black text-[#d8fbff]">
+                  No insight this hand
+                </span>
+              )}
+              <span className="mt-1 text-[11px] font-bold text-[#9dd8ff]/70 tabular-nums">
+                Curve starts in {hintSecondsLeft}s
               </span>
             </div>
           </div>
