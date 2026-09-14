@@ -4,17 +4,16 @@ import { memo, useEffect, useMemo, useRef } from "react";
 
 // ─── Board constants ──────────────────────────────────────────────────
 const DOTS = 7; // 7×7 dot grid
-const CELL_SIZE = 100; // SVG units between dots
-const MARGIN = 50; // padding around the grid
-const DOT_RADIUS = 5;
-// Hit-area thickness for edges. Bumped from 14 → 22 so users (especially
-// on small mobile screens, where each SVG unit maps to fewer pixels) can
-// tap an edge on the first try. Capped at 22 (rather than 28) so that
-// horizontal + vertical hit-rect corners don't overlap each other —
-// an EDGE_HIT larger than ~25 caused every corner intersection to
-// paint the horizontal rect over the vertical, making vertical taps
-// impossible in the corner zone.
-const EDGE_HIT = 22;
+const CELL_SIZE = 130; // SVG units between dots — bigger grid so tapping edges is easier
+const MARGIN = 60; // padding around the grid
+const DOT_RADIUS = 7;
+// Hit-area thickness for edges. This is the invisible tap target
+// height/width around each edge. Larger values make edges much easier
+// to hit on touch — especially when the board is scaled down on small
+// screens. We keep it from growing past ~30 so horizontal/vertical
+// corner hit-rects do not fully overlap and block vertical taps in the
+// corner zone.
+const EDGE_HIT = 34;
 const VIEWBOX = MARGIN * 2 + (DOTS - 1) * CELL_SIZE; // 700
 
 export const BOX_SIZE = CELL_SIZE - DOT_RADIUS * 2; // 90
@@ -224,13 +223,14 @@ function DotsAndBoxesBoardImpl({
     return d;
   }, []);
 
-  const edgeHWidth = BOX_SIZE;
-  const edgeVHeight = BOX_SIZE;
+const edgeHWidth = BOX_SIZE;
+const edgeVHeight = BOX_SIZE;
+const EDGE_STROKE = interactive ? 5 : 4;
 
   return (
     <svg
       viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
-      className="w-full h-auto max-w-[560px] mx-auto select-none"
+      className="w-full h-auto max-w-[640px] mx-auto select-none touch-manipulation"
       role="img"
       aria-label="Dots and Boxes game board"
       style={
@@ -326,13 +326,13 @@ function DotsAndBoxesBoardImpl({
               x2={edge.x + edgeHWidth - 2}
               y2={edge.y + EDGE_HIT / 2}
               stroke={visible}
-              strokeWidth={drawn ? 3 : 2.4}
+              strokeWidth={drawn ? EDGE_STROKE : Math.max(2, EDGE_STROKE - 1.5)}
               strokeLinecap="round"
               opacity={showDisabled ? 0.45 : 1}
               className={
                 (isNew ? "dnb-edge-anim" : "") +
                 (isInteractive
-                  ? " transition-all duration-150 group-hover:stroke-amber-300 group-hover:stroke-[3.2] group-hover:opacity-100"
+                  ? " transition-all duration-150 group-hover:stroke-amber-300 group-hover:stroke-[3.6] group-hover:opacity-100"
                   : "")
               }
             />
@@ -379,13 +379,13 @@ function DotsAndBoxesBoardImpl({
               x2={edge.x + EDGE_HIT / 2}
               y2={edge.y + edgeVHeight - 2}
               stroke={visible}
-              strokeWidth={drawn ? 3 : 2.4}
+              strokeWidth={drawn ? EDGE_STROKE : Math.max(2, EDGE_STROKE - 1.5)}
               strokeLinecap="round"
               opacity={showDisabled ? 0.45 : 1}
               className={
                 (isNew ? "dnb-edge-anim" : "") +
                 (isInteractive
-                  ? " transition-all duration-150 group-hover:stroke-orange-300 group-hover:stroke-[3.2] group-hover:opacity-100"
+                  ? " transition-all duration-150 group-hover:stroke-orange-300 group-hover:stroke-[3.6] group-hover:opacity-100"
                   : "")
               }
             />
@@ -421,7 +421,7 @@ function DotsAndBoxesBoardImpl({
               stroke={fillColor}
               strokeWidth={1.5}
               strokeOpacity={0.65}
-              rx={6}
+              rx={8}
               className={isNew ? "dnb-box-anim" : ""}
               style={
                 isNew
@@ -431,10 +431,10 @@ function DotsAndBoxesBoardImpl({
             />
             <text
               x={bx + BOX_SIZE / 2}
-              y={by + BOX_SIZE / 2 + 5}
+              y={by + BOX_SIZE / 2 + 6}
               textAnchor="middle"
               fill={fillColor}
-              fontSize={16}
+              fontSize={20}
               fontWeight={700}
               style={
                 isNew
