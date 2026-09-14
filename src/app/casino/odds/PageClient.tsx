@@ -7,12 +7,14 @@ import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay, auto-starts when the real Odds game begins and
-// auto-stops once the result is captured. The page shell (nav, rules,
-// mode toggle) lives in OddsPage OUTSIDE these game components, so only
-// the actual game content is recorded.
+// recorder + overlay. The host wraps the WHOLE odds card at the page
+// level (header + mode toggle + lobby + game), so the recording frame
+// gets the full viewport height instead of being squeezed by the page
+// header above it. The game components signal the real lifecycle via
+// the shared context hooks below (startRecording/stopRecording).
 import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
 import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
+import { useCreatorModeLifecycle } from "../../../lib/creator-mode/useCreatorModeLifecycle";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
@@ -95,6 +97,15 @@ export default function OddsPage() {
             <IconCrystalBall size={15} /> How to Play
           </button>
         </div>
+        {/* One recording frame for the whole card. autoStart/autoStop are
+            driven by the game components below via
+            useCreatorModeLifecycle() — they fire gameStarted/gameFinished
+            on the real game-state edges. */}
+        <CreatorModeHost
+          gameLabel="odds"
+          backToLobbyHref="/casino/odds"
+        >
+        <CreatorResponsiveLayout>
         {showRules && (
           <RulesModal
             title="How to Play"
@@ -164,6 +175,8 @@ export default function OddsPage() {
         </div>
 
         {mode === "ai" ? <AIOddsGame audio={audio} /> : <PvPOddsGame audio={audio} />}
+        </CreatorResponsiveLayout>
+        </CreatorModeHost>
       </div>
     </div>
   );
@@ -172,6 +185,16 @@ export default function OddsPage() {
 // ─── AI Mode (Interactive) ─────────────────────────────────────────────────
 function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const PICK_TIMER_SECONDS = 15;
+
+  // Recording lifecycle is owned by the page-level <CreatorModeHost>:
+  // recording starts on the real game start and, once the result state
+  // is reached, keeps rolling briefly (grace) before stopping — the
+  // same edges the per-game host's autoStart/autoStop used before. The
+  // lifecycle functions are read through a ref because their identity
+  // changes on every provider update (e.g. each countdown tick).
+  const creatorLifecycle = useCreatorModeLifecycle();
+  const creatorLifecycleRef = useRef(creatorLifecycle);
+  creatorLifecycleRef.current = creatorLifecycle;
 
   const [wager, setWager] = useDefaultWager("odds", 50);
   const [loading, setLoading] = useState(false);
@@ -191,6 +214,28 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const [finalPayout, setFinalPayout] = useState(0);
   const [timeUp, setTimeUp] = useState(false);
   const [resuming, setResuming] = useState(true);
+
+  // Recording lifecycle edges (gameActive → start, result → graceful
+  // stop, leaving the live state → immediate stop). Unmount (e.g. the
+  // AI ↔ PvP mode toggle) stops NOW — the per-game host used to
+  // unmount in exactly those cases, which stopped the capture.
+  // Effects also re-run when creatorModeEnabled resolves (access check
+  // is server-backed) so an edge that fired while mode was still
+  // loading is replayed — the old host latched the same way.
+  const gameActive = Boolean(gameId && interactiveState);
+  const creatorEnabled = creatorLifecycle.creatorModeEnabled;
+  useEffect(() => {
+    if (gameActive && creatorEnabled) creatorLifecycleRef.current.startCreatorRecording();
+  }, [gameActive, creatorEnabled]);
+  useEffect(() => {
+    if (gameOver && creatorEnabled) creatorLifecycleRef.current.gameFinished();
+  }, [gameOver, creatorEnabled]);
+  useEffect(() => {
+    if (!gameActive) creatorLifecycleRef.current.stopCreatorRecording();
+  }, [gameActive]);
+  useEffect(() => {
+    return () => creatorLifecycleRef.current.stopCreatorRecording();
+  }, []);
 
   // Wrap handlePick in a ref so timer/autopick effects can call it without stale closures
   const submitActionRef = useRef<(value: number, isPrediction: boolean) => void>(() => {});
@@ -509,13 +554,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       )}
 
       {gameId && interactiveState && (
-      <CreatorModeHost
-        autoStart={Boolean(gameId && interactiveState)}
-        autoStop={Boolean(gameOver)}
-        gameLabel="odds"
-        backToLobbyHref="/casino/odds"
-      >
-      <CreatorResponsiveLayout>
+      <>
       {gameId && interactiveState && !gameOver && interactiveState.phase === "pick" && (
         <div className="mb-4 rounded-2xl border-2 border-yellow-400/40 bg-[#0a1a3a]/95 p-6 text-center shadow-[0_0_60px_rgba(250,204,21,0.25)]">
             <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
@@ -750,8 +789,7 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           </button>
         </div>
       )}
-      </CreatorResponsiveLayout>
-      </CreatorModeHost>
+      </>
       )}
     </div>
   );
@@ -761,6 +799,16 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
 function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const PICK_TIMER_SECONDS = 15;
   const { socket } = useSocket();
+
+  // Recording lifecycle is owned by the page-level <CreatorModeHost>:
+  // recording starts once the match is actually live and, once the
+  // result state is reached, keeps rolling briefly (grace) before
+  // stopping — the same edges the per-game host's autoStart/autoStop
+  // used before. Lifecycle functions are read through a ref because
+  // their identity changes on every provider update.
+  const creatorLifecycle = useCreatorModeLifecycle();
+  const creatorLifecycleRef = useRef(creatorLifecycle);
+  creatorLifecycleRef.current = creatorLifecycle;
 
   // ── Lobby state ──
   const [wager, setWager] = useDefaultWager("odds", 50);
@@ -807,6 +855,29 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   });
   const [forfeiting, setForfeiting] = useState(false);
   const [resuming, setResuming] = useState(true);
+
+  // Recording lifecycle edges: match live → start; result state →
+  // graceful stop (captures the result screen); match gone entirely
+  // (cancelled/reset) → immediate stop. Merely waiting for the
+  // opponent mid-round does NOT stop the recording (the old host had
+  // no autoStopOnIdle — it kept rolling through the waiting state).
+  const matchLive = Boolean(
+    myGameId && interactiveState && !waitingForOpponent && !gameOver,
+  );
+  const matchGone = !myGameId || !interactiveState;
+  const creatorEnabled = creatorLifecycle.creatorModeEnabled;
+  useEffect(() => {
+    if (matchLive && creatorEnabled) creatorLifecycleRef.current.startCreatorRecording();
+  }, [matchLive, creatorEnabled]);
+  useEffect(() => {
+    if (gameOver && creatorEnabled) creatorLifecycleRef.current.gameFinished();
+  }, [gameOver, creatorEnabled]);
+  useEffect(() => {
+    if (matchGone) creatorLifecycleRef.current.stopCreatorRecording();
+  }, [matchGone]);
+  useEffect(() => {
+    return () => creatorLifecycleRef.current.stopCreatorRecording();
+  }, []);
 
   // Refs for timer/autopick
   const submitActionRef = useRef<(value: number, isPrediction: boolean) => void>(() => {});
@@ -1498,13 +1569,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       )}
 
       {gameId && (
-      <CreatorModeHost
-        autoStart={Boolean(myGameId && interactiveState && !waitingForOpponent)}
-        autoStop={Boolean(gameOver)}
-        gameLabel="odds"
-        backToLobbyHref="/casino/odds"
-      >
-      <CreatorResponsiveLayout>
+      <>
       {/* WAITING for opponent */}
       {gameId && !interactiveState && (
         <div className="text-center py-8">
@@ -1891,8 +1956,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         reportedPlayerName={opponentName || "Opponent"}
         gameType="Odds"
       />
-      </CreatorResponsiveLayout>
-      </CreatorModeHost>
+      </>
       )}
     </div>
   );
