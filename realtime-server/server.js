@@ -1098,6 +1098,128 @@ io.on("connection", (socket) => {
 
   registerPoolSocketHandlers(socket);
 
+  // ── Precision stop handler (legacy multiplayer AI path) ─────
+  // The client emits `precision:stop` exactly once per round when the
+  // user presses STOP. We validate that the calling socket is a
+  // participant of the requested precision match (tracked above) and
+  // that the stopMs falls in the server-allowed range, then proxy the
+  // stopMs to the Next.js `/api/precision/round-stop` route via HTTP.
+  // That route calls the canonical `recordRoundStop` in
+  // `src/lib/precision/serverStore.ts`, which is the only code path
+  // that computes the round winner — the realtime server does NO
+  // winner computation, matching the codebase's "never trust the
+  // client" and "do not determine the winner on the client" invariants.
+  //
+  // Response is delivered via the Socket.IO ACK callback: `{ success,
+  // error? }`. The match state is rebroadcast back to ALL sockets in
+  // the match room (including the sender) ONLY once BOTH seats have
+  // submitted (`bothStopped === true`) — partial stops keep the
+  // sender's optimistic "stopped, awaiting opponent" UI intact.
+  socket.on("precision:stop", async ({ matchId, roundId, nonce } = {}, ack) => {
+    const matchIdStr = String(matchId || "");
+    if (!matchIdStr) {
+      if (typeof ack === "function") ack({ success: false, error: "Missing matchId." });
+      return;
+    }
+    const roundIdStr = String(roundId || "");
+    const nonceStr = String(nonce || "");
+    if (!roundIdStr) {
+      if (typeof ack === "function") ack({ success: false, error: "Missing roundId." });
+      return;
+    }
+    if (!nonceStr) {
+      if (typeof ack === "function") ack({ success: false, error: "Missing nonce." });
+      return;
+    }
+    // Participation check — reject submissions from sockets that
+    // didn't actually join the requested match room. This handler
+    // is intentionally dumb about timing: the server-authoritative
+    // STOP instant is stamped inside the Next.js route's
+    // `recordRoundStop`, and elapsed time is computed there from
+    // `match.roundGoInstant`. We forward ONLY the bare STOP signal
+    // PLUS the round-replay envelope (roundId, nonce) so the
+    // canonical recordRoundStop function can validate and reject
+    // stale packets without trusting the realtime layer's
+    // intermediate state.
+    const participants = precisionRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      if (typeof ack === "function") {
+        ack({ success: false, error: "Caller is not a participant in this match." });
+      }
+      return;
+    }
+    try {
+      const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+      const forwardController = new AbortController();
+      const forwardTimeout = setTimeout(() => forwardController.abort(), 4000);
+      const res = await fetch(`${baseUrl}/api/precision/round-stop`, {
+        method: "POST",
+        signal: forwardController.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId: matchIdStr, roundId: roundIdStr, nonce: nonceStr, userId: socket.data.userId }),
+      });
+      clearTimeout(forwardTimeout);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !(data && data.success === true)) {
+        if (typeof ack === "function") {
+          ack({ success: false, error: (data && data.error) || "Stop rejected by server." });
+        }
+        return;
+      }
+      if (typeof ack === "function") ack({ success: true });
+      io.to(`${PRECISION_MATCH_ROOM_PREFIX}${matchIdStr}`).emit("precision:roundResult", {
+        matchId: matchIdStr,
+        roundId: roundIdStr,
+        nonce: nonceStr,
+        stoppedBy: socket.data.userId,
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      serverLog("warn", "[precision:roundResult] broadcast error:", err);
+    }
+  });
+  // ── Plinko PvP: ready    const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+    try {
+      const res = await fetch(`${baseUrl}/api/precision/round-stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId, userId: socket.data.userId, roundId, nonce }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        console.warn(
+          "[precision] round-stop proxy rejected: matchId=",
+          matchId,
+          "userId=",
+          socket.data.userId,
+          "error=",
+          data?.error ?? res.status,
+        );
+        if (typeof ack === "function") {
+          ack({ success: false, error: data?.error ?? "Stop rejected by server." });
+        }
+        return;
+      }
+      // Ack success to the caller.
+      if (typeof ack === "function") {
+        ack({ success: true });
+      }
+      // If both players have submitted, the REST route broadcasts the round result.
+      // We don't need to do anything else here — the polling client will pick up
+      // the updated state.
+    } catch (err) {
+      console.warn(
+        "[precision] round-stop proxy failed: matchId=",
+        matchId,
+        "error=",
+        err && err.message ? err.message : err,
+      );
+      if (typeof ack === "function") {
+        ack({ success: false, error: "Network error reaching server." });
+      }
+    }
+  });
+
   // ── Hex Duel ────────────────────────────────────────────────────
   // Lightweight in-memory turn tracking for Hex Duel multiplayer games
   const hexDuelTurnStates = new Map();
@@ -1314,8 +1436,35 @@ io.on("connection", (socket) => {
     }
     try {
       const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
-      // ── CRITICAL fix: AbortController timeout on the Next.js proxy
-      // ── Without this, if Next.js hangs or drops the connection, the
+      const forwardController = new AbortController();
+      const forwardTimeout = setTimeout(() => forwardController.abort(), 4000);
+      const res = await fetch(`${baseUrl}/api/precision/round-stop`, {
+        method: "POST",
+        signal: forwardController.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId: matchIdStr, roundId: roundIdStr, nonce: nonceStr, userId: socket.data.userId }),
+      });
+      clearTimeout(forwardTimeout);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !(data && data.success === true)) {
+        if (typeof ack === "function") {
+          ack({ success: false, error: (data && data.error) || "Stop rejected by server." });
+        }
+        return;
+      }
+      if (typeof ack === "function") ack({ success: true });
+      io.to(`${PRECISION_MATCH_ROOM_PREFIX}${matchIdStr}`).emit("precision:roundResult", {
+        matchId: matchIdStr,
+        roundId: roundIdStr,
+        nonce: nonceStr,
+        stoppedBy: socket.data.userId,
+        at: new Date().toISOString(),
+      });
+    } catch (err) {
+      serverLog("warn", "[precision:roundResult] broadcast error:", err);
+    }
+  });
+  // ── Plinko PvP: ready      // ── Without this, if Next.js hangs or drops the connection, the
       // ── Promise never resolves, the `ack(...)` callback is never
       // ── fired, and the client's STOP button stays permanently
       // ── disabled (locked by `stopSubmitting = true`). The same

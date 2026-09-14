@@ -711,7 +711,7 @@ function ArmingPanel({ currentRound, countdownMs, t }: { currentRound: number; c
         {t("games.precision.round_get_ready", { round: currentRound })}
       </h2>
       {/* ── 5-second countdown before the timer starts ──
-          Mirrors the PvP match page countdown. `Math.max(1, …)` keeps
+          Mirrors the PvP match page countdown. `Math.max(0, …)` keeps
           the display on "1" during the final tick instead of flashing 0. */}
       <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-200/70">
         {t("games.precision.countdown_label")}
@@ -720,7 +720,7 @@ function ArmingPanel({ currentRound, countdownMs, t }: { currentRound: number; c
         data-testid="precision-test-countdown"
         className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
       >
-        {countdownMs !== null ? Math.max(1, Math.ceil(countdownMs / 1000)) : "…"}
+        {countdownMs !== null ? Math.max(0, Math.ceil(countdownMs / 1000)) : "…"}
       </p>
       <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
         {t("games.precision.test_arming_description")}

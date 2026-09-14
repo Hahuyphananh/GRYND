@@ -63,6 +63,7 @@ import {
   MATCH_POLL_INTERVAL_MS,
   SOCKET_NAMESPACE,
 } from "../../../../../lib/precision/constants";
+
 import {
   diffToRank,
   formatTokens,
@@ -1194,7 +1195,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                   data-testid="precision-round-countdown"
                   className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
                 >
-                  {countdownMs !== null ? Math.max(1, Math.ceil(countdownMs / 1000)) : "…"}
+                  {countdownMs !== null ? Math.max(0, Math.ceil(countdownMs / 1000)) : "…"}
                 </p>
                 <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
                   {t("games.precision.arming_hint")}
