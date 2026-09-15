@@ -1,6 +1,14 @@
 "use client";
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
@@ -24,6 +32,7 @@ import {
   ShellHeader,
   ShellMain,
   ShellAside,
+  useCreatorModeLayout,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 
 const HUMAN_PLAYER = 1 as const;
@@ -37,6 +46,50 @@ function countPieces(board: FourInARowBoard): number {
   let pieces = 0;
   for (const row of board) for (const cell of row) if (cell !== 0) pieces += 1;
   return pieces;
+}
+
+// The board is 7 columns × 6 rows, so its width/height aspect is 7:6.
+const BOARD_ASPECT = 7 / 6;
+
+/**
+ * Creator-mode board stage. Sizes the 7×6 board from the RECORDING FRAME
+ * (via the shell's layout context) instead of the browser viewport — the
+ * global `.four-in-a-row-board` rules use svh/vw units, which are unrelated
+ * to the fixed, CSS-scaled recording frame and left the recorded board tiny.
+ *
+ * The board is wider than tall, so it is capped by the frame's width in
+ * portrait and by its height (× the board aspect) in landscape/square: it
+ * fills the frame edge-to-edge without ever overflowing, in any preset.
+ *
+ * Must be rendered inside <CreatorModeShell /> so it reads the real frame
+ * geometry (not the default context).
+ */
+function CreatorBoardStage({
+  className = "",
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  const { width, height, isPortrait } = useCreatorModeLayout();
+  // Vertical chrome (header + status/controls) as a slice of the frame.
+  // Portrait stacks header/board/controls, so it reserves more than
+  // landscape/square (where the header sits in a side column).
+  const chromeFraction = isPortrait ? 0.34 : 0.14;
+  const availableWidth = width * 0.96;
+  const availableHeight = height * (1 - chromeFraction);
+  const maxWidth = Math.max(
+    240,
+    Math.min(availableWidth, availableHeight * BOARD_ASPECT),
+  );
+  return (
+    <div
+      className={`four-in-a-row-creator-stage ${className}`}
+      style={{ maxWidth }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function Disc({
@@ -475,7 +528,11 @@ export default function FourInARowVsAiPage() {
   const portraitContent = (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
       <ShellHeader className="space-y-2">{creatorStatus}</ShellHeader>
-      <ShellMain className="h-full items-start overflow-y-auto px-2">{creatorBoard}</ShellMain>
+      <ShellMain className="h-full items-start overflow-y-auto px-2">
+        <CreatorBoardStage className="flex w-full flex-col items-center justify-center gap-3 py-2">
+          {creatorBoard}
+        </CreatorBoardStage>
+      </ShellMain>
       <ShellAside className="space-y-3">{creatorControls}</ShellAside>
     </CreatorModeShell>
   );

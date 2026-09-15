@@ -22,6 +22,12 @@ interface HexBoardProps {
   /** Set of "x,y" keys of friendly source tiles for attack/displace */
   sourceHighlightKeys?: string[];
   /**
+   * "x,y" of the CHOSEN displace target — painted in its own yellow ring so
+   * it stands apart from the green source tiles and the orange candidate
+   * tiles around it.
+   */
+  displaceTargetKey?: string;
+  /**
    * Optional perspective-aware legend props.
    * When passed, the legend shows perspective-relative labels + colors so the
    * "your side" cell reads as "You" (local color) and the opponent cell as
@@ -50,6 +56,7 @@ export default function HexBoard({
   opponentColor,
   localLabel,
   opponentLabel,
+  displaceTargetKey,
 }: HexBoardProps) {
   const [dims, setDims] = React.useState({ width: 90, height: 90 });
   const boardRef = React.useRef<HTMLDivElement>(null);
@@ -124,6 +131,7 @@ export default function HexBoard({
   return (
     <div
       ref={boardRef}
+      data-hex-board=""
       className={`flex flex-col items-center justify-center select-none transition-all duration-500 ${disabled ? "opacity-40 pointer-events-none" : ""}`}
       style={{
         transform: `scale(${scaleFactor})`,
@@ -192,6 +200,7 @@ export default function HexBoard({
                 <HexTile
                   key={`${tile.x}-${tile.y}`}
                   tile={tile}
+                  anchorKey={`${tile.x},${tile.y}`}
                   isSelected={
                     selectedTile?.x === tile.x && selectedTile?.y === tile.y
                   }
@@ -203,6 +212,10 @@ export default function HexBoard({
                   isReinforceTarget={reinforceTargetSet.has(`${tile.x},${tile.y}`)}
                   isAttackTarget={attackHighlightSet.has(`${tile.x},${tile.y}`)}
                   isSourceTile={sourceHighlightSet.has(`${tile.x},${tile.y}`)}
+                  isDisplaceTarget={
+                    displaceTargetKey !== undefined &&
+                    displaceTargetKey === `${tile.x},${tile.y}`
+                  }
                 />
               ))}
             </div>

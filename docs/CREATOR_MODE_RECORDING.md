@@ -214,7 +214,11 @@ lobby chrome (used by the 1v1 duel games), the individual game lobbies
 Crash Arena), and the central `/casino` grid. Enabling it persists the
 flag for the session (sessionStorage, per user), so entering a match
 from any lobby starts recording automatically when the game starts; a
-lobby opened with `?creator=1` in its URL keeps the mode on.
+lobby opened with `?creator=1` in its URL keeps the mode on. Lobbies that
+share their route with the game itself (Dice Flush, Poker multi) activate
+the recording frame on that page the moment the control is armed — the
+toggle dispatches `CREATOR_MODE_CHANGED_EVENT` on `window` and the
+mounted provider reacts to it.
 
 | Phase | UI |
 | --- | --- |

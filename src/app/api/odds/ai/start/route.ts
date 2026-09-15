@@ -12,13 +12,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const wager = Number(body.wager);
+    const requested = Number(body.wager);
 
-    if (!Number.isFinite(wager) || wager <= 0) {
+    // An AI match is FREE PLAY: the client sends no stake (0), which is the
+    // normal case here — not an invalid wager. Reject only malformed input
+    // (NaN/Infinity) or a negative stake.
+    if (!Number.isFinite(requested) || requested < 0) {
       return NextResponse.json({ error: "Invalid wager amount" }, { status: 400 });
     }
 
-    if (wager > 10000) {
+    if (requested > 10000) {
       return NextResponse.json({ error: "Wager exceeds maximum limit" }, { status: 400 });
     }
 
@@ -29,10 +32,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // AI mode is free play — we DO NOT deduct the wager here. We still
-    // persist `wager` on the game row for display/history, and the pick/end
-    // routes skip any payout when `game.isAi === true` so this can't be
-    // exploited as a free-token credit on a player win.
+    // AI mode is free play: nothing is ever deducted, and the match is
+    // recorded with a 0 stake (the client sends no wager) so the game row,
+    // the in-game HUD and the history never show a phantom stake. The pick
+    // and end routes also skip every payout when `game.isAi === true`, so
+    // this can't be exploited as a free-token credit on a player win.
     const gameState = initInteractiveOddsGame();
 
     const result = await db.transaction(async (tx: any) => {
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
         .values({
           player1Id: userId,
           player2Id: "AI",
-          wager,
+          wager: 0,
           status: "playing",
           isAi: true,
           gameState,

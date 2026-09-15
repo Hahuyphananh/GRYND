@@ -319,7 +319,7 @@ export function emitStop(
           onAck({
             success: false,
             error:
-              "Network timeout \\u2014 server didn't ACK within " +
+              "Network timeout — server didn't ACK within " +
               String(STOP_ACK_TIMEOUT_MS) +
               "ms. Please try again.",
           });

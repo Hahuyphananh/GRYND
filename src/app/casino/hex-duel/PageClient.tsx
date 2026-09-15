@@ -15,17 +15,10 @@ import { useChessClock } from "../../../lib/useChessClock";
 import HexBoard from "../../../components/HexBoard";
 import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
 import HexActionLog from "../../../components/HexActionLog";
+import HexTroopPopup from "../../../components/HexTroopPopup";
+import { clampSendCount, sendableTroops } from "../../../lib/hexTroopCount";
 import NavigationBar from "../../../components/navigation-bar";
-import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
-// Shared creator-mode presentation layer (admin-only).
-import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../components/creator-mode/CreatorModeLayout";
+import { useRecordPlayedGame } from "../../../hooks/useRecordPlayedGame";
 
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
@@ -962,6 +955,9 @@ export default function HexDuelPage() {
   const isGameOverEffective = effectiveWinner !== null;
   const isGameOver = isGameOverEffective;
   const showGame = gameMode !== "idle";
+  // Record the session into "Recently played" (and the lobby's "Most
+  // Played" counter) when the real match starts.
+  useRecordPlayedGame("hex-duel", showGame);
 
   // Whether the local player is allowed to act (their turn + not waiting for opponent)
   const isLocalTurn = gameMode === "multiplayer"
@@ -1753,14 +1749,19 @@ export default function HexDuelPage() {
     [selectedAction, attackableTargets]
   );
 
-  // Compute source highlight keys based on the current phase
+  // Compute source highlight keys based on the current phase. The sources stay
+  // highlighted through `inputTroops` too: while the troop popup is open,
+  // tapping one of these green tiles moves the source there instead (see
+  // `handleTileClickWithActions`).
   const sourceHighlightKeys = useMemo(() => {
-    if (selectedAction === "attack" && pendingTarget && pendingActionPhase === "selectSource") {
-      const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+    const pickingSource =
+      pendingActionPhase === "selectSource" || pendingActionPhase === "inputTroops";
+    if (!pendingTarget || !pickingSource) return [];
+    const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+    if (selectedAction === "attack") {
       return getAttackSources(targetKey).map((s) => `${s.x},${s.y}`);
     }
-    if (selectedAction === "displace" && pendingTarget && pendingActionPhase === "selectSource") {
-      const targetKey = `${pendingTarget.x},${pendingTarget.y}`;
+    if (selectedAction === "displace") {
       return getDisplaceSources(targetKey).map((s) => `${s.x},${s.y}`);
     }
     return [];
@@ -2351,6 +2352,26 @@ export default function HexDuelPage() {
             setPendingTroopCount(Math.min(sourceTroops - 1, 1));
           }
         }
+      } else if (pendingActionPhase === "inputTroops" && pendingTarget) {
+        // Troop popup is open. A source swap wins over a re-target because
+        // only sources can send; otherwise a different attackable tile
+        // becomes the new target and a fresh source is awaited. Re-tapping the
+        // tile the popup is anchored to is a no-op, so a stray tap right under
+        // the popup can't discard the pending action.
+        const sources = getAttackSources(`${pendingTarget.x},${pendingTarget.y}`);
+        if (sources.some((s) => s.x === x && s.y === y)) {
+          const maxFromNewSource = sendableTroops(tileTroops[key] ?? 1);
+          setPendingSource({ x, y });
+          setPendingTroopCount((prev) => clampSendCount(prev, maxFromNewSource));
+        } else if (
+          (x !== pendingTarget.x || y !== pendingTarget.y) &&
+          attackableTargets.some((t) => t.x === x && t.y === y)
+        ) {
+          setPendingTarget({ x, y });
+          setPendingSource(null);
+          setPendingActionPhase("selectSource");
+          setPendingTroopCount(1);
+        }
       }
       return;
     }
@@ -2373,6 +2394,27 @@ export default function HexDuelPage() {
           // Pre-fill with max available
           const sourceTroops = tileTroops[key] ?? 1;
           setPendingTroopCount(Math.min(sourceTroops - 1, 1));
+        }
+      } else if (pendingActionPhase === "inputTroops" && pendingTarget) {
+        // Troop popup is open. A source swap wins over a re-target because
+        // only sources can send; otherwise a different friendly tile becomes
+        // the new target and a fresh source is awaited. (Every friendly tile
+        // is a displace candidate, so there is no narrower target test.)
+        // Re-tapping the tile the popup is anchored to is a no-op.
+        const newSource = getDisplaceSources(`${pendingTarget.x},${pendingTarget.y}`).find(
+          (s) => s.x === x && s.y === y,
+        );
+        if (newSource) {
+          setPendingSource({ x, y });
+          setPendingTroopCount((prev) => clampSendCount(prev, newSource.maxTroops));
+        } else if (
+          (x !== pendingTarget.x || y !== pendingTarget.y) &&
+          capturedTiles[key] === currentTurn
+        ) {
+          setPendingTarget({ x, y });
+          setPendingSource(null);
+          setPendingActionPhase("selectSource");
+          setPendingTroopCount(1);
         }
       }
       return;
@@ -2480,11 +2522,10 @@ export default function HexDuelPage() {
     [pendingActionPhase]
   );
 
-  // Max troops available to send from the selected source
+  // Max troops available to send from the selected source (must leave 1 behind)
   const maxSendTroops = useMemo(() => {
     if (!pendingSource) return 0;
-    const key = `${pendingSource.x},${pendingSource.y}`;
-    return (tileTroops[key] ?? 1) - 1; // must leave at least 1
+    return sendableTroops(tileTroops[`${pendingSource.x},${pendingSource.y}`] ?? 1);
   }, [pendingSource, tileTroops]);
 
   // ── Perspective-aware mapping ────────────────────────────────────────
@@ -2614,15 +2655,6 @@ export default function HexDuelPage() {
         )}
         <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
           <NavigationBar currentPath="/casino" />
-        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-        <div className="mb-4 flex justify-center">
-          <CreatorModeLobby />
-        </div>
-          {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-          <div className="mb-4 flex justify-center">
-            <CreatorModeLobby />
-          </div>
-
           {/* Connection banner on waiting screen too */}
           <ConnectionBanner
             status={connectionStatus}
@@ -2687,9 +2719,7 @@ export default function HexDuelPage() {
   // ── Render ─────────────────────────────────────────────────────────
 
 
-  /* Creator Mode bespoke 9:16 portrait: hex board large, turn/AP status bar
-     on top, and BOTH players' cards + action panel pinned below. */
-  const creatorStatus = (
+  const statusBar = (
     <>
 {/* ── Status Bar ──────────────────────────────────────────── */}
           {showGame && (
@@ -2705,7 +2735,7 @@ export default function HexDuelPage() {
           )}
     </>
   );
-  const creatorLeft = (
+  const leftPanel = (
     <>
 <div className={`order-2 ${localPlayerIsP1 ? "lg:order-1" : "lg:order-3"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
                 <PlayerCard
@@ -2742,53 +2772,13 @@ export default function HexDuelPage() {
                     onSkipRound={handleSkipRound}
                   />
                 )}
-                {/* Troop count input when in inputTroops phase */}
-                {pendingActionPhase === "inputTroops" && (
-                  <div className="rounded-xl border border-white/10 bg-gradient-to-b from-[#071230]/80 to-[#0a1a3f]/60 p-3 backdrop-blur-sm">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Troops to send</p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={maxSendTroops}
-                        value={pendingTroopCount}
-                        aria-label="Troops to send"
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setPendingTroopCount(Math.max(1, Math.min(val, maxSendTroops)));
-                        }}
-                        className="w-20 rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm text-center
-                          focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition"
-                      />
-                      <span className="text-[10px] text-slate-400">/ {maxSendTroops}</span>
-                    </div>
-                    <div className="flex gap-1.5 mt-2">
-                      {[1, 3, 5, 10].filter((n) => n <= maxSendTroops).map((n) => (
-                        <button
-                          key={n}
-                          onClick={() => setPendingTroopCount(n)}
-                          className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
-                            pendingTroopCount === n
-                              ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
-                              : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
-                          }`}
-                        >{n}</button>
-                      ))}
-                      <button
-                        onClick={() => setPendingTroopCount(maxSendTroops)}
-                        className={`px-2 py-1 rounded text-[10px] font-bold transition-all border ${
-                          pendingTroopCount === maxSendTroops
-                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50"
-                            : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20"
-                        }`}
-                      >MAX</button>
-                    </div>
-                  </div>
-                )}
+                {/* The troop-count step is not rendered here any more — it
+                    lives in HexTroopPopup, anchored to the tile the player is
+                    acting on (see `troopPopup` below). */}
               </div>
     </>
   );
-  const creatorBoard = (
+  const boardStage = (
     <>
 <div className="order-1 lg:order-2 flex flex-col items-center w-full">
                 {/* Waiting overlay for opponent's turn in multiplayer */}
@@ -2839,12 +2829,18 @@ export default function HexDuelPage() {
     ? []
     : sourceHighlightKeys.map(flipKey)
 }
+                  displaceTargetKey={
+  isGameOver || (aiThinking && currentTurn === "player2") ||
+  selectedAction !== "displace" || !pendingTarget
+    ? undefined
+    : flipKey(`${pendingTarget.x},${pendingTarget.y}`)
+}
                 />
               </div>
               </div>
     </>
   );
-  const creatorRight = (
+  const rightPanel = (
     <>
 <div className={`order-3 ${localPlayerIsP1 ? "" : "lg:order-1"} w-full max-w-xs mx-auto lg:mx-0 space-y-3`}>
                 <PlayerCard
@@ -2916,9 +2912,9 @@ export default function HexDuelPage() {
                 2xl:grid-cols-[280px_minmax(0,1fr)_280px]
               "
             >
-        {creatorLeft}
-        {creatorBoard}
-        {creatorRight}
+        {leftPanel}
+        {boardStage}
+        {rightPanel}
       </div>
       )}
     </>
@@ -2926,21 +2922,52 @@ export default function HexDuelPage() {
 
   const desktopContent = (
     <>
-      {creatorStatus}
+      {statusBar}
       {desktopGrid}
     </>
   );
 
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916]">
-      <ShellHeader>{creatorStatus}</ShellHeader>
-      <ShellMain className="h-full items-center px-2">{creatorBoard}</ShellMain>
-      <ShellAside className="space-y-3">
-        {creatorLeft}
-        {creatorRight}
-      </ShellAside>
-    </CreatorModeShell>
-  );
+  // ── Troop-send popup ───────────────────────────────────────────────
+  // Appears directly above the SOURCE tile once it is picked, replacing the
+  // old panel that sat under the board and forced a scroll on phones. The
+  // count, the source swap (tap another green tile) and confirm/cancel all
+  // live in this one control.
+  //
+  // What the popup's tip tells the player they can tap instead. Only promise
+  // the source swap when there is another source to swap to.
+  const troopPopupTip = [
+    sourceHighlightKeys.length > 1 ? "Tap another green tile to send from there" : null,
+    selectedAction === "displace"
+      ? "tap another tile to change the target"
+      : "tap another enemy tile to change the target",
+  ]
+    .filter(Boolean)
+    .join(", or ");
+
+  const troopPopup =
+    showGame && !isGameOver && !isSpectator && pendingActionPhase === "inputTroops" &&
+    pendingSource && pendingTarget ? (
+      <HexTroopPopup
+        // Anchored above the SOURCE tile — the territory the troops leave —
+        // so the count and the source swap share one control. Picking another
+        // green tile moves the popup with it; the chosen target stays
+        // highlighted on the board so it's still clear where they're going.
+        anchorKey={`${pendingSource.x},${pendingSource.y}`}
+        // Open on the side of the source facing away from the target, so the
+        // popup never hides the territory the troops are heading to. Same row
+        // (the target is beside the source, not under it) keeps the default.
+        preferPlacement={pendingTarget.y < pendingSource.y ? "below" : "above"}
+        title={selectedAction === "displace" ? "Displace troops" : "Send troops"}
+        hint={`(${pendingSource.x},${pendingSource.y}) → (${pendingTarget.x},${pendingTarget.y})`}
+        tip={troopPopupTip}
+        value={pendingTroopCount}
+        max={maxSendTroops}
+        color={localColor}
+        onChange={setPendingTroopCount}
+        onConfirm={handleConfirmAction}
+        onCancel={handleClearAction}
+      />
+    ) : null;
 
   return (
     <>
@@ -2949,11 +2976,6 @@ export default function HexDuelPage() {
 
       <main className="min-h-screen bg-gradient-to-br from-[#010510] via-[#031634] to-[#030916] p-4 pt-20 text-white">
         <NavigationBar currentPath="/casino" />
-        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-        <div className="mb-4 flex justify-center">
-          <CreatorModeLobby />
-        </div>
-
         {/* Connection banner — pulsing red indicator for disconnects */}
         {gameMode === "multiplayer" && (
           <ConnectionBanner
@@ -3059,19 +3081,10 @@ export default function HexDuelPage() {
           )}
 
           {/* ── Status Bar ──────────────────────────────────────────── */}
-                    <CreatorModeHost
-            autoStart={Boolean(showGame)}
-            autoStop={Boolean(isGameOver || effectiveWinner)}
-            gameLabel="hex-duel"
-            backToLobbyHref="/casino/hex-duel"
-          >
-            <CreatorView
-              normal={desktopContent}
-              portrait={portraitContent}
-              landscape={desktopContent}
-            />
-          </CreatorModeHost>
+          {desktopContent}
 
+          {/* ── Troop send popup (anchored to the target tile) ──────── */}
+          {troopPopup}
 
           {/* ── Emotes ──────────────────────────────────────────────── */}
           {showGame && !isGameOver && !isSpectator && (

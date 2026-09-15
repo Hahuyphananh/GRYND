@@ -1,6 +1,13 @@
 "use client";
 
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
@@ -15,6 +22,7 @@ import {
   ShellHeader,
   ShellMain,
   ShellAside,
+  useCreatorModeLayout,
 } from "../../../../../components/creator-mode/CreatorModeLayout";
 import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
@@ -38,6 +46,50 @@ import {
 
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
+
+// The board is 7 columns × 6 rows, so its width/height aspect is 7:6.
+const BOARD_ASPECT = 7 / 6;
+
+/**
+ * Creator-mode board stage. Sizes the 7×6 board from the RECORDING FRAME
+ * (via the shell's layout context) instead of the browser viewport — the
+ * global `.four-in-a-row-board` rules use svh/vw units, which are unrelated
+ * to the fixed, CSS-scaled recording frame and left the recorded board tiny.
+ *
+ * The board is wider than tall, so it is capped by the frame's width in
+ * portrait and by its height (× the board aspect) in landscape/square: it
+ * fills the frame edge-to-edge without ever overflowing, in any preset.
+ *
+ * Must be rendered inside <CreatorModeShell /> so it reads the real frame
+ * geometry (not the default context).
+ */
+function CreatorBoardStage({
+  className = "",
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  const { width, height, isPortrait } = useCreatorModeLayout();
+  // Vertical chrome (header + status/controls) as a slice of the frame.
+  // Portrait stacks header/board/controls, so it reserves more than
+  // landscape/square (where the header sits in a side column).
+  const chromeFraction = isPortrait ? 0.34 : 0.14;
+  const availableWidth = width * 0.96;
+  const availableHeight = height * (1 - chromeFraction);
+  const maxWidth = Math.max(
+    240,
+    Math.min(availableWidth, availableHeight * BOARD_ASPECT),
+  );
+  return (
+    <div
+      className={`four-in-a-row-creator-stage ${className}`}
+      style={{ maxWidth }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function playUiTone(type: "drop" | "win" = "drop") {
   const ctx = getSharedAudioContext();
@@ -659,15 +711,17 @@ export default function ConnectFourGamePage() {
       </ShellHeader>
 
       <ShellMain className="flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 w-full min-h-0 overflow-hidden px-2">
-          {c4BoardNode}
-        </div>
-        <div className="shrink-0 px-2 py-2 space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-white/50">
-            Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
-          </p>
-          {c4DropControlsNode}
-        </div>
+        <CreatorBoardStage className="flex h-full min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 px-2 py-2">
+          <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+            {c4BoardNode}
+          </div>
+          <div className="w-full shrink-0 space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-white/50">
+              Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
+            </p>
+            {c4DropControlsNode}
+          </div>
+        </CreatorBoardStage>
       </ShellMain>
 
       <ShellAside>

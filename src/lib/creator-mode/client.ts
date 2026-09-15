@@ -62,6 +62,17 @@ export function getStoredCreatorMode(userId: string | null | undefined): boolean
   }
 }
 
+/**
+ * Window event fired whenever the stored creator-mode flag is written.
+ *
+ * Needed for routes that render the lobby toggle and the game's
+ * <CreatorModeHost /> on the SAME page (e.g. Dice Flush): the provider
+ * resolves the flag once on mount, so without this notification arming
+ * the mode from the on-page control would never activate the recording
+ * frame — the user would have to reload for it to take effect.
+ */
+export const CREATOR_MODE_CHANGED_EVENT = "grynd:creator-mode-changed";
+
 /** Persist the creator-mode flag for a user (sessionStorage). */
 export function setStoredCreatorMode(
   userId: string | null | undefined,
@@ -74,6 +85,10 @@ export function setStoredCreatorMode(
     } else {
       window.sessionStorage.removeItem(storageKey(userId));
     }
+    // Let any CreatorModeProvider mounted on this page react immediately.
+    window.dispatchEvent(
+      new CustomEvent(CREATOR_MODE_CHANGED_EVENT, { detail: { enabled } }),
+    );
   } catch {
     // storage unavailable — mode simply won't persist across navigations
   }

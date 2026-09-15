@@ -32,6 +32,14 @@ interface HexTileProps {
   isAttackTarget?: boolean;
   /** Whether this tile is a friendly source tile for attack/displace */
   isSourceTile?: boolean;
+  /** Whether this tile is the CHOSEN displace target (the tile receiving troops) */
+  isDisplaceTarget?: boolean;
+  /**
+   * Stable "x,y" identity for this tile, surfaced as `data-tile-key`. Action
+   * popups (HexTroopPopup) locate this element to anchor themselves to the
+   * tile the player is acting on.
+   */
+  anchorKey?: string;
 }
 
 const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: string; bg: string }> = {
@@ -58,7 +66,7 @@ const cellBorders: Record<TileOwner, { inner: string; outer: string; glow: strin
 export default function HexTile({
   tile, isSelected, onClick, isValidMove, isPushTarget,
   recentlyCaptured, isTerritorySpread, isReinforceTarget,
-  isAttackTarget, isSourceTile
+  isAttackTarget, isSourceTile, isDisplaceTarget, anchorKey
 }: HexTileProps) {
   const { owner, troops, capital } = tile;
   const border = cellBorders[owner];
@@ -82,6 +90,7 @@ export default function HexTile({
   return (
     <button
       onClick={handleClick}
+      data-tile-key={anchorKey}
       className={`
         group relative
         flex items-center justify-center
@@ -170,6 +179,21 @@ export default function HexTile({
             boxShadow: "inset 0 0 20px rgba(74,222,128,0.15), 0 0 12px rgba(74,222,128,0.15)",
             background: "rgba(74,222,128,0.08)",
             animation: "validPulse 1.8s ease-in-out infinite",
+          }}
+        />
+      )}
+
+      {/* Chosen displace target (yellow) — the friendly tile receiving
+          troops. Rendered after the green source ring so it wins when both
+          apply, and after the orange candidate ring on Displace. */}
+      {isDisplaceTarget && (
+        <div
+          className="absolute inset-[2px] rounded-lg"
+          style={{
+            border: "2px solid rgba(250,204,21,0.8)",
+            boxShadow: "inset 0 0 24px rgba(250,204,21,0.2), 0 0 18px rgba(250,204,21,0.35)",
+            background: "rgba(250,204,21,0.1)",
+            animation: "validPulse 1.2s ease-in-out infinite",
           }}
         />
       )}
