@@ -333,6 +333,33 @@ const prefersReducedMotion = useReducedMotion();
           return;
         }
 
+        // ── Optimistic local apply ───────────────────────────────
+        // The server returns the authoritative post-move gameState.
+        // Apply it IMMEDIATELY so the drawn edge renders this frame
+        // instead of waiting for the next 5s poll (the "click doesn't
+        // register, must click repeatedly" bug). The poll remains the
+        // safety net; the socket relay notifies the opponent.
+        if (data.gameState) {
+          setGame((prev) => {
+            if (!prev) return prev;
+            const next = {
+              ...prev,
+              gameState: data.gameState,
+              remainingEdges: data.remaining,
+            };
+            if (data.gameOver) {
+              next.status = "finished";
+              if (data.result) next.result = data.result;
+              if (data.winnerClerkId !== undefined) next.winnerClerkId = data.winnerClerkId;
+              if (data.moveDeadlineAt !== undefined) next.moveDeadlineAt = data.moveDeadlineAt;
+            } else if (data.moveDeadlineAt) {
+              next.moveDeadlineAt = data.moveDeadlineAt;
+            }
+            return next;
+          });
+          setNow(Date.now());
+        }
+
         socket?.emit("room_event", {
           roomId: `dots-and-boxes:${gameId}`,
           event: "match:updated",

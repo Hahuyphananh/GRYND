@@ -87,7 +87,11 @@ export async function POST(request) {
     );
 
   const { betAmount } = await request.json();
-  if (!betAmount || isNaN(betAmount) || betAmount <= 0 || betAmount > 1000) {
+  // AI matches are free play — a 0 stake is valid (the "Free Play vs AI"
+  // button sends 0). Only non-numeric, negative or over-cap values are
+  // rejected. A staked AI match is still recorded but never moves tokens.
+  const stake = Number(betAmount);
+  if (!Number.isFinite(stake) || stake < 0 || stake > 1000) {
     return new Response(
       JSON.stringify({ success: false, error: "Invalid bet amount" }),
       { status: 400 },
@@ -105,7 +109,7 @@ export async function POST(request) {
       );
 
     const balance = parseFloat(user.balance);
-    if (balance < betAmount)
+    if (balance < stake)
       return new Response(
         JSON.stringify({ success: false, error: "Insufficient balance" }),
         { status: 400 },
@@ -135,7 +139,7 @@ export async function POST(request) {
         .insert(unoGames)
         .values({
           userId: user.id,
-          betAmount: betAmount.toFixed(2),
+          betAmount: stake.toFixed(2),
           pot,
           result: "pending",
           payout: "0.00",

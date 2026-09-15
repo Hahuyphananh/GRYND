@@ -29,10 +29,20 @@ export async function POST(req) {
       if (!endedResult.ended) {
         await tx.update(diceFlushRooms).set({ gameState: state }).where(eq(diceFlushRooms.id, roomId));
       }
-      return { ...endedResult, aiNext, state: endedResult.ended ? endedResult.state : state };
+      // `settleIfEnded` returns { state, ended, … } with NO `success` field, so
+      // the flag has to be set here. Without it the client's
+      // `if (!res.ok || !d.success)` check treated every successful
+      // "Confirm Play" as a failure and alerted "Failed" — even though the
+      // category had already been banked server-side.
+      return {
+        ...endedResult,
+        success: true,
+        aiNext,
+        state: endedResult.ended ? endedResult.state : state,
+      };
     });
-    // `result` carries its own `success` flag (false + resolved state when the
-    // turn expired and was auto-banked; true otherwise).
+    // The expired-turn branch above returns its own { success: false, error,
+    // state, status: 409 }; every other path is a success.
     return NextResponse.json(result, { status: result.status ?? 200 });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message || "Failed" }, { status: 400 });

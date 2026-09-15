@@ -132,6 +132,7 @@ const DiceFace = ({
       <motion.div
         animate={{ opacity: [0.3, 0.6, 0.3] }}
         transition={{ duration: 1.5, repeat: Infinity }}
+        data-df="die"
         className="relative h-16 w-16 rounded-2xl border-[3px] cursor-not-allowed
           bg-gradient-to-br from-[#0a1628] to-[#030817]
           border-[#00e5ff]/30 shadow-[0_6px_0_rgba(0,0,0,0.5)]
@@ -158,6 +159,7 @@ const DiceFace = ({
         repeat: rolling ? Infinity : 0,
         ease: "easeInOut",
       }}
+      data-df="die"
       className={`
         relative h-16 w-16 rounded-2xl border-[3px] cursor-pointer
         bg-gradient-to-br from-[#1a2940] to-[#0d1a2e]
@@ -232,7 +234,7 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
   const latestCount = grouped.length;
 
   return (
-    <div className="mb-5 overflow-hidden rounded-xl border border-[#00e5ff]/30 bg-black/30">
+    <div data-df="history" className="mb-5 overflow-hidden rounded-xl border border-[#00e5ff]/30 bg-black/30">
       <button
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-bold text-[#00e5ff] transition-colors hover:bg-white/5"
@@ -678,7 +680,10 @@ export default function DiceFlushPage() {
   }, [game?.currentTurn, game?.turnNumber]);
 
   const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
-  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0 }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  // Free play vs AI — no stake is ever sent. The match is created with a 0
+  // wager (and a 0 pot server-side), so no tokens are risked and nothing is
+  // credited on the result screen.
+  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager: 0, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0 }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
   const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "pvp", wager: (d.state as any)?.wager || 0, game_id: id }); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
   const emitRoomEvent = () => {
     if (!socket || !roomId) return;
@@ -915,8 +920,8 @@ export default function DiceFlushPage() {
         backToLobbyHref="/casino/dice-flush"
       >
       <CreatorResponsiveLayout>
-      {game && (<div className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-4 backdrop-blur">
-        <div className="mb-3 flex items-center justify-between">
+      {game && (<div data-df="panel" className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-4 backdrop-blur">
+        <div data-df="topbar" className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${isYourTurn ? "bg-[#34d399]/20 text-[#34d399]" : "bg-[#fbbf24]/20 text-[#fbbf24]"}`}>
               <span className={`h-2 w-2 rounded-full ${isYourTurn ? "bg-[#34d399]" : "bg-[#fbbf24]"}`} />
@@ -933,11 +938,11 @@ export default function DiceFlushPage() {
         {waitingForOpponent && <div className="mb-4 flex items-center gap-1.5 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-2 text-sm text-[#f5ff3b]"><IconHourglass size={14} /> Waiting for opponent to join. You cannot roll yet.</div>}
 
         {/* ═══════ DICE FLUSH SCORECARD ═══════ */}
-<div className="mb-5 overflow-hidden rounded-[24px] border-2 border-[#00e5ff]/20 bg-gradient-to-b from-[#030817] to-[#0a1628] shadow-[0_0_40px_rgba(0,229,255,0.15)]">
+<div data-df="board" className="mb-5 overflow-hidden rounded-[24px] border-2 border-[#00e5ff]/20 bg-gradient-to-b from-[#030817] to-[#0a1628] shadow-[0_0_40px_rgba(0,229,255,0.15)]">
 
   {/* ─── SHOT CLOCK (skill layer) ─── */}
   {game.state === "playing" && turnMsLeft !== null && (
-    <div className="border-b border-[#00e5ff]/10 bg-[#020812]/70 px-4 py-2">
+    <div data-df="clock" className="border-b border-[#00e5ff]/10 bg-[#020812]/70 px-4 py-2">
       <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-white/50">
         <span className="flex items-center gap-1.5">
           <IconHourglass size={12} />
@@ -961,7 +966,7 @@ export default function DiceFlushPage() {
   )}
 
   {/* ─── TOP: OPPONENT SECTION ─── */}
-  <div className="border-b border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
+  <div data-df="opponent" className="border-b border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
     <div className="mb-2 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="relative inline-flex items-center gap-1.5 rounded-full bg-[#f87171]/20 border border-[#f87171]/30 px-3 py-1 text-sm font-black text-[#f87171]">
@@ -1001,7 +1006,7 @@ export default function DiceFlushPage() {
         Rolls: {aiAnimating && aiRollSteps.length > 0 ? aiRollSteps[aiRollSteps.length - 1].rollNum : game.rollsThisTurn}/3
       </div>
     </div>
-    <div className="flex justify-center gap-3">
+    <div data-df="opponent-dice" className="flex justify-center gap-3">
       {(aiAnimating && aiRollSteps.length > 0
         ? aiRollSteps[aiRollSteps.length - 1].dice
         : game.dice
@@ -1029,7 +1034,7 @@ export default function DiceFlushPage() {
 
   {/* ─── LAST MOVE SUMMARY ─── */}
   {(lastMoves.player || lastMoves.ai) && (
-    <div className="border-b border-[#00e5ff]/10 bg-[#020812]/50 px-4 py-2">        <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/50">
+    <div data-df="last-move" className="border-b border-[#00e5ff]/10 bg-[#020812]/50 px-4 py-2">        <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/50">
         <IconBolt size={12} /> Last Move
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -1058,8 +1063,8 @@ export default function DiceFlushPage() {
   )}
 
   {/* ─── CENTER: SCORECARD ─── */}
-  <div className="px-3 py-4">
-    <div className="overflow-hidden rounded-xl border border-[#00e5ff]/15 bg-[#040d24]/60">
+  <div data-df="center" className="px-3 py-4">
+    <div data-df="sheet" className="overflow-hidden rounded-xl border border-[#00e5ff]/15 bg-[#040d24]/60">
       {/* Header */}
       <div className="grid grid-cols-3 bg-[#00e5ff]/5 p-2 text-xs font-bold text-[#00e5ff]">
         <div>Category</div>
@@ -1121,7 +1126,7 @@ export default function DiceFlushPage() {
     </div>
 
     {/* ─── CALL THE CATEGORY (skill layer) ─── */}
-    <div className="mt-4 rounded-2xl border border-[#f5ff3b]/25 bg-[#f5ff3b]/5 px-4 py-3">
+    <div data-df="call" className="mt-4 rounded-2xl border border-[#f5ff3b]/25 bg-[#f5ff3b]/5 px-4 py-3">
       {game.state !== "playing" ? null : game.currentCall ? (
         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-bold text-[#f5ff3b]">
           <IconSparkles size={16} />
@@ -1157,7 +1162,7 @@ export default function DiceFlushPage() {
     </div>
 
     {/* ─── BUTTONS ─── */}
-    <div className="mt-3 flex flex-col items-center gap-3">
+    <div data-df="controls" className="mt-3 flex flex-col items-center gap-3">
       <div className="flex items-center justify-center gap-3">
       <button
         disabled={!isYourTurn || waitingForOpponent || aiAnimating}
@@ -1199,7 +1204,7 @@ export default function DiceFlushPage() {
     </div>
 
     {/* ─── Turn indicator ─── */}
-    <div className="mt-3 text-center text-xs font-bold">
+    <div data-df="turn" className="mt-3 text-center text-xs font-bold">
       {aiAnimating ? (
         <span className="flex items-center justify-center gap-2 text-[#fbbf24]">
           <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}><IconRobot size={16} /></motion.span>
@@ -1214,7 +1219,7 @@ export default function DiceFlushPage() {
   </div>
 
   {/* ─── BOTTOM: PLAYER SECTION ─── */}
-  <div className="border-t border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
+  <div data-df="player" className="border-t border-[#00e5ff]/10 bg-[#020812] px-4 py-3">
     <div className="mb-2 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="relative rounded-full bg-[#34d399]/20 border border-[#34d399]/30 px-3 py-1 text-sm font-black text-[#34d399]">
@@ -1248,7 +1253,7 @@ export default function DiceFlushPage() {
     </div>
 
     {/* Player Dice */}
-    <div className="flex flex-wrap justify-center gap-3">
+    <div data-df="player-dice" className="flex flex-wrap justify-center gap-3">
       {game.dice.map((d, i) => {
           const diceUnknown = isYourTurn && game.rollsThisTurn === 0;
           return (

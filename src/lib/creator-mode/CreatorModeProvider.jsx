@@ -33,6 +33,7 @@ import { useUser } from "@clerk/nextjs";
 import { useCreatorRecorder } from "./useCreatorRecorder";
 import { useCreatorModeAccess } from "./useCreatorModeAccess";
 import {
+  CREATOR_MODE_CHANGED_EVENT,
   getStoredCreatorDimensions,
   getStoredCreatorMode,
   isCreatorModeSearch,
@@ -45,6 +46,15 @@ import {
   DIMENSION_PRESETS,
   sanitizeDimensions,
 } from "./types";
+
+/**
+ * Vertical space reserved for the portaled Creator controls (fixed to the
+ * bottom edge of the viewport — see CreatorModeOverlay /
+ * CreatorModeExteriorBar): the bar itself, its `bottom-3` offset and a
+ * small breathing margin. The bar wraps to two rows on narrow screens, so
+ * the reserve covers that too.
+ */
+const CREATOR_CONTROLS_STRIP_PX = 96;
 
 const CreatorModeContext = createContext({
   // Canonical lifecycle names (see CreatorModeLifecycle in ./types).
@@ -123,16 +133,42 @@ export default function CreatorModeProvider({
     if (typeof window === "undefined") return;
     if (accessLoading) return;
     if (resolvedRef.current) return;
+    // Wait until Clerk has resolved the user before latching a decision.
+    // The access hook reports "denied" (loading=false) while the user is
+    // still unknown, and the persisted flag is keyed by user id — latching
+    // on that first pass would silently leave creator mode off forever on
+    // a page reached WITHOUT ?creator=1 (e.g. an in-app navigation that
+    // relies on the session flag alone).
+    if (!user?.id) return;
     resolvedRef.current = true;
     if (!canUseCreatorMode) return;
     const fromUrl = isCreatorModeSearch(window.location.search);
-    const fromStorage = getStoredCreatorMode(user?.id);
+    const fromStorage = getStoredCreatorMode(user.id);
     const on = fromUrl || fromStorage;
     setEnabled(on);
     if (on && fromUrl) {
-      setStoredCreatorMode(user?.id, true);
+      setStoredCreatorMode(user.id, true);
     }
   }, [user?.id, canUseCreatorMode, accessLoading]);
+
+  // Keep the mode in sync with a toggle rendered on THIS page. Several
+  // games put the 🎥 Creator Mode lobby control and the game itself on one
+  // route (Dice Flush renders the lobby + <CreatorModeHost /> together), so
+  // arming the mode there must activate the frame immediately instead of
+  // waiting for the next full navigation.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = (event) => {
+      if (!canUseCreatorMode) return;
+      resolvedRef.current = true;
+      // Honour the explicit write (enable/disable) rather than re-deriving
+      // from URL + storage: a page opened with ?creator=1 would otherwise
+      // keep the mode on and make the toggle's Disable look broken.
+      setEnabled(Boolean(event?.detail?.enabled));
+    };
+    window.addEventListener(CREATOR_MODE_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(CREATOR_MODE_CHANGED_EVENT, sync);
+  }, [canUseCreatorMode, user?.id]);
 
   // ── Recording output dimensions (Creator Mode state) ─────────────
   const [dimensions, setDimensionsState] = useState(DEFAULT_CREATOR_DIMENSIONS);
@@ -162,12 +198,21 @@ export default function CreatorModeProvider({
 
   // ── Recording viewport frame (scaled to fit the screen) ──────────
   const frameRef = useRef(null);
-  // The outer flex column that holds the frame; its top offset anchors
-  // the scale so the frame fits in the visible viewport below it — even
-  // on pages that have their own header / nav above the game (e.g.
-  // blackjack). The bottom ~96px of the viewport is deliberately left
-  // free: that strip is where the portaled Creator controls sit (see
-  // CreatorModeOverlay), so they never cover the game.
+  // The outer flex column that holds the frame. The scale is measured
+  // against the ROOM THIS BLOCK ACTUALLY HAS — not its page offset.
+  // Anchoring on the block's `top` used to collapse the frame to its
+  // 0.15 floor on any route whose creator host sits far down the
+  // document (a combined lobby + game route like Dice Flush puts the
+  // frame below a title, rules and the create/join lobby), which read as
+  // "creator mode isn't working".
+  //
+  //   • Width  → the block's own width, capped to the viewport, so the
+  //              frame can never overflow the page horizontally (pages
+  //              with their own padding / max-width are respected).
+  //   • Height → the visible viewport minus the strip the portaled
+  //              Creator controls occupy (see CreatorModeOverlay), so the
+  //              controls never cover the game. The page then simply
+  //              scrolls the frame into view.
   const layoutRef = useRef(null);
   const [scale, setScale] = useState(1);
 
@@ -176,18 +221,32 @@ export default function CreatorModeProvider({
     const compute = () => {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      // Height actually available below this layout block: from its top
-      // edge to the viewport bottom, minus the controls strip (~60px) +
-      // a small breathing margin (36px).
-      const top = layoutRef.current?.getBoundingClientRect().top ?? 0;
-      const availH = Math.max(160, vh - top - 96);
-      const s = Math.min(1, (vw - 48) / dimensions.width, availH / dimensions.height);
+      const measured = layoutRef.current?.getBoundingClientRect().width || vw;
+      const availW = Math.max(240, Math.min(measured, vw));
+      const availH = Math.max(240, vh - CREATOR_CONTROLS_STRIP_PX);
+      const s = Math.min(1, availW / dimensions.width, availH / dimensions.height);
       setScale(Math.max(0.15, s));
     };
     compute();
     window.addEventListener("resize", compute);
     return () => window.removeEventListener("resize", compute);
   }, [enabled, dimensions.width, dimensions.height]);
+
+  // The frame is now viewport-sized, so on routes where the creator host
+  // sits below other page content bring it into view once — otherwise the
+  // user has to scroll to find the frame they just armed. Nothing scrolls
+  // when the frame already fits on screen (top-of-page hosts are a no-op).
+  useEffect(() => {
+    if (!enabled) return;
+    const el = layoutRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const fitsOnScreen =
+      rect.top >= 0 &&
+      rect.bottom <= window.innerHeight - CREATOR_CONTROLS_STRIP_PX;
+    if (fitsOnScreen) return;
+    window.scrollBy({ top: rect.top - 8, behavior: "smooth" });
+  }, [enabled, dimensions.width, dimensions.height, scale]);
 
   // Stop recording if creator mode gets disabled mid-game.
   useEffect(() => {
