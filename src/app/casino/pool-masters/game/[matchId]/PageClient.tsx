@@ -4,14 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
-// Shared Creator Mode foundation (admin-only). Recording auto-starts
-// when the balls are laid out (game begins), auto-stops when a winner is
-// declared or the user quits. NavBar / modals stay OUTSIDE the viewport.
-import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-} from "../../../../../components/creator-mode/CreatorModeLayout";
+import { useRecordPlayedGame } from "../../../../../hooks/useRecordPlayedGame";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
@@ -105,7 +98,12 @@ function setupBalls(): Ball[] {
 const touchPoint = (e: any, rect: DOMRect, rotated: boolean) => {
   const vx = e.touches ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
   const vy = e.touches ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
-  if (!rotated) return { x: vx, y: vy };
+  // Map the pointer into table space. The canvas is drawn at TABLE_W×TABLE_H
+  // and CSS-scaled to whatever size the stage fits it into, so raw CSS pixels
+  // are only table units when the display happens to be 900px wide — the aim
+  // angle survives a uniform scale but the power drag distance does not.
+  if (!rotated)
+    return { x: (vx * TABLE_W) / rect.width, y: (vy * TABLE_H) / rect.height };
   // The canvas is rotated 90° clockwise (vertical table). `rect` is its
   // axis-aligned bounding box: rect.width is the canvas's CSS height,
   // rect.height is its CSS width. Un-rotate the pointer to table space.
@@ -125,10 +123,10 @@ const teamHasBalls = (balls: Ball[], team: Team) =>
  * Fits the rotated (vertical) pool table inside its container while
  * preserving the table's aspect ratio and filling as much space as
  * possible. The 900×500 canvas is rotated 90° so it reads as a 500×900
- * vertical table — almost exactly the 9:16 creator frame, so it fills
- * edge-to-edge. Measured with offsetWidth/offsetHeight so the Creator
- * Mode frame's CSS scale (which scales the display, not the layout) does
- * not distort the fit.
+ * vertical table — almost exactly a 9:16 phone screen, so it fills
+ * edge-to-edge. Measured with offsetWidth/offsetHeight so any CSS scale
+ * on an ancestor (which scales the display, not the layout) does not
+ * distort the fit.
  */
 function FitStage({
   tableW,
@@ -267,8 +265,7 @@ export default function Page() {
   const [isPortrait, setIsPortrait] = useState(false);
 
   // Real-phone portrait detection: rotates the pool table to a vertical
-  // layout so the horizontal table fills the phone screen. (The Creator
-  // Mode portrait frame rotates unconditionally via `portraitContent`.)
+  // layout so the horizontal table fills the phone screen.
   useEffect(() => {
     const mq = window.matchMedia("(orientation: portrait)");
     const update = () => setIsPortrait(mq.matches);
@@ -348,6 +345,10 @@ export default function Page() {
   // locks the angle, phase 2 dragging charges power and release fires.
   const [aimLocked, setAimLocked] = useState(false);
   const [started, setStarted] = useState(aiMode);
+  // Record the session into "Recently played" (and the lobby's "Most
+  // Played" counter) when the match actually starts. The rack is
+  // initialized on mount, so gate on `started`, not `balls`.
+  useRecordPlayedGame("pool-masters", started && balls.length > 0);
   const [myName, setMyName] = useState("Player 1");
   const [myIconKey, setMyIconKey] = useState<string | null>(null);
   const [myNameColor, setMyNameColor] = useState<string | null>(null);
@@ -1400,11 +1401,9 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     .map((b) => b.n);
 
 
-  /* Creator Mode bespoke portrait: pool table large, player info on
-     top, shot / match controls pinned below. */
-  const creatorStatus = (
+  const statusBlock = (
     <>
-        <div className="mb-2 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
+        <div className="mb-1 text-center text-lg font-black text-yellow-300 drop-shadow sm:text-2xl">
           {started
   ? turn === owner
     ? "Your turn."
@@ -1412,16 +1411,16 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   : "Waiting for match start..."}
         </div>
         <div
-          className={`mb-3 rounded-xl border px-4 py-3 text-center font-extrabold ${lastFoul ? "border-red-300 bg-red-700/85 text-white" : "border-white/10 bg-black/30 text-slate-100"}`}
+          className={`mb-2 rounded-xl border px-3 py-2 text-center font-extrabold ${lastFoul ? "border-red-300 bg-red-700/85 text-white" : "border-white/10 bg-black/30 text-slate-100"}`}
         >
           {lastFoul ? `FOUL: ${lastFoul.replace(/^Foul: /, "")}` : status}
           {ballInHand ? " • Ball in hand" : ""}
         </div>
         </>
   );
-  const creatorScoreRow = (
-    <><div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:gap-4">
-          <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 shadow-inner">
+  const scoreRow = (
+    <><div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:gap-4">
+          <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-2 shadow-inner">
             <p className="relative flex items-center gap-1.5 font-bold">
               <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
               <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
@@ -1430,7 +1429,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
             <p className="text-xs text-cyan-100">{myTeam ?? "unassigned"}</p>
             <p className="mt-1 text-sm">Balls: {myRemaining.join(", ") || "none"}</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-3 text-right shadow-inner">
+          <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-2 text-right shadow-inner">
             <p className="relative flex items-center justify-end gap-1.5 font-bold">
               <span style={oppNameColor ? { color: oppNameColor } : undefined}>{oppName}</span>
               <IconAvatar iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
@@ -1441,7 +1440,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           </div>
         </div></>
   );
-  const creatorEmotes = (
+  const emotesBlock = (
     <>{/* ── Emotes ── */}
         {started && !winner && (
           <div className="mt-3 flex justify-center">
@@ -1456,7 +1455,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         )}
         </>
   );
-  const creatorResign = (
+  const resignBlock = (
     <>{/* ── Resign button ── */}
         {started && !winner && (
           <div className="mt-3 flex flex-col items-center gap-2">
@@ -1568,18 +1567,18 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       />
     );
   };
-  const creatorHistory = (
+  const historyPanel = (
     <>{/* ── Shot history toggle & panel ── */}
-        <div className="mt-3">
+        <div className="relative">
           <button
             onClick={() => setShowHistory((p) => !p)}
-            className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10"
+            className="flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-semibold text-white/70 transition-colors hover:bg-white/10"
           >
             <span className="inline-flex items-center gap-1.5"><IconNotebook size={14} /> Shot History ({shotHistory.length})</span>
             <span className="text-xs">{showHistory ? "▲ Hide" : "▼ Show"}</span>
           </button>
           {showHistory && (
-            <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs backdrop-blur-sm">
+            <div className="absolute right-0 top-full z-40 mt-2 max-h-56 w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-white/10 bg-black/90 p-3 text-xs shadow-2xl backdrop-blur-sm">
               {shotHistory.length === 0 ? (
                 <p className="text-center text-white/30 italic">No shots yet.</p>
               ) : (
@@ -1806,21 +1805,36 @@ ${!canShoot ? "pointer-events-none" : ""}`}
     />
   );
 
-  const creatorTable = (
-    <div className="relative mt-4">
-      {powerMeterOverlay}
-      {aimPillOverlay}
-      {spinControlOverlay}
-      {visorOverlay}
-      {poolCanvas(false)}
+  // Landscape (desktop) table stage — it takes whatever height is left in the
+  // card after the info block, and FitStage sizes the canvas to fit that area.
+  // FitStage fits a box whose aspect is tableH:tableW, so the swapped
+  // constants give the 900×500 landscape table: the complete board then stays
+  // inside the viewport instead of running off the bottom of the screen.
+  const tableStage = (
+    <div className="relative mt-3 min-h-[7rem] flex-1">
+      {/* absolute inset-0 gives FitStage a definite height to measure — flex
+          items do not always resolve percentage heights reliably. */}
+      <div className="absolute inset-0">
+        <FitStage tableW={TABLE_H} tableH={TABLE_W}>
+          {() => (
+            <>
+              {powerMeterOverlay}
+              {aimPillOverlay}
+              {spinControlOverlay}
+              {visorOverlay}
+              {poolCanvas(false)}
+            </>
+          )}
+        </FitStage>
+      </div>
     </div>
   );
 
-  // ── Rotated (vertical) table for portrait screens / the 9:16 creator
-  //    frame. The 900×500 canvas is turned 90° clockwise so it reads as a
-  //    500×900 vertical table that fills the frame edge-to-edge; pointer
-  //    input is un-rotated via `data-rotated` (see touchPoint). Overlays
-  //    stay upright on top of the visual table box. ──
+  // ── Rotated (vertical) table for portrait screens. The 900×500 canvas is
+  //    turned 90° clockwise so it reads as a 500×900 vertical table that
+  //    fills the container edge-to-edge; pointer input is un-rotated via
+  //    `data-rotated` (see touchPoint). Overlays stay upright on top of
+  //    the visual table box. ──
   const rotatedTableStage = (w: number, h: number) => (
     <>
       {powerMeterOverlay}
@@ -1987,7 +2001,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
       </div>
       {/* bottom: emotes / resign / history */}
       <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-1.5 p-2">
-        {creatorEmotes}
+        {emotesBlock}
         <div className="flex items-center justify-center gap-2">
           {portraitResign}
           {portraitHistory}
@@ -1996,29 +2010,34 @@ ${!canShoot ? "pointer-events-none" : ""}`}
     </div>
   );
 
+  // Desktop: a single card sized to the viewport. The info block and the
+  // emote / resign / history row keep their natural height and the table takes
+  // whatever is left, so the whole board stays on screen without scrolling.
   const desktopContent = (
     <>
-      <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-6 sm:p-4">
-      {creatorStatus}
-      {creatorScoreRow}
-      {creatorEmotes}
-      {creatorResign}
-      {creatorHistory}
-      {creatorTable}
+      <div className="mx-auto mt-2 flex min-h-0 w-full max-w-7xl flex-1 flex-col rounded-2xl border border-black/70 bg-black/45 p-3 shadow-[0_20px_70px_rgba(0,0,0,.65)] sm:mt-4 sm:p-4">
+        <div className="shrink-0">
+          {statusBlock}
+          {scoreRow}
+        </div>
+        {/* Emotes, resign and shot history share one compact row so the table
+            keeps as much of the remaining height as possible. The history
+            drop-down is an overlay, so opening it never pushes the board past
+            the viewport. */}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 [&>div]:mt-0">
+          {emotesBlock}
+          {resignBlock}
+          {historyPanel}
+        </div>
+        {tableStage}
       </div>
     </>
   );
 
-  const portraitContent = (
-    <CreatorModeShell className="bg-[#0b1324]">
-      {portraitStage}
-    </CreatorModeShell>
-  );
-
-  // Real-phone portrait (creator mode off): same vertical table filling the
-  // screen under the app navbar.
+  // Phone portrait: the vertical table filling the screen under the app
+  // navbar.
   const mobilePortraitContent = (
-    <div className="relative mx-auto h-[calc(100dvh-6.5rem)] w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0b1324]/60">
+    <div className="relative mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0b1324]/60">
       {portraitStage}
     </div>
   );
@@ -2037,12 +2056,10 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           ]}
         />
       )}
-      {/* The rack is initialized on mount, so `balls.length > 0` alone is
-          true even during the waiting takeover above (PvP waiting for
-          the match to go active). Gate the recording start on `started`
-          so capture only begins when the match actually starts. */}
-
-      <div className="min-h-screen overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:p-4">
+      {/* Exactly the viewport height minus the root layout's fixed-navbar
+          padding (pt-[68px] / sm:pt-16). Combined with the flex column below,
+          the board is laid out inside one screen instead of scrolling. */}
+      <div className="flex h-[calc(100svh-68px)] flex-col overflow-x-clip bg-[#202124] bg-[radial-gradient(circle_at_center,#353535_0,#1f1f1f_55%,#101010_100%)] p-2 text-white sm:h-[calc(100svh-4rem)] sm:p-4">
       <NavigationBar currentPath="/casino" />
 
       {/* ── Shot notification toasts ── */}
@@ -2063,23 +2080,10 @@ ${!canShoot ? "pointer-events-none" : ""}`}
         ))}
       </div>
 
-            <CreatorModeHost
-        autoStart={started && balls.length > 0}
-        autoStop={Boolean(winner)}
-        gameLabel="pool-masters"
-        backToLobbyHref="/casino/pool-masters"
-      >
-        <CreatorView
-          normal={isPortrait ? mobilePortraitContent : desktopContent}
-          portrait={portraitContent}
-          landscape={desktopContent}
-        />
+        {isPortrait ? mobilePortraitContent : desktopContent}
 
-        {/* Post-match result screen — shared PvpResultScreen (UX plan
-            P3-3). Mounted INSIDE CreatorModeHost so it appears in the
-            recording; compact styling keeps it sized for the phone frame. */}
+        {/* Post-match result screen — shared PvpResultScreen (UX plan P3-3). */}
         {renderResult()}
-      </CreatorModeHost>
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}
