@@ -403,9 +403,55 @@ export const users = pgTable("users", {
   // granted and the tutorial match never reappears. Existing accounts were
   // backfilled as completed so nobody already using Grynd can trigger it.
   firstGameCompletedAt: timestamp("first_game_completed_at"),
+  // Onboarding QUESTIONNAIRE completion (migration 0157) — the short
+  // preference questionnaire, deliberately tracked separately from the
+  // welcome tutorial above: neither state implies the other, and submitting
+  // answers never marks the tutorial complete. NULL = never answered.
+  // Written only through /api/onboarding/questionnaire. The answers
+  // themselves live in onboardingResponses (one row per answer).
+  questionnaireCompletedAt: timestamp("questionnaire_completed_at"),
+  // Server-authoritative "Maybe Later" for the questionnaire invitation
+  // (migration 0158). Set the first time a player dismisses the invitation
+  // through /api/onboarding/questionnaire/dismiss, so it is never shown
+  // again on any device/session. NULL = never dismissed (eligible for the
+  // invitation). Independent of questionnaireCompletedAt: declining is not
+  // answering.
+  questionnaireDismissedAt: timestamp("questionnaire_dismissed_at"),
   isAdmin: boolean("is_admin").notNull().default(false),
   isBanned: boolean("is_banned").notNull().default(false),
 });
+
+// ONBOARDING QUESTIONNAIRE RESPONSES — one row per answered option, keyed by
+// the stable ids exported from src/lib/onboardingQuestionnaire.js (a
+// multi-select question simply has several rows). Nothing localized is ever
+// persisted, so copy can be re-worded/re-translated without a migration.
+// Written only by /api/onboarding/questionnaire, which replaces a user's
+// answers atomically (delete + insert in one transaction), so the unique
+// index below can never be hit by a legitimate submission.
+export const onboardingResponses = pgTable(
+  "onboarding_responses",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    questionKey: varchar("question_key", { length: 64 }).notNull(),
+    answer: varchar("answer", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueAnswerIdx: unique("onboarding_responses_unique_answer_idx").on(
+      table.userId,
+      table.questionKey,
+      table.answer,
+    ),
+    userIdx: index("onboarding_responses_user_idx").on(
+      table.userId,
+      table.questionKey,
+    ),
+  }),
+);
 
 export const friendRelations = pgTable(
   "friend_relations",
@@ -424,6 +470,26 @@ export const friendRelations = pgTable(
   })
 );
 
+// PER-GAME ACTIVE PLAYER PRESENCE — the casino lobby's “N playing” badge.
+//
+// One row per (user, game): the heartbeat UPSERTs on that pair, so repeated
+// beats are idempotent and multiple tabs/devices can never double-count a
+// player. `game_key` holds the CANONICAL game id (the lobby's leaderboardKey
+// — the same ids src/lib/gameTags.js exports); game pages report their own
+// gameLabel and src/lib/gamePresence.js resolves it server-side.
+//
+// A row is "active" only while last_seen_at is inside the activity window
+// (ACTIVE_PLAYER_WINDOW_SECONDS = 3 min), so a closed tab/crashed browser ages
+// out on its own — no explicit leave required. Only the game page's own
+// heartbeat writes here: the app-wide PresenceHeartbeat deliberately does not,
+// which is what keeps a stale in-game marker from living forever.
+//
+// `session_id` is the client tab/session id and is NOT part of the unique key;
+// it lets one tab leaving clear only its own row rather than a still-open
+// second tab's presence.
+//
+// The table itself predates this feature (migration 0012) and is re-asserted
+// idempotently by migration 0159.
 export const userGamePresence = pgTable(
   "user_game_presence",
   {
@@ -433,10 +499,19 @@ export const userGamePresence = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     gameKey: varchar("game_key", { length: 80 }).notNull(),
     gameId: integer("game_id"),
+    sessionId: varchar("session_id", { length: 128 }),
     lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
-    userGameIdx: index("user_game_presence_user_game_idx").on(table.userId, table.gameKey),
+    // One active row per (user, game) — the heartbeat's conflict target.
+    userGameUnique: unique("user_game_presence_user_game_unique").on(
+      table.userId,
+      table.gameKey
+    ),
+    // The aggregate's access path: count active rows grouped by game.
+    gameSeenIdx: index("user_game_presence_game_idx").on(table.gameKey, table.lastSeenAt),
   })
 );
 

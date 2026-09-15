@@ -1194,6 +1194,9 @@ export default function ChessGamePage() {
         autoStart={Boolean(gameData && gameData.status === "in_progress")}
         autoStop={Boolean(gameData && (gameData.status === "finished" || gameData.status === "expired"))}
         gameLabel="chess"
+        // A spectator watching a shared link is on a live match too, so
+        // watching must never be counted as playing.
+        presenceEnabled={!isSpectator}
         backToLobbyHref="/casino/chess"
       >
         <CreatorView

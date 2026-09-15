@@ -1,4 +1,5 @@
 import { sql } from "../../../../db/sql";
+import { pruneStalePresence } from "../../../../lib/gamePresenceStore";
 
 /**
  * GET /api/jobs/retention
@@ -16,6 +17,12 @@ import { sql } from "../../../../db/sql";
  * gameplay and live rooms are unaffected. Solo cash-game history tables
  * (which back the bet-history UI) are intentionally left alone — retaining
  * them is a product decision, not an infra one.
+ *
+ * It also prunes stale per-game PRESENCE rows (`user_game_presence`) older than
+ * a day. Those are already excluded from the lobby's active-player counts long
+ * before that (a 3-minute activity window), so this is storage hygiene rather
+ * than a correctness step — and putting it here keeps one retention sweep
+ * instead of adding another cron.
  *
  * Wire into Vercel Cron Jobs (see vercel.json): schedule daily off-peak.
  */
@@ -71,6 +78,22 @@ export async function GET() {
 
   // ── Crash Arena: closed tables cascade players/rounds/entries/txns ────
   await purge("crash_arena_tables", ["closed"], "created_at");
+
+  // ── Presence: drop rows nobody has touched for a day ──────────────────
+  // The lobby's "N playing" badge only counts rows inside a 3-minute activity
+  // window (src/lib/gamePresence.js), so anything this old is already excluded
+  // from every read. This is pure storage hygiene — the table is bounded by
+  // users × games anyway — and it runs here instead of in its own cron so
+  // there is still exactly one retention sweep.
+  //
+  // The DELETE lives in the presence store (the module that owns every access
+  // to user_game_presence) rather than being spelled out here a second time.
+  try {
+    deletedByTable["user_game_presence"] = await pruneStalePresence();
+  } catch (err) {
+    console.error("[retention] purge failed for user_game_presence:", err);
+    deletedByTable["user_game_presence"] = -1;
+  }
 
   return Response.json({
     ok: true,

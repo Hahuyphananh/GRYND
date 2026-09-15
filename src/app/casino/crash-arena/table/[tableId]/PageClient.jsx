@@ -12,6 +12,7 @@ import { useUser } from "@clerk/nextjs";
 import ReportModal from "../../../../../components/ReportModal";
 import { IconPlug } from "@tabler/icons-react";
 import { useRecordPlayedGame } from "../../../../../hooks/useRecordPlayedGame";
+import useActiveGamePresence from "../../../../../hooks/useActiveGamePresence";
 import DailyLossGuard from "../../../../../components/DailyLossGuard";
 import SessionGuard from "../../../../../components/SessionGuard";
 import Link from "next/link";
@@ -167,6 +168,13 @@ export default function TableRoomPage() {
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) when a round actually begins running.
   useRecordPlayedGame("crash-arena", roundState?.phase === "running");
+  // Active-player presence (lobby "N playing"): the same "a round is live"
+  // edge. There is deliberately no `terminal` here — a table runs endless
+  // rounds and the wait between them is part of playing — so the gap is
+  // absorbed by the server's activity window instead of dropping the player
+  // for a few seconds between rounds. Leaving the table unmounts this page,
+  // which clears the row immediately.
+  useActiveGamePresence("crash-arena", roundState?.phase === "running");
 
   // Map the server's seated roster to the room's local player format.
   // The caller's own seat is rendered as "You" so existing room logic works.

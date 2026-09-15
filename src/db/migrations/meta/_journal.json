@@ -974,6 +974,27 @@
       "when": 1800000001000,
       "tag": "0156_economy_rebalance_cosmetics",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1800000002000,
+      "tag": "0157_onboarding_responses",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1800000003000,
+      "tag": "0158_questionnaire_dismissal",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1800000004000,
+      "tag": "0159_game_presence",
+      "breakpoints": true
     }
   ]
 }

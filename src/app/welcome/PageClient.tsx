@@ -19,6 +19,13 @@
 //
 // The copy reuses the repo's actual token/PvP/Battle Pass terminology (see
 // src/lib/appTextTranslations.js → onboarding.*).
+//
+// Order inside the onboarding flow (see src/lib/onboardingFlow.js for the
+// loop-safety rules): the questionnaire comes FIRST for a brand-new account,
+// so an unanswered new visitor is handed to /welcome/questionnaire instead of
+// starting the tutorial. Existing accounts (onboarding_completed_at already
+// set) can never take that branch, `?replay=1` always shows the tutorial, and
+// `?from=questionnaire` opts out — so questionnaire ↔ welcome can never loop.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -39,6 +46,8 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
+import { shouldRouteWelcomeToQuestionnaire } from "../../lib/onboardingFlow";
+import { welcomeMessageKey } from "../../lib/gameRecommendations";
 
 const TOTAL_STEPS = 5;
 const STEP_STORAGE_PREFIX = "grynd:welcome:step:";
@@ -52,9 +61,15 @@ type Props = {
   /** ?replay=1 — opened from Settings → Help & Support; skips the "already
    *  completed" bounce so the user can walk the tutorial again. */
   replay?: boolean;
+  /** ?from=questionnaire — the questionnaire just sent the player here, so
+   *  don't hand them back to it. */
+  fromQuestionnaire?: boolean;
 };
 
-export default function WelcomePageClient({ replay = false }: Props) {
+export default function WelcomePageClient({
+  replay = false,
+  fromQuestionnaire = false,
+}: Props) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { t } = useTranslation();
 
@@ -64,6 +79,9 @@ export default function WelcomePageClient({ replay = false }: Props) {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  // One personalized line under the welcome hero, picked from the answers the
+  // player just gave (null = no questionnaire data → the hero is unchanged).
+  const [welcomeLine, setWelcomeLine] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const storageKey = user?.id ? `${STEP_STORAGE_PREFIX}${user.id}` : null;
@@ -96,6 +114,44 @@ export default function WelcomePageClient({ replay = false }: Props) {
         return;
       }
 
+      // Brand-new account that hasn't answered (or declined) the questionnaire
+      // yet: onboarding order is questionnaire → tutorial, so hand them to the
+      // questionnaire first. Existing accounts can't reach this branch
+      // (onboarding_completed_at was backfilled), replay always shows the
+      // tutorial, and a player arriving from the questionnaire is exempt —
+      // which is what keeps the two pages from looping.
+      if (
+        shouldRouteWelcomeToQuestionnaire({
+          onboardingCompleted: data.onboardingCompleted === true,
+          questionnaireCompleted: data.questionnaireCompleted === true,
+          questionnaireDismissed: data.questionnaireDismissed === true,
+          replay,
+          fromQuestionnaire,
+        })
+      ) {
+        window.location.replace("/welcome/questionnaire?from=welcome");
+        return;
+      }
+
+      // Arriving straight from the questionnaire: add ONE warm follow-up line
+      // derived from those answers (welcomeMessageKey — deterministic, and
+      // null for anything incomplete). Only this hand-off fetches the answers,
+      // and the request is best-effort: if it fails the step renders exactly
+      // as it always has, so nobody is ever blocked by personalization.
+      if (fromQuestionnaire && data.questionnaireCompleted === true) {
+        try {
+          const answersRes = await fetch("/api/onboarding/questionnaire", {
+            credentials: "include",
+          });
+          const answersData = await answersRes.json();
+          if (answersRes.ok && answersData?.success === true) {
+            setWelcomeLine(welcomeMessageKey(answersData.answers));
+          }
+        } catch {
+          // no personalized line — the tutorial is unaffected
+        }
+      }
+
       // New account (or replay). Resume where the user left off if they
       // refreshed mid-flow; replay always restarts from the beginning.
       if (!replay && storageKey) {
@@ -116,7 +172,7 @@ export default function WelcomePageClient({ replay = false }: Props) {
       console.error("[WELCOME_STATUS_ERROR]", err);
       setStatus("error");
     }
-  }, [isLoaded, isSignedIn, replay, storageKey]);
+  }, [isLoaded, isSignedIn, replay, fromQuestionnaire, storageKey]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -302,6 +358,11 @@ export default function WelcomePageClient({ replay = false }: Props) {
           <p className="mx-auto max-w-md text-base leading-relaxed text-[#c9f7ff]/90 sm:text-lg">
             {t("onboarding.welcome.subtitle")}
           </p>
+          {welcomeLine && (
+            <p className="mx-auto mt-3 max-w-md text-sm font-semibold text-[#00e5ff] sm:text-base">
+              {t(welcomeLine)}
+            </p>
+          )}
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               type="button"

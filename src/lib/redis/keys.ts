@@ -126,6 +126,13 @@ export const CacheKeys = {
   // each poll is a Redis GET instead of 20 Postgres COUNTs.
   liveStatsGamesToday: () => `${PREFIX}:live-stats:games-today`,
 
+  // ── Active players per game ──────────────────────────────────
+  // The casino lobby's "N playing" badge. One tiny GROUP BY over
+  // user_game_presence (bounded by users × games, index-backed by
+  // (game_key, last_seen_at)); cached so every lobby tab on the site shares
+  // one Postgres read instead of issuing its own.
+  activePlayers: () => `${PREFIX}:presence:active-players`,
+
   // ── Hex Duel AI Session Tokens ──────────────────────────────
   /**
    * Short-lived, single-use proof that a user recently started a Hex
@@ -163,6 +170,11 @@ export const CacheTTL = {
   /** Friend presence: 10s — online status tolerates a few seconds of
       staleness and the client polls every 60s anyway. */
   friendPresence: 10,
+
+  /** Active players per game: 10s — the badge is approximate by nature (the
+      activity window is 3 min), so a few seconds of cache is invisible, and
+      a lobby refresh can never turn into a per-tab Postgres query. */
+  activePlayers: 10,
 
   /** Recent games feed: 60s backup TTL */
   recentGames: 60,

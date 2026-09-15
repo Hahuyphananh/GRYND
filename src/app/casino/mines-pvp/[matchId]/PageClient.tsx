@@ -46,7 +46,7 @@ import {
 } from "../../../../components/creator-mode/CreatorModeLayout";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
-import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
 import IconAvatar from "../../../../components/IconAvatar";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
@@ -1371,7 +1371,7 @@ export default function MinesPvpMatchPage({
     const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
 
     return (
-      <PvpResultScreen
+      <CreatorResultOverlay
         open
         outcome={outcome}
         headline={headline}
@@ -1904,19 +1904,22 @@ export default function MinesPvpMatchPage({
           portrait={portraitContent}
           landscape={landscapeContent}
         />
+
+        {/* Post-match result screen — rendered as a fixed overlay
+            (mirrors the chess game's `showResultPopup` pattern), so
+            the win/lose panel sits on top of the board instead of
+            below it. Mounted INSIDE CreatorModeHost, as a sibling of
+            <CreatorView>: it used to sit after the host, i.e. outside
+            the recording frame, so a creator clip ended on the revealed
+            board with no WIN/LOSS panel. The fixed inset-0 backdrop
+            covers the frame without needing its own portal, and
+            `renderResult()` short-circuits to `null` for any status
+            other than MATCH_STATUS.FINISHED. */}
+        {renderResult()}
         </CreatorModeHost>
 
         <Footer />
       </div>
-
-      {/* Post-match result screen — rendered as a fixed overlay
-          (mirrors the chess game's `showResultPopup` pattern), so
-          the win/lose panel sits on top of the board instead of
-          below it. The fixed inset-0 backdrop covers the full
-          viewport without needing its own portal; the rendered
-          `motion.div` already short-circuits to `null` for any
-          status other than `MATCH_STATUS.FINISHED`. */}
-      {renderResult()}
 
       {/* Report modal */}
       <ReportModal

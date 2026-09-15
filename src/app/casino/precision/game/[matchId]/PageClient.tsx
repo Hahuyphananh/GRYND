@@ -1438,17 +1438,13 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         portrait={portraitContent}
         landscape={landscapeContent}
       />
-      </CreatorModeHost>
 
-      <PrecisionResultPopup
-        popup={endPopup}
-        onReplay={handleReplayRequest}
-        onReturnToLobby={handleReturnToLobby}
-        replayRequested={replayRequested}
-        opponentReplayRequested={opponentReplayRequested}
-        returnChosen={returnChosen}
-      />
-
+      {/* End-of-round reveal + end-of-match result — mounted INSIDE
+          CreatorModeHost (as siblings of <CreatorView>) so both are part of
+          the recording. They used to sit after the host, i.e. outside the
+          recording frame, so a creator clip ended mid-duel with no round
+          result and no WIN/LOSS panel. The popup picks its own sizing from
+          the creator-mode flag (see PrecisionResultPopup). */}
       {roundResultReveal && (
         <PrecisionRoundResultPanel
           targetMs={roundResultReveal.targetMs}
@@ -1467,6 +1463,16 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
           onDismiss={dismissRoundResult}
         />
       )}
+
+      <PrecisionResultPopup
+        popup={endPopup}
+        onReplay={handleReplayRequest}
+        onReturnToLobby={handleReturnToLobby}
+        replayRequested={replayRequested}
+        opponentReplayRequested={opponentReplayRequested}
+        returnChosen={returnChosen}
+      />
+      </CreatorModeHost>
 
       {/* Report modal */}
       <ReportModal

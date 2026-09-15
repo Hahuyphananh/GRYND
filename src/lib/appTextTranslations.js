@@ -484,6 +484,12 @@ export const APP_TEXT_TRANSLATIONS = {
         play_again: "Play again",
         recently_played_empty: "Games you play will show up here.",
         clear_recent: "Clear",
+        // Pill on a card inside the personalized "FOR YOU" strip.
+        recommended_badge: "Recommended",
+        // Live activity line on every game card: how many players are inside
+        // that game right now. `{count}` is interpolated.
+        players_playing: "{count} playing",
+        players_none: "No players right now",
       },
       // ── Unified matchmaking waiting screen (full-screen takeover) ──
       matchWaiting: {
@@ -1231,6 +1237,146 @@ export const APP_TEXT_TRANSLATIONS = {
         play: "Let's Play",
         skip: "Skip Tutorial",
       },
+      // Game-preference questionnaire (/welcome/questionnaire) — shown to new
+      // accounts before the tutorial, and re-openable later from the lobby /
+      // Settings. Question + option ids live in
+      // src/lib/onboardingQuestionnaire.js; only the copy lives here.
+      questionnaire: {
+        kicker: "Personalize your GRYND",
+        progress: "Question {current} of {total}",
+        multiHint: "Select all that apply",
+        selectedCount: "{count} selected",
+        maxSelect: "up to {max}",
+        selectAtLeastOne: "Pick at least one option to continue.",
+        back: "Back",
+        next: "Next",
+        finish: "Save my preferences",
+        skip: "Skip for now",
+        saving: "Saving…",
+        savingHint: "Saving your preferences…",
+        saveFailed:
+          "We couldn't save your answers. Check your connection and try again.",
+        editNote: "You can change these anytime in Settings.",
+        // Lightweight invitation for existing players (tutorial already done)
+        // shown as a lobby card — never a recurring modal.
+        invite: {
+          title: "Make GRYND yours",
+          body: "Tell us what kind of games you like and we'll personalize your GRYND experience.",
+          note: "Takes about 30 seconds — and you can change it anytime in Settings.",
+          primary: "Customize My GRYND",
+          secondary: "Maybe Later",
+        },
+        // EDIT MODE (reached from Settings): the flow says so, so an existing
+        // player knows they are changing saved answers — not onboarding again.
+        edit: {
+          badge: "Editing your preferences",
+          save: "Save changes",
+          note: "Saving replaces your previous answers.",
+          cancel: "Cancel",
+        },
+        error: {
+          title: "We couldn't load the questionnaire",
+          text: "Check your connection and try again — or keep exploring GRYND and personalize later.",
+          retry: "Try again",
+          continue: "Continue to GRYND",
+        },
+        q1: {
+          title: "What brings you to GRYND?",
+          hint: "Pick everything that sounds like you.",
+          options: {
+            competition: "Competition",
+            rewards: "Rewards",
+            variety: "Playing different games",
+            versus_players: "Playing against other players",
+            fun: "Just having fun",
+          },
+        },
+        q2: {
+          title: "What kinds of games do you like?",
+          hint: "Pick the styles you'd actually play.",
+          options: {
+            pvp_duels: "1v1 duels",
+            strategy: "Strategy & board games",
+            fast_paced: "Fast-paced rounds",
+            casual: "Casual & relaxed",
+            luck_chance: "Luck & chance",
+            competitive: "Ranked & competitive",
+          },
+        },
+        q3: {
+          title: "How experienced are you with competitive gaming?",
+          hint: "Pick one — it only tunes what we suggest.",
+          options: {
+            new: "I'm new",
+            casual: "Casual player",
+            experienced: "Experienced",
+            highly_competitive: "Highly competitive",
+          },
+        },
+        q4: {
+          title: "What matters most to you?",
+          hint: "Pick everything that matters.",
+          options: {
+            winning: "Winning",
+            ranking_up: "Ranking up",
+            earning_tokens: "Earning tokens",
+            improving_skills: "Improving my skills",
+            fun: "Having fun",
+          },
+        },
+        q5: {
+          title: "How did you discover GRYND?",
+          hint: "Pick one — it helps us make better first impressions.",
+          options: {
+            tiktok: "TikTok",
+            instagram: "Instagram",
+            youtube: "YouTube",
+            friend: "Friend",
+            google_search: "Google / Search",
+            other: "Other",
+          },
+        },
+      },
+      // Personalization engine messaging (src/lib/gameRecommendations.js).
+      // The engine returns these keys; the lobby renders forYou / forYouHint /
+      // goals, and the welcome hero renders `welcome` right after the
+      // questionnaire (see welcomeMessageKey).
+      personalization: {
+        forYou: "For you",
+        forYouHint: "Picked from your preferences. Every game is still in All Games.",
+        welcome: {
+          rewards: "Let's find some games you'll enjoy.",
+          competitive: "Let's get you into the action.",
+          casual: "Let's start with something you'll enjoy.",
+          beginner: "Let's get you comfortable with GRYND.",
+        },
+        goals: {
+          winning: "Ready to compete?",
+          ranking_up: "Climb the rankings.",
+          earning_tokens: "Find games where you can put your tokens to work.",
+          improving_skills: "Practice and sharpen your game.",
+          fun: "Here's something you might enjoy.",
+        },
+        experience: {
+          new: "New here? Start with the free matches and learn at your own pace.",
+          casual: "Jump into whatever looks fun — play at your own pace.",
+          experienced: "You know your way around. Take on a ranked duel.",
+          highly_competitive: "Climb the ladder — the rankings are waiting.",
+        },
+      },
+      // Settings → "Your GRYND Preferences" (the same questionnaire, reopened
+      // in edit mode). Reading your saved answers and changing them both go
+      // through the one questionnaire API.
+      preferences: {
+        title: "Your GRYND Preferences",
+        empty: "You haven't personalized GRYND yet.",
+        emptyHint:
+          "Answer five quick questions and we'll put your kind of games first. You can change this anytime.",
+        cta: "Set up my preferences",
+        update: "Update preferences",
+        note: "Your For You picks in the Games lobby follow these answers.",
+        error: "We couldn't load your preferences. You can still set them up.",
+      },
       what: {
         kicker: "What is Grynd?",
         title: "Three words",
@@ -1800,6 +1946,10 @@ export const APP_TEXT_TRANSLATIONS = {
         play_again: "Rejouer",
         recently_played_empty: "Les jeux auxquels vous jouez apparaîtront ici.",
         clear_recent: "Effacer",
+        recommended_badge: "Recommandé",
+        // Ligne d'activité en direct sur chaque carte de jeu.
+        players_playing: "{count} en partie",
+        players_none: "Aucun joueur en ce moment",
       },
       // ── Écran d'attente unifié (plein écran) ──
       matchWaiting: {
@@ -2197,6 +2347,131 @@ export const APP_TEXT_TRANSLATIONS = {
           "Tu es prêt à te battre. Tu démarres avec 1 000 jetons gratuits — choisis ton premier combat et prouve que tu es le meilleur.",
         play: "C'est parti",
         skip: "Passer le tutoriel",
+      },
+      questionnaire: {
+        kicker: "Personnalise ton GRYND",
+        progress: "Question {current} sur {total}",
+        multiHint: "Sélectionne tout ce qui s'applique",
+        selectedCount: "{count} sélectionné(s)",
+        maxSelect: "max. {max}",
+        selectAtLeastOne: "Choisis au moins une option pour continuer.",
+        back: "Retour",
+        next: "Suivant",
+        finish: "Enregistrer mes préférences",
+        skip: "Plus tard",
+        saving: "Enregistrement…",
+        savingHint: "Enregistrement de tes préférences…",
+        saveFailed:
+          "Impossible d'enregistrer tes réponses. Vérifie ta connexion et réessaie.",
+        editNote: "Tu peux les modifier à tout moment dans les Paramètres.",
+        invite: {
+          title: "Fais de GRYND le tien",
+          body: "Dis-nous quels types de jeux tu aimes et nous personnaliserons ton expérience GRYND.",
+          note: "Ça prend environ 30 secondes — et tu peux modifier ça à tout moment dans les Paramètres.",
+          primary: "Personnaliser mon GRYND",
+          secondary: "Plus tard",
+        },
+        edit: {
+          badge: "Tu modifies tes préférences",
+          save: "Enregistrer les modifications",
+          note: "Enregistrer remplace tes réponses précédentes.",
+          cancel: "Annuler",
+        },
+        error: {
+          title: "Impossible de charger le questionnaire",
+          text: "Vérifie ta connexion et réessaie — ou continue sur GRYND et personnalise plus tard.",
+          retry: "Réessayer",
+          continue: "Continuer vers GRYND",
+        },
+        q1: {
+          title: "Qu'est-ce qui t'amène sur GRYND ?",
+          hint: "Sélectionne tout ce qui te ressemble.",
+          options: {
+            competition: "Compétition",
+            rewards: "Récompenses",
+            variety: "Jouer à différents jeux",
+            versus_players: "Jouer contre d'autres joueurs",
+            fun: "Juste m'amuser",
+          },
+        },
+        q2: {
+          title: "Quels types de jeux aimes-tu ?",
+          hint: "Choisis les styles que tu jouerais vraiment.",
+          options: {
+            pvp_duels: "Duels 1v1",
+            strategy: "Stratégie et jeux de plateau",
+            fast_paced: "Parties rapides",
+            casual: "Décontracté",
+            luck_chance: "Chance et hasard",
+            competitive: "Classé et compétitif",
+          },
+        },
+        q3: {
+          title: "Quel est ton niveau en jeu compétitif ?",
+          hint: "Choisis-en un — ça ajuste seulement nos suggestions.",
+          options: {
+            new: "Je débute",
+            casual: "Joueur occasionnel",
+            experienced: "Expérimenté",
+            highly_competitive: "Très compétitif",
+          },
+        },
+        q4: {
+          title: "Qu'est-ce qui compte le plus pour toi ?",
+          hint: "Sélectionne tout ce qui compte.",
+          options: {
+            winning: "Gagner",
+            ranking_up: "Monter au classement",
+            earning_tokens: "Gagner des jetons",
+            improving_skills: "Progresser",
+            fun: "M'amuser",
+          },
+        },
+        q5: {
+          title: "Comment as-tu découvert GRYND ?",
+          hint: "Choisis-en un — ça nous aide à mieux accueillir les nouveaux joueurs.",
+          options: {
+            tiktok: "TikTok",
+            instagram: "Instagram",
+            youtube: "YouTube",
+            friend: "Un ami",
+            google_search: "Google / Recherche",
+            other: "Autre",
+          },
+        },
+      },
+      personalization: {
+        forYou: "Pour toi",
+        forYouHint: "Choisi selon tes préférences. Tous les jeux restent dans Tous les jeux.",
+        welcome: {
+          rewards: "On va trouver des jeux qui vont te plaire.",
+          competitive: "On te met dans l'action.",
+          casual: "On commence par quelque chose qui va te plaire.",
+          beginner: "On va te mettre à l'aise avec GRYND.",
+        },
+        goals: {
+          winning: "Prêt à te battre ?",
+          ranking_up: "Grimpe au classement.",
+          earning_tokens: "Trouve des jeux où faire travailler tes jetons.",
+          improving_skills: "Entraîne-toi et affine ton jeu.",
+          fun: "Voilà quelque chose qui pourrait te plaire.",
+        },
+        experience: {
+          new: "Nouveau ici ? Commence par les parties gratuites et apprends à ton rythme.",
+          casual: "Lance-toi dans ce qui te tente — joue à ton rythme.",
+          experienced: "Tu connais le terrain. Lance-toi dans un duel classé.",
+          highly_competitive: "Grimpe l'échelle — le classement t'attend.",
+        },
+      },
+      preferences: {
+        title: "Tes préférences GRYND",
+        empty: "Tu n'as pas encore personnalisé GRYND.",
+        emptyHint:
+          "Réponds à cinq questions rapides et on mettra tes jeux préférés en avant. Modifiable à tout moment.",
+        cta: "Configurer mes préférences",
+        update: "Modifier les préférences",
+        note: "Tes suggestions « Pour toi » dans le lobby suivent ces réponses.",
+        error: "Impossible de charger tes préférences. Tu peux quand même les configurer.",
       },
       what: {
         kicker: "Qu'est-ce que Grynd ?",
@@ -2772,6 +3047,10 @@ export const APP_TEXT_TRANSLATIONS = {
         play_again: "Jugar de nuevo",
         recently_played_empty: "Los juegos a los que juegues aparecerán aquí.",
         clear_recent: "Borrar",
+        recommended_badge: "Recomendado",
+        // Línea de actividad en vivo en cada tarjeta de juego.
+        players_playing: "{count} jugando",
+        players_none: "Nadie está jugando ahora mismo",
       },
       // ── Pantalla de espera unificada (pantalla completa) ──
       matchWaiting: {
@@ -3168,6 +3447,131 @@ export const APP_TEXT_TRANSLATIONS = {
           "Estás listo para competir. Empiezas con 1.000 fichas gratis — elige tu primera batalla y demuestra que eres el mejor.",
         play: "A jugar",
         skip: "Saltar tutorial",
+      },
+      questionnaire: {
+        kicker: "Personaliza tu GRYND",
+        progress: "Pregunta {current} de {total}",
+        multiHint: "Selecciona todo lo que aplique",
+        selectedCount: "{count} seleccionada(s)",
+        maxSelect: "máx. {max}",
+        selectAtLeastOne: "Elige al menos una opción para continuar.",
+        back: "Atrás",
+        next: "Siguiente",
+        finish: "Guardar mis preferencias",
+        skip: "Más tarde",
+        saving: "Guardando…",
+        savingHint: "Guardando tus preferencias…",
+        saveFailed:
+          "No pudimos guardar tus respuestas. Revisa tu conexión e inténtalo de nuevo.",
+        editNote: "Puedes cambiarlas cuando quieras en Ajustes.",
+        invite: {
+          title: "Haz GRYND tuyo",
+          body: "Cuéntanos qué tipo de juegos te gustan y personalizaremos tu experiencia en GRYND.",
+          note: "Tarda unos 30 segundos, y puedes cambiarlo cuando quieras en Ajustes.",
+          primary: "Personalizar mi GRYND",
+          secondary: "Más tarde",
+        },
+        edit: {
+          badge: "Editando tus preferencias",
+          save: "Guardar cambios",
+          note: "Guardar sustituye tus respuestas anteriores.",
+          cancel: "Cancelar",
+        },
+        error: {
+          title: "No pudimos cargar el cuestionario",
+          text: "Revisa tu conexión e inténtalo de nuevo, o sigue explorando GRYND y personaliza más tarde.",
+          retry: "Reintentar",
+          continue: "Continuar a GRYND",
+        },
+        q1: {
+          title: "¿Qué te trae a GRYND?",
+          hint: "Selecciona todo lo que encaje contigo.",
+          options: {
+            competition: "Competir",
+            rewards: "Recompensas",
+            variety: "Probar juegos distintos",
+            versus_players: "Jugar contra otros jugadores",
+            fun: "Solo divertirme",
+          },
+        },
+        q2: {
+          title: "¿Qué tipos de juegos te gustan?",
+          hint: "Elige los estilos que jugarías de verdad.",
+          options: {
+            pvp_duels: "Duelos 1v1",
+            strategy: "Estrategia y tablero",
+            fast_paced: "Partidas rápidas",
+            casual: "Casual y relajado",
+            luck_chance: "Suerte y azar",
+            competitive: "Ranking y competitivo",
+          },
+        },
+        q3: {
+          title: "¿Cuánta experiencia tienes en juego competitivo?",
+          hint: "Elige una: solo ajusta lo que te sugerimos.",
+          options: {
+            new: "Soy nuevo",
+            casual: "Jugador casual",
+            experienced: "Con experiencia",
+            highly_competitive: "Muy competitivo",
+          },
+        },
+        q4: {
+          title: "¿Qué es lo más importante para ti?",
+          hint: "Selecciona todo lo que importe.",
+          options: {
+            winning: "Ganar",
+            ranking_up: "Subir en el ranking",
+            earning_tokens: "Ganar tokens",
+            improving_skills: "Mejorar mi nivel",
+            fun: "Divertirme",
+          },
+        },
+        q5: {
+          title: "¿Cómo descubriste GRYND?",
+          hint: "Elige una: nos ayuda a recibir mejor a los nuevos jugadores.",
+          options: {
+            tiktok: "TikTok",
+            instagram: "Instagram",
+            youtube: "YouTube",
+            friend: "Un amigo",
+            google_search: "Google / Búsqueda",
+            other: "Otro",
+          },
+        },
+      },
+      personalization: {
+        forYou: "Para ti",
+        forYouHint: "Elegido según tus preferencias. Todos los juegos siguen en Todos los juegos.",
+        welcome: {
+          rewards: "Busquemos juegos que te gusten.",
+          competitive: "Te ponemos en acción.",
+          casual: "Empecemos con algo que te guste.",
+          beginner: "Vamos a que te sientas cómodo con GRYND.",
+        },
+        goals: {
+          winning: "¿Listo para competir?",
+          ranking_up: "Sube en la clasificación.",
+          earning_tokens: "Encuentra juegos donde poner a trabajar tus fichas.",
+          improving_skills: "Practica y afina tu juego.",
+          fun: "Aquí tienes algo que podría gustarte.",
+        },
+        experience: {
+          new: "¿Nuevo por aquí? Empieza con las partidas gratis y aprende a tu ritmo.",
+          casual: "Entra en lo que te apetezca: juega a tu ritmo.",
+          experienced: "Conoces el terreno. Acepta un duelo clasificatorio.",
+          highly_competitive: "Sube la escalera: la clasificación te espera.",
+        },
+      },
+      preferences: {
+        title: "Tus preferencias de GRYND",
+        empty: "Todavía no has personalizado GRYND.",
+        emptyHint:
+          "Responde cinco preguntas rápidas y pondremos tus juegos al principio. Puedes cambiarlo cuando quieras.",
+        cta: "Configurar mis preferencias",
+        update: "Actualizar preferencias",
+        note: "Tus recomendaciones Para ti en el lobby siguen estas respuestas.",
+        error: "No pudimos cargar tus preferencias. Aun así puedes configurarlas.",
       },
       what: {
         kicker: "¿Qué es Grynd?",

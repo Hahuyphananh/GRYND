@@ -18,7 +18,11 @@
 //                                //   result (e.g. a mid-game "return to
 //                                //   lobby" button clears `game`) — use
 //                                //   when autoStart reflects the live game
-//     gameLabel="plinko-duel"    // used in the downloaded filename
+//     gameLabel="plinko-duel"    // used in the downloaded filename AND as
+//                                //   the presence game (see below)
+//     presenceEnabled={!isSpectator} // optional: set false when the viewer
+//                                //   is NOT a participant (spectator link),
+//                                //   so watching is never counted as playing
 //     backToLobbyHref={"/casino/plinko"} // optional: adds a "Go back to
 //                                //   lobby" button to the result panel
 //   >
@@ -36,6 +40,13 @@
 // behaviour. No per-game recording logic is needed — this is the shared
 // foundation.
 //
+// It is ALSO the shared active-player presence edge (the casino lobby's
+// "N playing" badge): autoStart/autoStop already mean "a real game session is
+// live" / "the session is over", which is exactly the signal presence needs.
+// No game page wires a heartbeat itself — see
+// src/hooks/useActiveGamePresence.js for the lifecycle and the reason a
+// spectator route must pass presenceEnabled={false}.
+//
 // Rendering modes:
 //   • Creator mode off / user without access → renders children
 //     unchanged, no overlay.
@@ -46,6 +57,7 @@ import React, { useEffect, useRef } from "react";
 import CreatorModeProvider from "../../lib/creator-mode/CreatorModeProvider";
 import CreatorModeOverlay from "./CreatorModeOverlay";
 import { recordPlayedGame } from "../../lib/recentlyPlayed";
+import useActiveGamePresence from "../../hooks/useActiveGamePresence";
 
 export default function CreatorModeHost({
   autoStart = false,
@@ -53,6 +65,11 @@ export default function CreatorModeHost({
   autoStopDelayMs = undefined,
   autoStopOnIdle = false,
   gameLabel = "game",
+  // Active-player presence (lobby "N playing" badge). Default true because
+  // autoStart already means "a real game session is live"; only a VIEW-ONLY
+  // surface (a spectator on a shared link, where the match is in_progress for
+  // the watcher too) has to opt out.
+  presenceEnabled = true,
   // Optional: when set, the finished-recording result panel shows a
   // "Go back to lobby" button navigating to this href (e.g. "/casino/tower-arena").
   backToLobbyHref = undefined,
@@ -69,6 +86,16 @@ export default function CreatorModeHost({
     }
     prevAutoStartRef.current = autoStart;
   }, [autoStart, gameLabel]);
+
+  // Active-player presence: beat while the game is live (autoStart) and stop
+  // the moment it is over (autoStop) — `terminal` clears the row immediately
+  // instead of letting it age out of the 3-minute activity window, so a
+  // finished match never keeps the badge up. Presence failures are swallowed
+  // inside the hook and can never affect the game.
+  useActiveGamePresence(gameLabel, autoStart && !autoStop, {
+    enabled: presenceEnabled,
+    terminal: autoStop,
+  });
 
   return (
     <CreatorModeProvider

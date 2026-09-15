@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
 import { useRecordPlayedGame } from "../../../../../hooks/useRecordPlayedGame";
+import useActiveGamePresence from "../../../../../hooks/useActiveGamePresence";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { BALL_LAYOUT, MAX_PULL, TABLE_H, TABLE_W } from "../../../../../lib/pool/constants";
@@ -349,6 +350,12 @@ export default function Page() {
   // Played" counter) when the match actually starts. The rack is
   // initialized on mount, so gate on `started`, not `balls`.
   useRecordPlayedGame("pool-masters", started && balls.length > 0);
+  // Active-player presence (lobby "N playing"): the same "the match is
+  // actually running" edge, ended as soon as a winner is decided (or the
+  // player leaves the page, which is caught on unmount).
+  useActiveGamePresence("pool-masters", started && balls.length > 0, {
+    terminal: Boolean(winner),
+  });
   const [myName, setMyName] = useState("Player 1");
   const [myIconKey, setMyIconKey] = useState<string | null>(null);
   const [myNameColor, setMyNameColor] = useState<string | null>(null);
