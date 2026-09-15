@@ -11,7 +11,10 @@
 // is absent simply hides.
 
 import React from "react";
-import PvpResultScreen from "../result/PvpResultScreen";
+// Creator-mode aware wrapper: renders the shared panel, `compact` only while
+// the recording frame is live. Precision mounts this popup INSIDE
+// <CreatorModeHost>, so the hook below reads the real flag.
+import CreatorResultOverlay from "../creator-mode/CreatorResultOverlay";
 import { RESULT_POPUP_REPLAY_WINDOW_MS } from "../../lib/precision/constants";
 import {
   endReasonToLabel,
@@ -98,7 +101,7 @@ function PrecisionResultPopupImpl({
   }`;
 
   return (
-    <PvpResultScreen
+    <CreatorResultOverlay
       open
       outcome={outcome}
       headline={headline}

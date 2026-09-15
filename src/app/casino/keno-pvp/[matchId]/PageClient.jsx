@@ -22,7 +22,7 @@ import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
-import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
 import IconAvatar from "../../../../components/IconAvatar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay, auto-starts when the match actually begins (a real
@@ -1287,22 +1287,6 @@ export default function KenoPvpMatchPage({ params }) {
           </div>
         )}
 
-        {/* ── FINISHED ────────────────────────────────────────────── */}
-        {isFinished && showResult && (
-          <ResultModal
-            match={match}
-            rounds={rounds}
-            me={me}
-            p1Name={p1Name}
-            p2Name={p2Name}
-            myWins={myWins}
-            oppWins={oppWins}
-            myPts={myPts}
-            oppPts={oppPts}
-            onLobby={goToLobby}
-          />
-        )}
-
         {/* ── CANCELLED ───────────────────────────────────────────── */}
         {isCancelled && (
           <div className="rounded-2xl border border-red-400/30 bg-[#0b224f]/85 p-10 text-center">
@@ -1338,6 +1322,28 @@ export default function KenoPvpMatchPage({ params }) {
         portrait={portraitContent}
         landscape={landscapeContent}
       />
+
+      {/* ── FINISHED: end-of-match result screen ──────────────────────
+          Mounted INSIDE CreatorModeHost, as a sibling of <CreatorView>,
+          so the WIN/LOSS panel is part of the recording. It used to sit
+          inside CreatorView's `normal` node, which CreatorView replaces
+          while recording — so the clip ended on the last round with no
+          winner screen. showResult lands 1.2s after the finish, inside
+          the 2.4s auto-stop grace period, so it is captured. ───────── */}
+      {isFinished && showResult && (
+        <ResultModal
+          match={match}
+          rounds={rounds}
+          me={me}
+          p1Name={p1Name}
+          p2Name={p2Name}
+          myWins={myWins}
+          oppWins={oppWins}
+          myPts={myPts}
+          oppPts={oppPts}
+          onLobby={goToLobby}
+        />
+      )}
       </CreatorModeHost>
     </div>
     </>
@@ -1448,6 +1454,9 @@ function RulesModal({ onClose }) {
 // old bespoke MATCH DRAW / YOU WON modal is gone; the per-round
 // breakdown lives under the screen's expandable Match Details.
 function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts, oppPts, onLobby }) {
+  // CreatorResultOverlay picks the panel sizing from the creator-mode flag
+  // (compact while the recording frame is live), so it must be mounted
+  // inside <CreatorModeHost> — see its call site below.
   const router = useRouter();
   const result = match.result;
   const iWon = result === me;
@@ -1470,7 +1479,7 @@ function ResultModal({ match, rounds, me, p1Name, p2Name, myWins, oppWins, myPts
   const stakeTokens = Number(match.stakeAmount) || 0;
 
   return (
-    <PvpResultScreen
+    <CreatorResultOverlay
       open
       outcome={outcome}
       headline={

@@ -775,6 +775,9 @@ const dbShell = (
         autoStart={game?.status === "in_progress"}
         autoStop={game?.status === "finished" || game?.status === "cancelled"}
         gameLabel="dots-and-boxes"
+        // The server marks a viewer who is not a seat as a spectator, and a
+        // spectator on a live game must never be counted as playing.
+        presenceEnabled={game?.role !== "spectator"}
         backToLobbyHref="/casino/dots-and-boxes"
       >
       <CreatorView normal={<motion.div

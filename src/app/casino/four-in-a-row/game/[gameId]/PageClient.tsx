@@ -19,10 +19,8 @@ import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeH
 import {
   CreatorView,
   CreatorModeShell,
-  ShellHeader,
+  CreatorPhoneFrame,
   ShellMain,
-  ShellAside,
-  useCreatorModeLayout,
 } from "../../../../../components/creator-mode/CreatorModeLayout";
 import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
@@ -47,21 +45,16 @@ import {
 const DEFAULT_MOVE_LIMIT_SECONDS = 60;
 const REPLAY_WINDOW_SECONDS = 20;
 
-// The board is 7 columns × 6 rows, so its width/height aspect is 7:6.
-const BOARD_ASPECT = 7 / 6;
-
 /**
- * Creator-mode board stage. Sizes the 7×6 board from the RECORDING FRAME
- * (via the shell's layout context) instead of the browser viewport — the
- * global `.four-in-a-row-board` rules use svh/vw units, which are unrelated
- * to the fixed, CSS-scaled recording frame and left the recorded board tiny.
+ * Creator-mode board stage. A full-width column inside the creator phone
+ * frame: the frame lays the game out at a real phone width (390px) and
+ * `zoom`s it up to fill the recording frame, so the stage only has to fill
+ * that phone width.
  *
- * The board is wider than tall, so it is capped by the frame's width in
- * portrait and by its height (× the board aspect) in landscape/square: it
- * fills the frame edge-to-edge without ever overflowing, in any preset.
- *
- * Must be rendered inside <CreatorModeShell /> so it reads the real frame
- * geometry (not the default context).
+ * The `four-in-a-row-creator-stage` class opts the board and the drop
+ * controls into the creator sizing in globals.css — the board spans the
+ * frame edge-to-edge and the drop buttons become full touch targets —
+ * instead of the browser-viewport (svh/vw) sizing the normal page uses.
  */
 function CreatorBoardStage({
   className = "",
@@ -70,22 +63,8 @@ function CreatorBoardStage({
   className?: string;
   children: ReactNode;
 }) {
-  const { width, height, isPortrait } = useCreatorModeLayout();
-  // Vertical chrome (header + status/controls) as a slice of the frame.
-  // Portrait stacks header/board/controls, so it reserves more than
-  // landscape/square (where the header sits in a side column).
-  const chromeFraction = isPortrait ? 0.34 : 0.14;
-  const availableWidth = width * 0.96;
-  const availableHeight = height * (1 - chromeFraction);
-  const maxWidth = Math.max(
-    240,
-    Math.min(availableWidth, availableHeight * BOARD_ASPECT),
-  );
   return (
-    <div
-      className={`four-in-a-row-creator-stage ${className}`}
-      style={{ maxWidth }}
-    >
+    <div className={`four-in-a-row-creator-stage ${className}`}>
       {children}
     </div>
   );
@@ -624,11 +603,15 @@ export default function ConnectFourGamePage() {
     return undefined;
   }, [game, replayCountdown, router]);
 
-  // ── Creator Mode bespoke portrait/landscape shell (shared recorder) ──
-  // Board-centric 9:16 presentation: compact header keeps the match info
-  // and turn timers readable, the board fills the main area, and the
-  // drop controls + Match Details stay pinned below. Same shell adapts to
-  // landscape/square via the shared layout primitives. Gameplay untouched.
+  // ── Creator Mode bespoke shell (shared recorder) ─────────────────────
+  // The game renders inside a phone-width viewport (390px) that is `zoom`ed
+  // up to fill the recording frame — exactly how <CreatorResponsiveLayout>
+  // makes the generic games look like a real phone. Laid out directly at
+  // the frame's logical size (1080×1920) the compact header text read as
+  // unreadable and the drop buttons were too small to tap in the live
+  // preview; at phone width they are the real mobile sizes, zoomed 2.77×
+  // (portrait) / 1.56× (landscape) → the board fills the frame width and
+  // the controls are full touch targets. Gameplay untouched.
   const c4BoardNode = (
     <div className="four-in-a-row-board grid grid-cols-7 gap-2 p-3 rounded-2xl border">
       {(game?.board || []).map((row: number[], rowIndex: number) =>
@@ -671,64 +654,64 @@ export default function ConnectFourGamePage() {
   );
   const c4Shell = (
     <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-yellow-300">Four-In-A-Row</p>
-            <p className="truncate text-xs text-white/70">
-              {game?.hostName || "Host"} vs {game?.guestName || "Guest"} ·{" "}
-              {Number(game?.betAmount || 0).toFixed(2)} tokens
-            </p>
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-              <span className="inline-flex items-center gap-1.5">
-                <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
-                <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
-                  {game?.hostName || "Host"}
-                </span>
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame className="px-3 pb-3 pt-2">
+          <div className="flex shrink-0 flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-yellow-300">Four-In-A-Row</p>
+                <p className="truncate text-xs text-white/70">
+                  {game?.hostName || "Host"} vs {game?.guestName || "Guest"} ·{" "}
+                  {Number(game?.betAmount || 0).toFixed(2)} tokens
+                </p>
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                    <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
+                      {game?.hostName || "Host"}
+                    </span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                    <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
+                      {game?.guestName || "Guest"}
+                    </span>
+                  </span>
+                </p>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${activeTimer <= 10 ? "bg-red-500/20 text-red-300" : "bg-green-500/15 text-green-300"}`}
+              >
+                ⏱ {activeTimer}s
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
-                <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
-                  {game?.guestName || "Guest"}
-                </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+              <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-white/80">
+                {game?.hostName || "Host"} · {hostTimer}s
               </span>
-            </p>
+              <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-white/80">
+                {game?.guestName || "Guest"} · {guestTimer}s
+              </span>
+            </div>
           </div>
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${activeTimer <= 10 ? "bg-red-500/20 text-red-300" : "bg-green-500/15 text-green-300"}`}
-          >
-            ⏱ {activeTimer}s
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-white/80">
-            {game?.hostName || "Host"} · {hostTimer}s
-          </span>
-          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-white/80">
-            {game?.guestName || "Guest"} · {guestTimer}s
-          </span>
-        </div>
-      </ShellHeader>
 
-      <ShellMain className="flex-col min-h-0 overflow-hidden">
-        <CreatorBoardStage className="flex h-full min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 px-2 py-2">
-          <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
-            {c4BoardNode}
+          <CreatorBoardStage className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 py-2">
+            <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+              {c4BoardNode}
+            </div>
+            <div className="w-full shrink-0 space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-white/50">
+                Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
+              </p>
+              {c4DropControlsNode}
+            </div>
+          </CreatorBoardStage>
+
+          <div className="flex shrink-0 justify-center">
+            <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
           </div>
-          <div className="w-full shrink-0 space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-white/50">
-              Drop a disc … {game?.currentTurn === "host" ? game?.hostName || "Host" : game?.guestName || "Guest"}
-            </p>
-            {c4DropControlsNode}
-          </div>
-        </CreatorBoardStage>
+        </CreatorPhoneFrame>
       </ShellMain>
-
-      <ShellAside>
-        <div className="mt-3 flex justify-center">
-          <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
-        </div>
-      </ShellAside>
     </CreatorModeShell>
   );
 
@@ -830,6 +813,9 @@ export default function ConnectFourGamePage() {
     autoStart={game?.status === "in_progress"}
     autoStop={game?.status === "finished" || game?.status === "cancelled"}
     gameLabel="four-in-a-row"
+    // A spectator watching a shared link is on a live match too, so
+    // watching must never be counted as playing.
+    presenceEnabled={!isSpectator}
     backToLobbyHref="/casino/four-in-a-row"
   >
   <CreatorView normal={<motion.div

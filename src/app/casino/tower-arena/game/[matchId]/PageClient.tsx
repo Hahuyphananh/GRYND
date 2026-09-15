@@ -21,7 +21,7 @@ import Footer from "../../../../../components/Footer";
 import IconAvatar from "../../../../../components/IconAvatar";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { CoinIcon } from "../../../../../components/lobby/PvpLobby";
-import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
+import CreatorResultOverlay from "../../../../../components/creator-mode/CreatorResultOverlay";
 import {
   IconBuildingSkyscraper,
   IconX,
@@ -1654,79 +1654,81 @@ export default function TowerArenaMatchPage() {
   }
 
   // ── Results ──────────────────────────────────────────────────────
-  if (isFinished && showResults) {
-    return (
-      <>
-        <ResultsView match={match} players={players} meUserId={me?.userId} onBack={() => router.replace("/casino/tower-arena")} />
-        {!resultPopupDismissed && myFinalResult && (
-          <PvpResultScreen
-            open
-            outcome={myFinalResult.isWinner ? "win" : "loss"}
-            headline={`${ordinal(myFinalResult.placement)} place`}
-            subline={
-              myFinalResult.isAi ? "Free play — no tokens at stake." : undefined
-            }
-            gameName="Tower Arena"
-            opponent={
-              rival
-                ? {
-                    name: rival.name || "Opponent",
-                    iconKey: rival.iconKey || null,
-                    isAi: Boolean(rival.isAi),
-                  }
-                : null
-            }
-            tokenDelta={myFinalResult.isAi ? null : myFinalResult.net}
-            durationSeconds={resultDurationSeconds}
-            summary={[
-              { label: "Placement", value: ordinal(myFinalResult.placement) },
-              ...(myFinalResult.isAi
-                ? []
-                : [
-                    {
-                      label: "Stake",
-                      value: `${Number(myFinalResult.wager || 0).toLocaleString()} tokens`,
-                    },
-                  ]),
-            ]}
-            details={[
-              ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-              ...(myFinalResult.isAi
-                ? []
-                : [
-                    {
-                      label: "Payout",
-                      value: `${Number(myFinalResult.payout || 0).toLocaleString()} tokens`,
-                    },
-                  ]),
-            ]}
-            detailsContent={
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                {[
-                  ["Blocks placed", myStats?.blocksPlaced ?? 0],
-                  ["Blocks in tower", myStats?.towerBlocks ?? 0],
-                  ["Collapses", myStats?.collapses ?? 0],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="rounded-xl border border-white/10 bg-black/30 px-2 py-3"
-                  >
-                    <p className="text-xl font-black text-white">{value}</p>
-                    <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">
-                      {label}
-                    </p>
-                  </div>
-                ))}
+  // Deliberately NOT an early return any more. Returning here unmounted
+  // <CreatorModeHost>, which tore the recording frame down before the
+  // standings screen or the placement popup could appear — a creator clip
+  // ended on the live board with no result at all. The finished state now
+  // renders INSIDE the still-mounted host (see the main return below):
+  // the game content is swapped for <ResultsView> and the popup stays a
+  // sibling of it, so the 2.4s auto-stop grace period records both.
+  const showingResults = isFinished && showResults;
+  const finalPlacementPopup =
+    !resultPopupDismissed && myFinalResult ? (
+      <CreatorResultOverlay
+        open
+        outcome={myFinalResult.isWinner ? "win" : "loss"}
+        headline={`${ordinal(myFinalResult.placement)} place`}
+        subline={
+          myFinalResult.isAi ? "Free play — no tokens at stake." : undefined
+        }
+        gameName="Tower Arena"
+        opponent={
+          rival
+            ? {
+                name: rival.name || "Opponent",
+                iconKey: rival.iconKey || null,
+                isAi: Boolean(rival.isAi),
+              }
+            : null
+        }
+        tokenDelta={myFinalResult.isAi ? null : myFinalResult.net}
+        durationSeconds={resultDurationSeconds}
+        summary={[
+          { label: "Placement", value: ordinal(myFinalResult.placement) },
+          ...(myFinalResult.isAi
+            ? []
+            : [
+                {
+                  label: "Stake",
+                  value: `${Number(myFinalResult.wager || 0).toLocaleString()} tokens`,
+                },
+              ]),
+        ]}
+        details={[
+          ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
+          ...(myFinalResult.isAi
+            ? []
+            : [
+                {
+                  label: "Payout",
+                  value: `${Number(myFinalResult.payout || 0).toLocaleString()} tokens`,
+                },
+              ]),
+        ]}
+        detailsContent={
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            {[
+              ["Blocks placed", myStats?.blocksPlaced ?? 0],
+              ["Blocks in tower", myStats?.towerBlocks ?? 0],
+              ["Collapses", myStats?.collapses ?? 0],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-white/10 bg-black/30 px-2 py-3"
+              >
+                <p className="text-xl font-black text-white">{value}</p>
+                <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                  {label}
+                </p>
               </div>
-            }
-            playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
-            onDismiss={() => setResultPopupDismissed(true)}
-            dismissLabel="View Results"
-          />
-        )}
-      </>
-    );
-  }
+            ))}
+          </div>
+        }
+        playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
+        onDismiss={() => setResultPopupDismissed(true)}
+        dismissLabel="View Results"
+      />
+    ) : null;
 
   // ── Live board ───────────────────────────────────────────────────
   const turnHolder = players.find((p) => p.userId === match?.currentTurnPlayerId);
@@ -2120,90 +2122,125 @@ export default function TowerArenaMatchPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6">
-      <NavigationBar currentPath="/casino" />
-      <div className="mx-auto mt-4 max-w-6xl">
+    <div
+      className={
+        showingResults
+          ? "min-h-screen bg-[#050512] text-white"
+          : "min-h-screen bg-[#050512] px-3 pb-24 pt-20 text-white sm:px-6"
+      }
+    >
+      {/* <ResultsView /> (the finished state) brings its own nav, footer and
+          page padding, so the page chrome is skipped here rather than
+          doubled up: normal play and the finished screen both render
+          exactly as they always did. */}
+      {!showingResults && <NavigationBar currentPath="/casino" />}
+      <div className={showingResults ? "" : "mx-auto mt-4 max-w-6xl"}>
         <CreatorModeHost
           autoStart={isActive}
           autoStop={isFinished}
+          // Active-player presence (lobby "N playing"): an eliminated player
+          // stays on the live match page (match.status is still "active")
+          // watching the survivors, and this page calls that state "out of the
+          // running" — so they stop counting the moment they are knocked out,
+          // exactly like a spectator on the other games. Creator Mode is
+          // deliberately NOT gated here: the recording still covers the whole
+          // match, it is only presence that opts out.
+          presenceEnabled={!iAmEliminated}
           gameLabel="tower-arena"
           backToLobbyHref="/casino/tower-arena"
         >
-          <CreatorView
-            normal={pageBody}
-            portrait={portraitContent}
-            landscape={landscapeContent}
-          />
+          {showingResults ? (
+            <ResultsView
+              match={match}
+              players={players}
+              meUserId={me?.userId}
+              onBack={() => router.replace("/casino/tower-arena")}
+            />
+          ) : (
+            <CreatorView
+              normal={pageBody}
+              portrait={portraitContent}
+              landscape={landscapeContent}
+            />
+          )}
+
+          {/* Final placement popup (built above) — inside the host, i.e.
+              inside the recording frame, so the clip ends on the result. */}
+          {finalPlacementPopup}
+
+          {/* Mid-match resign result (over the live board as a spectator) —
+              also inside the host so the resign outcome is recorded. Hidden
+              once the finished state takes over, exactly as before (the
+              placement popup replaces it). */}
+          {!showingResults && resignResult && (
+            <CreatorResultOverlay
+              open
+              outcome={resignResult.isWinner ? "win" : "loss"}
+              headline={`${ordinal(resignResult.placement)} place`}
+              subline={
+                resignResult.isAi ? "Free play — no tokens at stake." : undefined
+              }
+              gameName="Tower Arena"
+              opponent={
+                rival
+                  ? {
+                      name: rival.name || "Opponent",
+                      iconKey: rival.iconKey || null,
+                      isAi: Boolean(rival.isAi),
+                    }
+                  : null
+              }
+              tokenDelta={resignResult.isAi ? null : resignResult.net}
+              durationSeconds={null}
+              summary={[
+                { label: "Placement", value: ordinal(resignResult.placement) },
+                ...(resignResult.isAi
+                  ? []
+                  : [
+                      {
+                        label: "Stake",
+                        value: `${Number(resignResult.wager || 0).toLocaleString()} tokens`,
+                      },
+                    ]),
+              ]}
+              details={[
+                ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
+                ...(resignResult.isAi
+                  ? []
+                  : [
+                      {
+                        label: "Payout",
+                        value: `${Number(resignResult.payout || 0).toLocaleString()} tokens`,
+                      },
+                    ]),
+              ]}
+              detailsContent={
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  {[
+                    ["Blocks placed", myStats?.blocksPlaced ?? 0],
+                    ["Blocks in tower", myStats?.towerBlocks ?? 0],
+                    ["Collapses", myStats?.collapses ?? 0],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-white/10 bg-black/30 px-2 py-3"
+                    >
+                      <p className="text-xl font-black text-white">{value}</p>
+                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              }
+              playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
+              onDismiss={() => setResignResult(null)}
+              dismissLabel="Watch game"
+            />
+          )}
         </CreatorModeHost>
       </div>
-      <Footer />
-      {/* Mid-match resign result (over the live board as a spectator) */}
-      {resignResult && (
-        <PvpResultScreen
-          open
-          outcome={resignResult.isWinner ? "win" : "loss"}
-          headline={`${ordinal(resignResult.placement)} place`}
-          subline={
-            resignResult.isAi ? "Free play — no tokens at stake." : undefined
-          }
-          gameName="Tower Arena"
-          opponent={
-            rival
-              ? {
-                  name: rival.name || "Opponent",
-                  iconKey: rival.iconKey || null,
-                  isAi: Boolean(rival.isAi),
-                }
-              : null
-          }
-          tokenDelta={resignResult.isAi ? null : resignResult.net}
-          durationSeconds={null}
-          summary={[
-            { label: "Placement", value: ordinal(resignResult.placement) },
-            ...(resignResult.isAi
-              ? []
-              : [
-                  {
-                    label: "Stake",
-                    value: `${Number(resignResult.wager || 0).toLocaleString()} tokens`,
-                  },
-                ]),
-          ]}
-          details={[
-            ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-            ...(resignResult.isAi
-              ? []
-              : [
-                  {
-                    label: "Payout",
-                    value: `${Number(resignResult.payout || 0).toLocaleString()} tokens`,
-                  },
-                ]),
-          ]}
-          detailsContent={
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              {[
-                ["Blocks placed", myStats?.blocksPlaced ?? 0],
-                ["Blocks in tower", myStats?.towerBlocks ?? 0],
-                ["Collapses", myStats?.collapses ?? 0],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-xl border border-white/10 bg-black/30 px-2 py-3"
-                >
-                  <p className="text-xl font-black text-white">{value}</p>
-                  <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/50">
-                    {label}
-                  </p>
-                </div>
-              ))}
-            </div>
-          }
-          playAgain={{ onClick: () => router.replace("/casino/tower-arena") }}
-          onDismiss={() => setResignResult(null)}
-          dismissLabel="Watch game"
-        />
-      )}
+      {!showingResults && <Footer />}
     </div>
   );
 }

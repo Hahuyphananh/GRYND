@@ -3,13 +3,14 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconShoppingBag, IconUser, IconVolume } from "@tabler/icons-react";
+import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconShoppingBag, IconUser, IconVolume, IconWand } from "@tabler/icons-react";
 import NavigationBar from "../../components/navigation-bar";
 import SoundToggle from "../../components/SoundToggle";
 import { useToast } from "../../components/toast/ToastProvider";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTranslation } from "../../hooks/useTranslation";
 import { WAGER_GAMES } from "../../lib/defaultWagers";
+import { QUESTIONNAIRE_QUESTIONS } from "../../lib/onboardingQuestionnaire";
 
 /**
  * Settings hub. Hosts the preferences that used to live directly in the nav
@@ -57,6 +58,43 @@ export default function SettingsPageClient() {
   const [wagerDrafts, setWagerDrafts] = useState({});
   const [wagerSaving, setWagerSaving] = useState(false);
   const [wagerMsg, setWagerMsg] = useState(null);
+
+  // ── Your GRYND Preferences (the onboarding questionnaire, in edit mode) ──
+  // This card only READS the saved answers (one request) and links into the
+  // questionnaire flow to change them — the same question catalog, the same
+  // translation keys and the same API as onboarding. There is deliberately no
+  // second preference store. null = still loading.
+  const [gamePreferences, setGamePreferences] = useState(null);
+
+  // Read the player's questionnaire state once per mount. Failures load as
+  // "not answered yet", which is the safe reading: the card then offers the
+  // setup CTA instead of pretending to show preferences it doesn't have.
+  useEffect(() => {
+    if (!user?.id) {
+      setGamePreferences({ ok: false, completed: false, answers: {} });
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/onboarding/questionnaire", { credentials: "include" })
+      .then((res) => res.json().catch(() => null))
+      .then((data) => {
+        if (cancelled) return;
+        const ok = data?.success === true;
+        setGamePreferences({
+          ok,
+          completed: ok && data.completed === true,
+          answers: ok && data.answers && typeof data.answers === "object" ? data.answers : {},
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGamePreferences({ ok: false, completed: false, answers: {} });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   // Same DB-backed admin check + sessionStorage cache the nav bar uses —
   // the admin section below renders only for actual admins.
@@ -344,6 +382,22 @@ export default function SettingsPageClient() {
       setWagerSaving(false);
     }
   };
+
+  // The player's answers as displayable rows: the catalog's own question
+  // order, labelled through the same keys the questionnaire renders. Only
+  // questions with a valid saved answer are listed, so a partial profile can
+  // never render an empty-looking row.
+  const preferenceRows = QUESTIONNAIRE_QUESTIONS.map((question) => {
+    const raw = gamePreferences?.answers?.[question.key];
+    const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+    return {
+      key: question.key,
+      title: t(question.titleKey),
+      labels: question.options
+        .filter((option) => values.includes(option.value))
+        .map((option) => t(option.labelKey)),
+    };
+  }).filter((row) => row.labels.length > 0);
 
   if (!isLoaded) {
     return (
@@ -716,6 +770,78 @@ export default function SettingsPageClient() {
                   </Link>
                 </li>
               </ul>
+            </div>
+
+            {/* Your GRYND Preferences — view + edit the onboarding
+                questionnaire answers. This is THE preference surface: the
+                lobby's "Make GRYND yours" card points here for players who
+                chose "Maybe Later", and the questionnaire itself reopens in
+                edit mode (?from=settings) and returns to this page. */}
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] md:col-span-2">
+              <h2 className="mb-1 flex items-center gap-2 text-xl text-[#00e5ff]">
+                <IconWand size={20} /> {t("onboarding.preferences.title")}
+              </h2>
+
+              {gamePreferences === null && (
+                <p className="text-sm text-[#9dd8ff]" role="status">
+                  {t("ui.loading")}
+                </p>
+              )}
+
+              {gamePreferences !== null && gamePreferences.completed && preferenceRows.length > 0 && (
+                <>
+                  <p className="mb-4 text-sm text-[#9dd8ff]">
+                    {t("onboarding.preferences.note")}
+                  </p>
+                  <dl className="mb-4 grid gap-3 sm:grid-cols-2">
+                    {preferenceRows.map((row) => (
+                      <div
+                        key={row.key}
+                        className="rounded-lg border border-[#00e5ff]/20 bg-[#091737] px-3 py-2.5"
+                      >
+                        <dt className="text-[11px] font-bold uppercase tracking-widest text-[#7dd3fc]/80">
+                          {row.title}
+                        </dt>
+                        <dd className="mt-1.5 flex flex-wrap gap-1.5">
+                          {row.labels.map((label) => (
+                            <span
+                              key={label}
+                              className="rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-2.5 py-1 text-xs font-semibold text-[#c9f7ff]"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <Link
+                    href="/welcome/questionnaire?from=settings"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-4 py-3 text-sm font-bold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                  >
+                    <IconWand size={15} /> {t("onboarding.preferences.update")}
+                  </Link>
+                </>
+              )}
+
+              {gamePreferences !== null && !(gamePreferences.completed && preferenceRows.length > 0) && (
+                <>
+                  <p className="mb-1 text-sm font-semibold text-[#c9f7ff]">
+                    {gamePreferences.ok
+                      ? t("onboarding.preferences.empty")
+                      : t("onboarding.preferences.error")}
+                  </p>
+                  <p className="mb-4 text-sm text-[#9dd8ff]/80">
+                    {t("onboarding.preferences.emptyHint")}
+                  </p>
+                  <Link
+                    href="/welcome/questionnaire?from=settings"
+                    className="inline-flex items-center gap-2 rounded-lg border-b-4 border-[#0087a8] bg-[#00e5ff] px-4 py-3 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                  >
+                    <IconWand size={15} /> {t("onboarding.preferences.cta")}
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Help & support */}

@@ -19,6 +19,7 @@ import HexTroopPopup from "../../../components/HexTroopPopup";
 import { clampSendCount, sendableTroops } from "../../../lib/hexTroopCount";
 import NavigationBar from "../../../components/navigation-bar";
 import { useRecordPlayedGame } from "../../../hooks/useRecordPlayedGame";
+import useActiveGamePresence from "../../../hooks/useActiveGamePresence";
 
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
@@ -958,6 +959,13 @@ export default function HexDuelPage() {
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) when the real match starts.
   useRecordPlayedGame("hex-duel", showGame);
+  // Active-player presence (lobby "N playing"): the same "a real board is on
+  // screen" edge, minus the idle lobby and minus spectators (?spectator=1) —
+  // watching a shared game is not playing one. Beats stop at game over and
+  // resume on a rematch.
+  useActiveGamePresence("hex-duel", showGame && !isSpectator, {
+    terminal: isGameOverEffective,
+  });
 
   // Whether the local player is allowed to act (their turn + not waiting for opponent)
   const isLocalTurn = gameMode === "multiplayer"

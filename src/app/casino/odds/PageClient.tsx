@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
 import { useRecordPlayedGame } from "../../../hooks/useRecordPlayedGame";
+import useActiveGamePresence from "../../../hooks/useActiveGamePresence";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
@@ -190,6 +191,10 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) when the real game starts.
   useRecordPlayedGame("odds", gameActive);
+  // Active-player presence (lobby "N playing"): an AI duel counts exactly
+  // like a PvP one — the player is in a real game either way — and stops the
+  // moment the duel is decided.
+  useActiveGamePresence("odds", gameActive && !gameOver, { terminal: gameOver });
 
   // Wrap handlePick in a ref so timer/autopick effects can call it without stale closures
   const submitActionRef = useRef<(value: number, isPrediction: boolean) => void>(() => {});
@@ -808,6 +813,10 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) once the match is actually live.
   useRecordPlayedGame("odds", matchLive);
+  // Active-player presence (lobby "N playing"): only while the match is
+  // actually live (waiting for an opponent is not playing yet), cleared as
+  // soon as the duel is decided.
+  useActiveGamePresence("odds", matchLive, { terminal: gameOver });
 
   // Refs for timer/autopick
   const submitActionRef = useRef<(value: number, isPrediction: boolean) => void>(() => {});

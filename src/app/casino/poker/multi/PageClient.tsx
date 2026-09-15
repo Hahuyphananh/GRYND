@@ -3480,6 +3480,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           Boolean(game.winnerId)
         }
         gameLabel="poker"
+        // A spectator watching a shared table is on a live hand too, so
+        // watching must never be counted as playing.
+        presenceEnabled={!isSpectator}
         backToLobbyHref="/casino/poker"
       >      <CreatorView
         normal={normalView}

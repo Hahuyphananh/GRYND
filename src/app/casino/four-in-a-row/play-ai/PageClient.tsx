@@ -21,18 +21,16 @@ import {
   type FourInARowBoard,
 } from "../../../../lib/fourInARow";
 import NavigationBar from "../../../../components/navigation-bar";
-import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import IconAvatar from "../../../../components/IconAvatar";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
+import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
 import {
   CreatorView,
   CreatorModeShell,
-  ShellHeader,
+  CreatorPhoneFrame,
   ShellMain,
-  ShellAside,
-  useCreatorModeLayout,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 
 const HUMAN_PLAYER = 1 as const;
@@ -48,21 +46,16 @@ function countPieces(board: FourInARowBoard): number {
   return pieces;
 }
 
-// The board is 7 columns × 6 rows, so its width/height aspect is 7:6.
-const BOARD_ASPECT = 7 / 6;
-
 /**
- * Creator-mode board stage. Sizes the 7×6 board from the RECORDING FRAME
- * (via the shell's layout context) instead of the browser viewport — the
- * global `.four-in-a-row-board` rules use svh/vw units, which are unrelated
- * to the fixed, CSS-scaled recording frame and left the recorded board tiny.
+ * Creator-mode board stage. A full-width column inside the creator phone
+ * frame: the frame lays the game out at a real phone width (390px) and
+ * `zoom`s it up to fill the recording frame, so the stage only has to fill
+ * that phone width.
  *
- * The board is wider than tall, so it is capped by the frame's width in
- * portrait and by its height (× the board aspect) in landscape/square: it
- * fills the frame edge-to-edge without ever overflowing, in any preset.
- *
- * Must be rendered inside <CreatorModeShell /> so it reads the real frame
- * geometry (not the default context).
+ * The `four-in-a-row-creator-stage` class opts the board and the drop
+ * controls into the creator sizing in globals.css — the board spans the
+ * frame edge-to-edge and the drop buttons become full touch targets —
+ * instead of the browser-viewport (svh/vw) sizing the normal page uses.
  */
 function CreatorBoardStage({
   className = "",
@@ -71,26 +64,13 @@ function CreatorBoardStage({
   className?: string;
   children: ReactNode;
 }) {
-  const { width, height, isPortrait } = useCreatorModeLayout();
-  // Vertical chrome (header + status/controls) as a slice of the frame.
-  // Portrait stacks header/board/controls, so it reserves more than
-  // landscape/square (where the header sits in a side column).
-  const chromeFraction = isPortrait ? 0.34 : 0.14;
-  const availableWidth = width * 0.96;
-  const availableHeight = height * (1 - chromeFraction);
-  const maxWidth = Math.max(
-    240,
-    Math.min(availableWidth, availableHeight * BOARD_ASPECT),
-  );
   return (
-    <div
-      className={`four-in-a-row-creator-stage ${className}`}
-      style={{ maxWidth }}
-    >
+    <div className={`four-in-a-row-creator-stage ${className}`}>
       {children}
     </div>
   );
 }
+
 
 function Disc({
   value,
@@ -507,13 +487,13 @@ export default function FourInARowVsAiPage() {
         <div className="flex gap-2">
           <button
             onClick={resetGame}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors"
+            className="px-4 py-2.5 rounded-lg text-sm font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors"
           >
             New Game
           </button>
           <button
             onClick={() => router.push("/casino/four-in-a-row")}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 transition-colors"
+            className="px-4 py-2.5 rounded-lg text-sm font-bold bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 transition-colors"
           >
             Back to Lobby
           </button>
@@ -525,15 +505,26 @@ export default function FourInARowVsAiPage() {
     </>
   );
 
-  const portraitContent = (
+  // Creator Mode shell: the game renders inside a phone-width viewport
+  // (390px) that is `zoom`ed up to fill the recording frame — exactly how
+  // <CreatorResponsiveLayout> makes the generic games look like a real
+  // phone. Laid out directly at the frame's logical size (1080×1920) the
+  // status text read as unreadable and the drop buttons were too small to
+  // tap in the live preview; at phone width they are the real mobile sizes,
+  // zoomed 2.77× (portrait) / 1.56× (landscape), so the board fills the
+  // frame width and the controls are full touch targets. Same shell in every
+  // ratio, so the capture always reads as a phone screen.
+  const creatorShell = (
     <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="space-y-2">{creatorStatus}</ShellHeader>
-      <ShellMain className="h-full items-start overflow-y-auto px-2">
-        <CreatorBoardStage className="flex w-full flex-col items-center justify-center gap-3 py-2">
-          {creatorBoard}
-        </CreatorBoardStage>
+      <ShellMain className="overflow-hidden">
+        <CreatorPhoneFrame className="px-3 pb-3 pt-2">
+          <div className="shrink-0">{creatorStatus}</div>
+          <CreatorBoardStage className="flex min-h-0 w-full flex-1 flex-col items-center justify-start gap-3 overflow-y-auto py-2">
+            <div className="w-full shrink-0">{creatorBoard}</div>
+          </CreatorBoardStage>
+          <div className="shrink-0">{creatorControls}</div>
+        </CreatorPhoneFrame>
       </ShellMain>
-      <ShellAside className="space-y-3">{creatorControls}</ShellAside>
     </CreatorModeShell>
   );
 
@@ -556,31 +547,38 @@ export default function FourInARowVsAiPage() {
       {creatorStatus}
       {creatorBoard}
       {creatorControls}
-      {/* End-of-match result screen */}
-      {isGameEnded && (
-        <PvpResultScreen
-          open
-          outcome={status === "won" ? "win" : status === "draw" ? "draw" : "loss"}
-          headline={
-            status === "won"
-              ? "Great play. Congratulations!"
-              : status === "lost"
-                ? "The AI got you this round."
-                : "Board is full. It's a draw."
-          }
-          subline="Free practice match — no tokens were staked."
-          gameName="Four-in-a-Row vs AI"
-          opponent={{ name: "AI", iconKey: null, isAi: true }}
-          summary={[
-            { label: "Session", value: `${score.wins}W – ${score.losses}L – ${score.draws}D` },
-            { label: "Moves", value: String(countPieces(board)) },
-          ]}
-          playAgain={{ label: "New Game", onClick: resetGame }}
-          onReturnToLobby={() => router.push("/casino/four-in-a-row")}
-        />
-      )}
     </>
   );
+
+  // End-of-match result screen. Mounted inside <CreatorModeHost> (below), NOT
+  // in `desktopContent`: <CreatorView> replaces the whole normal view with the
+  // creator shell, so a result screen left inside `desktopContent` would never
+  // render while recording — the clip ended on the board instead of the
+  // WIN/LOSS popup. Recording auto-stops 2s after the game ends, so this is
+  // the last thing the capture shows. <CreatorResultOverlay> picks the
+  // sizing from the creator-mode flag (compact only while recording).
+  const resultScreen = isGameEnded ? (
+    <CreatorResultOverlay
+      open
+      outcome={status === "won" ? "win" : status === "draw" ? "draw" : "loss"}
+      headline={
+        status === "won"
+          ? "Great play. Congratulations!"
+          : status === "lost"
+            ? "The AI got you this round."
+            : "Board is full. It's a draw."
+      }
+      subline="Free practice match — no tokens were staked."
+      gameName="Four-in-a-Row vs AI"
+      opponent={{ name: "AI", iconKey: null, isAi: true }}
+      summary={[
+        { label: "Session", value: `${score.wins}W – ${score.losses}L – ${score.draws}D` },
+        { label: "Moves", value: String(countPieces(board)) },
+      ]}
+      playAgain={{ label: "New Game", onClick: resetGame }}
+      onReturnToLobby={() => router.push("/casino/four-in-a-row")}
+    />
+  ) : null;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
@@ -595,9 +593,15 @@ export default function FourInARowVsAiPage() {
         >
           <CreatorView
             normal={desktopContent}
-            portrait={portraitContent}
-            landscape={desktopContent}
+            portrait={creatorShell}
+            landscape={creatorShell}
           />
+
+          {/* Result screen — inside the CreatorModeHost recording frame so the
+              WIN/LOSS popup is captured too (exactly like the multiplayer
+              four-in-a-row page). With creator mode off the host renders
+              children directly, so normal play keeps its full-size overlay. */}
+          {resultScreen}
         </CreatorModeHost>
       </div>
 

@@ -62,12 +62,15 @@ export default function SyncPage() {
           // moment later (killing the onboarding tour), which never happens on
           // a full load. The ref guard keeps this single-fire: dev StrictMode
           // double-invokes the effect.
-          // Brand-new accounts go through the /welcome onboarding flow;
-          // everyone else goes straight home. /welcome re-checks the
-          // server-side onboarding flag, so a "fresh" account that already
-          // completed onboarding (log-out/log-in inside the 15-min window)
-          // bounces straight to the main experience.
-          const target = isNewUser ? "/welcome" : "/";
+          // Brand-new accounts go through onboarding; everyone else goes
+          // straight home. The documented order is
+          //   signup → /welcome/questionnaire → /welcome → first game,
+          // so fresh accounts start at the questionnaire (about a minute)
+          // and it hands them on to the existing welcome tutorial. Both pages
+          // re-check the server-side flags, so a "fresh" account that already
+          // completed them (log-out/log-in inside the 15-min window) still
+          // lands on the right screen.
+          const target = isNewUser ? "/welcome/questionnaire" : "/";
           window.location.replace(target);
         }
       } catch (err) {

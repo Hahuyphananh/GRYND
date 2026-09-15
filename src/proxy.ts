@@ -39,6 +39,11 @@ const isPublicRoute = createRouteMatcher([
   // BEFORE the user has set their age (/complete-profile gate) — the page
   // itself bounces signed-out visitors to the public home.
   "/welcome",
+  // /welcome/questionnaire is the first stop of the signup hand-off
+  // (/sync → questionnaire → /welcome), so it needs the exact same public
+  // access as /welcome itself. The API it writes to lives under /api/*,
+  // which is matched above.
+  "/welcome/questionnaire(.*)",
   "/classement",
   "/profil(.*)",
   "/casino/blackjack(.*)",
