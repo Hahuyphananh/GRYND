@@ -227,6 +227,9 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
 export async function settleAutoMoveIfNeeded(game) {
   if (!game || game.status !== "in_progress") return game;
   if (!game.moveDeadlineAt) return game;
+  // Free vs-AI games are untimed — the human's turn never expires, so
+  // no auto-move is ever forced for them (create-ai stamps no deadline).
+  if (game.isAiGame) return game;
 
   const deadline = new Date(game.moveDeadlineAt).getTime();
   if (!Number.isFinite(deadline) || Date.now() <= deadline) return game;

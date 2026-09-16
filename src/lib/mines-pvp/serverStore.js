@@ -570,7 +570,11 @@ async function advanceFromReady(tx, match) {
   const nextStatus = isFirstPlayerP1
     ? MATCH_STATUS.P1_TURN
     : MATCH_STATUS.P2_TURN;
-  const deadline = new Date(Date.now() + roundDeadlineMs(match));
+  // Free vs-AI matches are untimed — the human can pick at their own
+  // pace, so no pick window is opened (PvP keeps the 20s clock).
+  const deadline = isFreeAiMatch(match)
+    ? null
+    : new Date(Date.now() + roundDeadlineMs(match));
 
   await tx
     .update(minesPvpMatches)
@@ -755,7 +759,10 @@ async function applyPick(tx, match, pick) {
   // status listeners that still interpret p1_turn / p2_turn.
   const fakeMatchAfter = { ...match, picks: allPicks };
   const nextPickerId = activePickerForMatch(fakeMatchAfter);
-  const nextDeadline = new Date(Date.now() + roundDeadlineMs(match));
+  // Free vs-AI matches are untimed (see advanceFromReady).
+  const nextDeadline = isFreeAiMatch(match)
+    ? null
+    : new Date(Date.now() + roundDeadlineMs(match));
   const nextStatus =
     nextPickerId === match.player1Id
       ? MATCH_STATUS.P1_TURN
@@ -1264,9 +1271,11 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     // 2) AFK auto-pick on the current turn's deadline. Covers both
     //    p1_turn and p2_turn. forcePick advances the turn OR
     //    resolves the match internally depending on whose turn it
-    //    was.
+    //    was. Free vs-AI matches are exempt — the human's turn
+    //    never expires there.
     if (
       PICKABLE_STATES.has(match.status) &&
+      !isFreeAiMatch(match) &&
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {

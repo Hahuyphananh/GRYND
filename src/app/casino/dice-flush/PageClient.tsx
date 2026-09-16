@@ -438,26 +438,56 @@ export default function DiceFlushPage() {
     return () => clearInterval(p);
   }, [roomId]);
 
+  const you = useMemo(() => game?.players?.find((p) => p.userId === user?.id) || null, [game, user?.id]);
+  const opponent = useMemo(() => game?.players?.find((p) => p.userId !== user?.id) || null, [game, user?.id]);
+
   // ── Shot clock ticker ──────────────────────────────────────────
   // Counts down from the server-stamped turnDeadline. Display-only — the
-  // server enforces the actual auto-bank.
+  // server enforces the actual auto-bank. Disabled in AI mode entirely:
+  // practice matches are untimed, so no countdown and no auto-bank call.
+  const isAiMode = Boolean(opponent?.isAI);
+  // Client clocks drift from the server; anchor the countdown to the
+  // server's clock (measured skew from each state poll, same pattern as
+  // keno-pvp) so both players see the same time.
+  const serverClockSkewRef = useRef(0);
+  useEffect(() => {
+    if (isAiMode) return;
+    const measure = () => {
+      const t0 = Date.now();
+      fetch(`/api/dice-flush/state?roomId=${encodeURIComponent(roomId || "")}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const t1 = Date.now();
+          const serverMs = Number(d?.serverTime);
+          if (Number.isFinite(serverMs) && serverMs > 0 && t1 - t0 < 2000) {
+            serverClockSkewRef.current = serverMs - (t0 + t1) / 2;
+          }
+        })
+        .catch(() => {});
+    };
+    measure();
+    const id = setInterval(measure, 60000);
+    return () => clearInterval(id);
+  }, [isAiMode, roomId]);
   useEffect(() => {
     const deadline = game?.turnDeadline;
-    if (game?.state !== "playing" || typeof deadline !== "number") {
+    if (isAiMode || game?.state !== "playing" || typeof deadline !== "number") {
       setTurnMsLeft(null);
       return;
     }
-    const tick = () => setTurnMsLeft(Math.max(0, deadline - Date.now()));
+    const tick = () => setTurnMsLeft(Math.max(0, deadline - (Date.now() + serverClockSkewRef.current)));
     tick();
     const id = setInterval(tick, 100);
     return () => clearInterval(id);
-  }, [game?.state, game?.turnDeadline]);
+  }, [isAiMode, game?.state, game?.turnDeadline]);
 
   // ── Auto-bank when the shot clock expires ──────────────────────
   // The server is authoritative; this just makes the resolution instant
   // instead of waiting for the next poll tick. Guarded per-deadline so
-  // the client only fires once per turn.
+  // the client only fires once per turn. Never fires in AI mode (no
+  // deadline is ever stamped there).
   useEffect(() => {
+    if (isAiMode) return;
     if (turnMsLeft === null || turnMsLeft > 0) return;
     const deadline = game?.turnDeadline;
     if (typeof deadline !== "number") return;
@@ -478,10 +508,7 @@ export default function DiceFlushPage() {
         }
       })
       .catch(() => {});
-  }, [turnMsLeft, game?.turnDeadline, roomId]);
-
-  const you = useMemo(() => game?.players?.find((p) => p.userId === user?.id) || null, [game, user?.id]);
-  const opponent = useMemo(() => game?.players?.find((p) => p.userId !== user?.id) || null, [game, user?.id]);
+  }, [isAiMode, turnMsLeft, game?.turnDeadline, roomId]);
 
   // Detect game finished and trigger celebration/defeat
   useEffect(() => {
@@ -841,9 +868,10 @@ export default function DiceFlushPage() {
               heading: "Shot clock",
               body: (
                 <>
-                  Each turn runs on a 20-second clock. If it expires, the
-                  server auto-banks your best legal category, so make your
-                  holds and calls count under pressure.
+                  In PvP matches, each turn runs on a 20-second clock. If it
+                  expires, the server auto-banks your best legal category, so
+                  make your holds and calls count under pressure. Matches vs
+                  AI are untimed — take all the time you need.
                 </>
               ),
             },

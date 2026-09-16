@@ -31,6 +31,14 @@ export type Player = "host" | "guest";
 export interface GameState {
   /** Drawn edges: "h:0,0", "v:1,3", etc. */
   edges: string[];
+  /** Who drew each edge, keyed by the same "h:0,0" / "v:1,3" keys used in
+   *  `edges`. Purely presentational — the client colors each drawn line with
+   *  the drawer's color so both players can see who claimed which line (and
+   *  it matches the box fill + pfp of the owner). Nothing in the rules reads
+   *  it, and rows persisted before this field existed simply normalize to
+   *  `{}` in `ensureState` (the board then falls back to a neutral line
+   *  color for those edges). */
+  edgeOwners: Record<string, Player>;
   /** Completed boxes keyed as "row,col" (0-5) */
   boxes: string[];
   /** Box ownership for each completed box */
@@ -45,6 +53,7 @@ export interface GameState {
 export function createInitialState(): GameState {
   return {
     edges: [],
+    edgeOwners: {},
     boxes: [],
     boxOwners: {},
     currentTurn: "host",
@@ -240,8 +249,10 @@ export function drawEdge(
 
   const { type, row, col } = parsed as { type: string; row: number; col: number };
 
-  // Apply the edge
+  // Apply the edge — recording WHO drew it so the board can color each
+  // line by its owner (see `edgeOwners` on GameState).
   const newEdges = [...state.edges, edgeKey];
+  const newEdgeOwners = { ...state.edgeOwners, [edgeKey]: player };
 
   // Detect newly-completed adjacent boxes
   const adjacent = checkAdjacentBoxes(newEdges, type, row, col);
@@ -268,6 +279,7 @@ export function drawEdge(
 
   const newState: GameState = {
     edges: newEdges,
+    edgeOwners: newEdgeOwners,
     boxes: newBoxes,
     boxOwners: newBoxOwners,
     currentTurn: nextTurn as Player,
@@ -305,10 +317,22 @@ export function ensureState(value: unknown): GameState {
       if (role === "host" || role === "guest") boxOwners[k] = role;
     }
   }
+  // Edge ownership is presentation-only and was added after the first
+  // shipped games, so a row without it is valid: only keep entries for
+  // edges that are actually drawn, and only well-formed roles.
+  const edgeOwners: Record<string, Player> = {};
+  if (v.edgeOwners && typeof v.edgeOwners === "object") {
+    const drawn = new Set(edges);
+    for (const [k, role] of Object.entries(v.edgeOwners)) {
+      if ((role === "host" || role === "guest") && drawn.has(k)) {
+        edgeOwners[k] = role;
+      }
+    }
+  }
   const currentTurn: Player = v.currentTurn === "guest" ? "guest" : "host";
   const scores = {
     host: Math.max(0, Number(v.scores?.host) || 0),
     guest: Math.max(0, Number(v.scores?.guest) || 0),
   };
-  return { edges, boxes, boxOwners, currentTurn, scores };
+  return { edges, edgeOwners, boxes, boxOwners, currentTurn, scores };
 }

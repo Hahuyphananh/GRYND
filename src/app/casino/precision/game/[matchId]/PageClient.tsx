@@ -60,6 +60,8 @@ import {
 } from "../../../../../lib/precision/multiplayer";
 import { useSocket } from "../../../../../context/SocketProvider";
 import {
+  ARMING_FAST_POLL_INTERVAL_MS,
+  ARMING_FAST_POLL_MAX_ATTEMPTS,
   MATCH_POLL_INTERVAL_MS,
   SOCKET_NAMESPACE,
 } from "../../../../../lib/precision/constants";
@@ -240,54 +242,72 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   stateRef.current = state;
 
   // ── Polling ──────────────────────────────────────────────────────────
-  // The match page polls /api/precision/get-match every 1.5s. This
-  // IS the canonical refresh path: a hard browser reload (`F5`) re-runs
-  // `fetchOnce` synchronously on mount and the server's match state is
-  // restored from disk. The server NEVER resets the match on disconnect
-  // — `realtime-server/server.js`'s `disconnect` handler only drops the
-  // user from the participation map (`forgetPrecisionUser`), leaving
-  // `precisionMatchStore` intact so the next reconnect resumes mid-game.
+  // The match page polls /api/precision/get-match every
+  // `MATCH_POLL_INTERVAL_MS`. This IS the canonical refresh path: a hard
+  // browser reload (`F5`) re-runs `refreshState` synchronously on mount and
+  // the server's match state is restored. The server NEVER resets the match
+  // on disconnect — `realtime-server/server.js`'s `disconnect` handler only
+  // drops the user from the participation map (`forgetPrecisionUser`),
+  // leaving `precisionMatchStore` intact so the next reconnect resumes
+  // mid-game.
   //
-  // We pull `socket?.id` into the deps so a socket RECONNECT (new
-  // socket id, same matchId) tears this effect down + re-runs it,
-  // firing `fetchOnce` synchronously instead of waiting up to 1.5s
-  // for the next poll tick. Without this, a reconnecting player could
-  // see a stale local state for ~1s while the broadcast lag resolves.
-  // The polling cadence is otherwise unaffected.
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchOnce = async () => {
-      try {
-        // Audit fix: skip the HTTP refresh once the match is
-        // terminally finished. After `phase === "finished"` the
-        // canonical state never changes — the polling is just
-        // burning a request every 1.5s. The end-popup's auto-return
-        // effect navigates away once the replay window expires, so
-        // there's no UX benefit to continued polling. Kept in-band
-        // (not a separate effect) so the socket-driven refetch on
-        // reconnect still works exactly once via the `[matchId,
-        // socket?.id]` deps below.
-        if (stateRef.current?.phase === "finished") return;
-        const res = await fetch(
-          `/api/precision/get-match?matchId=${encodeURIComponent(matchId)}`,
-          { cache: "no-store" },
-        );
-        const data = await res.json();
-        if (cancelled) return;
-        if (data?.match) setState(data.match as PrecisionState);
-      } catch {
-        // Network blip — try again next tick.
+  // We pull `socket?.id` into the deps so a socket RECONNECT (new socket id,
+  // same matchId) tears this effect down + re-runs it, firing
+  // `refreshState` synchronously instead of waiting up to one tick for the
+  // next poll. Without this, a reconnecting player could see a stale local
+  // state for ~2s while the broadcast lag resolves. The polling cadence is
+  // otherwise unaffected.
+  //
+  // `refreshState` is the ONE canonical refresh, shared by that cadence and
+  // the post-countdown fast poll below. Stable identity (`matchId` + `t` are
+  // the only deps) so the effects scheduling it never churn the interval.
+  const refreshState = useCallback(async () => {
+    try {
+      // Audit fix: skip the HTTP refresh once the match is
+      // terminally finished. After `phase === "finished"` the
+      // canonical state never changes — the polling is just
+      // burning a request every tick. The end-popup's auto-return
+      // effect navigates away once the replay window expires, so
+      // there's no UX benefit to continued polling. Kept in-band
+      // (not a separate effect) so the socket-driven refetch on
+      // reconnect still works exactly once via the `[refreshState,
+      // socket?.id]` deps below.
+      if (stateRef.current?.phase === "finished") return;
+      const res = await fetch(
+        `/api/precision/get-match?matchId=${encodeURIComponent(matchId)}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      const next = data?.match as PrecisionState | null | undefined;
+      // `matchId` is echoed on every snapshot — ignore a response that
+      // belongs to a different match (an in-flight fetch that resolved after
+      // the route param changed) rather than tearing down this page's state.
+      if (next && next.matchId === matchId) {
+        setState(next);
+        return;
       }
-    };
+      // No match AND no waiting lobby for this id is terminal server-side
+      // (the store no longer holds it — e.g. the server restarted mid-match).
+      // Nothing is going to advance this page, so say so instead of leaving
+      // the countdown frozen on screen with no explanation. The guard above
+      // already returned for terminal `finished` matches, so this only fires
+      // once a LIVE unfinished state has been seen — a `null` response before
+      // the first snapshot is just the match still being set up.
+      if (!next && stateRef.current) {
+        setError(t("games.precision.match_unavailable"));
+      }
+    } catch {
+      // Network blip — try again next tick.
+    }
+  }, [matchId, t]);
 
-    void fetchOnce();
-    const id = setInterval(fetchOnce, MATCH_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [matchId, socket?.id]);
+  useEffect(() => {
+    void refreshState();
+    const id = setInterval(() => {
+      void refreshState();
+    }, MATCH_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refreshState, socket?.id]);
 
   // ── Realtime rooms ───────────────────────────────────────────────────
   useEffect(() => {
@@ -706,9 +726,10 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // (`armingStartedAt + ROUND_COUNTDOWN_MS`). We tick every 100ms and
   // display ceil(remaining/1000) so both clients show the same
   // 5…4…3…2…1 from the same server timestamp. The server's own timer
-  // fires at that exact instant and flips the phase to "active" (the
-  // `precision:roundArmStart` broadcast), so the countdown is
-  // display-only — all round timing remains server-authoritative.
+  // fires at that exact instant and flips the phase to "active", so the
+  // countdown is display-only — all round timing remains
+  // server-authoritative. The fast-poll effect below is what makes the
+  // client notice that flip promptly (see its comment).
   useEffect(() => {
     const endsAt = state?.countdownEndsAt;
     if (state?.phase !== "arming" || typeof endsAt !== "number") {
@@ -720,6 +741,38 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     const id = setInterval(tick, 100);
     return () => clearInterval(id);
   }, [state?.phase, state?.countdownEndsAt]);
+
+  // ── Fast re-poll the instant the countdown expires ─────────────
+  // The server flips `arming` → `active` at the server-stamped
+  // `countdownEndsAt`, but the client otherwise only learns about it on the
+  // next `MATCH_POLL_INTERVAL_MS` tick (the `roundArmStart` broadcast fires
+  // when the next round is ARMED, not when it opens). That left the
+  // countdown sitting on 0 for up to two seconds before every round — the
+  // "timer stuck on 0" report — and opened the round (plus its target)
+  // late. Once the stamped countdown has elapsed we re-poll at
+  // `ARMING_FAST_POLL_INTERVAL_MS` until the phase flips; the burst is
+  // budgeted by `ARMING_FAST_POLL_MAX_ATTEMPTS`, after which the normal
+  // cadence takes over.
+  //
+  // This read is also what self-heals the transition server-side:
+  // `get-match` promotes a due armed round, so the round opens on the first
+  // request after the countdown ends even if the server's arming timer never
+  // fired (frozen instance, process restart).
+  useEffect(() => {
+    if (state?.phase !== "arming") return;
+    const endsAt = state?.countdownEndsAt;
+    if (typeof endsAt !== "number") return;
+    let attempts = 0;
+    const pollIfDue = () => {
+      if (Date.now() < endsAt) return;
+      attempts += 1;
+      void refreshState();
+      if (attempts >= ARMING_FAST_POLL_MAX_ATTEMPTS) clearInterval(id);
+    };
+    const id = setInterval(pollIfDue, ARMING_FAST_POLL_INTERVAL_MS);
+    pollIfDue();
+    return () => clearInterval(id);
+  }, [state?.phase, state?.countdownEndsAt, refreshState]);
 
   // Cancel the auto-dismiss timer on unmount so a stale timer can't
   // call setState on a torn-down React tree.

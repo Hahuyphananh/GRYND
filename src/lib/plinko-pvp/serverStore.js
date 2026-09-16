@@ -724,7 +724,11 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
 // commit window. Both players' current inputs are reset to null
 // (in case a stale read left them set somehow).
 async function advanceFromReady(tx, match) {
-  const deadline = new Date(Date.now() + roundDeadlineMs(match));
+  // Free vs-AI matches are untimed — the human can commit at their own
+  // pace, so no per-ball window is opened (PvP keeps the 20s clock).
+  const deadline = isFreeAiMatch(match)
+    ? null
+    : new Date(Date.now() + roundDeadlineMs(match));
 
   await tx
     .update(plinkoPvpMatches)
@@ -1001,7 +1005,10 @@ async function resolveBall(tx, match) {
 
   // isTiedAfterNormalBalls is true: advance to ball_4 tiebreaker.
   const nextBall = ballNumber + 1;
-  const nextDeadline = new Date(Date.now() + roundDeadlineMs(match));
+  // Free vs-AI matches are untimed (see advanceFromReady).
+  const nextDeadline = isFreeAiMatch(match)
+    ? null
+    : new Date(Date.now() + roundDeadlineMs(match));
   const [updated] = await tx
     .update(plinkoPvpMatches)
     .set({
@@ -1769,9 +1776,11 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     // 2) Per-ball AFK auto-launch. Fires when the ball's 20-second
     //    deadline has elapsed and one or both seats are still
     //    uncommitted. forceBallAdvance fills the gaps and resolves
-    //    the ball.
+    //    the ball. Free vs-AI matches are exempt — the human's
+    //    commit window never expires there.
     if (
       LAUNCHABLE_STATES.has(match.status) &&
+      !isFreeAiMatch(match) &&
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now() &&
       (!match.p1CurrentInputs || !match.p2CurrentInputs)

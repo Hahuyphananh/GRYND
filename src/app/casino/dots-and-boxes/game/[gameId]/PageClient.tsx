@@ -24,7 +24,9 @@ import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../../components/IconAvatar";
+import DotsAndBoxesLegend, {
+  SeatMark,
+} from "../../../../../components/DotsAndBoxesLegend";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import { playTimerUrgent, playTimerExpired } from "../../../../../lib/dotsAndBoxesAudio";
 import { gameOverModal as gameOverModalAnim } from "../../../../../lib/animations";
@@ -40,6 +42,14 @@ import {
 // `Set<string>` / `string[]`) doesn't trigger a covariant mismatch.
 const EMPTY_EDGES: string[] = [];
 const EMPTY_BOX_OWNERS: Record<string, "host" | "guest"> = {};
+const EMPTY_EDGE_OWNERS: Record<string, "host" | "guest"> = {};
+
+// Board palette. Each player owns one hue, and BOTH their claimed lines and
+// their claimed boxes use it — amber for the host, cyan for the guest. Those
+// two hues are far apart, which is what makes "whose claim is this?" readable
+// at a glance (the old amber/orange pair was nearly indistinguishable).
+const HOST_COLOR = "#f59e0b";
+const GUEST_COLOR = "#22d3ee";
 const EMPTY_SCORES = { host: 0, guest: 0 };
 
 // ─── Active poll interval — slower when finished so we let the user
@@ -233,6 +243,7 @@ const prefersReducedMotion = useReducedMotion();
     boardLocked,
     boxesForBoard,
     boxOwnersForBoard,
+    edgeOwnersForBoard,
   } = useMemo(() => {
     const gs = game?.gameState;
     if (!gs || !Array.isArray(gs.edges)) {
@@ -249,6 +260,7 @@ const prefersReducedMotion = useReducedMotion();
         boardLocked: true,
         boxesForBoard: EMPTY_EDGES,
         boxOwnersForBoard: EMPTY_BOX_OWNERS,
+        edgeOwnersForBoard: EMPTY_EDGE_OWNERS,
       };
     }
 
@@ -291,6 +303,12 @@ const prefersReducedMotion = useReducedMotion();
       boxOwnersForBoard:
         (gs.boxOwners as Record<string, "host" | "guest">) ??
         EMPTY_BOX_OWNERS,
+      // Who drew each line (canonical "h:0,0" / "v:0,0" keys) — colors the
+      // drawn edges by owner on the board. Absent for matches persisted before
+      // ownership was tracked; those edges render in a neutral "taken" color.
+      edgeOwnersForBoard:
+        (gs.edgeOwners as Record<string, "host" | "guest">) ??
+        EMPTY_EDGE_OWNERS,
     };
     // The only deps we need: the canonical edges key, status, role,
     // currentTurn, deadline, and now. Splitting this way means a
@@ -305,6 +323,7 @@ const prefersReducedMotion = useReducedMotion();
     gameState?.scores,
     gameState?.boxes,
     gameState?.boxOwners,
+    gameState?.edgeOwners,
     now,
   ]);
 
@@ -499,7 +518,9 @@ const prefersReducedMotion = useReducedMotion();
     game.status !== "waiting" &&
     (game.role === "host" || game.role === "guest");
 
-  const timerUrgent = remainingSeconds > 0 && remainingSeconds <= 3;
+  const isAiGame = Boolean(game?.isAiGame);
+  const timerUrgent =
+    !isAiGame && remainingSeconds > 0 && remainingSeconds <= 3;
   const timerExpired =
     game?.status === "in_progress" && remainingMs <= 0;
 
@@ -507,6 +528,8 @@ const prefersReducedMotion = useReducedMotion();
     timerSeconds > 0
       ? Math.max(0, Math.min(100, (remainingMs / (timerSeconds * 1000)) * 100))
       : 0;
+  // Free vs-AI games are untimed — the timer bar reads full and static.
+  const timerVisible = !isAiGame;
 
   // ─── Result-popup derived state ─────────────────────────────────────
   // Show a centered win/loss/draw modal whenever the match is over
@@ -615,7 +638,48 @@ const prefersReducedMotion = useReducedMotion();
 
   // ─── Render ─────────────────────────────────────────────────────────
 
-  // ── Creator Mode bespoke portrait/landscape shell (shared recorder) ──
+  // ── Seat display names ────────────────────────────────────────────────
+  // Resolved once so every surface (legend, header chips, scoreboard) labels
+  // the same seat identically. The AI seat is checked FIRST because the
+  // server sends it the generic "Guest" fallback name — without this it would
+  // be introduced as a human guest in one place and as the bot in another.
+  const hostSeatName =
+    game?.hostName || t("games.dots_and_boxes.host_default");
+  const guestSeatName = isAiGame
+    ? t("games.dots_and_boxes.ai_label", "GRYND AI")
+    : game?.guestName || t("games.dots_and_boxes.guest_default");
+
+  // Seat depiction + the color legend live in one component so the scoreboard
+  // rows and the legend can never disagree about who is which color. Here we
+  // only adapt the page's game state to its props.
+  const seatMark = (seat: "host" | "guest", size: string, extra = "") => (
+    <SeatMark
+      seat={seat}
+      name={seat === "host" ? hostSeatName : guestSeatName}
+      iconKey={(seat === "host" ? game?.hostIconKey : game?.guestIconKey) || null}
+      isAiGame={isAiGame}
+      size={size}
+      className={extra}
+    />
+  );
+
+  const boardLegend = (
+    <DotsAndBoxesLegend
+      label={t("games.dots_and_boxes.legend_label")}
+      hostName={hostSeatName}
+      guestName={guestSeatName}
+      hostIconKey={game?.hostIconKey || null}
+      guestIconKey={game?.guestIconKey || null}
+      isAiGame={isAiGame}
+      selfSeat={
+        game?.role === "host" || game?.role === "guest" ? game.role : null
+      }
+      hostColor={HOST_COLOR}
+      guestColor={GUEST_COLOR}
+    />
+  );
+
+  // Creator Mode bespoke portrait/landscape shell (shared recorder)
   // Board-centric 9:16 presentation: compact header keeps the turn timer
   // and both scores readable, the board fills the main area, and the
   // status/details stay pinned below. Same shell adapts to landscape /
@@ -625,25 +689,32 @@ const prefersReducedMotion = useReducedMotion();
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.2, duration: 0.5 }}
-      className="w-full h-full flex items-center justify-center"
+      className="w-full h-full flex flex-col items-center justify-center gap-2"
     >
-      <DotsAndBoxesBoard
-        drawnH={drawnH}
-        drawnV={drawnV}
-        boxes={boxesForBoard}
-        boxOwners={boxOwnersForBoard}
-        player1Color="#f59e0b"
-        player2Color="#f97316"
-        interactive={isMyTurn && !drawing && !boardLocked}
-        onEdgeHClick={drawEdge.bind(null, "h")}
-        onEdgeVClick={drawEdge.bind(null, "v")}
-        edgeTooltipH={(row, col) =>
-          t("games.dots_and_boxes.edge_tooltip_h", { row, col })
-        }
-        edgeTooltipV={(row, col) =>
-          t("games.dots_and_boxes.edge_tooltip_v", { row, col })
-        }
-      />
+      <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+        <DotsAndBoxesBoard
+          drawnH={drawnH}
+          drawnV={drawnV}
+          boxes={boxesForBoard}
+          boxOwners={boxOwnersForBoard}
+          edgeOwners={edgeOwnersForBoard}
+          hostIconKey={game?.hostIconKey || null}
+          guestIconKey={game?.guestIconKey || null}
+          isAiGame={isAiGame}
+          player1Color={HOST_COLOR}
+          player2Color={GUEST_COLOR}
+          interactive={isMyTurn && !drawing && !boardLocked}
+          onEdgeHClick={drawEdge.bind(null, "h")}
+          onEdgeVClick={drawEdge.bind(null, "v")}
+          edgeTooltipH={(row, col) =>
+            t("games.dots_and_boxes.edge_tooltip_h", { row, col })
+          }
+          edgeTooltipV={(row, col) =>
+            t("games.dots_and_boxes.edge_tooltip_v", { row, col })
+          }
+        />
+      </div>
+      {boardLegend}
     </motion.div>
   );
 const dbShell = (
@@ -656,17 +727,27 @@ const dbShell = (
               {game?.hostName || "Host"} vs {game?.guestName || "Guest"}
             </p>
           </div>
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-              timerUrgent ? "bg-red-500/20 text-red-300" : "bg-emerald-500/15 text-emerald-300"
-            }`}
-          >
-            ⏱ {remainingSeconds}s
-          </span>
+          {!isAiGame && (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
+                timerUrgent ? "bg-red-500/20 text-red-300" : "bg-emerald-500/15 text-emerald-300"
+              }`}
+            >
+              ⏱ {remainingSeconds}s
+            </span>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
-          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-amber-300">{game?.hostName || "Host"} · {scores.host}</span>
-          <span className="rounded-md bg-black/30 px-2 py-1 font-bold text-orange-300">{game?.guestName || "Guest"} · {scores.guest}</span>
+          {/* Same mark + name as the legend and scoreboard, so a face and a
+              color always agree across the page. */}
+          <span className="flex items-center justify-center gap-1.5 rounded-md bg-black/30 px-2 py-1 font-bold text-amber-300">
+            {seatMark("host", "h-4 w-4")}
+            <span className="truncate">{hostSeatName}</span> · {scores.host}
+          </span>
+          <span className="flex items-center justify-center gap-1.5 rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
+            {seatMark("guest", "h-4 w-4")}
+            <span className="truncate">{guestSeatName}</span> · {scores.guest}
+          </span>
         </div>
       </ShellHeader>
 
@@ -832,8 +913,9 @@ const dbShell = (
                 </div>
 
                 {/* Timer bar. position-relative so the urgency icon
-                    below can anchor next to it without reflow. */}
-                <div className="relative w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                    below can anchor next to it without reflow. Hidden
+                    in untimed vs-AI games. */}
+                {timerVisible && (<div className="relative w-full h-2 rounded-full bg-white/10 overflow-hidden">
                   <div
                     className={`h-full transition-all duration-200 ease-linear ${
                       timerUrgent
@@ -847,8 +929,8 @@ const dbShell = (
                       transform: "translateZ(0)", // GPU layer
                     }}
                   />
-                </div>
-                <span
+                </div>)}
+                {timerVisible && <span
                   className={`inline-flex items-center gap-1 text-xs font-mono ${
                     timerUrgent
                       ? "text-red-300"
@@ -868,8 +950,7 @@ const dbShell = (
                       player's turn. Re-mounted per deadline (via key)
                       so the animation re-runs each turn. Skipped under
                       `prefers-reduced-motion`; the audio beep still
-                      fires because it is functional feedback. */}
-                  {timerUrgent && isMyTurn && !prefersReducedMotion && (
+                      fires because it is functional feedback. */}                  {timerUrgent && isMyTurn && !prefersReducedMotion && (
                     <motion.span
                       key={`urgent-badge-${String(
                         game?.moveDeadlineAt ?? "",
@@ -883,8 +964,9 @@ const dbShell = (
                     >
                       <IconAlertTriangle size={14} />
                     </motion.span>
+
                   )}
-                </span>
+                </span>}
               </div>
             )}
 
@@ -916,7 +998,7 @@ const dbShell = (
                   game?.role === "host"
                     ? "bg-amber-500/15 text-amber-300 border border-amber-400/30"
                     : game?.role === "guest"
-                      ? "bg-orange-500/15 text-orange-300 border border-orange-400/30"
+                      ? "bg-cyan-500/15 text-cyan-300 border border-cyan-400/30"
                       : "bg-white/5 text-white/60 border border-white/10"
                 }`}
               >
@@ -925,7 +1007,7 @@ const dbShell = (
                     game?.role === "host"
                       ? "bg-amber-400"
                       : game?.role === "guest"
-                        ? "bg-orange-400"
+                        ? "bg-cyan-400"
                         : "bg-white/40"
                   }`}
                 />
@@ -952,9 +1034,9 @@ const dbShell = (
                     }`}
                   >
                     <span className="relative inline-flex items-center gap-1.5 text-xs text-amber-300 font-medium">
-                      <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                      {seatMark("host", "h-5 w-5")}
                       <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
-                        {game?.hostName || t("games.dots_and_boxes.host_default")}
+                        {hostSeatName}
                       </span>
                       {game?.hostPrestigeBadge && (
                         <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
@@ -971,14 +1053,14 @@ const dbShell = (
                   <div
                     className={`flex flex-col items-center flex-1 rounded-lg px-3 py-2 transition-transform ${
                       currentTurn === "guest"
-                        ? "bg-orange-500/15 border border-orange-400/40 scale-[1.02]"
+                        ? "bg-cyan-500/15 border border-cyan-400/40 scale-[1.02]"
                         : "bg-transparent"
                     }`}
                   >
-                    <span className="relative inline-flex items-center gap-1.5 text-xs text-orange-300 font-medium">
-                      <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                    <span className="relative inline-flex items-center gap-1.5 text-xs text-cyan-300 font-medium">
+                      {seatMark("guest", "h-5 w-5")}
                       <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
-                        {game?.guestName || t("games.dots_and_boxes.guest_default")}
+                        {guestSeatName}
                       </span>
                       {game?.guestPrestigeBadge && (
                         <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
@@ -987,7 +1069,7 @@ const dbShell = (
                       )}
                       <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                     </span>
-                    <span className="text-3xl font-extrabold text-orange-400 tabular-nums">
+                    <span className="text-3xl font-extrabold text-cyan-400 tabular-nums">
                       {scores.guest}
                     </span>
                   </div>
@@ -1328,6 +1410,18 @@ function gameStateUnchanged(prev: any, next: any): boolean {
   if (aKeys.length !== bKeys.length) return false;
   for (const k of aKeys) {
     if (aBo[k] !== bBo[k]) return false;
+  }
+
+  // Edge owners — drives the per-player line colors. The edge lists above
+  // already catch every new draw (ownership is 1:1 with `edges`), so this is
+  // a cheap consistency check rather than the primary change detector.
+  const aEo = (a.edgeOwners as Record<string, string> | undefined) || {};
+  const bEo = (b.edgeOwners as Record<string, string> | undefined) || {};
+  const aEdgeKeys = Object.keys(aEo);
+  const bEdgeKeys = Object.keys(bEo);
+  if (aEdgeKeys.length !== bEdgeKeys.length) return false;
+  for (const k of aEdgeKeys) {
+    if (aEo[k] !== bEo[k]) return false;
   }
 
   return true;

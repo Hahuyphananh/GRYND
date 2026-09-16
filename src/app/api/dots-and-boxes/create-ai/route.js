@@ -31,7 +31,10 @@ export async function POST(req) {
           isAiGame: true,
           timerSeconds: TURN_SECONDS,
           startedAt: new Date(),
-          moveDeadlineAt: new Date(Date.now() + TURN_SECONDS * 1000),
+          // Free vs-AI games are untimed — no per-turn deadline is stamped
+          // so the human can think as long as they like and the auto-move
+          // path (settleAutoMoveIfNeeded) never fires.
+          moveDeadlineAt: null,
         })
         .returning({ id: dotsAndBoxesGames.id });
       return { gameId: game.id };

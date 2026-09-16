@@ -1614,9 +1614,11 @@ export default function HexDuelPage() {
     }
   }, [clockLoser, winner, winnerOverride]);
 
-  // Chess clock hook — isActive pauses during AI thinking and after game over
+  // Chess clock hook — isActive pauses during AI thinking and after game over.
+  // Disabled entirely in vs-AI games (for-fun / real-vs-AI): the human's clock
+  // never expires, so there is no loss-by-timeout against the bot.
   const clock = useChessClock({
-    isActive: showGame && !isGameOverEffective && !aiThinking,
+    isActive: showGame && !isGameOverEffective && !aiThinking && !aiEnabled,
     onPlayer1Expire: () => onClockExpire("player1"),
     onPlayer2Expire: () => onClockExpire("player2"),
     resetKey: gameMode + (effectiveWinner ? "-over" : ""),
@@ -2591,7 +2593,9 @@ export default function HexDuelPage() {
   const localMoves = localPlayerIsP1 ? p1MoveCount : p2MoveCount;
   const localTerritory = localPlayerIsP1 ? p1Territory : p2Territory;
   const localTotalTroops = localPlayerIsP1 ? p1TotalTroops : p2TotalTroops;
-  const localClockTime = localPlayerIsP1 ? clock.p1TimeLeft : clock.p2TimeLeft;
+  // Vs-AI games are untimed — freeze the displayed clock at its start
+  // value so the card doesn't show a running countdown.
+  const localClockTime = aiEnabled ? 600000 : localPlayerIsP1 ? clock.p1TimeLeft : clock.p2TimeLeft;
   const localIsWinner = effectiveWinner === localDuelPlayer;
   const localIsActive = currentTurn === localDuelPlayer;
 
@@ -2599,7 +2603,7 @@ export default function HexDuelPage() {
   const opponentMoves = localPlayerIsP1 ? p2MoveCount : p1MoveCount;
   const opponentTerritory = localPlayerIsP1 ? p2Territory : p1Territory;
   const opponentTotalTroops = localPlayerIsP1 ? p2TotalTroops : p1TotalTroops;
-  const opponentClockTime = localPlayerIsP1 ? clock.p2TimeLeft : clock.p1TimeLeft;
+  const opponentClockTime = aiEnabled ? 600000 : localPlayerIsP1 ? clock.p2TimeLeft : clock.p1TimeLeft;
   const opponentIsWinner = effectiveWinner === opponentDuelPlayer;
   const opponentIsActive = currentTurn === opponentDuelPlayer;
 

@@ -1280,11 +1280,14 @@ export default function BlackjackPvpMatchPage({
           seats because they can't un-bust you. */}
       {handIsInteractive && (
         <>
-          <RoundTimerDisplay
-            t={t}
-            deadline={match?.roundDeadline ?? null}
-            total={ROUND_TIMER_SECONDS}
-          />
+          {/* Free vs-AI matches are untimed — no countdown chip. */}
+          {!match?.isAi && (
+            <RoundTimerDisplay
+              t={t}
+              deadline={match?.roundDeadline ?? null}
+              total={ROUND_TIMER_SECONDS}
+            />
+          )}
           <ActionPanel
             t={t}
             submitting={submitting}

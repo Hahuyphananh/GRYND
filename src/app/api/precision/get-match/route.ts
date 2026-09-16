@@ -14,6 +14,7 @@ import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptio
 import {
   precisionLobbyStore,
   precisionMatchStore,
+  promoteArmedRoundIfDue,
 } from "../../../../lib/precision/serverStore";
 import type { PrecisionState } from "../../../../lib/precision/types";
 
@@ -101,8 +102,19 @@ export async function GET(req: NextRequest) {
       { success: false, match: null, error: "Missing matchId." },
       { status: 400 },
     );
-  }  const match = precisionMatchStore.get(matchId);
+  }
+  const match = precisionMatchStore.get(matchId);
   if (match) {
+    // Self-healing arming → active transition. `armMatchRound` schedules a
+    // Node `setTimeout` for the countdown, but that timer is not guaranteed
+    // to fire (frozen serverless instance, process restart, dropped handle).
+    // Because `countdownEndsAt` is stamped on the public state, this read
+    // path can perform the reveal itself the moment the countdown has
+    // elapsed — so a client polling for the round always gets it, instead of
+    // sitting on a countdown parked at 0 forever. It's a strict no-op while
+    // the countdown is still running, and idempotent once the round is
+    // already open.
+    promoteArmedRoundIfDue(matchId);
     return NextResponse.json({
       success: true,
       match: {

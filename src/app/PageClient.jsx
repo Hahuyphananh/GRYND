@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"; // add this at the top
 import Link from "next/link";
 import NavigationBar from "../components/navigation-bar";
 import Footer from "../components/Footer";
+import SocialLinks from "../components/SocialLinks";
 import ReviewWall from "../components/reviews/ReviewWall";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import IconAvatar from "../components/IconAvatar";
@@ -1204,6 +1205,28 @@ function MainComponent() {
           <ReviewWall limit={6} />
         </section>
       </div>
+
+      {/* Social follow strip — placed after the reviews so the reader has just
+          seen other players talking about us, and closes the loop on "where do
+          I keep up with this?". Icons/labels come from the shared
+          SocialLinks component, never from a second list of URLs. */}
+      <section className="mx-auto max-w-7xl px-4 pb-4 reveal">
+        <div className="flex flex-col items-center gap-5 rounded-2xl border border-[#00e5ff]/20 bg-[#040d24]/60 px-6 py-8 text-center backdrop-blur-sm sm:flex-row sm:justify-between sm:text-left">
+          <div>
+            <h2 className="text-xl font-bold text-[#f5ff3b] sm:text-2xl">
+              {t("home.social.title")}
+            </h2>
+            <p className="mt-1 text-sm text-[#7dd3fc]">
+              {t("home.social.subtitle")}
+            </p>
+          </div>
+          <SocialLinks
+            size="lg"
+            testId="home-social"
+            className="shrink-0 justify-center"
+          />
+        </div>
+      </section>
 
       {/* Final CTA — your GRYND starts now */}
       <section className="mx-auto max-w-7xl px-4 py-16 reveal">

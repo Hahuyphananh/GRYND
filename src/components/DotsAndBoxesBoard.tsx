@@ -1,6 +1,12 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useId, useMemo, useRef } from "react";
+import { iconAssetUrl } from "../lib/iconAssets";
+// The GRYND mark used for the AI seat's claimed boxes (the AI has no users
+// row, so it can never resolve an official icon key). Static import so the
+// asset can't go missing silently — `.src` is the hashed URL an <image>
+// needs (the import itself is the Next image object).
+import smallLogo from "../images/smalllogo.png";
 
 // ─── Board constants ──────────────────────────────────────────────────
 const DOTS = 7; // 7×7 dot grid
@@ -16,7 +22,30 @@ const DOT_RADIUS = 7;
 const EDGE_HIT = 34;
 const VIEWBOX = MARGIN * 2 + (DOTS - 1) * CELL_SIZE; // 700
 
-export const BOX_SIZE = CELL_SIZE - DOT_RADIUS * 2; // 90
+export const BOX_SIZE = CELL_SIZE - DOT_RADIUS * 2; // 116
+
+// ─── Selection palette ─────────────────────────────────────────────────
+// A drawn edge is CLAIMED, and the whole point of the board is reading your
+// own claim graph at a glance — so drawn lines are painted in the color of
+// whoever drew them, at full opacity and a heavier weight, while still-open
+// edges are a faint NEUTRAL ghost. Open edges deliberately never use a
+// player color (hover brightens the ghost instead), so a highlight can never
+// be mistaken for a claim.
+//
+// `UNKNOWN_EDGE_COLOR` covers edges persisted before ownership was recorded
+// (`edgeOwners`): those render neutral but still read as "taken".
+const UNKNOWN_EDGE_COLOR = "#cbd5e1";
+const EMPTY_EDGE_COLOR = "rgba(148, 163, 184, 0.38)";
+const EMPTY_EDGE_COLOR_DIM = "rgba(148, 163, 184, 0.14)";
+const DRAWN_STROKE = 6;
+const EMPTY_STROKE = 3.4;
+const EMPTY_STROKE_DIM = 2.4;
+
+// Claimed-box mark: the box owner's pfp (official icon) — or the GRYND logo
+// for the AI seat. Sized relative to the box so it scales with the grid.
+const BOX_ICON_SIZE = Math.round(BOX_SIZE * 0.62);
+const BOX_ICON_RADIUS = Math.round(BOX_ICON_SIZE * 0.22);
+const AI_BOX_ICON_SRC: string = smallLogo.src;
 
 interface DotsAndBoxesBoardProps {
   /** Currently drawn horizontal edges: Set of "row,col" keys (0-6 rows × 0-5 cols) */
@@ -27,6 +56,19 @@ interface DotsAndBoxesBoardProps {
   boxes?: string[];
   /** Box ownership keys: row,col → "host" | "guest" */
   boxOwners?: Record<string, "host" | "guest">;
+  /** Edge ownership keyed by the CANONICAL engine edge key ("h:0,0" /
+   *  "v:0,0", as stored on `GameState.edgeOwners`) → "host" | "guest".
+   *  A drawn edge with no recorded owner (a match persisted before
+   *  ownership was tracked) renders in a neutral "taken" color. */
+  edgeOwners?: Record<string, "host" | "guest">;
+  /** Official icon key for the host seat — drawn inside the boxes the host
+   *  claimed. Missing/invalid keys resolve to the official default icon. */
+  hostIconKey?: string | null;
+  /** Official icon key for the guest seat. */
+  guestIconKey?: string | null;
+  /** Free practice vs the GRYND AI — the guest box mark becomes the logo
+   *  (the AI seat resolves no icon key). */
+  isAiGame?: boolean;
   /** Called when a horizontal edge is clicked (row, col) */
   onEdgeHClick?: (row: number, col: number) => void;
   /** Called when a vertical edge is clicked (row, col) */
@@ -87,7 +129,10 @@ function propsAreEqual(
     prev.player1Color !== next.player1Color ||
     prev.player2Color !== next.player2Color ||
     prev.edgeTooltipH !== next.edgeTooltipH ||
-    prev.edgeTooltipV !== next.edgeTooltipV
+    prev.edgeTooltipV !== next.edgeTooltipV ||
+    prev.hostIconKey !== next.hostIconKey ||
+    prev.guestIconKey !== next.guestIconKey ||
+    prev.isAiGame !== next.isAiGame
   ) {
     return false;
   }
@@ -95,7 +140,8 @@ function propsAreEqual(
     setSig(prev.drawnH) === setSig(next.drawnH) &&
     setSig(prev.drawnV) === setSig(next.drawnV) &&
     arrSig(prev.boxes) === arrSig(next.boxes) &&
-    objSig(prev.boxOwners) === objSig(next.boxOwners)
+    objSig(prev.boxOwners) === objSig(next.boxOwners) &&
+    objSig(prev.edgeOwners) === objSig(next.edgeOwners)
   );
 }
 
@@ -104,6 +150,10 @@ function DotsAndBoxesBoardImpl({
   drawnV,
   boxes,
   boxOwners,
+  edgeOwners,
+  hostIconKey = null,
+  guestIconKey = null,
+  isAiGame = false,
   onEdgeHClick,
   onEdgeVClick,
   interactive = false,
@@ -116,6 +166,12 @@ function DotsAndBoxesBoardImpl({
   const drawnVSet = drawnV ?? EMPTY_SET;
   const boxesArr = boxes ?? EMPTY_ARR;
   const boxOwnersMap = boxOwners ?? EMPTY_OBJ;
+  const edgeOwnersMap = edgeOwners ?? EMPTY_OBJ;
+  // Unique per board instance so the per-box avatar clip paths can't collide
+  // with another board on the page (SSR-safe: `useId` is deterministic).
+  const uid = useId();
+  // Sanitized so it can be spliced into SVG `id`/`url(#...)` references.
+  const clipPrefix = uid.replace(/[^a-zA-Z0-9_-]/g, "");
 
   // ─── Track "newly drawn" edges + "newly claimed" boxes ─────────────
   //
@@ -225,10 +281,22 @@ function DotsAndBoxesBoardImpl({
 
 const edgeHWidth = BOX_SIZE;
 const edgeVHeight = BOX_SIZE;
-const EDGE_STROKE = interactive ? 5 : 4;
+
+/** Stroke color for a drawn edge: the color of the player who drew it, or a
+ *  neutral "taken" color when ownership wasn't recorded (legacy rows). */
+const ownerColor = (
+  owner: string | undefined,
+  hostColor: string,
+  guestColor: string,
+): string => {
+  if (owner === "host") return hostColor;
+  if (owner === "guest") return guestColor;
+  return UNKNOWN_EDGE_COLOR;
+};
 
   return (
     <svg
+      data-testid="dnb-board"
       viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
       className="w-full h-auto max-w-[640px] mx-auto select-none touch-manipulation"
       role="img"
@@ -241,17 +309,19 @@ const EDGE_STROKE = interactive ? 5 : 4;
     >
       {/* ── Animation keyframes (scoped to this SVG) ─────────────── */}
       <style>{`
+        /* Ends at DRAWN_STROKE so the animation's fill-forwards state can't
+           leave a freshly drawn edge thinner than the settled ones. */
         @keyframes dnb-edge-draw {
           0%   { stroke-width: 0;   opacity: 0; }
-          55%  { stroke-width: 4.5; opacity: 1; }
-          100% { stroke-width: 3;   opacity: 1; }
+          55%  { stroke-width: 7;   opacity: 1; }
+          100% { stroke-width: 6;   opacity: 1; }
         }
         @keyframes dnb-box-fill {
           0%   { fill-opacity: 0;    transform: scale(0.55); }
           55%  { fill-opacity: 0.45; transform: scale(1.05); }
           100% { fill-opacity: 0.28; transform: scale(1); }
         }
-        @keyframes dnb-text-pop {
+        @keyframes dnb-mark-pop {
           0%   { opacity: 0; transform: scale(0.4); }
           55%  { opacity: 1; transform: scale(1.15); }
           100% { opacity: 0.95; transform: scale(1); }
@@ -261,11 +331,11 @@ const EDGE_STROKE = interactive ? 5 : 4;
         .dnb-box-anim     { animation: dnb-box-fill 380ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
                             transform-box: fill-box; transform-origin: center;
                             will-change: transform, fill-opacity; }
-        .dnb-text-anim    { animation: dnb-text-pop  420ms cubic-bezier(0.25, 0.46, 0.45, 0.94) 60ms both;
+        .dnb-mark-anim    { animation: dnb-mark-pop 420ms cubic-bezier(0.25, 0.46, 0.45, 0.94) 60ms both;
                             transform-box: fill-box; transform-origin: center;
                             will-change: transform, opacity; }
         @media (prefers-reduced-motion: reduce) {
-          .dnb-edge-anim, .dnb-box-anim, .dnb-text-anim { animation: none; will-change: auto; }
+          .dnb-edge-anim, .dnb-box-anim, .dnb-mark-anim { animation: none; will-change: auto; }
         }
       `}</style>
 
@@ -289,15 +359,15 @@ const EDGE_STROKE = interactive ? 5 : 4;
       {horizontalEdges.map((edge) => {
         const drawn = drawnHSet.has(edge.key);
         const isNew = drawn && newHKeys.has(edge.key);
-        const showDisabled = !drawn && !interactive;
         const isInteractive = interactive && !drawn;
         const cursorCls = isInteractive ? "cursor-pointer" : "cursor-default";
-        const visible =
-          drawn
-            ? player1Color
-            : interactive
-              ? "rgba(251, 191, 36, 0.40)"
-              : "rgba(251, 191, 36, 0.10)";
+        // `edgeOwners` is keyed by the canonical engine key, i.e. the type
+        // prefix + this orientation's "row,col" key.
+        const visible = drawn
+          ? ownerColor(edgeOwnersMap[`h:${edge.key}`], player1Color, player2Color)
+          : interactive
+            ? EMPTY_EDGE_COLOR
+            : EMPTY_EDGE_COLOR_DIM;
         return (
           // `group` lets us trigger the visible-line hover state by
           // hovering the larger transparent hit rect above it.
@@ -319,21 +389,20 @@ const EDGE_STROKE = interactive ? 5 : 4;
                 <title>{edgeTooltipH(edge.row, edge.col)}</title>
               )}
             </rect>
-
             <line
               x1={edge.x + 2}
               y1={edge.y + EDGE_HIT / 2}
               x2={edge.x + edgeHWidth - 2}
               y2={edge.y + EDGE_HIT / 2}
               stroke={visible}
-              strokeWidth={drawn ? EDGE_STROKE : Math.max(2, EDGE_STROKE - 1.5)}
+              strokeWidth={drawn ? DRAWN_STROKE : interactive ? EMPTY_STROKE : EMPTY_STROKE_DIM}
               strokeLinecap="round"
-              opacity={showDisabled ? 0.45 : 1}
               className={
                 (isNew ? "dnb-edge-anim" : "") +
                 (isInteractive
-                  ? " transition-all duration-150 group-hover:stroke-amber-300 group-hover:stroke-[3.6] group-hover:opacity-100"
-                  : "")
+                  ? " transition-all duration-150 group-hover:stroke-slate-200 group-hover:stroke-[4.6] group-hover:opacity-100"
+                  : ""
+                )
               }
             />
           </g>
@@ -344,15 +413,15 @@ const EDGE_STROKE = interactive ? 5 : 4;
       {verticalEdges.map((edge) => {
         const drawn = drawnVSet.has(edge.key);
         const isNew = drawn && newVKeys.has(edge.key);
-        const showDisabled = !drawn && !interactive;
         const isInteractive = interactive && !drawn;
         const cursorCls = isInteractive ? "cursor-pointer" : "cursor-default";
-        const visible =
-          drawn
-            ? player2Color
-            : interactive
-              ? "rgba(251, 191, 36, 0.40)"
-              : "rgba(251, 191, 36, 0.10)";
+        // Same owner-based coloring as the horizontal pass: a line's color
+        // answers "who claimed this?", not "which way does it run".
+        const visible = drawn
+          ? ownerColor(edgeOwnersMap[`v:${edge.key}`], player1Color, player2Color)
+          : interactive
+            ? EMPTY_EDGE_COLOR
+            : EMPTY_EDGE_COLOR_DIM;
         return (
           <g key={`ve-${edge.key}`} className={isInteractive ? "group" : undefined}>
             <rect
@@ -372,21 +441,20 @@ const EDGE_STROKE = interactive ? 5 : 4;
                 <title>{edgeTooltipV(edge.row, edge.col)}</title>
               )}
             </rect>
-
             <line
               x1={edge.x + EDGE_HIT / 2}
               y1={edge.y + 2}
               x2={edge.x + EDGE_HIT / 2}
               y2={edge.y + edgeVHeight - 2}
               stroke={visible}
-              strokeWidth={drawn ? EDGE_STROKE : Math.max(2, EDGE_STROKE - 1.5)}
+              strokeWidth={drawn ? DRAWN_STROKE : interactive ? EMPTY_STROKE : EMPTY_STROKE_DIM}
               strokeLinecap="round"
-              opacity={showDisabled ? 0.45 : 1}
               className={
                 (isNew ? "dnb-edge-anim" : "") +
                 (isInteractive
-                  ? " transition-all duration-150 group-hover:stroke-orange-300 group-hover:stroke-[3.6] group-hover:opacity-100"
-                  : "")
+                  ? " transition-all duration-150 group-hover:stroke-slate-200 group-hover:stroke-[4.6] group-hover:opacity-100"
+                  : ""
+                )
               }
             />
           </g>
@@ -409,6 +477,21 @@ const EDGE_STROKE = interactive ? 5 : 4;
         const bx = MARGIN + c * CELL_SIZE + DOT_RADIUS;
         const by = MARGIN + r * CELL_SIZE + DOT_RADIUS;
         const isNew = newBoxKeys.has(bk);
+        // Owner mark: the claimer's pfp (official Grynd icon) — or the GRYND
+        // logo for the AI seat, which has no users row and therefore never
+        // resolves an icon key. `iconAssetUrl` validates the key and falls
+        // back to the official default icon, so a legacy/unknown key still
+        // renders a mark instead of an empty box.
+        const isAiGuest = owner === "guest" && isAiGame;
+        const markHref =
+          owner === "host" || owner === "guest"
+            ? isAiGuest
+              ? AI_BOX_ICON_SRC
+              : iconAssetUrl(owner === "host" ? hostIconKey : guestIconKey)
+            : null;
+        const iconX = bx + (BOX_SIZE - BOX_ICON_SIZE) / 2;
+        const iconY = by + (BOX_SIZE - BOX_ICON_SIZE) / 2;
+        const clipId = `dnb-${clipPrefix}-b${r}-${c}`;
         return (
           <g key={`box-${bk}`}>
             <rect
@@ -429,28 +512,59 @@ const EDGE_STROKE = interactive ? 5 : 4;
                   : { transformBox: "fill-box", transformOrigin: "center" }
               }
             />
-            <text
-              x={bx + BOX_SIZE / 2}
-              y={by + BOX_SIZE / 2 + 6}
-              textAnchor="middle"
-              fill={fillColor}
-              fontSize={20}
-              fontWeight={700}
-              style={
-                isNew
-                  ? { pointerEvents: "none", userSelect: "none" }
-                  : {
-                      pointerEvents: "none",
-                      userSelect: "none",
-                      transformBox: "fill-box",
-                      transformOrigin: "center",
-                      fillOpacity: 0.95,
-                    }
-              }
-              className={isNew ? "dnb-text-anim" : ""}
-            >
-              {owner === "host" ? "H" : owner === "guest" ? "G" : "?"}
-            </text>
+            {markHref ? (
+              <>
+                {/* Rounded clip so the square icon artwork sits inside the
+                    rounded box without hard corners. Geometry is static, so
+                    one clip per claimed box is enough. */}
+                <clipPath id={clipId}>
+                  <rect
+                    x={iconX}
+                    y={iconY}
+                    width={BOX_ICON_SIZE}
+                    height={BOX_ICON_SIZE}
+                    rx={BOX_ICON_RADIUS}
+                    ry={BOX_ICON_RADIUS}
+                  />
+                </clipPath>
+                <image
+                  href={markHref}
+                  x={iconX}
+                  y={iconY}
+                  width={BOX_ICON_SIZE}
+                  height={BOX_ICON_SIZE}
+                  clipPath={`url(#${clipId})`}
+                  // Pfp icons are square (they fill the mark); the GRYND logo
+                  // is a wide wordmark, so fit it whole rather than cropping.
+                  preserveAspectRatio={
+                    isAiGuest ? "xMidYMid meet" : "xMidYMid slice"
+                  }
+                  className={isNew ? "dnb-mark-anim" : ""}
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                />
+              </>
+            ) : (
+              // No recorded owner (should not happen) — keep the legacy glyph
+              // so the box still reads as claimed.
+              <text
+                x={bx + BOX_SIZE / 2}
+                y={by + BOX_SIZE / 2 + 6}
+                textAnchor="middle"
+                fill={fillColor}
+                fontSize={20}
+                fontWeight={700}
+                style={{
+                  pointerEvents: "none",
+                  userSelect: "none",
+                  transformBox: "fill-box",
+                  transformOrigin: "center",
+                  fillOpacity: 0.95,
+                }}
+                className={isNew ? "dnb-mark-anim" : ""}
+              >
+                ?
+              </text>
+            )}
           </g>
         );
       })}

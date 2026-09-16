@@ -6,6 +6,8 @@ import Link from "next/link";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import NavigationBar from "../../components/navigation-bar";
 import ContactMessageHistory from "../../components/ContactMessageHistory";
+import SocialLinks from "../../components/SocialLinks";
+import Footer from "../../components/Footer";
 import {
   IconClock,
   IconLock,
@@ -159,6 +161,20 @@ export default function ContactPage() {
                   </div>
                 </li>
               </ul>
+            </div>
+
+            {/* Socials live here as well as in the site footer, because a
+                visitor who came looking for a human shouldn't have to scroll
+                to the bottom to find us. */}
+            <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
+              <h2 className="text-sm font-semibold text-[#f5ff3b] uppercase tracking-wider mb-4">
+                Follow Us
+              </h2>
+              <p className="mb-4 text-sm text-[#c9f7ff]/60">
+                Updates, giveaways and support answers — reach us on whichever
+                platform you prefer.
+              </p>
+              <SocialLinks size="lg" testId="contact-social" />
             </div>
 
             <div className="bg-[#0e1f4d] border border-white/10 rounded-xl p-6">
@@ -349,6 +365,8 @@ export default function ContactPage() {
       <div className="max-w-4xl mx-auto px-4 pb-16">
         <ContactMessageHistory />
       </div>
+
+      <Footer />
     </div>
   );
 }

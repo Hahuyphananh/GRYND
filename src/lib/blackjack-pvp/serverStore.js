@@ -585,8 +585,10 @@ export async function recordAction({ userId, matchId, action, payload }) {
 
     // Auto-stand on stale deadlines BEFORE applying the new action,
     // so a player who times out is force-marked stood and a subsequent
-    // hit/stand attempt is rejected.
+    // hit/stand attempt is rejected. Free vs-AI matches are exempt:
+    // the human can take as long as they like (the AI acts on demand).
     if (
+      !isFreeAiMatch(match) &&
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
@@ -675,6 +677,8 @@ async function recordAiAction({ matchId, action, payload, expected }) {
       return { match, alreadyComplete: true };
     }
 
+    // Free vs-AI matches have no round deadline (see recordAction) — the
+    // AI plays on demand, so the stale-deadline auto-stand never applies.
     if (
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
@@ -1669,9 +1673,11 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { match: advanced };
     }
 
-    // Auto-resolve the current round if its deadline has passed.
+    // Auto-resolve the current round if its deadline has passed. Free
+    // vs-AI matches are exempt — the human's turn never expires.
     if (
       PLAYABLE_STATES.has(match.status) &&
+      !isFreeAiMatch(match) &&
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
