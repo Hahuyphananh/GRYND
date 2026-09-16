@@ -607,6 +607,12 @@ export default function PokerPage() {
 
     if (!isPlayerTurn || game.stage === "showdown" || game.waiting) return;
 
+    // Vs-AI tables are untimed: no countdown, no urgent beeps, and no
+    // auto-fold when the clock runs out. The player can think as long as
+    // they like (the AI acts on demand after their action).
+    const tableHasAi = game.players.some((p) => p.isAI);
+    if (tableHasAi) return;
+
     timerIntervalRef.current = setInterval(() => {
       setTurnTimer((t) => {
         // Urgent beep at ≤5s
@@ -2630,8 +2636,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     </div>
                   )}
 
-                  {/* Progress bar under the player div */}
-                  {isPlayer && isMyTurn && (
+                  {/* Progress bar under the player div — hidden on
+                      vs-AI tables, which run untimed. */}
+                  {isPlayer && isMyTurn && !game.players.some((p) => p.isAI) && (
                     <div className="mt-2 w-full text-center">
                       <div className="bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black px-3 py-1 rounded-t-lg font-bold shadow-lg text-[11px]">
                         <span className="inline-flex items-center gap-1"><IconBolt size={12} /> Your Turn ({turnTimer}s)</span>

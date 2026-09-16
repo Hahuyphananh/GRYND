@@ -144,7 +144,10 @@ export async function POST(req) {
         };
       }
 
-      const moveDeadlineAt = nextMoveDeadline(getGameMoveSeconds(game));
+      // Free vs-AI games are untimed — the human's next turn gets no
+      // deadline, so the auto-move path never fires against them.
+      const isAiGame = Boolean(game.isAiGame);
+      const moveDeadlineAt = isAiGame ? null : nextMoveDeadline(getGameMoveSeconds(game));
       await tx
         .update(dotsAndBoxesGames)
         .set({ gameState: newState, moveDeadlineAt })

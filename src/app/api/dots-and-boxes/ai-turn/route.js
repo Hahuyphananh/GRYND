@@ -37,7 +37,8 @@ export async function POST(req) {
       if (!edge) return { skipped: true, game };
       const moved = drawEdge(state, edge, "guest");
       if (moved.error) throw new Error(moved.error);
-      await tx.update(dotsAndBoxesGames).set({ gameState: moved.state, moveDeadlineAt: isGameOver(moved.state) ? null : nextMoveDeadline(game.timerSeconds) }).where(eq(dotsAndBoxesGames.id, game.id));
+      // AI games are untimed — the human's next turn gets no deadline.
+      await tx.update(dotsAndBoxesGames).set({ gameState: moved.state, moveDeadlineAt: null }).where(eq(dotsAndBoxesGames.id, game.id));
       return { skipped: false, gameOver: isGameOver(moved.state), winner: isGameOver(moved.state) ? determineResult(moved.state, game.hostClerkId, DOTS_AND_BOXES_AI_ID) : null };
     });
 

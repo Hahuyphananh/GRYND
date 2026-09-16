@@ -1,7 +1,12 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useAnimationControls,
+  useReducedMotion,
+} from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually starts,
@@ -232,6 +237,105 @@ function cancelAnimationFrameScheduler() {
 // here every turn.
 const SKY_CELLS = 5;
 
+// ── Falling-block motion trail ─────────────────────────────────────────
+// Three ghost copies of the falling block, each one a frame BEHIND it on the
+// very same fall path: identical cells, identical distance, identical easing —
+// just started a few tens of milliseconds later. Because the drop is `easeIn`,
+// that lag is invisible at the start of the fall and only turns into a visible
+// gap once the block is moving fast, so the trail reads as speed and weight
+// instead of as a particle effect. Delays are absolute seconds (not a fraction
+// of the fall): a short drop is inherently faster, and gets a tighter trail.
+const TRAIL_FRAMES: Array<{ delay: number; opacity: number }> = [
+  { delay: 0.03, opacity: 0.48 }, // trail 1 — closest to the block
+  { delay: 0.06, opacity: 0.28 }, // trail 2
+  { delay: 0.09, opacity: 0.12 }, // trail 3 — faintest
+];
+
+// ── Impact rumble ──────────────────────────────────────────────────────
+// One hit, ~110ms: straight out to peak displacement, then five decaying,
+// out-of-phase steps back home. The signs alternate and the amplitude shrinks
+// on every step, so it reads as a single heavy landing rather than a vibration.
+// The LAST keyframe is always exactly 0 and every keyframe is bounded, so the
+// stage can never be left sitting at an offset — however many impacts arrive
+// back to back, the scene always returns to its exact original position.
+// Impact strength scales with how far the block actually fell. The drop is
+// spawned FALL_REFERENCE_CELLS above its landing (see dropSpawnZ below), so a
+// fall of that height is a full-strength hit; a landing near the top of the
+// stage — where the spawn height gets clamped — travels far less and hits
+// proportionally softer. The floor keeps even a one-cell nudge visible, and the
+// ceiling keeps an absurd shake impossible. Purely visual.
+const FALL_REFERENCE_CELLS = 10; // the spawn height used for a full-height drop
+const MIN_FALL_CELLS = 3.5; // the shortest fall the stage produces (a ceiling landing)
+const SHAKE_MIN_AMPLITUDE = 3; // ≈ 3.5px vector — a barely-there nudge
+const SHAKE_MAX_AMPLITUDE = 12; // ≈ 13.8px vector — a full-height slam
+const SHAKE_DURATION = 0.11; // seconds — fast and punchy (well inside 80–140ms)
+// Step 0 is the rest position, step 1 is THE PUNCH (~11ms in), then every step
+// decays toward home. The steps rotate direction irregularly — steps 3 and 4
+// are the only ones that pull with the same sign on both axes — so it reads as
+// one heavy jolt rather than a straight diagonal slide. Each step is ~0.7× the
+// previous, which keeps the decay monotonic even at the extremes of the jitter
+// band below, and the last step is exactly 0.
+const SHAKE_TIMES = [0, 0.1, 0.26, 0.44, 0.62, 0.8, 1];
+const SHAKE_X = [0, 0.87, -0.66, 0.42, -0.26, 0.07, 0];
+const SHAKE_Y = [0, -0.5, 0.24, 0.16, -0.1, -0.12, 0];
+// Jitter band for the per-impact variation (single factor per step, so the
+// direction of each step is preserved and the decay stays monotonic).
+const SHAKE_JITTER_MIN = 0.85;
+const SHAKE_JITTER_MAX = 1.15;
+
+/**
+ * Punch amplitude (px) for a fall of `dropDz` cells: normalized to 0–1 against
+ * the reference fall height, clamped at both ends, then mapped onto the
+ * amplitude band. A 1-cell nudge shakes barely at all; a full-height drop slams.
+ */
+function impactAmplitude(dropDz: number) {
+  const fall = Number.isFinite(dropDz) ? Math.max(0, dropDz) : 0;
+  const strength = Math.min(
+    1,
+    Math.max(0, (fall - MIN_FALL_CELLS) / (FALL_REFERENCE_CELLS - MIN_FALL_CELLS)),
+  );
+  return SHAKE_MIN_AMPLITUDE + (SHAKE_MAX_AMPLITUDE - SHAKE_MIN_AMPLITUDE) * strength;
+}
+
+/**
+ * Keyframes for one impact. The variation comes from the impact token itself —
+ * never `Math.random()` — so consecutive hits look different instead of
+ * mechanical, while staying identical across re-renders and reproducible for
+ * qa/ta-rumble-check.mjs. `amplitude` is the only thing that varies with the
+ * fall; the envelope (shape, steps, timing) is identical for every hit, and it
+ * is expressed purely in seconds, so the rumble is frame-rate independent.
+ */
+function impactShake(seed: number, amplitude: number) {
+  let state = (Math.abs(Math.trunc(seed)) * 9301 + 49297) % 233280 || 1;
+  const nextRandom = () => {
+    state = (state * 9301 + 49297) % 233280;
+    return state / 233280; // 0..1
+  };
+  // Sometimes the jolt kicks off to the left, sometimes to the right.
+  const direction = nextRandom() > 0.5 ? 1 : -1;
+  const x: number[] = [];
+  const y: number[] = [];
+  for (let i = 0; i < SHAKE_X.length; i += 1) {
+    const isRest = i === 0 || i === SHAKE_X.length - 1;
+    const jitter = isRest
+      ? 1
+      : SHAKE_JITTER_MIN + nextRandom() * (SHAKE_JITTER_MAX - SHAKE_JITTER_MIN);
+    x.push(+(SHAKE_X[i] * amplitude * jitter * direction).toFixed(2));
+    y.push(+(SHAKE_Y[i] * amplitude * jitter * direction).toFixed(2));
+  }
+  x[x.length - 1] = 0; // always exactly home
+  y[y.length - 1] = 0;
+  return {
+    x,
+    y,
+    transition: {
+      duration: SHAKE_DURATION,
+      times: SHAKE_TIMES,
+      ease: "linear" as const,
+    },
+  };
+}
+
 // Faint dust drifting in the sky — deterministic fixed offsets so SSR +
 // client renders never differ. Positions are computed relative to the tower
 // top so they stay in the sky band as the scene scales.
@@ -248,7 +352,10 @@ const SKY_DUST: Array<[number, number, number]> = [
   [4.0, 0.9, 0.12],
 ];
 
-function TowerScene({
+// Exported so the drop animation (fall + trail) and the impact rumble can be
+// mounted and measured on their own in qa/ta-trail-check.mjs and
+// qa/ta-rumble-check.mjs. No behaviour change.
+export function TowerScene({
   tower,
   ghost,
   falling,
@@ -257,6 +364,7 @@ function TowerScene({
   remoteAiming,
   onStageClick,
   onAimMove,
+  onDropLanded,
 }: {
   tower: any[];
   ghost?: { cells: any[]; willFall: boolean; remote?: boolean; label?: string } | null;
@@ -265,6 +373,11 @@ function TowerScene({
   impact?: number;
   remoteAiming?: string | null;
   onStageClick?: () => void;
+  /** The falling block reached the tower — reported at the exact moment the
+   *  drop animation lands (see the landing timer below), so the impact token
+   *  can be bumped when the block TOUCHES DOWN rather than when the page
+   *  later tears the animation down. */
+  onDropLanded?: (key: number) => void;
   /** Pointer moved over the stage while aiming: reports the world X under
    *  the pointer so the page can re-position the drop column (mouse aim). */
   onAimMove?: (worldX: number) => void;
@@ -343,13 +456,77 @@ function TowerScene({
   // and short ones stay snappy (capped at ~0.9s).
   const fallSeconds = Math.min(0.9, 0.32 + dropDz * 0.035);
 
+  // The fall distance of the drop in flight, remembered for the rumble: the
+  // page clears `falling` and bumps the impact token in the SAME tick, so by
+  // the time the shake effect runs there is no falling block left to measure.
+  // Written during render because it is purely derived from props (idempotent,
+  // no allocation, and never reset by an unrelated re-render).
+  const lastDropDz = useRef(0);
+  if (falling && Number.isFinite(dropDz)) lastDropDz.current = dropDz;
+
+  // Landing signal. The block's own y transition finishes exactly `fallSeconds`
+  // after the drop mounts (no delay, no easing on the timing), so that IS the
+  // moment of contact — and it is reused here rather than re-derived, so the
+  // signal can never drift from the animation. The page needs it because it
+  // only tears the falling block down once the drop has been on screen for a
+  // beat (1200ms / 1650ms), which is up to ~0.8s AFTER contact: bumping the
+  // impact token on that teardown put the thud visibly late. The callback is
+  // held in a ref so a page re-render (poll, socket push) can never restart
+  // the timer and push the landing later.
+  const onDropLandedRef = useRef(onDropLanded);
+  onDropLandedRef.current = onDropLanded;
+  useEffect(() => {
+    if (!falling?.key) return;
+    const key = falling.key;
+    const timer = window.setTimeout(() => onDropLandedRef.current?.(key), fallSeconds * 1000);
+    // A drop replaced mid-air (or cleared, or the scene unmounting) cancels the
+    // landing: no thud for a fall that never reached the tower, and no timer
+    // left running behind a match that has moved on.
+    return () => window.clearTimeout(timer);
+  }, [falling?.key, fallSeconds]);
+
+  // The falling block's own look, resolved once: the trail ghosts render in
+  // exactly these two colors, so a ghost can only ever be a faded copy of the
+  // block it trails (never a different shade, and never a different shape —
+  // both walk the same `falling.cells`).
+  const fallingFill = falling?.willFall
+    ? "#ff4d6d"
+    : SHAPE_COLORS[falling?.shape as BlockShape]?.fill ?? "#a7f3d0";
+  const fallingEdge = falling?.willFall
+    ? "#ff8fa3"
+    : SHAPE_COLORS[falling?.shape as BlockShape]?.edge ?? "#ffffff";
+
+  // Decorative motion only — reduced-motion viewers get the drop without the
+  // trail (the block itself still falls, so no gameplay feedback is lost).
+  const reduceMotion = useReducedMotion();
+
+  // Impact rumble. `impact` is a monotonic token bumped once per landed drop,
+  // so a new value means "play it again". It is driven imperatively because an
+  // identical keyframe target on the `animate` prop is a no-op after the first
+  // hit — the token would be ignored and the scene would only ever shake once.
+  // Starting a new shake also interrupts one still in flight, and since every
+  // shake ends at exactly 0, repeated hits can never leave the stage offset.
+  const shake = useAnimationControls();
+  const shakenFor = useRef(0);
+  useEffect(() => {
+    if (!impact || impact === shakenFor.current) return;
+    shakenFor.current = impact;
+    if (reduceMotion) return; // preference honoured: no rumble at all
+    // Sized by the fall that just finished: a block that dropped the full sky
+    // band slams, one that barely cleared the tower gives a small thud.
+    void shake.start(impactShake(impact, impactAmplitude(lastDropDz.current)));
+  }, [impact, reduceMotion, shake]);
+
   // y is bottom-aligned: the floor line always sits on the bottom edge of
   // the stage, no matter how the container's aspect ratio differs.
   return (
     <motion.div
+      data-testid="ta-scene-shake"
       className="h-full w-full"
-      animate={{ x: impact ? [0, -3, 3, -2, 2, 0] : 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      // The rumble is applied to the whole scene wrapper (never to individual
+      // blocks), and the SVG's own coordinates are untouched: this transform
+      // is transient and always resolves back to the identity position.
+      animate={shake}
     >
       <svg
         viewBox={`${X_MIN} 0 ${X_MAX - X_MIN} ${viewH}`}
@@ -625,8 +802,55 @@ function TowerScene({
               ))}
             </motion.g>
           )}
+          {/* Motion trail — the same block drawn three more times, each a
+              frame behind it on the identical fall path. They are deliberately
+              rendered BEFORE the block so the opaque block always paints on
+              top of its own ghosts, and they live inside this `falling` gate:
+              the moment the drop is cleared (landed, quit, match changed) the
+              whole group unmounts, so no ghost can ever be left behind in the
+              tower. Purely visual — derived from `falling.cells` + dropDz +
+              fallSeconds, with no state and no timers of its own. */}
+          {!reduceMotion &&
+            TRAIL_FRAMES.map((frame, i) => (
+              <motion.g
+                key={`trail-${falling.key}-${i}`}
+                data-testid="ta-trail-ghost"
+                data-trail-frame={i}
+                initial={{
+                  x: falling.slideDx || 0,
+                  y: -dropDz,
+                  opacity: frame.opacity,
+                }}
+                animate={{ x: 0, y: 0, opacity: 0 }}
+                transition={{
+                  // Same distance, same duration, same easing as the block —
+                  // only the start is delayed, which is what makes these
+                  // "previous positions" rather than a second animation.
+                  x: { duration: fallSeconds, ease: "easeIn", delay: frame.delay },
+                  y: { duration: fallSeconds, ease: "easeIn", delay: frame.delay },
+                  // Held at the frame's opacity for the whole fall, then faded
+                  // out the instant the drop lands (matching the doomed block's
+                  // own fade) so the trail is never visible at rest.
+                  opacity: falling.willFall
+                    ? { duration: 0.45, delay: fallSeconds + 0.12, ease: "easeIn" }
+                    : { duration: 0.2, delay: fallSeconds, ease: "easeOut" },
+                }}
+              >
+                {(falling.cells || []).map((c: any, j: number) => (
+                  <BlockCell
+                    key={j}
+                    x={c.x + 0.02}
+                    y={cellY(c.z) + 0.02}
+                    size={0.96}
+                    fill={fallingFill}
+                    edge={fallingEdge}
+                  />
+                ))}
+              </motion.g>
+            ))}
           <motion.g
             key={`drop-${falling.key}`}
+            data-testid="ta-drop-block"
             initial={{ x: falling.slideDx || 0, y: -dropDz, opacity: 0.95 }}
             animate={
               falling.willFall
@@ -662,16 +886,8 @@ function TowerScene({
                 x={c.x + 0.02}
                 y={cellY(c.z) + 0.02}
                 size={0.96}
-                fill={
-                  falling.willFall
-                    ? "#ff4d6d"
-                    : SHAPE_COLORS[falling.shape as BlockShape]?.fill ?? "#a7f3d0"
-                }
-                edge={
-                  falling.willFall
-                    ? "#ff8fa3"
-                    : SHAPE_COLORS[falling.shape as BlockShape]?.edge ?? "#ffffff"
-                }
+                fill={fallingFill}
+                edge={fallingEdge}
               />
             ))}
           </motion.g>
@@ -834,8 +1050,10 @@ export default function TowerArenaMatchPage() {
     fallTimer.current = window.setTimeout(() => {
       setFallingBlock(null);
       setHiddenBlockIds([]);
-      // Contact + shock: the stage shakes when the drop (or collapse) lands.
-      setImpactKey((k) => k + 1);
+      // Teardown only — the impact shake is NOT fired from here. The block
+      // touches down at `fallSeconds` (≈0.3–0.9s), while this timer holds the
+      // drop on screen for 1200/1650ms, so bumping here would land the thud
+      // visibly late. TowerScene reports the real landing via onDropLanded.
     }, willFall ? 1650 : 1200);
   };
 
@@ -1450,8 +1668,8 @@ export default function TowerArenaMatchPage() {
     fallTimer.current = window.setTimeout(() => {
       setFallingBlock(null);
       setHiddenBlockIds([]);
-      // The landing (or collapse) hits the tower — contact shock.
-      setImpactKey((k) => k + 1);
+      // Teardown only — the landing (and its rumble) is reported by TowerScene
+      // at the exact moment the drop animation reaches the tower.
     }, willFall ? 1650 : 1200);
     await place(selectedShape, positionX, rotation);
   };
@@ -1761,6 +1979,7 @@ export default function TowerArenaMatchPage() {
           falling={fallingBlock}
           cursor={aiming && ghostBlock ? { shape: selectedShape as BlockShape, x: positionX, rotation, danger: ghostBlock.willFall } : null}
           impact={impactKey}
+          onDropLanded={() => setImpactKey((k) => k + 1)}
           remoteAiming={remoteGhost ? null : humanOpponentAiming}
           onStageClick={aiming ? () => void drop() : undefined}
           onAimMove={aiming ? aimMove : undefined}
@@ -1873,7 +2092,10 @@ export default function TowerArenaMatchPage() {
         {match?.isAi && isActive ? (
           <PauseChip paused={isPaused} busy={pauseBusy} onToggle={togglePause} />
         ) : null}
-        <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
+        {/* Free vs-AI matches are untimed — hide the countdown timer. */}
+        {!match?.isAi && (
+          <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
+        )}
         <div className="text-right">
           <p className="text-[11px] uppercase tracking-widest text-white/50">Players</p>
           <p className="text-sm font-bold text-white">
@@ -2070,7 +2292,10 @@ export default function TowerArenaMatchPage() {
             {match?.isAi && isActive ? (
               <PauseChip paused={isPaused} busy={pauseBusy} onToggle={togglePause} />
             ) : null}
-            <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
+            {/* Free vs-AI matches are untimed — hide the countdown timer. */}
+            {!match?.isAi && (
+              <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
+            )}
           </div>
         </div>
         <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">

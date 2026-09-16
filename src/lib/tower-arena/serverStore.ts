@@ -118,11 +118,13 @@ const OPEN_MATCH_STATES = new Set(["waiting", "active"]);
 // stalls 60s on a bot. Humans still get the full placement window to aim.
 
 function reserveWindowMs(match: any): number {
-  return Boolean(match?.isAi) ? AI_RESERVE_WINDOW_MS : RESERVE_WINDOW_MS;
+  // Free vs-AI matches are untimed for the human — no reserve window.
+  // Bots act on demand, so they don't need a pacing window either.
+  return Boolean(match?.isAi) ? 0 : RESERVE_WINDOW_MS;
 }
 
 function placementWindowMs(match: any): number {
-  return Boolean(match?.isAi) ? AI_TURN_PLACEMENT_WINDOW_MS : TURN_PLACEMENT_WINDOW_MS;
+  return Boolean(match?.isAi) ? 0 : TURN_PLACEMENT_WINDOW_MS;
 }
 
 const PAUSE_KEY = "__paused__";
@@ -171,9 +173,13 @@ export async function toggleMatchPause({
       delete nextReserve[PAUSE_KEY];
       // Resume hands the current holder a fresh full window — but a bot
       // holder only gets its short think window (the human's ghost beat).
+      // Untimed vs-AI matches keep a null deadline for the human.
       const holder = playerByUserId(players, match.currentTurnPlayerId);
-      const win = holder?.isAi ? BOT_THINK_MS : placementWindowMs(match);
-      turnDeadline = new Date(Date.now() + win);
+      if (holder?.isAi) {
+        turnDeadline = new Date(Date.now() + BOT_THINK_MS);
+      } else {
+        turnDeadline = match.isAi ? null : new Date(Date.now() + placementWindowMs(match));
+      }
     }
 
     await tx
@@ -660,7 +666,9 @@ async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?:
   const startPlayer = players.find((p) => p.userId === startId);
   // If the randomized starting seat is a bot, it gets the short think window
   // (viewers see its planned-placement ghost); humans keep the full window.
+  // Untimed vs-AI matches stamp no deadline for a human starter.
   const startWin = startPlayer?.isAi ? BOT_THINK_MS : placementWindowMs(match);
+  const startDeadline = startPlayer?.isAi || !match.isAi ? new Date(Date.now() + startWin) : null;
 
   const { pool } = newCycleState(match, 1);
   await tx
@@ -671,7 +679,7 @@ async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?:
       resourceCycle: 1,
       turnNumber: 0,
       currentTurnPlayerId: startId,
-      turnDeadline: new Date(Date.now() + startWin),
+      turnDeadline: startDeadline,
       resourcePool: pool,
       towerState: [] as TowerState,
       reserveState: {},
@@ -689,18 +697,19 @@ async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?:
     isAi: Boolean(match.isAi),
   });
 
-  const placementDeadline = new Date(Date.now() + startWin);
+  const placementDeadline = startDeadline ?? new Date(Date.now() + startWin);
+  const broadcastDeadline = startDeadline ? placementDeadline.toISOString() : null;
   void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.STATE, {
     status: "active",
     phase: "placement",
     currentTurnPlayerId: startId,
-    turnDeadline: placementDeadline.toISOString(),
+    turnDeadline: broadcastDeadline,
     resourceCycle: 1,
     turnNumber: 0,
   });
   void broadcastTowerArenaMatchEvent(match.id, TOWER_ARENA_EVENTS.TURN_STARTED, {
     playerId: startId,
-    turnDeadline: placementDeadline.toISOString(),
+    turnDeadline: broadcastDeadline,
   });
 
   return fetchMatchForUpdate(tx, matchId);
@@ -764,7 +773,9 @@ export async function submitPlacement({
       return { error: "Not in placement phase", status: 400 };
     }
     if (matchIsPaused(match)) return { error: "Match is paused", status: 409 };
-    if (TURN_PLACEMENT_WINDOW_MS > 0 && match.turnDeadline) {
+    // Free vs-AI matches are untimed — the human's deadline never expires,
+    // so the stale-deadline guard must not reject their placement.
+    if (!match.isAi && TURN_PLACEMENT_WINDOW_MS > 0 && match.turnDeadline) {
       const dl = new Date(match.turnDeadline).getTime();
       if (dl <= Date.now()) {
         // Timed out — a safe deterministic fallback must resolve first.
@@ -1295,8 +1306,14 @@ export async function removeParticipant({
       const nextTurnId = nextActiveAfter(players, userId) || players.find(isActive)?.userId || null;
       // The next holder's window depends on who holds it (bot think beat vs
       // full human window) — keeps the planned-placement ghost visible.
+      // Untimed vs-AI matches stamp no deadline for a human holder.
       const nextHolder = players.find((p) => p.userId === nextTurnId);
       const nextWin = nextHolder?.isAi ? BOT_THINK_MS : placementWindowMs(match);
+      const nextDeadline = nextTurnId
+        ? nextHolder?.isAi || !match.isAi
+          ? new Date(Date.now() + nextWin)
+          : null
+        : null;
       await tx
         .update(towerArenaMatches)
         .set({
@@ -1305,7 +1322,7 @@ export async function removeParticipant({
           resourcePool: pool,
           reserveState: reserve,
           currentTurnPlayerId: nextTurnId,
-          turnDeadline: nextTurnId ? new Date(Date.now() + nextWin) : null,
+          turnDeadline: nextDeadline,
         })
         .where(eq(towerArenaMatches.id, matchId));
       void broadcastTowerArenaMatchEvent(matchId, TOWER_ARENA_EVENTS.RESOURCE_REFILL, {
@@ -1445,6 +1462,10 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
       // — acts immediately rather than stalling.)
       const expired = (deadlineMs > 0 && deadlineMs <= now) || (botTurn && deadlineMs <= 0);
       if (!expired) return { match };
+      // Free vs-AI matches: the human's turn never expires — no TIMEOUT
+      // fallback and no forced placement. Bots still play on their short
+      // think window (botTurn is true above).
+      if (!botTurn && Boolean(match.isAi)) return { match };
 
       // Guarded conditional UPDATE only for the state we saw — a raced
       // double-poll leaves phase 'placement' from the first poll and the

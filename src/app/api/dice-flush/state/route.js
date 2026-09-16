@@ -86,7 +86,10 @@ export async function GET(req) {
       if (room) await resolveExpiredTurn(tx, room, room.gameState);
     });
     const [room] = await db.select().from(diceFlushRooms).where(eq(diceFlushRooms.id, roomId)).limit(1);
-    return NextResponse.json({ success: true, room: room ? await enrichRoomPlayers(room) : null });
+    // `serverTime` lets the client anchor the shot-clock countdown to the
+    // server's clock (same pattern as keno-pvp) instead of trusting the
+    // device clock, which may be skewed.
+    return NextResponse.json({ success: true, serverTime: Date.now(), room: room ? await enrichRoomPlayers(room) : null });
   }
 
   const rooms = await db.select({ id: diceFlushRooms.id, status: diceFlushRooms.status, wager: diceFlushRooms.wager, pot: diceFlushRooms.pot, createdAt: diceFlushRooms.createdAt }).from(diceFlushRooms).where(eq(diceFlushRooms.status, "waiting")).orderBy(asc(diceFlushRooms.createdAt));

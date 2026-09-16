@@ -33,12 +33,20 @@ export function initialState(roomId, creatorId, creatorName, wager) {
  *  persist the advanced state. Call at the top of every move handler BEFORE
  *  validating the incoming move — a stale move from the timed-out player is
  *  then naturally rejected by `validateMove` ("Not your turn"). Returns the
- *  resolved state plus whether a timeout occurred and who was timed out. */
+ *  resolved state plus whether a timeout occurred and who was timed out.
+ *  If the auto-bank filled the final category the match is settled here
+ *  (payout + leaderboard + prestige) — previously the game was left stuck
+ *  in `playing` with a full scorecard and never paid out. */
 export async function resolveExpiredTurn(tx, roomRow, state) {
   const { state: resolved, didTimeout } = autoBankIfExpired(state);
   if (!didTimeout) return { state: resolved, didTimeout, resolvedByUserId: null };
   await tx.update(diceFlushRooms).set({ gameState: resolved }).where(eq(diceFlushRooms.id, roomRow.id));
   await appendAction(tx, roomRow.id, state.currentTurn, "auto_bank_timeout", {});
+  // The auto-bank ended the match (final category claimed on the timeout)
+  // — settle it exactly like a normal choosing move would.
+  if (resolved.state === "finished") {
+    await settleIfEnded(tx, roomRow, resolved);
+  }
   return { state: resolved, didTimeout: true, resolvedByUserId: state.currentTurn };
 }
 

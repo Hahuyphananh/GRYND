@@ -1272,16 +1272,19 @@ export default function MinesPvpMatchPage({
           <span className="font-bold text-base sm:text-lg">
             Your turn. Pick a tile
           </span>
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
-              urgent
-                ? "bg-red-500/30 text-red-100"
-                : "bg-cyan-500/30 text-cyan-100"
-            }`}
-          >
-            <ClockIcon className="w-4 h-4" />
-            {timeLeft}s
-          </span>
+          {/* Free vs-AI matches are untimed — no countdown chip. */}
+          {!isAi && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
+                urgent
+                  ? "bg-red-500/30 text-red-100"
+                  : "bg-cyan-500/30 text-cyan-100"
+              }`}
+            >
+              <ClockIcon className="w-4 h-4" />
+              {timeLeft}s
+            </span>
+          )}
         </div>
       );
     }
@@ -1292,10 +1295,12 @@ export default function MinesPvpMatchPage({
         <span className="font-bold text-base sm:text-lg">
           {isAi ? "GRYND AI is picking…" : "Opponent is picking…"}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/30 px-3 py-1 text-sm font-bold text-fuchsia-100">
-          <ClockIcon className="w-4 h-4" />
-          {timeLeft}s
-        </span>
+        {!isAi && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/30 px-3 py-1 text-sm font-bold text-fuchsia-100">
+            <ClockIcon className="w-4 h-4" />
+            {timeLeft}s
+          </span>
+        )}
       </div>
     );
   }

@@ -26,6 +26,7 @@ export async function createOrJoinDiceFlushDestination({ userId, wager = 10 }) {
       state.players = [...state.players, { userId, name: "Quick Queue Player" }];
       state.state = "playing";
       state.currentTurn = Math.random() < 0.5 ? state.players[0].userId : userId;
+      // Quick queue is always human-vs-human (PvP) — the 20s shot clock applies.
       state.turnDeadline = Date.now() + 20000;
       state.pot = Number(open.pot) + amount;
       const [matched] = await tx.update(diceFlushRooms).set({ status: "playing", pot: state.pot, gameState: state }).where(and(eq(diceFlushRooms.id, open.id), eq(diceFlushRooms.status, "waiting"))).returning();

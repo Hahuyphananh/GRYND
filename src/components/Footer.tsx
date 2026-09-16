@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import LogoSmiley from "../images/logo1.png";
+import SocialLinks from "./SocialLinks";
 
 export default function Footer() {
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -46,6 +47,10 @@ export default function Footer() {
             <p className="mt-4 text-sm leading-relaxed text-[#7dd3fc]">
               Skill-based multiplayer games and competitive entertainment platform.
             </p>
+
+            {/* SOCIALS — same component the contact page mounts, so the two
+                can't list different accounts. */}
+            <SocialLinks testId="footer-social" className="mt-5" />
           </div>
 
           {/* NAVIGATION */}

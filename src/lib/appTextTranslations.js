@@ -381,6 +381,11 @@ export const APP_TEXT_TRANSLATIONS = {
         wins_label: "wins",
         error: "Couldn't load the leaderboard right now.",
       },
+      // ── Social follow strip (home) ─────────────────────────
+      social: {
+        title: "Follow the GRYND",
+        subtitle: "Match highlights, drops and dev updates land there first.",
+      },
       // ── Final call-to-action section ───────────────────────
       final_cta: {
         title: "YOUR GRYND STARTS NOW.",
@@ -751,6 +756,11 @@ export const APP_TEXT_TRANSLATIONS = {
         guest_label: "Guest",
         host_default: "Host",
         guest_default: "Guest",
+        // The AI seat has no users row, so it resolves no name of its own.
+        // Brand mark, so it stays identical across locales (like
+        // `blackjackPvp.seat.ai`).
+        ai_label: "GRYND AI",
+        legend_label: "Claimed lines",
         open_challenges_title: "Open Challenges",
         refresh_button: "Refresh",
         create_button: "Create Game",
@@ -1844,6 +1854,12 @@ export const APP_TEXT_TRANSLATIONS = {
         wins_label: "victoires",
         error: "Impossible de charger le classement pour le moment.",
       },
+      // ── Bandeau réseaux sociaux (accueil) ─────────────────
+      social: {
+        title: "Suivez le GRYND",
+        subtitle:
+          "Temps forts des matchs, drops et actus dev y arrivent en premier.",
+      },
       // ── Section appel à l'action finale ───────────────────
       final_cta: {
         title: "TON GRYND COMMENCE MAINTENANT.",
@@ -2213,6 +2229,8 @@ export const APP_TEXT_TRANSLATIONS = {
         guest_label: "Invité",
         host_default: "Hôte",
         guest_default: "Invité",
+        ai_label: "GRYND AI",
+        legend_label: "Lignes revendiquées",
         open_challenges_title: "Défis ouverts",
         refresh_button: "Actualiser",
         create_button: "Créer une partie",
@@ -2945,6 +2963,12 @@ export const APP_TEXT_TRANSLATIONS = {
         wins_label: "victorias",
         error: "No se pudo cargar la clasificación ahora mismo.",
       },
+      // ── Franja de redes sociales (inicio) ────────────────
+      social: {
+        title: "Sigue a GRYND",
+        subtitle:
+          "Los mejores momentos, drops y novedades llegan ahí primero.",
+      },
       // ── Sección de llamada a la acción final ─────────────
       final_cta: {
         title: "TU GRYND EMPIEZA AHORA.",
@@ -3313,6 +3337,8 @@ export const APP_TEXT_TRANSLATIONS = {
         guest_label: "Invitado",
         host_default: "Anfitrión",
         guest_default: "Invitado",
+        ai_label: "GRYND AI",
+        legend_label: "Líneas reclamadas",
         open_challenges_title: "Desafíos abiertos",
         refresh_button: "Actualizar",
         create_button: "Crear partida",

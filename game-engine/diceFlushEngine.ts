@@ -165,7 +165,15 @@ export function autoBankIfExpired(state: DiceFlushGameState): { state: DiceFlush
   if (state.turnDeadline === null) return { state, didTimeout: false };
   if (Date.now() <= state.turnDeadline) return { state, didTimeout: false };
   const category = pickBestCategory(state);
-  return { state: nextTurn(state, state.currentTurn, category), didTimeout: true };
+  const next = nextTurn(state, state.currentTurn, category);
+  // A timeout auto-bank can be the move that fills the final category on
+  // the shared sheet. If so, flip the match to "finished" here so callers
+  // that don't run settleIfEnded (the shot-clock path) can't leave the
+  // game stuck in `playing` with a full scorecard — no legal moves, no
+  // result, and no payout. PvP pots are settled by the route afterward;
+  // AI-mode pots are 0 so a payout is a no-op there.
+  if (checkGameEnd(next).ended) next.state = "finished";
+  return { state: next, didTimeout: true };
 }
 
 function upperBonus(card: Scorecard) {

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { TURN_TIME_LIMIT_MS } from "../../../../../game-engine/diceFlushEngine";
 import { db, getDisplayName, initialState, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 
 export async function POST(req) {
@@ -26,8 +25,9 @@ export async function POST(req) {
       // Shared sheet: random 50/50 starter. Each side claims exactly 6 of
       // the 12 categories — starter has first pick, other has last pick.
       state.currentTurn = Math.random() < 0.5 ? userId : aiId;
-      // Shot clock: stamp the first turn's deadline now that play begins.
-      state.turnDeadline = Date.now() + TURN_TIME_LIMIT_MS;
+      // No shot clock vs AI — practice matches are untimed.
+      // (`turnDeadline` stays null so `autoBankIfExpired` never fires.)
+      state.turnDeadline = null;
       // Free play: no stake is recorded (the client always sends 0) and the
       // pot stays 0, so `settleIfEnded` never credits tokens to either side.
       state.wager = 0;

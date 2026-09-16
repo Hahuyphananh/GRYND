@@ -2386,16 +2386,19 @@ export default function PlinkoPvpMatchPage({
                 ? "You're ready. Waiting for opponent"
                 : "Opponent is choosing inputs…"}
           </span>
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
-              urgentMatch
-                ? "bg-red-500/30 text-red-100"
-                : "bg-cyan-500/30 text-cyan-100"
-            }`}
-          >
-            <ClockIcon className="w-4 h-4" />
-            {timeLeft}s
-          </span>
+          {/* Free vs-AI matches are untimed — no countdown chip. */}
+          {!match.isAi && (
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
+                urgentMatch
+                  ? "bg-red-500/30 text-red-100"
+                  : "bg-cyan-500/30 text-cyan-100"
+              }`}
+            >
+              <ClockIcon className="w-4 h-4" />
+              {timeLeft}s
+            </span>
+          )}
         </div>
       );
     }

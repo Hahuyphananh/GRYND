@@ -229,6 +229,100 @@ function rollRandomTarget(): number {
   return MIN_TARGET_MS + Math.floor(Math.random() * range);
 }
 
+/** Flips an ARMED round into the `active` phase — the reveal step the
+ *  arming `setTimeout` performs when it fires. Extracted so the SAME
+ *  transition can also be driven from a request path (see
+ *  `promoteArmedRoundIfDue`), which is what guarantees a round can never
+ *  be stranded in `arming` when the Node timer doesn't fire (a frozen
+ *  serverless instance, a process restart between rounds, etc.).
+ *
+ *  Idempotent and state-guarded: a no-op unless the match is still
+ *  `arming` with no declared winner. Reveals the privately rolled target
+ *  onto `match.targetMs`, clears the arming stamps, stamps the
+ *  authoritative `roundGoInstant` (from the server clock — clients never
+ *  participate in scoring), resets the per-round pending-stops bucket,
+ *  disarms the arming timer slot, and schedules the AI stop for AI
+ *  matches. Returns `true` when the match actually transitioned. */
+function revealArmedRound(matchId: string): boolean {
+  const match = precisionMatchStore.get(matchId);
+  if (!match) return false;
+  // Defensive: if the match was finished/resigned while we were pending
+  // (e.g. an opponent resigned during arming), don't flip the phase back
+  // to active. The private rolled target is dropped regardless — its
+  // lifetime ended with this transition.
+  if (match.phase !== "arming") {
+    clearRoundTarget(matchId);
+    return false;
+  }
+  if (match.winnerSeat !== null) {
+    clearRoundTarget(matchId);
+    return false;
+  }
+  // The arming timer slot (if any) is moot — the transition happens here.
+  // `clearTimeout` on a timer that is already executing is a harmless
+  // no-op for the timer-driven path.
+  const pending = precisionArmingTimers.get(matchId);
+  if (pending) {
+    clearTimeout(pending);
+    precisionArmingTimers.delete(matchId);
+  }
+  // REVEAL the rolled target onto the public state so both polling
+  // clients read the SAME value at the SAME moment. The private copy is
+  // then cleared — the public field becomes the source of truth.
+  const rolled = precisionRoundTargets.get(matchId);
+  clearRoundTarget(matchId);
+  if (rolled !== undefined) {
+    match.targetMs = rolled;
+  }
+  match.phase = "active";
+  match.armingStartedAt = null;
+  match.countdownEndsAt = null;
+  // Authoritative GO instant for this round — stamped server-side so
+  // client clocks never participate in scoring. The pending-stops bucket
+  // for this round is also reset so the per-round telemetry boundary is
+  // clean (the previous round's stop data is already captured in
+  // `lastRoundStops`).
+  match.roundGoInstant = Date.now();
+  precisionPendingStops.delete(matchId);
+  // `roundId` and `roundNonce` STAY populated throughout the round so the
+  // client can read them from the public state and echo them back in its
+  // stop packet. They're cleared on resign / cancel / match-finish via
+  // `cancelArming` and the dedicated `matchFinished` branch.
+  match.version += 1;
+  schedulePrecisionAiStop(match);
+  return true;
+}
+
+/** Self-healing arming → active transition for READ paths.
+ *
+ *  The arming round is promoted by a Node `setTimeout` created inside
+ *  `armMatchRound`. That timer is the fast path, but it is NOT a guarantee:
+ *  a serverless instance can be frozen (or recycled) between the arm-start
+ *  response and the moment the countdown expires, and a process restart
+ *  loses it outright. When that happens the match sat in `arming` forever —
+ *  both clients' countdowns reached 0 and never opened a round ("the timer
+ *  is stuck on 0").
+ *
+ *  Because `countdownEndsAt` is stamped on the public state, any reader can
+ *  deterministically tell that the countdown has elapsed. Callers invoke
+ *  this before publishing a match snapshot, so the FIRST request after the
+ *  countdown ends performs the reveal the timer was going to perform —
+ *  independently of whether that timer ever fired. It never promotes early
+ *  (the `countdownEndsAt > now` guard keeps the arming phase honest) and is
+ *  idempotent, so concurrent readers are safe. Returns `true` when THIS
+ *  call performed the transition. */
+export function promoteArmedRoundIfDue(matchId: string): boolean {
+  const match = precisionMatchStore.get(matchId);
+  if (!match) return false;
+  if (match.phase !== "arming") return false;
+  if (match.winnerSeat !== null) return false;
+  const endsAt = match.countdownEndsAt;
+  // An unstamped/!numeric countdown can't be evaluated — leave that round
+  // to the arming timer rather than opening it on a guess.
+  if (typeof endsAt !== "number" || endsAt > Date.now()) return false;
+  return revealArmedRound(matchId);
+}
+
 /** Transition a match into the `arming` phase with a server-side
  *  `setTimeout` for a FIXED 5-second countdown (`ROUND_COUNTDOWN_MS`).
  *  Cancels any prior timer for the same match before scheduling the
@@ -246,7 +340,12 @@ function rollRandomTarget(): number {
  *    `precisionRoundTargets` (server-only).
  *  - When the countdown timer fires, the rolled target is REVEALED
  *    onto `match.targetMs` so both polling clients see the same value
- *    at the same moment. The private entry is then dropped. */
+ *    at the same moment. The private entry is then dropped.
+ *
+ *  The timer is only the FAST PATH for that reveal: the same
+ *  transition is also driven from request paths via
+ *  `promoteArmedRoundIfDue`, so a lost timer can never strand a round
+ *  in `arming` (see that function for the failure mode). */
 export function armMatchRound(matchId: string): boolean {
   const match = precisionMatchStore.get(matchId);
   if (!match) return false;
@@ -297,45 +396,7 @@ export function armMatchRound(matchId: string): boolean {
   match.version += 1;
   const timer = setTimeout(() => {
     precisionArmingTimers.delete(matchId);
-    const m = precisionMatchStore.get(matchId);
-    if (!m) return;
-    // Defensive: if the match was finished/resigned while we were
-    // pending (e.g. an opponent resigned during arming), don't flip
-    // the phase back to active. The private rolled target is dropped
-    // regardless — its lifetime ended with this timer.
-    if (m.phase !== "arming") {
-      clearRoundTarget(matchId);
-      return;
-    }
-    if (m.winnerSeat !== null) {
-      clearRoundTarget(matchId);
-      return;
-    }
-    // REVEAL the rolled target onto the public state so both polling
-    // clients read the SAME value at the SAME moment. The private copy
-    // is then cleared — the public field becomes the source of truth.
-    const rolled = precisionRoundTargets.get(matchId);
-    clearRoundTarget(matchId);
-    if (rolled !== undefined) {
-      m.targetMs = rolled;
-    }
-    m.phase = "active";
-    m.armingStartedAt = null;
-    m.countdownEndsAt = null;
-    // Authoritative GO instant for this round — stamped server-side
-    // so client clocks never participate in scoring. The pending-stops
-    // bucket for this round is also reset so the per-round telemetry
-    // boundary is clean (the previous round's stop data is already
-    // captured in `lastRoundStops`).
-    m.roundGoInstant = Date.now();
-    precisionPendingStops.delete(matchId);
-    // `roundId` and `roundNonce` STAY populated throughout the round
-    // so the client can read them from the public state and echo them
-    // back in its stop packet. They're cleared on resign / cancel /
-    // match-finish via `cancelArming` and the dedicated `matchFinished`
-    // branch below.
-    m.version += 1;
-    schedulePrecisionAiStop(m);
+    revealArmedRound(matchId);
   }, delay);
   precisionArmingTimers.set(matchId, timer);
   // Don't hold the Node process alive during graceful shutdown.

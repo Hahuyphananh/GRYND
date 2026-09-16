@@ -372,29 +372,14 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     submitActionRef.current = submitAction;
   }, [submitAction]);
 
-  // Timer countdown
+  // Timer countdown — removed in the vs-AI free-play mode: the player can
+  // take as long as they want, so there is no expiry auto-pick, no urgent
+  // beeps, and no countdown chip. (The PvP game keeps its 15s pick timer.)
   const timerUrgentPlayed = useRef(false);
   useEffect(() => {
-    if (!interactiveState || gameOver || isSubmitting) return;
-    if (timeLeft <= 0) {
-      setTimeUp(true);
-      timerUrgentPlayed.current = false;
-      const range = interactiveState.currentMax;
-      submitActionRef.current(
-        Math.floor(Math.random() * range) + 1,
-        interactiveState.phase === "predict",
-      );
-      return;
-    }
     setTimeUp(false);
-    if (timeLeft <= 5 && !timerUrgentPlayed.current) {
-      timerUrgentPlayed.current = true;
-      audio.playTimerUrgent();
-    }
-    if (timeLeft > 5) timerUrgentPlayed.current = false;
-    const timer = setInterval(() => setTimeLeft((t: number) => t - 1), 1000);
-    return () => clearInterval(timer);
-  }, [timeLeft, interactiveState, gameOver, isSubmitting, audio.playTimerUrgent]);
+    return;
+  }, [interactiveState?.currentRound]);
 
   // Autopick: auto-submit a random number when a new round starts and autopick is ON
   useEffect(() => {
@@ -536,20 +521,8 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
               className="mb-4"
             />
 
-            {/* Timer */}
-            <div className="flex items-center justify-center mb-4">
-              <div
-                className={`rounded-full border px-4 py-1 text-lg font-bold transition-colors ${
-                  timeLeft <= 5
-                    ? "border-red-500/50 text-red-400 animate-pulse"
-                    : "border-white/10 text-white/60"
-                }`}
-              >
-                <IconClock size={18} className="inline" /> {timeLeft}s
-              </div>
-            </div>
+            {/* Vs-AI mode is untimed — the pick countdown is PvP-only. */}
 
-            {/* Time's up indicator */}
             {timeUp && isSubmitting && (
               <p className="text-center text-sm text-amber-400 animate-pulse mb-3">
                 <span className="inline-flex items-center gap-1"><IconAlarm size={14} /> Time's up! Locking in automatically...</span>

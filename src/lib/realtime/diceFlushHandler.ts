@@ -49,8 +49,9 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
       // AI mode is free play — skip `lockWager` (no token deduction) and
       // keep `pot` at 0 so the eventual match_ended payout can't credit
       // the AI or the human on game end (mirrors the HTTP route fix).
+      // No shot clock vs AI — practice matches are untimed.
       const id = `yahtzee:${Date.now()}`;
-      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: 0, state: "playing", currentTurn: Math.random() < 0.5 ? ctx.userId : aiId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: {}, scorecardOwner: {}, currentCall: null, turnDeadline: Date.now() + TURN_TIME_LIMIT_MS };
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }, { userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty }], ai: true, wager, pot: 0, state: "playing", currentTurn: Math.random() < 0.5 ? ctx.userId : aiId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: {}, scorecardOwner: {}, currentCall: null, turnDeadline: null };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },

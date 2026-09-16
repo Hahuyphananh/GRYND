@@ -2126,7 +2126,8 @@ export default function RoulettePvpGamePage({ params }) {
                     Round bet status
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-white/55">
-                    {timeLeft !== null ? `${timeLeft}s` : "-"}
+                    {/* Free vs-AI matches are untimed — hide the countdown. */}
+                    {!match.isAi && timeLeft !== null ? `${timeLeft}s` : "-"}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">

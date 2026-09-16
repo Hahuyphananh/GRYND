@@ -32,6 +32,20 @@ export const LOBBY_LIST_POLL_INTERVAL_MS = 3000;
 // status reads ~25% vs. the old 1500ms.
 export const MATCH_POLL_INTERVAL_MS = 2000;
 
+// Fast re-poll cadence used ONLY for the moment the pre-round countdown
+// expires. The server flips `arming` → `active` at `countdownEndsAt`, but
+// the client otherwise learns about it on the next `MATCH_POLL_INTERVAL_MS`
+// tick (or a `precision:roundArmStart` broadcast, which is emitted when the
+// NEXT round is armed — not when it opens). That left the countdown parked
+// on 0 (previously 1) for up to two seconds every single round — reported as
+// "the timer gets stuck on 0". While the stamped countdown has elapsed we
+// re-poll at this cadence, so the round + its target open within ~250ms of
+// the countdown hitting zero. `ARMING_FAST_POLL_MAX_ATTEMPTS` bounds the
+// burst (a stalled/exhausted match falls back to the normal cadence rather
+// than hammering the route forever).
+export const ARMING_FAST_POLL_INTERVAL_MS = 250;
+export const ARMING_FAST_POLL_MAX_ATTEMPTS = 12;
+
 // Lobby TTL — after this a lobby is auto-pruned (server-side). Mirrors the
 // 5 minute TTL used for Pool lobbies.
 export const LOBBY_TTL_MS = 5 * 60 * 1000;

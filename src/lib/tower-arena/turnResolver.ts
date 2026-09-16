@@ -264,12 +264,16 @@ export function resolvePlacement(
   const nextTurnPlayerId = finished ? null : nextActiveAfter(activePlayers, actingUserId);
   // The next holder's window depends on who holds it: humans keep the full
   // placement window, bots get a short think window so their planned
-  // placement is visible to every viewer before it resolves.
+  // placement is visible to every viewer before it resolves. A 0 window
+  // means untimed (free vs-AI matches) — no deadline is stamped at all.
   const nextHolder = nextTurnPlayerId
     ? activePlayers.find((p) => p.userId === nextTurnPlayerId)
     : null;
+  const nextHolderWindowMs = nextHolder?.isAi ? BOT_THINK_MS : placementWindowMs;
   const nextDeadlineMs = nextTurnPlayerId
-    ? Date.now() + (nextHolder?.isAi ? BOT_THINK_MS : placementWindowMs)
+    ? nextHolderWindowMs > 0
+      ? Date.now() + nextHolderWindowMs
+      : null
     : null;
   const entry: PlacementEntry = {
     turnNumber,

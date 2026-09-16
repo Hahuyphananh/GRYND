@@ -43,6 +43,7 @@ import {
   ROUND_TIMER_SECONDS,
   STARTING_POINTS,
   ROULETTE_AI_PLAYER_ID,
+  isFreeAiMatch,
   calculateMatchSettlement,
   calculatePayout,
   chooseAiBets,
@@ -190,7 +191,9 @@ export async function createAiMatch({ userId }) {
       playerOnePoints: starting,
       playerTwoPoints: starting,
       roundTimerSeconds: ROUND_TIMER_SECONDS,
-      roundDeadline: new Date(Date.now() + ROUND_BET_DEADLINE_MS),
+      // Free vs-AI matches are untimed — the human can bet at their own
+      // pace. The AI turn is requested on demand after they lock in.
+      roundDeadline: null,
       serverEliminated: [],
       eliminations: {},
       calls: null,
@@ -760,7 +763,8 @@ export async function submitBets({ userId, matchId, bets, call }) {
     // deadline passing and `fetchMatchWithAutoResolve` force-
     // submitting empty bets (which itself triggers re-resolution).
     // Reject any submission that arrives after the server-stamped
-    // `roundDeadline`.
+    // `roundDeadline`. Free vs-AI matches run untimed (deadline
+    // is null), so there is nothing to enforce there.
     if (
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
@@ -1021,6 +1025,9 @@ export async function resolveRound(tx, match) {
 
   // Decide next match status
   const nextDeadlineMs = roundDeadlineMs(match);
+  // Free vs-AI matches never run on a betting clock — every follow-up
+  // round opens untimed. PvP matches keep the standard window.
+  const aiUntimed = isFreeAiMatch(match);
   let nextStatus;
   let nextRound = slot + 1;
   let nextDeadline = null;
@@ -1123,7 +1130,7 @@ export async function resolveRound(tx, match) {
       // SUDDEN_DEATH and the betting flow is unchanged. Sudden death
       // returns to the full wheel (no server eliminations).
       nextStatus = MATCH_STATUS.SUDDEN_DEATH;
-      nextDeadline = new Date(Date.now() + nextDeadlineMs);
+      nextDeadline = aiUntimed ? null : new Date(Date.now() + nextDeadlineMs);
       nextServerEliminated = [];
     }
   } else if (slot >= 3) {
@@ -1160,7 +1167,7 @@ export async function resolveRound(tx, match) {
     } else {
       // Tied points after 3 rounds → sudden death.
       nextStatus = MATCH_STATUS.SUDDEN_DEATH;
-      nextDeadline = new Date(Date.now() + nextDeadlineMs);
+      nextDeadline = aiUntimed ? null : new Date(Date.now() + nextDeadlineMs);
       nextServerEliminated = [];
     }
   } else {
@@ -1168,7 +1175,7 @@ export async function resolveRound(tx, match) {
     // the next round's server eliminations already in place so both
     // players see the revealed dead set before betting opens.
     nextStatus = statusForRoundNumber(nextRound);
-    nextDeadline = new Date(Date.now() + nextDeadlineMs);
+    nextDeadline = aiUntimed ? null : new Date(Date.now() + nextDeadlineMs);
     nextServerEliminated = serverEliminatedNumbers(
       nextRound,
       nextStatus === MATCH_STATUS.SUDDEN_DEATH,
@@ -1299,6 +1306,9 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { error: "Forbidden", status: 403 };
     }
 
+    // AFK nudge — only for timed PvP matches. Free vs-AI matches run
+    // untimed (roundDeadline is null), so a stalled human turn simply
+    // waits; the AI plays on demand after the human locks in.
     if (
       ACTIVE_STATES.has(match.status) &&
       match.roundDeadline &&
