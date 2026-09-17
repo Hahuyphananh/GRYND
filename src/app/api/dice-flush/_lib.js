@@ -81,9 +81,20 @@ export async function settleIfEnded(tx, roomRow, state) {
   const ended = checkGameEnd(state);
   if (!ended.ended) return { state, ended: false };
   const payout = Math.floor(state.pot * 0.95);
-  await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, ended.winnerId));
   state.state = "finished";
-  await tx.update(diceFlushRooms).set({ status: "finished", gameState: state, pot: 0 }).where(eq(diceFlushRooms.id, roomRow.id));
+  // Conditional settlement claim: only one transaction may flip the room to
+  // "finished" and credit the payout. The WHERE predicate guards against
+  // concurrent final-turn requests that both validated the same still-playing
+  // snapshot — only the first commit wins; a racing transaction sees no
+  // affected rows and skips the balance credit (idempotent no-op).
+  const [claimed] = await tx.update(diceFlushRooms).set({ status: "finished", gameState: state, pot: 0 }).where(and(eq(diceFlushRooms.id, roomRow.id), ne(diceFlushRooms.status, "finished"))).returning();
+  if (!claimed) {
+    // A concurrent transaction already settled — return the finished state
+    // but signal that this transaction did not perform the payout.
+    return { state, ended: true, winnerId: ended.winnerId, payout: 0, totals: ended.totals, alreadySettled: true };
+  }
+  // Settlement claimed — credit the winner.
+  await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, ended.winnerId));
 
   // Record leaderboard stats for winner and loser
   const wagerPerPlayer = state.wager || Math.floor(state.pot / (state.players?.length || 2));
