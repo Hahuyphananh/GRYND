@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const crypto = require("node:crypto");
 const http = require("http");
 const express = require("express");
 const cors = require("cors");
@@ -72,7 +73,11 @@ app.post("/emit", (req, res) => {
       error: "REALTIME_INTERNAL_SECRET is not configured",
     });
   }
-  if (req.headers["x-internal-secret"] !== secret) {
+  const inputSecret = req.headers["x-internal-secret"];
+  if (!inputSecret || !crypto.timingSafeEqual(
+    crypto.createHash('sha256').update(inputSecret).digest(),
+    crypto.createHash('sha256').update(secret).digest()
+  )) {
     return res.status(401).json({ success: false, error: "Unauthorized" });
   }
   const { room, event, payload } = req.body || {};
