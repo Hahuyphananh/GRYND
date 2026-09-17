@@ -1,16 +1,17 @@
 // POST /api/precision/finish-match
 //
 // Idempotent trigger for the Precision match-finished payout. The
-// server store (`precisionMatchStore`) is the SINGLE source of truth
-// for `winnerSeat` and current `score`. This route does NOT accept
-// any client-supplied winner or wager — the helper resolves them
-// from `precisionMatchStore` so a misbehaving client can't fabricate
-// the result.
+// persisted match row (`precision_matches`) is the SINGLE source of truth
+// for `winnerSeat` and current `score`. This route does NOT accept any
+// client-supplied winner or wager — the helper resolves them from the row
+// so a misbehaving client can't fabricate the result.
 //
-// Both clients (winner + loser) hit this endpoint as soon as they
-// observe `phase === "finished"` via either the broadcast OR the
-// polling tick. The server-side idempotency guard in
-// `processMatchFinishedPayout` ensures only ONE balance update lands.
+// Both clients (winner + loser) hit this endpoint as soon as they observe
+// `phase === "finished"` via either the broadcast OR the polling tick. The
+// server-side idempotency guard in `processMatchFinishedPayout` is now a DB
+// column (`payout_processed_at`, claimed under `FOR UPDATE`), so it holds
+// across instances and across a retry after the settling instance died —
+// the previous in-process `Set` could pay twice on a serverless deploy.
 //
 // Shape of the response mirrors the Hex Duel end-game endpoint so
 // the page can show the same Winner/Score/Prize pattern as other
@@ -23,7 +24,7 @@ import {
   processMatchFinishedPayout,
   PRECISION_PAYOUT_MULTIPLIER,
 } from "../../../../lib/precision/finishMatch";
-import { precisionMatchStore } from "../../../../lib/precision/serverStore";
+import { readMatch } from "../../../../lib/precision/serverStore";
 import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
@@ -52,13 +53,14 @@ export async function POST(req: Request) {
     // do this BEFORE running the payout so a non-participant cannot
     // invoke the endpoint and observe the payout shape. The
     // canonical look-up happens server-side inside the helper.
-    const match = precisionMatchStore.get(matchId);
-    if (!match) {
+    const row = await readMatch(matchId);
+    if (!row) {
       return NextResponse.json(
         { success: false, error: "Match not found." },
         { status: 404 },
       );
     }
+    const match = row.state;
     const callerInMatch = match.players.some(
       (p) => p.userId === clerkId,
     );

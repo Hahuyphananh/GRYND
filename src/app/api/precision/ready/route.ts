@@ -14,10 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import {
-  markPlayerReady,
-  precisionMatchStore,
-} from "../../../../lib/precision/serverStore";
+import { markPlayerReady } from "../../../../lib/precision/serverStore";
 import { logError } from "../../../../lib/logError";
 
 export const dynamic = "force-dynamic";
@@ -42,25 +39,21 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    // Only participants may ready up — a clean 403 beats a silent no-op.
-    const match = precisionMatchStore.get(matchId);
-    if (!match) {
-      return NextResponse.json(
-        { success: false, error: "Match not found." },
-        { status: 404 },
-      );
-    }
-    if (!match.players.some((p) => p.userId === userId)) {
-      return NextResponse.json(
-        { success: false, error: "Caller is not a participant in this match." },
-        { status: 403 },
-      );
-    }
-    const result = markPlayerReady(matchId, userId);
+    // The ready flag is flipped inside a `SELECT … FOR UPDATE` transaction,
+    // so the "are we both ready?" check cannot race the opponent's click.
+    // Being ready also (re)checks participation: a caller who is not seated
+    // in the match leaves the row untouched, and we answer 403 below.
+    const result = await markPlayerReady(matchId, userId);
     if (!result.match) {
       return NextResponse.json(
         { success: false, error: "Match not found." },
         { status: 404 },
+      );
+    }
+    if (!result.match.players.some((p) => p.userId === userId)) {
+      return NextResponse.json(
+        { success: false, error: "Caller is not a participant in this match." },
+        { status: 403 },
       );
     }
     return NextResponse.json({

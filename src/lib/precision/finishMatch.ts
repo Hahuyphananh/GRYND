@@ -11,20 +11,23 @@
 //   * Records a big-win entry if the payout crosses the 1M token
 //     threshold via `recordBigWinIfNeeded`.
 //
-// Idempotency: anchored on `globalThis.__precisionPaidOutMatches` so
-// repeat callers (e.g. both clients re-fetching after a blip, double
-// socket-broadcast + poll, page reload during end-popup, etc.) only
-// pay out ONCE per matchId. The guard survives hot reloads.
+// Idempotency: anchored on the match row's `payout_processed_at` column,
+// claimed under `SELECT ... FOR UPDATE` (see `claimPayout` in serverStore),
+// so repeat callers (both clients re-fetching after a blip, double
+// socket-broadcast + poll, page reload during end-popup, a retry after the
+// instance that settled the match died) only pay out ONCE per matchId. The
+// previous in-process `globalThis` Set could not do that on a serverless
+// deploy, where the two callers routinely land on different instances.
 //
 // Why a SEPARATE helper rather than rolling payout into `recordRoundStop`?
-//   1. `serverStore.ts` is an in-memory state machine — it deliberately
-//      avoids DB imports so it can be unit-tested without Drizzle.
+//   1. `recordRoundStop` is the latency-critical gameplay path — settlement
+//      (balances, stats, leaderboards, prestige) stays out of it.
 //   2. The route handler at `/api/precision/finish-match` (or its
 //      socket equivalent) is the natural seam for re-introducing the
 //      auth boundary, leaderboard updates, and DB transactions.
-//   3. The screenshot of the canonical match state is captured from
-//      `precisionMatchStore` here at the moment of payout, so the
-//      helper is resilient to subsequent `/update-state` calls.
+//   3. The canonical match row is read (and its payout claim stamped) here at
+//      the moment of payout, so the helper is resilient to later state
+//      writes and to a retry after the settling instance died.
 //
 // This helper does NOT mutate `users` rows that are owned by other
 // games' code paths. It only touches the shared `balance`,
@@ -40,7 +43,7 @@ import { users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { recordBigWinIfNeeded } from "../bigWins";
 import { applyPrestigeResult } from "../prestige";
-import { precisionMatchStore } from "./serverStore";
+import { claimPayout, readMatch, releasePayoutClaim } from "./serverStore";
 import type { PlayerSeat } from "./types";
 
 /** Payout multiplier applied to the winning seat's wager when a match
@@ -48,19 +51,6 @@ import type { PlayerSeat } from "./types";
  *  `src/app/api/hex-duel/end-game/route.ts`. Pure winner-take-all —
  *  the loser's wager is forfeit and does NOT return. */
 export const PRECISION_PAYOUT_MULTIPLIER = 1.9;
-
-/** Server-only payout guard. Anchored on `globalThis` so multiple
- *  modules share one source of truth across hot reloads — mirrors
- *  the existing pattern in `src/lib/precision/serverStore.ts` for
- *  `precisionStableLobbies` / `precisionStableMatches`. */
-const globalForPrecisionPayout = globalThis as typeof globalThis & {
-  __precisionPaidOutMatches?: Set<string>;
-};
-if (!globalForPrecisionPayout.__precisionPaidOutMatches) {
-  globalForPrecisionPayout.__precisionPaidOutMatches = new Set();
-}
-const precisionPaidOutMatches =
-  globalForPrecisionPayout.__precisionPaidOutMatches;
 
 export interface ProcessMatchFinishedPayoutArgs {
   matchId: string;
@@ -95,7 +85,7 @@ export interface ProcessMatchFinishedPayoutResult {
  * Idempotently transfers the winner's payout for a finished Precision
  * match. Mirrors Hex Duel's settlement flow:
  *
- *   1. Look up the match in `precisionMatchStore`. Abort if missing
+ *   1. Look up the match row in `precision_matches`. Abort if missing
  *      or if `winnerSeat` is null (should never happen since callers
  *      only invoke this on `phase === "finished"`).
  *   2. Compute `payout = wager × PRECISION_PAYOUT_MULTIPLIER`. Clamp
@@ -131,48 +121,11 @@ export async function processMatchFinishedPayout(
     };
   }
 
-  // Idempotency check FIRST — even before reading match state, so a
-  // double-call from both clients (broadcast + poll) doesn't double-
-  // pay.
-  //
-  // Audit fix: soft-cap `precisionPaidOutMatches`. The set grows once
-  // per finished match and is otherwise unbounded — in a very
-  // long-lived process this would slowly accumulate ~24 bytes per
-  // matchId without ever being reset. We don't gate payouts here;
-  // we just clear the set if it crosses a low threshold so the
-  // cap is invisible to legitimate traffic (we'd have to play
-  // 10k+ matches in one process lifetime to hit it). Idempotency
-  // for the most-recent 10k matches is preserved; any earlier
-  // match is "very stale" and would either be already-paid (DB
-  // side) or would fail at the match-not-found check below. The
-  // 10_000 threshold is intentionally small enough to keep the set
-  // under ~250KB of memory in any reasonable deployment.
-  if (precisionPaidOutMatches.size > 10_000) {
-    precisionPaidOutMatches.clear();
-  }
-  if (precisionPaidOutMatches.has(matchId)) {
-    const priorMatch = precisionMatchStore.get(matchId);
-    return {
-      success: true,
-      alreadyProcessed: true,
-      payout: priorMatch?.wager
-        ? Number(
-            (
-              priorMatch.wager * PRECISION_PAYOUT_MULTIPLIER
-            ).toFixed(2),
-          )
-        : 0,
-      newBalance: 0,
-      finalScore: priorMatch?.score ?? null,
-      winnerUserId:
-        priorMatch?.players.find(
-          (p) => p.seat === priorMatch.winnerSeat,
-        )?.userId ?? null,
-    };
-  }
-
-  const match = precisionMatchStore.get(matchId);
-  if (!match) {
+  // Read the persisted row FIRST — the match has to look payable before we
+  // claim the payout. Claiming first would permanently mark a merely
+  // unfinished match as paid, and the legitimate retry could then never pay.
+  const row = await readMatch(matchId);
+  if (!row) {
     return {
       success: false,
       alreadyProcessed: false,
@@ -183,6 +136,7 @@ export async function processMatchFinishedPayout(
       reason: "Match not found",
     };
   }
+  const match = row.state;
   if (match.winnerSeat === null) {
     return {
       success: false,
@@ -260,7 +214,8 @@ export async function processMatchFinishedPayout(
   // the result UI has one canonical path, but they never touch balances,
   // wagered stats, leaderboards, or payout records.
   if (match.isAiGame) {
-    precisionPaidOutMatches.add(matchId);
+    // Nothing to claim: no balance, no stat, no leaderboard row moves, so
+    // repeating this call is harmless.
     return {
       success: true,
       alreadyProcessed: false,
@@ -275,14 +230,23 @@ export async function processMatchFinishedPayout(
     (resolvedWager * PRECISION_PAYOUT_MULTIPLIER).toFixed(2),
   );
 
-  // Mark the match as paid BEFORE the DB write so any retry that
-  // beats the first transaction to commit still won't double-pay.
-  // Drizzle's pool is single-threaded per query, but a long-running
-  // transaction could still race with a polling client retry; this
-  // guard is the belt alongside Drizzle's atomic UPDATE. Both
-  // clients hitting the endpoint near-simultaneously will both
-  // observe `has(mid) === true` and the second will short-circuit.
-  precisionPaidOutMatches.add(matchId);
+  // ── Claim the payout ─────────────────────────────────────────────
+  // Stamps `payout_processed_at` inside a `SELECT ... FOR UPDATE`
+  // transaction. Exactly one caller — across instances — wins the claim;
+  // the loser reports the same result with `alreadyProcessed: true`, so two
+  // clients hitting the endpoint simultaneously still render identically and
+  // the balance moves once.
+  const claim = await claimPayout(matchId);
+  if (!claim.claimed) {
+    return {
+      success: true,
+      alreadyProcessed: true,
+      payout,
+      newBalance: 0,
+      finalScore: match.score ?? null,
+      winnerUserId: winnerPlayer.userId,
+    };
+  }
 
   // ── Atomic balance + stat update ─────────────────────────────────
   // We grab the winner's row first so we can return an accurate
@@ -311,11 +275,10 @@ export async function processMatchFinishedPayout(
         .where(eq(users.clerkId, loserPlayer.userId));
     });
   } catch (err) {
-    // If the DB write failed, peel the idempotency guard back so a
-    // retry from a polling client can succeed. Without this the
-    // match would be permanently stuck in "already paid out"
-    // without any balance actually changing.
-    precisionPaidOutMatches.delete(matchId);
+    // If the DB write failed, release the claim so a retry from a polling
+    // client can win it again. Without this the match would stay marked as
+    // paid without any balance having moved.
+    await releasePayoutClaim(matchId);
     console.error("[precision] payout transaction failed:", err);
     return {
       success: false,
@@ -395,11 +358,3 @@ export async function processMatchFinishedPayout(
   };
 }
 
-/**
- * Test-only helper — clears the idempotency guard so unit tests can
- * simulate multiple payouts. Not used by production code paths.
- * Exported for visibility by future test scaffolding.
- */
-export function _resetPrecisionPayoutGuardForTests(): void {
-  precisionPaidOutMatches.clear();
-}

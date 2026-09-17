@@ -57,7 +57,7 @@ const lifecycleDefinitions: LifecycleDefinition[] = [
   { game: "plinko-pvp", table: "plinko_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
   { game: "keno-pvp", table: "keno_pvp_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "started_at", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
   { game: "dots-and-boxes", table: "dots_and_boxes_games", parentId: "id", completionWindow: "none", playedAt: "started_at", startedAt: "started_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"] },
-  { game: "precision", table: "precision_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completionStatus: ["finished", "completed"], limitations: ["Completion uses the parent status and winner_id; created_at is used only for the activity window."] },
+  { game: "precision", table: "precision_matches", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: "ended_at", completionStatus: ["finished", "completed"], limitations: ["Free practice matches against the AI bot (is_ai_game = true) are excluded — they move no tokens and would inflate player counts. A row is created when two players are paired, so created_at is within one poll of the real start; terminal rows carry ended_at."] },
   { game: "odds", table: "odds_games", parentId: "id", playerColumns: ["player1_id", "player2_id"], completionWindow: "created_at", playedAt: "created_at", startedAt: "created_at", completedAt: undefined, completionStatus: ["finished", "completed", "closed"], limitations: ["No terminal timestamp is available in the deployed table; completion uses terminal status only."] },
 ];
 
@@ -78,7 +78,12 @@ function statusPredicate(table: string, prefix: string, completed: boolean): str
     return `${prefix}status::text IN (${(completed ? COMPLETED_STATUS : STARTED_STATUS).map((s) => `'${s}'`).join(",")})`;
   }
   if (table === "precision_matches") {
-    return completed ? `${prefix}status NOT IN ('waiting') AND ${prefix}winner_id IS NOT NULL` : `${prefix}status NOT IN ('waiting','cancelled')`;
+    // `is_ai_game = false` keeps the free practice (vs AI) matches — which
+    // share this table so they can reuse the same state machine — out of
+    // every wagered-game metric.
+    return completed
+      ? `${prefix}status NOT IN ('waiting') AND ${prefix}winner_id IS NOT NULL AND ${prefix}is_ai_game = false`
+      : `${prefix}status NOT IN ('waiting','cancelled') AND ${prefix}is_ai_game = false`;
   }
   if (table === "odds_games") {
     return completed ? `${prefix}status IN ('finished','completed','closed')` : `${prefix}status NOT IN ('waiting','cancelled')`;

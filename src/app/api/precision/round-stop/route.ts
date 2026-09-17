@@ -104,7 +104,11 @@ export async function POST(req: NextRequest) {
     // Any stopMs in the request body is intentionally ignored \u2014 the
     // client cannot influence the score.
 
-    const result = recordRoundStop(matchId, userId, roundId, nonce);
+    // One transaction: lock the match row, apply any transition whose
+    // instant has passed (the arming countdown reveal, the bot's due stop),
+    // validate the replay envelope, stamp the STOP instant, and grade the
+    // round once both seats have submitted.
+    const result = await recordRoundStop(matchId, userId, roundId, nonce);
     if (!result.match) {
       return NextResponse.json(
         { success: false, error: "Match not found." },

@@ -12,9 +12,9 @@ import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 import {
-  precisionLobbyStore,
-  precisionMatchStore,
-  promoteArmedRoundIfDue,
+  getWaitingLobby,
+  readMatch,
+  sweepPrecisionGamesIfDue,
 } from "../../../../lib/precision/serverStore";
 import type { PrecisionState } from "../../../../lib/precision/types";
 
@@ -103,18 +103,19 @@ export async function GET(req: NextRequest) {
       { status: 400 },
     );
   }
-  const match = precisionMatchStore.get(matchId);
-  if (match) {
-    // Self-healing arming → active transition. `armMatchRound` schedules a
-    // Node `setTimeout` for the countdown, but that timer is not guaranteed
-    // to fire (frozen serverless instance, process restart, dropped handle).
-    // Because `countdownEndsAt` is stamped on the public state, this read
-    // path can perform the reveal itself the moment the countdown has
-    // elapsed — so a client polling for the round always gets it, instead of
-    // sitting on a countdown parked at 0 forever. It's a strict no-op while
-    // the countdown is still running, and idempotent once the round is
-    // already open.
-    promoteArmedRoundIfDue(matchId);
+  // Opportunistic housekeeping: reclaim lobbies/matches nothing can use any
+  // more (throttled internally, best-effort).
+  void sweepPrecisionGamesIfDue();
+
+  // ── Self-healing transitions, now the ONLY path ────────────────────────
+  // There are no timers any more. The arming countdown and the bot's stop are
+  // stored INSTANTS, so `readMatch` performs whichever transition has come due
+  // (revealing the round, recording the bot's stop, deciding the round) and
+  // persists it before answering. A frozen or recycled instance therefore
+  // cannot strand a round at "0" — the next poll anywhere completes it.
+  const row = await readMatch(matchId);
+  if (row) {
+    const match = row.state;
     return NextResponse.json({
       success: true,
       match: {
@@ -124,19 +125,20 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const lobby = precisionLobbyStore.get(matchId);
-  if (lobby && lobby.status === "waiting") {
+  const lobby = await getWaitingLobby(matchId);
+  if (lobby) {
     // Synthesised lobby-as-state: safe defaults so the client UI doesn't
     // crash when reading score / currentRound before matchmaking has
     // populated the real PrecisionState entry.
     const waitingState: PrecisionState = {
       matchId,
       phase: "waiting",
-      wager: lobby.wager,      players: await decoratePlayerBadges([
+      wager: lobby.wager,
+      players: await decoratePlayerBadges([
         {
           seat: 1,
           userId: lobby.hostUserId,
-          name: lobby.hostName ?? "Player 1",
+          name: lobby.hostName || "Player 1",
           isReady: true,
           isConnected: true,
         },
@@ -147,14 +149,14 @@ export async function GET(req: NextRequest) {
       currentRound: 1,
       // Replay-attack envelope: a waiting lobby has no armed round, so
       // the envelope is null. `precision:stop` rejects packets when
-      // either roundId OR nonce is null. Real values land on the next
-      // armMatchRound call inside `markPlayerReady` once both seats
-      // click Ready.
+      // either roundId OR nonce is null. Real values land when
+      // `markPlayerReady` arms the first round, once both seats have
+      // clicked Ready.
       roundSequence: 0,
       roundId: null,
       roundNonce: null,
-      // Server rolls the per-round target behind `armMatchRound`'s
-      // timer; the public state stays null until the round opens.
+      // The server rolls the per-round target into the SERVER-ONLY column;
+      // the public state stays null until the round opens.
       targetMs: null,
       winnerSeat: null,
       lastRoundWinnerSeat: null,

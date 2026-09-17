@@ -12,14 +12,18 @@ const queue = fs.readFileSync("src/lib/quickQueue.ts", "utf8");
 const ui = fs.readFileSync("src/components/lobby/PlatformQuickQueue.jsx", "utf8");
 
 test("Precision adapter preserves native ready-up match lifecycle", () => {
-  assert.match(adapter, /precisionLobbyStore/);
-  assert.match(adapter, /precisionMatchStore/);
-  assert.match(adapter, /makeInitialMatch/);
-  assert.match(adapter, /ready_up/);
+  // The adapter now pairs through the DB-backed matchmaker instead of walking
+  // a process-local Map, but the destination contract is unchanged: both calls
+  // must resolve to the SAME lobby/match id (the worker asserts it).
+  assert.match(adapter, /tryAutoMatch/);
+  assert.match(adapter, /match: \{ id: result\.gameId \}/);
   assert.match(matchmaking, /makeInitialMatch/);
-  assert.match(store, /armMatchRound/);
+  assert.match(matchmaking, /export async function tryAutoMatch/);
+  assert.match(store, /ready_up/);
+  assert.match(store, /export async function createMatchForPairing/);
+  assert.match(store, /const allReady =/);
   assert.match(createRoute, /tryAutoMatch/);
-  assert.match(joinRoute, /markPlayerReady|makeInitialMatch/);
+  assert.match(joinRoute, /joinLobbyById/);
 });
 
 test("Precision is registered without changing its multiplayer routes", () => {
