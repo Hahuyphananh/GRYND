@@ -104,6 +104,28 @@ export async function releaseCrashArenaSeat(
     return { cleaned: true, deferred: false, returned: 0 };
   }
 
+  // ── Private tables: chips are virtual (play money) ────────────────────
+  // The buy-in was never deducted from the wallet (join route skips the
+  // wallet move for private tables), so the table balance is play money
+  // and must NEVER be refunded. Mark the seat left without touching the
+  // wallet or ledger — mirrors the manual leave route's isPrivate guard.
+  const isVirtual = Boolean(tableData[0]?.isPrivate);
+  if (isVirtual) {
+    await db
+      .update(crashArenaPlayers)
+      .set({ status: "left" })
+      .where(
+        and(
+          eq(crashArenaPlayers.id, player.id),
+          inArray(crashArenaPlayers.status, ["seated", "waiting"]),
+        ),
+      );
+
+    broadcastTableUpdate(tableId, { left: true, userId: user.id, disconnected: true });
+    broadcastLobbyUpdate({ left: true, tableId, disconnected: true });
+    return { cleaned: true, deferred: false, returned: 0 };
+  }
+
   // ── Is a round still open at this table? ──────────────────────────────
   // Any non-settled round (running or crashed) with an entry for this
   // player must have that entry locked in BEFORE the seat is released —
