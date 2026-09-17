@@ -1,5 +1,6 @@
 import { sql } from "../../../../db/sql";
 import { pruneStalePresence } from "../../../../lib/gamePresenceStore";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
 /**
  * GET /api/jobs/retention
@@ -26,7 +27,10 @@ import { pruneStalePresence } from "../../../../lib/gamePresenceStore";
  *
  * Wire into Vercel Cron Jobs (see vercel.json): schedule daily off-peak.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Authenticate cron request before performing global state changes
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
   const RETENTION_DAYS = 45;
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
