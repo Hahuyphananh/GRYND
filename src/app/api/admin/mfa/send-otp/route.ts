@@ -9,6 +9,10 @@ import { users } from "../../../../../db/schema";
 import { isAdmin } from "../../../../../lib/auth/isAdmin";
 import { issueOtp } from "../../../../../lib/auth/adminOtp";
 import { sendEmailSafely } from "../../../../../lib/emails/base";
+import {
+  checkSendAttemptLimit,
+  recordSendAttempt,
+} from "../../../../../lib/security/mfaAttemptLimit";
 
 export const runtime = "nodejs";
 
@@ -20,6 +24,22 @@ export async function POST() {
     }
     if (!(await isAdmin(userId))) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
+
+    // Check OTP send rate limit before generating and sending
+    const sendCheck = await checkSendAttemptLimit(userId);
+    if (!sendCheck.allowed) {
+      const resetAt = sendCheck.resetAt ?? Date.now();
+      const remainingMs = Math.max(0, resetAt - Date.now());
+      const remainingMinutes = Math.ceil(remainingMs / 60_000);
+      
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many OTP requests. Please try again in ${remainingMinutes} minute${remainingMinutes !== 1 ? "s" : ""}.`,
+        },
+        { status: 429 },
+      );
     }
 
     const [row] = await db
@@ -35,6 +55,9 @@ export async function POST() {
         { status: 400 },
       );
     }
+
+    // Record the send attempt before generating the OTP
+    await recordSendAttempt(userId);
 
     const code = await issueOtp(userId);
     const result = await sendEmailSafely({
