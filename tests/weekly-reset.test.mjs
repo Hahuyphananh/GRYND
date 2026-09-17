@@ -8,6 +8,7 @@
  *  - weekly_streak_current is included in the reset
  *  - Redis leaderboard cache invalidation is triggered
  *  - Response format is correct (ok:true + resetAt)
+ *  - SECURITY: Cron authentication is enforced (pentest mitigation)
  *
  * Run:
  *   node --test tests/weekly-reset.test.mjs
@@ -18,7 +19,163 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const ROUTE_PATH = "src/app/api/jobs/weekly-reset/route.ts";
+const CRON_AUTH_PATH = "src/lib/security/cronAuth.ts";
 const source = fs.readFileSync(ROUTE_PATH, "utf8");
+const cronAuthSource = fs.readFileSync(CRON_AUTH_PATH, "utf8");
+
+// ═══════════════════════════════════════════════════════════════
+// SECURITY: Cron authentication enforcement (pentest mitigation)
+// ═══════════════════════════════════════════════════════════════
+
+test("SECURITY: GET handler accepts Request parameter for auth check", () => {
+  // The handler must accept a Request parameter to access headers
+  assert.match(
+    source,
+    /export\s+async\s+function\s+GET\s*\(\s*request\s*:\s*Request\s*\)/,
+    "GET handler must accept Request parameter to enable authentication"
+  );
+});
+
+test("SECURITY: verifyCronRequest is imported from cronAuth module", () => {
+  assert.match(
+    source,
+    /import\s+\{[^}]*verifyCronRequest[^}]*\}\s+from\s+["'].*\/security\/cronAuth["']/,
+    "must import verifyCronRequest from security/cronAuth module"
+  );
+});
+
+test("SECURITY: verifyCronRequest is called before any state changes", () => {
+  // Extract the GET function body
+  const getFunctionMatch = source.match(
+    /export\s+async\s+function\s+GET\s*\([^)]*\)\s*\{([\s\S]*)\}/
+  );
+  assert.ok(getFunctionMatch, "GET function must be present");
+  const functionBody = getFunctionMatch[1];
+
+  // verifyCronRequest must be called
+  assert.match(
+    functionBody,
+    /verifyCronRequest\s*\(\s*request\s*\)/,
+    "must call verifyCronRequest with request parameter"
+  );
+
+  // Find the position of verifyCronRequest call
+  const authCallIndex = functionBody.indexOf("verifyCronRequest");
+  
+  // Find the position of first SQL operation (UPDATE or DELETE or SELECT)
+  const sqlOperations = [
+    functionBody.indexOf("await sql"),
+    functionBody.indexOf("sql`"),
+  ].filter(i => i !== -1);
+  
+  const firstSqlIndex = Math.min(...sqlOperations);
+  
+  assert.ok(
+    authCallIndex < firstSqlIndex,
+    "verifyCronRequest must be called BEFORE any SQL operations"
+  );
+});
+
+test("SECURITY: authentication error is returned immediately", () => {
+  assert.match(
+    source,
+    /const\s+authError\s*=\s*verifyCronRequest\s*\(\s*request\s*\)/,
+    "must capture verifyCronRequest return value"
+  );
+  assert.match(
+    source,
+    /if\s*\(\s*authError\s*\)\s*return\s+authError/,
+    "must return authError immediately if authentication fails"
+  );
+});
+
+test("SECURITY: cronAuth module enforces CRON_SECRET check", () => {
+  assert.match(
+    cronAuthSource,
+    /process\.env\.CRON_SECRET/,
+    "cronAuth must check CRON_SECRET environment variable"
+  );
+});
+
+test("SECURITY: cronAuth fails secure when CRON_SECRET is missing", () => {
+  assert.match(
+    cronAuthSource,
+    /if\s*\(\s*!cronSecret\s*\)/,
+    "cronAuth must check if CRON_SECRET is undefined/empty"
+  );
+  // After the check, it should return 401
+  const afterSecretCheck = cronAuthSource.split(/if\s*\(\s*!cronSecret\s*\)/)[1];
+  assert.match(
+    afterSecretCheck,
+    /status:\s*401/,
+    "cronAuth must return 401 when CRON_SECRET is not configured"
+  );
+});
+
+test("SECURITY: cronAuth validates Authorization header presence", () => {
+  assert.match(
+    cronAuthSource,
+    /request\.headers\.get\s*\(\s*["']authorization["']\s*\)/,
+    "cronAuth must check Authorization header"
+  );
+  assert.match(
+    cronAuthSource,
+    /if\s*\(\s*!authHeader\s*\)/,
+    "cronAuth must validate Authorization header is present"
+  );
+});
+
+test("SECURITY: cronAuth validates Bearer token format", () => {
+  assert.match(
+    cronAuthSource,
+    /Bearer/i,
+    "cronAuth must validate Bearer token format"
+  );
+  assert.match(
+    cronAuthSource,
+    /match\s*\(/,
+    "cronAuth must use regex to extract Bearer token"
+  );
+});
+
+test("SECURITY: cronAuth uses constant-time comparison", () => {
+  assert.match(
+    cronAuthSource,
+    /timingSafeEqual/,
+    "cronAuth must use constant-time comparison to prevent timing attacks"
+  );
+  
+  // Verify the timingSafeEqual implementation
+  assert.match(
+    cronAuthSource,
+    /function\s+timingSafeEqual/,
+    "timingSafeEqual function must be defined"
+  );
+  
+  // Check for XOR operation (constant-time comparison pattern)
+  assert.match(
+    cronAuthSource,
+    /\^/,
+    "timingSafeEqual must use XOR for constant-time comparison"
+  );
+});
+
+test("SECURITY: cronAuth returns 401 for invalid credentials", () => {
+  // Count 401 status codes - should have multiple (missing secret, missing header, invalid format, invalid token)
+  const status401Count = (cronAuthSource.match(/status:\s*401/g) || []).length;
+  assert.ok(
+    status401Count >= 3,
+    `cronAuth must return 401 for multiple failure scenarios, found ${status401Count} instances`
+  );
+});
+
+test("SECURITY: cronAuth returns null on successful authentication", () => {
+  assert.match(
+    cronAuthSource,
+    /return\s+null/,
+    "cronAuth must return null when authentication succeeds"
+  );
+});
 
 // ═══════════════════════════════════════════════════════════════
 // users table — weekly column resets
