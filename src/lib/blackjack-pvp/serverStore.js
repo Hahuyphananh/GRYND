@@ -793,7 +793,8 @@ function applyAction(match, action, seat, fields, payload) {
       const drawn = drawCards(currentDeck, 1);
       const nextHand = [...currentHand, ...drawn];
       const newScore = calcHandValue(nextHand);
-      const nextState = PLAYER_STATE.PLAYING;
+      const nextState =
+        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
@@ -884,7 +885,8 @@ function applyAction(match, action, seat, fields, payload) {
       const nextHand = [...currentHand];
       nextHand[choice] = drawnCard;
       const newScore = calcHandValue(nextHand);
-      const nextState = PLAYER_STATE.PLAYING;
+      const nextState =
+        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
@@ -974,7 +976,8 @@ function applyAction(match, action, seat, fields, payload) {
       const stored = currentHand[currentHand.length - 1];
       const nextHand = currentHand.slice(0, -1);
       const newScore = calcHandValue(nextHand);
-      const nextState = PLAYER_STATE.PLAYING;
+      const nextState =
+        newScore > 21 ? PLAYER_STATE.BUSTED : PLAYER_STATE.PLAYING;
       return {
         ok: true,
         setValues: {
