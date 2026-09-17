@@ -481,7 +481,11 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     }
   }
 
-  if (isPublicRoute(req)) {
+  // Admin API routes must NEVER be treated as public — they require full
+  // authentication, admin role verification, AND admin MFA step-up (enforced
+  // below at lines 591-616). The broad `/api/(.*)` public-route pattern would
+  // otherwise match `/api/admin/*` and return early, bypassing the MFA gate.
+  if (isPublicRoute(req) && !pathname.startsWith("/api/admin")) {
     // User-level MFA runs even on public pages (casino pages are public
     // routes but wagering on them must stay protected). auth() here is the
     // same call protected routes already make.
@@ -538,7 +542,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   const skipsAgeGate =
     pathname.startsWith("/sync") ||
     pathname.startsWith("/complete-profile") ||
-    pathname.startsWith("/admin");
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin");
 
   if (!skipsAgeGate) {
     // Prefer the session claim when a JWT template provides one. When it
@@ -595,7 +600,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // 2. DB-backed path: queries the `is_admin` column on the users table.
   // Both the middleware AND the page component (src/app/admin/page.tsx) enforce
   // this check so non-admin users can never reach the dashboard.
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
       .split(",")
       .map((id) => id.trim())
@@ -612,6 +617,14 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           ip,
           path: pathname,
         });
+        if (pathname.startsWith("/api/admin")) {
+          return applySecurityHeaders(
+            NextResponse.json(
+              { success: false, error: "Admin access required." },
+              { status: 403 }
+            )
+          );
+        }
         return applySecurityHeaders(
           NextResponse.redirect(new URL("/", req.url))
         );
