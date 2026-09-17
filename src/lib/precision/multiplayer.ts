@@ -28,6 +28,10 @@ export interface CreateLobbyRequest {
    *  for backwards-compat with any persisted request payloads, but
    *  the route ignores anything other than `"pvp"`. */
   gameMode: "pvp";
+  /** Display name for the host seat, resolved from the signed-in Clerk
+   *  user. Display only — the route takes the host's IDENTITY from the
+   *  session, never from this payload. */
+  hostName?: string;
 }
 
 export interface CreateLobbyResponse {
@@ -60,11 +64,34 @@ export async function createLobby(
 
 export async function joinLobby(
   lobbyId: string,
+  /** Display name for the joining seat (seat 2). Display only — the route
+   *  takes the joiner's IDENTITY from the Clerk session. */
+  playerName?: string,
 ): Promise<{ success: boolean; matchId?: string; error?: string }> {
   const res = await fetch(API_ROUTES.joinLobby, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lobbyId }),
+    body: JSON.stringify({ lobbyId, playerName }),
+  });
+  return res.json();
+}
+
+/**
+ * POST `/api/precision/leave` — tell the server this player is done with a
+ * Precision game id: a waiting lobby they host is cancelled, a practice
+ * (vs AI) match is removed, and a live PvP match is forfeited to the
+ * opponent. Fire-and-forget from the match page's exit paths; the endpoint
+ * is idempotent, so a retry or a double-fire (button + `sendBeacon` on
+ * unload) is harmless.
+ */
+export async function leaveGame(
+  matchId: string,
+): Promise<{ success: boolean; action?: string; error?: string }> {
+  const res = await fetch(API_ROUTES.leave, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ matchId }),
   });
   return res.json();
 }

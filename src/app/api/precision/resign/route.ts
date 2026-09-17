@@ -1,22 +1,26 @@
 // POST /api/precision/resign
 //
-// Scaffold stub: marks the match as finished and returns the new state so
-// the end-popup flow can surface "Resigned". Real implementation will write
-// the forfeit to the database and credit the winner — same posture as
+// Ends a match immediately, without declaring a winner, and returns the new
+// state so the end-popup flow can surface "Resigned". Matches the posture of
 // /api/pool/resign and /api/uno/multiplayer/resign.
+//
+// The transition itself lives in `serverStore.resignMatch`, inside a
+// `SELECT … FOR UPDATE` transaction:
+//   * phase → "finished", the round-replay envelope is cleared (so a late
+//     STOP packet from the round in flight can't be replayed against a
+//     finished match), and the server-only target / bot-stop columns are
+//     dropped;
+//   * the row's `status` / `ended_at` reporting columns are stamped so the
+//     retention job and analytics see a cancelled match;
+//   * the canonical-lifecycle mirror records `cancelled / user_cancelled`.
+//
+// There is no arming timer to cancel any more — the countdown is a stored
+// instant and `phase: "finished"` is a hard stop for it.
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import {
-  cancelArming,
-  precisionMatchStore,
-} from "../../../../lib/precision/serverStore";
-import {
-  clearAnomalyLedgerForMatch,
-  flushLedgerForMatch,
-} from "../../../../lib/precision/anomalyDetection";
+import { resignMatch } from "../../../../lib/precision/serverStore";
 import { logError } from "../../../../lib/logError";
-import { mirrorPrecisionTransition } from "../../../../lib/precision/canonicalLifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -34,43 +38,27 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json().catch(() => ({}));
     const matchId = String(body?.matchId ?? "");
-    const match = precisionMatchStore.get(matchId);
-    if (!match) {
+    if (!matchId) {
       return NextResponse.json(
-        { success: false, error: "Match not found." },
-        { status: 404 },
+        { success: false, error: "Missing matchId." },
+        { status: 400 },
       );
     }
-    if (!match.players.some((p) => p.userId === userId)) {
+
+    const result = await resignMatch(matchId, userId);
+    if (!result.ok) {
+      if (result.reason === "Match not found") {
+        return NextResponse.json(
+          { success: false, error: "Match not found." },
+          { status: 404 },
+        );
+      }
       return NextResponse.json(
         { success: false, error: "Caller is not a participant in this match." },
         { status: 403 },
       );
     }
-    match.phase = "finished";
-    mirrorPrecisionTransition({
-      matchId,
-      status: "cancelled",
-      cancelReason: "user_cancelled",
-      playerCount: match.players.length,
-    });
-    match.version += 1;
-    // ── Audit fix: cancel any pending arming timer so a late-firing
-    // ── `setTimeout` from `armMatchRound` can't flip phase back to
-    // ── "active" on a finished match. Without this, an opponent who
-    // ── pressed Resign while the server was still in `arming` would
-    // ── see the page briefly flip back to `active` for the un-armed
-    // ── round before the realtime-server's socket broadcast settles.
-    // ── Belt + braces: also flush the anomaly ledger so operators
-    // ── get a summary on resign-aborts too.
-    cancelArming(matchId);
-    const flushed = flushLedgerForMatch(matchId);
-    if (!flushed.flushed) {
-      // No flagged users — drop the per-match ledger silently anyway
-      // so it doesn't linger in globalThis.
-      clearAnomalyLedgerForMatch(matchId);
-    }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, match: result.match ?? null });
   } catch (err) {
     await logError({
       errorType: "precision_resignation_error",

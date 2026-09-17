@@ -50,12 +50,27 @@ export const ARMING_FAST_POLL_MAX_ATTEMPTS = 12;
 // 5 minute TTL used for Pool lobbies.
 export const LOBBY_TTL_MS = 5 * 60 * 1000;
 
-// Finished-match TTL — after this a TERMINAL match is auto-pruned
-// (server-side). Without this the `precisionMatchStore` map would leak
-// finished-but-still-replayable matches indefinitely in a long-lived
-// process. Set high enough that the end-replay window (RESULT_POPUP_
+// Finished-match TTL — after this a TERMINAL match row is auto-pruned
+// (server-side, by `sweepPrecisionGames`). Without this finished rows would
+// accumulate forever. Set high enough that the end-replay window (RESULT_POPUP_
 // REPLAY_WINDOW_MS = 15s) plus a 60s grace period fits comfortably.
 export const MATCH_FINISHED_TTL_MS = 60 * 60 * 1000;
+
+// Abandoned-match TTL — after this an UNFINISHED match with no activity is
+// torn down server-side. A player who quits mid-match (closes the tab, taps
+// "Lobby" on a live round, or abandons a `ready_up` match neither seat ever
+// readies) can leave the row unfinished forever: the finish-based sweep above
+// never sees it because `phase` never becomes "finished".
+//
+// The common exits are handled immediately (`/api/precision/leave`, the
+// disconnect grace timer's forfeit, and the practice-match removal), so this
+// sweep is pure storage hygiene — a stranded row can no longer mis-route
+// anyone, because a paired id is never handed out again (the lobby it came
+// from is `active`, and any id that already has a match row is refused by
+// `/api/precision/join-lobby`). The window is therefore generous: long enough
+// that a LIVE match — even one sitting in `ready_up` while the opponent takes
+// their time — is never pruned underneath the players.
+export const MATCH_ABANDONED_TTL_MS = 6 * 60 * 60 * 1000;
 
 // End-popup replay window. Mirrors the 15 second window used by Uno's
 // `endPopup` flow so the user experience feels consistent.
@@ -73,12 +88,12 @@ export const MAX_ROUNDS = 5;
 //
 // The server rolls a fresh target in [MIN_TARGET_MS, MAX_TARGET_MS] for
 // EVERY round (inclusive on both ends, millisecond precision — examples:
-// 3821, 6158, 9475). The target is stored in a SERVER-ONLY map and is
-// NEVER exposed on `PrecisionState.targetMs` during the `arming` phase.
-// The arming→active timer callback is the moment the target is written
-// onto the public match state, so both polling clients see the same
-// revealed value at the same time. See `armMatchRound` in
-// `serverStore.ts` and `precisionRoundTargets`.
+// 3821, 6158, 9475). The target is stored in the SERVER-ONLY
+// `precision_matches.server_target_ms` column and is NEVER exposed on
+// `PrecisionState.targetMs` during the `arming` phase. The arm→active
+// reveal is the moment the target is copied onto the public state, so both
+// polling clients see the same revealed value at the same time. See
+// `armRound` / `applyDueTransitions` in `serverStore.ts`.
 export const MIN_TARGET_MS = 2_500;
 export const MAX_TARGET_MS = 10_000;
 
@@ -145,16 +160,18 @@ export const PRECISION_ANOMALY_LEDGER_MAX_PER_MATCH = 64;
 // client renders the live countdown from the server-stamped
 // `countdownEndsAt` (`armingStartedAt + ROUND_COUNTDOWN_MS`), so both
 // players see the same 5…4…3…2…1 and the timer + target appear at the
-// same moment on both screens. The setTimeout fires server-side and
-// transitions the phase back to `active` — the countdown display is
-// purely visual; all round timing remains server-authoritative.
+// same moment on both screens. The reveal itself is performed by the next
+// read (`applyDueTransitions` in `serverStore.ts`) — there are no timers any
+// more, so a recycled instance can never strand a round at 0 — and the
+// countdown display stays purely visual; all round timing remains
+// server-authoritative.
 //
 // The solo practice page (`/casino/precision/test`) mirrors this exact
 // 5-second countdown client-side so practice rounds feel identical to a
 // real PvP match.
 //
 // The target itself is only revealed when the phase flips to `active`
-// (see `armMatchRound`), so a predictable countdown start does not enable
+// (see `revealArmedRoundState`), so a predictable countdown start does not enable
 // anticipatory clicking — the per-round target in [MIN_TARGET_MS,
 // MAX_TARGET_MS] is still unknown until the timer starts.
 export const ROUND_COUNTDOWN_MS = 5_000;
@@ -223,4 +240,5 @@ export const API_ROUTES = {
   finishMatch: "/api/precision/finish-match",
   updateState: "/api/precision/update-state",
   resign: "/api/precision/resign",
+  leave: "/api/precision/leave",
 } as const;

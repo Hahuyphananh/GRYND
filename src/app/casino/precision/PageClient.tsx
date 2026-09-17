@@ -91,6 +91,17 @@ export default function PrecisionLobbyPage() {
   };
 
   /**
+   * Display name for the local player's seat. Display only — the server
+   * derives every player's IDENTITY from the Clerk session; this is what
+   * the opponent sees on the seat card.
+   */
+  const displayName =
+    user?.username ||
+    user?.fullName ||
+    user?.firstName ||
+    (isSignedIn ? "Player" : "You");
+
+  /**
    * Write the locally owned seat ("1" or "2") to sessionStorage. The
    * match page reads this on mount so it knows which player record is
    * "self" — auth hasn't landed in the scaffold yet.
@@ -121,8 +132,16 @@ export default function PrecisionLobbyPage() {
     setCreating(true);
     setError(null);
     try {
+      // Staked PvP matchmaking needs a signed-in player: the server seats
+      // the host from the Clerk session (it never trusts a client-sent id),
+      // so an anonymous caller would be rejected anyway — fail fast with a
+      // readable message instead of a raw 401.
+      if (!isSignedIn) {
+        setError("Sign in to play a staked Precision duel.");
+        return;
+      }
       posthog?.capture("precision_find_match", { wager, mode: "pvp" });
-      const res = await createLobby({ wager, gameMode: "pvp" });
+      const res = await createLobby({ wager, gameMode: "pvp", hostName: displayName });
       if (!res.success || !res.gameId) {
         setError(res.error ?? t("games.precision.match_unavailable"));
         return;
@@ -179,7 +198,7 @@ export default function PrecisionLobbyPage() {
     setJoining(String(lobby.id));
     setError(null);
     try {
-      const res = await joinLobby(String(lobby.id));
+      const res = await joinLobby(String(lobby.id), displayName);
       if (!res.success || !res.matchId) {
         setError(res.error ?? t("games.precision.join_failed"));
         return;

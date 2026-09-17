@@ -2019,74 +2019,6 @@ export const hexDuelActions = pgTable(
   })
 );
 
-// PRECISION TABLES — PvP "Precision" casino game (waiting → active → finished)
-// Schema mirrors dice_matches / pool_matches / hex_duel_games conventions:
-//   • clerkIds stored as varchar(255) without FK references to `users`
-//     (matches every other PvP table in the project so existing scripts
-//      and indexes remain compatible).
-//   • `status` is varchar(20) instead of a pgEnum so it can be extended
-//     without a destructive migration later.
-export const precisionMatches = pgTable(
-  "precision_matches",
-  {
-    id: serial("id").primaryKey(),
-    player1Id: varchar("player1_id", { length: 255 }).notNull(),
-    player2Id: varchar("player2_id", { length: 255 }),
-    wager: numeric("wager", { precision: 10, scale: 2 }).notNull(),
-    status: varchar("status", { length: 20 }).notNull().default("waiting"),
-    winnerId: varchar("winner_id", { length: 255 }),
-    currentRound: integer("current_round").notNull().default(1),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Per-project convention: open-lobby queries + per-player history.
-    statusIdx: index("idx_precision_matches_status").on(table.status, table.createdAt),
-    player1Idx: index("idx_precision_matches_player1").on(table.player1Id, table.createdAt),
-    player2Idx: index("idx_precision_matches_player2").on(table.player2Id, table.createdAt),
-  })
-);
-
-// One row per round of a Precision match. Cascade deleting with the
-// parent match keeps history tidy when a match is purged. Per-round
-// `winnerId` is nullable so rounds in progress still persist cleanly.
-export const precisionRounds = pgTable(
-  "precision_rounds",
-  {
-    id: serial("id").primaryKey(),
-    matchId: integer("match_id")
-      .notNull()
-      .references(() => precisionMatches.id, { onDelete: "cascade" }),
-    roundNumber: integer("round_number").notNull(),
-    targetMilliseconds: integer("target_milliseconds").notNull(),
-    startTimestamp: timestamp("start_timestamp").notNull(),
-    player1StopTimestamp: timestamp("player1_stop_timestamp"),
-    player2StopTimestamp: timestamp("player2_stop_timestamp"),
-    player1Difference: integer("player1_difference"),
-    player2Difference: integer("player2_difference"),
-    winnerId: varchar("winner_id", { length: 255 }),
-  },
-  (table) => ({
-    // Lookup is always ("all rounds of match X in order") so a
-    // composite index on (match_id, round_number) is the right shape.
-    matchRoundIdx: index("idx_precision_rounds_match_round").on(table.matchId, table.roundNumber),
-  })
-);
-
-// Precision relations — declared here (after the tables) so the symbols
-// are bound before `relations(...)` runs. Drizzle relations are read at
-// query time, not module-load, so the position is purely about lexical
-// ordering for the TS compiler.
-export const precisionMatchesRelations = relations(precisionMatches, ({ many }) => ({
-  rounds: many(precisionRounds),
-}));
-
-export const precisionRoundsRelations = relations(precisionRounds, ({ one }) => ({
-  match: one(precisionMatches, {
-    fields: [precisionRounds.matchId],
-    references: [precisionMatches.id],
-  }),
-}));
-
 // ADMIN AUDIT LOGS — persisted record of all admin actions
 export const adminAuditLogs = pgTable(
   "admin_audit_logs",
@@ -3824,6 +3756,107 @@ export const tokenTransactionTypeEnum = pgEnum("token_transaction_type", [
   "refund",
   "reward",
 ]);
+
+// ── Precision (reflex-stop duel) ───────────────────────────────────────
+//
+// Persistence for the Precision lobby queue and the live match state.
+// Deliberately mirrors `towerArenaMatches`: a handful of QUERYABLE columns
+// (phase / status / wager / timestamps) beside a jsonb snapshot of the
+// public match state, so the API can list, sweep and settle rows with an
+// index instead of loading and filtering every game in memory.
+//
+// WHY THIS EXISTS AT ALL
+//   Precision used to keep lobbies and matches in `globalThis` Maps inside
+//   the Next process. On a serverless deploy that state is per-instance and
+//   dies with the instance: a match created by one request could be
+//   invisible to the very next poll (the player saw an empty page), and any
+//   `setTimeout`-driven transition (the arming countdown, the bot's stop)
+//   was lost outright on a frozen/recycled instance. Every row here is the
+//   durable replacement — the countdown and the bot are now expressed as
+//   STORED INSTANTS the next read can act on, so no live process is
+//   required for a match to make progress.
+//
+// SERVER-ONLY COLUMNS (never serialised to a client)
+//   serverTargetMs  the rolled round target while the round is still arming
+//   aiStopAt        the instant the bot will stop at (AI practice matches)
+//   pendingStops    the per-seat stop telemetry of the round in flight
+//   anomalyLedger   per-user reaction samples + already-logged variance flags
+//
+// The lobby id doubles as the match id once two players are paired — see
+// `tryAutoMatch` — so both URL shapes (`/games/precision/game/<id>`) keep
+// working exactly as before.
+export const precisionLobbies = pgTable(
+  "precision_lobbies",
+  {
+    id: text("id").primaryKey(),
+    hostUserId: varchar("host_user_id", { length: 255 }).notNull(),
+    hostName: varchar("host_name", { length: 64 }).notNull().default("Player 1"),
+    opponentUserId: varchar("opponent_user_id", { length: 255 }),
+    opponentName: varchar("opponent_name", { length: 64 }),
+    wager: integer("wager").notNull(),
+    gameMode: varchar("game_mode", { length: 12 }).notNull().default("pvp"),
+    status: varchar("status", { length: 12 }).notNull().default("waiting"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // The pairing query is "first waiting lobby at this wager, not mine";
+    // the list query is "all waiting lobbies, oldest first".
+    index("precision_lobbies_status_idx").on(
+      table.status,
+      table.wager,
+      table.createdAt,
+    ),
+    index("precision_lobbies_host_idx").on(table.hostUserId, table.status),
+  ],
+);
+
+export const precisionMatches = pgTable(
+  "precision_matches",
+  {
+    id: text("id").primaryKey(),
+    // ── Canonical house columns ──
+    // Same shape as `pool_matches` / `tower_arena_matches` so the shared
+    // analytics (`/api/pm/analytics`), retention job (`/api/jobs/retention`),
+    // lobby stats and sitemap keep reading precision history without a
+    // per-game special case. Derived from the seats on every write.
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    wager: integer("wager").notNull().default(0),
+    /** waiting | active | finished | cancelled — mirrors `phase` for the
+     *  reporting surface. A row only exists once two seats are known, so a
+     *  real match starts at `active`. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    isAiGame: boolean("is_ai_game").notNull().default(false),
+    phase: varchar("phase", { length: 16 }).notNull().default("ready_up"),
+    // Public PrecisionState snapshot — byte-for-byte what
+    // `/api/precision/get-match` hands the client (minus the server-only
+    // columns below, which are never merged into it).
+    state: jsonb("state").notNull(),
+    pendingStops: jsonb("pending_stops").notNull().default(sql`'{}'::jsonb`),
+    anomalyLedger: jsonb("anomaly_ledger").notNull().default(sql`'{}'::jsonb`),
+    serverTargetMs: integer("server_target_ms"),
+    aiStopAt: timestamp("ai_stop_at"),
+    // Payout idempotency. A DB column (rather than the in-memory Set the
+    // helper used before) so two instances — or a retry after the instance
+    // that settled the match died — can never pay a match twice.
+    payoutProcessedAt: timestamp("payout_processed_at"),
+    /** Terminal timestamp. Also the retention job's purge column. */
+    endedAt: timestamp("ended_at"),
+    // Last REAL state transition (arm / ready / stop / forfeit). The
+    // abandoned-match sweep prunes rows that never finish and stop moving.
+    touchedAt: timestamp("touched_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Abandoned-match sweep: unfinished matches that stopped moving.
+    index("precision_matches_phase_idx").on(table.phase, table.touchedAt),
+    // Finished-match sweep + retention purge.
+    index("precision_matches_ended_idx").on(table.endedAt),
+    index("precision_matches_player1_idx").on(table.player1Id, table.createdAt),
+    index("precision_matches_player2_idx").on(table.player2Id, table.createdAt),
+  ],
+);
 
 export const tokenTransactions = pgTable(
   "token_transactions",

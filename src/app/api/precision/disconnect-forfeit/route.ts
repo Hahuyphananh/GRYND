@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = forfeitMatch(matchId, clerkUserId);
+    const result = await forfeitMatch(matchId, clerkUserId);
     if (!result.ok) {
       // Match not found / caller not a participant — nothing further to
       // do; return success so the realtime server stops retrying.

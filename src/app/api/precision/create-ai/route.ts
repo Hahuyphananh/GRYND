@@ -1,8 +1,26 @@
+// POST /api/precision/create-ai
+//
+// Free practice match against the server-controlled GRYND AI. The match is
+// created in `ready_up` with the bot seat already ready, so the human's
+// single Ready click starts the first round through the normal
+// `markPlayerReady` → arm path.
+//
+// ── Why it is NOT armed here ─────────────────────────────────────────────
+// This route used to arm the round immediately, which stamped the 5-second
+// arming countdown at CREATE time — before the client had even navigated to
+// the match page or fetched its first state. By the time the page rendered,
+// the countdown was usually already expired, so the screen opened on a
+// countdown parked at 0. Arming from the player's Ready click instead means
+// the countdown is always a real 5…4…3…2…1 that starts the moment the human
+// is actually looking at the page.
+//
+// The match row only ever lives in `precision_matches` (never in
+// `precision_lobbies`), which is what keeps a practice match un-joinable —
+// see `/api/precision/join-lobby`.
+
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { armMatchRound, PRECISION_AI_USER_ID, precisionMatchStore } from "../../../../lib/precision/serverStore";
-import { makeInitialMatch } from "../../../../lib/precision/matchmaking";
-import type { PrecisionPlayer } from "../../../../lib/precision/types";
+import { createAiMatch } from "../../../../lib/precision/serverStore";
 
 export const dynamic = "force-dynamic";
 
@@ -12,29 +30,11 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
-    await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const requested = String(body?.playerName ?? "").replace(/\s+/g, " ").trim();
+    const humanName = requested ? requested.slice(0, 24) : "You";
 
-    const matchId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const players: PrecisionPlayer[] = [
-      {
-        seat: 1,
-        userId,
-        name: "You",
-        isReady: true,
-        isConnected: true,
-      },
-      {
-        seat: 2,
-        userId: PRECISION_AI_USER_ID,
-        name: "GRYND AI",
-        isReady: true,
-        isConnected: true,
-      },
-    ];
-    const match = makeInitialMatch(matchId, 0, players, "ready_up", 1, true);
-    precisionMatchStore.set(matchId, match);
-    armMatchRound(matchId);
-
+    const matchId = await createAiMatch(userId, humanName);
     return NextResponse.json({ success: true, matchId });
   } catch (error) {
     console.error("[precision/create-ai] error:", error);

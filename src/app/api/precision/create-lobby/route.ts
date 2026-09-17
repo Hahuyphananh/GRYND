@@ -10,11 +10,26 @@
 // intentionally the only entry point here so we don't fake a "vs AI"
 // opponent that would be game-theoretically rigged.
 //
+// ── Identity (IDOR hardening) ────────────────────────────────────────────
+// The host's userId comes from the Clerk SESSION, never from the body
+// (mirrors `/api/pool/create-lobby`, which also uses `auth()`). The body
+// used to be the source of truth and the client never sent one, so every
+// lobby on the platform was stored with the literal placeholder
+// `hostUserId: "host"`. That single line was the root cause of the PvP
+// breakage: because `tryAutoMatch` pairs on `lobby.hostUserId !== hostUserId`
+// and de-duplicates on `===`, no two players could EVER be paired (every
+// host looked like the same player), every caller was instead handed the
+// first waiting lobby at that wager — someone else's — and the host could
+// never ready up or stop (`/api/precision/ready` + `/round-stop` resolve the
+// caller from the session and then require a matching seat, so the
+// placeholder host always got a 403).
+//
 // The response carries a unified `gameId` so the client has a single
 // field to navigate to regardless of whether they were queued or
 // matched.
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { MIN_WAGER, MAX_WAGER } from "../../../../lib/precision/constants";
 import { tryAutoMatch } from "../../../../lib/precision/matchmaking";
 
@@ -25,17 +40,39 @@ function clampWager(value: number): number {
   return Math.max(MIN_WAGER, Math.min(MAX_WAGER, Math.floor(value)));
 }
 
+/**
+ * Display name only — NEVER an identity. Trimmed and capped so a hostile
+ * client can't stuff a paragraph into the lobby list.
+ */
+function sanitizeName(value: unknown): string {
+  const name = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!name) return "Player 1";
+  return name.slice(0, 24);
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Sign in to play a staked Precision duel." },
+        { status: 401 },
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const wager = clampWager(Number(body?.wager));
-    const hostUserId = String(body?.hostUserId ?? "host");
-    const hostName = String(body?.hostName ?? "Player 1");
+    const hostUserId = userId;
+    const hostName = sanitizeName(body?.hostName);
 
     // PvP-only — any `gameMode` other than "pvp" is normalised away in
     // case a stale client still sends the legacy `"ai"` literal. Solo
     // practice goes through `/casino/precision/test` instead.
-    const result = tryAutoMatch({ wager, hostUserId, hostName });
+    //
+    // Pairing happens in Postgres (`precision_lobbies`, claim + match insert
+    // in one transaction), so two callers on different instances can finally
+    // see each other's queue entries.
+    const result = await tryAutoMatch({ wager, hostUserId, hostName });
 
     if (result.status === "waiting") {
       return NextResponse.json({

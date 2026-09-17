@@ -1,27 +1,48 @@
 // POST /api/precision/join-lobby
 //
-// Scaffold stub: looks up the lobby in `precisionLobbyStore` and, if there
-// is room for a second player, creates a `PrecisionMatch` in
-// `precisionMatchStore` keyed by `matchId = lobby.id`. Returns the
-// matchId so the client can route to /casino/precision/game/[matchId].
+// Join a public waiting lobby as seat 2. On success the lobby id — which is
+// also the match id — is returned so the client can route to
+// /casino/precision/game/[matchId].
+//
+// The whole operation is one atomic UPDATE in `serverStore.joinLobbyById`:
+//
+//   UPDATE precision_lobbies
+//      SET status = 'active', opponent_user_id = $me
+//    WHERE id = $lobby AND status = 'waiting' AND host_user_id <> $me
+//   RETURNING ...
+//
+// Whoever wins that UPDATE owns the pairing, so two players clicking Join at
+// the same instant can never both land in the same seat.
+//
+// ── Identity (IDOR hardening) ────────────────────────────────────────────
+// The joiner's userId comes from the Clerk SESSION, never from the body — a
+// client could previously join a lobby as ANY user by sending a spoofed
+// `body.userId`. `playerName` is display-only: trimmed and capped.
+//
+// ── Why an id that already has a match is refused ────────────────────────
+// A lobby id becomes the MATCH id the moment two players are paired, so any
+// id that already has a match row must never be handed out as joinable
+// again. That single rule is also what keeps a free "vs AI" practice match
+// un-joinable: a practice match only ever has a `precision_matches` row and
+// no lobby row at all.
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import {
-  precisionLobbyStore,
-  precisionMatchStore,
-} from "../../../../lib/precision/serverStore";
-import { makeInitialMatch } from "../../../../lib/precision/matchmaking";
-import type { PrecisionPlayer } from "../../../../lib/precision/types";
-import { mirrorPrecisionQueued } from "../../../../lib/precision/canonicalLifecycle";
+import { joinLobbyById } from "../../../../lib/precision/serverStore";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Display name only — NEVER an identity. Trimmed and capped so a hostile
+ * client can't stuff a paragraph into the match UI.
+ */
+function sanitizeName(value: unknown, fallback: string): string {
+  const name = String(value ?? "").replace(/\s+/g, " ").trim();
+  return name ? name.slice(0, 24) : fallback;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // ── IDOR hardening: the joining player's identity comes from the
-    // Clerk session, never from the body — a client could previously
-    // join a lobby as ANY user by sending a spoofed body.userId.
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json(
@@ -31,67 +52,25 @@ export async function POST(req: NextRequest) {
     }
     const body = await req.json().catch(() => ({}));
     const lobbyId = String(body?.lobbyId ?? "");
-    const lobby = precisionLobbyStore.get(lobbyId);
-    if (!lobby) {
+    if (!lobbyId) {
       return NextResponse.json(
-        { success: false, error: "Lobby not found." },
-        { status: 404 },
-      );
-    }
-    if (lobby.status !== "waiting") {
-      return NextResponse.json(
-        { success: false, error: "Lobby is no longer open." },
-        { status: 409 },
-      );
-    }
-    if (lobby.opponentUserId) {
-      return NextResponse.json(
-        { success: false, error: "Lobby is full." },
-        { status: 409 },
+        { success: false, error: "Missing lobbyId." },
+        { status: 400 },
       );
     }
 
-    lobby.opponentUserId = userId;
-    lobby.status = "active";
-
-    const matchId = lobby.id;
-    const players: PrecisionPlayer[] = [
-      {
-        seat: 1,
-        userId: lobby.hostUserId,
-        name: lobby.hostName ?? "Player 1",
-        isReady: false,
-        isConnected: true,
-      },
-      {
-        seat: 2,
-        userId: lobby.opponentUserId,
-        name: "Player 2",
-        isReady: false,
-        isConnected: true,
-      },
-    ];
-
-    // Create the match in `ready_up` (NOT `active`), exactly like the
-    // auto-match path in `tryAutoMatch`. Both players must click Ready,
-    // which triggers `armMatchRound` — the flow that rolls the per-round
-    // target, stamps the roundId/roundNonce replay envelope, runs the
-    // 5s countdown, and stamps roundGoInstant. Creating the match in
-    // `active` directly left targetMs null ("—" forever), roundId/nonce
-    // null (every STOP rejected with "Missing roundId"), and started the
-    // timer with no warning — breaking the round for both players.
-    const match = makeInitialMatch(matchId, lobby.wager, players, "ready_up", 1);
-    precisionMatchStore.set(matchId, match);
-    mirrorPrecisionQueued({
-      matchId,
-      playerCount: players.length,
-      queuedAt: new Date(lobby.createdAt),
+    const result = await joinLobbyById({
+      lobbyId,
+      userId,
+      userName: sanitizeName(body?.playerName, "Player 2"),
     });
-
-    return NextResponse.json({
-      success: true,
-      matchId,
-    });
+    if (!result.matchId) {
+      return NextResponse.json(
+        { success: false, error: result.error ?? "Unable to join this lobby." },
+        { status: result.status ?? 409 },
+      );
+    }
+    return NextResponse.json({ success: true, matchId: result.matchId });
   } catch (err) {
     return NextResponse.json(
       { success: false, error: (err as Error)?.message ?? "Unknown error" },

@@ -54,6 +54,7 @@ import {
   joinEndReplayRoom,
   joinMatchRoom,
   leaveEndReplayRoom,
+  leaveGame,
   leaveMatchRoom,
   markReady,
   resignMatch,
@@ -74,6 +75,7 @@ import {
 } from "../../../../../lib/precision/utils";
 import { PrecisionRankIcon } from "../../../../../components/precision/PrecisionRankIcon";
 import {
+  IconAlertTriangle,
   IconFlag,
   IconClock,
   IconTarget,
@@ -98,11 +100,6 @@ interface PrecisionMatchPageProps {
   params: Promise<{ matchId: string }>;
 }
 
-const DEFAULT_PLAYERS: PrecisionPlayer[] = [
-  { seat: 1, userId: "host", name: "You", isReady: true, isConnected: true },
-  { seat: 2, userId: "opponent", name: "Opponent", isReady: false, isConnected: false },
-];
-
 export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) {
   const router = useRouter();
   const posthog = usePostHog();
@@ -122,6 +119,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     : "unknown";
 
   const [state, setState] = useState<PrecisionState | null>(null);
+  // Server-side lookup result for THIS match id. `missing` means the store
+  // no longer holds a match (or a waiting lobby) for it — the match was
+  // finished/swept/cancelled, or the URL is stale (an old lobby a player was
+  // redirected back to). The page then says so instead of rendering a fake
+  // waiting room with placeholder seats, which read as a dead "blank" page.
+  const [lookup, setLookup] = useState<"pending" | "found" | "missing">(
+    "pending",
+  );
   const [endPopup, setEndPopup] = useState<PrecisionEndPopupState | null>(null);
   const [replayRequested, setReplayRequested] = useState(false);
   const [opponentReplayRequested, setOpponentReplayRequested] = useState(false);
@@ -154,7 +159,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // for `ROUND_RESULT_REVEAL_MS` (3s) then auto-dismisses. Tracking the
   // snapshot fields directly (instead of pulling from state on render)
   // lets the view remain stable even if `state.lastRoundStops` later
-  // gets overwritten by armMatchRound's next-arm cycle, which would
+  // gets overwritten by the next round's arm, which would
   // otherwise cancel the reveal mid-animation. Diffs are SERVER-STAMPED
   // in `recordRoundStop`, not recomputed locally — the panel reads them
   // verbatim from `state.lastRoundStops.seat{N}.diffMs`.
@@ -248,7 +253,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // the server's match state is restored. The server NEVER resets the match
   // on disconnect — `realtime-server/server.js`'s `disconnect` handler only
   // drops the user from the participation map (`forgetPrecisionUser`),
-  // leaving `precisionMatchStore` intact so the next reconnect resumes
+  // leaving the persisted match row intact so the next reconnect resumes
   // mid-game.
   //
   // We pull `socket?.id` into the deps so a socket RECONNECT (new socket id,
@@ -284,18 +289,16 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       // the route param changed) rather than tearing down this page's state.
       if (next && next.matchId === matchId) {
         setState(next);
+        setLookup("found");
         return;
       }
-      // No match AND no waiting lobby for this id is terminal server-side
-      // (the store no longer holds it — e.g. the server restarted mid-match).
-      // Nothing is going to advance this page, so say so instead of leaving
-      // the countdown frozen on screen with no explanation. The guard above
-      // already returned for terminal `finished` matches, so this only fires
-      // once a LIVE unfinished state has been seen — a `null` response before
-      // the first snapshot is just the match still being set up.
-      if (!next && stateRef.current) {
-        setError(t("games.precision.match_unavailable"));
-      }
+      // No match AND no waiting lobby for this id: the store no longer holds
+      // anything to advance this page (finished + swept, cancelled, or a
+      // stale link). Surface it explicitly instead of leaving the player on a
+      // placeholder waiting room that can never progress. Polling keeps
+      // running, so if the state reappears (a blip, or a match created by the
+      // other seat) the `found` branch above takes over automatically.
+      setLookup("missing");
     } catch {
       // Network blip — try again next tick.
     }
@@ -593,8 +596,8 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   //   * `state?.currentRound` — bumps on a non-tie round decision
   //     (recordRoundStop increments it after applying the score).
   //   * `state?.phase`        — flips out of "active" on EITHER a tie
-  //     (recordRoundStop re-arms the same round via armMatchRound,
-  //     setting phase → "arming" without bumping currentRound) OR a
+  //     (the server re-arms the same round — phase → "arming" without
+  //     bumping currentRound) OR a
   //     match finish (phase → "finished"). Watching phase catches the
   //     tie-replay path where currentRound does NOT change.
   // Without the phase dep, the STOP button would stay disabled after
@@ -628,7 +631,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // ── Capture the last revealed target for the results panel ───────
   // The server exclusively stamps the target value with the arm→active
   // transition and reveals it via `match.targetMs`. Right after a round
-  // resolves, recordRoundStop calls armMatchRound which sets
+  // resolves, the server arms the next round and sets
   // `match.targetMs = null` (the new target is server-private until the
   // next arm→active fires). We snapshot the last non-null value here so
   // the per-round results panel can display the round's actual target
@@ -652,7 +655,11 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // same target, no double-animation flicker).
   useEffect(() => {
     const lr = state?.lastRoundStops;
-    if (!lr) return;
+    // Defensive shape check: this state arrives over a public GET endpoint, so
+    // a malformed/half-written payload must never reach a `.elapsedMs` read
+    // and take the whole match page down with it (a client-side render throw
+    // unmounts the page — the "blank page" symptom).
+    if (!lr || !lr.seat1 || !lr.seat2) return;
     // Defensive: target might not have been captured yet if polling
     // landed before the arm→active timer fired. Fall back to the
     // currently-revealed value or the broadcast's `targetMs` if both
@@ -801,9 +808,16 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   }, [replayRequested, opponentReplayRequested, router]);
 
   // ── Handlers ─────────────────────────────────────────────────────────
+  // Tell the server we're done with this game id BEFORE navigating away, so
+  // nothing is left behind: a waiting lobby is cancelled, a practice (vs AI)
+  // match is removed, and a live PvP match is forfeited to the opponent (the
+  // same outcome the realtime server's disconnect grace timer produces).
+  // Fire-and-forget — the endpoint is idempotent and its failure must never
+  // block the navigation.
   const handleLeave = useCallback(() => {
+    void leaveGame(matchId).catch(() => {});
     router.push("/casino/precision");
-  }, [router]);
+  }, [matchId, router]);
 
   const handleResign = useCallback(async () => {
     if (!matchId) return;
@@ -935,7 +949,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     //
     // The replay envelope (`roundId`, `nonce`) is read live from
     // `stateRef.current` so the client always echoes the values the
-    // server stamped at the most recent `armMatchRound` call. The
+    // server stamped when the live round was armed. The
     // server REJECTS any stop packet whose `roundId` or `nonce`
     // does not match `match.roundId` / `match.roundNonce` — so a
     // tampered client cannot replay a packet from a previous round.
@@ -967,8 +981,34 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       event: SOCKET_NAMESPACE.endReturnEvent,
       payload: { matchId },
     });
+    // A finished match is a no-op server-side, but a player can also reach
+    // this handler while still waiting, so route the same cleanup through it.
+    void leaveGame(matchId).catch(() => {});
     router.push("/casino/precision");
   }, [socket, matchId, router]);
+
+  // ── Close-the-tab cleanup while still waiting for an opponent ────────
+  // A waiting lobby has no realtime room, so the socket-disconnect grace
+  // timer can't reach it: without this, closing the tab left the lobby in the
+  // public list (and in everyone's "waiting" view) for the full 5-minute TTL.
+  // `sendBeacon` survives the unload; the endpoint only ever cancels a
+  // `waiting` lobby this caller hosts, so a live match is never touched by a
+  // navigation. Only wired while this page is actually in the waiting phase.
+  useEffect(() => {
+    if (state?.phase !== "waiting") return;
+    const onBeforeUnload = () => {
+      try {
+        const payload = new Blob([JSON.stringify({ matchId })], {
+          type: "application/json",
+        });
+        navigator.sendBeacon?.("/api/precision/leave", payload);
+      } catch {
+        // Beacons are best-effort — the LOBBY_TTL_MS sweep is the backstop.
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [state?.phase, matchId]);
 
   // OPTIMIZATION — useCallback the per-round reveal panel's onDismiss
   // so the inline arrow previously used here didn't churn the panel's
@@ -985,8 +1025,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   }, []);
 
   // ── Derived display values ───────────────────────────────────────────
+  // Real seats only. This used to fall back to a hardcoded placeholder pair
+  // so the waiting room always had two "connected" tiles — which is exactly
+  // what made a stale match URL look like a live game with no content (fake
+  // "You" + "Opponent" seats, nothing else). An empty list renders empty
+  // seats ("Awaiting…" / "Open") and, when the server has nothing for this
+  // id at all, the dedicated unavailable panel below takes over.
   const players = useMemo<PrecisionPlayer[]>(
-    () => state?.players ?? DEFAULT_PLAYERS,
+    () => state?.players ?? [],
     [state],
   );
   const hostName = useMemo(
@@ -1008,7 +1054,12 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     opponentClerkId !== "opponent";
 
   const isHost = players[0]?.seat === localSeat;
-  const showWaiting = !state || state.phase === "waiting" || state.phase === "starting";
+  // The server holds nothing for this id and we never received a snapshot:
+  // render the "unavailable" panel instead of a waiting room that can never
+  // progress.
+  const matchMissing = lookup === "missing" && !state;
+  const showWaiting =
+    !matchMissing && (!state || state.phase === "waiting" || state.phase === "starting");
   const showReadyRoom = state?.phase === "ready_up";
   const showActive = state?.phase === "active";
   // Derive selfReady from server truth whenever we have one — the optimistic
@@ -1044,6 +1095,26 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     selfStopPending &&
     state?.phase === "active" &&
     state?.lastRoundWinnerSeat === null;
+  // Normalised per-seat telemetry for the scoreboard's rank badges. Only
+  // built when BOTH seats are present so a partial payload degrades to
+  // "no badges" instead of throwing inside the scoreboard render.
+  const boardStops = useMemo(
+    () =>
+      state?.lastRoundStops?.seat1 && state.lastRoundStops?.seat2
+        ? {
+            seat1: {
+              elapsedMs: state.lastRoundStops.seat1.elapsedMs,
+              diffMs: state.lastRoundStops.seat1.diffMs,
+            },
+            seat2: {
+              elapsedMs: state.lastRoundStops.seat2.elapsedMs,
+              diffMs: state.lastRoundStops.seat2.diffMs,
+            },
+          }
+        : null,
+    [state?.lastRoundStops],
+  );
+
   const score = state?.score ?? { seat1: 0, seat2: 0 };
   const currentRound = state?.currentRound ?? 1;
   const lastRoundWinnerSeat = state?.lastRoundWinnerSeat ?? null;
@@ -1175,6 +1246,30 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // game content: scoreboard, countdown, timer + stop button).
   const bodyNode = (
     <>
+      {matchMissing && (
+        <motion.div
+          key="match-missing"
+          {...fadeUp}
+          data-testid="precision-match-unavailable"
+          className="mt-6 rounded-2xl border border-red-400/40 bg-red-500/10 p-6 text-center sm:p-8"
+        >
+          <p className="text-4xl"><IconAlertTriangle className="mx-auto text-red-300" size={40} /></p>
+          <h2 className="mt-3 text-2xl font-black text-red-200 sm:text-3xl">
+            {t("games.precision.match_unavailable")}
+          </h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-red-100/90">
+            This game is no longer running — it finished, was cancelled, or a player
+            left. Nothing is waiting for you on this link. Start a fresh duel below.
+          </p>
+          <button
+            onClick={() => router.push("/casino/precision")}
+            className="mt-5 rounded-xl bg-[#f5ff3b] px-6 py-3 font-black text-black transition hover:brightness-110"
+          >
+            {t("games.precision.lobby_button")}
+          </button>
+        </motion.div>
+      )}
+
       {showWaiting && (
         <MatchWaiting
           state="waiting"
@@ -1274,20 +1369,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 lastRoundWinnerSeat={lastRoundWinnerSeat}
                 viewerSeat={localSeat}
                 awaitingOpponentStop={awaitingOpponentStop}
-                lastRoundStops={
-                  state.lastRoundStops
-                    ? {
-                        seat1: {
-                          elapsedMs: state.lastRoundStops.seat1.elapsedMs,
-                          diffMs: state.lastRoundStops.seat1.diffMs,
-                        },
-                        seat2: {
-                          elapsedMs: state.lastRoundStops.seat2.elapsedMs,
-                          diffMs: state.lastRoundStops.seat2.diffMs,
-                        },
-                      }
-                    : null
-                }
+                lastRoundStops={boardStops}
               />
 
               <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
@@ -1327,7 +1409,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                     </span>
                   </p>
                 )}
-                {state.lastRoundStops && (
+                {boardStops && (
                   <div
                     data-testid="precision-last-round-stops"
                     className="mt-5 rounded-2xl border border-cyan-400/40 bg-black/30 px-4 py-2 text-xs text-cyan-100"
@@ -1338,16 +1420,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                     <p className="mt-1 font-mono">
                       {t("games.precision.you_label_short")}{" "}
                       <span className="font-bold text-yellow-300">
-                        {state.lastRoundStops[
-                          localSeat === 1 ? "seat1" : "seat2"
-                        ]?.elapsedMs ?? 0}{" "}
+                        {(localSeat === 1 ? boardStops.seat1 : boardStops.seat2)
+                          .elapsedMs}{" "}
                         {t("games.precision.ms_suffix")}
                       </span>{" "}
                       · {t("games.precision.opponent_label_short")}{" "}
                       <span className="font-bold text-fuchsia-300">
-                        {state.lastRoundStops[
-                          localSeat === 1 ? "seat2" : "seat1"
-                        ]?.elapsedMs ?? 0}{" "}
+                        {(localSeat === 1 ? boardStops.seat2 : boardStops.seat1)
+                          .elapsedMs}{" "}
                         {t("games.precision.ms_suffix")}
                       </span>
                     </p>
