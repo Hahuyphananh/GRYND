@@ -23,18 +23,26 @@ export async function POST(req) {
       .where(eq(pokerGames.gameCode, gameCode));
     if (!game) return NextResponse.json({ success: true, deleted: true });
 
+    const seats = Array.isArray(game.players) ? game.players : [];
+    
+    // Find the user's seat to verify participation and retrieve server-side stack
+    const userSeat = seats.find((seat) => seat?.clerkId === userId);
+    
     // Credit remaining stack back to token balance — PUBLIC games only.
     // Private games are virtual chips: the buy-in was never deducted, so
     // the stack is play money and must never be converted to real tokens.
-    const cashOutAmount = Number(body?.stack) || 0;
-    if (cashOutAmount > 0 && !game.isPrivate) {
-      await db
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${cashOutAmount}` })
-        .where(eq(users.clerkId, userId));
+    // SECURITY: Only credit if the user actually occupies a seat, and use
+    // the server-side stack value, not the client-supplied value.
+    if (userSeat && !game.isPrivate) {
+      const cashOutAmount = Number(userSeat.stack) || 0;
+      if (cashOutAmount > 0) {
+        await db
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${cashOutAmount}` })
+          .where(eq(users.clerkId, userId));
+      }
     }
 
-    const seats = Array.isArray(game.players) ? game.players : [];
     const updatedSeats = seats.map((seat) => {
       if (seat?.clerkId !== userId) return seat;
       return {
