@@ -201,15 +201,40 @@ export async function POST(req: Request) {
     }
 
     // ── Create player row (waiting when a round is mid-flight) ───────────
-    const [player] = await db
-      .insert(crashArenaPlayers)
-      .values({
-        tableId,
-        userId: user.id,
-        balance: buyInAmount.toFixed(2),
-        status: midRound ? "waiting" : "seated",
-      })
-      .returning();
+    // The partial unique index (crash_arena_players_table_user_active_uniq)
+    // prevents duplicate active seats. If a concurrent request slips through
+    // the existing-seat check above, the insert will fail with a unique
+    // constraint violation (23505). We catch that and return the same
+    // "Already seated" error the check would have returned.
+    let player;
+    try {
+      [player] = await db
+        .insert(crashArenaPlayers)
+        .values({
+          tableId,
+          userId: user.id,
+          balance: buyInAmount.toFixed(2),
+          status: midRound ? "waiting" : "seated",
+        })
+        .returning();
+    } catch (err: any) {
+      // PostgreSQL unique constraint violation error code
+      if (err?.code === "23505" && err?.constraint === "crash_arena_players_table_user_active_uniq") {
+        // Refund the deducted balance if this was a real-money table
+        if (!isVirtual && deducted) {
+          await db
+            .update(users)
+            .set({ balance: sql`${users.balance} + ${buyInAmount}` })
+            .where(eq(users.id, user.id));
+        }
+        return NextResponse.json({
+          success: false,
+          error: "Already seated at this table",
+        }, { status: 400 });
+      }
+      // Re-throw any other error
+      throw err;
+    }
 
     // ── Record transaction (real ledger only — virtual chips never touch
     //    it; private tables are play money) ────────────────────────────────
