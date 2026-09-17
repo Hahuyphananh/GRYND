@@ -481,11 +481,56 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     }
   }
 
-  // Admin API routes must NEVER be treated as public — they require full
-  // authentication, admin role verification, AND admin MFA step-up (enforced
-  // below at lines 591-616). The broad `/api/(.*)` public-route pattern would
-  // otherwise match `/api/admin/*` and return early, bypassing the MFA gate.
-  if (isPublicRoute(req) && !pathname.startsWith("/api/admin")) {
+  // Admin API routes require authentication and MFA step-up, so they must
+  // be handled BEFORE the public-route branch (which would otherwise match
+  // them via the broad /api/(.*) pattern and return early).
+  if (pathname.startsWith("/api/admin")) {
+    const { userId, factorVerificationAge } = await auth();
+    if (!userId) {
+      auditLog("admin_api_auth_required", { ip, path: pathname });
+      return applySecurityHeaders(
+        NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
+      );
+    }
+
+    // Verify the user is an admin (DB-backed check or env var allowlist).
+    const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const isAdminUser =
+      (adminIds.length > 0 && adminIds.includes(userId)) || (await isAdmin(userId));
+
+    if (!isAdminUser) {
+      auditLog("admin_api_access_blocked", { userId, ip, path: pathname });
+      return applySecurityHeaders(
+        NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 })
+      );
+    }
+
+    // Enforce admin MFA step-up: the session must have verified a second
+    // factor recently, or hold a valid admin_mfa / user_mfa cookie.
+    const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
+    const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
+    if (
+      !hasRecentMfa(factorVerificationAge) &&
+      !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
+      !(await verifyUserMfaToken(userMfaToken, userId))
+    ) {
+      auditLog("admin_mfa_required", { userId, ip, path: pathname });
+      return applySecurityHeaders(
+        NextResponse.json(
+          { success: false, error: "MFA required for admin access." },
+          { status: 403 }
+        )
+      );
+    }
+
+    // Admin API request is authenticated, authorized, and MFA-verified.
+    return applySecurityHeaders(NextResponse.next());
+  }
+
+  if (isPublicRoute(req)) {
     // User-level MFA runs even on public pages (casino pages are public
     // routes but wagering on them must stay protected). auth() here is the
     // same call protected routes already make.
@@ -632,14 +677,13 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     }
   }
 
-  // MFA enforcement for all admin surfaces (defense in depth — the admin
+  // MFA enforcement for admin UI routes (defense in depth — the admin
   // page component re-checks the same condition). The session must have
   // verified a second factor recently; anything else fails closed.
   // `/admin/mfa-required` itself is exempt so the gate page can render.
-  if (
-    (pathname.startsWith("/admin") && pathname !== "/admin/mfa-required") ||
-    pathname.startsWith("/api/admin")
-  ) {
+  // Note: /api/admin paths are handled earlier (before the public-route
+  // branch) and never reach this point.
+  if (pathname.startsWith("/admin") && pathname !== "/admin/mfa-required") {
     const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
     const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
     if (
@@ -647,15 +691,6 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
       !(await verifyUserMfaToken(userMfaToken, userId))
     ) {
-      if (pathname.startsWith("/api/admin")) {
-        auditLog("admin_mfa_required", { userId, ip, path: pathname });
-        return applySecurityHeaders(
-          NextResponse.json(
-            { success: false, error: "MFA required for admin access." },
-            { status: 403 }
-          )
-        );
-      }
       auditLog("admin_mfa_required_redirect", { userId, ip, path: pathname });
       return applySecurityHeaders(
         NextResponse.redirect(new URL("/admin/mfa-required", req.url))
