@@ -1,8 +1,12 @@
 import { sql } from "../../../../db/sql";
 import { invalidateAllLeaderboards } from "../../../../lib/redis/invalidation";
 import { sendWeeklySummaryEmail } from "../../../../lib/emails/summary";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Authenticate cron request before performing global state changes
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
   // Fetch weekly stats BEFORE resetting, then send summary emails
   const weeklyStatsResult = await sql`
     SELECT u.clerk_id as "clerkId", u.email,
