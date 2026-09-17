@@ -536,6 +536,41 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     // same call protected routes already make.
     const mfaGate = await userMfaGate(req, pathname, auth);
     if (mfaGate) return mfaGate;
+    
+    // Admin MFA setup endpoints that expose sensitive secrets (TOTP seed)
+    // must require completed MFA. The initial MFA flow (send-otp, verify,
+    // status) remains accessible without MFA so admins can complete their
+    // first factor, but TOTP enrollment requires an existing MFA session.
+    if (pathname === "/api/admin/mfa/setup-totp") {
+      const { userId, factorVerificationAge } = await auth();
+      if (!userId) {
+        return applySecurityHeaders(
+          NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
+        );
+      }
+      if (!(await isAdmin(userId))) {
+        return applySecurityHeaders(
+          NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 })
+        );
+      }
+      
+      const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
+      const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
+      if (
+        !hasRecentMfa(factorVerificationAge) &&
+        !(await verifyAdminMfaToken(adminMfaToken, userId)) &&
+        !(await verifyUserMfaToken(userMfaToken, userId))
+      ) {
+        auditLog("admin_mfa_required", { userId, ip: getClientIp(req), path: pathname });
+        return applySecurityHeaders(
+          NextResponse.json(
+            { success: false, error: "MFA required. Complete email verification first." },
+            { status: 403 }
+          )
+        );
+      }
+    }
+    
     return applySecurityHeaders(NextResponse.next());
   }
 
@@ -552,7 +587,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   const skipsAgeGate =
     pathname.startsWith("/sync") ||
     pathname.startsWith("/complete-profile") ||
-    pathname.startsWith("/admin");
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin");
 
   if (!skipsAgeGate) {
     // Prefer the session claim when a JWT template provides one. When it
@@ -609,7 +645,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // 2. DB-backed path: queries the `is_admin` column on the users table.
   // Both the middleware AND the page component (src/app/admin/page.tsx) enforce
   // this check so non-admin users can never reach the dashboard.
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
     const adminIds = (process.env.CHAT_ADMIN_CLERK_IDS || "")
       .split(",")
       .map((id) => id.trim())
@@ -626,6 +662,14 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           ip,
           path: pathname,
         });
+        if (pathname.startsWith("/api/admin")) {
+          return applySecurityHeaders(
+            NextResponse.json(
+              { success: false, error: "Admin access required." },
+              { status: 403 }
+            )
+          );
+        }
         return applySecurityHeaders(
           NextResponse.redirect(new URL("/", req.url))
         );
