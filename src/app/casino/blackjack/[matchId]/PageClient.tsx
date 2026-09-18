@@ -3488,8 +3488,8 @@ function LeaveAiConfirmModal({
 // continue so the player can skip the wait.
 //
 // Components: visual transition <BetweenRoundsScreen /> is shown in
-// place of the active hand sections whenever `match.status ===
-// "between_rounds"` so the player cannot issue new actions during
+// place of the active hand sections whenever match.status ===
+// "between_rounds" so the player cannot issue new actions during
 // the transition.
 function BetweenRoundsScreen({
   t,
