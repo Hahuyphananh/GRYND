@@ -66,6 +66,37 @@ function formatNumber(n) {
   return Number(n || 0).toLocaleString();
 }
 
+/**
+ * Counts a number up from 0 to `value` once, so a payout/token change reads
+ * as a gain or loss instead of a static figure. Reduced motion shows the final
+ * value immediately. This runs once per mount — the result screen mounts once
+ * per settled match — so it never replays when status is refreshed.
+ */
+function AnimatedNumber({ value, reduce, duration = 450 }) {
+  const target = Number(value) || 0;
+  const [display, setDisplay] = useState(reduce ? target : 0);
+
+  useEffect(() => {
+    if (reduce) {
+      setDisplay(target);
+      return undefined;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else setDisplay(target);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, reduce, duration]);
+
+  return <>{formatTokens(display)}</>;
+}
+
 const OUTCOME_STYLES = {
   win: {
     label: "WIN",
@@ -150,6 +181,11 @@ export default function PvpResultScreen({
   streak = null,
   rank = null,
   rankDelta = null,
+  // Optional final score comparison, e.g.
+  //   [{ name: "You", score: 240, highlight: true }, { name: "Rival", score: 180 }]
+  // The highlighted side is emphasised; the other stays visible but muted.
+  // Games that don't pass it render exactly as before.
+  sides = null,
 }) {
   const shouldReduce = useReducedMotion();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -308,7 +344,16 @@ export default function PvpResultScreen({
   return (
     <AnimatePresence>
       {open && (
-        <div
+        <motion.div
+          {...withReducedMotion(shouldReduce, {
+            // Short backdrop fade so the final board (with the scoring bucket
+            // still highlighted) is briefly visible as the gameplay state hands
+            // over to the result state — then the panel lands on top.
+            initial: { opacity: 0 },
+            animate: { opacity: 1 },
+            exit: { opacity: 0 },
+            transition: { duration: 0.18, ease: "easeOut" },
+          })}
           role="dialog"
           aria-modal="true"
           aria-label={`Match result — ${style.label}`}
@@ -475,6 +520,52 @@ export default function PvpResultScreen({
               )}
             </div>
 
+            {/* Final score — hierarchy step 1.5: after the outcome hero, the
+                winner's score is emphasised and the loser's is muted but still
+                fully readable. Draw passes no highlight, so both read evenly.
+                Sequenced (delay) between the hero and the payout. */}
+            {Array.isArray(sides) && sides.length > 0 && (
+              <motion.div
+                {...withReducedMotion(shouldReduce, {
+                  initial: { opacity: 0, y: 8 },
+                  animate: { opacity: 1, y: 0 },
+                  transition: { duration: 0.2, ease: "easeOut", delay: 0.14 },
+                })}
+                className="mx-auto mt-4 grid w-full max-w-xs grid-cols-2 gap-2"
+              >
+                {sides.map((side, i) => (
+                  <div
+                    key={`${side.name || "side"}-${i}`}
+                    className={`rounded-xl border p-2.5 text-center ${
+                      side.highlight
+                        ? "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 shadow-[0_0_18px_rgba(245,255,59,0.25)]"
+                        : "border-white/10 bg-black/25 opacity-70"
+                    }`}
+                  >
+                    <p
+                      className={`truncate text-[10px] uppercase tracking-wider ${
+                        side.highlight ? "text-[#f5ff3b]/80" : "text-white/45"
+                      }`}
+                    >
+                      {side.name}
+                    </p>
+                    <p
+                      className={`mt-0.5 font-black tabular-nums ${
+                        side.highlight ? "text-2xl text-[#f5ff3b]" : "text-xl text-white/70"
+                      }`}
+                    >
+                      {side.score}
+                    </p>
+                    {side.highlight && (
+                      <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-[#f5ff3b]/70">
+                        Winner
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </motion.div>
+            )}
+
             {/* Rewards — only rows whose data actually exists.
                 Sequenced AFTER the outcome, never with it: the win/loss hero
                 lands first, then the payout (token delta, XP, progression)
@@ -498,7 +589,10 @@ export default function PvpResultScreen({
                     <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
                       Tokens
                     </span>
-                    <span
+                    <motion.span
+                      initial={shouldReduce ? false : { scale: 1.12 }}
+                      animate={{ scale: 1 }}
+                      transition={{ duration: 0.25, ease: "easeOut", delay: 0.24 }}
                       className={`inline-flex items-center gap-1.5 font-black ${compact ? "text-base" : "text-lg"} ${
                         tokenDelta > 0
                           ? "text-emerald-300"
@@ -508,9 +602,9 @@ export default function PvpResultScreen({
                       }`}
                     >
                       {tokenDelta > 0 ? "+" : ""}
-                      {formatTokens(tokenDelta)}
+                      <AnimatedNumber value={tokenDelta} reduce={shouldReduce === true} />
                       <IconCoins size={18} className="text-[#f5ff3b]" aria-hidden="true" />
-                    </span>
+                    </motion.span>
                   </div>
                 )}
                 {displayXp !== null && (
@@ -702,7 +796,7 @@ export default function PvpResultScreen({
               </div>
             )}
           </motion.div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );

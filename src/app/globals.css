@@ -1811,3 +1811,143 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     animation: none;
   }
 }
+
+/* Plinko PvP — brief peg impact. Applied by the match view only when the
+   ball's authoritative trajectory actually passes a peg, and removed within
+   ~110ms so it never lingers. Deliberately subtle (tiny pop + brightness) so
+   it never competes with the ball. */
+@keyframes plinkoPegHit {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    transform: scale(1.35);
+    filter: brightness(1.8);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.plinko-peg-hit {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: plinkoPegHit 110ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plinko-peg-hit {
+    animation: none;
+  }
+}
+
+/* Plinko PvP — bucket landing. Fired once per resolved ball from the server's
+   bucket index/points. Layered and short: a bucket pop, a multiplier/points
+   reveal, and a ball settle. The stronger variants are used only for the
+   high-value (precision) buckets so the visual hierarchy stays controlled
+   instead of celebrating every landing. */
+@keyframes plinkoBucketLand {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  40% {
+    transform: scale(1.06);
+    filter: brightness(1.7);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes plinkoBucketLandStrong {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  40% {
+    /* Same geometry as the base variant on purpose: the buckets are 98 units
+       wide with a 1px gutter inside a 500-unit viewBox, so anything past
+       ~1.06 spills into the neighbouring bucket and below the board's bottom
+       edge (the SVG root clips). The high-value hierarchy is carried by the
+       brighter flash instead of a bigger pop. */
+    transform: scale(1.06);
+    filter: brightness(2.4);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.plinko-bucket-land,
+.plinko-bucket-land-strong,
+.plinko-bucket-points-reveal,
+.plinko-bucket-points-reveal-strong,
+.plinko-ball-settle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.plinko-bucket-land {
+  animation: plinkoBucketLand 170ms ease-out;
+}
+
+.plinko-bucket-land-strong {
+  animation: plinkoBucketLandStrong 200ms ease-out;
+}
+
+@keyframes plinkoBucketPoints {
+  0% {
+    transform: scale(0.72);
+    filter: brightness(1.6);
+  }
+  45% {
+    transform: scale(1.35);
+    filter: brightness(2.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.plinko-bucket-points-reveal {
+  animation: plinkoBucketPoints 280ms ease-out;
+}
+
+.plinko-bucket-points-reveal-strong {
+  animation: plinkoBucketPoints 340ms ease-out;
+}
+
+@keyframes plinkoBallSettle {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.16, 0.84);
+  }
+  70% {
+    transform: scale(0.94, 1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.plinko-ball-settle {
+  animation: plinkoBallSettle 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plinko-bucket-land,
+  .plinko-bucket-land-strong,
+  .plinko-bucket-points-reveal,
+  .plinko-bucket-points-reveal-strong,
+  .plinko-ball-settle {
+    animation: none;
+  }
+}

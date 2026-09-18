@@ -30,11 +30,19 @@
 //   └─ Footer ─────────────────────────────────────────────────────┘
 //
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
@@ -56,6 +64,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
+import { withReducedMotion } from "../../../../lib/animations";
 import {
   PLINKO_PVP_LOBBY_ROOM,
   PLINKO_PVP_MATCH_UPDATED,
@@ -82,6 +91,32 @@ import {
 const BALL_ANIMATION_MS = 2500;
 const BETWEEN_BALLS_MS = 3000;
 
+// Short launch window at the START of every ball animation. The ball visibly
+// leaves the launch visor at the player's chosen startX and drops into the
+// board before the server trajectory takes over. Kept inside the 150–300ms
+// band so the launch reads as immediate, and skipped entirely when the user
+// prefers reduced motion. It never changes the trajectory — it only delays
+// the trajectory's t = 0 to the moment the launch envelope ends.
+const LAUNCH_MS = 220;
+// Y the launch drop starts from. Matches the launch visor's preview row
+// (VISOR_Y) so the preview ball and the live launching ball are continuous.
+const LAUNCH_FROM_Y = 12;
+
+// Duration of the brief peg-impact pop. Within the 60–140ms band so it reads
+// as an impact tap, not a persistent effect. Purely a display cue derived
+// from the authoritative trajectory — it never affects gameplay.
+const PEG_HIT_MS = 110;
+
+// Landing feedback timings (the ball settle itself is 140ms, defined in the
+// CSS keyframe). The ball holds at the bucket while the bucket pop and
+// multiplier reveal play, then the round popup takes over. Reduced motion
+// collapses the hold to 0 so results still appear immediately.
+// The strongest landing cue is the precision multiplier reveal at 340ms (see
+// globals.css). The landing state and the hold must both outlast it, otherwise
+// the cue is stripped mid-animation and the multiplier snaps back early.
+const MULTIPLIER_MS = 360; // bucket + multiplier reveal lifetime
+const LANDING_HOLD_MS = 360; // pause before the round popup is shown
+
 // ── Types ─────────────────────────────────────────────────────────────
 
 type Path = Array<{ x: number; y: number }>;
@@ -93,6 +128,15 @@ type BallResult = {
   finalY: number;
   bucketIndex: number;
   points: number;
+};
+
+// Animated pose of a live ball. x/y are SVG coordinates; scaleX/scaleY carry
+// the brief launch squash/stretch and are both 1 during the server trajectory.
+type BallPose = {
+  x: number;
+  y: number;
+  scaleX?: number;
+  scaleY?: number;
 };
 
 type PlayerHead = {
@@ -323,15 +367,30 @@ function PlinkoBoard({
   p1Preview,
   p2Preview,
   showVisor = false,
+  pegHits,
+  bucketLandings,
+  ballSettle,
 }: {
-  p1BallPos: { x: number; y: number } | null;
-  p2BallPos: { x: number; y: number } | null;
+  p1BallPos: BallPose | null;
+  p2BallPos: BallPose | null;
   highlightBucket: { index: number; side: "p1" | "p2" } | null;
   p1FellOut?: boolean;
   p2FellOut?: boolean;
   p1Preview?: { startX: number; power: number; angleDeg: number } | null;
   p2Preview?: { startX: number; power: number; angleDeg: number } | null;
   showVisor?: boolean;
+  // peg index -> hit token. A changed token remounts the circle so the CSS
+  // pop restarts; the entry is removed a moment later by the match view.
+  pegHits?: Record<number, number>;
+  // Landing events for the current resolved ball (server bucket index/points).
+  bucketLandings?: Array<{
+    index: number;
+    side: "p1" | "p2";
+    points: number;
+    token: number;
+  }>;
+  // Non-zero token triggers the ball's one-shot settle bounce; 0 clears it.
+  ballSettle?: number;
 }) {
   function bucketFill(points: number) {
     if (points >= 140) return "url(#bucketGold)";
@@ -417,23 +476,41 @@ function PlinkoBoard({
         <rect x="0" y="0" width="2" height="540" fill="#00e5ff" opacity="0.25" />
         <rect x="498" y="0" width="2" height="540" fill="#ff4fd8" opacity="0.25" />
 
-        {PEGS.map((peg, i) => (
-          <circle
-            key={i}
-            cx={peg.x}
-            cy={peg.y}
-            r={PEG_RADIUS}
-            fill="#a8e8ff"
-            opacity="0.85"
-          />
-        ))}
+        {PEGS.map((peg, i) => {
+          const hitToken = pegHits?.[i];
+          const isHit = hitToken !== undefined;
+          return (
+            <circle
+              key={isHit ? `${i}-${hitToken}` : i}
+              cx={peg.x}
+              cy={peg.y}
+              r={PEG_RADIUS}
+              fill={isHit ? "#eafcff" : "#a8e8ff"}
+              opacity={isHit ? 1 : 0.85}
+              className={isHit ? "plinko-peg-hit" : undefined}
+            />
+          );
+        })}
 
         {BUCKETS.map((b) => {
           const isHighlighted =
             highlightBucket && highlightBucket.index === b.index;
+          // Landing feedback for this bucket (from the server's result). The
+          // high-value precision buckets get the slightly stronger variant.
+          const landing = bucketLandings?.find((l) => l.index === b.index);
+          const landToken = landing?.token;
+          const strong = (landing?.points ?? 0) >= 140;
+          const rectClass = landing
+            ? `plinko-bucket-land${strong ? " plinko-bucket-land-strong" : ""}`
+            : undefined;
+          const pointsClass = landing
+            ? `plinko-bucket-points-reveal${strong ? " plinko-bucket-points-reveal-strong" : ""}`
+            : undefined;
           return (
             <g key={b.index}>
               <rect
+                key={landing ? `rect-${b.index}-${landToken}` : `rect-${b.index}`}
+                className={rectClass}
                 x={b.xMin + 1}
                 y={BOARD.bucketY}
                 width={b.xMax - b.xMin - 2}
@@ -450,6 +527,8 @@ function PlinkoBoard({
                 opacity={isHighlighted ? 1 : 0.92}
               />
               <text
+                key={landing ? `pts-${b.index}-${landToken}` : `pts-${b.index}`}
+                className={pointsClass}
                 x={b.xMin + (b.xMax - b.xMin) / 2}
                 y={BOARD.bucketY + 28}
                 textAnchor="middle"
@@ -562,42 +641,58 @@ function PlinkoBoard({
             to the wall — user feedback ("balls get stuck in the
             walls"). */}
         {p2BallPos && (
-          <g style={{ transition: `opacity ${FALL_OUT_FADE_MS}ms ease-out`, opacity: p2FellOut ? 0 : 1 }}>
-            <circle
-              cx={p2BallPos.x}
-              cy={p2BallPos.y}
-              r={BALL_RADIUS + 2}
-              fill="#ff4fd8"
-              opacity="0.25"
-            />
-            <circle
-              cx={p2BallPos.x}
-              cy={p2BallPos.y}
-              r={BALL_RADIUS}
-              fill="url(#ballMagenta)"
-              stroke="#fff"
-              strokeWidth="1.5"
-            />
+          <g
+            style={{ transition: `opacity ${FALL_OUT_FADE_MS}ms ease-out`, opacity: p2FellOut ? 0 : 1 }}
+            transform={`translate(${p2BallPos.x} ${p2BallPos.y}) scale(${p2BallPos.scaleX ?? 1} ${p2BallPos.scaleY ?? 1})`}
+          >
+            <g
+              key={ballSettle ? `settle-p2-${ballSettle}` : "settle-p2"}
+              className={ballSettle ? "plinko-ball-settle" : undefined}
+            >
+              <circle
+                cx={0}
+                cy={0}
+                r={BALL_RADIUS + 2}
+                fill="#ff4fd8"
+                opacity="0.25"
+              />
+              <circle
+                cx={0}
+                cy={0}
+                r={BALL_RADIUS}
+                fill="url(#ballMagenta)"
+                stroke="#fff"
+                strokeWidth="1.5"
+              />
+            </g>
           </g>
         )}
 
         {p1BallPos && (
-          <g style={{ transition: `opacity ${FALL_OUT_FADE_MS}ms ease-out`, opacity: p1FellOut ? 0 : 1 }}>
-            <circle
-              cx={p1BallPos.x}
-              cy={p1BallPos.y}
-              r={BALL_RADIUS + 2}
-              fill="#00e5ff"
-              opacity="0.25"
-            />
-            <circle
-              cx={p1BallPos.x}
-              cy={p1BallPos.y}
-              r={BALL_RADIUS}
-              fill="url(#ballCyan)"
-              stroke="#fff"
-              strokeWidth="1.5"
-            />
+          <g
+            style={{ transition: `opacity ${FALL_OUT_FADE_MS}ms ease-out`, opacity: p1FellOut ? 0 : 1 }}
+            transform={`translate(${p1BallPos.x} ${p1BallPos.y}) scale(${p1BallPos.scaleX ?? 1} ${p1BallPos.scaleY ?? 1})`}
+          >
+            <g
+              key={ballSettle ? `settle-p1-${ballSettle}` : "settle-p1"}
+              className={ballSettle ? "plinko-ball-settle" : undefined}
+            >
+              <circle
+                cx={0}
+                cy={0}
+                r={BALL_RADIUS + 2}
+                fill="#00e5ff"
+                opacity="0.25"
+              />
+              <circle
+                cx={0}
+                cy={0}
+                r={BALL_RADIUS}
+                fill="url(#ballCyan)"
+                stroke="#fff"
+                strokeWidth="1.5"
+              />
+            </g>
           </g>
         )}
       </svg>
@@ -628,6 +723,9 @@ function RoundPopup({
   onNextRound: () => void;
   isLastBall?: boolean;
 }) {
+  // Shared reduced-motion helper: with motion off the panel is simply there
+  // (no scale-in), so the countdown/inputs stay immediately usable.
+  const shouldReduce = useReducedMotion();
   const [timer, setTimer] = useState(5);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -649,8 +747,10 @@ function RoundPopup({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
+      {...withReducedMotion(shouldReduce, {
+        initial: { opacity: 0, scale: 0.9 },
+        animate: { opacity: 1, scale: 1 },
+      })}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
     >
       <div className="rounded-2xl border border-cyan-300/40 bg-gradient-to-br from-[#001a33] via-[#00111f] to-[#000814] p-6 sm:p-8 max-w-md w-full shadow-[0_0_80px_rgba(0,229,255,0.25)]">
@@ -980,6 +1080,7 @@ function PlayerSidePanel({
   emoteBubble?: { value: string; kind?: string } | null;
   onSendEmote?: (emote: { value: string; kind?: string }) => void;
 }) {
+  const shouldReduce = useReducedMotion();
   const isCyan = seat === "player1";
   const headerColour = isCyan ? "text-cyan-200" : "text-fuchsia-200";
   const scoreColour = isCyan ? "text-cyan-100" : "text-fuchsia-100";
@@ -1058,9 +1159,11 @@ function PlayerSidePanel({
           their click registers / the server resolves the ball. */}
       <motion.div
         key={ready ? "ready" : "not-ready"}
-        initial={{ scale: 0.82, opacity: 0.55 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 380, damping: 26 }}
+        {...withReducedMotion(shouldReduce, {
+          initial: { scale: 0.82, opacity: 0.55 },
+          animate: { scale: 1, opacity: 1 },
+          transition: { type: "spring", stiffness: 380, damping: 26 },
+        })}
         className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold tracking-wide ${
           ready
             ? isCyan
@@ -1227,8 +1330,8 @@ export default function PlinkoPvpMatchPage({
   // the two balls a frame apart. Using a single object guarantees both
   // positions are committed in the same render.
   const [ballPositions, setBallPositions] = useState<{
-    p1: { x: number; y: number } | null;
-    p2: { x: number; y: number } | null;
+    p1: BallPose | null;
+    p2: BallPose | null;
   }>({ p1: null, p2: null });
   // Backwards-compatible derivations for every existing consumer
   // (board render, fellOut fade, between-balls reset, etc.).
@@ -1248,6 +1351,9 @@ export default function PlinkoPvpMatchPage({
   // made the two balls drift out of sync. One ref + one RAF + one
   // shared startTime keeps both balls perfectly aligned.
   const dualAnimCancelRef = useRef<(() => void) | null>(null);
+  // Fire-and-forget ball-drop audio ticks. Tracked so a tick scheduled just
+  // before the view unmounts can't fire into a torn-down component.
+  const tickTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   // Tracks the 3-second "Ball X incoming" setTimeout scheduled inside
   // startDualTrackAnimation (and the 800ms "finished" timer). Without
   // this, the timer could fire after the component unmounts (causing a
@@ -1259,6 +1365,111 @@ export default function PlinkoPvpMatchPage({
   // requests from the 800ms poll, onNextRound, socket events, and
   // handleReady all firing within the same ~100ms window.
   const fetchStatusPendingRef = useRef(false);
+
+  // prefers-reduced-motion is read through a ref so the animation callback
+  // (created once per ball) doesn't need it in its dependency list.
+  const prefersReducedMotion = useReducedMotion();
+  const reduceMotionRef = useRef(false);
+  useEffect(() => {
+    reduceMotionRef.current = Boolean(prefersReducedMotion);
+  }, [prefersReducedMotion]);
+
+  // ── Peg-impact feedback ──────────────────────────────────────────
+  // `pegHits` maps a peg index to a hit token; the match view fires it only
+  // for genuine contacts derived from the authoritative trajectory (see
+  // buildSampling). One timer per peg index is kept — a re-hit clears the
+  // previous timer — so rapid, consecutive collisions can't accumulate stale
+  // timers or leave a peg stuck lit. Skipped under reduced motion.
+  const [pegHits, setPegHits] = useState<Record<number, number>>({});
+  const pegHitTimersRef = useRef<
+    Map<number, ReturnType<typeof setTimeout>>
+  >(new Map());
+  const pegHitTokenRef = useRef(0);
+
+  const firePegHit = useCallback((index: number) => {
+    if (reduceMotionRef.current) return;
+    const timers = pegHitTimersRef.current;
+    const existing = timers.get(index);
+    if (existing) clearTimeout(existing);
+    pegHitTokenRef.current += 1;
+    const token = pegHitTokenRef.current;
+    setPegHits((prev) => ({ ...prev, [index]: token }));
+    const timer = setTimeout(() => {
+      timers.delete(index);
+      setPegHits((prev) => {
+        // Only clear the hit this timer started; a newer hit owns the peg.
+        if (prev[index] !== token) return prev;
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+    }, PEG_HIT_MS);
+    timers.set(index, timer);
+  }, []);
+
+  const clearPegHits = useCallback(() => {
+    for (const t of pegHitTimersRef.current.values()) clearTimeout(t);
+    pegHitTimersRef.current.clear();
+    setPegHits({});
+  }, []);
+
+  // ── Bucket landing feedback ──────────────────────────────────────
+  // Fired once when a ball's animation reaches t = 1, using ONLY the server's
+  // bucketIndex/points. `bucketLandings` drives the bucket pop + multiplier
+  // reveal; `ballSettleToken` triggers the ball's settle bounce. Both are
+  // transient and reset at the start of every ball, so a new ball can never
+  // inherit the previous ball's landing animation. Skipped under reduced
+  // motion (the CSS is also disabled by a media query).
+  const [bucketLandings, setBucketLandings] = useState<
+    Array<{ index: number; side: "p1" | "p2"; points: number; token: number }>
+  >([]);
+  const [ballSettleToken, setBallSettleToken] = useState(0);
+  const bucketLandingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const landingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const landingTokenRef = useRef(0);
+
+  const showBucketLanding = useCallback(
+    (events: Array<{ index: number; side: "p1" | "p2"; points: number }>) => {
+      if (reduceMotionRef.current || events.length === 0) return;
+      landingTokenRef.current += 1;
+      const token = landingTokenRef.current;
+      setBucketLandings(events.map((e) => ({ ...e, token })));
+      if (bucketLandingTimerRef.current)
+        clearTimeout(bucketLandingTimerRef.current);
+      bucketLandingTimerRef.current = setTimeout(() => {
+        bucketLandingTimerRef.current = null;
+        setBucketLandings([]);
+      }, MULTIPLIER_MS);
+    },
+    [],
+  );
+
+  const clearLandingState = useCallback(() => {
+    if (bucketLandingTimerRef.current) {
+      clearTimeout(bucketLandingTimerRef.current);
+      bucketLandingTimerRef.current = null;
+    }
+    if (landingTimerRef.current) {
+      clearTimeout(landingTimerRef.current);
+      landingTimerRef.current = null;
+    }
+    setBucketLandings([]);
+    setBallSettleToken(0);
+  }, []);
+
+  // Never leave peg or landing timers running after the view goes away.
+  useEffect(
+    () => () => {
+      for (const t of pegHitTimersRef.current.values()) clearTimeout(t);
+      pegHitTimersRef.current.clear();
+      if (bucketLandingTimerRef.current)
+        clearTimeout(bucketLandingTimerRef.current);
+      if (landingTimerRef.current) clearTimeout(landingTimerRef.current);
+    },
+    [],
+  );
 
   const phaseRef = useRef(phase);
   const roundsRef = useRef(rounds);
@@ -1580,50 +1791,144 @@ export default function PlinkoPvpMatchPage({
       target.ballNumber,
     );
     // Ball-drop tick sequence — three quick ticks as the balls drop.
+    // The two delayed ticks are tracked (and re-tracked per ball) so they are
+    // always cleared together instead of outliving the animation.
     playTick();
-    setTimeout(() => playTick(), 130);
-    setTimeout(() => playTick(), 260);
+    for (const t of tickTimersRef.current) clearTimeout(t);
+    tickTimersRef.current = [
+      setTimeout(() => playTick(), 130),
+      setTimeout(() => playTick(), 260),
+    ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds]);
 
-  // Pre-compute the segment-lengths + cumulative-starts + total length
-  // for a Bézier-style path. Sampling then becomes a log-time lookup
-  // over the same `[0, totalLen]` axis as the animation timer. Used
-  // by `startDualTrackAnimation` so both balls advance at exactly the
-  // same rate against the same `t` value.
-  function precomputePathSampling(path: Path) {
-    const segLens: number[] = [];
+  // Build the animation's sampling data from the authoritative server path.
+  //
+  // The server path is a discrete polyline (a point every couple of physics
+  // substeps, deduped to >= 1px). Sampling it by linearly hopping between
+  // those sparse points gives hard direction changes at every vertex and,
+  // because the points are unevenly spaced, an uneven, stuttery visual speed.
+  // To fix that WITHOUT touching the physics we:
+  //   1. resample the polyline through a Cardinal spline (tension 0.5) so the
+  //      ball curves through corners instead of snapping between them;
+  //   2. force the exact server start AND end points into the curve, so the
+  //      displayed endpoint is always the server's endpoint — never inferred;
+  //   3. build an arc-length table over the dense curve, so progress `t` maps
+  //      to even spatial travel and the ball never pauses at a simulation
+  //      point.
+  // No randomness, no physics change — a smoother read of the same path.
+  function buildSampling(path: Path) {
+    if (path.length <= 1) {
+      return { points: path, cumStarts: [0], totalLen: 0, events: [] };
+    }
+
+    // Cardinal spline resampling. It passes through every server point and,
+    // with tension 0.5 (tangents halved), stays close to the polyline — it
+    // rounds bounce corners without overshooting the board.
+    const CR_SAMPLES = 4;
+    const dense: { x: number; y: number }[] = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const p0 = path[i - 1] ?? path[i];
+      const p1 = path[i];
+      const p2 = path[i + 1];
+      const p3 = path[i + 2] ?? path[i + 1];
+      for (let s = 0; s < CR_SAMPLES; s++) {
+        dense.push(cardinalPoint(p0, p1, p2, p3, s / CR_SAMPLES));
+      }
+    }
+    // Exact server endpoint (the loop above stops just short of it).
+    const end = path[path.length - 1];
+    dense.push({ x: end.x, y: end.y });
+
+    // Arc-length table over the dense curve.
     const cumStarts: number[] = [0];
     let totalLen = 0;
-    for (let i = 1; i < path.length; i++) {
-      const dx = path[i].x - path[i - 1].x;
-      const dy = path[i].y - path[i - 1].y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      segLens.push(len);
-      totalLen += len;
+    for (let i = 1; i < dense.length; i++) {
+      const dx = dense[i].x - dense[i - 1].x;
+      const dy = dense[i].y - dense[i - 1].y;
+      totalLen += Math.sqrt(dx * dx + dy * dy);
       cumStarts.push(totalLen);
     }
-    return { segLens, cumStarts, totalLen };
+
+    // Derive the peg-contact moments from the rendered curve. A contact is a
+    // dense sample within (ball radius + peg radius) of a peg — exactly the
+    // physics collision distance — so this reads the authoritative trajectory
+    // rather than running a second simulation. Consecutive samples on the same
+    // peg collapse into one event; `t` is the arc-length position the animator
+    // already uses, so no extra timing state is needed.
+    const events: Array<{ index: number; t: number }> = [];
+    const contactSq = (BALL_RADIUS + PEG_RADIUS + 0.75) ** 2;
+    let lastPeg = -1;
+    for (let i = 0; i < dense.length; i++) {
+      const pt = dense[i];
+      let contact = -1;
+      for (let p = 0; p < PEGS.length; p++) {
+        const dx = pt.x - PEGS[p].x;
+        const dy = pt.y - PEGS[p].y;
+        if (dx * dx + dy * dy <= contactSq) {
+          contact = p;
+          break;
+        }
+      }
+      if (contact >= 0 && contact !== lastPeg && totalLen > 0) {
+        events.push({ index: contact, t: cumStarts[i] / totalLen });
+      }
+      lastPeg = contact;
+    }
+
+    return { points: dense, cumStarts, totalLen, events };
   }
 
-  // Sample an (x, y) point along `path` at progress `t` in [0, 1]. O(n)
-  // is fine here because we precompute the cumulative lengths once and
-  // the path is short (~120 substeps).
+  // Cardinal spline (Hermite form) through p1..p2 with p0/p3 as tangent
+  // neighbours. tension 0 = Catmull-Rom, 1 = straight line; 0.5 keeps the
+  // path smooth while staying close to the server polyline.
+  function cardinalPoint(
+    p0: { x: number; y: number },
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    p3: { x: number; y: number },
+    t: number,
+    tension = 0.5,
+  ) {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const k = (1 - tension) / 2;
+    const m1x = k * (p2.x - p0.x);
+    const m1y = k * (p2.y - p0.y);
+    const m2x = k * (p3.x - p1.x);
+    const m2y = k * (p3.y - p1.y);
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    return {
+      x: h00 * p1.x + h10 * m1x + h01 * p2.x + h11 * m2x,
+      y: h00 * p1.y + h10 * m1y + h01 * p2.y + h11 * m2y,
+    };
+  }
+
+  // Sample the dense, arc-length-parameterised curve at progress `t` in
+  // [0, 1]. Interpolation here is between DENSE (sub-pixel) samples, so the
+  // motion reads as continuous rather than hopping between the server's
+  // sparse points. `t` never rewinds, so the ball never jumps backward.
   function samplePath(
-    path: Path,
-    sampling: { segLens: number[]; cumStarts: number[]; totalLen: number },
+    sampling: {
+      points: Array<{ x: number; y: number }>;
+      cumStarts: number[];
+      totalLen: number;
+    },
     t: number,
   ): { x: number; y: number } {
-    if (path.length === 0) return { x: 0, y: 0 };
-    if (path.length === 1) return { x: path[0].x, y: path[0].y };
-    if (sampling.totalLen === 0) {
-      const last = path[path.length - 1];
+    const points = sampling.points;
+    if (points.length === 0) return { x: 0, y: 0 };
+    if (points.length === 1 || sampling.totalLen === 0) {
+      const last = points[points.length - 1];
       return { x: last.x, y: last.y };
     }
     const clampedT = Math.max(0, Math.min(1, t));
     const targetDist = clampedT * sampling.totalLen;
     let segIdx = 0;
-    for (let i = 0; i < sampling.segLens.length; i++) {
+    for (let i = 0; i < points.length - 1; i++) {
       if (sampling.cumStarts[i + 1] >= targetDist) {
         segIdx = i;
         break;
@@ -1631,10 +1936,10 @@ export default function PlinkoPvpMatchPage({
       segIdx = i;
     }
     const segStartDist = sampling.cumStarts[segIdx];
-    const segLen = sampling.segLens[segIdx];
+    const segLen = sampling.cumStarts[segIdx + 1] - segStartDist;
     const localT = segLen === 0 ? 0 : (targetDist - segStartDist) / segLen;
-    const p0 = path[segIdx];
-    const p1 = path[segIdx + 1];
+    const p0 = points[segIdx];
+    const p1 = points[segIdx + 1];
     return {
       x: p0.x + (p1.x - p0.x) * localT,
       y: p0.y + (p1.y - p0.y) * localT,
@@ -1649,6 +1954,10 @@ export default function PlinkoPvpMatchPage({
         dualAnimCancelRef.current();
         dualAnimCancelRef.current = null;
       }
+      // Drop any peg/landing feedback left over from the previous ball so a
+      // new animation can't inherit stale highlights or timers.
+      clearPegHits();
+      clearLandingState();
 
       const p1Path = p1Result?.path?.length ? p1Result.path : [];
       const p2Path = p2Result?.path?.length ? p2Result.path : [];
@@ -1671,17 +1980,37 @@ export default function PlinkoPvpMatchPage({
           ballNumber,
         );
       }
-      const p1Sampling = precomputePathSampling(p1Path);
-      const p2Sampling = precomputePathSampling(p2Path);
+      const p1Sampling = buildSampling(p1Path);
+      const p2Sampling = buildSampling(p2Path);
 
-      // Initial positions at t = 0. Single setState updates both balls in
-      // one React render so they&apos;re committed together.
+      // Launch window for this ball (0 when reduced motion is preferred).
+      // Resolved once, up front, so the initial pose and the rAF loop agree.
+      const launchMs = reduceMotionRef.current ? 0 : LAUNCH_MS;
+
+      // Initial pose: at the launch chute (same row the visor preview sat on)
+      // so the ball is visible immediately and drops into the board — unless
+      // reduced motion is on, in which case it starts on the trajectory.
+      const launchStartY = launchMs > 0 ? LAUNCH_FROM_Y : null;
       const initial: {
-        p1: { x: number; y: number } | null;
-        p2: { x: number; y: number } | null;
+        p1: BallPose | null;
+        p2: BallPose | null;
       } = { p1: null, p2: null };
-      if (p1Path.length > 0) initial.p1 = { x: p1Path[0].x, y: p1Path[0].y };
-      if (p2Path.length > 0) initial.p2 = { x: p2Path[0].x, y: p2Path[0].y };
+      if (p1Path.length > 0) {
+        initial.p1 = {
+          x: p1Path[0].x,
+          y: launchStartY ?? p1Path[0].y,
+          scaleX: 1,
+          scaleY: 1,
+        };
+      }
+      if (p2Path.length > 0) {
+        initial.p2 = {
+          x: p2Path[0].x,
+          y: launchStartY ?? p2Path[0].y,
+          scaleX: 1,
+          scaleY: 1,
+        };
+      }
       setBallPositions(initial);
       setHighlightBucket(null);
       setPhase("animating");
@@ -1695,11 +2024,65 @@ export default function PlinkoPvpMatchPage({
       const startTime = performance.now();
       let cancelled = false;
       let rafId = 0;
+      // Forward-only cursors into each ball's contact list. Because `t` only
+      // increases, every event fires exactly once per ball and nothing replays
+      // on a re-render.
+      let p1PegCursor = 0;
+      let p2PegCursor = 0;
 
       const tick = (now: number) => {
         if (cancelled) return;
         const elapsed = Math.max(0, now - startTime);
-        const t = Math.min(1, elapsed / BALL_ANIMATION_MS);
+
+        // ── Launch envelope ──────────────────────────────────────────
+        // The ball drops from the launch chute at the player's chosen
+        // startX into the trajectory's first frame. Gravity-style ease-in
+        // plus a subtle squash/stretch makes it read like an arcade drop
+        // rather than a generic UI fade. x stays at path[0].x throughout,
+        // so the player's selected launch position stays visually clear.
+        if (elapsed < launchMs) {
+          const lt = elapsed / launchMs; // 0 → 1 across the launch window
+          const eased = lt * lt; // accelerate like gravity
+          const squash = Math.sin(Math.PI * lt); // 0 → 1 → 0
+          const scaleX = 1 - 0.16 * squash;
+          const scaleY = 1 + 0.24 * squash;
+          const launchPose: {
+            p1: BallPose | null;
+            p2: BallPose | null;
+          } = { p1: null, p2: null };
+          if (p1Path.length > 0) {
+            const p0 = p1Path[0];
+            launchPose.p1 = {
+              x: p0.x,
+              y: LAUNCH_FROM_Y + (p0.y - LAUNCH_FROM_Y) * eased,
+              scaleX,
+              scaleY,
+            };
+          }
+          if (p2Path.length > 0) {
+            const p0 = p2Path[0];
+            launchPose.p2 = {
+              x: p0.x,
+              y: LAUNCH_FROM_Y + (p0.y - LAUNCH_FROM_Y) * eased,
+              scaleX,
+              scaleY,
+            };
+          }
+          setBallPositions(launchPose);
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+
+        // ── Server trajectory ────────────────────────────────────────
+        // Offset by launchMs so progress 0 lands exactly on the path's first
+        // point the moment the launch envelope ends — a clean hand-off with
+        // no jump. The progress is then biased for a physical arcade read:
+        // a non-zero start speed that blends with the launch and accelerates
+        // toward the bucket (downward momentum). Endpoints are exact
+        // (raw 0→0, raw 1→1), so the ball still finishes precisely on the
+        // server's final point. Monotonic, so the ball never moves backward.
+        const raw = Math.min(1, (elapsed - launchMs) / BALL_ANIMATION_MS);
+        const t = raw * (0.35 + 0.65 * raw);
 
         // Sample both paths from the SAME `t` value in the same RAF
         // callback. Update BOTH positions via a single setBallPositions
@@ -1707,15 +2090,35 @@ export default function PlinkoPvpMatchPage({
         // scheduled a frame apart (the original bug: two independent
         // setStates inside a RAF can render separately).
         const next: {
-          p1: { x: number; y: number } | null;
-          p2: { x: number; y: number } | null;
+          p1: BallPose | null;
+          p2: BallPose | null;
         } = {
           p1:
-            p1Path.length > 0 ? samplePath(p1Path, p1Sampling, t) : null,
+            p1Path.length > 0
+              ? { ...samplePath(p1Sampling, t), scaleX: 1, scaleY: 1 }
+              : null,
           p2:
-            p2Path.length > 0 ? samplePath(p2Path, p2Sampling, t) : null,
+            p2Path.length > 0
+              ? { ...samplePath(p2Sampling, t), scaleX: 1, scaleY: 1 }
+              : null,
         };
         setBallPositions(next);
+
+        // Fire peg impacts the ball has now passed. Purely a visual cue.
+        while (
+          p1PegCursor < p1Sampling.events.length &&
+          t >= p1Sampling.events[p1PegCursor].t
+        ) {
+          firePegHit(p1Sampling.events[p1PegCursor].index);
+          p1PegCursor += 1;
+        }
+        while (
+          p2PegCursor < p2Sampling.events.length &&
+          t >= p2Sampling.events[p2PegCursor].t
+        ) {
+          firePegHit(p2Sampling.events[p2PegCursor].index);
+          p2PegCursor += 1;
+        }
 
         if (t < 1) {
           rafId = requestAnimationFrame(tick);
@@ -1746,6 +2149,30 @@ export default function PlinkoPvpMatchPage({
             setHighlightBucket(null);
           }
 
+          // Landing feedback — all values come straight from the server's
+          // bucketIndex/points. No payout or bucket is computed here.
+          const landingEvents: Array<{
+            index: number;
+            side: "p1" | "p2";
+            points: number;
+          }> = [];
+          if (p1Result.bucketIndex >= 0) {
+            landingEvents.push({
+              index: p1Result.bucketIndex,
+              side: "p1",
+              points: p1Result.points,
+            });
+          }
+          if (p2Result.bucketIndex >= 0) {
+            landingEvents.push({
+              index: p2Result.bucketIndex,
+              side: "p2",
+              points: p2Result.points,
+            });
+          }
+          showBucketLanding(landingEvents);
+          setBallSettleToken((v) => v + 1);
+
           // Show the per-ball result popup for NORMAL rounds only.
           // Overtime (the 4th tiebreaker ball) deliberately skips
           // this popup — the match-over screen (tie / win / lose
@@ -1753,21 +2180,31 @@ export default function PlinkoPvpMatchPage({
           // there, so no intermediate "Ball 4 Results" popup pops
           // up before/on top of the final result.
           if (ballNumber <= REQUIRED_BALLS) {
-            setRoundPopup({
-              p1Points: p1Result.points,
-              p2Points: p2Result.points,
-              p1FellOut: p1Result.fellOut,
-              p2FellOut: p2Result.fellOut,
-              ballNumber,
-            });
-            // BUG-FIX: clear balls from the board immediately when
-            // the popup appears, not when the popup is dismissed.
-            // Previously balls stayed at their final positions
-            // until onNextRound fired, which meant Player A and
-            // Player B saw different board states depending on who
-            // dismissed the popup first — causing the user-reported
-            // "balls don't reset to original positions" sync issue.
-            setBallPositions({ p1: null, p2: null });
+            // Delay the popup (and the ball clear) by the landing hold so the
+            // arrival at the bucket is actually visible before the modal
+            // dims the board. Reduced motion skips the hold.
+            const showRoundPopup = () => {
+              setRoundPopup({
+                p1Points: p1Result.points,
+                p2Points: p2Result.points,
+                p1FellOut: p1Result.fellOut,
+                p2FellOut: p2Result.fellOut,
+                ballNumber,
+              });
+              // Clear the balls when the popup appears (not when it is
+              // dismissed) so both players see the same board state.
+              setBallPositions({ p1: null, p2: null });
+            };
+            if (reduceMotionRef.current) {
+              showRoundPopup();
+            } else {
+              if (landingTimerRef.current)
+                clearTimeout(landingTimerRef.current);
+              landingTimerRef.current = setTimeout(
+                showRoundPopup,
+                LANDING_HOLD_MS,
+              );
+            }
           }
 
           if (ballNumber >= REQUIRED_BALLS) {
@@ -1793,7 +2230,7 @@ export default function PlinkoPvpMatchPage({
         }
       };
     },
-    [fetchStatus],
+    [fetchStatus, firePegHit, clearPegHits, showBucketLanding, clearLandingState],
   );
 
   // ── Ready handler (replaces old Launch handler) ──────────────────
@@ -1987,24 +2424,29 @@ export default function PlinkoPvpMatchPage({
         // (or frozen at 3 for the final ball) — using that would
         // compute the wrong ball number for the final ball.
         const resolvedBallNumber = match?.currentBall ?? 1;
-        // Pre-register so the pending fetchStatus / rounds-effect
-        // won't try to animate this ball a second time.
-        animatedBallNumbersRef.current.add(resolvedBallNumber);
         // Use the /launch response paths (collision-aware from
         // simulateDualBalls) for immediate visual feedback.
         const p1Res = data.data.p1Result;
         const p2Res = data.data.p2Result;
+        const myRes = data.data.myResult;
+        // Register the ball as already-animated ONLY when an animation really
+        // starts, so the pending fetchStatus / rounds-effect can't animate it
+        // twice. If the response carries no paths at all, leaving it
+        // unregistered lets the rounds-effect animate the ball from the rounds
+        // row instead of it silently never moving.
         if (p1Res && p2Res) {
+          animatedBallNumbersRef.current.add(resolvedBallNumber);
           startDualTrackAnimation(p1Res, p2Res, resolvedBallNumber);
-        } else if (data.data.myResult) {
+        } else if (myRes) {
           // Fallback: half-dual animation with the viewer's own
           // result. Both paths being null when justResolved=true
           // means the server response shape changed — still animate
           // what we have so the ball doesn't disappear.
+          animatedBallNumbersRef.current.add(resolvedBallNumber);
           const viewerIsP1 = match?.viewerIsPlayer1;
           startDualTrackAnimation(
-            viewerIsP1 ? data.data.myResult : null,
-            viewerIsP1 ? null : data.data.myResult,
+            viewerIsP1 ? myRes : null,
+            viewerIsP1 ? null : myRes,
             resolvedBallNumber,
           );
         }
@@ -2128,6 +2570,8 @@ export default function PlinkoPvpMatchPage({
         clearTimeout(dualAnimTimerRef.current);
         dualAnimTimerRef.current = null;
       }
+      for (const t of tickTimersRef.current) clearTimeout(t);
+      tickTimersRef.current = [];
     };
   }, []);
 
@@ -2241,6 +2685,8 @@ export default function PlinkoPvpMatchPage({
     match.status === MATCH_STATUS.BALL_3 ||
     match.status === MATCH_STATUS.BALL_4;
   const urgent = timeLeft > 0 && timeLeft <= 5;
+  const reduceMotion = prefersReducedMotion === true;
+  const isTiebreakerBall = match.status === MATCH_STATUS.BALL_4;
 
   const isViewerP1 = match.viewerIsPlayer1;
   const viewerSeat = isViewerP1 ? "player1" : "player2";
@@ -2326,18 +2772,43 @@ export default function PlinkoPvpMatchPage({
     : match.p2Ready;
 
   // ── Status banner sub-component ────────────────────────────────
+  // The banner is keyed by a coarse STAGE token so a short enter animation
+  // plays when the match advances stage (waiting → ready → ball N → tiebreaker
+  // → finished). It is keyed by stage — not by the 250ms countdown tick or
+  // by match state churn — so polling/socket refreshes never replay it, and
+  // the enter uses transform/opacity only, so the board below never reflows.
   function renderStatusBanner() {
-    if (isCancelled) {
-      return (
+    const bothReady = isLaunchable && match.p1Ready && match.p2Ready;
+    const urgentMatch = isLaunchable && match.viewerCanLaunch && urgent;
+
+    const stage = isCancelled
+      ? "cancelled"
+      : isFinished || (!isWaiting && !isReady && !isLaunchable)
+        ? "none"
+        : isWaiting
+          ? "waiting"
+          : isReady
+            ? "ready"
+            : bothReady
+              ? isTiebreakerBall
+                ? "both-ready-tb"
+                : "both-ready"
+              : isTiebreakerBall
+                ? "tiebreaker"
+                : "launchable";
+
+    if (stage === "none") return null;
+
+    let content: ReactNode = null;
+    if (stage === "cancelled") {
+      content = (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-900/30 px-4 py-3 text-red-200">
           <AlertIcon className="w-5 h-5 text-red-300" />
           <span className="font-semibold">This match was cancelled.</span>
         </div>
       );
-    }
-    if (isFinished) return null;
-    if (isWaiting) {
-      return (
+    } else if (stage === "waiting") {
+      content = (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3 text-cyan-200">
           <LoadingDotsIcon className="w-5 h-5 text-cyan-200 animate-pulse" />
           <span className="font-semibold">
@@ -2345,9 +2816,8 @@ export default function PlinkoPvpMatchPage({
           </span>
         </div>
       );
-    }
-    if (isReady) {
-      return (
+    } else if (stage === "ready") {
+      content = (
         <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3 text-cyan-200">
           <span className="font-bold text-base sm:text-lg">
             Both players joined. Starting in
@@ -2358,33 +2828,41 @@ export default function PlinkoPvpMatchPage({
           </span>
         </div>
       );
-    }
-    if (isLaunchable) {
-      const bothReady = match.p1Ready && match.p2Ready;
-      if (bothReady) {
-        return (
-          <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-emerald-400/50 bg-emerald-500/10 px-4 py-3 text-emerald-200 animate-pulse">
-            <span className="font-bold text-base sm:text-lg">
-              Both ready. Launching both balls!
-            </span>
-          </div>
-        );
-      }
-      const urgentMatch = match.viewerCanLaunch && urgent;
-      return (
+    } else if (stage === "both-ready" || stage === "both-ready-tb") {
+      content = (
+        <div className="flex flex-wrap items-center justify-center gap-3 rounded-xl border border-emerald-400/50 bg-emerald-500/10 px-4 py-3 text-emerald-200 animate-pulse">
+          <span className="font-bold text-base sm:text-lg">
+            {stage === "both-ready-tb"
+              ? "Both ready. Tiebreaker launching!"
+              : "Both ready. Launching both balls!"}
+          </span>
+        </div>
+      );
+    } else {
+      // launchable / tiebreaker (tiebreaker = the server's 4th ball)
+      content = (
         <div
           className={`flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
             urgentMatch
               ? "border-red-400/60 bg-red-900/30 text-red-200 animate-pulse"
-              : "border-cyan-300/40 bg-cyan-500/10 text-cyan-200"
+              : stage === "tiebreaker"
+                ? "border-amber-300/50 bg-amber-500/10 text-amber-100"
+                : "border-cyan-300/40 bg-cyan-500/10 text-cyan-200"
           }`}
         >
+          {stage === "tiebreaker" && (
+            <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-200">
+              Tiebreaker
+            </span>
+          )}
           <span className="font-bold text-base sm:text-lg">
-            {match.viewerCanLaunch
-              ? "Adjust your inputs and click Ready"
-              : match.viewerHasCommitted
-                ? "You're ready. Waiting for opponent"
-                : "Opponent is choosing inputs…"}
+            {stage === "tiebreaker"
+              ? "One more ball each — winner takes it"
+              : match.viewerCanLaunch
+                ? "Adjust your inputs and click Ready"
+                : match.viewerHasCommitted
+                  ? "You're ready. Waiting for opponent"
+                  : "Opponent is choosing inputs…"}
           </span>
           {/* Free vs-AI matches are untimed — no countdown chip. */}
           {!match.isAi && (
@@ -2392,7 +2870,9 @@ export default function PlinkoPvpMatchPage({
               className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
                 urgentMatch
                   ? "bg-red-500/30 text-red-100"
-                  : "bg-cyan-500/30 text-cyan-100"
+                  : stage === "tiebreaker"
+                    ? "bg-amber-500/30 text-amber-100"
+                    : "bg-cyan-500/30 text-cyan-100"
               }`}
             >
               <ClockIcon className="w-4 h-4" />
@@ -2402,7 +2882,19 @@ export default function PlinkoPvpMatchPage({
         </div>
       );
     }
-    return null;
+
+    return (
+      <motion.div
+        key={stage}
+        initial={reduceMotion ? false : { opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={
+          reduceMotion ? { duration: 0 } : { duration: 0.14, ease: "easeOut" }
+        }
+      >
+        {content}
+      </motion.div>
+    );
   }
 
   // ── Between-rounds banner ─────────────────────────────────────
@@ -2416,12 +2908,20 @@ export default function PlinkoPvpMatchPage({
     const nextBall = displayBall + 1;
     if (nextBall > REQUIRED_BALLS) return null;
     return (
-      <div className="flex items-center justify-center gap-2 rounded-xl border border-yellow-300/40 bg-yellow-500/10 px-4 py-3 text-yellow-200">
+      <motion.div
+        key={`between-${nextBall}`}
+        initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={
+          reduceMotion ? { duration: 0 } : { duration: 0.2, ease: "easeOut" }
+        }
+        className="flex items-center justify-center gap-2 rounded-xl border border-yellow-300/40 bg-yellow-500/10 px-4 py-3 text-yellow-200"
+      >
         <LoadingDotsIcon className="w-5 h-5 text-yellow-200 animate-pulse" />
         <span className="font-semibold">
-          Round {nextBall} incoming…
+          Ball {nextBall} incoming — both players launch
         </span>
-      </div>
+      </motion.div>
     );
   }
 
@@ -2506,6 +3006,21 @@ export default function PlinkoPvpMatchPage({
         headline={headline}
         subline={subline}
         gameName="Plinko Duel"
+        // Winner's final score is emphasised; the other side stays visible but
+        // muted. Values are the server's p1Score/p2Score and result — nothing
+        // computed here beyond which side the server named as winner.
+        sides={[
+          {
+            name: p1Name,
+            score: match.p1Score,
+            highlight: match.result === RESULT.PLAYER1,
+          },
+          {
+            name: p2Name,
+            score: match.p2Score,
+            highlight: match.result === RESULT.PLAYER2,
+          },
+        ]}
         opponent={{
           name: oppName,
           iconKey: oppHead?.iconKey || null,
@@ -2585,6 +3100,9 @@ export default function PlinkoPvpMatchPage({
       p1Preview={showVisor ? p1Preview : null}
       p2Preview={showVisor ? p2Preview : null}
       showVisor={showVisor}
+      pegHits={pegHits}
+      bucketLandings={bucketLandings}
+      ballSettle={ballSettleToken}
     />
   );
 
@@ -2722,14 +3240,32 @@ export default function PlinkoPvpMatchPage({
         </div>
       </div>
       <div className="mt-3">{renderStatusBanner()}</div>
-      {/* Round counter */}
+      {/* Round counter — the number pops when the ball advances so the change
+          is legible; the label switches to Tiebreaker for the server's 4th
+          (overtime) ball. Keyed by ball number, so it never replays on polls. */}
       <div className="mt-2 flex justify-center">
         <div className="inline-flex items-center gap-2 rounded-full bg-white/5 border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white/70">
-          <span>Round</span>
-          <span className="font-black text-white text-base tabular-nums">
-            {displayBall}
-            <span className="text-white/40 text-sm">/{REQUIRED_BALLS}</span>
+          <span className={isTiebreakerBall ? "text-amber-200" : undefined}>
+            {isTiebreakerBall ? "Tiebreaker" : "Round"}
           </span>
+          <motion.span
+            key={isTiebreakerBall ? "tb" : `ball-${displayBall}`}
+            initial={reduceMotion ? false : { scale: 0.7, opacity: 0.4 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={
+              reduceMotion ? { duration: 0 } : { duration: 0.16, ease: "easeOut" }
+            }
+            className="font-black text-white text-base tabular-nums"
+          >
+            {isTiebreakerBall ? (
+              "OT"
+            ) : (
+              <>
+                {displayBall}
+                <span className="text-white/40 text-sm">/{REQUIRED_BALLS}</span>
+              </>
+            )}
+          </motion.span>
         </div>
       </div>
     </>
@@ -2787,7 +3323,7 @@ export default function PlinkoPvpMatchPage({
           </div>
           <div className="flex shrink-0 items-center gap-2 text-[11px] font-bold tabular-nums">
             <span className="rounded-full bg-white/5 px-2 py-0.5 text-white/70">
-              R {displayBall}/{REQUIRED_BALLS}
+              {isTiebreakerBall ? "Tiebreaker" : `R ${displayBall}/${REQUIRED_BALLS}`}
             </span>
             <span className="text-cyan-300">{match.p1Score}</span>
             <span className="text-fuchsia-300">{match.p2Score}</span>
