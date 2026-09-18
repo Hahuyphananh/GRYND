@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { useUser, useAuth } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
@@ -38,7 +38,6 @@ const NAV_TRANSLATION_KEYS = {
 
 function NavigationBar({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
-  const { getToken } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
   const pathname = usePathname();
@@ -165,14 +164,17 @@ function NavigationBar({ currentPath = "" }) {
 
   const fetchBalance = async ({ includeMeta = true } = {}) => {
     try {
-      const token = await getToken({ template: "app_token" });
-      if (!token) return setError(t("nav.token_missing"));
-
+      // Same-origin request. /api/get-user-tokens authenticates with Clerk's
+      // normal session cookie via auth(), so no Authorization header is
+      // needed. Sending a custom `app_token` JWT there was actively harmful:
+      // clerkMiddleware authenticates FROM the Authorization header whenever
+      // it is present (preferring it over the session cookie), and a custom
+      // JWT-template token is not a Clerk session token — so the whole
+      // request was resolved as signed-out and the route returned 401.
       const response = await fetch("/api/get-user-tokens", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         credentials: "include",
       });
@@ -297,8 +299,8 @@ function NavigationBar({ currentPath = "" }) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
         });
         if (initResponse.ok) fetchBalance();
         else setError(t("nav.init_failed"));

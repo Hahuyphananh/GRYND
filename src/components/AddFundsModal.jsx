@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useAuth } from "@clerk/nextjs";
 import { IconLock } from "@tabler/icons-react";
 import { modalMotion, withReducedMotion, hoverScale } from "../lib/animations";
 import {
@@ -17,7 +16,6 @@ export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { getToken } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const { t } = useTranslation();
 
@@ -41,13 +39,16 @@ export default function AddFundsModal({ isOpen, onClose, onSuccess }) {
     }
 
     try {
-      const token = await getToken();
+      // Same-origin request. /api/tokens/add-funds authenticates using Clerk's
+      // normal session cookie via auth(), so include the cookie and skip the
+      // Authorization header: a custom/missing bearer token would make
+      // clerkMiddleware resolve the request as signed-out (401).
       const response = await fetch("/api/tokens/add-funds", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body: JSON.stringify({ amount: numAmount }),
       });
 
