@@ -5,6 +5,11 @@ import { eq } from "drizzle-orm";
 import { cacheDelete } from "../../../lib/redis/cache";
 import { CacheKeys } from "../../../lib/redis/keys";
 import { parseAndValidateJson } from "../../../lib/security/validation";
+import {
+  calculateAge,
+  MAXIMUM_AGE,
+  MINIMUM_AGE,
+} from "../../../lib/ageVerification";
 
 export async function POST(req) {
   const { userId } = await auth();
@@ -33,13 +38,11 @@ export async function POST(req) {
 
   const birthDate = parsed.data.birthDate;
 
-  // Calculate age
-  const birthMs = Date.parse(birthDate);
-  const age = Number.isFinite(birthMs)
-    ? Math.floor((Date.now() - birthMs) / (365.25 * 24 * 60 * 60 * 1000))
-    : NaN;
+  // Calendar-based age. The server is the authoritative calculation — the
+  // client-side checks only pre-empt the request (src/lib/ageVerification.ts).
+  const age = calculateAge(birthDate);
 
-  if (!Number.isFinite(age) || age < 18 || age > 120) {
+  if (age === null || age < MINIMUM_AGE || age > MAXIMUM_AGE) {
     return new Response(
       JSON.stringify({ success: false, error: "Must be 18+" }),
       {

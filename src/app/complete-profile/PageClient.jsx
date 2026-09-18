@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
+import { calculateAge, MINIMUM_AGE } from "../../lib/ageVerification";
 
 export default function CompleteProfilePage() {
   const { user } = useUser();
@@ -23,13 +24,11 @@ export default function CompleteProfilePage() {
       return;
     }
 
-    // Calculate age
-    const age = Math.floor(
-      (Date.now() - new Date(birthDate).getTime()) /
-        (365.25 * 24 * 60 * 60 * 1000),
-    );
+    // Calendar-based age, kept in sync with the authoritative server check
+    // in /api/update-birthdate (src/lib/ageVerification.ts).
+    const age = calculateAge(birthDate);
 
-    if (age < 18) {
+    if (age === null || age < MINIMUM_AGE) {
       setError("You must be at least 18 years old to use this platform");
       setIsSubmitting(false);
       return;

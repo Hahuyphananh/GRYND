@@ -4,6 +4,7 @@ import { useUser, useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
+import { calculateAge, MINIMUM_AGE } from "../lib/ageVerification";
 
 export function useAgeVerification() {
   const { user, isLoaded } = useUser();
@@ -20,25 +21,19 @@ export function useAgeVerification() {
       return;
     }
 
-    const age = Math.floor(
-      (Date.now() - new Date(birthDate).getTime()) /
-        (365.25 * 24 * 60 * 60 * 1000),
-    );
+    const age = calculateAge(birthDate);
 
-    if (age < 18) {
+    if (age !== null && age < MINIMUM_AGE) {
       clearSessionArtifacts();
       signOut();
       router.push("/access-denied");
     }
   }, [user, isLoaded, router, signOut]);
 
+  const verifiedAge = calculateAge(user?.publicMetadata?.birthDate ?? "");
+
   return {
-    isVerified:
-      user?.publicMetadata?.birthDate &&
-      Math.floor(
-        (Date.now() - new Date(user.publicMetadata.birthDate).getTime()) /
-          (365.25 * 24 * 60 * 60 * 1000),
-      ) >= 18,
+    isVerified: verifiedAge !== null && verifiedAge >= MINIMUM_AGE,
     isLoaded,
   };
 }
