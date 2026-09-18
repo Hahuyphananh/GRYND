@@ -3,8 +3,12 @@ import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import { db } from "../../../../db/index";
 import { userAutomationState, users } from "../../../../db/schema";
 import { sendInactivityEmail } from "../../../../lib/emails/inactivity";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
-export async function POST() {
+export async function POST(request: Request) {
+  // Authenticate cron request before performing global state changes
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
   const threshold = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const candidates = await db
     .select({ clerkId: userAutomationState.clerkId, email: users.email })

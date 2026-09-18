@@ -92,13 +92,39 @@ export async function releaseCrashArenaSeat(
   // no reason to exist). No deferral needed: there are no real winnings
   // to strand, and the close path locks pending entries as losses.
   const tableData = await db
-    .select({ id: crashArenaTables.id, isAi: crashArenaTables.isAi })
+    .select({
+      id: crashArenaTables.id,
+      isAi: crashArenaTables.isAi,
+      isPrivate: crashArenaTables.isPrivate,
+    })
     .from(crashArenaTables)
     .where(eq(crashArenaTables.id, tableId))
     .limit(1);
 
   if (tableData[0]?.isAi) {
     await closeAiCrashArenaTable(tableId);
+    broadcastTableUpdate(tableId, { left: true, userId: user.id, disconnected: true });
+    broadcastLobbyUpdate({ left: true, tableId, disconnected: true });
+    return { cleaned: true, deferred: false, returned: 0 };
+  }
+
+  // ── Private tables: chips are virtual (play money) ────────────────────
+  // The buy-in was never deducted from the wallet (join route skips the
+  // wallet move for private tables), so the table balance is play money
+  // and must NEVER be refunded. Mark the seat left without touching the
+  // wallet or ledger — mirrors the manual leave route's isPrivate guard.
+  const isVirtual = Boolean(tableData[0]?.isPrivate);
+  if (isVirtual) {
+    await db
+      .update(crashArenaPlayers)
+      .set({ status: "left" })
+      .where(
+        and(
+          eq(crashArenaPlayers.id, player.id),
+          inArray(crashArenaPlayers.status, ["seated", "waiting"]),
+        ),
+      );
+
     broadcastTableUpdate(tableId, { left: true, userId: user.id, disconnected: true });
     broadcastLobbyUpdate({ left: true, tableId, disconnected: true });
     return { cleaned: true, deferred: false, returned: 0 };

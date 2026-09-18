@@ -14,6 +14,11 @@ import {
   issueAdminMfaToken,
 } from "../../../../../lib/auth/adminMfa";
 import { adminAuditLog } from "../../../../../lib/security/adminAuditLog";
+import {
+  checkVerifyAttemptLimit,
+  recordVerifyFailure,
+  clearVerifyAttempts,
+} from "../../../../../lib/security/mfaAttemptLimit";
 
 type Method = "email" | "totp" | "passphrase";
 
@@ -31,6 +36,27 @@ export async function POST(req: NextRequest) {
   }
   if (!(await isAdmin(userId))) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
+
+  // Check durable MFA attempt limit before processing the request
+  const attemptCheck = await checkVerifyAttemptLimit(userId);
+  if (!attemptCheck.allowed) {
+    const lockedUntil = attemptCheck.lockedUntil ?? Date.now();
+    const remainingMs = Math.max(0, lockedUntil - Date.now());
+    const remainingMinutes = Math.ceil(remainingMs / 60_000);
+    
+    adminAuditLog("admin_mfa_verify_locked", {
+      clerkId: userId,
+      details: { attempts: attemptCheck.attempts, lockedUntil },
+    }).catch(() => {});
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Too many failed attempts. Please try again in ${remainingMinutes} minute${remainingMinutes !== 1 ? "s" : ""}.`,
+      },
+      { status: 429 },
+    );
   }
 
   let body: { method?: string; code?: string };
@@ -59,6 +85,9 @@ export async function POST(req: NextRequest) {
   }
 
   if (!ok) {
+    // Record the failed attempt and enforce progressive lockout
+    await recordVerifyFailure(userId);
+    
     adminAuditLog("admin_mfa_verify_failed", {
       clerkId: userId,
       details: { method },
@@ -68,6 +97,9 @@ export async function POST(req: NextRequest) {
       { status: 401 },
     );
   }
+
+  // Clear attempt counter on successful verification
+  await clearVerifyAttempts(userId);
 
   adminAuditLog("admin_mfa_verified", {
     clerkId: userId,

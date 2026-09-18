@@ -13,8 +13,13 @@
 // GET /api/user/daily-loss for the DailyLossGuard / navbar chip.
 
 import { sql } from "../../../../db/sql";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Authenticate cron request before performing global state changes
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
+
   const result = await sql`
     UPDATE users
     SET daily_wagered = 0, daily_won = 0

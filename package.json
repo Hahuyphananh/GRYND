@@ -65,9 +65,9 @@
     "@capacitor/android": "^8.3.3",
     "@capacitor/core": "^8.3.3",
     "@capacitor/ios": "^8.3.3",
-    "@clerk/backend": "^3.4.1",
-    "@clerk/nextjs": "^7.2.4",
-    "@clerk/react": "^6.2.1",
+    "@clerk/backend": "^3.4.9",
+    "@clerk/nextjs": "^7.3.5",
+    "@clerk/react": "^6.6.4",
     "@neondatabase/serverless": "^1.1.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.219.0",
     "@opentelemetry/resources": "^2.8.0",
@@ -90,7 +90,7 @@
     "framer-motion": "^12.12.1",
     "next": "^16.3.4",
     "next-pwa": "^5.6.0",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "https://npm.aikido.io/24b56d5c406ab7bf606fd/nodemailer@9.1.1-aikido.1",
     "openai": "^7.6.0",
     "pg": "^8.20.0",
     "posthog-js": "^1.387.0",
@@ -148,6 +148,7 @@
     "sharp": "^0.35.4",
     "brace-expansion": "^5.0.9",
     "undici": "^7.29.0",
-    "socket.io-parser": "^4.2.7"
+    "socket.io-parser": "^4.2.7",
+    "rollup@>=1.0.0 <3.30.0": "3.30.0"
   }
 }

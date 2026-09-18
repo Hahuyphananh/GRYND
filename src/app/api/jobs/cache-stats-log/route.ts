@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCacheStats } from "../../../../lib/redis/cache";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
 /**
  * GET /api/jobs/cache-stats-log
@@ -9,9 +10,12 @@ import { auditLog } from "../../../../lib/security/auditLog";
  * and resets the counters for the next interval.
  *
  * Called by Vercel Cron Jobs every 5 minutes.
- * Protected by a shared secret in production.
+ * Protected by cron secret authentication.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Authenticate cron request before performing operations
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
   try {
     // Read current stats before resetting
     const raw = getCacheStats();
