@@ -148,6 +148,7 @@
     "sharp": "^0.35.4",
     "brace-expansion": "^5.0.9",
     "undici": "^7.29.0",
-    "socket.io-parser": "^4.2.7"
+    "socket.io-parser": "^4.2.7",
+    "rollup@>=1.0.0 <3.30.0": "3.30.0"
   }
 }
