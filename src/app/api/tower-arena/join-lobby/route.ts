@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../lib/logError";
 import { joinTowerArenaLobby } from "../../../../lib/tower-arena/serverStore";
 
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const userId = gate.userId;
     const { lobbyId } = await req.json().catch(() => ({}));
     if (!lobbyId) return NextResponse.json({ ok: false, message: "lobbyId is required" }, { status: 400 });
     const res: any = await joinTowerArenaLobby({ userId, lobbyId: String(lobbyId) });

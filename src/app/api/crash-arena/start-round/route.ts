@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import {
   users,
@@ -9,6 +8,7 @@ import {
 } from "../../../../db/schema";
 import { eq, ne, and, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { generateRoundSeed } from "../../../../lib/games/crash/generateSeed";
 import { generateCrashPoint } from "../../../../lib/games/crash/generateCrashPoint";
 import { dealSignals } from "../../../../lib/games/crash/signals";
@@ -49,10 +49,9 @@ import { logError } from "../../../../lib/logError";
  */
 export async function POST(req: Request) {
   try {
-    const { userId: callerId } = await auth();
-    if (!callerId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const callerId = gate.userId;
 
     const { tableId } = await req.json();
     if (!tableId) {

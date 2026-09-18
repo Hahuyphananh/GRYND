@@ -1,8 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import { crashArenaRounds } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import { isCrashDueAt } from "../../../../lib/crash-poker/roundSystem";
 import type { CrashPokerHand } from "../../../../lib/crash-poker/types";
@@ -32,10 +32,9 @@ import { logError } from "../../../../lib/logError";
  */
 export async function POST(req: Request) {
   try {
-    const { userId: callerId } = await auth();
-    if (!callerId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const callerId = gate.userId;
 
     const { roundId } = await req.json();
     if (!roundId) {

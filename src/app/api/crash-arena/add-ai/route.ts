@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import {
   users,
@@ -7,6 +6,7 @@ import {
 } from "../../../../db/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { CRASH_AI_DIFFICULTIES } from "../../../../lib/crash-arena/botStrategy";
 import {
   getOrCreateCrashArenaAiBot,
@@ -39,10 +39,9 @@ const AI_STACK_MULTIPLIER = 20;
  */
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const userId = gate.userId;
 
     const { tableId, difficulty, stack, name } = await req.json();
     if (!tableId) {

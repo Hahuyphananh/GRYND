@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import {
   users,
@@ -7,6 +6,7 @@ import {
 } from "../../../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { isCrashArenaAiBotId } from "../../../../lib/crash-arena/aiBot";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 
@@ -32,10 +32,9 @@ const MAX_AI_NAME_LENGTH = 40;
  */
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const userId = gate.userId;
 
     const { tableId, userId: botUserId, name } = await req.json();
     if (!tableId || !Number.isFinite(Number(botUserId))) {

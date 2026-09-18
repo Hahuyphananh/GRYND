@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { calculateScore } from "../../../../../game-engine/diceFlushEngine";
 import { appendAction, db, eq, loadRoom, nextTurn, requireUser, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
     const userId = await requireUser();
     const { roomId, category } = await req.json();
     const result = await db.transaction(async (tx) => {

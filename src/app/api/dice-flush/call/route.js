@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callCategory } from "../../../../../game-engine/diceFlushEngine";
 import { appendAction, db, eq, loadRoom, requireUser, resolveExpiredTurn, diceFlushRooms } from "../_lib";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 // POST /api/dice-flush/call
 //
@@ -12,6 +13,8 @@ import { appendAction, db, eq, loadRoom, requireUser, resolveExpiredTurn, diceFl
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
     const userId = await requireUser();
     const { roomId, category } = await req.json();
     if (!roomId || !category) {

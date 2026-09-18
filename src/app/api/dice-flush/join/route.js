@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { TURN_TIME_LIMIT_MS } from "../../../../../game-engine/diceFlushEngine";
 import { and, db, eq, getDisplayName, isNull, loadRoom, lockBalance, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
     const userId = await requireUser();
     const { roomId } = await req.json();
     if (!roomId) return NextResponse.json({ success: false, error: "roomId required" }, { status: 400 });

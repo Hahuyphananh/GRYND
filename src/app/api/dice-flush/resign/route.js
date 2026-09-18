@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { and, db, eq, loadRoom, requireUser, sql, users, diceFlushRooms } from "../_lib";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
     const userId = await requireUser();
     const { roomId } = await req.json();
     const result = await db.transaction(async (tx) => {

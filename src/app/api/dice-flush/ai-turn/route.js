@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { calculateScore, rollDice } from "../../../../../game-engine/diceFlushEngine";
 import { appendAction, db, eq, loadRoom, nextTurn, requireUser, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"];
 
@@ -16,6 +17,8 @@ function pickAiCategory(state) {
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
     const userId = await requireUser();
     const { roomId } = await req.json();
     if (!roomId) return NextResponse.json({ success: false, error: "roomId required" }, { status: 400 });

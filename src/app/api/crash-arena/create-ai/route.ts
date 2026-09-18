@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db/client";
 import {
   users,
@@ -7,6 +6,7 @@ import {
 } from "../../../../db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import {
   CRASH_MIN_WAGER,
   CRASH_MIN_BUYIN_MULTIPLIER,
@@ -44,10 +44,9 @@ const AI_PRACTICE_STACK_MULTIPLIER = 20; // 20× wager — ~20 rounds of practic
  */
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const userId = gate.userId;
 
     const { wager, difficulty } = await req.json();
     const wagerNum = Number(wager);
