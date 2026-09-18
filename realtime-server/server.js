@@ -3,6 +3,7 @@ require("dotenv").config();
 const crypto = require("node:crypto");
 const http = require("http");
 const express = require("express");
+const helmet = require("helmet");
 const cors = require("cors");
 const { Server } = require("socket.io");
 const { verifyToken } = require("@clerk/backend");
@@ -45,6 +46,7 @@ const corsOptions = {
   credentials: true,
 };
 
+app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json());
 
