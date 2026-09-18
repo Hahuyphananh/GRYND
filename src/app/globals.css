@@ -308,6 +308,99 @@ body {
   animation: scaleIn 0.35s ease-out;
 }
 
+/* Player-state feedback (crash-arena) — every state badge / banner that
+   represents a player changing state (folded, busted, all-in, in flight, the
+   fold-pause card) lands with one short rise + fade instead of snapping into
+   place. One-shot, 180ms (game-action tier). It plays when the class is first
+   applied or the element's React key changes — a re-render from a poll or
+   socket snapshot carrying the same state does neither, so it never replays.
+   The
+   reduced-motion block above collapses it to its end state instantly, so the
+   state is still fully readable with motion off. */
+@keyframes stateIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-state-in {
+  animation: stateIn 0.18s ease-out both;
+}
+
+/* Crash moment (crash-engine / crash-arena) — the read-out stamps into its
+   CRASHED state, the bomb punches in at the crash point, and the canvas takes
+   one short impact shake. All one-shot (no looping, no re-trigger); the
+   reduced-motion block above collapses each to its end state, so the crash
+   stays fully readable with motion off. */
+@keyframes crashStamp {
+  0% {
+    opacity: 0.4;
+    transform: scale(1.18);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-crash-stamp {
+  animation: crashStamp 0.24s ease-out both;
+}
+
+@keyframes crashImpact {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-crash-impact {
+  animation: crashImpact 0.26s ease-out both;
+}
+
+/* One-shot impact shake. The canvas is scaled a hair past its container while
+   it shakes (the game area clips), so the 6px travel never uncovers an edge. */
+@keyframes crashShake {
+  0% {
+    transform: translate(0, 0) scale(1.03);
+  }
+  15% {
+    transform: translate(-6px, 3px) scale(1.03);
+  }
+  30% {
+    transform: translate(5px, -3px) scale(1.03);
+  }
+  45% {
+    transform: translate(-4px, 2px) scale(1.03);
+  }
+  60% {
+    transform: translate(3px, -2px) scale(1.03);
+  }
+  80% {
+    transform: translate(-2px, 1px) scale(1.03);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+.animate-crash-shake {
+  animation: crashShake 0.26s ease-out;
+}
+
 @keyframes shimmerElegant {
   0% {
     background-position: -100% center;
@@ -651,16 +744,18 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 /* One-shot "landed" cue for a tile the moment its pick is revealed.
    A quick brightness flash + scale pop makes the paced pick rhythm
    visible (each tile visibly lands before the next one is allowed).
-   Runs once on mount, so a tile that stays revealed never replays. */
+   Runs once on mount, so a tile that stays revealed never replays.
+   0.26s (was 0.4s) — a game-action beat, quick enough that the reveal
+   never lags the tap. */
 @keyframes tileReveal {
   0% {
     opacity: 0;
-    transform: scale(0.6);
+    transform: scale(0.62);
     filter: brightness(2);
   }
   60% {
     opacity: 1;
-    transform: scale(1.1);
+    transform: scale(1.08);
     filter: brightness(1);
   }
   100% {
@@ -670,7 +765,133 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .animate-tile-reveal {
-  animation: tileReveal 0.4s ease-out;
+  animation: tileReveal 0.26s ease-out;
+}
+
+/* The proximity number lands AFTER the tile, not with it: the tile gets its
+   clean reveal first, then the hint arrives one short beat later, so the
+   number reads as information the tile just handed you.
+
+   Combined sequence for a safe reveal, tile = primary movement and number =
+   secondary movement: tile reveal 0-260ms, then the number enters 80-240ms
+   (its own 160ms beat, over the tail of the tile's). Whole sequence ≈260ms.
+
+   The number's beat is deliberately quieter than the tile's: it enters at
+   0.6 (not 0.4) so the digits are already near-legible while it arrives,
+   overshoots to 1.14 — a 3px emphasis on a 20px badge, no glow — and settles,
+   with a short brightness flash so the eye catches the NEW clue without any
+   extra element or particle. Only the badge moves; nothing else on the tile
+   animates out of step with the reveal.
+
+   Same one-shot mount contract as the reveal — an already-revealed tile keeps
+   its element (and its badge), so a poll/socket refresh replays neither. */
+@keyframes hintPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+    filter: brightness(1.5);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.14);
+    filter: brightness(1.3);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.animate-hint-pop {
+  animation: hintPop 0.16s ease-out 0.08s backwards;
+}
+
+/* The tile that actually HIT a mine. The bomb glyph (bombExplode, 0.4s) and
+   the mine buzz are the existing effects and are untouched — this is the
+   supporting cue the hit tile gets on TOP of them: a scale punch in, then a
+   small damped shake that decays to rest, with a short brightness flare.
+   0.45s one-shot, deliberately stronger and slower than a safe reveal
+   (0.26s, scale 0.62→1.08 → this peaks at 1.12 and keeps moving), so a mine
+   reads as "this one cost me the hand" rather than another good tile.
+
+   The shake moves this tile only ~3px inside its own cell — no page-level
+   shake, no full-board shake, no particles, no extra element.
+
+   It is applied by class (only the hit tile carries it), so: it plays once
+   when the class lands, a poll/socket re-render with an identical class list
+   never restarts it, and the other mines on the finished board keep just the
+   bomb they already had. */
+@keyframes mineHit {
+  0% {
+    transform: scale(0.7);
+    filter: brightness(2.4);
+  }
+  25% {
+    transform: scale(1.12) translateX(-3px);
+    filter: brightness(1.7);
+  }
+  45% {
+    transform: scale(1.04) translateX(3px);
+    filter: brightness(1.3);
+  }
+  65% {
+    transform: scale(1.02) translateX(-2px);
+    filter: brightness(1.15);
+  }
+  85% {
+    transform: scale(1) translateX(1px);
+    filter: brightness(1.05);
+  }
+  100% {
+    transform: scale(1) translateX(0);
+    filter: brightness(1);
+  }
+}
+
+.animate-mine-hit {
+  animation: mineHit 0.45s ease-out;
+}
+
+/* "It's your turn" emphasis (mines-duel seat cards, `.animate-seat-turn`).
+   The span carrying this mounts fresh on each real hand-off — it is keyed by
+   whose turn it is — and flashes a ring in, then lets it settle and vanish:
+   ONE cue per turn change, with nothing left animating afterwards.
+
+   Its resting style is `opacity: 0`, which matters for two reasons: after the
+   animation ends it is invisible again (no stuck ring), and with motion off
+   (`animation: none` below) it never appears at all — the seat's permanent
+   active ring and thinking dots already say whose turn it is. 0.75s total, so
+   it is noticed and then out of the way. */
+@keyframes seatTurnIn {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-seat-turn {
+  opacity: 0;
+  animation: seatTurnIn 0.75s ease-out;
+}
+
+/* With motion off, these cues are dropped ENTIRELY — no travel, no flash and
+   no delay — and the tile (plus its number, or just the bomb on a mine) is
+   simply there. The global prefers-reduced-motion block above zeroes
+   animation durations; the hint-pop's 0.08s delay has to be cancelled here,
+   so this rule is explicit rather than implied. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-tile-reveal,
+  .animate-hint-pop,
+  .animate-mine-hit,
+  .animate-seat-turn {
+    animation: none;
+  }
 }
 
 /* Light mode palette overrides (dark mode keeps original colors) */

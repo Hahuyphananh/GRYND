@@ -10,7 +10,11 @@ export const GRAPH_PADDING = 40;
 // (Crash Poker hides it until the crash) — high enough that any crash
 // point within the game's range (max 9.2x) stays on the chart.
 export const DEFAULT_MAX_MULTIPLIER = 10;
-export const TRAIL_FADE_ALPHA = 0.12;
+// Per-draw darkening of the previous frame, which is what leaves the curve its
+// comet trail. The fade is per DRAW, so the value has to track the draw rate:
+// 0.12 at the old 12.5fps (UI-throttled) redraw ≈ 0.026 at 60fps, giving the
+// same ~0.7s of visible trail instead of one that persists noticeably longer.
+export const TRAIL_FADE_ALPHA = 0.026;
 
 // ── Helpers (module-scoped for use in imperative draw) ─────────────────
 
@@ -122,8 +126,12 @@ export { getCurveColor, toCanvasPoint };
  *
  * Ref API (useImperativeHandle):
  *   draw(state, now)
- *     state: { curvePoints, currentMultiplier, crashed, crashAt, crashCanvasPoint, explosionProgress }
+ *     state: { curvePoints, currentMultiplier, crashed, crashAt, crashCanvasPoint,
+ *              explosionProgress, reduced }
  *     now:   performance.now() timestamp
+ *     `reduced` (prefers-reduced-motion) keeps the curve — it IS the game
+ *     state — but drops the decorative layers: no ghost trail (a clean
+ *     redraw each frame) and no crash bloom.
  *
  *   reset()
  *     clears the canvas and draws initial empty grid
@@ -149,8 +157,15 @@ const CrashGraph = forwardRef(function CrashGraph(
         return;
       }
 
-      ctx.fillStyle = `rgba(2, 6, 23, ${TRAIL_FADE_ALPHA})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (state.reduced) {
+        // Clean single curve: repaint the backdrop instead of veiling it, so
+        // no ghost fan accumulates behind the rocket.
+        ctx.fillStyle = "rgba(2, 6, 23, 1)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = `rgba(2, 6, 23, ${TRAIL_FADE_ALPHA})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
       drawGrid(ctx, width, height, GRAPH_PADDING);
       drawSmoothCurve(ctx, state.curvePoints, state.currentMultiplier, width, height, GRAPH_PADDING);
@@ -165,8 +180,9 @@ const CrashGraph = forwardRef(function CrashGraph(
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Crash explosion
-      if (state.crashed && state.crashCanvasPoint) {
+      // Crash explosion — the expanding bloom is decorative, so reduced
+      // motion skips it and leaves the frozen curve at its crash point.
+      if (state.crashed && state.crashCanvasPoint && !state.reduced) {
         const progress = Math.min((now - (state.crashAt || now)) / 700, 1);
         state.explosionProgress = progress;
         drawCrashExplosion(ctx, state.crashCanvasPoint, progress);

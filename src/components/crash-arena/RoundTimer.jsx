@@ -92,7 +92,10 @@ export default function RoundTimer({ seconds = 30, deadlineAt = null, isRunning 
   const isUrgent = remaining <= 5 && remaining > 0;
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    // The countdown lands with one short entrance (the moment the ready vote
+    // is met, or the server deadline arrives) and then only its digits change
+    // — the per-second updates carry no animation of their own.
+    <div className="animate-state-in flex flex-col items-center gap-1">
       <span className="text-xs uppercase tracking-widest text-[#9dd8ff]/70">{label}</span>
       <div
         className={`text-4xl font-black tabular-nums transition-all duration-300

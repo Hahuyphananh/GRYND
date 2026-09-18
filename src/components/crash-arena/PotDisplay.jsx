@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 
 /**
  * PotDisplay — animated pot counter with glow effect.
@@ -14,25 +15,34 @@ import React, { useEffect, useState } from "react";
 export default function PotDisplay({ pot = 0, pots = [], currency = "$" }) {
   const [displayed, setDisplayed] = useState(pot);
   const [isAnimating, setIsAnimating] = useState(false);
+  // Reduced motion: the pot jumps straight to its new value instead of
+  // counting up (and never takes the count-up scale). The count is a JS timer,
+  // so the global CSS reduced-motion block can't collapse it — it is gated
+  // here with the same hook the rest of the game uses.
+  const shouldReduce = useReducedMotion();
 
   useEffect(() => {
-    if (pot !== displayed) {
-      setIsAnimating(true);
-      // Animate toward target
-      const step = Math.max(1, Math.floor(Math.abs(pot - displayed) / 20));
-      const timer = setInterval(() => {
-        setDisplayed((prev) => {
-          if (Math.abs(prev - pot) <= step) {
-            clearInterval(timer);
-            setIsAnimating(false);
-            return pot;
-          }
-          return prev < pot ? prev + step : prev - step;
-        });
-      }, 30);
-      return () => clearInterval(timer);
+    if (pot === displayed) return;
+    if (shouldReduce) {
+      setIsAnimating(false);
+      setDisplayed(pot);
+      return;
     }
-  }, [pot]);
+    setIsAnimating(true);
+    // Animate toward target
+    const step = Math.max(1, Math.floor(Math.abs(pot - displayed) / 20));
+    const timer = setInterval(() => {
+      setDisplayed((prev) => {
+        if (Math.abs(prev - pot) <= step) {
+          clearInterval(timer);
+          setIsAnimating(false);
+          return pot;
+        }
+        return prev < pot ? prev + step : prev - step;
+      });
+    }, 30);
+    return () => clearInterval(timer);
+  }, [pot, shouldReduce]);
 
   // Tier labels: level 0 = carry-over, otherwise main pot (lowest level)
   // then side pots ascending.

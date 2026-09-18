@@ -3,7 +3,12 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { computePayouts } from "../../../lib/pokerPots";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+// Shared animation presets. `dealFromShoe` slides a card in from a single
+// origin (the table's card shoe) instead of popping into its own slot, and
+// `withReducedMotion` swaps a variant for `staticMotion` when the viewer
+// prefers reduced motion — no bespoke reduced-motion system here.
+import { dealFromShoe, withReducedMotion } from "../../../../lib/animations";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
@@ -201,6 +206,8 @@ export default function PokerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isSpectator = searchParams.get("spectator") === "1";
+  // prefers-reduced-motion: hole cards then appear in place with no travel.
+  const shouldReduce = useReducedMotion();
 
   const spectatorGameId = searchParams.get("gameId");
   const [name, setName] = useState("");
@@ -244,8 +251,24 @@ export default function PokerPage() {
   const [selectedAi, setSelectedAi] = useState<Player | null>(null);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
   const [allInFlash, setAllInFlash] = useState(false);
-  const [allInParticles, setAllInParticles] = useState<{ id: string; seatIdx: number; delay: number }[]>([]);
+  const [allInParticles, setAllInParticles] = useState<
+    { id: string; seatIdx: number; delay: number; hue: number }[]
+  >([]);
   const [showReportModal, setShowReportModal] = useState(false);
+  // Replay / cash-out controls stay out of the way until the reveal has had
+  // its beat. Armed only while the hand is in showdown — polling the same
+  // showdown state never restarts the timer — and cleared as soon as the
+  // stage moves on (replay → pre-flop). Reduced motion skips the wait: there
+  // is no reveal animation left to sequence the controls against.
+  const [resultReady, setResultReady] = useState(false);
+  useEffect(() => {
+    if (game?.stage !== "showdown") {
+      setResultReady(false);
+      return;
+    }
+    const t = setTimeout(() => setResultReady(true), shouldReduce ? 0 : 750);
+    return () => clearTimeout(t);
+  }, [game?.stage, shouldReduce]);
   const audio = usePokerAudio();
   const audioRef = useRef(audio);
   audioRef.current = audio;
@@ -278,7 +301,10 @@ export default function PokerPage() {
     };
   }, []);
 
-  // Compute scale factor so the 900x600 table+seats area fits the viewport
+  // How much the 900x680 table area (felt + seat ring) has to shrink to fit
+  // this window with its padding. The felt itself is sized in CSS (85vmin),
+  // so this factor is only meaningful where a fixed pixel size would ignore
+  // the viewport — the seat ring, which is a fixed 120px box.
   const TABLE_W = 900;
   const TABLE_H = 680;
   const paddingX = 32;
@@ -286,6 +312,24 @@ export default function PokerPage() {
   const scaleX = (windowSize.w - paddingX) / TABLE_W;
   const scaleY = (windowSize.h - paddingY) / TABLE_H;
   const tableScale = Math.min(scaleX, scaleY, 1.0);
+
+  // ── Seat scale ───────────────────────────────────────────────────
+  // The ring spaces neighbouring seats 30% of the felt apart (positions
+  // 20/50/80%) while every seat box is a fixed 120px wide, so once the felt
+  // drops below ~440px the boxes start stacking on each other — which is a
+  // phone in landscape, the only shape where the table is shown on mobile.
+  // `tableScale` is exactly "this window is smaller than the ring needs": it
+  // sits at 1.0 on every desktop window, so scaling the ring by it is a
+  // no-op there and only shrinks seats where they would otherwise collide.
+  // The whole seat scales as one unit (box, name, stack and hole cards
+  // together) so the ring keeps its proportions instead of the cards
+  // bursting out of a smaller box. Floored so the seat text stays legible.
+  const SEAT_CLEAR_RATIO = TABLE_W / 440;
+  const SEAT_MIN_SCALE = 0.72;
+  const seatScale = Math.min(
+    1,
+    Math.max(SEAT_MIN_SCALE, tableScale * SEAT_CLEAR_RATIO),
+  );
 
   // UI modal / seat state
   const [seatModalOpen, setSeatModalOpen] = useState(false);
@@ -659,6 +703,93 @@ export default function PokerPage() {
   { left: 20, top: 20 },  // top left
 ];
 
+  // ── Hole-card deal ─────────────────────────────────────────────────
+  // Every hole card is dealt in from ONE shared shoe position on the felt,
+  // so the table reads as a single deal instead of six independent
+  // pop-ins. The offset is a direction cue (unit vector × a fixed distance)
+  // rather than a literal path, so it needs no measurement of the table
+  // box — which also keeps it correct in creator-mode frames.
+  const CARD_SHOE = { left: 40, top: 24 };
+  const DEAL_DISTANCE = 88; // px a hole card travels
+  // A percentage step in `left` is a bigger pixel step than the same step
+  // in `top` on a table roughly twice as wide as it is tall; squashing the
+  // `top` delta keeps the direction pointing at the shoe, not past it.
+  const DEAL_ASPECT_SQUASH = 0.5;
+
+  function shoeOffsetFor(seatLeft: number, seatTop: number) {
+    const dx = seatLeft - CARD_SHOE.left;
+    const dy = (seatTop - CARD_SHOE.top) * DEAL_ASPECT_SQUASH;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    return {
+      // Start displaced *towards* the shoe; the variant animates it to 0.
+      x: -ux * DEAL_DISTANCE,
+      y: -uy * DEAL_DISTANCE,
+      rotate: -ux * 6, // a few degrees of entry tilt, never 3D
+    };
+  }
+
+  // Seats that actually hold hole cards — i.e. a hand is in progress. Used
+  // for the deal order only; gameplay dealing is untouched.
+  const dealtSeatOrder = seatPositions
+    .map((_, seatIdx) => seatIdx)
+    .filter((seatIdx) =>
+      (game?.players ?? []).some(
+        (p) =>
+          p.seatIndex === seatIdx &&
+          (p.hand || []).some((c) => c && c.suit && c.value),
+      ),
+    );
+  const dealtCardTotal = dealtSeatOrder.length * 2;
+  // Real dealing order: one card to each occupied seat in turn, then the
+  // second round. Empty seats are skipped, so a two-handed table deals
+  // 0·1 then 2·3 instead of leaving gaps in the stagger.
+  const dealDelayIndex = (seatIdx: number, cardIdx: number) => {
+    const order = dealtSeatOrder.indexOf(seatIdx);
+    return order < 0 ? 0 : order + cardIdx * dealtSeatOrder.length;
+  };
+
+  // ── Community-card reveal ──────────────────────────────────────────
+  // Positions 0–2 are the flop (one coordinated three-card reveal), 3 is
+  // the turn and 4 the river (each a single newly introduced card). The
+  // reveal delay is scoped to the STREET, not the absolute index: the old
+  // `i * 0.12` made the turn wait 360ms and the river 480ms before their
+  // single card even started moving, which read as the table stalling
+  // between streets. The whole event stays quick — flop 0/120/240ms, the
+  // turn and river an immediate ~300ms reveal.
+  // Used for the card key too, so each card's identity is its street plus
+  // its suit/value — the flop's keys never change across a state poll, so
+  // only genuinely new cards animate in.
+  const communityStreetOf = (i: number) =>
+    i < 3 ? "flop" : i === 3 ? "turn" : "river";
+  const communityRevealDelay = (i: number) => (i < 3 ? i * 0.12 : 0);
+
+  // Showdown reveal order — one seat after another in ring order, so four
+  // opponents flip in sequence instead of all at once. Seats with no cards
+  // are not in `dealtSeatOrder`, so the stagger never waits on an empty seat.
+  const revealDelayFor = (seatIdx: number) =>
+    Math.max(0, dealtSeatOrder.indexOf(seatIdx)) * 0.06;
+
+  // ── Dealer / blinds markers ────────────────────────────────────────
+  // Resolved through the SAME indices the engine posts blinds from (the
+  // `players` array order), never re-derived from seat numbers, so the
+  // markers can never disagree with the chips that were actually posted.
+  const tablePlayerCount = game?.players?.length ?? 0;
+  const seatIndexAtPlayerIndex = (i: number) => {
+    if (tablePlayerCount === 0) return null;
+    const idx = ((i % tablePlayerCount) + tablePlayerCount) % tablePlayerCount;
+    return game?.players[idx]?.seatIndex ?? null;
+  };
+  const dealerSeatIdx = seatIndexAtPlayerIndex(game?.dealerIndex ?? 0);
+  const smallBlindSeatIdx = seatIndexAtPlayerIndex(
+    (game?.dealerIndex ?? 0) + 1,
+  );
+  const bigBlindSeatIdx = seatIndexAtPlayerIndex((game?.dealerIndex ?? 0) + 2);
+  // The button sits still for the whole hand; the blind tags only mean
+  // something while a hand is live, so they appear with the deal.
+  const showBlindMarkers = Boolean(game) && !game?.waiting;
+
   // ======== CREATE GAME =========
   // Now player creates the game alone (no dropdown). Player will be at seatIndex 3.
   async function createGame(dealerIndex = 0) {
@@ -765,13 +896,14 @@ export default function PokerPage() {
       })),
     });
 
-    // Play sounds for new hand
+    // Play sounds for new hand. The card flicks now land *with* the visual
+    // deal: the hole cards animate in from the shoe in the same commit as
+    // the `setGame` below, so one flick covers the first round and one
+    // covers the second, instead of both arriving after the deal is done.
     audioRef.current.playNewHand();
     audioRef.current.playShuffle();
-    setTimeout(() => {
-      audioRef.current.playCardDeal();
-      setTimeout(() => audioRef.current.playCardDeal(), 200);
-    }, 600);
+    setTimeout(() => audioRef.current.playCardDeal(), 80);
+    setTimeout(() => audioRef.current.playCardDeal(), 260);
 
     const nextGame = {
       ...game,
@@ -1064,17 +1196,23 @@ export default function PokerPage() {
   function triggerAllInAnimation(seatIdx: number) {
     audioRef.current.playAllIn();
     setAllInFlash(true);
-    // Create 8 chip particles flying from the seat to the pot
-    const chips = Array.from({ length: 8 }, (_, i) => ({
+    // Five chip particles flying from the seat to the pot (was eight, which
+    // read as confetti rather than a bet). The hue is picked ONCE here — it
+    // used to be `Math.random()` inside the particle's style, so every
+    // re-render (1.5s poll, 1s timer) repainted the chips mid-flight.
+    const chips = Array.from({ length: 5 }, (_, i) => ({
       id: `allin-${seatIdx}-${Date.now()}-${i}`,
       seatIdx,
-      delay: i * 40,
+      delay: i * 28,
+      hue: Math.round(Math.random() * 360),
     }));
     setAllInParticles(chips);
+    // Matches the longest particle (28×4 + 500ms) so nothing is cut short
+    // and the effect never outlives its ≤700ms budget.
     setTimeout(() => {
       setAllInFlash(false);
       setAllInParticles([]);
-    }, 1200);
+    }, 650);
   }
 
   function checkForWinner(players: Player[], pot: number) {
@@ -1332,9 +1470,12 @@ export default function PokerPage() {
     if (game.stage === "pre-flop") {
       // Deal all 3 flop cards at once, small visual delay
       await new Promise((res) => setTimeout(res, 400));
+      // One flick per flop card, landing with its reveal — the same
+      // 0/120/240ms stagger the cards themselves use
+      // (`communityRevealDelay`).
       audioRef.current.playCardDeal();
-      setTimeout(() => audioRef.current.playCardDeal(), 150);
-      setTimeout(() => audioRef.current.playCardDeal(), 300);
+      setTimeout(() => audioRef.current.playCardDeal(), 120);
+      setTimeout(() => audioRef.current.playCardDeal(), 240);
       comm.push(deck.pop()!, deck.pop()!, deck.pop()!);
       nextStage = "flop";
     } else if (game.stage === "flop") {
@@ -1404,8 +1545,13 @@ export default function PokerPage() {
       audioRef.current.playWin();
       setTableStack((prev) => prev + myWinnings);
       fetchUserTokens();
-      confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ["#ffd700", "#ff00cc", "#00e5ff"] });
-      setTimeout(() => confetti({ particleCount: 60, spread: 120, origin: { y: 0.4 }, colors: ["#ffd700", "#ffffff"] }), 300);
+      // Level-4 celebration — and only when motion is welcome: confetti is a
+      // screen-wide effect, so `prefers-reduced-motion` drops it entirely.
+      // The banner, the seat beat and the win stinger still report the win.
+      if (!shouldReduce) {
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 }, colors: ["#ffd700", "#ff00cc", "#00e5ff"] });
+        setTimeout(() => confetti({ particleCount: 60, spread: 120, origin: { y: 0.4 }, colors: ["#ffd700", "#ffffff"] }), 300);
+      }
     } else {
       audioRef.current.playLose();
     }
@@ -1664,9 +1810,18 @@ export default function PokerPage() {
           {(game.community || []).map((c: Card, i: number) => (
             <motion.div
               key={`${c?.suit}-${c?.value}-${i}`}
-              initial={{ rotateY: 90, opacity: 0, y: -20 }}
-              animate={{ rotateY: 0, opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: i * 0.12 }}
+              {...withReducedMotion(shouldReduce, {
+                // Same street-scoped timing as the felt board (flop staggered,
+                // turn/river immediate) and the same 0.3s game-action budget,
+                // so this POV overlay cannot drift from the table it mirrors.
+                initial: { rotateY: 90, opacity: 0, y: -20 },
+                animate: { rotateY: 0, opacity: 1, y: 0 },
+                transition: {
+                  duration: 0.3,
+                  delay: communityRevealDelay(i),
+                  ease: "easeOut" as const,
+                },
+              })}
               className={`w-16 h-24 rounded-xl flex items-center justify-center font-bold text-xl shadow-xl border-2
       ${
         c?.suit === "♥" || c?.suit === "♦"
@@ -1728,9 +1883,14 @@ export default function PokerPage() {
 
         <div className="relative z-10 mx-auto max-w-5xl">
           <motion.div
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
+            {...withReducedMotion(shouldReduce, {
+              // Lobby panel entrances go through the same shared helper as the
+              // table: with reduced motion the panel (and everything inside
+              // it) is simply present, with no slide.
+              initial: { opacity: 0, y: -12 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.4 },
+            })}
             className="text-center"
           >
             <a
@@ -1797,9 +1957,11 @@ export default function PokerPage() {
 
           {/* ── Create table panel ── */}
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.05 }}
+            {...withReducedMotion(shouldReduce, {
+              initial: { opacity: 0, y: 15 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.45, delay: 0.05 },
+            })}
             className="mt-8 rounded-2xl border border-amber-700/60 bg-black/40 p-6 shadow-[0_0_40px_rgba(251,191,36,0.12)] backdrop-blur-xl sm:p-8"
           >
             <div className="mb-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
@@ -1957,9 +2119,11 @@ export default function PokerPage() {
 
           {/* ── Available public tables ── */}
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.1 }}
+            {...withReducedMotion(shouldReduce, {
+              initial: { opacity: 0, y: 15 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.45, delay: 0.1 },
+            })}
             className="mt-6 rounded-2xl border border-amber-700/60 bg-black/40 p-5 shadow-[0_0_22px_rgba(251,191,36,0.1)] sm:p-6"
           >
             <div className="mb-4 flex items-center justify-between">
@@ -2155,7 +2319,7 @@ export default function PokerPage() {
         </button>
       )}
 
-      {game?.replayVisible && (
+      {game?.replayVisible && resultReady && (
         <button
           onClick={replayHand}
           className="bg-gradient-to-r from-[#ff00cc]/60 to-[#ff00cc]/60 border border-[#ff00cc]/50 text-white px-5 py-2 rounded-lg font-bold transition hover:from-[#ff00cc] hover:to-[#ff00cc] shadow-[0_0_15px_rgba(255,0,204,0.4)]"
@@ -2164,7 +2328,9 @@ export default function PokerPage() {
         </button>
       )}
 
-      {(game?.stage === "showdown" || game?.waiting) && me && me.stack > 0 && (
+      {((game?.stage === "showdown" && resultReady) || game?.waiting) &&
+        me &&
+        me.stack > 0 && (
         <button
           onClick={async () => {
             const cs = me.stack;
@@ -2260,21 +2426,36 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           {/* ── Pot display in the center of the table ── */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
             <div className="text-[10px] uppercase tracking-[0.3em] text-[#b0b0ff]/50 mb-1">Pot</div>
-            <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] drop-shadow-[0_0_12px_rgba(255,0,204,0.7)]">
+            {/* Re-keyed on the amount, so every time chips land the number
+                gives one short, non-looping bump — the pot end of the
+                "chips are moving in" story. Polling the same value never
+                replays it. */}
+            <motion.div
+              key={`pot-${game.pot}`}
+              {...withReducedMotion(shouldReduce, {
+                initial: { scale: 1.14, opacity: 0.75 },
+                animate: { scale: 1, opacity: 1 },
+                transition: { duration: 0.2, ease: "easeOut" as const },
+              })}
+              className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] drop-shadow-[0_0_12px_rgba(255,0,204,0.7)]"
+            >
               ${game.pot}
-            </div>
+            </motion.div>
           </div>
         </div>
 
-        {/* ── All-in flash overlay ── */}
+        {/* ── All-in flash overlay — skipped entirely under reduced motion
+            (the seat's All-in badge, the chip jump and the audio still
+            report the action). Trimmed to 450ms / lower peak so it accents
+            the table instead of washing it out. ── */}
         <AnimatePresence>
-          {allInFlash && (
+          {allInFlash && !shouldReduce && (
             <motion.div
               key="allin-flash"
               initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 0.6, 0.3, 0] }}
+              animate={{ opacity: [0, 0.45, 0.22, 0] }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.8, times: [0, 0.15, 0.4, 0.8] }}
+              transition={{ duration: 0.45, times: [0, 0.15, 0.4, 0.8] }}
               className="absolute inset-0 z-[60] pointer-events-none"
               style={{
                 background: "radial-gradient(circle at 50% 50%, rgba(255,215,0,0.5), rgba(255,100,0,0.3) 40%, transparent 70%)",
@@ -2283,9 +2464,10 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           )}
         </AnimatePresence>
 
-        {/* ── Flying all-in chip particles ── */}
+        {/* ── Flying all-in chip particles (no particles under reduced
+            motion) ── */}
         <AnimatePresence>
-          {allInParticles.map((particle) => {
+          {(shouldReduce ? [] : allInParticles).map((particle) => {
             const seatPos = seatPositions[particle.seatIdx];
             if (!seatPos) return null;
             return (
@@ -2300,20 +2482,20 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 animate={{
   left: "50%",
   top: "50%",
-  scale: [0.5, 1.2, 0.3],
+  scale: [0.5, 1.1, 0.3],
   opacity: [1, 1, 0],
-  rotate: [0, 720],
+  rotate: [0, 360],
 }}
                 exit={{ opacity: 0, scale: 0 }}
                 transition={{
-                  duration: 0.7,
+                  duration: 0.5,
                   delay: particle.delay / 1000,
                   ease: "easeIn",
                 }}
                 className="absolute z-[65] w-4 h-4 rounded-full pointer-events-none"
                 style={{
                   transform: "translate(-50%, -50%)",
-                  background: `linear-gradient(135deg, hsl(${Math.random() * 360}, 100%, 50%), #ffd700)`,
+                  background: `linear-gradient(135deg, hsl(${particle.hue}, 100%, 50%), #ffd700)`,
                   boxShadow: "0 0 8px rgba(255,215,0,0.6)",
                 }}
               />
@@ -2348,10 +2530,38 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 : "";
             return (
               <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                // The result waits ~300ms so the seat chips are seen
+                // travelling into the pot first: the hand resolves in two
+                // readable beats (chips collected → result) instead of the
+                // popup covering the table the instant the pot empties.
+                // Exit stays immediate so replay never feels laggy. Under
+                // reduced motion the whole thing is static (no wait, no
+                // scale) since there is no chip travel to sequence against.
+                {...withReducedMotion(shouldReduce, {
+                  // `x`/`y` repeat the centring the Tailwind classes do, so
+                  // the panel sits in exactly the same place whether Motion
+                  // is writing its transform (spring) or not (reduced motion).
+                  initial: { scale: 0, opacity: 0, x: "-50%", y: "-50%" },
+                  animate: {
+                    scale: 1,
+                    opacity: 1,
+                    x: "-50%",
+                    y: "-50%",
+                    transition: {
+                      delay: 0.3,
+                      type: "spring",
+                      stiffness: 220,
+                      damping: 18,
+                    },
+                  },
+                  exit: {
+                    scale: 0,
+                    opacity: 0,
+                    x: "-50%",
+                    y: "-50%",
+                    transition: { duration: 0.2 },
+                  },
+                })}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] w-[300px] sm:w-[340px]"
               >
                 <div className="rounded-2xl border-2 border-yellow-400/60 bg-[#0a0a1a]/95 p-4 text-center shadow-[0_0_40px_rgba(255,215,0,0.35)] backdrop-blur-xl">
@@ -2379,12 +2589,29 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     </span>
                   </div>
                   {payouts.length > 0 && (
-                    <div className="mt-1 text-sm font-bold text-yellow-200">
+                    // Second beat of the banner: the payout counts in just
+                    // after the panel lands (~0.42s from the showdown).
+                    <motion.div
+                      {...withReducedMotion(shouldReduce, {
+                        initial: { opacity: 0, y: 6, scale: 0.9 },
+                        animate: {
+                          opacity: 1,
+                          y: 0,
+                          scale: 1,
+                          transition: {
+                            delay: 0.42,
+                            duration: 0.24,
+                            ease: "easeOut" as const,
+                          },
+                        },
+                      })}
+                      className="mt-1 text-sm font-bold text-yellow-200"
+                    >
                       +{winnerTotal.toLocaleString()}{" "}
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-yellow-200/70">
                         won
                       </span>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* Side pots — other players who won chips */}
@@ -2432,8 +2659,25 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     </div>
                   )}
 
-                  {/* Winner's cards — hidden when won by fold */}
-                  <div className="mt-3 flex flex-col items-center gap-2">
+                  {/* Winner's cards — hidden when won by fold. Third beat: the
+                      winning hand (cards + the evaluateHand label) fades up
+                      after the payout, so the sequence reads
+                      reveal → result → winning hand. */}
+                  <motion.div
+                    {...withReducedMotion(shouldReduce, {
+                      initial: { opacity: 0, y: 6 },
+                      animate: {
+                        opacity: 1,
+                        y: 0,
+                        transition: {
+                          delay: 0.54,
+                          duration: 0.24,
+                          ease: "easeOut" as const,
+                        },
+                      },
+                    })}
+                    className="mt-3 flex flex-col items-center gap-2"
+                  >
                     {wonByFold ? (
                       <div className="text-xs font-bold text-white/50">
                         Won by fold — cards kept hidden
@@ -2462,11 +2706,21 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                         )}
                       </>
                     ) : null}
-                  </div>
+                  </motion.div>
 
+                  {/* Controls land after the result beats so they never
+                      compete with the winner moment. Kept mounted and faded
+                      rather than removed, so the panel does not resize and
+                      jump when they appear. */}
                   <button
                     onClick={replayHand}
-                    className="mt-3 w-full bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-4 py-2 rounded-lg font-bold text-black transition hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_20px_rgba(255,0,204,0.5)]"
+                    tabIndex={resultReady ? 0 : -1}
+                    aria-hidden={!resultReady}
+                    className={`mt-3 w-full bg-gradient-to-r from-[#ff00cc]/80 to-[#00e5ff]/80 px-4 py-2 rounded-lg font-bold text-black transition hover:from-[#ff00cc] hover:to-[#00e5ff] shadow-[0_0_20px_rgba(255,0,204,0.5)] ${
+                      resultReady
+                        ? "opacity-100"
+                        : "pointer-events-none opacity-0"
+                    }`}
                   >
                     Replay Hand
                   </button>
@@ -2477,14 +2731,44 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         </AnimatePresence>
 
         {/* ── Community cards on the table ── */}
-        {game?.community?.length > 0 && (
-          <div className="absolute left-1/2 top-[42%] -translate-x-1/2 flex gap-2 sm:gap-3 z-20">
+        <AnimatePresence>
+          {game?.community?.length > 0 && (
+            <motion.div
+              key="community-row"
+              // One short fade for the whole board when a hand is reset,
+              // instead of five cards snapping away the instant the state
+              // clears. Motion keeps the previous element (cards and all)
+              // mounted during the exit, so it is the old board that leaves.
+              // `x` repeats the Tailwind centring so Motion's transform can
+              // add the lift without dropping the -translate-x-1/2.
+              initial={{ opacity: 1, x: "-50%" }}
+              animate={{ opacity: 1, x: "-50%" }}
+              exit={{
+                opacity: 0,
+                x: "-50%",
+                y: shouldReduce ? 0 : -8,
+                transition: { duration: 0.2, ease: "easeOut" },
+              }}
+              className="absolute left-1/2 top-[42%] -translate-x-1/2 flex gap-2 sm:gap-3 z-20"
+            >
             {game.community.map((c: Card, i: number) => (
               <motion.div
-                key={`${c?.suit}-${c?.value}-${i}`}
-                initial={{ rotateY: 90, opacity: 0, y: -30, scale: 0.5 }}
-                animate={{ rotateY: 0, opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.5, delay: i * 0.12, type: "spring", stiffness: 200 }}
+                // Street-scoped identity: the flop's keys are identical on
+                // every poll, so those cards never remount and never replay;
+                // turn/river are new keys that reveal on their own.
+                key={`${communityStreetOf(i)}-${c?.suit}-${c?.value}`}
+                {...withReducedMotion(shouldReduce, {
+                  // Shorter drop and a smaller scale-up than before, so the
+                  // card reads as being placed onto the felt rather than
+                  // materialising in place. The face-up flip is unchanged.
+                  initial: { rotateY: 90, opacity: 0, y: -18, scale: 0.8 },
+                  animate: { rotateY: 0, opacity: 1, y: 0, scale: 1 },
+                  transition: {
+                    duration: 0.3,
+                    delay: communityRevealDelay(i),
+                    ease: "easeOut" as const,
+                  },
+                })}
                 className={`w-10 h-14 sm:w-14 sm:h-20 rounded-lg flex items-center justify-center font-bold text-sm sm:text-xl shadow-xl border-2
       bg-white
       ${c?.suit === "♥" || c?.suit === "♦"
@@ -2496,14 +2780,60 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 {c?.value}{c?.suit}
               </motion.div>
             ))}
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Seat positions ── */}
         <div className="absolute inset-0 pointer-events-none">
         {seatPositions.map((pos, seatIdx) => {
           const occupant = playerAtSeat(seatIdx);
           const isPlayer = occupant?.id === myId;
+          // Hole cards for this seat — face-down for opponents until the
+          // showdown. They render only once the hand actually holds cards,
+          // so the backs deal in at the start of a hand rather than sitting
+          // on the felt through the whole waiting room.
+          const handCards = (occupant?.hand || []).filter(
+            (card): card is Card => !!card && !!card.suit && !!card.value,
+          );
+          const atShowdown = game?.stage === "showdown";
+          const isWinner =
+            Boolean(game?.winnerId) && game?.winnerId === occupant?.id;
+          // The showdown reveals the players who are actually contesting the
+          // pot: folded hands stay face-down (they were mucked, so a folded
+          // seat never becomes the loudest thing on the felt again) and a hand
+          // won by everyone folding keeps the winner down too — the same call
+          // the result banner makes ("cards kept hidden"), so the felt and
+          // the banner agree. Your own cards are always visible to you.
+          const contestingAtShowdown =
+            atShowdown &&
+            !occupant?.hasFolded &&
+            !(Boolean(game?.wonByFold) && isWinner);
+          const showFace = isPlayer || contestingAtShowdown;
+          // Losers go slightly quieter at the showdown so the winner is the
+          // strongest thing on the felt — one ring, no second glow.
+          const dimAsLoser =
+            atShowdown &&
+            Boolean(game?.winnerId) &&
+            !isWinner &&
+            !occupant?.hasFolded;
+          const dealVector = shoeOffsetFor(pos.left, pos.top);
+          const seatMarker =
+            seatIdx === dealerSeatIdx
+              ? "D"
+              : showBlindMarkers && seatIdx === smallBlindSeatIdx
+                ? "SB"                  : showBlindMarkers && seatIdx === bigBlindSeatIdx
+                    ? "BB"
+                    : null;
+          // The blind tag above already says SB/BB, so the matching
+          // "Small Blind"/"Big Blind" action line would be a second indicator
+          // for the same fact.
+          const blindTextForMarker =
+            seatMarker === "SB"
+              ? "Small Blind"
+              : seatMarker === "BB"
+                ? "Big Blind"
+                : null;
 
           return (
             <div
@@ -2512,12 +2842,17 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               style={{
   left: `${pos.left}%`,
   top: `${pos.top}%`,
-  transform: "translate(-50%, -50%)",
+  // Centring and the ring scale in a single transform. Scaling about the
+  // box's own centre leaves every seat exactly on its ring position, so a
+  // card can never drift off its seat. Creator frames size the felt from
+  // the recording frame instead of the window, so they keep the unscaled
+  // ring (see `seatScale` above).
+  transform: `translate(-50%, -50%) scale(${fill ? 1 : seatScale})`,
   zIndex: 30,
 }}
             >
               {occupant ? (
-                <div
+                <motion.div
                   onClick={() => {
                     // Only the HOST manages AIs (add / remove) — non-hosts
                     // clicking an AI seat get nothing.
@@ -2526,14 +2861,30 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                       setAiInfoOpen(true);
                     }
                   }}
-                  className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold cursor-pointer backdrop-blur-sm
+                  // One-shot winner beat (~450ms): the seat swells once and
+                  // settles. Keyframes on a target that only changes when the
+                  // winner is decided, so a poll never replays it.
+                  animate={{
+                    scale: shouldReduce ? 1 : isWinner ? [1, 1.05, 1] : 1,
+                  }}
+                  transition={{
+                    duration: 0.45,
+                    ease: "easeOut",
+                    times: [0, 0.45, 1],
+                  }}
+                  // `transition-[opacity,filter]` lets a fold drain the
+                  // seat (and the cards inside it) over ~200ms instead of
+                  // snapping to grey. Under reduced motion globals.css
+                  // shortens it to ~0, so the state still changes visibly.
+                  className={`flex flex-col items-center gap-1 w-[120px] p-1.5 rounded-xl text-[10px] font-semibold cursor-pointer backdrop-blur-sm transition-[opacity,filter] duration-200 ease-out
       ${isPlayer
                       ? "bg-gradient-to-b from-[#00e5ff]/30 to-[#00e5ff]/10 border-2 border-[#00e5ff]/70 text-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.4)]"
                       : "bg-gradient-to-b from-[#ff00cc]/25 to-[#ff00cc]/8 border-2 border-[#ff00cc]/50 text-[#ffb0ff] shadow-[0_0_18px_rgba(255,0,204,0.3)]"
                     }
       ${occupant.hasFolded ? "opacity-40 grayscale" : ""}
+      ${dimAsLoser ? "opacity-60" : ""}
       ${
-        game?.winnerId === occupant.id
+        isWinner
           ? "ring-2 ring-[#ff00cc] ring-offset-1 ring-offset-transparent shadow-[0_0_25px_rgba(255,0,204,0.7)]"
           : ""
       }
@@ -2554,61 +2905,129 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                         <EmoteBubble emote={incomingEmote} />
                       ) : null}
                     </span>
-                    <span className="text-xs text-[#00e5ff] drop-shadow-[0_0_4px_#00e5ff]">${occupant.stack}</span>
+                    {/* Stack pops once when this seat is paid out — the
+                        payout number reads as the result of the showdown. */}
+                    <motion.span
+                      className="text-xs text-[#00e5ff] drop-shadow-[0_0_4px_#00e5ff]"
+                      animate={{
+                        scale: shouldReduce ? 1 : isWinner ? [1, 1.3, 1] : 1,
+                      }}
+                      transition={{
+                        duration: 0.45,
+                        ease: "easeOut",
+                        times: [0, 0.4, 1],
+                      }}
+                    >
+                      ${occupant.stack}
+                    </motion.span>
                   </div>
 
-                  {/* Cards display logic */}
+                  {/* Cards display logic — each hole card is dealt in from
+                      the shared shoe (`shoeOffsetFor`). The slot key is the
+                      physical position at the seat, not the array index or
+                      the card's value, so the deal animation runs when a
+                      hand is dealt and never again — not on the 1.5s state
+                      poll, and not when an opponent's backs flip face-up at
+                      the showdown (that reuses the mounted card). */}
                   <div className="flex gap-1 justify-center">
-                    {isPlayer ? (
-                      (occupant.hand || [])
-                        .filter(
-                          (card): card is Card =>
-                            !!card && !!card.suit && !!card.value,
-                        )
-                        .map((card, i) => (
-                          <div
-                            key={i}
-                            className={`w-6 h-8 rounded bg-white flex items-center justify-center
-        text-[10px] font-bold shadow 
-        ${
-          card.suit === "♥" || card.suit === "♦" ? "text-red-600" : "text-black"
-        }
-      `}
+                    {/* Card row clears cleanly on a reset: each card fades
+                        (with a small lift) rather than blinking out of
+                        existence. The exit is opacity-led, so it is kept even
+                        under reduced motion — only the lift is dropped. */}
+                    <AnimatePresence>
+                    {handCards.map((card, cardIdx) => (
+                      <motion.div
+                        key={`hole-${seatIdx}-${cardIdx}`}
+                        {...withReducedMotion(
+                          shouldReduce,
+                          dealFromShoe({
+                            index: dealDelayIndex(seatIdx, cardIdx),
+                            total: Math.max(dealtCardTotal, 1),
+                            dx: dealVector.x,
+                            dy: dealVector.y,
+                            rotate: dealVector.rotate,
+                          }),
+                        )}
+                        // Declared AFTER the spread on purpose: for reduced
+                        // motion the spread carries an empty `exit`, which
+                        // would otherwise win and make the cards blink out.
+                        // The exit fades either way; only the lift is gated.
+                        exit={{
+                          opacity: 0,
+                          y: shouldReduce ? 0 : -6,
+                          transition: { duration: 0.18, ease: "easeOut" },
+                        }}
+                        // Outer box = the shoe deal (slide + fade); the inner
+                        // box owns the showdown flip, so the two never fight.
+                        // `perspective` is kept generous for a 24×32px card so
+                        // the flip stays flat and un-exaggerated.
+                        className="w-6 h-8 [transform-style:preserve-3d] [perspective:420px]"
+                      >
+                        {/* Card-flip reveal — the same two-layer pattern the
+                            memory-grid board uses: the wrapper turns 0°→180°
+                            and `backface-visibility` hides whichever face is
+                            away, so an opponent's back is replaced by a real
+                            flip rather than a content swap. `initial={false}`
+                            means a card that is already face-up (your own, or
+                            a joiner loading a live hand) never replays it,
+                            and the transition is 0 under reduced motion, so
+                            the face simply appears. */}
+                        <motion.div
+                          className="relative h-full w-full [transform-style:preserve-3d]"
+                          initial={false}
+                          animate={{ rotateY: showFace ? 180 : 0 }}
+                          transition={
+                            shouldReduce
+                              ? { duration: 0 }
+                              : {
+                                  duration: 0.3,
+                                  ease: "easeOut",
+                                  delay: showFace ? revealDelayFor(seatIdx) : 0,
+                                }
+                          }
+                        >
+                          {/* Face-down back */}
+                          <span className="absolute inset-0 rounded bg-gray-700 border border-gray-500 shadow [backface-visibility:hidden]" />
+                          {/* Card face, pre-rotated so it lands with the flip */}
+                          <span
+                            className={`absolute inset-0 rounded flex items-center justify-center text-[10px] font-bold shadow [backface-visibility:hidden] [transform:rotateY(180deg)] bg-white ${
+                              card.suit === "♥" || card.suit === "♦"
+                                ? "text-red-600"
+                                : "text-black"
+                            }`}
                           >
                             {card.value}
                             {card.suit}
-                          </div>
-                        ))
-                    ) : game?.stage !== "showdown" ? (
-                      <>
-                        {/* Face-down cards for opponents */}
-                        <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
-                        <div className="w-6 h-8 bg-gray-700 rounded border border-gray-500 shadow"></div>
-                      </>
-                    ) : (
-                      (occupant.hand || [])
-                        .filter(
-                          (card): card is Card =>
-                            !!card && !!card.suit && !!card.value,
-                        )
-                        .map((card, i) => (
-                          <div
-                            key={i}
-                            className={`w-6 h-8 rounded bg-white flex items-center justify-center
-        text-[10px] font-bold shadow 
-        ${
-          card.suit === "♥" || card.suit === "♦" ? "text-red-600" : "text-black"
-        }
-      `}
-                          >
-                            {card.value}
-                            {card.suit}
-                          </div>
-                        ))
-                    )}
+                          </span>
+                        </motion.div>
+                      </motion.div>
+                    ))}
+                    </AnimatePresence>
                   </div>
 
-                  <div className="text-[9px] mb-1">
+                  <div className="mb-1 flex items-center justify-center gap-1 text-[9px]">
+                    {seatMarker && (
+                      // Dealer / blind tag. Re-keyed per seat + tag, so the
+                      // button landing on a new seat (or the blinds appearing
+                      // when a deal starts) gets one short pop and nothing
+                      // else — no rotating dealer button.
+                      <motion.span
+                        key={`marker-${seatIdx}-${seatMarker}`}
+                        initial={{ scale: 0.6, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{
+                          duration: shouldReduce ? 0 : 0.22,
+                          ease: "easeOut",
+                        }}
+                        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[8px] font-black ${
+                          seatMarker === "D"
+                            ? "border-[#00e5ff]/70 bg-[#0a0a1a] text-[#00e5ff]"
+                            : "border-amber-400/70 bg-[#0a0a1a] text-amber-300"
+                        }`}
+                      >
+                        {seatMarker}
+                      </motion.span>
+                    )}
                     {occupant.hasFolded ? (
                       <span className="px-2 py-[2px] rounded bg-red-900/80 text-red-300 border border-red-500/30">
                         Folded
@@ -2617,11 +3036,27 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                       <span className="px-2 py-[2px] rounded bg-purple-900/80 text-purple-300 border border-purple-500/30">
                         All-in
                       </span>
-                    ) : game?.players?.[game.currentTurn]?.id ===
+                    ) : !game?.waiting &&
+                      // Nobody is thinking once the hand is decided: showdown
+                      // leaves `currentTurn` on the last player to act, so
+                      // without this the magenta badge (and its glow) outlived
+                      // the hand and competed with the winner emphasis.
+                      game?.stage !== "showdown" &&
+                      game?.players?.[game.currentTurn]?.id ===
                       occupant.id ? (
-                      <span className="px-2 py-[2px] rounded bg-[#ff00cc]/80 text-black font-bold shadow-[0_0_15px_rgba(255,0,204,0.9)]">
+                      // This badge only mounts when the turn arrives here, so
+                      // it IS the turn-change cue: a short one-shot pop on
+                      // the existing indicator, no second indicator added.
+                      <motion.span
+                        {...withReducedMotion(shouldReduce, {
+                          initial: { scale: 0.75, opacity: 0 },
+                          animate: { scale: 1, opacity: 1 },
+                          transition: { duration: 0.16, ease: "easeOut" as const },
+                        })}
+                        className="inline-block px-2 py-[2px] rounded bg-[#ff00cc]/80 text-black font-bold shadow-[0_0_15px_rgba(255,0,204,0.9)]"
+                      >
                         <span className="inline-flex items-center gap-1"><IconBolt size={12} /> THINKING</span>
-                      </span>
+                      </motion.span>
                     ) : (
                       <span className="px-2 py-[2px] rounded bg-[#0a0a1a]/80 text-[#b0b0ff]/70 border border-[#00e5ff]/20">
                         Active
@@ -2629,16 +3064,33 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                     )}
                   </div>
 
-                  {/* Last action line */}
-                  {occupant.lastAction && (
-                    <div className="text-[9px] text-[#b0b0ff]/70 italic truncate max-w-[100px]">
+                  {/* Last action line — re-keyed on the action text, so each
+                      fold / check / call / raise gets one short, non-looping
+                      label beat and repeated polls never replay it. */}
+                  {occupant.lastAction &&
+                    occupant.lastAction !== blindTextForMarker && (
+                    <motion.div
+                      key={`act-${occupant.id}-${occupant.lastAction}`}
+                      {...withReducedMotion(shouldReduce, {
+                        initial: { opacity: 0, y: 2 },
+                        animate: { opacity: 1, y: 0 },
+                        transition: { duration: 0.16, ease: "easeOut" as const },
+                      })}
+                      className="text-[9px] text-[#b0b0ff]/70 italic truncate max-w-[100px]"
+                    >
                       {occupant.lastAction}
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* Progress bar under the player div — hidden on
                       vs-AI tables, which run untimed. */}
-                  {isPlayer && isMyTurn && !game.players.some((p) => p.isAI) && (
+                  {/* Same guard as the THINKING badge: at showdown the hand is
+                      over, so the turn header + timer bar must not sit under
+                      the winner beat. */}
+                  {isPlayer &&
+                    isMyTurn &&
+                    game.stage !== "showdown" &&
+                    !game.players.some((p) => p.isAI) && (
                     <div className="mt-2 w-full text-center">
                       <div className="bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] text-black px-3 py-1 rounded-t-lg font-bold shadow-lg text-[11px]">
                         <span className="inline-flex items-center gap-1"><IconBolt size={12} /> Your Turn ({turnTimer}s)</span>
@@ -2653,7 +3105,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                       </div>
                     </div>
                   )}
-                </div>
+                </motion.div>
               ) : (
                 <button
                   onClick={() => handleSeatClick(seatIdx)}
@@ -2664,53 +3116,168 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               )}
             </div>
           );
-        })}          {/* Chips / CHECK displayed relative to table */}
-        {game?.players.map((p) => {
-          if (!p || p.seatIndex == null) return null;
+        })}
 
-          const showChips = p.currentBet > 0;
-          const showCheck = p.currentBet === 0 && p.lastAction === "Check";
+        {/* Chips / CHECK displayed relative to table. Wrapped in
+            AnimatePresence so a collected bet travels into the middle pot
+            (its `exit`) instead of blinking out, and the amount inside is
+            re-keyed per action so every check / call / raise lands with a
+            quick beat on the chip itself. */}
+        <AnimatePresence>
+          {game?.players.map((p) => {
+            if (!p || p.seatIndex == null) return null;
 
-          if (!showChips && !showCheck) return null;
+            // No seat chips once the hand is decided: by then every bet is
+            // already in the pot, so leaving the amounts sat on the felt
+            // read as stale chips next to a $0 pot. Gating here also lets
+            // them make their exit *into* the pot at showdown.
+            const showChips =
+              p.currentBet > 0 && game?.stage !== "showdown";
+            const showCheck =
+              p.currentBet === 0 &&
+              p.lastAction === "Check" &&
+              game?.stage !== "showdown";
 
-          const pos = seatPositions[p.seatIndex];
-          if (!pos) return null;
+            if (!showChips && !showCheck) return null;
 
-          // Adjust chip offset so they face toward the center
-          const angleStep = (2 * Math.PI) / seatPositions.length;
-          const angle = p.seatIndex * angleStep - Math.PI / 2;
+            const pos = seatPositions[p.seatIndex];
+            if (!pos) return null;
 
-          // radius in % of table size
-          const radiusX = 18;
-          const radiusY = 14;
+            // Offset *towards* the centre so a bet reads as being pushed
+            // from its seat into the pot. Both components used to be added
+            // to the seat position, which pushed every chip outwards — the
+            // bottom seat's own bet landed below the table, over the action
+            // dock, while the top seat's sat above it. The comment said
+            // "toward the center"; the signs now agree with it.
+            const angleStep = (2 * Math.PI) / seatPositions.length;
+            const angle = p.seatIndex * angleStep - Math.PI / 2;
 
-          const offset = {
-            x: Math.cos(angle) * radiusX,
-            y: Math.sin(angle) * radiusY,
-          };
+            // radius in % of table size
+            const radiusX = 18;
+            const radiusY = 14;
 
-          return (
-            <motion.div
-              key={`chip-${p.id}-${p.seatIndex}`}
-              initial={{ scale: 0, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0, opacity: 0 }}
-              className="absolute z-40 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-lg"
-              style={{
-                left: `calc(${pos.left}% + ${offset.x}%)`,
+            const offset = {
+              x: -Math.cos(angle) * radiusX,
+              y: -Math.sin(angle) * radiusY,
+            };
+
+            // Betting and raising get a stronger beat than calling or
+            // checking: a bigger pop plus a one-shot gold rim. Keyframes
+            // only (no pulse, no infinite glow, no screen shake).
+            const aggressive = /^(Raised|Bet)/.test(p.lastAction ?? "");
+
+            return (
+              <motion.div
+                key={`chip-${p.id}-${p.seatIndex}`}
+                {...withReducedMotion(shouldReduce, {
+                  // Three stages, one element: it appears at the seat, pushes
+                  // forward along the seat's radial line onto its bet spot
+                  // (~180ms), and when the betting round resolves — or the
+                  // hand ends — the same chip travels the rest of the way
+                  // into the middle pot (~320ms) instead of vanishing. A
+                  // raised bet only re-keys the amount inside, never this
+                  // chip, so an increased bet never remounts it.
+                  //
+                  // `left`/`top` are plain percentages (the seat's own space)
+                  // so no container measurement is needed, and `x`/`y` centre
+                  // the chip through Motion's own transform so the centring
+                  // composes with the animated scale.
+                  initial: {
+                    left: `${pos.left}%`,
+                    top: `${pos.top}%`,
+                    x: "-50%",
+                    y: "-50%",
+                    scale: 0.7,
+                    opacity: 0,
+                    transition: { duration: 0.18, ease: "easeOut" as const },
+                  },
+                  animate: {
+                    left: `${pos.left + offset.x}%`,
+                    top: `${pos.top + offset.y}%`,
+                    x: "-50%",
+                    y: "-50%",
+                    scale: 1,
+                    opacity: 1,
+                    transition: { duration: 0.18, ease: "easeOut" as const },
+                  },
+                  // Only real bets are collected into the pot. The lightweight
+                  // CHECK pill has no chips behind it, so it just fades where
+                  // it sits rather than travelling to the middle.
+                  exit: showChips
+                    ? {
+                        left: "50%",
+                        top: "50%",
+                        x: "-50%",
+                        y: "-50%",
+                        scale: 0.55,
+                        opacity: 0,
+                        // easeIn: the chip is swept *into* the pot, not
+                        // eased out into it.
+                        transition: {
+                          duration: 0.32,
+                          ease: "easeIn" as const,
+                        },
+                      }
+                    : {
+                        scale: 0.6,
+                        opacity: 0,
+                        transition: { duration: 0.15 },
+                      },
+                })}
+                className="absolute z-40 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-lg"
+                style={{
+                  // Static resting spot — also the reduced-motion position,
+                  // where the chip simply appears here with no travel.
+                  left: `calc(${pos.left}% + ${offset.x}%)`,
   top: `calc(${pos.top}% + ${offset.y}%)`,
   transform: "translate(-50%, -50%)",
-                background: showChips
-                  ? "linear-gradient(135deg, #ff00cc, #00e5ff)"
-                  : "linear-gradient(135deg, #00e5ff, #00ff88)",
-                border: "2px solid rgba(255,255,255,0.3)",
-                color: showChips ? "#fff" : "#000",
-              }}
-            >
-              {showChips ? p.currentBet : <IconCheck size={12} className="inline" />}
-            </motion.div>
-          );
-        })}
+                  background: showChips
+                    ? "linear-gradient(135deg, #ff00cc, #00e5ff)"
+                    : "linear-gradient(135deg, #00e5ff, #00ff88)",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  color: showChips ? "#fff" : "#000",
+                }}
+              >
+                <motion.div
+                  key={`bet-${p.currentBet}-${p.lastAction ?? ""}`}
+                  {...withReducedMotion(
+                    shouldReduce,
+                    aggressive
+                      ? {
+                          initial: { scale: 0.6, opacity: 0.4 },
+                          animate: {
+                            scale: [0.6, 1.14, 1],
+                            opacity: 1,
+                            boxShadow: [
+                              "0 0 0px rgba(255,215,0,0)",
+                              "0 0 16px rgba(255,215,0,0.9)",
+                              "0 0 0px rgba(255,215,0,0)",
+                            ],
+                          },
+                          transition: {
+                            duration: 0.28,
+                            ease: "easeOut" as const,
+                          },
+                        }
+                      : {
+                          // Level 1 — a tiny state change (the amount ticked
+                          // up), so it stays inside the 80–150ms micro budget.
+                          initial: { scale: 0.75, opacity: 0.5 },
+                          animate: { scale: [0.75, 1.06, 1], opacity: 1 },
+                          transition: {
+                            duration: 0.15,
+                            ease: "easeOut" as const,
+                          },
+                        },
+                  )}
+                  className="flex items-center justify-center"
+                >
+                  {showChips ? p.currentBet : <IconCheck size={12} className="inline" />}
+                </motion.div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       {seatModalOpen && selectedSeat !== null && (
@@ -2795,10 +3362,14 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           />
 
           <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            {...withReducedMotion(shouldReduce, {
+              // Gameplay-surface modal (buy-in / raise): with reduced motion it
+              // appears in place instead of scaling and sliding in.
+              initial: { scale: 0.9, opacity: 0, y: 20 },
+              animate: { scale: 1, opacity: 1, y: 0 },
+              exit: { scale: 0.9, opacity: 0, y: 20 },
+              transition: { type: "spring", stiffness: 300, damping: 25 },
+            })}
             className="relative z-[110] pointer-events-auto w-[360px] bg-[#12042a]/95 backdrop-blur-xl border-2 border-amber-700/60 rounded-2xl p-5 shadow-[0_0_40px_rgba(251,191,36,0.2)]"
           >
             <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500 mb-1 text-center">
@@ -2985,10 +3556,14 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
           />
 
           <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            {...withReducedMotion(shouldReduce, {
+              // Gameplay-surface modal (buy-in / raise): with reduced motion it
+              // appears in place instead of scaling and sliding in.
+              initial: { scale: 0.9, opacity: 0, y: 20 },
+              animate: { scale: 1, opacity: 1, y: 0 },
+              exit: { scale: 0.9, opacity: 0, y: 20 },
+              transition: { type: "spring", stiffness: 300, damping: 25 },
+            })}
             className="relative z-[150] pointer-events-auto w-[340px] bg-[#0a0a1a]/95 backdrop-blur-xl border-2 border-[#ff00cc]/40 rounded-2xl p-5 shadow-[0_0_40px_rgba(255,0,204,0.3)]"
           >
             <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ff00cc] to-[#00e5ff] mb-1 text-center">
@@ -3129,7 +3704,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             text-red-200/90
             hover:bg-red-900/80 hover:border-red-400/60
             hover:shadow-[0_0_18px_rgba(255,0,0,0.35)]
-            transition-colors active:scale-95
+            transition duration-100 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60
             ${isCreatorMode ? `h-[${buttonH}px] text-base` : ``}`}
           >
@@ -3147,7 +3722,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               border border-[#00e5ff]/50
               text-[#00e5ff]
               hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
-              transition-colors active:scale-95
+              transition duration-100 active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
               ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
@@ -3163,7 +3738,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               border border-[#00e5ff]/50
               text-[#00e5ff]
               hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
-              transition-colors active:scale-95
+              transition duration-100 active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
               ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
@@ -3182,7 +3757,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               border border-yellow-400/55
               text-yellow-200
               hover:shadow-[0_0_25px_rgba(255,215,0,0.5)]
-              transition-colors active:scale-95
+              transition duration-100 active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60
               ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
             >
@@ -3205,7 +3780,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             text-black
             shadow-[0_0_28px_rgba(255,0,204,0.55),inset_0_0_8px_rgba(255,255,255,0.2)]
             hover:shadow-[0_0_38px_rgba(255,0,204,0.75)]
-            transition-colors active:scale-95
+            transition duration-100 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70
             ${isCreatorMode ? `h-[${raiseH}px] ${raiseTextBase}` : ``}`}
           >
@@ -3251,7 +3826,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 border border-red-500/40
                 text-red-200
                 font-bold text-sm
-                active:scale-95 transition-colors
+                active:scale-95 transition duration-100
                 ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
               `}
             >
@@ -3267,7 +3842,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   border border-[#00e5ff]/40
                   text-[#00e5ff]
                   font-bold text-sm
-                  active:scale-95 transition-colors
+                  active:scale-95 transition duration-100
                   ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
                 `}
               >
@@ -3282,7 +3857,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   border border-[#00e5ff]/40
                   text-[#00e5ff]
                   font-bold text-sm
-                  active:scale-95 transition-colors
+                  active:scale-95 transition duration-100
                   ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
                 `}
               >
@@ -3302,7 +3877,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 border border-[#ff00cc]/40
                 text-[#ff00cc]
                 font-bold text-sm
-                active:scale-95 transition-colors
+                active:scale-95 transition duration-100
                 ${isCreatorMode ? `h-[${raiseH}px]` : `h-14`}
               `}
             >
@@ -3321,7 +3896,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   border border-yellow-400/30
                   text-yellow-200
                   font-semibold text-sm
-                  active:scale-95 transition-colors
+                  active:scale-95 transition duration-100
                   ${isCreatorMode ? `h-[${buttonH}px]` : `h-11`}
                 `}
               >
@@ -3368,9 +3943,12 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 {waitingPlayers.map((p) => (
                   <motion.div
                     key={p.id}
-                    initial={{ opacity: 0, y: 6 }}
+                    // A row appearing/leaving is a micro state change: 0.15s,
+                    // and reduced motion keeps the fade but drops the slide.
+                    initial={{ opacity: 0, y: shouldReduce ? 0 : 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 6 }}
+                    exit={{ opacity: 0, y: shouldReduce ? 0 : 6 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
                     className="flex items-center justify-between bg-black/40 px-2 py-1 rounded border border-amber-700/20"
                   >
                     <div className="truncate text-sm">

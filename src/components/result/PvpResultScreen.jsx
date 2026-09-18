@@ -317,7 +317,17 @@ export default function PvpResultScreen({
           }`}
         >
           <motion.div
-            {...withReducedMotion(shouldReduce, panelMotion)}
+            {...withReducedMotion(shouldReduce, {
+              ...panelMotion,
+              // A win settles with its small overshoot; a loss lands firmer and
+              // flatter (no bounce), so the hand reads as a hit rather than a
+              // flourish. Deliberately the ONLY difference — no shake, no red
+              // wash, no extra negative effect.
+              transition:
+                outcome === "loss"
+                  ? { type: "spring", stiffness: 340, damping: 30 }
+                  : panelMotion.transition,
+            })}
             className={`relative w-full rounded-2xl border-2 bg-gradient-to-b text-center ${style.gradient} ${
               compact
                 ? "max-w-[22rem] p-3.5"
@@ -465,9 +475,24 @@ export default function PvpResultScreen({
               )}
             </div>
 
-            {/* Rewards — only rows whose data actually exists */}
+            {/* Rewards — only rows whose data actually exists.
+                Sequenced AFTER the outcome, never with it: the win/loss hero
+                lands first, then the payout (token delta, XP, progression)
+                registers one short beat later, so the order the player reads
+                is result → money → details. A rise + fade with a hair of
+                scale, 0.22s, gated through the shared helper — with reduced
+                motion it appears in place with no movement and no delay. The
+                XP bar inside keeps its own width animation: different
+                property, no conflict with this container. */}
             {hasRewards && (
-              <div className="mx-auto mt-5 w-full max-w-xs space-y-2">
+              <motion.div
+                {...withReducedMotion(shouldReduce, {
+                  initial: { opacity: 0, y: 8, scale: 0.97 },
+                  animate: { opacity: 1, y: 0, scale: 1 },
+                  transition: { duration: 0.22, ease: "easeOut", delay: 0.24 },
+                })}
+                className="mx-auto mt-5 w-full max-w-xs space-y-2"
+              >
                 {tokenDelta !== null && (
                   <div className={`flex items-center justify-between rounded-xl border border-white/10 bg-black/25 ${compact ? "px-3 py-2" : "px-4 py-2.5"}`}>
                     <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
@@ -518,7 +543,7 @@ export default function PvpResultScreen({
                     </div>
                   </div>
                 ))}
-              </div>
+              </motion.div>
             )}
 
             {/* Progression chips — real streak + weekly rank, hidden when

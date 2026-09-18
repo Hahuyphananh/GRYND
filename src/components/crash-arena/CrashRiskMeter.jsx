@@ -34,7 +34,10 @@ function riskGradient(risk) {
  * CrashRiskMeter — continuously updating "CRASH RISK" gauge.
  *
  * A purely visual read on the shared multiplier: the fill climbs (green →
- * amber → red) as the curve climbs, pulsing when danger is high. It is
+ * amber → red) as the curve climbs, and at high danger the whole read-out
+ * takes a static red treatment — no pulse. High danger starts around 3.3x and
+ * lasts as long as the hand survives, so a blinking label would run for most
+ * of a long flight and compete with the multiplier it is describing. It is
  * intentionally NOT connected to the hidden crash point — it cannot predict
  * when the crash will happen, only that the hand is getting more dangerous.
  *
@@ -49,7 +52,13 @@ export default function CrashRiskMeter({ multiplier = 1, className = "" }) {
 
   return (
     <div
-      className={`pointer-events-none select-none px-3 py-2 rounded-xl border border-red-500/25 bg-[#050d1f]/75 backdrop-blur-sm ${className}`}
+      // High danger is a static state change (~300ms colour/border fade), not
+      // a pulse, so nothing on this panel moves on its own.
+      className={`pointer-events-none select-none px-3 py-2 rounded-xl border bg-[#050d1f]/75 backdrop-blur-sm transition-colors duration-300 ${
+        highDanger
+          ? "border-red-500/50 shadow-[0_0_14px_rgba(239,68,68,0.28)]"
+          : "border-red-500/25"
+      } ${className}`}
     >
       <div className="flex items-center justify-between gap-3 mb-1">
         <span
@@ -69,9 +78,7 @@ export default function CrashRiskMeter({ multiplier = 1, className = "" }) {
       </div>
       <div className="h-2 w-36 rounded-full bg-[#020617] border border-white/10 overflow-hidden">
         <div
-          className={`h-full rounded-full bg-gradient-to-r ${riskGradient(risk)} transition-[width] duration-150 ease-linear ${
-            highDanger ? "animate-pulse" : ""
-          }`}
+          className={`h-full rounded-full bg-gradient-to-r ${riskGradient(risk)} transition-[width] duration-150 ease-linear`}
           style={{ width: `${percent}%` }}
         />
       </div>

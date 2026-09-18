@@ -100,9 +100,21 @@ export const cardDeal = (index, total) => ({
 // they share one origin, so the row reads as a single deal from the shoe.
 // The stagger is squeezed into a fixed window so a long hand (repeated
 // hits) still settles as one deal instead of trailing card by card.
-export const dealFromShoe = ({ index = 0, total = 1, dy = 0 } = {}) => ({
-  initial: { opacity: 0, y: dy },
-  animate: { opacity: 1, y: 0 },
+//
+// `dx` and `rotate` are optional non-negative/negative offsets for tables
+// where the slots are NOT in one row (poker's ring of seats): pass the
+// seat's offset from the shoe and the card travels the full 2D vector,
+// tilted a few degrees on entry. Both default to 0, so the row-based
+// blackjack call sites are byte-for-byte unchanged.
+export const dealFromShoe = ({
+  index = 0,
+  total = 1,
+  dx = 0,
+  dy = 0,
+  rotate = 0,
+} = {}) => ({
+  initial: { opacity: 0, x: dx, y: dy, rotate },
+  animate: { opacity: 1, x: 0, y: 0, rotate: 0 },
   transition: {
     delay: index * Math.min(0.09, 0.4 / Math.max(total, 1)),
     duration: 0.35,

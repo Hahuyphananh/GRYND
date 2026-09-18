@@ -24,6 +24,8 @@ import IconAvatar from "../IconAvatar";
  * Props:
  *   players       — seated players from roundState
  *   waitingPlayers — wait-listed players from roundState
+ *   readyUserIds  — ids of seated players who pressed Start Round (ready
+ *                   vote); AI bots never vote, so they are simply absent
  *   phase         — current round phase
  *   maxPlayers    — table seat capacity (defaults to 6)
  *   onExitToLobby — () => void — for a wait-listed player to cash out
@@ -32,12 +34,15 @@ import IconAvatar from "../IconAvatar";
 export default function PlayerSidebar({
   players = [],
   waitingPlayers = [],
+  readyUserIds = [],
   phase = "waiting",
   maxPlayers = 6,
   onExitToLobby,
 }) {
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
 
+  // One label per state, in priority order. The live states are checked first
+  // because they can only exist during a round.
   const statusOf = (p) => {
     if (p.isSittingOut) return { label: "Sitting out", cls: "text-yellow-400", icon: <IconMoodSilence size={13} className="inline" /> };
     if (p.allIn) return { label: "All-in", cls: "text-[#ff4fd8]", icon: <IconCircleCheck size={13} className="inline" /> };
@@ -48,6 +53,9 @@ export default function PlayerSidebar({
     if (p.busted) return { label: "Busted", cls: "text-red-400", icon: <IconBomb size={13} className="inline" /> };
     if (isLive && p.isActive) return { label: "In hand…", cls: "text-[#00e5ff]", icon: <IconRocket size={13} className="inline" /> };
     if (isLive && p.isPlaying && !p.isActive) return { label: "Not in hand", cls: "text-[#9dd8ff]/60", icon: <IconArmchair size={13} className="inline" /> };
+    // Waiting phase: has this seat already voted to start the next hand?
+    if (!isLive && p.userId != null && readyUserIds.includes(p.userId))
+      return { label: "Ready", cls: "text-[#00e5ff]", icon: <IconCircleCheck size={13} className="inline" /> };
     return { label: "Waiting", cls: "text-[#9dd8ff]/70", icon: <IconArmchair size={13} className="inline" /> };
   };
 

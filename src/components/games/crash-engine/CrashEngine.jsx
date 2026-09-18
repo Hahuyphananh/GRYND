@@ -1,5 +1,6 @@
 "use client";
 import React, { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import { IconCircleCheck } from "@tabler/icons-react";
 import CrashGraph, {
   CANVAS_WIDTH,
@@ -27,6 +28,9 @@ import useCrashAnimation from "./useCrashAnimation";
  *   • Auto-cashout thresholds (that's the parent's concern)
  *
  * Props:
+ *   idle            — true when no hand is in flight or on screen (waiting /
+ *                     countdown): clears the crash state so a finished hand
+ *                     can't linger into the next round
  *   crashPoint      — multiplier at which the curve crashes (null = unknown:
  *                     Crash Poker hides it server-side; the curve flies
  *                     until triggerCrash() is called by the parent when the
@@ -58,6 +62,13 @@ import useCrashAnimation from "./useCrashAnimation";
 const CrashEngine = forwardRef(function CrashEngine({
   crashPoint = null,
   running = false,
+  // `idle` — the table has no hand in flight AND none on screen: the next
+  // round is still being decided (the waiting phase / countdown). The crash
+  // state is cleared here rather than when the next round starts, so the
+  // frozen curve, the bomb and the CRASHED read-out never linger under the
+  // countdown. Defaults to false, so callers that manage their own lifecycle
+  // (the legacy solo game) behave exactly as before.
+  idle = false,
   startedAt = null,
   curveFrom = 1,
   curveResumedAt = null,
@@ -70,8 +81,16 @@ const CrashEngine = forwardRef(function CrashEngine({
   const frozenRafRef = useRef(null);
   const [displayMultiplier, setDisplayMultiplier] = useState(1.0);
   const [isCrashed, setIsCrashed] = useState(false);
+  // Where the curve died, in canvas coordinates — the bomb anchors to it.
+  // Written once per crash (never per frame), cleared when a new hand runs.
+  const [crashCanvasPoint, setCrashCanvasPoint] = useState(null);
   const [hasCashout, setHasCashout] = useState(false);
   const [cashoutMultiplier, setCashoutMultiplier] = useState(null);
+  // Reduced motion: the curve itself is the game state and keeps climbing,
+  // but its decorative layers (ghost trail, crash bloom) are dropped. Read
+  // from a hook rather than a prop so a mid-hand preference change can never
+  // re-create the animation loop.
+  const shouldReduce = useReducedMotion();
 
   // Y-axis upper bound: unknown crash point → fixed generous scale (any
   // point in the game's range fits); known → always show 20% past it.
@@ -90,41 +109,52 @@ const CrashEngine = forwardRef(function CrashEngine({
     curveFrom,
     curveResumedAt,
     curveCap,
-    onFrame: useCallback(({ multiplier, currentMultiplier, points, crashed }) => {
+    // Every frame → canvas only. Draw the curve from the frame payload —
+    // self-contained so we never reference stateRef before it's destructured
+    // from the hook (TDZ guard). No React state is touched here.
+    onDraw: useCallback(({ currentMultiplier, points, crashed }) => {
+      if (!crashGraphRef.current) return;
+      crashGraphRef.current.draw({
+        curvePoints: points,
+        currentMultiplier,
+        crashed,
+        crashCanvasPoint: null,
+        crashAt: null,
+        explosionProgress: 0,
+        reduced: shouldReduce,
+      }, performance.now());
+    }, [shouldReduce]),
+    // Throttled (~80ms) React feed: the multiplier text, the parent's live
+    // read-out and the bot decisions. Unchanged budget on purpose.
+    onFrame: useCallback(({ multiplier, crashed }) => {
       setDisplayMultiplier(multiplier);
       setIsCrashed(crashed);
       if (onMultiplierUpdate) onMultiplierUpdate(multiplier, crashed);
-
-      // Draw the curve from the frame payload — self-contained so we never
-      // reference stateRef before it's destructured from the hook (TDZ guard).
-      if (crashGraphRef.current) {
-        crashGraphRef.current.draw({
-          curvePoints: points,
-          currentMultiplier,
-          crashed,
-          crashCanvasPoint: null,
-          crashAt: null,
-          explosionProgress: 0,
-        }, performance.now());
-      }
     }, [onMultiplierUpdate]),
-    onCrash: useCallback((lossMultiplier, crashCanvasPoint, animState) => {
+    onCrash: useCallback((lossMultiplier, canvasPointAtCrash, animState) => {
       setIsCrashed(true);
       setDisplayMultiplier(lossMultiplier);
+      setCrashCanvasPoint(canvasPointAtCrash ?? null);
       if (onMultiplierUpdate) onMultiplierUpdate(lossMultiplier, true);
 
-      const drawFrozen = (now) => {
-        if (crashGraphRef.current) {
-          crashGraphRef.current.draw(animState, now);
-        }
-        if (animState.explosionProgress < 1) {
-          frozenRafRef.current = requestAnimationFrame(drawFrozen);
-        }
-      };
-      frozenRafRef.current = requestAnimationFrame(drawFrozen);
+      if (shouldReduce) {
+        // One final frame at the revealed crash point — no expanding bloom,
+        // no repeated redraws. The frozen curve still ends where it crashed.
+        crashGraphRef.current?.draw({ ...animState, reduced: true }, performance.now());
+      } else {
+        const drawFrozen = (now) => {
+          if (crashGraphRef.current) {
+            crashGraphRef.current.draw(animState, now);
+          }
+          if (animState.explosionProgress < 1) {
+            frozenRafRef.current = requestAnimationFrame(drawFrozen);
+          }
+        };
+        frozenRafRef.current = requestAnimationFrame(drawFrozen);
+      }
 
       if (onCrash) onCrash(lossMultiplier);
-    }, [onCrash, onMultiplierUpdate]),
+    }, [onCrash, onMultiplierUpdate, shouldReduce]),
   });
 
   // Cleanup frozen frame rAF
@@ -141,8 +171,26 @@ const CrashEngine = forwardRef(function CrashEngine({
       setCashoutMultiplier(null);
       setIsCrashed(false);
       setDisplayMultiplier(1.0);
+      setCrashCanvasPoint(null);
     }
   }, [running]);
+
+  // Clear the finished hand once the table goes idle (see the `idle` prop).
+  // The graph is reset imperatively (the flight loop is gone by now — it
+  // stopped at the crash), and the crash's own frozen-frame loop is cancelled
+  // first so a pending frame can't repaint the crash over the clean chart when
+  // the table moves on quickly (e.g. Next Hand pressed during the bloom).
+  useEffect(() => {
+    if (!idle) return;
+    if (frozenRafRef.current) {
+      cancelAnimationFrame(frozenRafRef.current);
+      frozenRafRef.current = null;
+    }
+    setIsCrashed(false);
+    setDisplayMultiplier(1.0);
+    setCrashCanvasPoint(null);
+    crashGraphRef.current?.reset();
+  }, [idle]);
 
   // Initial draw
   useEffect(() => {
@@ -193,19 +241,23 @@ const CrashEngine = forwardRef(function CrashEngine({
       {/* Fill the parent 4:3 game container — the internal drawing uses the
           fixed 800×600 coordinate space and the container matches that
           aspect ratio, so CSS scaling stays perfectly uniform. */}
+      {/* The crash adds one short impact shake (CSS, ~260ms, ~6px) to the
+          canvas only — never to the read-out, which has to stay legible. It
+          is a class change on the frozen canvas: the draw loop is untouched,
+          nothing restarts, and reduced motion collapses it. */}
       <CrashGraph
         ref={crashGraphRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         maxMultiplier={maxMultiplier}
-        className="absolute inset-0 z-0"
+        className={`absolute inset-0 z-0${isCrashed ? " animate-crash-shake" : ""}`}
       />
 
       <div className="absolute right-2 top-0 bottom-0 flex flex-col justify-between z-10 py-6">
         {yAxisLabels}
       </div>
 
-      <Explosion isCrashed={isCrashed} />
+      <Explosion isCrashed={isCrashed} crashCanvasPoint={crashCanvasPoint} />
 
       {/* Cashed-out badge — shown while the rocket is still flying */}
       {hasCashout && !isCrashed && (

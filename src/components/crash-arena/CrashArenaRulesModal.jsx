@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { withReducedMotion } from "../../lib/animations";
 import {
   IconArmchair,
   IconBolt,
@@ -215,6 +216,10 @@ const EXAMPLE_RESULT = [
  */
 export default function CrashArenaRulesModal({ onClose }) {
   const [tab, setTab] = useState("rules");
+  // Reduced motion: the dialog and its staggered rule/example reveals appear
+  // in place (same shared helper the rest of the game uses) — the delays it
+  // carries are dropped with it, so nothing is still sliding in seconds later.
+  const shouldReduce = useReducedMotion();
 
   // Close on Escape for keyboard users + lock background scroll while open.
   useEffect(() => {
@@ -232,8 +237,10 @@ export default function CrashArenaRulesModal({ onClose }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      {...withReducedMotion(shouldReduce, {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+      })}
       role="dialog"
       aria-modal="true"
       aria-label="Crash Arena rules and how to play"
@@ -241,9 +248,11 @@ export default function CrashArenaRulesModal({ onClose }) {
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+        {...withReducedMotion(shouldReduce, {
+          initial: { scale: 0.9, opacity: 0, y: 20 },
+          animate: { scale: 1, opacity: 1, y: 0 },
+          transition: { type: "spring", stiffness: 300, damping: 25 },
+        })}
         className="relative w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-3xl border-2 border-amber-700/60 bg-gradient-to-b from-[#12042a] to-[#0a0118] shadow-[0_0_60px_rgba(251,191,36,0.2)]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -297,9 +306,11 @@ export default function CrashArenaRulesModal({ onClose }) {
               {RULES.map((rule, i) => (
                 <motion.div
                   key={rule.title}
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05, duration: 0.25 }}
+                  {...withReducedMotion(shouldReduce, {
+                    initial: { opacity: 0, x: -12 },
+                    animate: { opacity: 1, x: 0 },
+                    transition: { delay: i * 0.05, duration: 0.25 },
+                  })}
                   className="flex gap-3 rounded-2xl border border-cyan-700/30 bg-black/40 p-4 hover:border-cyan-500/50 hover:bg-slate-900/70 transition-all duration-200"
                 >
                   <span className="shrink-0 leading-none text-cyan-300">{rule.icon}</span>
@@ -347,9 +358,11 @@ export default function CrashArenaRulesModal({ onClose }) {
                   {EXAMPLE_STEPS.map((step, i) => (
                     <motion.div
                       key={step.tag}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.08, duration: 0.25 }}
+                      {...withReducedMotion(shouldReduce, {
+                        initial: { opacity: 0, y: 10 },
+                        animate: { opacity: 1, y: 0 },
+                        transition: { delay: i * 0.08, duration: 0.25 },
+                      })}
                       className="relative"
                     >
                       <span

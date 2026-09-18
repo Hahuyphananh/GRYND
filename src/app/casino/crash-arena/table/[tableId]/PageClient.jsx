@@ -486,6 +486,7 @@ export default function TableRoomPage() {
             crashPoint={crashEngineProps.crashPoint}
             startedAt={crashEngineProps.startedAt}
             running={crashEngineProps.running}
+            idle={crashEngineProps.idle}
             curveFrom={crashEngineProps.curveFrom}
             curveResumedAt={crashEngineProps.curveResumedAt}
             curveCap={crashEngineProps.curveCap}

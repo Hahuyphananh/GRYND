@@ -1,6 +1,7 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { withReducedMotion } from "../../lib/animations";
 import { IconBomb, IconConfetti, IconFlag, IconTarget, IconTrophy, IconEye } from "@tabler/icons-react";
 import { signalContainsCrash } from "../../lib/games/crash/signals";
 
@@ -46,15 +47,30 @@ export default function RoundResultModal({
 }) {
   // Auto-dismiss after 8 seconds so hands keep flowing.
   const [remaining, setRemaining] = useState(8);
+  // Reduced motion: the winner/result moment keeps its full content and
+  // emphasis (banner, ranks, payouts) but appears in place instead of
+  // springing in — one shared helper, the same one the game engine uses.
+  const shouldReduce = useReducedMotion();
+
+  // One dismiss per mount: the auto-dismiss timer, the backdrop click and the
+  // Next Hand button all funnel through here, so the caller's next-round
+  // action can never fire twice — which the exit transition makes possible,
+  // since the modal stays mounted while it fades out.
+  const firedRef = useRef(false);
+  const dismiss = useCallback(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onNextRound?.();
+  }, [onNextRound]);
 
   useEffect(() => {
     if (remaining <= 0) {
-      onNextRound?.();
+      dismiss();
       return;
     }
     const t = setTimeout(() => setRemaining((r) => r - 1), 1000);
     return () => clearTimeout(t);
-  }, [remaining, onNextRound]);
+  }, [remaining, dismiss]);
 
   const winner = results?.winner ?? null;
   const winnerMultiplier = results?.winnerMultiplier ?? null;
@@ -77,6 +93,13 @@ export default function RoundResultModal({
   const youFolded = you?.folded && !youWon;
   const youBusted = you?.busted && !youWon;
   const net = myPayout - youCommitted;
+  // The player's own fold multiplier, shown wherever their fold is reported.
+  // (The ranked payout rows carry id/rank/amount only, and the winner banner
+  // already reports the winner's — this is the seat's own value.)
+  const myFoldAt =
+    you?.foldedAtMultiplier != null
+      ? Number(you.foldedAtMultiplier).toFixed(2)
+      : null;
   const bustedPlayers = Array.isArray(results?.bustedPlayers) ? results.bustedPlayers : [];
 
   const rankLabel = (rank) => {
@@ -88,19 +111,35 @@ export default function RoundResultModal({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      {...withReducedMotion(shouldReduce, {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        // Leaves with a short fade when the hand moves on (the server can
+        // start the next round while the popup is still up).
+        exit: { opacity: 0, transition: { duration: 0.18, ease: "easeIn" } },
+      })}
       role="dialog"
       aria-modal="true"
       aria-label="Hand results"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
-      onClick={onNextRound}
+      // The panel can be taller than a phone viewport (ranking + insights +
+      // the next-hand action). Scrolling is on this container and the panel
+      // centres with auto margins, so a tall result stays fully reachable
+      // instead of being clipped at both ends by `items-center`.
+      className="fixed inset-0 z-[100] flex overflow-y-auto bg-black/80 px-4 py-6 backdrop-blur-sm"
+      onClick={dismiss}
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-[#FFD700]/40 bg-gradient-to-b from-[#0a1a2e] to-[#040d24] p-6 shadow-[0_0_60px_rgba(255,215,0,0.25)]"
+        {...withReducedMotion(shouldReduce, {
+          initial: { scale: 0.9, opacity: 0, y: 20 },
+          animate: { scale: 1, opacity: 1, y: 0 },
+          exit: {
+            scale: 0.98,
+            opacity: 0,
+            transition: { duration: 0.16, ease: "easeIn" },
+          },
+          transition: { type: "spring", stiffness: 300, damping: 25 },
+        })}
+        className="relative m-auto w-full max-w-md overflow-hidden rounded-3xl border-2 border-[#FFD700]/40 bg-gradient-to-b from-[#0a1a2e] to-[#040d24] p-6 shadow-[0_0_60px_rgba(255,215,0,0.25)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top glow line */}
@@ -109,10 +148,32 @@ export default function RoundResultModal({
         <h2 className="text-2xl font-black text-[#f5ff3b] text-center">
           <IconTarget size={24} className="mb-1 mr-2 inline" /> Hand {roundNumber} Results
         </h2>
+        {/* Where the curve died — the context every crash victim's result
+            hangs on, and the one number they are scored against below.
+            Null on a fold-out (no crash happened), so the line disappears. */}
+        {crashMultiplier != null && (
+          <p className="mt-1 text-center text-xs text-[#9dd8ff]/70">
+            Curve crashed at{" "}
+            <span className="font-bold text-red-400">
+              {Number(crashMultiplier).toFixed(2)}x
+            </span>
+          </p>
+        )}
 
         {/* ── Winner banner ─────────────────────────────────────────── */}
+        {/* The reveal is sequenced: winner/outcome first (0.12s), then the
+            hero payout (0.3s), then the ranking rows, then your own result —
+            so "who won" reads before "how much". Reduced motion shows every
+            beat in place with no delay. */}
         {winner ? (
-          <div className="mt-4 rounded-2xl border border-[#FFD700]/40 bg-[#FFD700]/10 p-4 text-center">
+          <motion.div
+            {...withReducedMotion(shouldReduce, {
+              initial: { opacity: 0, y: 8 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.22, ease: "easeOut", delay: 0.12 },
+            })}
+            className="mt-4 rounded-2xl border border-[#FFD700]/40 bg-[#FFD700]/10 p-4 text-center"
+          >
             <p className="inline-flex items-center gap-1.5 text-sm text-[#9dd8ff]">
               <IconTrophy size={16} className="text-[#FFD700]" />
               <span className="font-black text-[#FFD700]">{winner}{youWon ? " (You!)" : ""}</span>{" "}
@@ -130,22 +191,40 @@ export default function RoundResultModal({
                 </>
               )}
             </p>
-            <p className="mt-2 text-3xl font-black text-[#00ffa6] drop-shadow-[0_0_16px_rgba(0,255,166,0.6)]">
+            {/* Hero payout — one short pop after the banner has landed. The
+                static glow is the amount's emphasis, not an animation. */}
+            <motion.p
+              {...withReducedMotion(shouldReduce, {
+                initial: { opacity: 0, scale: 0.94 },
+                animate: { opacity: 1, scale: 1 },
+                transition: { duration: 0.2, ease: "easeOut", delay: 0.3 },
+              })}
+              className="mt-2 text-3xl font-black text-[#00ffa6] drop-shadow-[0_0_16px_rgba(0,255,166,0.6)]"
+            >
               +${(payouts[0]?.amount ?? 0).toLocaleString()}
-            </p>
+            </motion.p>
             {fee > 0 && (
               <p className="text-[10px] text-[#9dd8ff]/60 mt-1">5% platform fee: ${fee.toLocaleString()}</p>
             )}
-          </div>
+          </motion.div>
         ) : (
-          <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-center">
+          // Carry-over: no winner exists, so there is deliberately no
+          // celebration here — just the reason and where the pot went.
+          <motion.div
+            {...withReducedMotion(shouldReduce, {
+              initial: { opacity: 0, y: 8 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.22, ease: "easeOut", delay: 0.12 },
+            })}
+            className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-center"
+          >
             <p className="inline-flex items-center justify-center gap-2 text-2xl font-black text-red-400">
               <IconBomb size={24} /> No winners!
             </p>
             <p className="text-sm text-[#9dd8ff] mt-1">
               Everyone stayed in and busted at the crash. ${carryOver.toLocaleString()} carries over to the next hand.
             </p>
-          </div>
+          </motion.div>
         )}
 
         {/* ── Ranked payout table ───────────────────────────────────── */}
@@ -155,18 +234,35 @@ export default function RoundResultModal({
               Ranked payouts — the later you fold, the bigger your share
             </p>
             <div className="flex flex-col gap-1.5">
-              {payouts.map((p) => (
-                <div
+              {/* Ranking reveals top-down with a 50ms stagger, capped so a full
+                  table still finishes inside the result beat. Each row is one
+                  unit — the rank badge, name and amount arrive together, so
+                  nothing inside a row animates on its own. */}
+              {payouts.map((p, i) => (
+                <motion.div
                   key={p.userId ?? p.name ?? `rank-${p.rank}`}
+                  {...withReducedMotion(shouldReduce, {
+                    initial: { opacity: 0, y: 6 },
+                    animate: { opacity: 1, y: 0 },
+                    transition: {
+                      duration: 0.2,
+                      ease: "easeOut",
+                      delay: 0.24 + Math.min(i, 5) * 0.05,
+                    },
+                  })}
                   className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${
                     p.userId === you?.userId
                       ? "border border-[#FFD700]/40 bg-[#FFD700]/10"
                       : "bg-white/[0.03]"
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-[#d8fbff] font-semibold">
+                  {/* min-w-0 + truncate on the name and shrink-0 on both the
+                      rank chip and the amount: a long name can never push the
+                      payout out of the row on a narrow phone, and the amount
+                      can never be squeezed. */}
+                  <span className="flex min-w-0 items-center gap-2 text-[#d8fbff] font-semibold">
                     <span
-                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                      className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-full ${
                         p.rank === 1
                           ? "bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40"
                           : "bg-[#00e5ff]/10 text-[#00e5ff] border border-[#00e5ff]/30"
@@ -174,33 +270,63 @@ export default function RoundResultModal({
                     >
                       {rankLabel(p.rank)}
                     </span>
-                    {p.name ?? "Player"}
-                    {p.userId === you?.userId ? " (You)" : ""}
+                    <span className="truncate">
+                      {p.name ?? "Player"}
+                      {p.userId === you?.userId ? " (You)" : ""}
+                    </span>
                   </span>
-                  <span className="font-black text-[#00ffa6] tabular-nums">
+                  <span className="shrink-0 font-black text-[#00ffa6] tabular-nums">
                     +${Number(p.amount || 0).toLocaleString()}
                   </span>
-                </div>
+                </motion.div>
               ))}
+              {/* Crash victims sit below the ranking (they take no rank and
+                  get no share). The caption states the reason explicitly, so
+                  a victim never has to infer it from a red chip. */}
               {bustedPlayers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {bustedPlayers.map((name) => (
-                    <span
-                      key={`b-${name}`}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20"
-                    >
-                      {name}: busted — nothing
-                    </span>
-                  ))}
-                </div>
+                <motion.div
+                  {...withReducedMotion(shouldReduce, {
+                    initial: { opacity: 0, y: 6 },
+                    animate: { opacity: 1, y: 0 },
+                    transition: {
+                      duration: 0.2,
+                      ease: "easeOut",
+                      delay: 0.4 + Math.min(payouts.length, 5) * 0.05,
+                    },
+                  })}
+                  className="mt-1.5"
+                >
+                  <p className="text-[10px] text-[#9dd8ff]/60">
+                    Still in the hand when the curve crashed — nothing back.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {bustedPlayers.map((name) => (
+                      <span
+                        key={`b-${name}`}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20"
+                      >
+                        {name}: busted — nothing
+                      </span>
+                    ))}
+                  </div>
+                </motion.div>
               )}
             </div>
           </div>
         )}
 
         {/* ── Your result ───────────────────────────────────────────── */}
+        {/* Lands after the ranking, so the table's outcome is read before
+            your own line. */}
         {you && (
-          <div className="mt-3 rounded-2xl border border-[#00e5ff]/25 bg-[#050d1f]/70 p-4">
+          <motion.div
+            {...withReducedMotion(shouldReduce, {
+              initial: { opacity: 0, y: 6 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: 0.2, ease: "easeOut", delay: 0.35 },
+            })}
+            className="mt-3 rounded-2xl border border-[#00e5ff]/25 bg-[#050d1f]/70 p-4"
+          >
             <p className="text-xs uppercase tracking-wider text-[#9dd8ff]/60 mb-2">Your Result</p>
             {youWon ? (
               <div className="flex items-center justify-between">
@@ -215,6 +341,7 @@ export default function RoundResultModal({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-sm text-[#d8fbff] font-bold">
                   <IconFlag size={15} className="text-yellow-400" /> Rank {myRank} — you folded
+                  {myFoldAt ? ` @${myFoldAt}x` : ""}
                 </span>
                 <span className="text-lg font-black text-[#00ffa6]">
                   +${net.toLocaleString()} net
@@ -224,6 +351,7 @@ export default function RoundResultModal({
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center gap-1.5 text-sm text-[#d8fbff] font-bold">
                   <IconFlag size={15} className="text-yellow-400" /> You folded
+                  {myFoldAt ? ` @${myFoldAt}x` : ""}
                 </span>
                 <span className="text-lg font-black text-red-400">
                   −${youCommitted.toLocaleString()}
@@ -250,7 +378,7 @@ export default function RoundResultModal({
                 Fold earlier and you lose only your ante — fold later to climb the ranks.
               </p>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* ── Insights revealed ───────────────────────────────────── */}
@@ -319,7 +447,7 @@ export default function RoundResultModal({
         {/* ── Next hand + auto-dismiss progress ─────────────────────── */}
         <div className="mt-5">
           <button
-            onClick={onNextRound}
+            onClick={dismiss}
             className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-[#00e5ff] to-[#007cf0] text-white border border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.4)] hover:shadow-[0_0_35px_rgba(0,229,255,0.7)] hover:scale-[1.02] transition-all duration-300"
           >
             Next Hand → ({remaining}s)

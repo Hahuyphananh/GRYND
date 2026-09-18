@@ -24,10 +24,14 @@ import BuyInModal from "./BuyInModal";
 import RoundResultModal from "./RoundResultModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import CrashRiskMeter from "./CrashRiskMeter";
+import { AnimatePresence, useReducedMotion } from "framer-motion";
 import { playCrash, playVictory, playDefeat } from "../../lib/gameAudio";
 
 const ROUND_START_COUNTDOWN = 8; // seconds between rounds / after ready votes
 const READY_VOTES_NEEDED = 2;
+// How long the crash gets the table to itself before the result popup fades in
+// (presentation only — see the result-beat gate below).
+const CRASH_RESULT_BEAT_MS = 500;
 
 /**
  * ArenaTable — full poker-style Crash Arena table room.
@@ -219,9 +223,15 @@ export default function ArenaTable({
   }, [onStartRound]);
 
   const handleNextRound = useCallback(() => {
+    // Only a visible result can advance the hand. The popup's auto-dismiss
+    // timer, its backdrop and the Next Hand button all land here, and the
+    // hand may already have moved on (the server started the next round) by
+    // the time one of them fires — advancing twice would skip the scheduled
+    // countdown.
+    if (phase !== "settling") return;
     setResultDismissed(true);
     onNextRound?.();
-  }, [onNextRound]);
+  }, [onNextRound, phase]);
 
   // ── Host AI management ───────────────────────────────────────────────
   // Only the host of a private table sees the controls; the server
@@ -252,7 +262,32 @@ export default function ArenaTable({
       .sort((a, b) => (b.foldedAtMultiplier || 0) - (a.foldedAtMultiplier || 0));
   }, [players, isRunning]);
 
-  const showResultModal = phase === "settling" && results && !resultDismissed && !!you;
+  // ── Crash → result beat ──────────────────────────────────────────────
+  // The server broadcasts the crash and the settled results in the SAME
+  // payload, so the result popup would otherwise fade in on the frame the
+  // curve froze — covering the freeze, the explosion, the CRASHED read-out,
+  // the impact shake and the seats turning busted. Hold the popup for one
+  // short beat so the crash is actually seen. Presentation only: the round
+  // state, payouts and next-round deadline are all applied on arrival; a
+  // hand that ended by fold-out (no crash) is never delayed, and reduced
+  // motion skips the wait entirely.
+  const shouldReduceMotion = useReducedMotion();
+  const [resultReady, setResultReady] = useState(false);
+  useEffect(() => {
+    if (phase !== "settling") {
+      setResultReady(false);
+      return;
+    }
+    if (shouldReduceMotion || crashMultiplier == null) {
+      setResultReady(true);
+      return;
+    }
+    const timer = setTimeout(() => setResultReady(true), CRASH_RESULT_BEAT_MS);
+    return () => clearTimeout(timer);
+  }, [phase, shouldReduceMotion, crashMultiplier]);
+
+  const showResultModal =
+    resultReady && phase === "settling" && results && !resultDismissed && !!you;
 
   // ── Fold-pause read-out ──────────────────────────────────────────────
   // Seconds left until the server's absolute resume moment — drives the
@@ -305,6 +340,18 @@ export default function ArenaTable({
   // One shot per round settle: crash sweep, then victory if the local
   // player won the pot, defeat if they were still in and busted.
   const resultSoundPlayedRef = useRef(false);
+  // The victory/defeat sting is delayed past the crash. Those timers are
+  // cleared on UNMOUNT ONLY — leaving the table must not fire a jingle from a
+  // dead component, while a player who dismisses the popup immediately still
+  // gets to hear it.
+  const resultSoundTimersRef = useRef([]);
+  useEffect(
+    () => () => {
+      resultSoundTimersRef.current.forEach(clearTimeout);
+      resultSoundTimersRef.current = [];
+    },
+    [],
+  );
   useEffect(() => {
     if (phase !== "settling") {
       resultSoundPlayedRef.current = false;
@@ -316,10 +363,10 @@ export default function ArenaTable({
     playCrash();
     if (results.winner === playerName) {
       // Won the pot — victory after the crash sweep settles.
-      setTimeout(() => playVictory(), 350);
+      resultSoundTimersRef.current.push(setTimeout(() => playVictory(), 350));
     } else if (you && you.busted) {
       // Still in the round when it crashed → lost the wager.
-      setTimeout(() => playDefeat(), 350);
+      resultSoundTimersRef.current.push(setTimeout(() => playDefeat(), 350));
     }
     // Cashout-but-lost-the-pot and spectators just hear the crash.
   }, [phase, results, you, playerName]);
@@ -356,7 +403,7 @@ export default function ArenaTable({
           )
         )}
         {isWaiting && !countdownActive && (
-          <div className="px-3 py-1.5 rounded-lg bg-[#9dd8ff]/5 border border-[#9dd8ff]/15 text-xs font-bold text-[#9dd8ff]">
+          <div className="animate-state-in px-3 py-1.5 rounded-lg bg-[#9dd8ff]/5 border border-[#9dd8ff]/15 text-xs font-bold text-[#9dd8ff]">
             {practiceStackEmpty
               ? "Practice stack empty — leave and start a new practice session"
               : seatedCount < 2
@@ -392,8 +439,13 @@ export default function ArenaTable({
       </div>
 
       {/* ═══ Round results (spectators / wait-listed players see banner) ═══ */}
+      {/* This banner is the winner emphasis for anyone without the result
+          popup (not seated), so it is the same information, once. Its
+          entrance previously used `animate-in fade-in` — classes this project
+          never generates, so it snapped in; now the shared one-shot state
+          entrance. */}
       {phase === "settling" && results && !you && (
-        <div className="px-4 py-3 rounded-2xl border border-[#FFD700]/30 bg-[#FFD700]/5 text-center animate-in fade-in">
+        <div className="animate-state-in px-4 py-3 rounded-2xl border border-[#FFD700]/30 bg-[#FFD700]/5 text-center">
           {results.winner ? (
             <>
               <span className="inline-flex items-center gap-2 text-lg font-black text-[#FFD700]">
@@ -594,17 +646,20 @@ export default function ArenaTable({
 
               {/* Folded / busted / all-in status badges during the hand */}
               {youAllIn && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#ff4fd8]/15 text-[#ff4fd8] border border-[#ff4fd8]/40">
-                  All-in
+                <span className="animate-state-in inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#ff4fd8]/15 text-[#ff4fd8] border border-[#ff4fd8]/40">
+                  <IconCircleCheck size={14} /> All-in
                 </span>
               )}
               {youFolded && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+                <span className="animate-state-in inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
                   <IconFlag size={14} /> Folded
+                  {you?.foldedAtMultiplier != null
+                    ? ` @${Number(you.foldedAtMultiplier).toFixed(2)}x`
+                    : ""}
                 </span>
               )}
               {youBusted && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                <span className="animate-state-in inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
                   <IconBomb size={14} /> Busted
                 </span>
               )}
@@ -673,7 +728,8 @@ export default function ArenaTable({
           <button
             onClick={() => onFold?.()}
             disabled={busy}
-            className="px-6 py-2.5 rounded-xl text-sm font-black border border-red-500/40 bg-red-500/15 text-red-400 hover:bg-red-500/30 hover:shadow-[0_0_14px_rgba(239,68,68,0.4)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
+            // py-3 keeps the round's only decision button at a 44px target.
+            className="px-6 py-3 rounded-xl text-sm font-black border border-red-500/40 bg-red-500/15 text-red-400 hover:bg-red-500/30 hover:shadow-[0_0_14px_rgba(239,68,68,0.4)] transition duration-100 active:scale-95 disabled:opacity-50 disabled:hover:shadow-none disabled:active:scale-100"
           >
             <IconFlag size={15} className="mr-1.5 inline" />
             {busy ? "Folding…" : "Fold"}
@@ -696,7 +752,13 @@ export default function ArenaTable({
             short screens (mobile/tablet, below lg) it is additionally
             capped by the viewport height so the whole curve + rocket stay
             on screen with the fold control — desktop keeps 720px. */}
-        <div className="relative mx-auto flex w-full max-w-[720px] max-lg:max-w-[min(720px,calc((100svh_-_19rem)_*_4/3))] aspect-[4/3] items-center justify-center rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden">
+        {/* min-w-[min(280px,100%)]: on a short viewport (a landscape phone)
+            the height cap above can squeeze the 4:3 canvas down to ~75px, where
+            the curve is no longer readable. The floor only engages in that
+            case — portrait and desktop already render wider than 280px — and
+            it can never exceed the container, so it adds no horizontal
+            overflow. */}
+        <div className="relative mx-auto flex w-full min-w-[min(280px,100%)] max-w-[720px] max-lg:max-w-[min(720px,calc((100svh_-_19rem)_*_4/3))] aspect-[4/3] items-center justify-center rounded-2xl border border-[#00e5ff]/30 bg-[#050d1f]/80 backdrop-blur-xl shadow-[0_0_25px_rgba(0,229,255,0.2)] overflow-hidden">
           {children || (
             <div className="text-center px-4">
               <IconRocket size={56} className="mb-4 text-[#00e5ff]" />
@@ -726,7 +788,7 @@ export default function ArenaTable({
                 return (
                   <div
                     key={p.name}
-                    className="text-xs px-2 py-1 rounded-lg font-bold backdrop-blur-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 transition-all duration-300"
+                    className="animate-state-in text-xs px-2 py-1 rounded-lg font-bold backdrop-blur-sm bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 transition-all duration-300"
                   >
                     <span>{p.name}{p.isYou ? " (You)" : ""}: folded @{p.foldedAtMultiplier?.toFixed(2)}x</span>
                     {sig && (
@@ -747,7 +809,7 @@ export default function ArenaTable({
             client resumes at the same wall-clock instant). */}
         {isRunning && foldPause && (
           <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
-            <div className="flex flex-col items-center gap-1 rounded-2xl border border-[#FFD700]/40 bg-[#050d1f]/90 px-7 py-5 backdrop-blur-md shadow-[0_0_30px_rgba(255,215,0,0.25)]">
+            <div className="animate-state-in flex flex-col items-center gap-1 rounded-2xl border border-[#FFD700]/40 bg-[#050d1f]/90 px-7 py-5 backdrop-blur-md shadow-[0_0_30px_rgba(255,215,0,0.25)]">
               <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.25em] font-black text-[#FFD700]/90">
                 <IconClock size={13} /> Paused
               </span>
@@ -817,6 +879,7 @@ export default function ArenaTable({
           <PlayerSidebar
             players={players}
             waitingPlayers={waitingPlayers}
+            readyUserIds={readyVotes}
             phase={phase}
             maxPlayers={maxPlayers}
             onExitToLobby={onExitToLobby}
@@ -826,13 +889,13 @@ export default function ArenaTable({
 
       {/* ═══ Your status while the hand runs but you can't act ═══ */}
       {isRunning && youAllIn && youInHand && (
-        <div className="px-4 py-2 rounded-xl border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 text-[#ff4fd8] text-sm font-bold text-center">
+        <div className="animate-state-in px-4 py-2 rounded-xl border border-[#ff4fd8]/40 bg-[#ff4fd8]/10 text-[#ff4fd8] text-sm font-bold text-center">
           You&apos;re all-in — committed and riding the curve. Good luck!
         </div>
       )}
       {isRunning && you && !youInHand && (youFolded || youBusted) && (
         <div
-          className={`px-4 py-2 rounded-xl border text-sm font-bold text-center ${
+          className={`animate-state-in px-4 py-2 rounded-xl border text-sm font-bold text-center ${
             youFolded
               ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
               : "border-red-500/30 bg-red-500/10 text-red-400"
@@ -852,6 +915,7 @@ export default function ArenaTable({
             players={players}
             maxSeats={maxPlayers}
             phase={phase}
+            readyUserIds={readyVotes}
             onReport={onReportPlayer}
             // Host-only controls for AI seats (bots carry isBot + userId
             // from the server roster).
@@ -908,20 +972,28 @@ export default function ArenaTable({
       </div>
 
       {/* ═══ Round results popup ═══ */}
-      {showResultModal && (
-        <RoundResultModal
-          roundNumber={roundNumber}
-          results={results}
-          you={you}
-          wager={wager}
-          pot={pot}
-          // Authoritative crash multiplier: the live roundState value (set
-          // by the crash broadcast) or, for a result popup reached purely
-          // via the poll catch-up, the revealed crash point from the round.
-          crashMultiplier={crashMultiplier ?? (table?.latestRound?.crashPoint ?? null)}
-          onNextRound={handleNextRound}
-        />
-      )}
+      {/* AnimatePresence so the popup can leave instead of vanishing: the
+          server can start the next hand while it is still up (or a poll can
+          catch a client up straight from settling to running), and the popup
+          used to be removed in a single frame. Its own entrance is also
+          reduced-motion aware. */}
+      <AnimatePresence>
+        {showResultModal && (
+          <RoundResultModal
+            key="round-result"
+            roundNumber={roundNumber}
+            results={results}
+            you={you}
+            wager={wager}
+            pot={pot}
+            // Authoritative crash multiplier: the live roundState value (set
+            // by the crash broadcast) or, for a result popup reached purely
+            // via the poll catch-up, the revealed crash point from the round.
+            crashMultiplier={crashMultiplier ?? (table?.latestRound?.crashPoint ?? null)}
+            onNextRound={handleNextRound}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ═══ Buy-in modal ═══ */}
       {showBuyInModal && (

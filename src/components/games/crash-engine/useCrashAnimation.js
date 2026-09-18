@@ -12,8 +12,28 @@ import {
   DEFAULT_MAX_MULTIPLIER,
 } from "./CrashGraph";
 
+// React-facing throttle: the multiplier text, the risk meter and the bot fold
+// decisions only need ~12 updates/s. The CANVAS deliberately does not go
+// through this — it draws on every frame (see `onDraw`) so the curve stays
+// continuous instead of stepping 5 frames at a time.
 const UI_MULTIPLIER_UPDATE_MS = 80;
 const MAX_CURVE_POINTS = 450;
+
+/**
+ * Halve a trail that has outgrown its per-frame drawing budget, always
+ * keeping the head. The previous behaviour dropped the OLDEST points, which
+ * detached the drawn line from its origin once a hand ran longer than the
+ * budget (7.5s at 60fps) — the curve appeared to start mid-chart. Halving
+ * keeps the whole flight on screen at a coarser resolution, which the x-axis
+ * scale (~100s across the chart) makes invisible.
+ */
+function thinCurvePoints(points) {
+  const thinned = [];
+  for (let i = 0; i < points.length; i += 2) thinned.push(points[i]);
+  const head = points[points.length - 1];
+  if (thinned[thinned.length - 1] !== head) thinned.push(head);
+  return thinned;
+}
 
 /**
  * useCrashAnimation — runs the exponential multiplier growth loop.
@@ -51,7 +71,11 @@ const MAX_CURVE_POINTS = 450;
  *   curveCap    — multiplier to HOLD at while a betting window is open
  *                 (null = free climb); the flight pauses here until the
  *                 window resolves
- *   onFrame     — called every ~80ms with { multiplier, points, crashed }
+ *   onDraw      — called on EVERY animation frame with the same payload as
+ *                 `onFrame`. This is what the canvas renders from, so the
+ *                 curve moves at the display's refresh rate.
+ *   onFrame     — called every ~80ms with { multiplier, points, crashed };
+ *                 the throttled React-facing feed (text, risk meter, bots)
  *   onCrash     — called when the crash happens (autonomous or triggered)
  */
 export default function useCrashAnimation({
@@ -61,6 +85,7 @@ export default function useCrashAnimation({
   curveFrom = 1,
   curveResumedAt = null,
   curveCap = null,
+  onDraw,
   onFrame,
   onCrash,
 }) {
@@ -106,9 +131,9 @@ export default function useCrashAnimation({
   }, [curveFrom, curveResumedAt, curveCap]);
 
   // Persist callbacks in refs so the animation loop always calls the latest
-  const callbacksRef = useRef({ onFrame, onCrash });
+  const callbacksRef = useRef({ onDraw, onFrame, onCrash });
   useEffect(() => {
-    callbacksRef.current = { onFrame, onCrash };
+    callbacksRef.current = { onDraw, onFrame, onCrash };
   });
 
   const stop = useCallback(() => {
@@ -212,15 +237,34 @@ export default function useCrashAnimation({
         CANVAS_HEIGHT,
         GRAPH_PADDING,
       );
-      s.curvePoints.push(currentPoint);
-      if (s.curvePoints.length > MAX_CURVE_POINTS) {
-        s.curvePoints.shift();
+      // Hold a single point while the curve is frozen (fold pause): pushing
+      // the same spot every frame would spend the whole drawing budget on
+      // duplicates. The trail therefore keeps its shape through a pause and
+      // resumes growing the moment the multiplier moves again.
+      const tail = s.curvePoints[s.curvePoints.length - 1];
+      if (!tail || tail.x !== currentPoint.x || tail.y !== currentPoint.y) {
+        s.curvePoints.push(currentPoint);
+        if (s.curvePoints.length > MAX_CURVE_POINTS) {
+          s.curvePoints = thinCurvePoints(s.curvePoints);
+        }
+      }
+
+      const cb = callbacksRef.current;
+
+      // Every frame → the canvas. Imperative and React-free, so this costs a
+      // single canvas redraw rather than a component render.
+      if (cb.onDraw) {
+        cb.onDraw({
+          multiplier: s.displayMultiplier,
+          currentMultiplier: s.currentMultiplier,
+          points: s.curvePoints,
+          crashed: s.crashed,
+        });
       }
 
       // Throttled UI updates
       if (now - s.lastUiUpdateAt > UI_MULTIPLIER_UPDATE_MS) {
         s.lastUiUpdateAt = now;
-        const cb = callbacksRef.current;
         if (cb.onFrame) {
           cb.onFrame({
             multiplier: s.displayMultiplier,

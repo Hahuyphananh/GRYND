@@ -27,7 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, use, type ReactNode 
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
@@ -57,6 +57,7 @@ import {
   minesPvpMatchRoom,
 } from "../../../../lib/mines-pvp/rooms";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
+import { withReducedMotion } from "../../../../lib/animations";
 import {
   IconBomb,
   IconSparkles,
@@ -73,14 +74,36 @@ import {
   AI_PICK_DELAY_MS,
 } from "../../../../lib/mines-pvp/constants";
 
+// How long the finished board keeps the table to itself before the result
+// overlay covers it (see the beat in the match view). Sized to the finished
+// reveal below, not to the impact alone: the last still-hidden cell starts at
+// 480ms and a mine's explosion runs 400ms, so the minefield has fully
+// uncovered itself by ~880ms and the result panel lands on a complete picture
+// — it stays the primary final state, just after the reveal rather than over
+// it. Reduced motion skips the wait entirely.
+const RESULT_BEAT_MS = 900;
+
+// Finished-reveal sweep step: how far apart two still-hidden cells uncover.
+// 25 cells × 20ms = the last cell starts at 480ms.
+const REVEAL_STEP_MS = 20;
+
 // ── Animation: bomb glyph (reused from solo mines) ──────────────────
-function AnimatedBomb({ exploded = false }: { exploded?: boolean }) {
+// `delayMs` exists for the finished reveal only: the bomb animation is the
+// existing one-shot, and the sweep just starts it on the cell's own step.
+function AnimatedBomb({
+  exploded = false,
+  delayMs = 0,
+}: {
+  exploded?: boolean;
+  delayMs?: number;
+}) {
   return (
     <span
       className={`
         relative text-4xl
         ${exploded ? "animate-bomb-explode" : "animate-bomb-fuse"}
       `}
+      style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
     >
       <IconBomb size={32} className="text-red-400" />
       {!exploded && (
@@ -204,6 +227,15 @@ type PlayerSeatProps = {
   // "Picking"). AI matches pass "AI thinking" so the animated dots
   // read as the bot deliberating over its second tile.
   thinkingLabel?: string;
+  // Whose turn it is, as a stable identity ("me-turn" / "them-turn"). The
+  // seat flashes a one-shot ring the moment it becomes the active one — see
+  // `.animate-seat-turn`. Undefined while this seat is not the active seat.
+  emphasisKey?: string;
+  // True while the hand is in a live pick phase (p1_turn / p2_turn). Only then
+  // is one of the two seats the one to act, so only then does the pair get the
+  // active/muted weighting — there is nobody to emphasise while waiting,
+  // ready, finished or cancelled.
+  livePhase?: boolean;
   isWinner: boolean;
   emote: { kind?: string; value?: string; key?: string } | null;
   emoteSide: "mine" | "incoming";
@@ -222,22 +254,52 @@ function PlayerSeat({
   wagerLabel,
   thinking,
   thinkingLabel,
+  emphasisKey,
+  livePhase,
   isWinner,
   emote,
   emoteSide,
 }: PlayerSeatProps) {
-  const border = isMe
+  // Active / muted / settled weighting.
+  //
+  // `thinking` already means exactly "this seat is the one to act", so the
+  // other seat is the quiet one — that is the whole relationship: one card is
+  // emphasised, the other steps back, and the 5×5 board stays the focus.
+  // Everything is border / background / opacity / glow, so it rides the card's
+  // existing `transition-all`: a turn switch cross-fades instead of snapping,
+  // and because these are transitions (not animations) a poll or socket
+  // snapshot carrying the same state can never replay anything.
+  //
+  // The winner keeps the gold treatment its badge already uses, and it wins
+  // over the turn weighting — the hand is over, so nobody is "active".
+  const settled = isMe
     ? "border-cyan-300/25 bg-cyan-500/[0.06]"
     : "border-fuchsia-300/25 bg-fuchsia-500/[0.06]";
-  const ring = thinking
-    ? isMe
-      ? "ring-1 ring-cyan-300/60 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
-      : "ring-1 ring-fuchsia-300/60 shadow-[0_0_14px_rgba(255,79,216,0.25)]"
-    : "";
+  const card = isWinner
+    ? "border-yellow-300/50 bg-yellow-400/[0.08] shadow-[0_0_16px_rgba(250,204,21,0.22)]"
+    : thinking
+      ? isMe
+        ? "border-cyan-300/50 bg-cyan-500/[0.12] ring-1 ring-cyan-300/60 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
+        : "border-fuchsia-300/50 bg-fuchsia-500/[0.12] ring-1 ring-fuchsia-300/60 shadow-[0_0_14px_rgba(255,79,216,0.25)]"
+      : `${settled}${livePhase ? " opacity-70" : ""}`;
   return (
     <div
-      className={`rounded-xl border px-3 py-2.5 transition-all ${border} ${ring}`}
+      className={`relative rounded-xl border px-3 py-2.5 transition-all ${card}`}
     >
+      {/* Turn emphasis — one flash on the seat whose turn just started, keyed
+          by the turn so a poll/socket re-render (same key) reuses the element
+          and the CSS animation cannot restart. `pointer-events-none` so the
+          card's own controls stay clickable, and `aria-hidden` because the
+          banner already announces the turn. */}
+      {emphasisKey ? (
+        <span
+          key={emphasisKey}
+          aria-hidden
+          className={`animate-seat-turn pointer-events-none absolute inset-0 rounded-xl ring-2 ${
+            isMe ? "ring-cyan-300/70" : "ring-fuchsia-300/70"
+          }`}
+        />
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <span className="relative flex min-w-0 items-center gap-2">
           {/* Official Grynd icon — falls back to a letter circle when
@@ -291,8 +353,25 @@ function PlayerSeat({
           {wagerLabel}
         </span>
         <span className="inline-flex items-center gap-1">
-          <IconDiamondFilled size={11} className="text-cyan-300" />
-          Tiles: <b className="text-white/85">{tiles}</b>
+          {/* Seat-accented, so whose tiles are whose is readable at a glance
+              from the same cyan/fuchsia language as the board. */}
+          <IconDiamondFilled
+            size={11}
+            className={isMe ? "text-cyan-300" : "text-fuchsia-300"}
+          />
+          Tiles:{" "}
+          {/* Activity feedback: keyed by the count itself, so the pop plays once
+              per tile that actually lands and re-renders carrying the same
+              count (polls, socket snapshots, turn changes, timer ticks) reuse
+              the element and replay nothing. */}
+          <b
+            key={tiles}
+            className={`animate-tile-reveal ${
+              isMe ? "text-cyan-100" : "text-fuchsia-100"
+            }`}
+          >
+            {tiles}
+          </b>
         </span>
       </div>
     </div>
@@ -704,19 +783,98 @@ export default function MinesPvpMatchPage({
     return null;
   }, [match, myUserId]);
 
-  // ── Audio: match-just-resolved ─────────────────────────────────
-  // Same resolvedFiredRef guard as the posthog capture below, so the
-  // fanfare/defeat plays exactly once per match.
+  // The tile that actually HIT a mine (a pick — a flag is never a "hit"): it
+  // carries the one-shot impact cue. Server-driven by construction — mid-match
+  // no mine pick can exist, because a mine ends the hand immediately — so this
+  // is only ever non-null inside the finished reveal.
+  const mineHitCell = useMemo(() => {
+    if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
+    for (const p of match.picks ?? []) {
+      if (p && p.isMine && !p.flag) return p.cell;
+    }
+    return null;
+  }, [match]);
+
+  // ── Mine-hit / flag → result beat ───────────────────────────────
+  // A mine hit (or a match-ending flag) both settles the hand AND reveals the
+  // board in ONE commit, so the result overlay — a fixed, 80%-black blurred
+  // panel — used to cover the impact on the very frame it began. Hold the
+  // overlay for one short beat so the bomb, the impact cue and the reveal are
+  // actually seen first. Presentation only: the result row, the payouts and
+  // the resolved audio all apply on arrival; only the panel waits, and reduced
+  // motion skips the wait (nothing moves to watch).
+  //
+  // Keyed on the status STRING (not the match object), so a 5s poll or a
+  // socket snapshot landing before the timer fires can't re-arm it.
+  const matchStatus = match?.status ?? null;
+  const shouldReduceMotion = useReducedMotion();
+  const [resultRevealed, setResultRevealed] = useState(false);
   useEffect(() => {
-    if (!match || match.status !== MATCH_STATUS.FINISHED) return;
-    if (resolvedFiredRef.current) return;
+    if (matchStatus !== MATCH_STATUS.FINISHED) {
+      setResultRevealed(false);
+      return;
+    }
+    if (shouldReduceMotion) {
+      setResultRevealed(true);
+      return;
+    }
+    const timer = setTimeout(() => setResultRevealed(true), RESULT_BEAT_MS);
+    return () => clearTimeout(timer);
+  }, [matchStatus, shouldReduceMotion]);
+
+  // ── Finished-reveal sweep ───────────────────────────────────────
+  // When the hand ends, the cells that were still HIDDEN uncover in one short
+  // sweep (in index order, i.e. top-left → bottom-right) instead of all 25
+  // firing at once. Only the hidden ones take part: every cell that already
+  // held a pick stays at delay 0, so a tile the player has already seen shows
+  // immediately and its existing element is never touched — nothing replays.
+  // The delay is a pure function of the cell's own index, so a poll or socket
+  // snapshot re-reporting the same finished board produces the identical style
+  // and nothing re-animates. With reduced motion the sweep is dropped
+  // altogether and the whole board is simply uncovered at once.
+  const revealedCells = useMemo(
+    () =>
+      new Set(
+        (match?.picks ?? [])
+          .filter((p) => p && Number.isInteger(p.cell))
+          .map((p) => p.cell),
+      ),
+    [match],
+  );
+  // 0 outside the finished state too, so mid-match hover/press transitions on
+  // the tiles are never delayed.
+  const revealDelayMs = useCallback(
+    (cellIndex: number) => {
+      if (!match || match.status !== MATCH_STATUS.FINISHED) return 0;
+      if (shouldReduceMotion || revealedCells.has(cellIndex)) return 0;
+      return cellIndex * REVEAL_STEP_MS;
+    },
+    [match, shouldReduceMotion, revealedCells],
+  );
+
+  // ── Audio: match-just-resolved ─────────────────────────────────
+  // Fired when the RESULT is revealed, not the moment the row settles. The
+  // board reveal (the impact, the bombs, the finished sweep) already carries
+  // its own cue, so the fanfare / defeat sting now lands together with the
+  // result panel and the confetti instead of ~0.9s early over the reveal.
+  // Its own guard ref: this effect used to lean on the posthog capture's ref
+  // declared below it, which only worked because effects run in declaration
+  // order. It re-arms whenever the match leaves the finished state.
+  const resultSoundFiredRef = useRef(false);
+  useEffect(() => {
+    if (!match || match.status !== MATCH_STATUS.FINISHED) {
+      resultSoundFiredRef.current = false;
+      return;
+    }
+    if (!resultRevealed || resultSoundFiredRef.current) return;
+    resultSoundFiredRef.current = true;
     const iWon = Boolean(
       match.winnerId && myUserId && match.winnerId === myUserId,
     );
     if (!match.winnerId) playTick();
     else if (iWon) playVictory();
     else playDefeat();
-  }, [match, myUserId, resolvedFiredRef]);
+  }, [match, myUserId, resultRevealed]);
 
   // ── Audio: my pick reveal (safe chime / mine buzz) ─────────────
   const lastPickIdxRef = useRef(-1);
@@ -817,6 +975,29 @@ export default function MinesPvpMatchPage({
         ? !isPlayer1
         : false;
   const mySeat = isPlayer1 ? "player1" : "player2";
+
+  // ── Timer urgency tick (last 5s, your turn only) ────────────────
+  // Reuses the existing timer sound — `playTick`, the same one the casino's
+  // shared RoundTimer plays per second — so no new audio and no new behaviour
+  // to learn. Only the clock you can actually act on, and only while the
+  // server deadline is real: the 250ms countdown re-renders three times with
+  // the SAME second value and React bails on those, so this fires exactly once
+  // per remaining second, and the ref absorbs a dev double-invoke. The ref is
+  // cleared whenever the clock is above 5s, i.e. at the start of every turn,
+  // so each new turn re-arms cleanly (and a turn that ends at 5s can't swallow
+  // the next turn's first tick).
+  const lastTickSecondRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (isAi || !isMyTurn || !match?.roundDeadline) return;
+    if (timeLeft > 5) {
+      lastTickSecondRef.current = null;
+      return;
+    }
+    if (timeLeft <= 0) return;
+    if (lastTickSecondRef.current === timeLeft) return;
+    lastTickSecondRef.current = timeLeft;
+    playTick();
+  }, [isAi, isMyTurn, match?.roundDeadline, timeLeft]);
   // Most-recent-of-each-seat helpers (used by the legacy pick-audit
   // block inside the result popup). The rest of the UI consumes the
   // per-cell `picks`-array helpers above so a player who has
@@ -1049,12 +1230,15 @@ export default function MinesPvpMatchPage({
     // One-shot reveal cue: the span mounts the moment this pick lands
     // on the board, so the scale/flash pop plays exactly once per
     // landed tile (it stays mounted afterwards and never replays).
+    // The number is sequenced AFTER the tile — the badge carries its own
+    // short delayed pop (`animate-hint-pop`) so the clean reveal lands
+    // first and the proximity hint arrives as a second, quieter beat.
     return (
       <span className="relative inline-flex items-center justify-center animate-tile-reveal">
         <IconDiamondFilled size={22} className={diamondColor} />
         {hint !== null && (
           <span
-            className={`absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-black tabular-nums ${hintBadgeClass(
+            className={`animate-hint-pop absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-black tabular-nums ${hintBadgeClass(
               hint,
             )}`}
           >
@@ -1132,6 +1316,45 @@ export default function MinesPvpMatchPage({
     // were not picked).
     const mines = match.board?.mines ?? [];
     const pickedEntry = pickByCell.get(cellIndex);
+    // A "call a mine" entry — render the CALL, with its verdict. This branch
+    // can only ever run after the server settled the match (a flag is
+    // terminal, so a flag entry cannot exist mid-match), which is what makes
+    // `pickedEntry.isMine` the server's own answer rather than a client-side
+    // guess: correct and wrong flags are distinguishable ONLY once that
+    // result row exists. The tile lands on the shared reveal cue and the
+    // verdict badge pops one beat later (the existing hint-pop timing), so the
+    // callout stays short and reads as a verdict ON the flag, not as a second
+    // tile reveal.
+    if (pickedEntry?.flag) {
+      const calledIt = Boolean(pickedEntry.isMine);
+      return {
+        content: (
+          <span className="relative inline-flex items-center justify-center animate-tile-reveal">
+            <IconFlag
+              size={22}
+              className={calledIt ? "text-emerald-300" : "text-red-300"}
+            />
+            <span
+              className={`animate-hint-pop absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border ${
+                calledIt
+                  ? "bg-emerald-500/20 text-emerald-200 border-emerald-300/50"
+                  : "bg-red-500/20 text-red-200 border-red-400/50"
+              }`}
+            >
+              {calledIt ? (
+                <CheckIcon className="h-3 w-3" />
+              ) : (
+                <CrossIcon className="h-3 w-3" />
+              )}
+            </span>
+          </span>
+        ),
+        revealed: true,
+        // A correct flag means the tile really was a mine, so it keeps the
+        // mine treatment; a wrong one was a safe tile and keeps the safe one.
+        isMine: calledIt,
+      };
+    }
     if (pickedEntry?.isMine) {
       // A picked mine: the picker lost. Render as bomb.
       return {
@@ -1148,8 +1371,33 @@ export default function MinesPvpMatchPage({
       };
     }
     const isMine = mines.includes(cellIndex);
+    // A still-hidden cell: it waits for its own step of the sweep (the wrapper
+    // holds it invisible until then via the entrance's `both` fill), which is
+    // what turns "the board appears" into "the minefield is uncovered".
+    const revealDelay = revealDelayMs(cellIndex);
+    const revealDelayStyle =
+      revealDelay > 0 ? { animationDelay: `${revealDelay}ms` } : undefined;
     return {
-      content: isMine ? <AnimatedBomb exploded /> : <IconDiamondFilled size={22} className="text-cyan-300" />,
+      content: isMine ? (
+        // A hidden mine keeps the loudest cue on the board — the existing
+        // one-shot explosion — and fires it as its tile lights up.
+        <span
+          className="animate-state-in inline-flex items-center justify-center"
+          style={revealDelayStyle}
+        >
+          <AnimatedBomb exploded delayMs={revealDelay} />
+        </span>
+      ) : (
+        // A hidden safe cell stays deliberately quieter than a mine: a short
+        // fade-in (the shared state entrance, reused) on the same step, with
+        // no explosion and no ring, so the mines are what the eye lands on.
+        <span
+          className="animate-state-in inline-flex items-center justify-center"
+          style={revealDelayStyle}
+        >
+          <IconDiamondFilled size={22} className="text-cyan-300" />
+        </span>
+      ),
       revealed: true,
       isMine,
     };
@@ -1225,7 +1473,13 @@ export default function MinesPvpMatchPage({
     if (!match) return null;
     const isFinished = match.status === MATCH_STATUS.FINISHED;
     const isCancelled = match.status === MATCH_STATUS.CANCELLED;
-    const urgent = timeLeft > 0 && timeLeft <= 5;
+    // Urgency tiers — and only for a REAL server deadline: free vs-AI matches
+    // are untimed, and a missing deadline must not paint the panel red.
+    const timedTurn = !isAi && Boolean(match.roundDeadline);
+    const urgent = timedTurn && timeLeft <= 5; // 0 included: the clock ran out
+    // Mid tier (~5s left): visibly warmer but completely static, so the first
+    // two thirds of the 20s stay calm and the pulse is reserved for the end.
+    const warning = timedTurn && timeLeft > 5 && timeLeft <= 10;
 
     if (isCancelled) {
       return (
@@ -1261,12 +1515,20 @@ export default function MinesPvpMatchPage({
     }
     // p1_turn or p2_turn.
     if (isMyTurn) {
+      // Turn-change transition: `key` is the turn's identity, so the banner
+      // remounts (and its 180ms entrance replays) exactly when the turn
+      // changes hands — mine → theirs → mine remounts on each hand-off, while
+      // a poll, socket refresh or any other re-render reuses the element and
+      // replays nothing.
       return (
         <div
-          className={`flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
+          key="my-turn"
+          className={`animate-state-in flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
             urgent
               ? "border-red-400/60 bg-red-900/30 text-red-200 animate-pulse"
-              : "border-cyan-300/40 bg-cyan-500/10 text-cyan-200"
+              : warning
+                ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
+                : "border-cyan-300/40 bg-cyan-500/10 text-cyan-200"
           }`}
         >
           <span className="font-bold text-base sm:text-lg">
@@ -1278,7 +1540,9 @@ export default function MinesPvpMatchPage({
               className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
                 urgent
                   ? "bg-red-500/30 text-red-100"
-                  : "bg-cyan-500/30 text-cyan-100"
+                  : warning
+                    ? "bg-amber-500/25 text-amber-100"
+                    : "bg-cyan-500/30 text-cyan-100"
               }`}
             >
               <ClockIcon className="w-4 h-4" />
@@ -1288,15 +1552,33 @@ export default function MinesPvpMatchPage({
         </div>
       );
     }
+    // Opponent's clock gets the same warm → red ramp so the player can see the
+    // hand is about to time out, but deliberately NO pulse: while you are
+    // waiting, an endlessly blinking panel is noise rather than information.
     return (
       <div
-        className={`relative flex flex-wrap items-center justify-center gap-3 rounded-xl border border-fuchsia-300/40 bg-fuchsia-500/10 px-4 py-3 text-fuchsia-200`}
+        key="their-turn"
+        className={`animate-state-in relative flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
+          urgent
+            ? "border-red-400/50 bg-red-900/25 text-red-200"
+            : warning
+              ? "border-amber-400/40 bg-amber-500/10 text-amber-200"
+              : "border-fuchsia-300/40 bg-fuchsia-500/10 text-fuchsia-200"
+        }`}
       >
         <span className="font-bold text-base sm:text-lg">
           {isAi ? "GRYND AI is picking…" : "Opponent is picking…"}
         </span>
         {!isAi && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/30 px-3 py-1 text-sm font-bold text-fuchsia-100">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
+              urgent
+                ? "bg-red-500/30 text-red-100"
+                : warning
+                  ? "bg-amber-500/25 text-amber-100"
+                  : "bg-fuchsia-500/30 text-fuchsia-100"
+            }`}
+          >
             <ClockIcon className="w-4 h-4" />
             {timeLeft}s
           </span>
@@ -1313,6 +1595,9 @@ export default function MinesPvpMatchPage({
   // this shared screen is the single end-of-match experience.
   function renderResult() {
     if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
+    // Held back for one beat so the deciding tile's impact / flag callout (and
+    // the full-board reveal) land before this overlay covers the board.
+    if (!resultRevealed) return null;
     const iWon =
       match.winnerId && myUserId && match.winnerId === myUserId;
     const iLost =
@@ -1503,10 +1788,16 @@ export default function MinesPvpMatchPage({
 
   // Title
   const titleNode = (
+    // The only JS-driven animation on this page, so it goes through the same
+    // shared helper as every other framer animation here: with reduced motion
+    // the title is simply there instead of being the one element that still
+    // slides and fades in.
     <motion.div
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+      {...withReducedMotion(shouldReduceMotion, {
+        initial: { opacity: 0, y: -12 },
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: 0.4 },
+      })}
     >
       <h1 className="flex items-center justify-center gap-3 text-center text-2xl sm:text-3xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-cyan-300 to-fuchsia-300 drop-shadow-[0_0_18px_rgba(0,229,255,0.55)]">
         <MineIcon className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,229,255,0.65)] flex-shrink-0" />
@@ -1592,6 +1883,8 @@ export default function MinesPvpMatchPage({
         tiles={myPicks.length}
         wagerLabel={wagerLabel}
         thinking={inPickState && isMyTurn}
+        emphasisKey={inPickState && isMyTurn ? "me-turn" : undefined}
+        livePhase={inPickState}
         isWinner={meWon}
         emote={myEmote}
         emoteSide="mine"
@@ -1605,6 +1898,8 @@ export default function MinesPvpMatchPage({
         wagerLabel={wagerLabel}
         thinking={inPickState && !isMyTurn}
         thinkingLabel={isAi ? "AI thinking" : "Picking"}
+        emphasisKey={inPickState && !isMyTurn ? "them-turn" : undefined}
+        livePhase={inPickState}
         isWinner={oppWon}
         emote={incomingEmote}
         emoteSide="incoming"
@@ -1697,6 +1992,12 @@ export default function MinesPvpMatchPage({
       <div className="grid grid-cols-5 gap-2 sm:gap-3">
         {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
           const display = getCellDisplay(cellIndex);
+          // This tile's step in the finished-reveal sweep (0 for every cell
+          // that already held a pick, and outside the finished state). The
+          // tile surface rides the same step as its contents, so a still-hidden
+          // tile lights up WITH its bomb/diamond instead of the whole board's
+          // colours changing at once.
+          const revealDelay = revealDelayMs(cellIndex);
           const cellAlreadyPicked =
             myPicks.includes(cellIndex) ||
             opponentPicks.includes(cellIndex);
@@ -1709,11 +2010,28 @@ export default function MinesPvpMatchPage({
               key={cellIndex}
               onClick={() => handleCellClick(cellIndex)}
               disabled={!isMyTurnClickable || busy}
-              className={`w-full aspect-square rounded-xl flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
+              // `group` lets the press response live on the inner span, so it
+              // can be a short transform-only beat while the tile's own
+              // colour/border state transition keeps its existing 300ms.
+              className={`group w-full aspect-square rounded-xl flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
                 cellIndex,
-              )} ${!isMyTurnClickable ? "cursor-not-allowed" : ""}`}
+              )} ${mineHitCell === cellIndex ? "animate-mine-hit" : ""} ${
+                !isMyTurnClickable ? "cursor-not-allowed" : ""
+              }`}
+              style={
+                revealDelay > 0 ? { transitionDelay: `${revealDelay}ms` } : undefined
+              }
             >
-              {display.content}
+              {/* Press/scale response: the tile acknowledges the touch
+                  immediately, before the server's reveal lands. The pick POST
+                  deliberately returns no board data (see the route's
+                  normalisePickResult), so the reveal itself can only arrive
+                  with the next status frame — the press is what makes the tap
+                  feel handled in the meantime. Transform-only and 100ms, and
+                  a disabled tile never receives :active, so it can't stick. */}
+              <span className="inline-flex transition-transform duration-100 ease-out group-active:scale-90">
+                {display.content}
+              </span>
             </button>
           );
         })}

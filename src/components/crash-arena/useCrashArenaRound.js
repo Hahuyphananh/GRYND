@@ -1202,6 +1202,12 @@ export default function useCrashArenaRound({
       crashPoint: roundState.crashPoint || null,
       startedAt: roundState.startedAt,
       running,
+      // The table has moved past the finished hand (the waiting phase, which
+      // includes the next-round countdown). The engine uses this to clear the
+      // crash it is still holding — frozen curve, bomb, CRASHED read-out — so
+      // a finished hand never lingers into the next one. During crashed /
+      // settling this is false, so the crash stays on screen for the result.
+      idle: roundState.phase === "waiting",
       curveFrom: curveSegment.from,
       curveResumedAt:
         curveSegment.resumedAt ?? roundState.flightResumedAt ?? roundState.startedAt,

@@ -12,8 +12,11 @@ import { IconBomb, IconRocket } from "@tabler/icons-react";
  */
 const STATUS_CONFIG = {
   waiting:   { label: "Waiting for players...", color: "text-[#9dd8ff]",   bg: "bg-[#9dd8ff]/10", border: "border-[#9dd8ff]/25" },
+  // `pulse` is for bounded, urgent cues only. The flight banner used to pulse
+  // for the whole round, which competed with the curve it is describing — the
+  // round is already unmistakably in flight, so it is a steady green now.
   starting:  { label: "Round starting!",         color: "text-[#FFD700]",  bg: "bg-[#FFD700]/10",  border: "border-[#FFD700]/30", pulse: true },
-  flying:    { label: "In flight",              icon: <IconRocket size={14} className="inline" />, color: "text-[#00ffa6]", bg: "bg-[#00ffa6]/10", border: "border-[#00ffa6]/30", pulse: true },
+  flying:    { label: "In flight",              icon: <IconRocket size={14} className="inline" />, color: "text-[#00ffa6]", bg: "bg-[#00ffa6]/10", border: "border-[#00ffa6]/30" },
   crashed:   { label: "CRASHED!",               icon: <IconBomb size={14} className="inline" />,  color: "text-red-400",   bg: "bg-red-500/10",      border: "border-red-500/30" },
   finished:  { label: "Round over",              color: "text-[#9dd8ff]",  bg: "bg-[#9dd8ff]/10",  border: "border-[#9dd8ff]/25" },
 };
@@ -30,9 +33,13 @@ export default function RoundStatus({ status = "waiting", roundNumber = 1, crash
         R{roundNumber}
       </div>
 
-      {/* Status text */}
-      <div className="flex flex-col">
-        <span className={`inline-flex items-center gap-1.5 text-sm font-bold ${config.color} ${config.pulse ? "animate-pulse" : ""}`}>
+      {/* Status text. The label is keyed by status so its entrance plays
+          exactly once per real phase change (waiting → flying → crashed); a
+          re-render from a poll or socket snapshot keeps the same key and does
+          nothing. The optional pulse sits on this wrapper rather than on the
+          animated span, so the two can never fight over `animation`. */}
+      <div className={`flex flex-col ${config.pulse ? "animate-pulse" : ""}`}>
+        <span key={status} className={`animate-state-in inline-flex items-center gap-1.5 text-sm font-bold ${config.color}`}>
           {config.icon}
           {config.label}
         </span>

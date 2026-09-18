@@ -21,7 +21,7 @@
 //   });
 //   ... <EmotePicker onSend={(emote) => sendEmote(emote)} ... />
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const EMOTE_CLEAR_MS = 3000;
 
@@ -29,6 +29,24 @@ export default function useGameEmotes({ socket, roomId, eventName, selfId }) {
   const [incomingEmote, setIncomingEmote] = useState(null);
   const [incomingSenderId, setIncomingSenderId] = useState(null);
   const [myEmote, setMyEmote] = useState(null);
+
+  // Auto-clear timers for the bubbles (an emote pops, then clears after
+  // EMOTE_CLEAR_MS). They are tracked so that: a new emote cancels the pending
+  // clears of the previous one (rapid emotes can no longer stack overlapping
+  // timers), and unmounting clears them for good — leaving a match mid-bubble
+  // must not fire setState into a component that is already gone.
+  const clearTimersRef = useRef([]);
+  const clearPendingTimers = useCallback(() => {
+    clearTimersRef.current.forEach(window.clearTimeout);
+    clearTimersRef.current = [];
+  }, []);
+  const scheduleClear = useCallback(
+    (fn) => {
+      clearTimersRef.current.push(window.setTimeout(fn, EMOTE_CLEAR_MS));
+    },
+    []
+  );
+  useEffect(() => clearPendingTimers, [clearPendingTimers]);
 
   useEffect(() => {
     if (!socket || !roomId || !eventName) return;
@@ -39,8 +57,9 @@ export default function useGameEmotes({ socket, roomId, eventName, selfId }) {
       if (payload?.senderId && payload.senderId === selfId) return;
       setIncomingEmote(payload?.emote || null);
       setIncomingSenderId(payload?.senderId ?? null);
-      window.setTimeout(() => setIncomingEmote(null), EMOTE_CLEAR_MS);
-      window.setTimeout(() => setIncomingSenderId(null), EMOTE_CLEAR_MS);
+      clearPendingTimers();
+      scheduleClear(() => setIncomingEmote(null));
+      scheduleClear(() => setIncomingSenderId(null));
     };
     socket.on(eventName, handleEmote);
 
@@ -48,7 +67,7 @@ export default function useGameEmotes({ socket, roomId, eventName, selfId }) {
       socket.emit("leave_room", { roomId });
       socket.off(eventName, handleEmote);
     };
-  }, [socket, roomId, eventName, selfId]);
+  }, [socket, roomId, eventName, selfId, clearPendingTimers, scheduleClear]);
 
   const sendEmote = useCallback(
     (emote) => {
@@ -58,7 +77,8 @@ export default function useGameEmotes({ socket, roomId, eventName, selfId }) {
       // picker mounts). The broadcast below is then best-effort — if we
       // can't emit now, the next successful send will carry it.
       setMyEmote(emote);
-      window.setTimeout(() => setMyEmote(null), EMOTE_CLEAR_MS);
+      clearPendingTimers();
+      scheduleClear(() => setMyEmote(null));
       if (!socket || !roomId || !eventName) return;
       socket.emit("room_event", {
         roomId,
@@ -66,7 +86,7 @@ export default function useGameEmotes({ socket, roomId, eventName, selfId }) {
         payload: { emote, senderId: selfId },
       });
     },
-    [socket, roomId, eventName, selfId]
+    [socket, roomId, eventName, selfId, clearPendingTimers, scheduleClear]
   );
 
   return { incomingEmote, incomingSenderId, myEmote, sendEmote };

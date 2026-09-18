@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import { withReducedMotion } from "../../lib/animations";
 import { CRASH_MAX_BUYIN } from "../../lib/games/crash/constants";
 
 /**
@@ -23,6 +24,9 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
   const tableMax = table.maxBuyIn ? Math.min(table.maxBuyIn, hardCap) : hardCap;
   const effectiveMax = Math.min(tableMax, maxBalance ?? tableMax);
   const [amount, setAmount] = useState(() => Math.min(minBuyIn, effectiveMax));
+  // Reduced motion: the dialog appears in place instead of springing — same
+  // shared helper the game engine and the result popup use.
+  const shouldReduce = useReducedMotion();
 
   const presets = [
     minBuyIn,
@@ -42,17 +46,21 @@ export default function BuyInModal({ table, onBuyIn, onClose, maxBalance }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      {...withReducedMotion(shouldReduce, {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+      })}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+        {...withReducedMotion(shouldReduce, {
+          initial: { scale: 0.9, opacity: 0, y: 20 },
+          animate: { scale: 1, opacity: 1, y: 0 },
+          exit: { scale: 0.9, opacity: 0, y: 20 },
+          transition: { type: "spring", stiffness: 300, damping: 25 },
+        })}
         className="relative w-full max-w-sm overflow-hidden rounded-3xl border-2 border-amber-700/60 bg-gradient-to-b from-[#12042a] to-[#0a0118] p-6 shadow-[0_0_60px_rgba(251,191,36,0.2)]"
         onClick={(e) => e.stopPropagation()}
       >

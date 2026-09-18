@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { IconBomb, IconFlag } from "@tabler/icons-react";
+import { IconBomb, IconCircleCheck, IconFlag, IconRocket } from "@tabler/icons-react";
 import IconAvatar from "../IconAvatar";
 
 
@@ -12,24 +12,47 @@ import IconAvatar from "../IconAvatar";
  *                        allIn?, folded?, foldedAtMultiplier?, busted?, isPlaying? }
  *   maxSeats — total seats at the table
  *   phase    — current round phase ("waiting" | "running" | "crashed" | "settling")
+ *   readyUserIds — ids of seated players who pressed Start Round (the ready
+ *                  vote). AI bots never vote, so they are simply absent.
  *   onReport — (player) => void — opens the report modal for a seated opponent
  *   onRemoveAi — (player) => void — the HOST's control to remove an AI
  *              seat (only rendered on bot cards when provided)
  *   onRenameAi — (player) => void — the HOST's control to rename an AI
  *              seat (only rendered on bot cards when provided)
  */
-export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting", onReport, onRemoveAi, onRenameAi }) {
+export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting", readyUserIds = [], onReport, onRemoveAi, onRenameAi }) {
   const seats = Array.from({ length: maxSeats }, (_, i) => players[i] || null);
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
 
-  /** Derive the border + glow treatment for a player card during live rounds. */
+  /**
+   * A seated player who has cast their ready vote (never a bot — bots don't
+   * vote). Only in the waiting phase, and never alongside SITTING OUT, so a
+   * seat shows one readiness state at a time (the sidebar resolves it the
+   * same way).
+   */
+  const isReady = (player) =>
+    !isLive &&
+    !player?.isSittingOut &&
+    player?.userId != null &&
+    readyUserIds.includes(player.userId);
+
+  /**
+   * Border + glow treatment for a player card.
+   *
+   * Emphasis ladder, strongest first: active (in the hand) → all-in/folded/
+   * busted (distinct status colours) → waiting → sitting out → empty seat.
+   * The active card used to carry a permanent `animate-pulse`; the curve is the
+   * focus of the round and an endlessly blinking seat competed with it, so the
+   * "in the hand" read is now a steadier treatment: a brighter cyan ring than a
+   * merely seated player, plus the In-flight badge.
+   */
   function cardStyle(player) {
     if (!player) return "border-dashed border-[#00e5ff]/10 bg-transparent opacity-40";
     if (player.isSittingOut) return "border-yellow-500/30 bg-[#020617] opacity-60";
     if (player.allIn) return "border-[#ff4fd8]/50 bg-[#ff4fd8]/10 shadow-[0_0_12px_rgba(255,79,216,0.25)]";
     if (player.folded) return "border-yellow-500/40 bg-yellow-950/20 opacity-70 shadow-[0_0_12px_rgba(250,204,21,0.15)]";
     if (player.busted) return "border-red-500/40 bg-red-950/30 shadow-[0_0_12px_rgba(239,68,68,0.25)]";
-    if (player.isPlaying && isLive) return "border-[#00e5ff]/40 bg-[#020617] shadow-[0_0_12px_rgba(0,229,255,0.18)] animate-pulse";
+    if (player.isPlaying && isLive) return "border-[#00e5ff]/60 bg-[#020617] shadow-[0_0_16px_rgba(0,229,255,0.32)]";
     return "border-[#00e5ff]/30 bg-[#020617] shadow-[0_0_12px_rgba(0,229,255,0.1)]";
   }
 
@@ -39,15 +62,22 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
         // Determine the live-status badge
         let liveBadge = null;
         if (player && isLive && !player.isSittingOut) {
+          // Every badge is keyed by the state it represents and carries the
+          // shared one-shot entrance. The key is what makes the animation
+          // exact: a real state change (active → folded) swaps the key, so
+          // React mounts a fresh span and the entrance plays once; a poll or
+          // socket snapshot carrying the SAME state re-renders the same key,
+          // the span is reused and nothing replays. All-in stays deliberately
+          // pink and folded yellow: two states must never read as one.
           if (player.allIn) {
             liveBadge = (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff4fd8]/15 text-[#ff4fd8] border border-[#ff4fd8]/40 font-bold">
-                All-in
+              <span key="allin" className="animate-state-in text-[10px] px-1.5 py-0.5 rounded-full bg-[#ff4fd8]/15 text-[#ff4fd8] border border-[#ff4fd8]/40 font-bold">
+                <IconCircleCheck size={12} className="mr-1 inline" /> All-in
               </span>
             );
           } else if (player.folded) {
             liveBadge = (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 font-bold">
+              <span key="folded" className="animate-state-in text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 font-bold">
                 <IconFlag size={12} className="mr-1 inline" />
                 {player.foldedAtMultiplier != null
                   ? `Folded @${player.foldedAtMultiplier.toFixed(2)}x`
@@ -56,14 +86,14 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             );
           } else if (player.busted) {
             liveBadge = (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 font-bold">
+              <span key="busted" className="animate-state-in text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 font-bold">
                 <IconBomb size={12} className="mr-1 inline" /> Busted
               </span>
             );
           } else if (player.isPlaying) {
             liveBadge = (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#00e5ff]/10 text-[#00e5ff]/80 border border-[#00e5ff]/20 animate-pulse">
-                In flight…
+              <span key="inflight" className="animate-state-in text-[10px] px-1.5 py-0.5 rounded-full bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/30 font-bold">
+                <IconRocket size={12} className="mr-1 inline" /> In flight…
               </span>
             );
           }
@@ -140,6 +170,14 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             {player?.isSittingOut && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
                 SITTING OUT
+              </span>
+            )}
+
+            {/* Ready badge — waiting phase only: this seat has already voted
+                to start the next hand. Static (no idle animation). */}
+            {isReady(player) && (
+              <span className="animate-state-in text-[10px] px-1.5 py-0.5 rounded-full bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/30 font-bold">
+                <IconCircleCheck size={12} className="mr-1 inline" /> READY
               </span>
             )}
 
