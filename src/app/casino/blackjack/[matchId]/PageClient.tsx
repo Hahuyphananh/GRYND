@@ -3531,12 +3531,13 @@ function BetweenRoundsScreen({
     }
   }, [secondsLeft, onAfter]);
 
+  const continueUrl = `/api/blackjack-pvp/match/${matchId}/continue`;
   const handleContinueNow = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
     try {
       const res = await fetch(
-        `/api/blackjack-pvp/match/${matchId}/continue`,
+        continueUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
