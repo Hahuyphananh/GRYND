@@ -1,4 +1,3 @@
-```js
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
@@ -694,4 +693,3 @@ process.exitCode =
   uniqueErrors.length > 0
     ? 1
     : 0;
-```

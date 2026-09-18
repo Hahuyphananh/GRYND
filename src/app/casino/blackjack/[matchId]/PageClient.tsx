@@ -3257,7 +3257,7 @@ function RoundResultSeat({
         ) : (
           hand.map((c) => (
             <motion.div
-              key={`${c.suit}${c.value`}
+              key={`${c.suit}${c.value}`}
               // Reduced motion: no flip and no per-card stagger — every
               // revealed card is simply face-up and readable at once.
               {...withReducedMotion(shouldReduce, {

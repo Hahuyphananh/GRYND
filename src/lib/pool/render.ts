@@ -473,3 +473,44 @@ export function drawBalls(ctx: CanvasRenderingContext2D, balls: Ball[]) {
     ctx.restore();
   }
 }
+
+/**
+ * Aim-guide pot line — the object ball's path to the best pocket, drawn from
+ * the same readout `analyzeShot` produces. A null pot (nothing is lined up)
+ * and a pot whose ball has left the table both draw nothing.
+ */
+export function drawPotPreview(
+  ctx: CanvasRenderingContext2D,
+  balls: Ball[],
+  pot: { ball: number; pocket: number; chance: number; blocked: boolean } | null,
+) {
+  if (!pot) return;
+
+  // The ball may have been pocketed since the readout was taken.
+  const ball = balls.find((b) => b.number === pot.ball && !b.pocketed);
+  const pocket = POCKETS[pot.pocket];
+  if (!ball || !pocket) return;
+
+  const [px, py] = pocket;
+
+  ctx.save();
+  // A blocked line stays faint; an open one reads as strongly as its chance.
+  ctx.globalAlpha = pot.blocked ? 0.18 : 0.3 + pot.chance * 0.45;
+  ctx.strokeStyle = ball.color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([7, 5]);
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(ball.x, ball.y);
+  ctx.lineTo(px, py);
+  ctx.stroke();
+
+  // Ring the pocket the line runs into, so the target reads at a glance.
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(px, py, POCKET_R * 0.8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}

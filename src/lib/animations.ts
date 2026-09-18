@@ -4,7 +4,11 @@ export const fadeIn = {
   initial: { opacity: 0 },
   animate: { opacity: 1 },
   exit: { opacity: 0 },
-  transition: { duration: 0.25, ease: "easeOut" },
+  // `as const` keeps the literal "easeOut" type when consumers spread
+  // `{...fadeIn}` into a framer-motion component — without it TS widens to
+  // `string`, which framer-motion's `Easing | Easing[]` transition type
+  // rejects. See `fadeUp` below.
+  transition: { duration: 0.25, ease: "easeOut" as const },
 };
 
 export const fadeUp = {
@@ -87,6 +91,23 @@ export const cardDeal = (index, total) => ({
   initial: { opacity: 0, y: -40, rotate: -10 + (index / Math.max(total - 1, 1)) * 20 },
   animate: { opacity: 1, y: 0, rotate: 0 },
   transition: { delay: index * 0.06, duration: 0.3, ease: "easeOut" },
+});
+
+// Shoe deal animation — every card in the hand starts at the shoe's offset
+// from its own slot (`dy`: positive when the shoe sits *below* the row, as
+// it does for the opponent's backs above the table centre) and slides into
+// place. Unlike `cardDeal` the cards do not fan out from their own slots:
+// they share one origin, so the row reads as a single deal from the shoe.
+// The stagger is squeezed into a fixed window so a long hand (repeated
+// hits) still settles as one deal instead of trailing card by card.
+export const dealFromShoe = ({ index = 0, total = 1, dy = 0 } = {}) => ({
+  initial: { opacity: 0, y: dy },
+  animate: { opacity: 1, y: 0 },
+  transition: {
+    delay: index * Math.min(0.09, 0.4 / Math.max(total, 1)),
+    duration: 0.35,
+    ease: "easeOut" as const,
+  },
 });
 
 // Score pop-in animation

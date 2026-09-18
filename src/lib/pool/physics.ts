@@ -21,6 +21,18 @@ export function applyShotPower(pull: number) {
   return 3.0 + Math.pow(t, 1.2) * 22.0;
 }
 
+// Ball-on-ball restitution. Must stay in step with the impulse the collision
+// resolver below applies (equal masses: `impulse = -(1 + e) · rel / 2`).
+const RESTITUTION = 0.96;
+
+/**
+ * Fraction of the cue ball's speed carried into the object ball along the
+ * contact normal. For equal masses that is `(1 + RESTITUTION) / 2`, so this is
+ * the number the table actually resolves to — exported so the aim guide's pace
+ * estimate reasons with the same physics the shot will obey.
+ */
+export const CUE_TRANSFER = (1 + RESTITUTION) / 2;
+
 const SPIN_SWERVE = 0.018;
 const SPIN_FOLLOW = 0.65;
 const SPIN_DRAW = 0.55;
@@ -130,8 +142,7 @@ if (speed < STOP_EPSILON) {
           rvy = b.vy - a.vy;
         const rel = rvx * nx + rvy * ny;
         if (rel < 0) {
-          const restitution = 0.96;
-          const impulse = (-(1 + restitution) * rel) / 2;
+          const impulse = (-(1 + RESTITUTION) * rel) / 2;
           a.vx -= impulse * nx;
           a.vy -= impulse * ny;
           b.vx += impulse * nx;

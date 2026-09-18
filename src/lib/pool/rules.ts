@@ -3,7 +3,7 @@ import { Ball, PlayerTurn, RulesResult, Team } from "./types";
 const isOwn = (n: number, team: Team) =>
   team === "solids" ? n >= 1 && n <= 7 : n >= 9 && n <= 15;
 
-const isObjectBall = (n: number | null) => !!n && n > 0;
+const isObjectBall = (n: number | null): n is number => !!n && n > 0;
 
 const remaining = (balls: Ball[], team: Team) =>
   balls.some(
@@ -13,6 +13,41 @@ const remaining = (balls: Ball[], team: Team) =>
       b.number !== 8 &&
       isOwn(b.number, team),
   );
+
+/**
+ * First-contact verdict, shared by the rules engine and the aim guide so the
+ * guide can never warn about a foul the ruling would not call — or stay quiet
+ * about one it would.
+ *
+ * `team` is the shooter's group, or null while the table is open. A shooter who
+ * has cleared their group has no first-contact restriction left: contacting any
+ * object ball is legal (the old "must strike the 8 first" foul was removed), so
+ * an 8-ball-first contact is only ever judged on an open table.
+ *
+ * Returns the foul message, or null when the contact is legal.
+ */
+export function firstContactFoul(params: {
+  balls: Ball[];
+  team: Team | null;
+  openTable: boolean;
+  firstContact: number | null;
+}): string | null {
+  const { balls, team, openTable, firstContact } = params;
+
+  if (!isObjectBall(firstContact)) {
+    return "Foul: cue ball did not contact an object ball.";
+  }
+
+  if (openTable) {
+    return firstContact === 8
+      ? "Foul: the 8-ball cannot be struck first on an open table."
+      : null;
+  }
+
+  if (!team || !remaining(balls, team)) return null;
+
+  return isOwn(firstContact, team) ? null : "Foul: wrong ball hit first.";
+}
 
 export function evaluateRules(params: {
   balls: Ball[];
@@ -53,25 +88,15 @@ export function evaluateRules(params: {
 
   if (scratch) setFoul("Foul: cue ball scratch. Ball in hand.");
 
-  if (!isObjectBall(firstContact)) {
-    setFoul("Foul: cue ball did not contact an object ball.");
-  } else if (openTable) {
-    if (firstContact === 8) {
-      setFoul("Foul: the 8-ball cannot be struck first on an open table.");
-    }
-  } else if (shooterTeam) {
-    const shooterCleared = !remaining(balls, shooterTeam);
-    const legalFirst = shooterCleared
-      ? firstContact === 8
-      : isOwn(firstContact, shooterTeam);
-    if (!legalFirst) {
-      setFoul(
-        shooterCleared
-          ? "Foul: hit your group before shooting the 8-ball."
-          : "Foul: wrong ball hit first.",
-      );
-    }
-  }
+  // Ruled by the same helper the aim guide reads, so the guide's warning and
+  // the engine's foul can never disagree.
+  const contactFoul = firstContactFoul({
+    balls,
+    team: shooterTeam,
+    openTable,
+    firstContact,
+  });
+  if (contactFoul) setFoul(contactFoul);
 
   if (
     isObjectBall(firstContact) &&

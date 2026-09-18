@@ -1,15 +1,14 @@
 "use client";
-import React from "react";
+import { useEffect, useState } from "react";
 
 
 
-export default function Index() {
-  return (function MainComponent({ 
-  message, 
-  type = "info", 
-  duration = 5000, 
+function MainComponent({
+  message,
+  type = "info",
+  duration = 5000,
   onClose,
-  isVisible = true 
+  isVisible = true,
 }) {
   const [show, setShow] = useState(isVisible);
 
@@ -131,5 +130,8 @@ function StoryComponent() {
       </div>
     </div>
   );
-});
+}
+
+export default function Index() {
+  return <StoryComponent />;
 }
