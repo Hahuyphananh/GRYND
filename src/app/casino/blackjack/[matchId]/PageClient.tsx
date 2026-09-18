@@ -27,8 +27,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useAnimationControls,
+  useReducedMotion,
+} from "framer-motion";
 import { usePostHog } from "posthog-js/react";
+// Shared animation presets. `dealFromShoe` slides cards in from a single
+// shoe position instead of appearing at their own slot; `fadeIn` is the
+// project's opacity-only variant and `withReducedMotion` swaps a variant
+// for `staticMotion` when the viewer prefers reduced motion.
+import {
+  dealFromShoe,
+  fadeIn,
+  withReducedMotion,
+} from "../../../../lib/animations";
 import NavigationBar from "../../../../components/navigation-bar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually begins
@@ -63,12 +77,16 @@ import {
   IconX,
   IconPlayerSkipForward,
   IconCards,
+  IconLock,
 } from "@tabler/icons-react";
 import {
   isRedSuit,
   SWAP_LIMIT_PER_ROUND,
   HOLD_LIMIT_PER_ROUND,
   PEEK_LIMIT_PER_ROUND,
+  // States in which a player action is accepted — i.e. a live turn.
+  // Used to guarantee the round-result popup never covers one.
+  PLAYABLE_STATES,
   BETWEEN_ROUNDS_SECONDS,
   ROUND_TIMER_SECONDS,
   TOTAL_ROUNDS,
@@ -81,6 +99,24 @@ import {
   blackjackPvpMatchRoom,
 } from "../../../../lib/blackjack-pvp/rooms";
 import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
+
+// ── Reduced motion (prefers-reduced-motion) ──────────────────────────
+// Every animation in this file is gated on framer-motion's
+// `useReducedMotion()` together with the shared `withReducedMotion`,
+// `staticMotion` and `fadeIn` helpers — no new reduced-motion system.
+// The policy is deliberate rather than "turn everything off":
+//   · movement — deals, hand re-centring (`layout`), the swap lift and
+//     its outgoing card, the stand settle, the bust shake, score pops,
+//     peek/result card flips and the crown pop — is removed outright.
+//     `staticMotion` sets `initial: false`, so skipped animations leave
+//     content visible, in place and immediately readable;
+//   · surface appearance/disappearance — panels, strips, banners and
+//     modals (including the action panel easing out on stand) — keeps a
+//     short opacity-only fade, so the state change stays perceptible
+//     while all motion is gone;
+//   · functional indicators (the round-timer bar and the between-rounds
+//     bar) keep updating, just with a 0 s tween.
+// Gameplay, server state and timers are untouched by all of it.
 
 // ── Types ────────────────────────────────────────────────────────────
 type Card = { suit: string; value: string };
@@ -181,7 +217,17 @@ const CardFace: React.FC<{
   fade?: boolean;
 }> = ({ card, small, rotateY, fade }) => {
   const red = isRedSuit(card.suit);
-  const size = small ? "h-24 w-16 text-base" : "h-28 w-20 text-xl";
+  // Responsive card sizing using clamp() ensures 4 cards fit in 360px viewport
+  // while preserving readability and desktop appearance. The width clamps between
+  // a mobile minimum and a desktop maximum, providing smooth scaling without
+  // horizontal overflow. Height is content-driven via flex layout.
+  const cardWidth = small
+    ? "w-[clamp(0.875rem,16vw,4rem)]"
+    : "w-[clamp(1rem,18vw,5rem)]";
+  const cardHeight = small
+    ? "h-[clamp(1.25rem,20vw,5rem)]"
+    : "h-[clamp(2.75rem,24vw,6rem)]";
+  const size = `${cardHeight} ${cardWidth} ${small ? "text-xs" : "text-xl"}`;
   const pipSize = small ? "text-xs" : "text-sm";
   return (
     <div
@@ -217,16 +263,46 @@ const CardFace: React.FC<{
 };
 
 // Hidden opponent card placeholder — count visible (matches what's in
-// the API's scrubbed hand), values never revealed.
-const HiddenOppCard: React.FC = () => (
-  <motion.div
-    initial={{ y: -40, opacity: 0 }}
-    animate={{ y: 0, opacity: 1 }}
-    transition={{ duration: 0.35 }}
-  >
-    <BlackjackCardBack />
-  </motion.div>
-);
+// the API's scrubbed hand), values never revealed. Dealt in from the same
+// shoe position as the player's cards (the table centre sits *below* the
+// opponent's row, hence the positive `dy`), and `layout` keeps the row
+// re-centring smooth when their hand grows.
+const HiddenOppCard: React.FC<{
+  index?: number;
+  total?: number;
+}> = ({ index = 0, total = 1 }) => {
+  const shouldReduce = useReducedMotion();
+  const deal = dealFromShoe({ index, total, dy: 58 });
+  return (
+    // Reduced motion: no shoe slide, no stagger, no layout tween — the
+    // backs appear in place (and `initial: false` keeps them visible).
+    <motion.div
+      layout={!shouldReduce}
+      {...withReducedMotion(shouldReduce, deal)}
+    >
+      <BlackjackCardBack />
+    </motion.div>
+  );
+};
+
+// ── Round-result popup timing ────────────────────────────────────────
+// The popup is a full-screen overlay, so it must be off the table before
+// the next round's live turn starts. While the match is advancing, the
+// server already stores the next-round instant on `roundDeadline` (see
+// `resolveRound` → BETWEEN_ROUNDS_MS), so the popup is sized from that
+// server timestamp rather than a hard-coded duration — no server timing,
+// result, API or 30 s rule is involved.
+//   · EXIT — the popup's AnimatePresence fade, which still blocks clicks
+//     while it runs, so it is subtracted from the available window.
+//   · MIN — floor so a result discovered late still gets a readable beat.
+//   · FALLBACK — the original 5 s dwell, kept for phases with no next
+//     round to protect (deciding/final round, finished, cancelled).
+const RESULT_POPUP_EXIT_MS = 250;
+const RESULT_POPUP_MIN_MS = 1000;
+const RESULT_POPUP_FALLBACK_MS = 5000;
+// `PLAYABLE_STATES` is typed as the exact status literals; widened here so
+// the match's `status` string can be tested against it without a cast.
+const LIVE_TURN_STATES: Set<string> = PLAYABLE_STATES;
 
 // ── Page ─────────────────────────────────────────────────────────────
 // ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ─────
@@ -252,6 +328,8 @@ export default function BlackjackPvpMatchPage({
   const posthog = usePostHog();
   const { socket } = useSocket();
   const { t } = useTranslation();
+  // Page-level reduced-motion switch (see the policy note above).
+  const shouldReduce = useReducedMotion();
 
   // Memoize a stable Promise wrapping the raw `params` prop so `use()`
   // can be called unconditionally on every render (React rules-of-
@@ -288,6 +366,46 @@ export default function BlackjackPvpMatchPage({
   // two starting cards). Lives at the page so the same selection
   // drives both MyHand's highlight and ActionPanel's enabled state.
   const [swapTarget, setSwapTarget] = useState<number | null>(null);
+  // The card a swap just replaced, painted as a short-lived overlay on
+  // top of its slot so the OUTGOING card animates away while the
+  // incoming card deals in. Captured from the pre-swap hand at click
+  // time (nothing is derived from the server response).
+  const [swapGhost, setSwapGhost] = useState<{
+    index: number;
+    card: Card;
+    id: number;
+  } | null>(null);
+  const swapGhostTimerRef = useRef<number | null>(null);
+  const clearSwapGhost = useCallback(() => {
+    if (swapGhostTimerRef.current !== null) {
+      window.clearTimeout(swapGhostTimerRef.current);
+      swapGhostTimerRef.current = null;
+    }
+    setSwapGhost(null);
+  }, []);
+  const flashSwapGhost = useCallback(
+    (index: number, card: Card) => {
+      if (swapGhostTimerRef.current !== null) {
+        window.clearTimeout(swapGhostTimerRef.current);
+      }
+      setSwapGhost({ index, card, id: Date.now() });
+      // Safety net: the overlay normally clears itself on animation
+      // complete, which never fires if its slot unmounts mid-flight
+      // (new round, match end).
+      swapGhostTimerRef.current = window.setTimeout(clearSwapGhost, 600);
+    },
+    [clearSwapGhost],
+  );
+  useEffect(() => {
+    if (swapGhostTimerRef.current !== null) {
+      window.clearTimeout(swapGhostTimerRef.current);
+      swapGhostTimerRef.current = null;
+    }
+  }, []);
+  // A rejected swap must not leave a phantom outgoing card behind.
+  useEffect(() => {
+    if (errorMsg) clearSwapGhost();
+  }, [errorMsg, clearSwapGhost]);
   // Local peek overlay state. The server returns peekedCard in the
   // action response but does NOT persist it on the match row, so the
   // client manages visibility itself. Cleared whenever the player
@@ -310,6 +428,9 @@ export default function BlackjackPvpMatchPage({
   // final revealed hands underneath.
   const [showResult, setShowResult] = useState(true);
   const victoryCelebratedRef = useRef(false);
+  const incomingEmoteTimeoutRef = useRef<number | null>(null);
+  const myEmoteTimeoutRef = useRef<number | null>(null);
+  const fetchSequenceRef = useRef(0);
   // Tracks which round numbers the user has already acknowledged in a
   // round-result modal. Without this, the modal would re-open on every
   // poll (because the latest-round-vs-shownFor check flips back to true
@@ -362,6 +483,43 @@ export default function BlackjackPvpMatchPage({
     if (!match) return [];
     return viewerIsPlayer1 ? match.player2Hand : match.player1Hand;
   }, [match, viewerIsPlayer1]);
+  // ── Deal-animation identity (animation only) ──────────────────────
+  // Card React keys are prefixed with `dealKey`, so changing it remounts
+  // the hand and replays the deal-from-shoe animation. It changes on a
+  // new round, and again when a hand was dealt in while the round-result
+  // modal covered the table (that modal is a fixed full-screen overlay,
+  // so the deal would otherwise play out unseen behind it). Purely
+  // presentational: no server state, rules or timing is involved.
+  const myHandSig = useMemo(
+    () => myHand.map((c) => `${c.suit}${c.value}`).join("|"),
+    [myHand],
+  );
+  const handSigRef = useRef(myHandSig);
+  const handUnderModalRef = useRef<string | null>(null);
+  const [dealNonce, setDealNonce] = useState(0);
+  useEffect(() => {
+    handSigRef.current = myHandSig;
+  }, [myHandSig]);
+  useEffect(() => {
+    if (roundResultShownFor !== null) {
+      // Remember what was already on the table when the modal opened.
+      if (handUnderModalRef.current === null) {
+        handUnderModalRef.current = handSigRef.current;
+      }
+      return;
+    }
+    // Modal closed: only replay the deal if the server actually put a new
+    // hand down while it was up. Dismissing the modal early (during the
+    // between-rounds buffer) must leave the resolved cards alone.
+    if (
+      handUnderModalRef.current !== null &&
+      handUnderModalRef.current !== handSigRef.current
+    ) {
+      setDealNonce((n) => n + 1);
+    }
+    handUnderModalRef.current = null;
+  }, [roundResultShownFor]);
+  const dealKey = `${match?.roundNumber ?? 0}:${dealNonce}`;
   const myState = match
     ? viewerIsPlayer1
       ? match.player1State
@@ -410,6 +568,8 @@ export default function BlackjackPvpMatchPage({
   const fetchStatus = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!isValidMatchId) return;
+      const currentSequence = fetchSequenceRef.current + 1;
+      fetchSequenceRef.current = currentSequence;
       try {
         const res = await fetch(`/api/blackjack-pvp/match/${matchId}`, {
           cache: "no-store",
@@ -428,6 +588,9 @@ export default function BlackjackPvpMatchPage({
           if (!opts?.silent) setErrorMsg(data?.error || t("blackjackPvp.errorMatchUnavailable", "Match unavailable"));
           return;
         }
+        // Only apply state if this fetch is still the latest (no newer
+        // fetch has incremented the sequence since we started).
+        if (fetchSequenceRef.current !== currentSequence) return;
         setErrorMsg(null);
         setForbidden(false);
         const next = data.data.match as MatchState;
@@ -452,13 +615,15 @@ export default function BlackjackPvpMatchPage({
           round: next.roundNumber,
         });
       } catch (e) {
-        if (!opts?.silent) setErrorMsg(t("blackjackPvp.errorNetwork", "Network error"));
+        if (!opts?.silent && fetchSequenceRef.current === currentSequence) {
+          setErrorMsg(t("blackjackPvp.errorNetwork", "Network error"));
+        }
       }
     },
-    [isValidMatchId, matchId, match?.status, myHand.length, posthog, router],
+    [isValidMatchId, matchId, myHand.length, posthog, router],
   );
 
-  // Initial fetch + 1.5s poll.
+  // Initial fetch + 5s poll.
   useEffect(() => {
     if (!isSignedIn) {
       router.push("/sign-in?redirect_url=/casino/blackjack");
@@ -494,10 +659,19 @@ export default function BlackjackPvpMatchPage({
       setIncomingEmote(payload?.emote || null);
       // Mirror the 3s clear applied to my own emote bubble so the
       // opponent's bubble in the round-counter doesn't persist forever.
-      window.setTimeout(() => setIncomingEmote(null), 3000);
+      // Use a ref-cleared timeout so a new emote cancels the previous
+      // timeout and the timeout is cleared on unmount.
+      if (incomingEmoteTimeoutRef.current !== null) {
+        window.clearTimeout(incomingEmoteTimeoutRef.current);
+      }
+      incomingEmoteTimeoutRef.current = window.setTimeout(() => setIncomingEmote(null), 3000);
     };
     socket.on("blackjack:emote", handleEmote);
     return () => {
+      if (incomingEmoteTimeoutRef.current !== null) {
+        window.clearTimeout(incomingEmoteTimeoutRef.current);
+        incomingEmoteTimeoutRef.current = null;
+      }
       socket.emit("leave_room", { roomId: blackjackPvpMatchRoom(matchId) });
       socket.off(BLACKJACK_PVP_MATCH_UPDATED, refresh);
       socket.off("blackjack:emote", handleEmote);
@@ -631,7 +805,7 @@ export default function BlackjackPvpMatchPage({
   }, [matchId, resigning, socket, router, t]);
 
   // ── Round-result modal trigger ────────────────────────────────────
-  // BUG-FIX (round-end modal closes itself on every 1.5s poll):
+  // BUG-FIX (round-end modal closes itself on every poll):
   //   `fetchStatus` calls `setRounds(data.data.rounds || [])` which
   //   creates a new array reference on every poll, re-firing this
   //   effect. With the OLD logic the trailing `setRoundResultShownFor(null)`
@@ -667,6 +841,57 @@ export default function BlackjackPvpMatchPage({
       }
     }
   }, [match?.status, rounds, match, roundResultShownFor]);
+
+  // ── Result-popup ↔ round-advance coordination ─────────────────────
+  // How long the popup should stay up. Derived from the server's own
+  // between-rounds deadline so it is always clear of the table (and of
+  // the next round's live 30 s clock) before the server advances, even
+  // when the result was discovered on a late poll.
+  const resultPopupDwellMs = useMemo(() => {
+    const deadlineMs = match?.roundDeadline
+      ? new Date(match.roundDeadline).getTime()
+      : NaN;
+    if (match?.status !== "between_rounds" || !Number.isFinite(deadlineMs)) {
+      // Nothing to protect: deciding round / finished / cancelled. Keep
+      // the original dwell so the result can be read in full.
+      return RESULT_POPUP_FALLBACK_MS;
+    }
+    const remaining = deadlineMs - Date.now() - RESULT_POPUP_EXIT_MS;
+    return Math.max(
+      RESULT_POPUP_MIN_MS,
+      Math.min(RESULT_POPUP_FALLBACK_MS, remaining),
+    );
+    // Recomputes when a popup opens or the match phase changes; the modal
+    // (keyed per round id) reads it once on mount and never reschedules
+    // mid-display.
+  }, [roundResultShownFor, match?.status, match?.roundDeadline]);
+  // When the popup currently on screen went up, so the guard below can
+  // still give a late-discovered result a readable beat.
+  const resultPopupShownAtRef = useRef(0);
+  useEffect(() => {
+    if (roundResultShownFor !== null) {
+      resultPopupShownAtRef.current = Date.now();
+    }
+  }, [roundResultShownFor]);
+  // Coherence guard: a live turn must never sit under the popup. This is
+  // reached when the result was discovered on a late poll, or when the
+  // "Continue now" skip advances the match while the popup is up — the
+  // popup clears itself (after its minimum display) rather than holding
+  // the table for the fallback dwell.
+  useEffect(() => {
+    if (roundResultShownFor === null) return;
+    if (!LIVE_TURN_STATES.has(match?.status ?? "")) return;
+    const wait = Math.max(
+      0,
+      RESULT_POPUP_MIN_MS - (Date.now() - resultPopupShownAtRef.current),
+    );
+    if (wait === 0) {
+      setRoundResultShownFor(null);
+      return;
+    }
+    const id = setTimeout(() => setRoundResultShownFor(null), wait);
+    return () => clearTimeout(id);
+  }, [roundResultShownFor, match?.status]);
 
   // Confetti for match-end victory — fire once when status flips to
   // `finished` and the viewer is the winner.
@@ -1018,7 +1243,7 @@ export default function BlackjackPvpMatchPage({
 
   // Header — title, stake chip, report + leave/resign (desktop layout).
   const headerNode = (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-2 sm:mb-3 flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-2xl sm:text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">
         <span className="inline-flex items-center gap-2"><IconCards size={26} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
       </h1>
@@ -1135,8 +1360,13 @@ export default function BlackjackPvpMatchPage({
       <div className="text-center mb-3">
         <motion.h2
           key={match?.status ?? "loading"}
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
+          {...(shouldReduce
+            ? fadeIn
+            : {
+                initial: { opacity: 0, y: -4 },
+                animate: { opacity: 1, y: 0 },
+                transition: { duration: 0.2, ease: "easeOut" as const },
+              })}
           className="text-[#FFD700] text-base sm:text-lg font-bold"
         >
           {statusLabel}
@@ -1154,6 +1384,7 @@ export default function BlackjackPvpMatchPage({
         hand={oppHand}
         isMatchFinished={match?.status === "finished"}
         isAi={Boolean(match?.isAi)}
+        dealKey={dealKey}
       />
 
       {/* ▶ MIDDLE SECTION — Game table
@@ -1211,17 +1442,25 @@ export default function BlackjackPvpMatchPage({
         canSwap={canSwap}
         swapTarget={swapTarget}
         onSwapTargetChange={setSwapTarget}
+        dealKey={dealKey}
+        swapGhost={swapGhost}
+        onSwapGhostDone={clearSwapGhost}
       />
 
       {/* Held-card preview (so the player can see what's on hold
-         and decide add vs discard). */}
-      {myActions.heldCard && (
-        <HeldCardPreview
-          t={t}
-          card={myActions.heldCard}
-          resolved={myActions.heldResolved}
-        />
-      )}
+         and decide add vs discard). Fades/slides in when the freeze
+         lands and back out when it is spent, instead of snapping in
+         and out of the layout. */}
+      <AnimatePresence>
+        {myActions.heldCard && (
+          <HeldCardPreview
+            key="held-card"
+            t={t}
+            card={myActions.heldCard}
+            resolved={myActions.heldResolved}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Between-rounds transition screen — shows while the
           server is in MATCH_STATUS.BETWEEN_ROUNDS (a 3-second
@@ -1278,7 +1517,24 @@ export default function BlackjackPvpMatchPage({
           set) and BUSTED (recovery via Swap / Freeze / Use-Held)
           seats. Hit and Stand appear but stay disabled on busted
           seats because they can't un-bust you. */}
-      {handIsInteractive && (
+      {/* Timer + action panel. Wrapped in AnimatePresence so standing
+          (or the round ending) eases the controls out instead of
+          unmounting them mid-frame. The mount condition itself is
+          unchanged and server-derived, and the child key is stable, so
+          a poll can never flash the panel back or replay its entrance. */}
+      <AnimatePresence>
+        {handIsInteractive && (
+          <motion.div
+            key="action-controls"
+            {...(shouldReduce
+              ? fadeIn
+              : {
+                  initial: { opacity: 0, y: 8 },
+                  animate: { opacity: 1, y: 0 },
+                  exit: { opacity: 0, y: 10, scale: 0.99 },
+                  transition: { duration: 0.2, ease: "easeOut" as const },
+                })}
+          >
         <>
           {/* Free vs-AI matches are untimed — no countdown chip. */}
           {!match?.isAi && (
@@ -1299,9 +1555,19 @@ export default function BlackjackPvpMatchPage({
             canUseHeldAdd={canUseHeldAdd}
             canUseHeldDiscard={canUseHeldDiscard}
             swapTarget={swapTarget}
+            shouldReduce={shouldReduce}
             onHit={() => sendAction("hit")}
             onStand={() => sendAction("stand")}
-            onSwap={() => swapTarget !== null && sendAction("swap", { swapIndex: swapTarget })}
+            onSwap={() => {
+              if (swapTarget === null) return;
+              // Animation only: paint the outgoing card over its slot
+              // so it visibly leaves while the replacement deals in.
+              // The swap itself still routes through `sendAction`
+              // exactly as before (same payload, same server call).
+              const outgoing = myHand[swapTarget];
+              if (outgoing) flashSwapGhost(swapTarget, outgoing);
+              sendAction("swap", { swapIndex: swapTarget });
+            }}
             onHold={() => sendAction("hold")}
             onPeek={() => sendAction("peek")}
             onUseHeldAdd={() =>
@@ -1324,25 +1590,30 @@ export default function BlackjackPvpMatchPage({
                   event: "blackjack:emote",
                   payload: { emote, senderId: user?.id },
                 });
-                window.setTimeout(() => setMyEmote(null), 3000);
+                // Clear any previous timeout so only the latest emote's
+                // 3s fade persists; the ref persists across re-renders.
+                if (myEmoteTimeoutRef.current !== null) {
+                  window.clearTimeout(myEmoteTimeoutRef.current);
+                }
+                myEmoteTimeoutRef.current = window.setTimeout(() => setMyEmote(null), 3000);
               }}
             />
           </div>
         </>
-      )}
-      {/* STOOD lock: the hand is frozen and the round resolves
-          as soon as BOTH seats leave PLAYING. We surface ONE
-          consolidated hint here — the previous build had a
-          second duplicate render that just stacked with this
-          one, which read as visual noise. */}
-      {isMyTurn && myState === "stood" && (
-        <div className="mt-3 text-center text-xs text-white/55 italic">
-          {t(
-            "blackjackPvp.lockedAfterStand",
-            "Hand locked. Both hands reveal when the round ends.",
-          )}
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* STOOD lock (the existing server state, not a new one): the hand
+          is frozen and the round resolves as soon as BOTH seats leave
+          PLAYING. The controls above ease out and this panel eases in,
+          so the seat reads as deliberately locked rather than abruptly
+          empty. ONE consolidated hint — the previous build had a second
+          duplicate render that just stacked with this one. */}
+      <AnimatePresence>
+        {isMyTurn && myState === "stood" && (
+          <StandLockedPanel key="stand-locked" t={t} />
+        )}
+      </AnimatePresence>
       {/* Busted-but-still-active hint — clarifies that the
           player can still use Swap & Freeze to recover before
           the round resolves (the panel above stays visible).
@@ -1393,7 +1664,7 @@ export default function BlackjackPvpMatchPage({
   // opponent cards+score are scrubbed server-side.
   const historyNode =
     rounds.length > 0 ? (
-      <div className="mt-4 rounded-xl bg-[#001933]/60 border border-[#FFD700]/15 p-3 text-xs text-[#FFD700]/80">
+      <div className="mt-2 sm:mt-4 rounded-xl bg-[#001933]/60 border border-[#FFD700]/15 p-3 text-xs text-[#FFD700]/80">
         <h3 className="text-[#FFD700] font-bold mb-2 text-sm">
           {t("blackjackPvp.historyTitle", "Historique des manches")}
         </h3>
@@ -1490,6 +1761,7 @@ export default function BlackjackPvpMatchPage({
                 roundsWonPlayer1={Number(match.roundsWonPlayer1) || 0}
                 roundsWonPlayer2={Number(match.roundsWonPlayer2) || 0}
                 onDismiss={() => setRoundResultShownFor(null)}
+                dwellMs={resultPopupDwellMs}
               />
             );
           })()}
@@ -1510,10 +1782,10 @@ export default function BlackjackPvpMatchPage({
   // Normal (non-creator) page — byte-for-byte the original stack.
   const normalView = (
     <>
-      <div className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
+      <div className="mx-auto max-w-5xl px-3 py-2 sm:px-4 sm:py-4">
         {headerNode}
         {errorNode}
-        <div className="rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-4 sm:p-6">
+        <div className="rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-2 sm:p-4">
           {tableNode}
           {controlsNode}
         </div>
@@ -1660,17 +1932,12 @@ export default function BlackjackPvpMatchPage({
         )}
       </AnimatePresence>
 
-      {/* Animations */}
-      <style jsx>{`
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-6px); }
-          40% { transform: translateX(6px); }
-          60% { transform: translateX(-4px); }
-          80% { transform: translateX(4px); }
-        }
-        .animate-shake { animation: shake 0.4s ease-in-out; }
-      `}</style>
+      {/* Bust shake keyframes now live in tailwind.config.js
+          (`animation.shake`) — this block used to define them inside a
+          component-scoped <style jsx>, which scopes its selectors to the
+          component that owns the style, so the `.animate-shake` class
+          worn by the hand row inside <MyHand> never matched and the
+          shake never ran. */}
 
       {/* Report modal */}
       <ReportModal
@@ -1714,6 +1981,7 @@ function RoundTimerDisplay({
   deadline: string | null;
   total: number;
 }) {
+  const shouldReduce = useReducedMotion();
   const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 500);
@@ -1732,7 +2000,7 @@ function RoundTimerDisplay({
   // Fold the "expired" state into urgent so the panel keeps pulsing
   // while we wait for the server's force-advance / round-resolve
   // sweep. Otherwise the user sees a flat zero that doesn't change
-  // until the next 1.5s poll lands.
+  // until the next 5s poll lands.
   const urgent = secondsLeft <= 5;
   const labelKey = urgent
     ? "blackjackPvp.roundTimerUrgent"
@@ -1753,10 +2021,12 @@ function RoundTimerDisplay({
         {label}
       </div>
       <div className="mt-1.5 h-1.5 w-full bg-white/10 rounded-full overflow-hidden shadow-inner">
+        {/* Functional indicator: it keeps tracking the server deadline,
+            reduced motion just makes each step land instantly. */}
         <motion.div
           initial={false}
           animate={{ width: `${progress * 100}%` }}
-          transition={{ duration: 0.4, ease: "linear" }}
+          transition={{ duration: shouldReduce ? 0 : 0.4, ease: "linear" }}
           className={`h-full ${urgent ? "bg-red-400" : "bg-[#FFD700]"}`}
         />
       </div>
@@ -1773,6 +2043,7 @@ function OpponentHand({
   hand,
   isMatchFinished,
   isAi,
+  dealKey,
 }: {
   t: TFn;
   label: string;
@@ -1781,6 +2052,10 @@ function OpponentHand({
   hand: Card[];
   isMatchFinished: boolean;
   isAi: boolean;
+  // Part of every card back's key: changes when a fresh hand should deal
+  // in (new round / table visible again), so the backs animate without
+  // the server state being touched.
+  dealKey: string;
 }) {
   // By spec the opponent's cards, score, and state are NEVER shown.
   const placeholder = isAi
@@ -1812,7 +2087,13 @@ function OpponentHand({
       <div className="flex justify-center gap-3 mb-1 flex-wrap">
         {hand.length === 0
           ? [0, 1].map((i) => <BlackjackCardBack key={i} />)
-          : hand.map((_, i) => <HiddenOppCard key={i} />)}
+          : hand.map((_, i) => (
+              <HiddenOppCard
+                key={`${dealKey}-${i}`}
+                index={i}
+                total={hand.length}
+              />
+            ))}
       </div>
     </div>
   );
@@ -1829,6 +2110,9 @@ function MyHand({
   canSwap,
   swapTarget,
   onSwapTargetChange,
+  dealKey,
+  swapGhost,
+  onSwapGhostDone,
 }: {
   t: TFn;
   label: string;
@@ -1843,10 +2127,39 @@ function MyHand({
   canSwap: boolean;
   swapTarget: number | null;
   onSwapTargetChange: (idx: number) => void;
+  // Part of every card's React key: changes when a fresh hand should
+  // deal in from the shoe (new round, or the table becoming visible
+  // again after the round-result modal). Pure animation identity — the
+  // server hands themselves are never touched.
+  dealKey: string;
+  // The card a swap just replaced, painted over its slot until it has
+  // finished animating away.
+  swapGhost: { index: number; card: Card; id: number } | null;
+  onSwapGhostDone: () => void;
 }) {
+  const shouldReduce = useReducedMotion();
   const busted = myState === "busted" && hand.length > 0;
+  // One-shot "hand locked" settle when this seat stands. Driven by
+  // animation controls rather than a keyed remount, so the cards keep
+  // their nodes, their deal identity and their layout animations; the
+  // previous-state ref means a poll, a re-render or a re-fetch can never
+  // replay it. The round/result animations are untouched. Reduced
+  // motion: the state change lands without the settle.
+  const standSettle = useAnimationControls();
+  const wasStoodRef = useRef(myState === "stood");
+  useEffect(() => {
+    const isStood = myState === "stood";
+    if (isStood && !wasStoodRef.current && !shouldReduce) {
+      standSettle.start({
+        scale: [1, 1.012, 1],
+        y: [0, -3, 0],
+        transition: { duration: 0.34, ease: "easeOut" },
+      });
+    }
+    wasStoodRef.current = isStood;
+  }, [myState, standSettle, shouldReduce]);
   return (
-    <div>
+    <motion.div animate={standSettle}>
       <div className="text-center mb-2">
         <div className="flex items-center justify-center gap-2">
           <IconAvatar
@@ -1868,63 +2181,151 @@ function MyHand({
               busted ? "text-red-400" : "text-[#FFD700]/80"
             }`}
           >
-            {busted
-              ? `${t("blackjackPvp.bustedPrefix", "Vous avez sauté !")} (${score})`
-              : myState === "stood"
-              ? `${t("blackjackPvp.stand", "Rester")} (${score} ${t("blackjackPvp.ptsUnit", "pts")})`
-              : `${score} ${t("blackjackPvp.ptsUnit", "pts")}`}
+            {/* The number itself is the only thing that pops, and only
+                when it changes — the labels around it stay still. */}
+            {busted ? (
+              <>
+                {`${t("blackjackPvp.bustedPrefix", "Vous avez sauté !")} (`}
+                <ScorePulse key={score} score={score} />
+                {")"}
+              </>
+            ) : myState === "stood" ? (
+              // Locked hand: the score line carries the lock so the
+              // frozen seat is legible at a glance, alongside the
+              // stand panel below the table.
+              <>
+                <IconLock size={11} className="inline-block align-middle mr-1" aria-hidden />
+                {`${t("blackjackPvp.stand", "Rester")} (`}
+                <ScorePulse key={score} score={score} />
+                {` ${t("blackjackPvp.ptsUnit", "pts")})`}
+              </>
+            ) : (
+              <>
+                <ScorePulse key={score} score={score} />
+                {` ${t("blackjackPvp.ptsUnit", "pts")}`}
+              </>
+            )}
           </p>
         )}
       </div>
-      <div className="flex justify-center gap-3 mb-1 flex-wrap">
+      {/* The bust shake rides the hand ROW, not each card: one element,
+          one animation, so the whole hand reacts together and the cards'
+          own Framer transforms (deal, swap-selection lift) are never
+          fighting a CSS transform. Removed when the seat leaves BUSTED,
+          so a later round's bust re-triggers it. */}
+      <div
+        className={`flex justify-center gap-3 mb-1 flex-wrap ${
+          busted && !shouldReduce ? "animate-shake" : ""
+        }`}
+      >
         {hand.length === 0 ? (
           [0, 1].map((i) => <BlackjackCardBack key={i} />)
         ) : (
           hand.map((card, i) => {
             const isSelected = canSwap && swapTarget === i;
+            // The deal lives on the wrapping element and the swap
+            // selection stays on the button, so a remount only ever
+            // replays the deal and the selection spring can never pick
+            // up the deal's stagger delay.
+            const deal = dealFromShoe({
+              index: i,
+              total: hand.length,
+              dy: -58,
+            });
+            const ghost = swapGhost && swapGhost.index === i ? swapGhost : null;
+            // Deal identity + card identity: a genuinely re-dealt card
+            // is a new element (so it animates), an untouched one keeps
+            // its node (so it stays still), and `layout` smooths the row
+            // re-centring underneath it.
             return (
-              <motion.button
-                key={i}
-                type="button"
-                disabled={!canSwap}
-                onClick={() => {
-                  if (canSwap) onSwapTargetChange(i);
-                }}
-                initial={{ y: 60, opacity: 0 }}
-                animate={
-                  isSelected
-                    ? { y: -22, opacity: 1, scale: 1.08 }
-                    : { y: 0, opacity: 1, scale: 1 }
-                }
-                whileHover={
-                  canSwap && !isSelected
-                    ? { y: -8, scale: 1.04 }
-                    : undefined
-                }
-                whileTap={canSwap ? { scale: 0.97 } : undefined}
-                transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                aria-label={`Card ${i + 1}: ${card.suit}${card.value}${isSelected ? " (selected for swap)" : ""}`}
-                className={`relative focus:outline-none ${
-                  busted ? "animate-shake" : ""
-                }`}
-                style={{
-                  filter: isSelected
-                    ? "drop-shadow(0 0 14px rgba(168,85,247,0.55))"
-                    : undefined,
-                }}
+              <motion.div
+                key={`${dealKey}-${i}-${card.suit}${card.value}`}
+                layout={!shouldReduce}
+                {...withReducedMotion(shouldReduce, deal)}
+                className="relative"
               >
-                <CardFace card={card} />
-                {isSelected && (
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0.7, y: -4 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    transition={{ type: "spring", stiffness: 420, damping: 22 }}
-                    className="absolute -top-3 -right-3 rounded-full bg-purple-500 text-white text-[10px] font-extrabold px-2 py-0.5 shadow-[0_0_10px_rgba(168,85,247,0.7)] uppercase tracking-widest"
+                <motion.button
+                  type="button"
+                  disabled={!canSwap}
+                  onClick={() => {
+                    if (canSwap) onSwapTargetChange(i);
+                  }}
+                  // Reduced motion: the swap selection still shows
+                  // through the "Swap" badge + glow, but without the
+                  // card lifting or scaling under the pointer.
+                  animate={
+                    shouldReduce
+                      ? undefined
+                      : isSelected
+                      ? { y: -22, scale: 1.08 }
+                      : { y: 0, scale: 1 }
+                  }
+                  whileHover={
+                    canSwap && !isSelected && !shouldReduce
+                      ? { y: -8, scale: 1.04 }
+                      : undefined
+                  }
+                  whileTap={
+                    canSwap && !shouldReduce ? { scale: 0.97 } : undefined
+                  }
+                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                  aria-label={`Card ${i + 1}: ${card.suit}${card.value}${isSelected ? " (selected for swap)" : ""}`}
+                  className="relative focus:outline-none"
+                  style={{
+                    filter: isSelected
+                      ? "drop-shadow(0 0 14px rgba(168,85,247,0.55))"
+                      : undefined,
+                  }}
+                >
+                  <CardFace card={card} />
+                  {isSelected && (
+                    <motion.span
+                      {...withReducedMotion(shouldReduce, {
+                        initial: { opacity: 0, scale: 0.7, y: -4 },
+                        animate: { opacity: 1, scale: 1, y: 0 },
+                        transition: {
+                          type: "spring" as const,
+                          stiffness: 420,
+                          damping: 22,
+                        },
+                      })}
+                      className="absolute -top-3 -right-3 rounded-full bg-purple-500 text-white text-[10px] font-extrabold px-2 py-0.5 shadow-[0_0_10px_rgba(168,85,247,0.7)] uppercase tracking-widest"
+                    >
+                      {t("blackjackPvp.swapSelectedBadge", "Swap")}
+                    </motion.span>
+                  )}
+                </motion.button>
+                {/* Outgoing swap card: animates away above the slot the
+                    replacement has just dealt into, then removes itself
+                    (no timers, no AnimatePresence needed). */}
+                {ghost && (
+                  <motion.div
+                    key={`swap-ghost-${ghost.id}`}
+                    {...(shouldReduce
+                      ? {
+                          initial: { opacity: 1 },
+                          animate: { opacity: 0 },
+                          transition: {
+                            duration: 0.15,
+                            ease: "easeOut" as const,
+                          },
+                        }
+                      : {
+                          initial: { opacity: 1, y: 0, scale: 1 },
+                          animate: { opacity: 0, y: -14, scale: 0.92 },
+                          transition: {
+                            duration: 0.18,
+                            ease: "easeOut" as const,
+                          },
+                        })}
+                    onAnimationComplete={onSwapGhostDone}
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 z-10"
                   >
-                    {t("blackjackPvp.swapSelectedBadge", "Swap")}
-                  </motion.span>
+                    <CardFace card={ghost.card} />
+                  </motion.div>
                 )}
-              </motion.button>
+              </motion.div>
             );
           })
         )}
@@ -1950,7 +2351,7 @@ function MyHand({
           ).replace("{n}", String(swapTarget + 1))}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -1963,8 +2364,27 @@ function HeldCardPreview({
   card: Card;
   resolved: string | null;
 }) {
+  const shouldReduce = useReducedMotion();
   return (
-    <div className="mt-3 rounded-lg border border-dashed border-[#FFD700]/40 bg-[#001933]/40 p-3 flex items-center justify-center gap-3 flex-wrap">
+    // Freeze acknowledgment: the reserved-card strip slides in (and back
+    // out) instead of snapping into the layout. Deliberately short and
+    // non-looping — state change feedback, not decoration. Reduced
+    // motion: opacity-only, no slide or scale.
+    <motion.div
+      {...(shouldReduce
+        ? fadeIn
+        : {
+            initial: { opacity: 0, y: 8, scale: 0.97 },
+            animate: { opacity: 1, y: 0, scale: 1 },
+            exit: { opacity: 0, y: 6, scale: 0.98 },
+            transition: {
+              type: "spring" as const,
+              stiffness: 420,
+              damping: 30,
+            },
+          })}
+      className="mt-3 rounded-lg border border-dashed border-[#FFD700]/40 bg-[#001933]/40 p-3 flex items-center justify-center gap-3 flex-wrap"
+    >
       <div className="text-xs uppercase tracking-widest text-[#FFD700]/80 font-bold">
         {t("blackjackPvp.heldReserved", "Carte en réserve")}
       </div>
@@ -1976,7 +2396,76 @@ function HeldCardPreview({
             : t("blackjackPvp.heldDiscarded", "(jetée)")}
         </div>
       )}
-    </div>
+    </motion.div>
+  );
+}
+
+// Score pop. `key={score}` at the call site remounts this only when the
+// visible score actually changes, so polls, socket refreshes, emotes and
+// every other re-render leave it completely still. `tabular-nums` keeps
+// the digits from shifting the text around them mid-pop, and the spring
+// settles straight back to 1 — no floating numbers, no glow.
+function ScorePulse({ score }: { score: number }) {
+  const shouldReduce = useReducedMotion();
+  return (
+    // Reduced motion: the number still swaps the instant the score
+    // changes, just without the pop (`staticMotion`).
+    <motion.span
+      {...withReducedMotion(shouldReduce, {
+        initial: { scale: 1.18 },
+        animate: { scale: 1 },
+        // The dealt card leads and the total settles just behind it, so a
+        // hit reads as one action instead of two simultaneous movements.
+        transition: {
+          type: "spring" as const,
+          stiffness: 520,
+          damping: 24,
+          delay: 0.12,
+        },
+      })}
+      className="inline-block tabular-nums"
+    >
+      {score}
+    </motion.span>
+  );
+}
+
+// ── Stand / resolve acknowledgement ──────────────────────────────────
+// Shown while this seat has stood and the round is still live, in place
+// of the timer + action panel that just eased out. It states the locked
+// state and that the round resolves when both seats are done — no
+// spinner and no looping pulse, because the wait can last a while and
+// the outcome arrives through the existing round-result modal.
+// Purely presentational: `myState === "stood"` is the existing server
+// state and nothing about round resolution changes.
+function StandLockedPanel({ t }: { t: TFn }) {
+  const shouldReduce = useReducedMotion();
+  return (
+    <motion.div
+      {...(shouldReduce
+        ? fadeIn
+        : {
+            initial: { opacity: 0, y: 6 },
+            animate: { opacity: 1, y: 0 },
+            exit: { opacity: 0, y: 6 },
+            transition: { duration: 0.22, ease: "easeOut" as const },
+          })}
+      aria-live="polite"
+      className="mt-3 rounded-xl border border-[#FFD700]/25 bg-[#001933]/60 px-3 py-2.5 text-center"
+    >
+      <div className="flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#FFD700]">
+        <IconLock size={13} aria-hidden />
+        <span>
+          {t("blackjackPvp.waitingStood", "Stood, waiting for opponent")}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] italic text-white/55">
+        {t(
+          "blackjackPvp.lockedAfterStand",
+          "Hand locked. Both hands reveal when the round ends.",
+        )}
+      </p>
+    </motion.div>
   );
 }
 
@@ -1998,6 +2487,7 @@ function ActionPanel({
   onPeek,
   onUseHeldAdd,
   onUseHeldDiscard,
+  shouldReduce,
 }: {
   t: TFn;
   submitting: boolean;
@@ -2020,13 +2510,14 @@ function ActionPanel({
   onPeek: () => void;
   onUseHeldAdd: () => void;
   onUseHeldDiscard: () => void;
+  shouldReduce: boolean;
 }) {
   // Hit / Stand / Swap / Freeze / Peek — the five core gameplay
   // buttons per the redesigned layout. The swap-target is now a
   // lifted parent-owned value driven by card clicks in MyHand, so
   // there is no local pill here.
   const baseBtn =
-    "px-4 py-2.5 rounded-xl font-bold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed border-b-2";
+    "px-4 py-3 rounded-xl font-bold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed border-b-2";
   const busy = submitting ? "…" : null;
 
   const swapDisabled = !canSwap || submitting;
@@ -2045,29 +2536,32 @@ function ActionPanel({
     <div className="mt-4 space-y-2.5">
       {/* ── Hit / Stand / Swap / Freeze / Peek — 5-button row */ }
       <div className="flex justify-center gap-2 flex-wrap">
-        <button
+        <motion.button
           onClick={onHit}
           disabled={!canHit || submitting}
           className={`${baseBtn} border-[#FFD700]/40 bg-[#FFD700]/15 text-[#FFD700] hover:bg-[#FFD700]/25 shadow-[0_0_10px_rgba(255,215,0,0.35)]`}
+          whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
         >
           {busy ?? t("blackjackPvp.hit", "Hit")}
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           onClick={onStand}
           disabled={!canStand || submitting}
           className={`${baseBtn} border-[#00e5ff]/45 bg-[#00e5ff]/15 text-[#9ff4ff] hover:bg-[#00e5ff]/25 shadow-[0_0_10px_rgba(0,229,255,0.35)]`}
+          whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
         >
           {busy ?? t("blackjackPvp.stand", "Stand")}
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           onClick={onSwap}
           disabled={swapDisabled}
           title={swapTitle}
           className={`${baseBtn} border-purple-400/45 bg-purple-500/15 text-purple-100 hover:bg-purple-500/25 shadow-[0_0_10px_rgba(168,85,247,0.35)]`}
+          whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
         >
           {busy ?? t("blackjackPvp.swap", "Swap")}
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           onClick={onHold}
           disabled={!canHold || submitting}
           title={t(
@@ -2075,10 +2569,11 @@ function ActionPanel({
             "Stash your most recently drawn card aside for later",
           )}
           className={`${baseBtn} border-sky-300/45 bg-sky-300/10 text-sky-100 hover:bg-sky-300/25 shadow-[0_0_10px_rgba(125,211,252,0.30)]`}
+          whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
         >
           {busy ?? t("blackjackPvp.freeze", "Freeze")}
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           onClick={onPeek}
           disabled={!canPeek || submitting}
           title={t(
@@ -2086,9 +2581,10 @@ function ActionPanel({
             "Peek at the top of the shoe: the next card you'd HIT",
           )}
           className={`${baseBtn} border-indigo-400/45 bg-indigo-500/15 text-indigo-100 hover:bg-indigo-500/25 shadow-[0_0_10px_rgba(99,102,241,0.35)]`}
+          whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
         >
           {busy ?? t("blackjackPvp.peek", "Peek")}
-        </button>
+        </motion.button>
       </div>
 
       {/* ── Resolve frozen (held) card sub-row. Sub-button row only
@@ -2097,20 +2593,22 @@ function ActionPanel({
         decision grid feels deliberate. */}
       {(canUseHeldAdd || canUseHeldDiscard) && (
         <div className="flex justify-center gap-2 flex-wrap pt-1">
-          <button
+          <motion.button
             onClick={onUseHeldAdd}
             disabled={!canUseHeldAdd || submitting}
             className={`${baseBtn} border-emerald-400/45 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.30)]`}
+            whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
           >
             {busy ?? t("blackjackPvp.useHeldAdd", "Use frozen card")}
-          </button>
-          <button
+          </motion.button>
+          <motion.button
             onClick={onUseHeldDiscard}
             disabled={!canUseHeldDiscard || submitting}
             className={`${baseBtn} border-red-400/45 bg-red-500/15 text-red-200 hover:bg-red-500/25 shadow-[0_0_10px_rgba(239,68,68,0.30)]`}
+            whileTap={!shouldReduce ? { scale: 0.97 } : undefined}
           >
             {busy ?? t("blackjackPvp.useHeldDiscard", "Discard frozen")}
-          </button>
+          </motion.button>
         </div>
       )}
     </div>
@@ -2132,12 +2630,17 @@ function PeekOverlay({
   t: TFn;
   card: Card;
 }) {
+  const shouldReduce = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -12 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
+      {...(shouldReduce
+        ? fadeIn
+        : {
+            initial: { opacity: 0, y: -12 },
+            animate: { opacity: 1, y: 0 },
+            exit: { opacity: 0, y: -12 },
+            transition: { duration: 0.25, ease: "easeOut" as const },
+          })}
       className="mb-3 flex items-center justify-center"
       role="status"
       aria-live="polite"
@@ -2149,11 +2652,21 @@ function PeekOverlay({
         <span className="text-[10px] sm:text-xs uppercase tracking-[0.25em] text-indigo-200/85 font-extrabold">
           {t("blackjackPvp.peekOverlayLabel", "Next card")}
         </span>
+        {/* Peek flip: with reduced motion the card simply appears
+            face-up (`staticMotion` → `initial: false`, so it can never
+            sit at rotateY 180 / opacity 0). */}
         <motion.div
-          initial={{ rotateY: 180, opacity: 0 }}
-          animate={{ rotateY: 0, opacity: 1 }}
-          exit={{ rotateY: -180, opacity: 0 }}
-          transition={{ duration: 0.55, type: "spring", stiffness: 110, damping: 16 }}
+          {...withReducedMotion(shouldReduce, {
+            initial: { rotateY: 180, opacity: 0 },
+            animate: { rotateY: 0, opacity: 1 },
+            exit: { rotateY: -180, opacity: 0 },
+            transition: {
+              duration: 0.45,
+              type: "spring" as const,
+              stiffness: 150,
+              damping: 18,
+            },
+          })}
         >
           <CardFace card={card} small fade={false} />
         </motion.div>
@@ -2219,6 +2732,7 @@ function GameTableCenter({
   incomingEmote?: { value: string } | null;
   myEmote?: { value: string } | null;
 }) {
+  const shouldReduce = useReducedMotion();
   // GameTableCenter stays visible across `ready` (warm-up banner) and
   // `between_rounds` (transitional countdown) — both surface the round
   // indicator so the table layout doesn't flicker in/out. We hide
@@ -2230,9 +2744,13 @@ function GameTableCenter({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
+      {...(shouldReduce
+        ? fadeIn
+        : {
+            initial: { opacity: 0, y: 6 },
+            animate: { opacity: 1, y: 0 },
+            transition: { duration: 0.25, ease: "easeOut" as const },
+          })}
       className="my-5 rounded-2xl border border-[#FFD700]/30 bg-gradient-to-b from-[#00111f]/85 via-[#000c1a]/85 to-[#000814]/85 px-4 sm:px-6 py-4 shadow-[0_0_24px_rgba(255,215,0,0.15)]"
     >
       <div className="flex items-center justify-between gap-3 sm:gap-6">
@@ -2257,10 +2775,18 @@ function GameTableCenter({
             <AnimatePresence>
               {myEmote && (
                 <motion.span
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                  {...(shouldReduce
+                    ? fadeIn
+                    : {
+                        initial: { opacity: 0, scale: 0.5 },
+                        animate: { opacity: 1, scale: 1 },
+                        exit: { opacity: 0, scale: 0.5 },
+                        transition: {
+                          type: "spring" as const,
+                          stiffness: 400,
+                          damping: 20,
+                        },
+                      })}
                   className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base normal-case tracking-normal shadow-[0_0_18px_rgba(0,229,255,.3)]"
                 >
                   <EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" />
@@ -2311,10 +2837,18 @@ function GameTableCenter({
             <AnimatePresence>
               {incomingEmote && (
                 <motion.span
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                  {...(shouldReduce
+                    ? fadeIn
+                    : {
+                        initial: { opacity: 0, scale: 0.5 },
+                        animate: { opacity: 1, scale: 1 },
+                        exit: { opacity: 0, scale: 0.5 },
+                        transition: {
+                          type: "spring" as const,
+                          stiffness: 400,
+                          damping: 20,
+                        },
+                      })}
                   className="absolute bottom-full right-0 mb-1 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base normal-case tracking-normal shadow-[0_0_18px_rgba(255,60,172,.35)]"
                 >
                   <EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" />
@@ -2357,6 +2891,7 @@ function RoundResultModal({
   roundsWonPlayer1,
   roundsWonPlayer2,
   onDismiss,
+  dwellMs,
 }: {
   t: TFn;
   round: RoundRow;
@@ -2364,6 +2899,11 @@ function RoundResultModal({
   mySeatLabel: string;
   oppSeatLabel: string;
   isAi: boolean;
+  // How long the popup stays up before it auto-dismisses. The parent
+  // sizes it from the server's between-rounds deadline (see the
+  // RESULT_POPUP_* constants) so the popup can never cover the next
+  // round's live turn. Read once on mount by design.
+  dwellMs: number;
   // Match-level round-win counters AFTER this round has been
   // resolved (the server increments these in the same transaction
   // as the round-row insert, so they always reflect the post-round
@@ -2372,6 +2912,10 @@ function RoundResultModal({
   roundsWonPlayer2: number;
   onDismiss: () => void;
 }) {
+  // Reduced motion: the overlay keeps its (already opacity-only) fade;
+  // the panel and header become opacity-only too, so the modal still
+  // reads as a modal without any scale or slide.
+  const shouldReduce = useReducedMotion();
   // ── Resolution outcome ────────────────────────────────────────
   // `round.roundWinner` is server-truthy 'player1' | 'player2' |
   // 'draw'. The corresponding seat label resolves to either the
@@ -2468,21 +3012,28 @@ function RoundResultModal({
   // auto-dismiss. We bridge via a ref so the timer is set ONCE
   // on mount and always invokes the latest callback.
   const onDismissRef = useRef(onDismiss);
-  // 5 → 4 → 3 → 2 → 1 → 0 ticking state for the Continue-button
-  // hint. Decoupled from the auto-dismiss timeout via refs so a
-  // parent re-render can't reset the countdown (same React-rules-
-  // of-hooks trick as the timer above).
-  const [secondsLeft, setSecondsLeft] = useState(5);
+  // Ticking state for the Continue-button hint, seeded from the actual
+  // dwell (so a buffer-sized popup counts 3 → 2 → 1 instead of a stale
+  // 5). Decoupled from the auto-dismiss timeout via refs so a parent
+  // re-render can't reset the countdown (same React-rules-of-hooks
+  // trick as the timer above).
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    Math.max(1, Math.ceil(dwellMs / 1000)),
+  );
   useEffect(() => {
     onDismissRef.current = onDismiss;
   }, [onDismiss]);
   useEffect(() => {
     const id = setTimeout(() => {
       onDismissRef.current?.();
-    }, 5000);
+    }, dwellMs);
     return () => clearTimeout(id);
     // Mount-only: key=round.id at the call site resets the timer
-    // for each new round, NOT prop changes within the same round.
+    // for each new round, NOT prop changes within the same round —
+    // `dwellMs` is deliberately read once, so a dwell recomputed
+    // mid-display (e.g. a poll refresh) can never reschedule the
+    // auto-dismiss. The parent's coherence guard covers every case
+    // where the popup would otherwise outlive the transition.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -2503,10 +3054,18 @@ function RoundResultModal({
       onClick={onDismiss}
     >
       <motion.div
-        initial={{ scale: 0.92, y: 24 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.92, y: 24 }}
-        transition={{ type: "spring", stiffness: 280, damping: 22 }}
+        {...(shouldReduce
+          ? fadeIn
+          : {
+              initial: { scale: 0.92, y: 24 },
+              animate: { scale: 1, y: 0 },
+              exit: { scale: 0.92, y: 24 },
+              transition: {
+                type: "spring" as const,
+                stiffness: 280,
+                damping: 22,
+              },
+            })}
         onClick={(e) => e.stopPropagation()}
         className={`relative w-full max-w-lg rounded-3xl border-4 p-5 sm:p-7 text-center shadow-2xl transition-colors duration-500 ${
           isDraw
@@ -2518,9 +3077,13 @@ function RoundResultModal({
       >
         {/* ── Header — emoji + winner seat name + score line. */}
         <motion.div
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
+          {...(shouldReduce
+            ? fadeIn
+            : {
+                initial: { opacity: 0, y: -6 },
+                animate: { opacity: 1, y: 0 },
+                transition: { duration: 0.22, ease: "easeOut" as const },
+              })}
         >
           <div className="text-4xl sm:text-5xl mb-1 drop-shadow">
             {headerEmoji}
@@ -2544,7 +3107,7 @@ function RoundResultModal({
         {/* ── Both seats — cards fully revealed + scores visible.
             Side-by-side grid; the winning seat gets the gold border
             + glow so the contrast reads at a glance. */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <RoundResultSeat
             label={mySeatLabel}
             subLabel={t("blackjackPvp.you", "vous")}
@@ -2570,7 +3133,7 @@ function RoundResultModal({
         {/* ── Resolution rule reminder — quickest "closest-to-21
             without busting" reference so the player understands the
             outcome. Stays tiny so it doesn't fight the header. */}
-        <p className="mt-4 text-[10px] sm:text-xs text-white/55 leading-relaxed">
+        <p className="mt-4 text-[14px] sm:text-xs text-white/55 leading-relaxed">
           {t(
             "blackjackPvp.roundResult.rule",
             "Le score le plus proche de 21 sans dépasser gagne; au‑delà de 21 = sauté.",
@@ -2578,14 +3141,14 @@ function RoundResultModal({
         </p>
 
         {/* ── Footer button — dismiss immediately. The auto-dismiss
-            timer above provides the 5‑second timeout; this button is
-            for impatient players. */}
+            timer above provides the (deadline-sized) timeout; this
+            button is for impatient players. */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDismiss();
           }}
-          className={`mt-4 inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-6 py-2.5 text-base font-black transition active:translate-y-[2px] ${
+          className={`mt-4 inline-flex items-center justify-center gap-2 rounded-xl border-b-4 px-6 py-3 text-base font-black transition active:translate-y-[2px] ${
             isDraw
               ? "border-yellow-700 bg-yellow-400 text-black hover:bg-yellow-300"
               : iWonSeat
@@ -2594,7 +3157,7 @@ function RoundResultModal({
           }`}
         >
           {t("blackjackPvp.continue", "Continuer")}
-          <span className="text-xs opacity-70 tabular-nums" aria-live="polite">
+          <span className="text-sm opacity-70 tabular-nums" aria-live="polite">
             ({secondsLeft}s)
           </span>
         </button>
@@ -2625,6 +3188,7 @@ function RoundResultSeat({
   highlight: "self" | "opp";
   t: TFn;
 }) {
+  const shouldReduce = useReducedMotion();
   // The winning seat wears the gold border + glow + crown; the
   // losing seat dims slightly so the contrast reads at a glance.
   const seatBorder = busted
@@ -2650,10 +3214,22 @@ function RoundResultSeat({
         {didWin && (
           <motion.div
             key="crown-badge"
-            initial={{ scale: 0, rotate: -30, opacity: 0 }}
-            animate={{ scale: 1, rotate: 0, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 14 }}
+            // Reduced motion: the crown still marks the winning seat, it
+            // just appears (`staticMotion` → `initial: false`, so it can
+            // never be stuck at scale 0 / opacity 0).
+            {...withReducedMotion(shouldReduce, {
+              initial: { scale: 0, rotate: -30, opacity: 0 },
+              animate: { scale: 1, rotate: 0, opacity: 1 },
+              exit: { scale: 0, opacity: 0 },
+              transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 14,
+                // Waits for the seat's cards to finish flipping so the
+                // reveal owns the result beat and the crown only marks it.
+                delay: 0.35,
+              },
+            })}
             className="absolute -top-3 -right-2 text-2xl drop-shadow-md pointer-events-none"
             aria-hidden
           >
@@ -2679,12 +3255,16 @@ function RoundResultSeat({
         {hand.length === 0 ? (
           <BlackjackCardBack />
         ) : (
-          hand.map((c, i) => (
+          hand.map((c) => (
             <motion.div
-              key={i}
-              initial={{ rotateY: 90, opacity: 0, y: -10 }}
-              animate={{ rotateY: 0, opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.05 + i * 0.07 }}
+              key={`${c.suit}${c.value`}
+              // Reduced motion: no flip and no per-card stagger — every
+              // revealed card is simply face-up and readable at once.
+              {...withReducedMotion(shouldReduce, {
+                initial: { rotateY: 90, opacity: 0, y: -10 },
+                animate: { rotateY: 0, opacity: 1, y: 0 },
+                transition: { duration: 0.4, delay: 0.05 },
+              })}
             >
               <CardFace card={c} small />
             </motion.div>
@@ -2717,6 +3297,7 @@ function CancelledModal({
   t: TFn;
   onBackToLobby: () => void;
 }) {
+  const shouldReduce = useReducedMotion();
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -2725,8 +3306,17 @@ function CancelledModal({
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
     >
       <motion.div
-        initial={{ scale: 0.85, y: 30 }}
-        animate={{ scale: 1, y: 0 }}
+        {...(shouldReduce
+          ? fadeIn
+          : {
+              initial: { scale: 0.85, y: 30 },
+              animate: { scale: 1, y: 0 },
+              transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 18,
+              },
+            })}
         className="relative w-full max-w-md rounded-3xl border-4 border-white/30 bg-gradient-to-b from-[#1a1a3a] to-[#0d0d2b] p-6 text-center shadow-2xl"
       >
         <div className="mb-2 flex justify-center"><IconX size={64} className="text-red-400" /></div>
@@ -2766,6 +3356,7 @@ function ResignConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const shouldReduce = useReducedMotion();
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -2774,10 +3365,18 @@ function ResignConfirmModal({
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
     >
       <motion.div
-        initial={{ scale: 0.85, y: 30 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.85, y: 30 }}
-        transition={{ type: "spring", stiffness: 300, damping: 18 }}
+        {...(shouldReduce
+          ? fadeIn
+          : {
+              initial: { scale: 0.85, y: 30 },
+              animate: { scale: 1, y: 0 },
+              exit: { scale: 0.85, y: 30 },
+              transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 18,
+              },
+            })}
         className="relative w-full max-w-md rounded-3xl border-4 border-red-500/60 bg-gradient-to-b from-[#3a1a1a] to-[#2b0d0d] p-6 text-center shadow-2xl"
       >
         <div className="mb-2 flex justify-center"><IconFlag size={64} className="text-red-400" /></div>
@@ -2828,6 +3427,7 @@ function LeaveAiConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const shouldReduce = useReducedMotion();
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -2836,10 +3436,18 @@ function LeaveAiConfirmModal({
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
     >
       <motion.div
-        initial={{ scale: 0.85, y: 30 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.85, y: 30 }}
-        transition={{ type: "spring", stiffness: 300, damping: 18 }}
+        {...(shouldReduce
+          ? fadeIn
+          : {
+              initial: { scale: 0.85, y: 30 },
+              animate: { scale: 1, y: 0 },
+              exit: { scale: 0.85, y: 30 },
+              transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 18,
+              },
+            })}
         className="relative w-full max-w-md rounded-3xl border-4 border-[#00e5ff]/40 bg-gradient-to-b from-[#0a1533] to-[#040d24] p-6 text-center shadow-2xl"
       >
         <div className="mb-2 flex justify-center text-6xl" aria-hidden>🚪</div>
@@ -2900,6 +3508,7 @@ function BetweenRoundsScreen({
   roundsWonPlayer2: number;
   onAfter: () => Promise<void>;
 }) {
+  const shouldReduce = useReducedMotion();
   // Local countdown — counts down once per second, emits an explicit
   // refresh to re-fetch match state so the server's auto-advance
   // delegate (status → next round) surfaces on the page naturally.
@@ -2951,9 +3560,13 @@ function BetweenRoundsScreen({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.35 }}
+      {...(shouldReduce
+        ? fadeIn
+        : {
+            initial: { opacity: 0, scale: 0.96 },
+            animate: { opacity: 1, scale: 1 },
+            transition: { duration: 0.35, ease: "easeOut" as const },
+          })}
       className="text-center mt-3 mb-2 rounded-2xl border-2 border-[#FFD700]/35 bg-gradient-to-b from-[#0b132b]/80 to-[#050a17]/80 px-5 py-7 shadow-[0_0_30px_rgba(255,215,0,0.18)]"
     >
       <div className="mb-2 flex justify-center"><IconPlayerSkipForward size={28} className="text-[#FFD700]" /></div>
@@ -2988,6 +3601,8 @@ function BetweenRoundsScreen({
       {/* Progress bar — visual countdown feedback (decorative; the
           server-side timer is still authoritative). */}
       <div className="mt-4 h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+        {/* Decorative countdown bar — still tracks the buffer, just
+            with an instant step under reduced motion. */}
         <motion.div
           initial={{ width: "100%" }}
           animate={{
@@ -2999,7 +3614,7 @@ function BetweenRoundsScreen({
               ),
             )}%`,
           }}
-          transition={{ duration: 1, ease: "linear" }}
+          transition={{ duration: shouldReduce ? 0 : 1, ease: "linear" }}
           className="h-full bg-[#FFD700]"
         />
       </div>
