@@ -1,6 +1,6 @@
 // POST — create a free human-vs-AI Memory Grid match.
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createAiMatch } from "../../../../lib/memory-grid/serverStore";
 
 function normaliseMatch(match) {
@@ -23,13 +23,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST() {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   try {
     const result = await createAiMatch({ userId });

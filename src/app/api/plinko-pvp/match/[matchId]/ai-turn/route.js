@@ -1,17 +1,13 @@
 // POST — submit the deterministic AI launch for the current Plinko ball.
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { playAiTurn } from "../../../../../../lib/plinko-pvp/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/plinko-pvp/rooms";
 
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);

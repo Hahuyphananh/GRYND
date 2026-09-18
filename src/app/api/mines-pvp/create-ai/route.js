@@ -2,7 +2,7 @@
 // No stake is escrowed; the match starts immediately in `ready`
 // state with the bot in seat 2.
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createAiMatch } from "../../../../lib/mines-pvp/serverStore";
 import { MIN_MINES, MAX_MINES } from "../../../../lib/mines-pvp/constants";
 
@@ -26,13 +26,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST(req) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   let body;
   try {

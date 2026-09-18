@@ -37,7 +37,7 @@
 // shared polling/state helpers can stay reusable.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import {
   playAiTurn,
   recordAction,
@@ -165,13 +165,9 @@ function normaliseMatchForViewer(match, viewerUserId) {
 // per-round hit/stand/swap/hold/use_held verbs. Matches the
 // page-side fix from the `fix(pvp-match-views)` commit.
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = await params;
   const matchId = Number(resolvedParams?.matchId);

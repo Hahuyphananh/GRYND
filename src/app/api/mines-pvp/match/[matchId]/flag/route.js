@@ -29,7 +29,7 @@
 // reveals the board once status='finished').
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { flagTile } from "../../../../../../lib/mines-pvp/serverStore";
 import { GRID_CELLS } from "../../../../../../lib/mines-pvp/constants";
 import { broadcastMatchUpdate } from "../../../../../../lib/mines-pvp/rooms";
@@ -50,13 +50,9 @@ function normaliseFlagResult(match) {
 }
 
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   // Next.js 15+/16: API route `params` is a Promise — must await
   // before reading properties (same fix as the /pick route).

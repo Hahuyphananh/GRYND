@@ -5,18 +5,14 @@
 // `src/app/api/blackjack-pvp/match/[matchId]/cancel/route.js`.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { cancelMatch } from "../../../../../../lib/mines-pvp/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/mines-pvp/rooms";
 
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   // Next.js 15+/16: API route `params` is a Promise — must await before
   // reading properties. Accessing it synchronously yields `undefined`,

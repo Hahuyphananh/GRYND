@@ -8,18 +8,14 @@
 // terminal matches are left untouched.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { forfeitMatch } from "../../../../../../lib/memory-grid/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/memory-grid/rooms";
 
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);

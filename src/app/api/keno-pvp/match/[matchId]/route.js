@@ -19,7 +19,7 @@
 //     result / winnerId are visible to both.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import {
   enrichMatchesWithUsers,
   fetchMatchWithAutoResolve,
@@ -123,13 +123,9 @@ function normaliseRound(round) {
 }
 
 export async function GET(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   // Next.js 15+/16: API route `params` is a Promise — must await.
   const resolvedParams = (await params) || {};

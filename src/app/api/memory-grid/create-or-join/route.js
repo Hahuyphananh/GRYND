@@ -11,7 +11,7 @@
 // frontend can react identically to "created" vs "joined".
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createOrJoin } from "../../../../lib/memory-grid/serverStore";
 import {
   MAX_STAKE,
@@ -38,13 +38,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST(req) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   let body;
   try {

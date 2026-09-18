@@ -1,16 +1,12 @@
 // POST — run the server-controlled Blackjack AI for a free match.
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { playAiTurn } from "../../../../../../lib/blackjack-pvp/serverStore";
 
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams.matchId);

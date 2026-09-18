@@ -23,7 +23,7 @@
 //     seed, and the full action history.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { fetchMatchWithAutoResolve } from "../../../../../lib/lane-rush-duel/serverStore";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
@@ -150,13 +150,9 @@ function identityFields(identity) {
 }
 
 export async function GET(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);

@@ -5,7 +5,7 @@
 // Mirrors `src/app/api/roulette-pvp/match/[matchId]/cancel/route.js`.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { cancelMatch } from "../../../../../../lib/blackjack-pvp/serverStore";
 
 // BUG-FIX (async params on Next.js 16): await `params` so `matchId`
@@ -13,13 +13,9 @@ import { cancelMatch } from "../../../../../../lib/blackjack-pvp/serverStore";
 // would short-circuit the cancel POST to a 400 and block the
 // creator's "Cancel" button while their opponent is waiting.
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = await params;
   const matchId = Number(resolvedParams?.matchId);

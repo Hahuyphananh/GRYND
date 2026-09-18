@@ -1,6 +1,6 @@
 // POST — create a free human-vs-AI Plinko Duel match.
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createAiMatch, enrichMatchesWithUsers } from "../../../../lib/plinko-pvp/serverStore";
 import { broadcastMatchUpdate } from "../../../../lib/plinko-pvp/rooms";
 
@@ -23,13 +23,9 @@ function normaliseMatch(match) {
 }
 
 export async function POST(req) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   // Keep this endpoint JSON-compatible with the app API proxy/content
   // validation, even though the AI match currently needs no options.

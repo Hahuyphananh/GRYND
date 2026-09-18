@@ -8,18 +8,14 @@
 // HOLD based on the multiplier ladder and the chicken-game state.
 
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { botAct } from "../../../../../../lib/lane-rush-duel/serverStore";
 import { broadcastMatchUpdate } from "../../../../../../lib/lane-rush-duel/rooms";
 
 export async function POST(req, { params }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const resolvedParams = (await params) || {};
   const matchId = Number(resolvedParams?.matchId);
