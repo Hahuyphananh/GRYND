@@ -5,6 +5,11 @@ import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 import { sql } from "drizzle-orm";
+// This route is a plain GET that the page middleware does NOT cover (every
+// /api/* path is public there), and it can mutate room state via
+// resolveExpiredTurn() — which settles and pays out a finished match. So the
+// caller is verified here: authenticated session, an age record on file, 18+.
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 
 async function enrichRoomPlayers(room) {
@@ -77,6 +82,9 @@ async function enrichRoomPlayers(room) {
 }
 
 export async function GET(req) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const roomId = req.nextUrl.searchParams.get("roomId");
   if (roomId) {
     // Resolve a stalled turn (shot clock) so a polling client sees the

@@ -8,6 +8,7 @@ import {
 import { auditLog } from "./lib/security/auditLog";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
+import { withTimeout } from "./lib/security/withTimeout";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
 import {
   ADMIN_MFA_COOKIE,
@@ -20,6 +21,69 @@ import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
+
+/**
+ * Playable casino/game routes — the single source of truth for
+ * `isGameRoute()`. These are the exact same patterns the public matcher
+ * below has always listed; they live here so the two lists cannot drift.
+ *
+ * Both URL styles are listed because next.config.js rewrites
+ * /games/* → /casino/* (middleware runs before the rewrite) and 308s
+ * /casino/* → /games/*, so a request can arrive with either prefix.
+ */
+const GAME_ROUTE_PATTERNS = [
+  "/casino/blackjack(.*)",
+  "/casino/roulette(.*)",
+  "/casino/uno(.*)",
+  "/casino/neon-flush(.*)",
+  // /uno is the top-level alias of the Uno game page.
+  "/uno",
+  "/uno/multiplayer(.*)",
+  "/casino/plinko(.*)",
+  "/casino/mines-pvp(.*)",
+  // /casino/crash still redirects to the PVP Crash Arena.
+  "/casino/crash",
+  "/casino/crash-arena(.*)",
+  "/casino/chess(.*)",
+  "/casino/keno",
+  "/casino/keno-pvp(.*)",
+  "/casino/rps(.*)",
+  "/casino/poker/multi(.*)",
+  "/casino/four-in-a-row(.*)",
+  "/casino/dots-and-boxes(.*)",
+  "/casino/lane-runner(.*)",
+  "/casino/tower-arena(.*)",
+  "/casino/pool-masters(.*)",
+  "/casino/hex-duel(.*)",
+  "/casino/dice-flush(.*)",
+  "/casino/odds(.*)",
+  "/casino/memory-grid(.*)",
+  "/casino/precision(.*)",
+  // /games/* mirrors of the /casino/* routes.
+  "/games/blackjack(.*)",
+  "/games/roulette(.*)",
+  "/games/uno(.*)",
+  "/games/neon-flush(.*)",
+  "/games/plinko(.*)",
+  "/games/mines-pvp(.*)",
+  "/games/crash",
+  "/games/crash-arena(.*)",
+  "/games/chess(.*)",
+  "/games/keno",
+  "/games/keno-pvp(.*)",
+  "/games/rps(.*)",
+  "/games/poker/multi(.*)",
+  "/games/four-in-a-row(.*)",
+  "/games/dots-and-boxes(.*)",
+  "/games/lane-runner(.*)",
+  "/games/tower-arena(.*)",
+  "/games/pool-masters(.*)",
+  "/games/hex-duel(.*)",
+  "/games/dice-flush(.*)",
+  "/games/odds(.*)",
+  "/games/memory-grid(.*)",
+  "/games/precision(.*)",
+] as const;
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -46,63 +110,19 @@ const isPublicRoute = createRouteMatcher([
   "/welcome/questionnaire(.*)",
   "/classement",
   "/profil(.*)",
-  "/casino/blackjack(.*)",
-  "/casino/roulette(.*)",
-  "/casino/uno(.*)",
-  "/casino/neon-flush(.*)",
-  "/uno",
-  "/uno/multiplayer(.*)",
-  "/casino/plinko(.*)",
-  "/casino/mines-pvp(.*)",
-  // /casino/crash still redirects to the PVP Crash Arena, so it stays public
-  "/casino/crash",
-  "/casino/crash-arena(.*)",
-  "/casino/chess(.*)",
-  "/casino/keno",
-  "/casino/keno-pvp(.*)",
-  "/casino/rps(.*)",
+  // Onboarding / auth / system pages that must stay reachable BEFORE a
+  // player has an age record.
   "/access-denied",
   "/complete-profile",
   "/maintenance",
   "/mfa-required",
-  "/casino/poker/multi(.*)",
-  "/casino/four-in-a-row(.*)",
-  "/casino/dots-and-boxes(.*)",
-  "/casino/lane-runner(.*)",
-  "/casino/tower-arena(.*)",
   "/profile(.*)",
   "/settings(.*)",
-  "/casino/pool-masters(.*)",
-  "/casino/hex-duel(.*)",
-  "/casino/dice-flush(.*)",
-  "/casino/odds(.*)",
-  "/casino/memory-grid(.*)",
-  "/casino/precision(.*)",
-  // /games/* mirrors of the /casino/* routes — middleware runs before the
-  // rewrite, so both URL styles need the same access rules.
-  "/games/blackjack(.*)",
-  "/games/roulette(.*)",
-  "/games/uno(.*)",
-  "/games/neon-flush(.*)",
-  "/games/plinko(.*)",
-  "/games/mines-pvp(.*)",
-  "/games/crash",
-  "/games/crash-arena(.*)",
-  "/games/chess(.*)",
-  "/games/keno",
-  "/games/keno-pvp(.*)",
-  "/games/rps(.*)",
-  "/games/poker/multi(.*)",
-  "/games/four-in-a-row(.*)",
-  "/games/dots-and-boxes(.*)",
-  "/games/lane-runner(.*)",
-  "/games/tower-arena(.*)",
-  "/games/pool-masters(.*)",
-  "/games/hex-duel(.*)",
-  "/games/dice-flush(.*)",
-  "/games/odds(.*)",
-  "/games/memory-grid(.*)",
-  "/games/precision(.*)",
+
+  // Every playable casino/game route — declared once in GAME_ROUTE_PATTERNS
+  // above. Explicitly public today (no behaviour change); the patterns are
+  // listed once so isGameRoute() and this matcher can never disagree.
+  ...GAME_ROUTE_PATTERNS,
   "/sentry-example-page",
 
   // Legal / policy pages
@@ -119,6 +139,26 @@ const isPublicRoute = createRouteMatcher([
   "/shop",
   "/battlepass",
 ]);
+
+const gameRouteMatcher = createRouteMatcher([...GAME_ROUTE_PATTERNS]);
+
+/**
+ * Classifies a pathname as a playable casino/game route — i.e. a route that
+ * must require authentication and a verified 18+ age record.
+ *
+ * Returns true for the /casino/* and /games/* playable game routes (and
+ * their sub-routes such as match/table/game ids). Onboarding and navigation
+ * surfaces (/casino and /games hubs, /sync, /welcome*, /complete-profile,
+ * /access-denied, legal pages) return false and stay public.
+ *
+ * NOTE: this is a pure classifier. Nothing calls it yet, so it changes no
+ * request handling — the authentication and age-gate branches are untouched.
+ */
+export function isGameRoute(pathname: string): boolean {
+  // Clerk's route matcher reads `req.nextUrl.pathname`; a minimal shell is
+  // enough to reuse the exact same pattern semantics as isPublicRoute.
+  return gameRouteMatcher({ nextUrl: { pathname } } as NextRequest);
+}
 
 const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
   {
@@ -254,28 +294,12 @@ async function userMfaGate(
   return applySecurityHeaders(NextResponse.redirect(redirectUrl));
 }
 
-/**
- * Resolve a promise but fail open (return `fallback`) if it doesn't settle
- * within `ms`. The proxy must never let a slow/hung DB round-trip block
- * page delivery — that turns a DB hiccup into a site-wide "stuck loading"
- * state (every request waits on the maintenance flag / age lookup before
- * the first byte of HTML is sent).
- */
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return new Promise<T>((resolve) => {
-    const timer = setTimeout(() => resolve(fallback), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(fallback);
-      },
-    );
-  });
-}
+// `withTimeout` (imported above, shared with src/lib/auth/requireAgeVerified.ts)
+// is always called here with a fail-open fallback: the proxy must never let a
+// slow/hung DB round-trip block page delivery — that turns a DB hiccup into a
+// site-wide "stuck loading" state (every request waits on the maintenance flag
+// / age lookup before the first byte of HTML is sent). The API age gate makes
+// the opposite choice on purpose and fails closed.
 
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
@@ -530,7 +554,14 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     return applySecurityHeaders(NextResponse.next());
   }
 
-  if (isPublicRoute(req)) {
+  // Playable game routes are still listed in isPublicRoute, but they must NOT
+  // take this early return. Letting them fall through sends them to the auth
+  // + age-gate block below, which already implements exactly the rules games
+  // need: signed out → /sign-in, no age record → /complete-profile,
+  // age < 18 → /access-denied, otherwise an 18+ user passes through via
+  // next(). Every other public route (hubs, onboarding, legal pages) still
+  // returns early here exactly as before.
+  if (isPublicRoute(req) && !isGameRoute(pathname)) {
     // User-level MFA runs even on public pages (casino pages are public
     // routes but wagering on them must stay protected). auth() here is the
     // same call protected routes already make.
