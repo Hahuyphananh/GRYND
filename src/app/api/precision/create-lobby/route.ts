@@ -30,6 +30,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { MIN_WAGER, MAX_WAGER } from "../../../../lib/precision/constants";
 import { tryAutoMatch } from "../../../../lib/precision/matchmaking";
 
@@ -52,6 +53,9 @@ function sanitizeName(value: unknown): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json(

@@ -3,6 +3,7 @@ import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
   try {
@@ -14,6 +15,9 @@ export async function POST(req) {
         { error: "Invite code missing" },
         { status: 400 },
       );
+
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
 
     const { userId: clerkId } = await auth();
     if (!clerkId)

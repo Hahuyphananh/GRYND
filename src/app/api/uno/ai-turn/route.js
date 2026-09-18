@@ -1,5 +1,6 @@
 import { db } from "../../../../db/client";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import {
   getUnoGameById,
   drawUnoCard,
@@ -122,6 +123,9 @@ function chooseBestPlay(aiHand, playerHand, topCard, currentColor) {
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId: clerkId } = await auth();
     if (!clerkId)
       return new Response(

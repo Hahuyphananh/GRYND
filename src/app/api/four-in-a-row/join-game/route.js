@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -7,6 +8,9 @@ import { READY_WINDOW_MS } from "../../../../lib/fourInARowServer";
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json(

@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
@@ -411,6 +412,9 @@ function scheduleAi(room) {
 }
 
 export async function GET(request) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const user = await getCurrentUser();
   if (!user)
     return new Response(
@@ -469,6 +473,9 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const user = await getCurrentUser();
   if (!user)
     return new Response(

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -23,6 +24,9 @@ function safeParse(value, fallback = []) {
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json(

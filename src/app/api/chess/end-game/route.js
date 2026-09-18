@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -17,6 +18,9 @@ const HOUSE_EDGE_PERCENT = 5;
 // Optional body: { gameId?: string (uuid), result?: "win" | "loss" | "draw" }
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId) return new Response("Unauthorized", { status: 401 });
 

@@ -18,6 +18,7 @@
 // PvP games in the casino.
 
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { NextResponse } from "next/server";
 
 import {
@@ -31,6 +32,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId: clerkId } = await auth();
     if (!clerkId) {
       return NextResponse.json(

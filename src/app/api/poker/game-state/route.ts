@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { glows, pokerGames, tokenSubscriptions, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
@@ -151,6 +152,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const { userId } = await auth();
   if (!userId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

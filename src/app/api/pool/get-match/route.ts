@@ -3,6 +3,7 @@ import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches, poolLobbies } from "../../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { getSeatIdentity } from "../../../../lib/seatIdentity";
 
 type PoolMatchRow = typeof poolMatches.$inferSelect;
@@ -47,6 +48,9 @@ export async function GET(req: Request) {
   if (!UUID_RE.test(matchId)) {
     return NextResponse.json({ ok: false, error: "Invalid matchId" }, { status: 400 });
   }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const { userId } = await auth();
 
   const [match] = await db

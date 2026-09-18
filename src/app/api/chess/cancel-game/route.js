@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, sql } from "drizzle-orm";
@@ -8,13 +8,9 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function POST(req) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const { gameId } = await req.json();
   const parsedGameId = String(gameId ?? "").trim();

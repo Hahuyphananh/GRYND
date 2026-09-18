@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db";
 import { eq } from "drizzle-orm";
 import { poolMatches } from "../../../../db/schema";
@@ -13,6 +14,9 @@ function getVersionFromGameState(gameState: unknown): number {
 }
 
 export async function POST(req: Request) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   try {
     const { matchId, state } = await req.json();
     if (!matchId || !state)

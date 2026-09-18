@@ -6,6 +6,7 @@
 // immediately after a host creates a lobby.
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
@@ -95,6 +96,9 @@ async function decoratePlayerBadges<T extends { userId: string }>(
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const url = new URL(req.url);
   const matchId = String(url.searchParams.get("matchId") ?? "");
   if (!matchId) {

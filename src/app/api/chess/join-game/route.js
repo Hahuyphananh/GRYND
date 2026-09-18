@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -19,13 +19,9 @@ async function getUserAliases(clerkId) {
 }
 
 export async function POST(req) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
   const { gameId } = await req.json();
   const parsedGameId = String(gameId ?? "").trim();

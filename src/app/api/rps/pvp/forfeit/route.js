@@ -10,12 +10,16 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import {
   forfeitRpsPvpGame,
   recordForfeitStats,
 } from "../../../../../lib/rps-pvp/serverStore";
 
 export async function POST(req) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json(

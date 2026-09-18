@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
-import { getAuth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";  import { users, rpsGames } from "../../../../db/schema"; // import rpsGames
 import { eq, sql } from "drizzle-orm";
 
@@ -29,10 +29,9 @@ const FIXED_MULTIPLIER = 1.9;
 
 export async function POST(req) {
   try {
-    const { userId } = getAuth(req);
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const userId = gate.userId;
 
     const body = await req.json();
     const { betAmount, choice, winStreak = 0 } = body;

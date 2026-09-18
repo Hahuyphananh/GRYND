@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 export async function POST(req) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json(

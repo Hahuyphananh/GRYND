@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
 import { rpsPvpGames, users } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -8,6 +9,9 @@ import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 const HOUSE_EDGE_PERCENT = 10;
 
 export async function GET(req) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json(

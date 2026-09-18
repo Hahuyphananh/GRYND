@@ -19,6 +19,7 @@
 // see `/api/precision/join-lobby`.
 
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { NextRequest, NextResponse } from "next/server";
 import { createAiMatch } from "../../../../lib/precision/serverStore";
 
@@ -26,6 +27,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });

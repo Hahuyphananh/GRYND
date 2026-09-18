@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -19,13 +20,9 @@ const REJECTION_REASONS = {
 export async function POST(req) {
   let resolvedGameId = null;
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
 
     const body = await req.json();
     const gameId = Number(body?.gameId);

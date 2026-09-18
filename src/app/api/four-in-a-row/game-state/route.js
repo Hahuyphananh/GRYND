@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -21,6 +22,9 @@ function computeReplayTimeRemaining(deadline) {
 
 export async function GET(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { and, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
@@ -45,6 +46,9 @@ export async function POST(req: Request) {
   let actionType: string | null = null;
 
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });

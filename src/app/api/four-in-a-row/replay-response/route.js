@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
@@ -12,6 +13,9 @@ const REPLAY_WINDOW_SECONDS = 20;
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json(

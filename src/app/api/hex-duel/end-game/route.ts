@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
@@ -29,6 +30,9 @@ interface HexDuelAiSessionPayload {
 
 export async function POST(req: Request) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId: clerkId } = await auth();
 
     if (!clerkId) {

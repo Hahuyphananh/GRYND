@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { unoGames, users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -25,6 +26,9 @@ function getTopCard(game) {
 }
 
 export async function POST(request) {
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+
   const { userId } = await auth();
   if (!userId) {
     return new Response(

@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { pokerGames } from "../../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
   try {
     const body = await req.json();
     const maxPlayers = body.maxPlayers ?? 6;
     const isPrivate = body.isPrivate ?? true;
+
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
 
     const { userId: clerkId } = await auth();
     if (!clerkId) {

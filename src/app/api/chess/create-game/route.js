@@ -1,5 +1,6 @@
 // src/app/api/chess/create-game/route.js
 import { auth } from "@clerk/nextjs/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { eq, and, lt, or, sql } from "drizzle-orm";
@@ -31,6 +32,9 @@ async function getUserAliases(clerkId) {
 
 export async function POST(req) {
   try {
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+
     const { userId: clerkId } = await auth();
     if (!clerkId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
