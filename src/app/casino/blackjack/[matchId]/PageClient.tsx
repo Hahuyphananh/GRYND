@@ -3531,7 +3531,7 @@ function BetweenRoundsScreen({
     }
   }, [secondsLeft, onAfter]);
 
-  const continueUrl = `/api/blackjack-pvp/match/${matchId}/continue`;
+  const continueUrl = '/api/blackjack-pvp/match/' + matchId + '/continue';
   const handleContinueNow = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
