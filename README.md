@@ -2,48 +2,70 @@
 
 Welcome to **GRYND**, a multiplayer skill gaming platform where players compete in fast-paced games using **virtual tokens**.
 
-GRYND combines competitive **PvP matches, AI opponents, classic games, and arcade-style experiences** into one platform, with personalized game recommendations and a responsive experience across desktop and mobile.
+GRYND brings competitive PvP games, multiplayer experiences, AI opponents, strategy games, arcade-style challenges, and classic games together on one platform. Players can discover games based on their preferences and compete across desktop and mobile.
 
 ---
 
 ## Features
 
-* **Multiplayer Games**: Play a growing collection of competitive games including **Poker, Blackjack, Roulette, Chess, Crash, Mines, Towers, Plinko, Keno, Dice Flush, Neon Flush, Rock Paper Scissors**, and more.
-* **PvP & AI Gameplay**: Compete against other players in real-time matches or play against AI opponents.
-* **Virtual Token System**: Play using virtual tokens designed for competitive, play-for-fun gameplay. Tokens have no real-world monetary value and cannot be redeemed for cash.
-* **Competitive Matches**: Head-to-head games, duels, multiplayer tables, match-based gameplay, and competitive scoring.
-* **Personalized Game Recommendations**: GRYND learns players' game preferences and provides a personalized **FOR YOU** game section.
-* **Live Player Counts**: Game cards display how many players are currently playing each game.
+* **20 Games**: A growing collection of competitive, strategy, arcade, and classic games.
+* **PvP Gameplay**: Compete against other players in real-time head-to-head and multiplayer matches.
+* **AI Opponents**: Play supported games against AI opponents for practice.
+* **Virtual Token System**: Play using virtual tokens. Tokens have no real-world monetary value and cannot be redeemed for cash.
+* **Competitive Matches**: Compete in duels, multiplayer tables, races, strategy matches, and skill-based challenges.
+* **Personalized Game Recommendations**: GRYND uses a game-preference questionnaire to create a personalized **FOR YOU** section.
+* **Live Player Counts**: Game cards show how many players are currently playing each game.
+* **Player Progression**: Track gameplay, wins, streaks, rankings, and other player statistics.
 * **Secure Authentication**: Clerk-powered authentication with JWT and OAuth support.
 * **Wallet & Token Management**: Secure token balance management through protected API routes.
 * **GRYND+**: Optional subscription features and premium platform functionality.
-* **Responsive & Mobile-Friendly**: Designed to provide a smooth experience across desktop and mobile devices.
-* **Native Mobile Support**: Mobile app functionality through a native Capacitor wrapper.
+* **Responsive Design**: Optimized for desktop and mobile gameplay.
+* **Native Mobile Support**: Mobile app functionality through Capacitor.
 * **Security First**: Built with protections including SQL injection prevention, CSRF protection, rate limiting, secure authentication, and TLS.
-* **Modern Game UI**: Fast, interactive game interfaces with custom GRYND visuals and animations.
+* **Modern Game Experiences**: Interactive interfaces, animations, game effects, and custom GRYND visuals.
 
 ---
 
 ## Games
 
-GRYND currently includes a growing collection of skill-based and arcade-style games:
+GRYND currently features 20 games:
 
-| Game                    | Gameplay                                 |
-| ----------------------- | ---------------------------------------- |
-| **Poker**               | Multiplayer No-Limit Texas Hold'em       |
-| **Blackjack**           | Competitive best-of-3 Blackjack          |
-| **Roulette**            | Head-to-head Roulette PvP                |
-| **Mines**               | Mines PvP and AI gameplay                |
-| **Crash**               | Timing-based multiplier game             |
-| **Towers**              | Stack and balance your way to the top    |
-| **Plinko**              | Physics-based Plinko gameplay            |
-| **Chess**               | Chess against AI or real players         |
-| **Keno**                | Keno and Keno Catch competitive gameplay |
-| **Dice Flush**          | Yahtzee-style dice gameplay              |
-| **Neon Flush**          | UNO-style multiplayer card game          |
-| **Rock Paper Scissors** | Best-of-7 competitive matches            |
+| Game                    | Type                                          |
+| ----------------------- | --------------------------------------------- |
+| **Roulette**            | Fast-paced PvP wheel duel                     |
+| **Blackjack**           | Strategic head-to-head card game              |
+| **Mines**               | Risk-based PvP tile game                      |
+| **Memory Grid**         | Memory and pattern-recall duel                |
+| **Plinko**              | Physics-based PvP ball-drop game              |
+| **Poker**               | Multiplayer No-Limit Texas Hold'em            |
+| **Crash**               | Multiplayer crash and cash-out game           |
+| **Chess**               | Strategic PvP and AI chess                    |
+| **Keno**                | Fast-paced number and reaction game           |
+| **UNO**                 | Multiplayer card game                         |
+| **Rock Paper Scissors** | Best-of-7 PvP duel                            |
+| **Tower Arena**         | Multiplayer physics-based tower-stacking game |
+| **Four in a Row**       | Strategic Connect Four-style duel             |
+| **Lane Rush Duel**      | Competitive tower-climbing PvP race           |
+| **Pool Masters**        | Physics-based 8-ball pool                     |
+| **Hex Duel**            | Turn-based hex-grid strategy game             |
+| **Dice Flush**          | Yahtzee-style dice strategy game              |
+| **Odds**                | Prediction and mind-game duel                 |
+| **Precision**           | Fast-paced reaction and timing duel           |
+| **Dots & Boxes**        | Classic territory and strategy game           |
 
-New games and modes are continuously being added to the platform.
+Each game has its own gameplay mechanics and competitive format, ranging from fast reaction challenges to strategic board games and multiplayer table games.
+
+---
+
+## Personalization
+
+GRYND includes a personalized game discovery system designed to help players find games that match their preferences.
+
+During onboarding, players can answer questions about the types of games they enjoy, their experience level, motivations, and preferred gameplay styles.
+
+GRYND uses these preferences to generate a personalized **FOR YOU** game section while keeping the complete game catalog available through **All Games**.
+
+Players can also update their preferences later through Settings.
 
 ---
 
@@ -100,7 +122,7 @@ See `docs/resend-webhooks.md` for the complete webhook configuration checklist.
 
 ## About GRYND
 
-GRYND is built around **competitive skill gaming** — giving players a single platform to discover games, challenge opponents, compete against AI, and find games tailored to their preferences.
+GRYND is built around competitive skill gaming, giving players a single platform to discover games, challenge opponents, practice against AI, compete in multiplayer matches, and find games tailored to their preferences.
 
 GRYND uses **virtual tokens only**. Tokens have no real-world monetary value and are not redeemable for cash.
 
