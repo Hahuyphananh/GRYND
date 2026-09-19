@@ -54,6 +54,7 @@
     "test:precision-ai": "node --import tsx --test tests/precision-ai.test.mjs tests/precision-match-cleanup.test.mjs tests/quick-queue-precision.test.mjs tests/precision-canonical-lifecycle.test.mjs tests/precision-round-clock.test.mjs tests/precision-rocket-axis.test.mjs",
     "test:precision-db": "node --import tsx --env-file=.env.local --test tests/precision-persistence.test.mjs",
     "verify:precision-mobile": "node qa/precision-mobile-check.mjs",
+    "verify:complete-profile": "node qa/complete-profile-check.mjs",
     "test:plinko-pvp-ai": "node --import tsx --test tests/plinko-pvp-ai.test.mjs",
     "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",

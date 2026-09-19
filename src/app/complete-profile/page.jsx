@@ -1,9 +1,9 @@
 import PageClient from "./PageClient";
 
 export const metadata = {
-  title: "Complete Your Profile | GRYND",
+  title: "Verify Your Age | GRYND",
   description:
-    "Finish setting up your GRYND profile to start playing competitive PvP games.",
+    "Confirm your date of birth to finish setting up your GRYND profile and start playing competitive PvP games.",
 };
 
 export default function Page() {
