@@ -1506,6 +1506,24 @@ export const APP_TEXT_TRANSLATIONS = {
       skip: "Just browsing for now?",
       skipLink: "Explore the games",
     },
+    // /access-denied — the other half of the age gate: a signed-in account
+    // whose recorded date of birth is under 18 is sent here from any game
+    // route. Copy answers "why", "can it be fixed" and "what now".
+    accessDenied: {
+      badge: "Under 18",
+      title: "Access denied",
+      subtitle:
+        "GRYND is 18+ only. The date of birth on this account is under 18, so real-token play stays switched off.",
+      signedInAs: "Signed in as {name}",
+      whatTitle: "What you can do",
+      why1: "If your date of birth is wrong, contact support — we can correct it.",
+      why2: "The restriction lifts on its own once you turn 18.",
+      why3: "You can sign out to use a different account.",
+      contact: "Contact support",
+      signOut: "Sign out",
+      footnote: "Applied to comply with applicable 18+ gaming regulations.",
+      termsLink: "Read the Terms",
+    },
   },
   fr: {
     stickyCta: {
@@ -2641,6 +2659,21 @@ export const APP_TEXT_TRANSLATIONS = {
       secure: "Chiffré et utilisé uniquement pour la vérification d'âge.",
       skip: "Simple visite pour le moment ?",
       skipLink: "Explorer les jeux",
+    },
+    accessDenied: {
+      badge: "Moins de 18 ans",
+      title: "Accès refusé",
+      subtitle:
+        "GRYND est réservé aux 18 ans et plus. La date de naissance de ce compte indique moins de 18 ans, donc le jeu avec des jetons réels reste désactivé.",
+      signedInAs: "Connecté en tant que {name}",
+      whatTitle: "Ce que tu peux faire",
+      why1: "Si ta date de naissance est erronée, contacte le support — on peut la corriger.",
+      why2: "La restriction se lève automatiquement à tes 18 ans.",
+      why3: "Tu peux te déconnecter pour utiliser un autre compte.",
+      contact: "Contacter le support",
+      signOut: "Se déconnecter",
+      footnote: "Appliqué pour respecter la réglementation 18+ en vigueur.",
+      termsLink: "Lire les conditions",
     },
   },
   es: {
@@ -3778,6 +3811,21 @@ export const APP_TEXT_TRANSLATIONS = {
       secure: "Cifrado y usado solo para verificar tu edad.",
       skip: "¿Solo estás mirando?",
       skipLink: "Explora los juegos",
+    },
+    accessDenied: {
+      badge: "Menor de 18",
+      title: "Acceso denegado",
+      subtitle:
+        "GRYND es solo para mayores de 18 años. La fecha de nacimiento de esta cuenta indica menos de 18, así que el juego con tokens reales sigue desactivado.",
+      signedInAs: "Sesión iniciada como {name}",
+      whatTitle: "Qué puedes hacer",
+      why1: "Si tu fecha de nacimiento es incorrecta, contacta con soporte — podemos corregirla.",
+      why2: "La restricción se levanta sola cuando cumplas 18.",
+      why3: "Puedes cerrar sesión para usar otra cuenta.",
+      contact: "Contactar con soporte",
+      signOut: "Cerrar sesión",
+      footnote: "Aplicado para cumplir la normativa de juego 18+.",
+      termsLink: "Leer los términos",
     },
   },
 };

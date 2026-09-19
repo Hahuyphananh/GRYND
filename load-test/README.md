@@ -15,7 +15,15 @@ against a staging environment. Never point these at production.
 
 ## Prerequisites (staging)
 
-1. Install: `npm install` (adds the `artillery` devDependency).
+1. Nothing to install. Artillery is deliberately NOT a devDependency: its
+   latest release (2.0.34) still pins `csv-parse@^4.16.3`, which carries
+   GHSA-8cw4-87c7-c6xx (prototype pollution via the `columns` option) and has
+   no API-compatible patched release — csv-parse 5+ drops the callback API that
+   artillery's payload loader calls (`promisify(csv)(data, opts)`), so forcing
+   the patched version would break every run that uses a CSV payload. These are
+   manual staging runs, never CI, so the tool is fetched on demand instead and
+   stays out of `npm audit`: every command below runs through
+   `npx --yes artillery@2.0.34 …` (pin the version so runs stay reproducible).
 2. Create `load-test/tokens.csv`:
    ```bash
    cp load-test/tokens.example.csv load-test/tokens.csv

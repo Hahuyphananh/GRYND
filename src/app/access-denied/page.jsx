@@ -3,7 +3,7 @@ import PageClient from "./PageClient";
 export const metadata = {
   title: "Access Denied | GRYND",
   description:
-    "You must be at least 18 years old to access GRYND. This restriction is in place to comply with applicable regulations.",
+    "GRYND is 18+ only. This account's date of birth is under 18, so real-token play stays switched off.",
 };
 
 export default function Page() {
