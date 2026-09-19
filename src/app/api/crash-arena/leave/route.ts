@@ -13,6 +13,7 @@ import {
   broadcastTableUpdate,
 } from "../../../../lib/crash-arena/rooms";
 import { closeAiCrashArenaTable } from "../../../../lib/crash-arena/aiBot";
+import { releaseCrashArenaSeat } from "../../../../lib/crash-arena/cleanup";
 import { logError } from "../../../../lib/logError";
 
 /**
@@ -118,39 +119,28 @@ export async function POST(req: Request) {
     }
 
     // ── "Back to Lobby" → return balance to wallet ────────────────────────
-    // PRIVATE tables are virtual-chips only: the buy-in was never taken
-    // from the wallet, so the remaining table balance is play money and is
-    // NEVER refunded (mirrors the practice-table rule). Only public tables
-    // convert the table balance back to real tokens.
-    const isVirtual = Boolean(table?.isPrivate);
-    if (!isVirtual && returnAmount > 0) {
-      await db
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${returnAmount}` })
-        .where(eq(users.clerkId, userId));
-    }
+    // Use the shared releaseCrashArenaSeat helper, which performs an atomic
+    // claim (UPDATE...WHERE status IN ('seated','waiting')) before refunding
+    // the balance. This prevents concurrent leave requests or disconnect
+    // cleanup from double-refunding the same seat balance.
+    const result = await releaseCrashArenaSeat(
+      tableId,
+      userId,
+      "Left table with balance",
+    );
 
-    // ── Mark as left ──────────────────────────────────────────────────────
-    await db
-      .update(crashArenaPlayers)
-      .set({ status: "left" })
-      .where(eq(crashArenaPlayers.id, player.id));
-
-    // ── Record transaction (real ledger only — virtual chips never touch
-    //    it; private tables are play money) ────────────────────────────────
-    if (!isVirtual) {
-      await db.insert(crashArenaTransactions).values({
-        userId: user.id,
-        tableId,
-        amount: returnAmount.toFixed(2),
-        type: "LEAVE",
-        reason: `Left table with balance`,
+    if (!result.cleaned) {
+      // Another release path (concurrent /leave, disconnect cleanup, or
+      // stale sweep) already claimed this seat, or the player was never
+      // seated/waiting. Return success with zero refund.
+      return NextResponse.json({
+        success: true,
+        data: {
+          returned: 0,
+          walletBalance: Number(user.balance),
+        },
       });
     }
-
-    // Best-effort live fanout so the remaining players + lobby refresh.
-    broadcastTableUpdate(tableId, { left: true, userId: user.id });
-    broadcastLobbyUpdate({ left: true, tableId });
 
     // ── Get updated wallet ────────────────────────────────────────────────
     const [updated] = await db
@@ -162,8 +152,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        returned: returnAmount,
-        walletBalance: Number(updated.balance),
+        returned: result.returned,
+        walletBalance: Number(updated?.balance ?? user.balance),
       },
     });
   } catch (err) {
