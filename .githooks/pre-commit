@@ -12,6 +12,15 @@
 # Deliberate bypass (use only when you know what you are doing):
 #     git commit --no-verify
 #
+# PERFORMANCE (2025 rewrite): the first version walked the diff line by line
+# and forked `grep` twice per added line. On Windows Git Bash a fork costs tens
+# of milliseconds, so a 1,000-line commit spent minutes in the hook and people
+# started reaching for --no-verify — which protects nothing. The scan now runs
+# ONE awk pass that tags each added line with its file, then ONE `grep` per
+# pattern over that stream. The detection patterns are byte-identical to the
+# originals and `grep -E` (not awk) still does the matching, so the hook cannot
+# silently weaken as a side effect of the rewrite.
+#
 # NOTE: a hook only protects NEW commits. It does NOT scrub history that is
 # already pushed. Past leaks must be removed with git-filter-repo / BFG and
 # the associated keys rotated.
@@ -49,44 +58,78 @@ mask() {
     if [ ${#m} -le 12 ]; then echo "$m"; else echo "${m:0:6}...${m: -4}"; fi
 }
 
-current_file=""
-while IFS= read -r line; do
-    case "$line" in
-        "diff --git a/"*)
-            # extract the b/ path (may be quoted)
-            current_file=${line#diff --git a/}
-            current_file=${current_file#* b/}
-            current_file=${current_file%\"}
-            current_file=${current_file#\"}
-            ;;
-        "+++ "*|"--- "*|"index "*|"new file "*|"deleted file "*)
-            : ;;
-        +*)
-            content=${line:1}
-            [ -z "$content" ] && continue
-            # strong token shapes
-            m=$(printf '%s\n' "$content" | grep -oE "$STRONG" | head -1 || true)
-            if [ -n "$m" ]; then
-                FAILED=1
-                echo "${RED}${BOLD}Blocked:${NC} possible secret in ${current_file}:" >&2
-                echo "    $(mask "$m")  (line: $(printf '%s' "$content" | cut -c1-160))" >&2
-                continue
-            fi
-            # KEY = long-value assignments
-            if printf '%s\n' "$content" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*["'"'"']?[^[:space:]"'"'"']{16,}'; then
-                key=$(printf '%s\n' "$content" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*).*/\1/')
-                val=$(printf '%s\n' "$content" | sed -E 's/^[^=]*=[[:space:]]*["'"'"']?([^[:space:]"'"'"']*).*/\1/')
-                shopt -s nocasematch
-                if [[ "$key" =~ $KEYWORDS_RE ]] && ! [[ "$key" =~ ^(NEXT_PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_) ]] && ! [[ "$val" =~ $PLACEHOLDER ]] && ! [[ "$val" =~ \$ ]] && [ ${#val} -ge 16 ]; then
-                    FAILED=1
-                    echo "${RED}${BOLD}Blocked:${NC} possible secret value for $key in ${current_file}:" >&2
-                    echo "    $(mask "$val")  (line: $(printf '%s' "$content" | cut -c1-160))" >&2
-                fi
-                shopt -u nocasematch
-            fi
-            ;;
-    esac
-done < <(git diff --cached --no-color -U0)
+# The staged diff, captured once. `-U0` keeps it to added/removed lines only,
+# and `--no-color` keeps the patterns from having to cope with ANSI escapes.
+DIFF_FILE=$(mktemp) || { echo "${RED}${BOLD}Blocked:${NC} cannot create a temp file for the scan." >&2; exit 1; }
+trap 'rm -f "$DIFF_FILE"' EXIT
+git diff --cached --no-color -U0 > "$DIFF_FILE" || true
+
+# Added lines, tagged with the file they came from and their diff line number:
+#     <path>\t<lineno>\t<content>
+# The prefix cannot create a false positive: a path that matches a token shape
+# (e.g. a file literally named `ghp_...`) is itself a leak.
+#
+# Two streams, because the assignment pattern has to be matched against the
+# CONTENT (it is `^`-anchored, so the tag prefix would break it) and running a
+# `grep` per line is exactly the cost this rewrite removes. The assignment
+# pre-filter below is deliberately a SUPERSET of the real test (it ignores the
+# optional quote, which the in-loop check still enforces) — a pre-filter only
+# has to be cheap, never clever, and every candidate is re-checked.
+staged_added_lines() {
+    awk '
+        /^diff --git / {
+            f = $0
+            sub(/^diff --git a\//, "", f)
+            sub(/ b\/.*$/, "", f)
+            next
+        }
+        /^\+\+\+ / { next }
+        /^\+/ { print f "\t" NR "\t" substr($0, 2) }
+    ' "$DIFF_FILE"
+}
+
+staged_assignment_lines() {
+    awk '
+        /^diff --git / {
+            f = $0
+            sub(/^diff --git a\//, "", f)
+            sub(/ b\/.*$/, "", f)
+            next
+        }
+        /^\+\+\+ / { next }
+        /^\+/ {
+            c = substr($0, 2)
+            if (c ~ /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*[^[:space:]]{16,}/) print f "\t" NR "\t" c
+        }
+    ' "$DIFF_FILE"
+}
+
+# ── High-confidence token shapes ──
+while IFS=$'\t' read -r file lineno content; do
+    [ -z "${content:-}" ] && continue
+    m=$(printf '%s\n' "$content" | grep -oE "$STRONG" | head -1 || true)
+    [ -z "$m" ] && continue
+    FAILED=1
+    echo "${RED}${BOLD}Blocked:${NC} possible secret in ${file}:" >&2
+    echo "    $(mask "$m")  (line ${lineno}: $(printf '%s' "$content" | cut -c1-160))" >&2
+done <<< "$(staged_added_lines | grep -E "$STRONG" || true)"
+
+# ── KEY = long-value assignments ──
+while IFS=$'\t' read -r file lineno content; do
+    [ -z "${content:-}" ] && continue
+    if ! printf '%s\n' "$content" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*["'"'"']?[^[:space:]"'"'"']{16,}'; then
+        continue
+    fi
+    key=$(printf '%s\n' "$content" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*).*/\1/')
+    val=$(printf '%s\n' "$content" | sed -E 's/^[^=]*=[[:space:]]*["'"'"']?([^[:space:]"'"'"']*).*/\1/')
+    shopt -s nocasematch
+    if [[ "$key" =~ $KEYWORDS_RE ]] && ! [[ "$key" =~ ^(NEXT_PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_) ]] && ! [[ "$val" =~ $PLACEHOLDER ]] && ! [[ "$val" =~ \$ ]] && [ ${#val} -ge 16 ]; then
+        FAILED=1
+        echo "${RED}${BOLD}Blocked:${NC} possible secret value for $key in ${file}:" >&2
+        echo "    $(mask "$val")  (line ${lineno}: $(printf '%s' "$content" | cut -c1-160))" >&2
+    fi
+    shopt -u nocasematch
+done <<< "$(staged_assignment_lines || true)"
 
 if [ "$FAILED" -ne 0 ]; then
     echo >&2
