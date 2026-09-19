@@ -92,11 +92,7 @@ export async function releaseCrashArenaSeat(
   // no reason to exist). No deferral needed: there are no real winnings
   // to strand, and the close path locks pending entries as losses.
   const tableData = await db
-    .select({
-      id: crashArenaTables.id,
-      isAi: crashArenaTables.isAi,
-      isPrivate: crashArenaTables.isPrivate,
-    })
+    .select({ id: crashArenaTables.id, isAi: crashArenaTables.isAi, isPrivate: crashArenaTables.isPrivate })
     .from(crashArenaTables)
     .where(eq(crashArenaTables.id, tableId))
     .limit(1);
@@ -209,24 +205,32 @@ export async function releaseCrashArenaSeat(
   // ── We own the seat now: refund + record + fan out ────────────────────
   const returnAmount = Number(player.balance);
 
-  if (returnAmount > 0) {
+  // PRIVATE tables are virtual-chips only: the buy-in was never taken
+  // from the wallet, so the remaining table balance is play money and is
+  // NEVER refunded (mirrors the AI practice-table rule). Only public tables
+  // convert the table balance back to real tokens.
+  if (!isVirtual && returnAmount > 0) {
     await db
       .update(users)
       .set({ balance: sql`${users.balance} + ${returnAmount}` })
       .where(eq(users.clerkId, clerkId));
   }
 
-  await db.insert(crashArenaTransactions).values({
-    userId: user.id,
-    tableId,
-    amount: returnAmount.toFixed(2),
-    type: "LEAVE",
-    reason,
-  });
+  // ── Record transaction (real ledger only — virtual chips never touch
+  //    it; private tables are play money) ────────────────────────────────
+  if (!isVirtual) {
+    await db.insert(crashArenaTransactions).values({
+      userId: user.id,
+      tableId,
+      amount: returnAmount.toFixed(2),
+      type: "LEAVE",
+      reason,
+    });
+  }
 
   // Best-effort fanout so the remaining players + lobby refresh.
   broadcastTableUpdate(tableId, { left: true, userId: user.id, disconnected: true });
   broadcastLobbyUpdate({ left: true, tableId, disconnected: true });
 
-  return { cleaned: true, deferred: false, returned: returnAmount };
+  return { cleaned: true, deferred: false, returned: isVirtual ? 0 : returnAmount };
 }
