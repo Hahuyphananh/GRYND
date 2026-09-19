@@ -209,8 +209,6 @@ export async function releaseCrashArenaSeat(
   // from the wallet, so the remaining table balance is play money and is
   // NEVER refunded (mirrors the AI practice-table rule). Only public tables
   // convert the table balance back to real tokens.
-  const isVirtual = Boolean(tableData[0]?.isPrivate);
-
   if (!isVirtual && returnAmount > 0) {
     await db
       .update(users)
