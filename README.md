@@ -71,7 +71,7 @@ Players can also update their preferences later through Settings.
 
 ## Preview
 
-![GRYND banner](./public/bannerimage.png)
+![GRYND banner](src/image/bannerimage.png)
 
 *GRYND platform banner*
 
