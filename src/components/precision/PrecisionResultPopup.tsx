@@ -15,6 +15,9 @@ import React from "react";
 // the recording frame is live. Precision mounts this popup INSIDE
 // <CreatorModeHost>, so the hook below reads the real flag.
 import CreatorResultOverlay from "../creator-mode/CreatorResultOverlay";
+import PrecisionRocketRace, {
+  type RocketLane,
+} from "./PrecisionRocketRace";
 import { RESULT_POPUP_REPLAY_WINDOW_MS } from "../../lib/precision/constants";
 import {
   endReasonToLabel,
@@ -31,6 +34,13 @@ interface PrecisionResultPopupProps {
   replayRequested: boolean;
   opponentReplayRequested: boolean;
   returnChosen: boolean;
+  /** Frozen rockets from the DECIDING round, shown in the main flow when the
+   *  match ended on a decided round. Absent for a resignation / forfeit (no
+   *  decided round to show). Both lanes carry server-stamped elapseds. */
+  race?: {
+    targetMs: number | null;
+    lanes: [RocketLane, RocketLane];
+  } | null;
 }
 
 function PrecisionResultPopupImpl({
@@ -40,6 +50,7 @@ function PrecisionResultPopupImpl({
   replayRequested,
   opponentReplayRequested,
   returnChosen,
+  race = null,
 }: PrecisionResultPopupProps) {
   const { t } = useTranslation();
   // Tick the replay countdown ~1 Hz while the popup is open so the
@@ -108,6 +119,24 @@ function PrecisionResultPopupImpl({
       subline={subline}
       gameName="Precision"
       opponent={popup.opponentName ? { name: popup.opponentName } : null}
+      extraContent={
+        race ? (
+          <div>
+            <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.3em] text-yellow-200/80">
+              {t("games.precision.last_round_label")}
+            </p>
+            {/* Same board as the match, frozen at the last decided round's
+                server-stamped stops — both rockets parked where they landed. */}
+            <PrecisionRocketRace
+              compact
+              phase="arming"
+              targetMs={race.targetMs}
+              liveElapsedMs={0}
+              lanes={race.lanes}
+            />
+          </div>
+        ) : null
+      }
       tokenDelta={tokenDelta}
       summary={[
         {

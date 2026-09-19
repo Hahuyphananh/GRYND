@@ -186,6 +186,11 @@ export default function PvpResultScreen({
   // The highlighted side is emphasised; the other stays visible but muted.
   // Games that don't pass it render exactly as before.
   sides = null,
+  // Optional game-specific block rendered IN THE MAIN FLOW (visible without
+  // expanding Match Details), right after the final-score comparison. Used for
+  // a compact self-explanatory visual — e.g. Precision's frozen rockets from
+  // the deciding round. Games that don't pass it render exactly as before.
+  extraContent = null,
 }) {
   const shouldReduce = useReducedMotion();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -563,6 +568,21 @@ export default function PvpResultScreen({
                     )}
                   </div>
                 ))}
+              </motion.div>
+            )}
+
+            {/* Game-specific visual — sequenced between the score and the
+                rewards so it reads as "here is how it ended". */}
+            {extraContent && (
+              <motion.div
+                {...withReducedMotion(shouldReduce, {
+                  initial: { opacity: 0, y: 8 },
+                  animate: { opacity: 1, y: 0 },
+                  transition: { duration: 0.22, ease: "easeOut", delay: 0.18 },
+                })}
+                className="mx-auto mt-4 w-full max-w-xs"
+              >
+                {extraContent}
               </motion.div>
             )}
 

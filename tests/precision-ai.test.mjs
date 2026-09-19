@@ -101,6 +101,34 @@ test("every rolled target is an integer inside the published window", () => {
   assert.equal(rollRandomTarget(() => 0.999999), MAX_TARGET_MS);
 });
 
+test("the bot's public stop is empty until it is recorded, then cleared on the next arm", () => {
+  // AI practice matches expose the bot's SERVER-MEASURED stop on the public
+  // snapshot so the client can draw its rocket stopping. It must never exist
+  // before the bot actually stops, and it must not leak into the next round.
+  const match = aiMatch("test-ai-stop");
+  assert.equal(match.aiStop, null, "no bot stop exists on a fresh match");
+
+  armRoundState(match, generateRoundNonce(), 1_000);
+  assert.equal(match.aiStop, null, "arming must not publish a bot stop");
+
+  // The server publishes the stop only at the moment it applies the bot's
+  // stored instant (see `applyDueTransitions` in serverStore.ts).
+  const telemetry = computeStopTelemetry(match.roundGoInstant ?? 1_000, 4_321);
+  match.aiStop = { stopInstant: telemetry.stopInstant, elapsedMs: telemetry.elapsedMs };
+  assert.equal(match.aiStop.elapsedMs, 4_321 - (match.roundGoInstant ?? 1_000));
+
+  // A PvP match always carries the field EMPTY (a human opponent's stop
+  // stays hidden until the round resolves).
+  assert.equal(pvpMatch("test-pvp-stop").aiStop, null);
+
+  armRoundState(match, generateRoundNonce(), 9_000);
+  assert.equal(match.aiStop, null, "the next arm clears the previous bot stop");
+
+  match.aiStop = { stopInstant: 1, elapsedMs: 2 };
+  finishMatchState(match, 1);
+  assert.equal(match.aiStop, null, "a finished match clears the bot stop");
+});
+
 test("arming stamps a fixed countdown envelope and hides the target", () => {
   const match = pvpMatch("test-arm");
   const now = 5_000;

@@ -4,8 +4,14 @@
 //
 // The page renders three sub-states driven by `PrecisionState.phase`:
 //   1. waiting  → <PrecisionWaitingRoom />
-//   2. active   → Target + STOP button (server owns all timing)
+//   2. active   → the two-lane vertical rocket race (<PrecisionRocketRace />)
+//                 + target + STOP button (server owns all timing)
 //   3. finished → <PrecisionResultPopup /> + replay/return buttons
+//
+// `arming` reuses the SAME race board as a frozen recap of the round that just
+// ended (both rockets parked at their server-stamped stops) with the
+// countdown in the centre slot, so the player sees exactly where the AI (or
+// opponent) stopped before the next round opens.
 //
 // The match page polls /api/precision/get-match every 1.5s. The polling
 // follow-up is intentionally kept identical to other PvP games (Pool,
@@ -15,7 +21,10 @@
 // emits ONLY a bare STOP signal over the realtime socket; the server
 // stamps the STOP instant and computes elapsed = stopInstant -
 // match.roundGoInstant. The local running timer is visual-only (for UX)
-// and does not affect scoring.
+// and does not affect scoring — but it is ANCHORED to that same server GO
+// instant via `roundClock.ts`, and it FREEZES the instant the player hits
+// STOP (see `freezeTimer`), so the number on screen matches the number the
+// server measures and stops when the player stops.
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -47,6 +56,10 @@ import PrecisionResultPopup from "../../../../../components/precision/PrecisionR
 import PrecisionRoundResultPanel, {
   ROUND_RESULT_REVEAL_MS,
 } from "../../../../../components/precision/PrecisionRoundResultPanel";
+import PrecisionRocketRace, {
+  type RocketLane,
+} from "../../../../../components/precision/PrecisionRocketRace";
+import PrecisionMatchErrorBoundary from "../../../../../components/precision/PrecisionMatchErrorBoundary";
 import {
   emitStop,
   fetchFinishMatch,
@@ -61,11 +74,18 @@ import {
 } from "../../../../../lib/precision/multiplayer";
 import { useSocket } from "../../../../../context/SocketProvider";
 import {
+  AI_MATCH_POLL_INTERVAL_MS,
   ARMING_FAST_POLL_INTERVAL_MS,
   ARMING_FAST_POLL_MAX_ATTEMPTS,
   MATCH_POLL_INTERVAL_MS,
   SOCKET_NAMESPACE,
 } from "../../../../../lib/precision/constants";
+import {
+  elapsedSince,
+  pairScheduledGo,
+  resolveRoundAnchorLocal,
+  type ScheduledGoPairing,
+} from "../../../../../lib/precision/roundClock";
 
 import {
   diffToRank,
@@ -189,7 +209,17 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // Server timing is authoritative for scoring; this display is for UX.
   const [timerMs, setTimerMs] = useState(0);
   const timerRafRef = useRef<number | null>(null);
-  const localGoInstantRef = useRef<number | null>(null);
+  // Local monotonic instant the round's display clock is anchored to — the
+  // SERVER's GO instant expressed in `performance.now()` terms (see
+  // `roundClock.ts`), so the number on screen is the number `recordRoundStop`
+  // will measure, not "how long since this client noticed the round opened".
+  const anchorLocalRef = useRef<number | null>(null);
+  // The scheduled GO of the current round, paired to the local clock while the
+  // round arms (available BEFORE the round opens, so the anchor is exact).
+  const scheduledGoRef = useRef<ScheduledGoPairing | null>(null);
+  // Elapsed ms the local player is FROZEN at once they hit STOP (null while
+  // still flying). Freezes the centre timer AND parks the player's rocket.
+  const [selfFrozenElapsedMs, setSelfFrozenElapsedMs] = useState<number | null>(null);
   // Live 5-second pre-round countdown (display-only). Driven by the
   // server-stamped `countdownEndsAt` so BOTH clients count down from the
   // same absolute instant. null while not in the arming phase.
@@ -201,19 +231,37 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       cancelAnimationFrame(timerRafRef.current);
       timerRafRef.current = null;
     }
-    localGoInstantRef.current = null;
   }, []);
 
-  const startTimer = useCallback(() => {
+  /** Freeze the display clock at its current elapsed and stop the rAF loop.
+   *  Called the instant the player clicks STOP so the timer (and their rocket)
+   *  park on the spot instead of running on until the round resolves — which,
+   *  for a vs-AI round, is a whole server read after the bot stops. Returns the
+   *  frozen value so the caller can store it. */
+  const freezeTimer = useCallback((): number => {
     stopTimer();
-    localGoInstantRef.current = performance.now();
-    const tick = () => {
-      if (localGoInstantRef.current === null) return;
-      setTimerMs(performance.now() - localGoInstantRef.current);
-      timerRafRef.current = requestAnimationFrame(tick);
-    };
-    timerRafRef.current = requestAnimationFrame(tick);
+    const anchor = anchorLocalRef.current;
+    const frozen = anchor === null ? 0 : elapsedSince(anchor, performance.now());
+    setTimerMs(frozen);
+    return frozen;
   }, [stopTimer]);
+
+  const startTimer = useCallback(
+    (anchorLocalMs: number) => {
+      stopTimer();
+      anchorLocalRef.current = anchorLocalMs;
+      // Paint the server-derived elapsed immediately so the display never
+      // flashes a stale 0 before the first rAF frame.
+      setTimerMs(elapsedSince(anchorLocalMs, performance.now()));
+      const tick = () => {
+        if (anchorLocalRef.current === null) return;
+        setTimerMs(elapsedSince(anchorLocalRef.current, performance.now()));
+        timerRafRef.current = requestAnimationFrame(tick);
+      };
+      timerRafRef.current = requestAnimationFrame(tick);
+    },
+    [stopTimer],
+  );
   // TODO(gameplay): when the auth flow lands in the scaffold, derive this
   // from the Clerk session id compared to `state.players[*].userId` so the
   // opponent-aware logic below actually flips sides correctly. For the
@@ -223,7 +271,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   // The lobby page writes `precision:localSeat` ("1" or "2") to
   // sessionStorage once it knows which seat we own, so post-matchmaking
   // clients can decide whether *they* are the Ready button.
-  const [localSeat] = useState<1 | 2>(() => {
+  const [localSeat, setLocalSeat] = useState<1 | 2>(() => {
     if (typeof window === "undefined") return 1;
     try {
       const stored = window.sessionStorage.getItem("precision:localSeat");
@@ -232,6 +280,15 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       return 1;
     }
   });
+
+  // A vs-AI practice match ALWAYS seats the human at seat 1 (see
+  // `createAiMatch`). A stale sessionStorage seat from a previous PvP match
+  // would otherwise be treated as "self", mislabelling the bot as the player —
+  // which stranded the Ready / STOP controls. Correct it as soon as the
+  // snapshot tells us this is an AI match.
+  useEffect(() => {
+    if (state?.isAiGame && localSeat !== 1) setLocalSeat(1);
+  }, [state?.isAiGame, localSeat]);
 
   // Emotes — dedicated per-match room (same pattern as the other PvP games).
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
@@ -304,13 +361,23 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     }
   }, [matchId, t]);
 
+  // Tighten the poll cadence ONLY while a free vs-AI round is in flight. The
+  // bot's stop is applied lazily on a server read, so at the normal 2s cadence
+  // its rocket could sit frozen on the wire for up to two seconds. PvP keeps
+  // the normal cadence — a human opponent's stop must not become observable
+  // faster than the round resolves.
+  const matchPollIntervalMs =
+    state?.isAiGame === true && state?.phase === "active"
+      ? AI_MATCH_POLL_INTERVAL_MS
+      : MATCH_POLL_INTERVAL_MS;
+
   useEffect(() => {
     void refreshState();
     const id = setInterval(() => {
       void refreshState();
-    }, MATCH_POLL_INTERVAL_MS);
+    }, matchPollIntervalMs);
     return () => clearInterval(id);
-  }, [refreshState, socket?.id]);
+  }, [refreshState, socket?.id, matchPollIntervalMs]);
 
   // ── Realtime rooms ───────────────────────────────────────────────────
   useEffect(() => {
@@ -625,6 +692,10 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     if (!state) return;
     if (state.phase !== "active" || state.lastRoundWinnerSeat !== null) {
       setSelfStopPending(false);
+      // Release the frozen timer/rocket too — the round is over, so the next
+      // `active` round must start flying again from zero. The arming recap
+      // reads the frozen positions from `lastRoundStops` instead.
+      setSelfFrozenElapsedMs(null);
     }
   }, [state?.currentRound, state?.phase, state?.lastRoundWinnerSeat]);
 
@@ -714,19 +785,57 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
     playRankSound(localDiff);
   }, [roundResultReveal, localSeat]);
 
+  // ── Pair the scheduled GO while the round arms ─────────────────────
+  // `countdownEndsAt` is the server's SCHEDULED "round opens" instant. Read
+  // alongside `Date.now()` from the same response it becomes that instant in
+  // the local monotonic clock (the round trip and any device clock skew drop
+  // out of the difference), which is what removes the poll lag from the
+  // displayed timer. See `roundClock.ts`.
+  useEffect(() => {
+    if (state?.phase !== "arming") return;
+    const endsAt = state?.countdownEndsAt;
+    if (typeof endsAt !== "number") return;
+    scheduledGoRef.current = pairScheduledGo({
+      countdownEndsAt: endsAt,
+      roundSequence: state?.roundSequence ?? 0,
+      localNowMs: performance.now(),
+      deviceNowMs: Date.now(),
+    });
+  }, [state?.phase, state?.countdownEndsAt, state?.roundSequence]);
+
   // ── Start / stop the local running timer based on phase ────────
-  // When the round flips from `arming` to `active`, the local timer
-  // begins. When the round resolves (any phase other than `active`),
-  // the timer is stopped and reset.
+  // When the round flips to `active`, the display clock starts from the
+  // SERVER's GO instant (paired scheduled GO + the reveal's server-side
+  // drift), so the number the player times against is the number the server
+  // measures. When the round resolves (any phase other than `active`) the
+  // loop stops and the display resets.
+  //
+  // NOTE: the effect deliberately does NOT depend on `selfStopPending` — the
+  // STOP handler freezes the clock itself (`freezeTimer`) and a dependency on
+  // the pending flag would re-run this effect on the click and restart the
+  // very loop we just stopped.
   useEffect(() => {
     if (state?.phase === "active") {
-      startTimer();
+      const anchor = resolveRoundAnchorLocal({
+        scheduled: scheduledGoRef.current,
+        goInstant: state?.roundGoInstant ?? null,
+        roundSequence: state?.roundSequence ?? null,
+        localNowMs: performance.now(),
+        deviceNowMs: Date.now(),
+      });
+      startTimer(anchor);
     } else {
       stopTimer();
       setTimerMs(0);
     }
     return () => stopTimer();
-  }, [state?.phase, startTimer, stopTimer]);
+  }, [
+    state?.phase,
+    state?.roundGoInstant,
+    state?.roundSequence,
+    startTimer,
+    stopTimer,
+  ]);
 
   // ── 5-second pre-round countdown ticker ─────────────────────────
   // During `arming`, the server stamps `countdownEndsAt`
@@ -931,6 +1040,12 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
       setError(t("games.precision.stop_no_socket"));
       return;
     }
+    // Freeze the display clock and the player's rocket the instant STOP is
+    // accepted for submission. Without this the local rAF loop kept running
+    // until the ROUND resolved — which, against the bot, is a whole server
+    // read after the AI's own stop — so the timer visibly refused to stop on
+    // click. `freezeTimer` parks both on the spot.
+    setSelfFrozenElapsedMs(freezeTimer());
     setStopSubmitting(true);
     setError(null);
     setSelfStopPending(true);
@@ -972,7 +1087,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         });
       }
     });
-  }, [matchId, stopSubmitting, selfStopPending, socket, posthog]);
+  }, [matchId, stopSubmitting, selfStopPending, socket, posthog, freezeTimer]);
 
   const handleReturnToLobby = useCallback(() => {
     setReturnChosen(true);
@@ -1118,6 +1233,43 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   const score = state?.score ?? { seat1: 0, seat2: 0 };
   const currentRound = state?.currentRound ?? 1;
   const lastRoundWinnerSeat = state?.lastRoundWinnerSeat ?? null;
+
+  // ── Rocket-race lanes ──────────────────────────────────────────────
+  // Built per render (trivially cheap) and used for BOTH the live round
+  // (`recap=false`) and the post-round arming recap (`recap=true`).
+  //   * live:  self parks at the frozen click value; the bot parks the moment
+  //            its PUBLISHED stop lands (`state.aiStop`). A human opponent
+  //            stays flying — their stop is only revealed at resolution.
+  //   * recap: both lanes read the decided round's server-stamped elapseds.
+  const raceLanes = (recap: boolean): [RocketLane, RocketLane] => {
+    const elapsedFor = (seat: 1 | 2): number | null => {
+      const key = seat === 1 ? "seat1" : "seat2";
+      const recorded = state?.lastRoundStops?.[key]?.elapsedMs;
+      if (recap) return typeof recorded === "number" ? recorded : null;
+      if (seat === localSeat) return selfFrozenElapsedMs;
+      if (seat === 2 && state?.isAiGame) {
+        const ai = state?.aiStop?.elapsedMs;
+        return typeof ai === "number" ? ai : null;
+      }
+      return null;
+    };
+    const seat1 = players.find((p) => p.seat === 1);
+    const seat2 = players.find((p) => p.seat === 2);
+    return [
+      {
+        seat: 1,
+        name: seat1?.name ?? t("games.precision.seat_alpha"),
+        isSelf: localSeat === 1,
+        frozenElapsedMs: elapsedFor(1),
+      },
+      {
+        seat: 2,
+        name: seat2?.name ?? t("games.precision.seat_bravo"),
+        isSelf: localSeat === 2,
+        frozenElapsedMs: elapsedFor(2),
+      },
+    ];
+  };
 
   const turnBanner = state?.phase === "active"
     ? isLocalPlayerTurn(state, localSeat)
@@ -1312,18 +1464,7 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
 
         {showArming && state && (
           <motion.div key="phase-arming" {...fadeUp}>
-            <motion.div
-              animate={{
-                scale: [1, 1.02, 1],
-                opacity: [0.92, 1, 0.92],
-              }}
-              transition={{
-                duration: 1.6,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-              className="mt-6 space-y-5"
-            >
+            <div className="mt-6 space-y-5">
               <PrecisionScoreboard
                 score={score}
                 players={players}
@@ -1331,31 +1472,37 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 lastRoundWinnerSeat={lastRoundWinnerSeat}
                 viewerSeat={localSeat}
               />
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-8 text-center sm:p-10">
-                <p className="animate-pulse"><IconClock size={44} className="text-yellow-400" /></p>
-                <h2 className="mt-4 text-2xl font-black text-yellow-300 sm:text-3xl">
+              <div className="rounded-2xl border border-yellow-400/40 bg-[#1a120a]/80 p-4 text-center sm:p-6">
+                <p className="inline-flex items-center justify-center gap-2 text-sm font-black uppercase tracking-widest text-yellow-300">
+                  <IconClock size={18} className="animate-pulse text-yellow-400" />
                   {t("games.precision.round_get_ready", { round: currentRound })}
-                </h2>
-                <p className="mt-4 text-xs uppercase tracking-[0.35em] text-yellow-200/70">
-                  {t("games.precision.countdown_label")}
                 </p>
-                <p
-                  data-testid="precision-round-countdown"
-                  className="mt-1 font-mono text-8xl font-black tabular-nums text-yellow-300 sm:text-9xl"
-                >
-                  {countdownMs !== null ? Math.max(0, Math.ceil(countdownMs / 1000)) : "…"}
-                </p>
-                <p className="mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
+                <div className="mt-3">
+                  {/* Same board as the live round: both rockets are parked at
+                      the previous round's server-stamped stops, so the player
+                      can see exactly where the AI (or opponent) stopped before
+                      the next round's countdown finishes. The centre slot
+                      hosts the countdown. */}
+                  <PrecisionRocketRace
+                    phase="arming"
+                    roundKey={state.roundSequence}
+                    targetMs={lastRevealedTargetRef.current}
+                    liveElapsedMs={0}
+                    countdownMs={countdownMs}
+                    lanes={raceLanes(true)}
+                  />
+                </div>
+                <p className="mx-auto mt-3 max-w-md text-sm text-cyan-100/90 sm:text-base">
                   {t("games.precision.arming_hint")}
                 </p>
                 <button
                   onClick={handleResign}
-                  className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
+                  className="mt-4 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
                 >
                   {t("games.precision.resign")}
                 </button>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
         )}
 
@@ -1372,24 +1519,24 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
                 lastRoundStops={boardStops}
               />
 
+              {/* Two-lane vertical rocket race — you | opponent. Your rocket
+                  and the centre timer freeze the instant you hit STOP; the
+                  bot's rocket freezes the moment its published stop lands. */}
+              <PrecisionRocketRace
+                phase="active"
+                roundKey={state.roundSequence}
+                targetMs={state.targetMs}
+                liveElapsedMs={timerMs}
+                lanes={raceLanes(false)}
+              />
+
               <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
-                <p><IconTarget size={44} className="text-fuchsia-400" /></p>
-                <h2 className="mt-4 text-2xl font-black text-fuchsia-300">
+                <h2 className="text-xl font-black text-fuchsia-300">
+                  <IconTarget size={20} className="mr-1.5 inline align-text-bottom" />
                   {t("games.precision.round_label", { round: currentRound })}
                 </h2>
 
                 <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-                  {t("games.precision.elapsed_label")}
-                </p>
-                <p
-                  data-testid="precision-round-timer"
-                  className="mt-1 font-mono text-6xl font-black tabular-nums text-cyan-200 sm:text-7xl"
-                >
-                  {Math.round(timerMs).toLocaleString()}
-                  <span className="ml-1 text-3xl text-cyan-300/60">{t("games.precision.ms_suffix")}</span>
-                </p>
-
-                <p className="mt-4 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
                   {t("games.precision.target")}
                 </p>
                 <p
@@ -1549,6 +1696,9 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
   );
 
   return (
+    // Render-error containment: a bad server snapshot must degrade to a
+    // recoverable panel, never a blank page (see the component header).
+    <PrecisionMatchErrorBoundary>
     <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
@@ -1604,6 +1754,14 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
         replayRequested={replayRequested}
         opponentReplayRequested={opponentReplayRequested}
         returnChosen={returnChosen}
+        // Frozen rockets of the last decided round. `lastRoundStops` survives
+        // the match-finish transition, so the board can show where both
+        // rockets ultimately landed; null when no round was ever decided.
+        race={
+          state?.lastRoundStops
+            ? { targetMs: lastRevealedTargetRef.current, lanes: raceLanes(true) }
+            : null
+        }
       />
       </CreatorModeHost>
 
@@ -1632,5 +1790,6 @@ export default function PrecisionMatchPage({ params }: PrecisionMatchPageProps) 
 
       <Footer />
     </div>
+    </PrecisionMatchErrorBoundary>
   );
 }

@@ -77,6 +77,16 @@ export interface PrecisionState {
   wager: number;
   /** Free practice match against the server-controlled AI. */
   isAiGame?: boolean;
+  /** AI practice only: the bot's SERVER-MEASURED stop for the round in
+   *  flight, published the instant the bot's stored stop instant is
+   *  applied on the server (never before). `stopInstant` is server-stamped
+   *  and `elapsedMs = stopInstant - roundGoInstant`. Null while the bot is
+   *  still flying, absent/null on EVERY PvP match (a human opponent's stop
+   *  must stay hidden until the round resolves), and cleared when the next
+   *  round arms. It exists so the client can render the AI's rocket
+   *  stopping on its track while the human is still playing — the bot
+   *  never sends timing data of its own. */
+  aiStop?: { stopInstant: number; elapsedMs: number } | null;
   players: PrecisionPlayer[];
   turn: PlayerSeat;
   // ── Best-of-5 win condition (server-authoritative) ─────────────────

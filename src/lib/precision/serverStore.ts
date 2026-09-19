@@ -373,6 +373,15 @@ function applyDueTransitions(
       write.aiStopAt.getTime(),
     );
     write.pendingStops[PRECISION_AI_USER_ID] = telemetry;
+    // Publish the bot's stop on the PUBLIC snapshot so the client can render
+    // its rocket stopping on the track. This is the ONLY moment the bot's
+    // timing becomes visible — it is the server-measured value, stamped the
+    // instant the stored stop instant came due, and it never existed on the
+    // wire before now. Cleared when the next round arms (`armRoundState`).
+    write.state.aiStop = {
+      stopInstant: telemetry.stopInstant,
+      elapsedMs: telemetry.elapsedMs,
+    };
     write.aiStopAt = null;
     changed = true;
     // If the human already stopped, the round is now decidable.
@@ -1032,6 +1041,7 @@ export async function resignMatch(
     write.state.countdownEndsAt = null;
     write.state.roundId = null;
     write.state.roundNonce = null;
+    write.state.aiStop = null;
     write.state.version += 1;
     write.pendingStops = {};
     write.serverTargetMs = null;

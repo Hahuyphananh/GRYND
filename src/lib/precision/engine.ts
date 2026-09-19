@@ -70,6 +70,9 @@ export function makeInitialMatch(
     phase,
     wager,
     isAiGame,
+    // No bot stop has been observed yet (AI matches only ever populate this
+    // when the bot's stored stop instant is applied on the server).
+    aiStop: null,
     players,
     turn: currentTurn,
     score: { seat1: 0, seat2: 0 },
@@ -137,6 +140,10 @@ export function armRoundState(
   state.armingStartedAt = nowMs;
   state.countdownEndsAt = nowMs + ROUND_COUNTDOWN_MS;
   state.targetMs = null;
+  // The previous round's bot stop (AI practice only) belongs to the round
+  // that just ended — clear it so the new round starts with both rockets
+  // on the launch pad.
+  state.aiStop = null;
   state.roundSequence = (state.roundSequence ?? 0) + 1;
   state.roundId = `m-${state.matchId}-r-${state.roundSequence}`;
   state.roundNonce = nonce;
@@ -312,5 +319,6 @@ export function finishMatchState(
   state.roundId = null;
   state.roundNonce = null;
   state.targetMs = null;
+  state.aiStop = null;
   state.version += 1;
 }

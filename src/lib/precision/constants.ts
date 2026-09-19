@@ -32,6 +32,15 @@ export const LOBBY_LIST_POLL_INTERVAL_MS = 3000;
 // status reads ~25% vs. the old 1500ms.
 export const MATCH_POLL_INTERVAL_MS = 2000;
 
+// Tighter poll used ONLY while a free vs-AI match has a round in flight. The
+// bot's stop is applied lazily on a server read (there are no timers any
+// more), so with the normal 2s cadence the AI's rocket could sit frozen on
+// the wire for up to two seconds before the client notices. Half a second is
+// still a handful of requests per round (rounds run 2.5–10s) but keeps the
+// AI's stop feeling immediate. PvP keeps the normal cadence — a human
+// opponent's stop must not become observable faster than the round resolves.
+export const AI_MATCH_POLL_INTERVAL_MS = 500;
+
 // Fast re-poll cadence used ONLY for the moment the pre-round countdown
 // expires. The server flips `arming` → `active` at `countdownEndsAt`, but
 // the client otherwise learns about it on the next `MATCH_POLL_INTERVAL_MS`

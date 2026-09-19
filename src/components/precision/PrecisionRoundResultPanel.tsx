@@ -32,6 +32,7 @@ import { gameOverModal } from "../../lib/animations";
 import { IconHeartHandshake, IconMedal2, IconTrophy } from "@tabler/icons-react";
 import { diffToRank } from "../../lib/precision/utils";
 import { PrecisionRankIcon } from "./PrecisionRankIcon";
+import PrecisionRocketRace from "./PrecisionRocketRace";
 import type { PlayerSeat } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -281,7 +282,7 @@ function PrecisionRoundResultPanelImpl({
       >
         <motion.div
           {...gameOverModal.panel}
-          className={`relative w-full max-w-lg overflow-hidden rounded-3xl border ${bannerPalette.ring} ${bannerPalette.bg} p-5 text-center shadow-2xl ${bannerPalette.glow} sm:p-7`}
+          className={`relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl border ${bannerPalette.ring} ${bannerPalette.bg} p-5 text-center shadow-2xl ${bannerPalette.glow} sm:p-7`}
         >
           {/* Top accent strip — casino-style gradient bar */}
           <motion.div
@@ -313,6 +314,38 @@ function PrecisionRoundResultPanelImpl({
               {targetMs.toLocaleString()}
               <span className="ml-1 text-2xl text-yellow-200/70">{t("games.precision.ms_suffix")}</span>
             </p>
+          </motion.div>
+
+          {/* Where each rocket parked, relative to the target. Both lanes are
+              frozen at the server-stamped stops this panel is reporting, so
+              the spatial view can never disagree with the numbers below. */}
+          <motion.div
+            initial={{ y: 14, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3, duration: 0.35 }}
+            className="mt-4"
+            data-testid="precision-round-result-race"
+          >
+            <PrecisionRocketRace
+              compact
+              phase="arming"
+              targetMs={targetMs}
+              liveElapsedMs={0}
+              lanes={[
+                {
+                  seat: 1,
+                  name: seat1Name,
+                  isSelf: localSeat === 1,
+                  frozenElapsedMs: seat1ElapsedMs,
+                },
+                {
+                  seat: 2,
+                  name: seat2Name,
+                  isSelf: localSeat === 2,
+                  frozenElapsedMs: seat2ElapsedMs,
+                },
+              ]}
+            />
           </motion.div>
 
           {/* Player rows (staggered) */}
