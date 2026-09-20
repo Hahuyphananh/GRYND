@@ -50,7 +50,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion, useReducedMotion } from "framer-motion";
 import { withReducedMotion } from "../../../../lib/animations";
 import NavigationBar from "../../../../components/navigation-bar";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
 import {
@@ -1682,30 +1682,36 @@ export default function LaneRushDuelMatchPage({ params }) {
         name: match?.player1Name || null,
         iconKey: match?.player1IconKey || null,
         nameColor: match?.player1NameColor || null,
+        profileFrame: match?.player1ProfileFrame || null,
       }
     : {
         name: match?.player2Name || null,
         iconKey: match?.player2IconKey || null,
         nameColor: match?.player2NameColor || null,
+        profileFrame: match?.player2ProfileFrame || null,
       };
   const oppSeatIdentity = isBotMatch
-    ? { name: null, iconKey: null, nameColor: null }
+    ? { name: null, iconKey: null, nameColor: null, profileFrame: null }
     : isPlayer1
       ? {
           name: match?.player2Name || null,
           iconKey: match?.player2IconKey || null,
           nameColor: match?.player2NameColor || null,
+          profileFrame: match?.player2ProfileFrame || null,
         }
       : {
           name: match?.player1Name || null,
           iconKey: match?.player1IconKey || null,
           nameColor: match?.player1NameColor || null,
+          profileFrame: match?.player1ProfileFrame || null,
         };
   const myDisplayName = mySeatIdentity.name || "You";
   const oppDisplayName =
     oppSeatIdentity.name || (isBotMatch ? "GRYND AI" : "Opponent");
   const mySeatIcon = mySeatIdentity.iconKey;
   const oppSeatIcon = oppSeatIdentity.iconKey;
+  const mySeatProfileFrame = mySeatIdentity.profileFrame;
+  const oppSeatProfileFrame = oppSeatIdentity.profileFrame;
   const myNameColor = mySeatIdentity.nameColor;
   const oppNameColor = oppSeatIdentity.nameColor;
 
@@ -2379,6 +2385,7 @@ export default function LaneRushDuelMatchPage({ params }) {
     opponent: {
       name: oppDisplayName,
       iconKey: oppSeatIcon,
+      profileFrame: oppSeatProfileFrame,
       isAi: isBotMatch,
     },
     tokenDelta: drawMatch
@@ -2432,7 +2439,7 @@ export default function LaneRushDuelMatchPage({ params }) {
 <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-cyan-300/50 bg-cyan-500/10 p-3 text-center">
                 <p className="inline-flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/70">
-                  <IconAvatar iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
+                  <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
                   <span className="max-w-[80px] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
                     {myDisplayName}
                   </span>
@@ -2502,7 +2509,7 @@ export default function LaneRushDuelMatchPage({ params }) {
               </div>
               <div className="rounded-2xl border border-rose-300/40 bg-rose-500/10 p-3 text-center">
                 <p className="inline-flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/70">
-                  <IconAvatar iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
+                  <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
                   <span className="max-w-[80px] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
                     {oppDisplayName}
                   </span>

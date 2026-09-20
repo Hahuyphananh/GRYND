@@ -21,6 +21,7 @@ export default function useMySeatIdentity() {
     name: null,
     iconKey: null,
     nameColor: null,
+    profileFrame: null,
   });
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function useMySeatIdentity() {
             name: data.data.name || null,
             iconKey: data.data.selectedIcon || null,
             nameColor: data.data.nameColor || null,
+            profileFrame: data.data.equippedCosmetics?.profile_frame || null,
           });
         }
       } catch {

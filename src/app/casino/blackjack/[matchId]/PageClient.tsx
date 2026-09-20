@@ -57,7 +57,9 @@ import {
   CreatorPhoneFrame,
 } from "../../../../components/creator-mode/CreatorModeLayout";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar, {
+  type ProfileFramePayload,
+} from "../../../../components/FrameAvatar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
@@ -139,9 +141,11 @@ type MatchState = {
   player1Name: string | null;
   player1IconKey: string | null;
   player1NameColor: string | null;
+  player1ProfileFrame: ProfileFramePayload;
   player2Name: string | null;
   player2IconKey: string | null;
   player2NameColor: string | null;
+  player2ProfileFrame: ProfileFramePayload;
   isAi: boolean;
   stakeAmount: number;
   status: string;
@@ -449,11 +453,13 @@ export default function BlackjackPvpMatchPage({
         name: match?.player1Name || null,
         iconKey: match?.player1IconKey || null,
         nameColor: match?.player1NameColor || null,
+        profileFrame: match?.player1ProfileFrame || null,
       }
     : {
         name: match?.player2Name || null,
         iconKey: match?.player2IconKey || null,
         nameColor: match?.player2NameColor || null,
+        profileFrame: match?.player2ProfileFrame || null,
       };
   const oppIdentity = match?.isAi
     ? { name: null, iconKey: null, nameColor: null }
@@ -462,11 +468,13 @@ export default function BlackjackPvpMatchPage({
           name: match?.player2Name || null,
           iconKey: match?.player2IconKey || null,
           nameColor: match?.player2NameColor || null,
+          profileFrame: match?.player2ProfileFrame || null,
         }
       : {
           name: match?.player1Name || null,
           iconKey: match?.player1IconKey || null,
           nameColor: match?.player1NameColor || null,
+          profileFrame: match?.player1ProfileFrame || null,
         };
   // The opponent is whoever occupies the seat we don't hold. Only
   // reportable once a real opponent has joined (player2Id set).
@@ -943,6 +951,8 @@ export default function BlackjackPvpMatchPage({
       : t("blackjackPvp.seat.opponent", "Adversaire"));
   const myIconKey = myIdentity.iconKey;
   const oppIconKey = oppIdentity.iconKey;
+  const myProfileFrame = myIdentity.profileFrame;
+  const oppProfileFrame = oppIdentity.profileFrame;
   const myNameColor = myIdentity.nameColor;
   const oppNameColor = oppIdentity.nameColor;
 
@@ -1162,7 +1172,12 @@ export default function BlackjackPvpMatchPage({
         headline={headline}
         subline={subline}
         gameName="Blackjack PvP"
-        opponent={{ name: oppName, iconKey: oppIconKey, isAi }}
+        opponent={{
+          name: oppName,
+          iconKey: oppIconKey,
+          profileFrame: oppProfileFrame,
+          isAi,
+        }}
         tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
@@ -1383,6 +1398,7 @@ export default function BlackjackPvpMatchPage({
         t={t}
         label={oppSeatLabel}
         iconKey={oppIconKey}
+        profileFrame={oppProfileFrame}
         nameColor={oppNameColor}
         hand={oppHand}
         isMatchFinished={match?.status === "finished"}
@@ -1438,6 +1454,7 @@ export default function BlackjackPvpMatchPage({
         t={t}
         label={mySeatLabel}
         iconKey={myIconKey}
+        profileFrame={myProfileFrame}
         nameColor={myNameColor}
         hand={myHand}
         myState={myState}
@@ -2031,6 +2048,7 @@ function OpponentHand({
   t,
   label,
   iconKey,
+  profileFrame,
   nameColor,
   hand,
   isMatchFinished,
@@ -2040,6 +2058,7 @@ function OpponentHand({
   t: TFn;
   label: string;
   iconKey?: string | null;
+  profileFrame?: ProfileFramePayload;
   nameColor?: string | null;
   hand: Card[];
   isMatchFinished: boolean;
@@ -2059,7 +2078,8 @@ function OpponentHand({
     <div>
       <div className="text-center mb-2">
         <div className="flex items-center justify-center gap-2">
-          <IconAvatar
+          <FrameAvatar
+            frame={profileFrame}
             iconKey={iconKey || null}
             name={label}
             size="h-10 w-10"
@@ -2095,6 +2115,7 @@ function MyHand({
   t,
   label,
   iconKey,
+  profileFrame,
   nameColor,
   hand,
   myState,
@@ -2109,6 +2130,7 @@ function MyHand({
   t: TFn;
   label: string;
   iconKey?: string | null;
+  profileFrame?: ProfileFramePayload;
   nameColor?: string | null;
   hand: Card[];
   myState: string;
@@ -2154,7 +2176,8 @@ function MyHand({
     <motion.div animate={standSettle}>
       <div className="text-center mb-2">
         <div className="flex items-center justify-center gap-2">
-          <IconAvatar
+          <FrameAvatar
+            frame={profileFrame}
             iconKey={iconKey || null}
             name={label}
             size="h-9 w-9"

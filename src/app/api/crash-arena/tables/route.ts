@@ -9,6 +9,7 @@ import {
 } from "../../../../db/schema";
 import { eq, ne, and, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
 import {
   CRASH_WAGERS,
   CRASH_MIN_BUYIN_MULTIPLIER,
@@ -139,6 +140,7 @@ export async function GET(req: Request) {
     let userNameById = new Map();
     let userClerkIdById = new Map();
     let userIconKeyById = new Map();
+    let userProfileFrameById = new Map();
     if (userIdsToResolve.length > 0) {
       const userRows = await db
         .select({
@@ -147,6 +149,7 @@ export async function GET(req: Request) {
           clerkId: users.clerkId,
           // Official Grynd icon key — the ONLY avatar representation.
           selectedIcon: users.selectedIcon,
+          equippedCosmetics: users.equippedCosmetics,
         })
         .from(users)
         .where(inArray(users.id, userIdsToResolve));
@@ -158,6 +161,15 @@ export async function GET(req: Request) {
       );
       userIconKeyById = new Map(
         userRows.map((u) => [u.id, u.selectedIcon || "default"]),
+      );
+      const frameByKey = await getProfileFramesByKeys(
+        userRows.map((u) => pickProfileFrameKey(u.equippedCosmetics)),
+      );
+      userProfileFrameById = new Map(
+        userRows.map((u) => {
+          const key = pickProfileFrameKey(u.equippedCosmetics);
+          return [u.id, key ? frameByKey.get(key) || null : null];
+        }),
       );
     }
 
@@ -380,6 +392,7 @@ export async function GET(req: Request) {
             // Official Grynd icon key for the seat's avatar (AI seats fall
             // back to the default icon).
             iconKey: userIconKeyById.get(p.userId) || "default",
+            profileFrame: userProfileFrameById.get(p.userId) || null,
             // The seat's custom name (host-renamed AIs) wins over the
             // users-table name — renaming never touches the shared user.
             name: p.nickname ?? (userNameById.get(p.userId) || `Player ${p.userId}`),
@@ -398,6 +411,7 @@ export async function GET(req: Request) {
                   clerkId: userClerkIdById.get(p.userId) ?? null,
                   // Official Grynd icon key for the wait-list avatar.
                   iconKey: userIconKeyById.get(p.userId) || "default",
+                  profileFrame: userProfileFrameById.get(p.userId) || null,
                   name: p.nickname ?? (userNameById.get(p.userId) || `Player ${p.userId}`),
                   balance: Number(p.balance),
                   status: p.status,

@@ -35,6 +35,7 @@ import {
 import { applyLeaderboardCounters } from "../leaderboardCounters";import { applyPrestigeResult, resolvePrestigeBadge } from "../prestige";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../cosmetics";
 import {
   buildResourcePool,
   BLOCK_SHAPES,
@@ -1521,7 +1522,17 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
  */async function userDisplayMap(
   tx: any,
   clerkIds: string[],
-): Promise<Map<string, { name: string; iconKey: string; prestigeBadge: string | null }>> {
+): Promise<
+  Map<
+    string,
+    {
+      name: string;
+      iconKey: string;
+      prestigeBadge: string | null;
+      profileFrame: unknown;
+    }
+  >
+> {
   const ids = [...new Set(clerkIds.filter(Boolean))];
   if (ids.length === 0) return new Map();
   const rows = await tx
@@ -1529,17 +1540,31 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
       clerkId: users.clerkId,
       name: users.name,
       selectedIcon: users.selectedIcon,
+      equippedCosmetics: users.equippedCosmetics,
       xp: users.xp,
       prestigeLevel: users.prestigeLevel,
       showPrestigeBadge: users.showPrestigeBadge,
     })
     .from(users)
     .where(inArray(users.clerkId, ids));
-  const map = new Map<string, { name: string; iconKey: string; prestigeBadge: string | null }>();
+  const frameByKey = await getProfileFramesByKeys(
+    rows.map((row: any) => pickProfileFrameKey(row.equippedCosmetics)),
+  );
+  const map = new Map<
+    string,
+    {
+      name: string;
+      iconKey: string;
+      prestigeBadge: string | null;
+      profileFrame: unknown;
+    }
+  >();
   for (const row of rows) {
+    const frameKey = pickProfileFrameKey(row.equippedCosmetics);
     map.set(row.clerkId, {
       name: row.name || "Player",
       iconKey: row.selectedIcon || DEFAULT_ICON_KEY,
+      profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
       prestigeBadge: resolvePrestigeBadge({
         xp: row.xp,
         prestigeLevel: row.prestigeLevel,
@@ -1567,6 +1592,7 @@ async function enrichMatchPlayers(tx: any, players: any[]) {
       joinedAt: p.joinedAt,
       eliminatedAt: p.eliminatedAt,      name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
       iconKey: p.isAi ? DEFAULT_ICON_KEY : (d?.iconKey ?? DEFAULT_ICON_KEY),
+      profileFrame: p.isAi ? null : (d?.profileFrame ?? null),
       prestigeBadge: p.isAi ? null : (d?.prestigeBadge ?? null),
     };
   });
@@ -1606,7 +1632,12 @@ export async function listOpenTowerArenaMatches({
       .from(towerArenaPlayers)
       .where(inArray(towerArenaPlayers.matchId, lobbyIds)),
     db
-      .select({ clerkId: users.clerkId, name: users.name, selectedIcon: users.selectedIcon })
+      .select({
+        clerkId: users.clerkId,
+        name: users.name,
+        selectedIcon: users.selectedIcon,
+        equippedCosmetics: users.equippedCosmetics,
+      })
       .from(users)
       .where(
         inArray(
@@ -1625,6 +1656,9 @@ export async function listOpenTowerArenaMatches({
   for (const p of playerRows) {
     countByMatch.set(p.matchId, (countByMatch.get(p.matchId) ?? 0) + 1);
   }
+  const hostFrameByKey = await getProfileFramesByKeys(
+    userRows.map((u) => pickProfileFrameKey(u.equippedCosmetics)),
+  );
   const hostDisplay = new Map(userRows.map((u) => [u.clerkId, u]));
   const excludeMyOpenLobby = excludeUserId
     ? await (async () => {
@@ -1650,6 +1684,10 @@ export async function listOpenTowerArenaMatches({
         hostUserId: m.hostUserId,
         hostName: host?.name ?? "Player",
         hostIconKey: host?.selectedIcon ?? DEFAULT_ICON_KEY,
+        hostProfileFrame: (() => {
+          const frameKey = pickProfileFrameKey(host?.equippedCosmetics);
+          return frameKey ? hostFrameByKey.get(frameKey) || null : null;
+        })(),
         wager: m.wager,
         maxPlayers: m.maxPlayers,
         playerCount: countByMatch.get(m.id) ?? 0,

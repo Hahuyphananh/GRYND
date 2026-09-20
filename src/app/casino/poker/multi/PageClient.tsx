@@ -12,7 +12,7 @@ import { dealFromShoe, withReducedMotion } from "../../../../lib/animations";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
@@ -81,6 +81,7 @@ type Player = {
   committed: number;
   // Seat identity — resolved server-side (game-state GET).
   iconKey?: string | null;
+  profileFrame?: unknown;
   nameColor?: string | null;
 };
 
@@ -1843,7 +1844,7 @@ export default function PokerPage() {
             >
               <p className="flex items-center gap-1.5 font-semibold">
                 {p.isAI ? null : (
-                  <IconAvatar iconKey={p.iconKey} name={p.name} size="h-4 w-4" />
+                  <FrameAvatar frame={p.profileFrame} iconKey={p.iconKey} name={p.name} size="h-4 w-4" />
                 )}
                 <span style={p.nameColor ? { color: p.nameColor } : undefined}>
                   {p.name}
@@ -2571,7 +2572,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   </div>
                   <div className="mt-1.5 flex items-center justify-center gap-2">
                     {!winner?.isAI && (
-                      <IconAvatar
+                      <FrameAvatar
+                        frame={winner?.profileFrame}
                         iconKey={winner?.iconKey}
                         name={winner?.name || "?"}
                         size="h-6 w-6"
@@ -2632,7 +2634,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                             >
                               <span className="flex min-w-0 items-center gap-1.5 truncate text-white/85">
                                 {!op?.isAI && (
-                                  <IconAvatar
+                                  <FrameAvatar
+                                    frame={op?.profileFrame}
                                     iconKey={op?.iconKey}
                                     name={op?.name || "?"}
                                     size="h-4 w-4"
@@ -2893,7 +2896,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   <div className="flex justify-between w-full px-1 items-center gap-1">
                     <span className="relative flex items-center gap-1 truncate text-[#ffffff]/90">
                       {occupant.isAI ? null : (
-                        <IconAvatar iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
+                        <FrameAvatar frame={occupant.profileFrame} iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
                       )}
                       <span className="truncate" style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
                         {occupant.name}

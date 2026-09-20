@@ -25,7 +25,7 @@ import useActiveGamePresence from "../../../hooks/useActiveGamePresence";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../components/IconAvatar";
+import FrameAvatar from "../../../components/FrameAvatar";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
   IconDeviceGamepad2,
@@ -499,7 +499,7 @@ function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: num
 function PlayerCard({
   player, label, isActive, isSelected, color, moves, territory, currentAP, maxAP, isWinner, isAI,
   turnJustChanged, totalTroops, maxTroops, clockTime, isLocal,
-  emoteBubble, emoteSide, iconKey, nameColor,
+  emoteBubble, emoteSide, iconKey, nameColor, profileFrame,
 }: {
   player: DuelPlayer; label: string;
   isActive: boolean; isSelected: boolean; color: string;
@@ -514,6 +514,7 @@ function PlayerCard({
   emoteSide?: "mine" | "incoming";
   iconKey?: string | null;
   nameColor?: string | null;
+  profileFrame?: unknown;
 }) {
   // Use color to determine blue/red styling — local player always blue, opponent always red
   const isBlue = color === "#22d3ee";
@@ -550,7 +551,7 @@ function PlayerCard({
         <span className="relative flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-[0.2em]" style={{ color }}>
           {/* Official Grynd icon — falls back to a letter circle when
               the key is missing/invalid. */}
-          <IconAvatar iconKey={iconKey} name={label} size="h-6 w-6" />
+          <FrameAvatar frame={profileFrame} iconKey={iconKey} name={label} size="h-6 w-6" />
           <span className="truncate" style={nameColor ? { color: nameColor } : undefined}>
             {label}
           </span>
@@ -966,6 +967,8 @@ export default function HexDuelPage() {
   const [player1NameColor, setPlayer1NameColor] = useState<string | null>(null);
   const [opponentIconKey, setOpponentIconKey] = useState<string | null>(null);
   const [opponentNameColor, setOpponentNameColor] = useState<string | null>(null);
+  const [player1ProfileFrame, setPlayer1ProfileFrame] = useState<unknown>(null);
+  const [opponentProfileFrame, setOpponentProfileFrame] = useState<unknown>(null);
 
   // ── Connection status ───────────────────────────────────────────
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
@@ -2247,6 +2250,11 @@ export default function HexDuelPage() {
           if (data.game.player2Name) setOpponentName(data.game.player2Name);
           if (data.game.player1IconKey) setPlayer1IconKey(data.game.player1IconKey);
           if (data.game.player1NameColor) setPlayer1NameColor(data.game.player1NameColor);
+          if (data.game.player1ProfileFrame) setPlayer1ProfileFrame(data.game.player1ProfileFrame);
+          if (data.game.player2ProfileFrame)
+            setOpponentProfileFrame(
+              isPlayer1 ? data.game.player2ProfileFrame : data.game.player1ProfileFrame,
+            );
           if (data.game.player2IconKey) {
             const oppKey = isPlayer1 ? data.game.player2IconKey : data.game.player1IconKey;
             if (oppKey) setOpponentIconKey(oppKey);
@@ -2646,8 +2654,10 @@ export default function HexDuelPage() {
   // is seat 1 or 2; spectator view follows seat 1. AI seat stays null.
   const localIconKey = isSpectator || isPlayer1 ? player1IconKey : opponentIconKey;
   const localNameColor = isSpectator || isPlayer1 ? player1NameColor : opponentNameColor;
+  const localProfileFrame = isSpectator || isPlayer1 ? player1ProfileFrame : opponentProfileFrame;
   const oppIconKey = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentIconKey : player1IconKey) : null;
   const oppNameColor = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentNameColor : player1NameColor) : null;
+  const oppProfileFrame = aiEnabled ? null : gameMode === "multiplayer" ? (isPlayer1 ? opponentProfileFrame : player1ProfileFrame) : null;
 
   // Fetch opponent name via status API when multiplayer game becomes ready
   useEffect(() => {
@@ -2664,10 +2674,14 @@ export default function HexDuelPage() {
           if (oppKey) setOpponentIconKey(oppKey);
           const oppColor = isPlayer1 ? d.game.player2NameColor : d.game.player1NameColor;
           if (oppColor) setOpponentNameColor(oppColor);
+          const oppFrame = isPlayer1 ? d.game.player2ProfileFrame : d.game.player1ProfileFrame;
+          if (oppFrame) setOpponentProfileFrame(oppFrame);
           const myKey = isPlayer1 ? d.game.player1IconKey : d.game.player2IconKey;
           if (myKey) setPlayer1IconKey(myKey);
           const myColor = isPlayer1 ? d.game.player1NameColor : d.game.player2NameColor;
           if (myColor) setPlayer1NameColor(myColor);
+          const myFrame = isPlayer1 ? d.game.player1ProfileFrame : d.game.player2ProfileFrame;
+          if (myFrame) setPlayer1ProfileFrame(myFrame);
         }
       })
       .catch(() => {});
@@ -2791,7 +2805,7 @@ export default function HexDuelPage() {
                   totalTroops={localTotalTroops} maxTroops={maxTroops}
                   clockTime={localClockTime}
                   emoteBubble={myEmote} emoteSide="mine"
-                  iconKey={localIconKey} nameColor={localNameColor}
+                  iconKey={localIconKey} nameColor={localNameColor} profileFrame={localProfileFrame}
                 />
                 {showGame && !isSpectator && (gameMode !== "multiplayer" || isPlayer1) && (
                   <HexActionPanel
@@ -2915,7 +2929,7 @@ export default function HexDuelPage() {
                   totalTroops={opponentTotalTroops} maxTroops={maxTroops}
                   clockTime={opponentClockTime}
                   emoteBubble={incomingEmote} emoteSide="incoming"
-                  iconKey={oppIconKey} nameColor={oppNameColor}
+                  iconKey={oppIconKey} nameColor={oppNameColor} profileFrame={oppProfileFrame}
                 />
                 {showGame && !isSpectator && gameMode === "multiplayer" && !isPlayer1 && (
                   // Right-side action panel for the red local user

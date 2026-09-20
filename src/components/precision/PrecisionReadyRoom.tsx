@@ -17,7 +17,7 @@ import { motion } from "framer-motion";
 import { SEAT_COUNT } from "../../lib/precision/constants";
 import type { PrecisionPlayer } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
-import IconAvatar from "../IconAvatar";
+import FrameAvatar from "../FrameAvatar";
 
 interface PrecisionReadyRoomProps {
   matchId: string;
@@ -84,7 +84,7 @@ function PrecisionReadyRoomImpl({
               {occupant ? (
                 <>
                   <p className="mt-2 flex items-center justify-center gap-2 text-xl font-black text-white">
-                    <IconAvatar iconKey={occupant.iconKey} name={occupant.name} size="h-6 w-6" />
+                    <FrameAvatar frame={(occupant as any).profileFrame} iconKey={occupant.iconKey} name={occupant.name} size="h-6 w-6" />
                     <span style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
                       {occupant.name}
                     </span>

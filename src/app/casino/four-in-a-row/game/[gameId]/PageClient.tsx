@@ -39,7 +39,7 @@ import useGamePresence from "../../../../../hooks/useGamePresence";
 import ReportModal from "../../../../../components/ReportModal";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../../components/IconAvatar";
+import FrameAvatar from "../../../../../components/FrameAvatar";
 import { turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
   IconTarget,
@@ -698,6 +698,8 @@ export default function ConnectFourGamePage() {
         : game.hostName || "Opponent";
     const oppIconKey =
       game.role === "host" ? game.guestIconKey : game.hostIconKey;
+    const oppProfileFrame =
+      game.role === "host" ? game.guestProfileFrame : game.hostProfileFrame;
     const headline = isDraw
       ? "Draw game — no winner"
       : playerWon
@@ -745,7 +747,7 @@ export default function ConnectFourGamePage() {
         headline={headline}
         subline={subline}
         gameName="Four in a Row"
-        opponent={{ name: oppName, iconKey: oppIconKey || null }}
+        opponent={{ name: oppName, iconKey: oppIconKey || null, profileFrame: oppProfileFrame || null }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -1182,13 +1184,13 @@ export default function ConnectFourGamePage() {
                 </p>
                 <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
                   <span className="inline-flex items-center gap-1.5">
-                    <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                    <FrameAvatar frame={game?.hostProfileFrame} iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
                     <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
                       {game?.hostName || "Host"}
                     </span>
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                    <FrameAvatar frame={game?.guestProfileFrame} iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
                     <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
                       {game?.guestName || "Guest"}
                     </span>
@@ -1427,7 +1429,7 @@ export default function ConnectFourGamePage() {
               <div>
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/70 text-sm">
                   <span className="inline-flex items-center gap-1.5">
-                    <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                    <FrameAvatar frame={game?.hostProfileFrame} iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
                     <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
                       {game?.hostName || "Host"}
                     </span>
@@ -1435,7 +1437,7 @@ export default function ConnectFourGamePage() {
                   </span>
                   <span className="text-white/40">vs</span>
                   <span className="inline-flex items-center gap-1.5">
-                    <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                    <FrameAvatar frame={game?.guestProfileFrame} iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
                     <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
                       {game?.guestName || "Guest"}
                     </span>
@@ -1473,7 +1475,7 @@ export default function ConnectFourGamePage() {
               >
                 {cueSeat === "host" && opponentCueNode}
                 <p className="relative flex items-center gap-1.5 text-sm text-white/70">
-                  <IconAvatar iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
+                  <FrameAvatar frame={game?.hostProfileFrame} iconKey={game?.hostIconKey || null} name={game?.hostName} size="h-4 w-4" />
                   <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
                     {game?.hostName || "Host"}
                   </span>
@@ -1494,7 +1496,7 @@ export default function ConnectFourGamePage() {
               >
                 {cueSeat === "guest" && opponentCueNode}
                 <p className="relative flex items-center gap-1.5 text-sm text-white/70">
-                  <IconAvatar iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
+                  <FrameAvatar frame={game?.guestProfileFrame} iconKey={game?.guestIconKey || null} name={game?.guestName} size="h-4 w-4" />
                   <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
                     {game?.guestName || "Guest"}
                   </span>

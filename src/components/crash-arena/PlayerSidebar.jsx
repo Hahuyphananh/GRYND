@@ -13,6 +13,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import IconAvatar from "../IconAvatar";
+import { frameWrapperProps } from "../FrameAvatar";
 
 /**
  * PlayerSidebar — poker-style player panel shown beside the game canvas.
@@ -96,7 +97,8 @@ export default function PlayerSidebar({
             <span
               className={`w-6 h-6 rounded-full overflow-hidden border shrink-0 ${
                 p.isYou ? "border-[#FFD700]" : "border-[#00e5ff]/30"
-              }`}
+              } ${frameWrapperProps(p.profileFrame).className}`}
+              style={frameWrapperProps(p.profileFrame).style}
             >
               <IconAvatar
                 iconKey={p.iconKey}
@@ -137,7 +139,10 @@ export default function PlayerSidebar({
               key={p.userId ?? p.name}
               className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs bg-yellow-500/5 border border-yellow-500/20"
             >
-              <span className="w-6 h-6 rounded-full overflow-hidden border shrink-0 border-yellow-500/30">
+              <span
+                className={`w-6 h-6 rounded-full overflow-hidden border shrink-0 border-yellow-500/30 ${frameWrapperProps(p.profileFrame).className}`}
+                style={frameWrapperProps(p.profileFrame).style}
+              >
                 <IconAvatar
                   iconKey={p.iconKey}
                   name={p.name}

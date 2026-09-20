@@ -65,7 +65,7 @@ import {
   ShellMain,
   CreatorPhoneFrame,
 } from "../../../../components/creator-mode/CreatorModeLayout";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
@@ -114,6 +114,7 @@ type PlayerHead = {
   id: string;
   displayName: string;
   iconKey: string | null;
+  profileFrame?: unknown;
   missing?: boolean;
 };
 
@@ -740,6 +741,7 @@ export default function MemoryGridMatchPage({
     ? "GRYND AI"
     : oppHead?.displayName || (match ? (viewerIsPlayer1 ? "Player 2" : "Player 1") : "Player 2");
   const oppIconKey = oppHead?.iconKey || null;
+  const oppProfileFrame = oppHead?.profileFrame || null;
 
   // My own seat head — same server enrichment, so the viewer's real
   // username renders next to the opponent's (falls back to "You").
@@ -853,7 +855,8 @@ export default function MemoryGridMatchPage({
         </div>
         <div className="rounded-2xl border border-cyan-400/70 bg-cyan-500/10 p-3 text-center">
           <p className="relative flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
-            <IconAvatar
+            <FrameAvatar
+              frame={oppProfileFrame}
               iconKey={oppIconKey}
               name={oppName}
               size="h-3.5 w-3.5"
@@ -1205,7 +1208,7 @@ export default function MemoryGridMatchPage({
         headline={headline}
         subline={subline}
         gameName="Memory Grid"
-        opponent={{ name: oppName, iconKey: oppIconKey, isAi }}
+        opponent={{ name: oppName, iconKey: oppIconKey, profileFrame: oppProfileFrame, isAi }}
         tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
@@ -1441,7 +1444,8 @@ export default function MemoryGridMatchPage({
             }`}
           >
             <p className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50">
-              <IconAvatar
+              <FrameAvatar
+                frame={oppProfileFrame}
                 iconKey={oppIconKey}
                 name={oppName}
                 size="h-3.5 w-3.5"

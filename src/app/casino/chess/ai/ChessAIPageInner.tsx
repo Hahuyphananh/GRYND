@@ -12,7 +12,7 @@ import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost
 import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
@@ -1089,7 +1089,7 @@ export default function ChessAIPageInner() {
               <div className="mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 font-bold text-fuchsia-300">
-                    <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-5 w-5" />
+                    <FrameAvatar frame={myIdentity.profileFrame} iconKey={myIdentity.iconKey} name={myDisplayName} size="h-5 w-5" />
                     <span style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}>
                       {playerSideLabel}
                     </span>

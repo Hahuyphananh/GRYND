@@ -189,6 +189,7 @@ export default function TableRoomPage() {
         // Official Grynd icon key — the seat's avatar everywhere in the
         // room (IconAvatar resolves it; invalid keys fall back to default).
         iconKey: p.iconKey || "default",
+        profileFrame: p.profileFrame ?? null,
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,
@@ -208,6 +209,7 @@ export default function TableRoomPage() {
         clerkId: p.clerkId ?? null,
         // Official Grynd icon key for the wait-list avatar.
         iconKey: p.iconKey || "default",
+        profileFrame: p.profileFrame ?? null,
         name: p.isYou ? playerName : p.name,
         balance: p.balance,
         isYou: p.isYou,

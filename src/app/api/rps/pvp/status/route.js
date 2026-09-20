@@ -82,6 +82,10 @@ export async function GET(req) {
     game.player1Id === userId ? player2?.iconKey : player1?.iconKey;
   const opponentNameColor =
     game.player1Id === userId ? player2?.nameColor : player1?.nameColor;
+  const myProfileFrame =
+    game.player1Id === userId ? player1?.profileFrame : player2?.profileFrame;
+  const opponentProfileFrame =
+    game.player1Id === userId ? player2?.profileFrame : player1?.profileFrame;
 
   return NextResponse.json({
     success: true,
@@ -96,12 +100,16 @@ export async function GET(req) {
       player2IconKey: player2?.iconKey ?? null,
       player1NameColor: player1?.nameColor ?? null,
       player2NameColor: player2?.nameColor ?? null,
+      player1ProfileFrame: player1?.profileFrame ?? null,
+      player2ProfileFrame: player2?.profileFrame ?? null,
       myName: myName ?? "You",
       opponentName: opponentName ?? "Opponent",
       myIconKey: myIconKey ?? null,
       myNameColor: myNameColor ?? null,
+      myProfileFrame: myProfileFrame ?? null,
       opponentIconKey: opponentIconKey ?? null,
       opponentNameColor: opponentNameColor ?? null,
+      opponentProfileFrame: opponentProfileFrame ?? null,
       houseEdgePercent: HOUSE_EDGE_PERCENT,
       betAmount,
       pot,

@@ -133,6 +133,8 @@ export async function GET(req) {
         guestIconKey: identity.player2?.iconKey ?? null,
         hostNameColor: identity.player1?.nameColor ?? null,
         guestNameColor: identity.player2?.nameColor ?? null,
+        hostProfileFrame: identity.player1?.profileFrame ?? null,
+        guestProfileFrame: identity.player2?.profileFrame ?? null,
         hostPrestigeBadge: hostBadge || null,
         guestPrestigeBadge: guestBadge || null,
 

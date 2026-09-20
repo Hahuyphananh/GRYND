@@ -6,6 +6,11 @@ import { chatMessages, glows, specialTitles, tokenSubscriptions, users } from ".
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
+import {
+  getProfileFramesByKeys,
+  pickProfileFrameKey,
+  resolveProfileFrame,
+} from "../../../../lib/cosmetics";
 import { sanitizeString } from "../../../../lib/security/validation";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
@@ -107,6 +112,7 @@ export async function GET(req) {
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
         showPrestigeBadge: users.showPrestigeBadge,
+        equippedCosmetics: users.equippedCosmetics,
       })
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.clerkId, users.clerkId))
@@ -127,6 +133,12 @@ export async function GET(req) {
       )
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit);
+
+    // Batch-resolve every sender's equipped profile frame in one catalog
+    // query (see src/lib/cosmetics.ts). Unknown/disabled keys drop out.
+    const frameByKey = await getProfileFramesByKeys(
+      rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+    );
 
     const messages = rows.reverse().map((msg) => {
       // Compute streak title for this message's user
@@ -171,10 +183,13 @@ export async function GET(req) {
         xp,
         prestigeLevel,
         showPrestigeBadge,
+        equippedCosmetics,
         ...cleanMsg
       } = msg;
+      const frameKey = pickProfileFrameKey(equippedCosmetics);
       return {
         ...cleanMsg,
+        profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
         equippedTitle: primaryTitle,
         streakTitle: streakTitle || null,
         premium,
@@ -242,6 +257,7 @@ export async function POST(req) {
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
         showPrestigeBadge: users.showPrestigeBadge,
+        equippedCosmetics: users.equippedCosmetics,
       })
       .from(users)
       .leftJoin(glows, eq(glows.key, users.selectedGlow))
@@ -285,6 +301,10 @@ export async function POST(req) {
     // Streak title is separate — primary title goes into equippedTitle
     const equippedTitle = primaryTitle;
 
+    // Sender's equipped profile frame — attached so the live socket message
+    // and the optimistic/refetched feed render the same ring as history.
+    const profileFrame = await resolveProfileFrame(appUser?.equippedCosmetics);
+
     const inserted = await db
       .insert(chatMessages)
       .values({
@@ -306,6 +326,7 @@ export async function POST(req) {
       {
         message: {
           ...inserted[0],
+          profileFrame,
           selectedTitle,
           selectedSpecialTitle,
           equippedTitle,

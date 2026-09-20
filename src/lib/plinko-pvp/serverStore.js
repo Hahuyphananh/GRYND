@@ -37,6 +37,7 @@ import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../cosmetics";
 import {
   glows,
   plinkoPvpMatches,
@@ -182,15 +183,18 @@ export async function ensurePlinkoReadyColumns() {
 // if the lookup didn't find a row for that id (defensive — should not
 // happen given Clerk auth, but better than a TypeError in the JSON
 // response).
-function summariseUsers(rows) {
+function summariseUsers(rows, frameByKey) {
   const out = {};
   for (const r of rows) {
     if (!r || !r.clerkId) continue;
+    const frameKey = pickProfileFrameKey(r.equippedCosmetics);
     out[r.clerkId] = {
       id: r.clerkId,
       displayName: r.displayName || r.clerkId,
       // Official Grynd icon key only — never an arbitrary avatar URL.
       iconKey: r.iconKey || "default",
+      // Equipped profile frame (server-resolved catalog visual), or null.
+      profileFrame: frameKey ? frameByKey?.get(frameKey) || null : null,
       // Equipped name color — battlepass glow wins; the Grynd+ chat
       // color only surfaces for active members (chat-route precedence).
       nameColor:
@@ -255,6 +259,7 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
         clerkId: users.clerkId,
         displayName: users.name,
         iconKey: users.selectedIcon,
+        equippedCosmetics: users.equippedCosmetics,
         chatColor: users.chatColor,
         glowColor: glows.color,
         isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
@@ -281,7 +286,10 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
     );
     rows = [];
   }
-  const summary = summariseUsers(rows);
+  const frameByKey = await getProfileFramesByKeys(
+    rows.map((r) => pickProfileFrameKey(r.equippedCosmetics)),
+  );
+  const summary = summariseUsers(rows, frameByKey);
 
   const enrichOne = (m) => {
     if (!m) return m;

@@ -6,6 +6,7 @@ import { db } from "../../../../db/client";
 import { glows, pokerGames, tokenSubscriptions, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
 
 type Seat = {
   seat: number;
@@ -46,6 +47,7 @@ async function enrichPlayersIdentity(players: any[]) {
       .select({
         clerkId: users.clerkId,
         iconKey: users.selectedIcon,
+        equippedCosmetics: users.equippedCosmetics,
         chatColor: users.chatColor,
         glowColor: glows.color,
         isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
@@ -63,23 +65,35 @@ async function enrichPlayersIdentity(players: any[]) {
         ),
       )
       .where(inArray(users.clerkId, humanIds));
+    const frameByKey = await getProfileFramesByKeys(
+      rows.map((r) => pickProfileFrameKey(r.equippedCosmetics)),
+    );
     const byId = new Map(
-      rows.map((r) => [
-        r.clerkId,
-        {
-          iconKey: r.iconKey || null,
-          nameColor:
-            r.glowColor ||
-            (Boolean(r.isPremium) ? r.chatColor || null : null) ||
-            null,
-        },
-      ]),
+      rows.map((r) => {
+        const frameKey = pickProfileFrameKey(r.equippedCosmetics);
+        return [
+          r.clerkId,
+          {
+            iconKey: r.iconKey || null,
+            profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+            nameColor:
+              r.glowColor ||
+              (Boolean(r.isPremium) ? r.chatColor || null : null) ||
+              null,
+          },
+        ];
+      }),
     );
     return players.map((p) => {
       const ident = byId.get(String(p.id));
       return ident
-        ? { ...p, iconKey: ident.iconKey, nameColor: ident.nameColor }
-        : { ...p, iconKey: null, nameColor: null };
+        ? {
+            ...p,
+            iconKey: ident.iconKey,
+            profileFrame: ident.profileFrame,
+            nameColor: ident.nameColor,
+          }
+        : { ...p, iconKey: null, profileFrame: null, nameColor: null };
     });
   } catch (err) {
     console.warn("[poker/game-state] identity enrichment failed:", err);

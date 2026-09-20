@@ -5,6 +5,7 @@ import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
+import { getCosmeticByKey } from "../../../../lib/cosmetics";
 import { getLevelFromXp } from "../../../../lib/battlepass";
 import {
   getPrestigeStatus,
@@ -41,6 +42,9 @@ export async function GET(req: NextRequest) {
         // Grynd+ accent — public by design (that's the point of showing it
         // off). Cosmetic display data only.
         profileAccent: users.profileAccent,
+        // Equipped cosmetics map (category → key). Only the profile frame is
+        // resolved + exposed below; other slots stay private to the owner.
+        equippedCosmetics: users.equippedCosmetics,
         level: users.level,
         xp: users.xp,
         prestigeLevel: users.prestigeLevel,
@@ -125,13 +129,37 @@ export async function GET(req: NextRequest) {
       prestigeLevel: user.prestigeLevel,
       showPrestigeBadge: user.showPrestigeBadge,
     });
-    const { prestigeLevel, prestigeNetWins, ...safeUser } = user;
+    // Equipped profile frame — resolved through the official catalog so a
+    // disabled/unknown/weird key can never render. Every value the client
+    // gets is server-owned (name + visual).
+    const equippedMap: Record<string, unknown> =
+      (user.equippedCosmetics as Record<string, unknown> | null) || {};
+    const frameKey = equippedMap.profile_frame;
+    let profileFrame: { key: string; name: string; visual: unknown } | null = null;
+    if (typeof frameKey === "string" && frameKey) {
+      const catalog = await getCosmeticByKey(frameKey);
+      if (catalog && catalog.category === "profile_frame") {
+        profileFrame = {
+          key: catalog.key,
+          name: catalog.name,
+          visual: catalog.visual,
+        };
+      }
+    }
+
+    const {
+      prestigeLevel,
+      prestigeNetWins,
+      equippedCosmetics: _equippedCosmetics,
+      ...safeUser
+    } = user;
     return NextResponse.json({
       success: true,
       user: {
         ...safeUser,
         level: battlepassLevel,
         selectedIcon: safeIcon,
+        profileFrame,
         prestige: prestige.prestige,
         prestigeNetWins: prestige.prestigeNetWins,
         nextPrestigeRequirement: prestige.nextPrestigeRequirement,

@@ -27,6 +27,7 @@ export async function GET() {
           // player heads (e.g. "Host: Alice") instead of truncation.
           hostName: m.players?.p1?.displayName ?? m.player1Id,
           hostIconKey: m.players?.p1?.iconKey ?? null,
+          hostProfileFrame: m.players?.p1?.profileFrame ?? null,
         })),
       },
     });

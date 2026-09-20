@@ -504,6 +504,8 @@ const prefersReducedMotion = useReducedMotion();
       : game?.hostName || t("games.dots_and_boxes.host_default");
   const opponentIconKey =
     game?.role === "host" ? game?.guestIconKey : game?.hostIconKey;
+  const opponentProfileFrame =
+    game?.role === "host" ? game?.guestProfileFrame : game?.hostProfileFrame;
 
   // Emotes — both players already join the dots-and-boxes room, so reuse it.
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
@@ -593,7 +595,11 @@ const prefersReducedMotion = useReducedMotion();
         headline={headline}
         subline={subline}
         gameName="Dots & Boxes"
-        opponent={{ name: opponentName, iconKey: opponentIconKey || null }}
+        opponent={{
+          name: opponentName,
+          iconKey: opponentIconKey || null,
+          profileFrame: opponentProfileFrame || null,
+        }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -657,6 +663,9 @@ const prefersReducedMotion = useReducedMotion();
       seat={seat}
       name={seat === "host" ? hostSeatName : guestSeatName}
       iconKey={(seat === "host" ? game?.hostIconKey : game?.guestIconKey) || null}
+      profileFrame={
+        (seat === "host" ? game?.hostProfileFrame : game?.guestProfileFrame) || null
+      }
       isAiGame={isAiGame}
       size={size}
       className={extra}
@@ -670,6 +679,8 @@ const prefersReducedMotion = useReducedMotion();
       guestName={guestSeatName}
       hostIconKey={game?.hostIconKey || null}
       guestIconKey={game?.guestIconKey || null}
+      hostProfileFrame={game?.hostProfileFrame || null}
+      guestProfileFrame={game?.guestProfileFrame || null}
       isAiGame={isAiGame}
       selfSeat={
         game?.role === "host" || game?.role === "guest" ? game.role : null

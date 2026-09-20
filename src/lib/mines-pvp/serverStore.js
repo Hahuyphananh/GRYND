@@ -34,6 +34,7 @@ import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../cosmetics";
 import {
   glows,
   minesPvpMatches,
@@ -1431,6 +1432,7 @@ export async function enrichMatchWithPlayers(match) {
           clerkId: users.clerkId,
           displayName: users.name,
           iconKey: users.selectedIcon,
+          equippedCosmetics: users.equippedCosmetics,
           chatColor: users.chatColor,
           glowColor: glows.color,
           isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
@@ -1448,12 +1450,17 @@ export async function enrichMatchWithPlayers(match) {
           ),
         )
         .where(inArray(users.clerkId, clerkIds));
+      const frameByKey = await getProfileFramesByKeys(
+        rows.map((r) => pickProfileFrameKey(r.equippedCosmetics)),
+      );
       for (const r of rows) {
         if (!r || !r.clerkId) continue;
+        const frameKey = pickProfileFrameKey(r.equippedCosmetics);
         summary[r.clerkId] = {
           id: r.clerkId,
           displayName: r.displayName || r.clerkId,
           iconKey: r.iconKey || "default",
+          profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
           // Equipped name color — same precedence as the chat route:
           // battlepass glow wins; the Grynd+ chat color only surfaces
           // for active members.
@@ -1477,6 +1484,7 @@ export async function enrichMatchWithPlayers(match) {
         id: clerkId,
         displayName: fallbackName || clerkId,
         iconKey: "default",
+        profileFrame: null,
         nameColor: null,
         missing: true,
       }
@@ -1487,6 +1495,7 @@ export async function enrichMatchWithPlayers(match) {
     id: MINES_AI_PLAYER_ID,
     displayName: "GRYND AI",
     iconKey: "default",
+    profileFrame: null,
     nameColor: null,
   };
 

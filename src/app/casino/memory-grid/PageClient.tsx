@@ -24,7 +24,7 @@ import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import IconAvatar from "../../../components/IconAvatar";
+import FrameAvatar from "../../../components/FrameAvatar";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
@@ -45,6 +45,7 @@ type AvailableMatch = {
   createdAt: string;
   hostName?: string | null;
   hostIconKey?: string | null;
+  hostProfileFrame?: unknown;
 };
 
 // ── Inline SVG icons (kept in-file so this lobby doesn't pull in
@@ -420,7 +421,8 @@ export default function MemoryGridLobbyPage() {
         <>
           Lobby #{m.id}
           <span className="ml-2 inline-flex items-center gap-1.5">
-            <IconAvatar
+            <FrameAvatar
+              frame={m.hostProfileFrame}
               iconKey={m.hostIconKey}
               name={m.hostName}
               size="h-4 w-4"

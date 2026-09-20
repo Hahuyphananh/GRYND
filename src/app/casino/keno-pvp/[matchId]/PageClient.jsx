@@ -23,7 +23,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay, auto-starts when the match actually begins (a real
 // round_1..N is in play, i.e. left the waiting room) and auto-stops once
@@ -1113,6 +1113,8 @@ export default function KenoPvpMatchPage({ params }) {
   const oppSeatSummary = match.players?.[opponent] ?? null;
   const mySeatIcon = mySeatSummary?.iconKey || null;
   const oppSeatIcon = oppSeatSummary?.iconKey || null;
+  const mySeatProfileFrame = mySeatSummary?.profileFrame || null;
+  const oppSeatProfileFrame = oppSeatSummary?.profileFrame || null;
   const myNameColor = mySeatSummary?.nameColor || null;
   const oppNameColor = oppSeatSummary?.nameColor || null;
 
@@ -1506,7 +1508,7 @@ export default function KenoPvpMatchPage({ params }) {
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
           <span className="inline-flex items-center gap-1 rounded-full border border-[#00ffa6]/40 bg-[#00ffa6]/15 px-2 py-0.5 text-[#00ffa6]">
-            <IconAvatar iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-3.5 w-3.5" />
+            <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-3.5 w-3.5" />
             <span className="max-w-[7rem] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
               {me === "player1" ? p1Name : p2Name}
             </span>
@@ -1517,7 +1519,7 @@ export default function KenoPvpMatchPage({ params }) {
               {oppName}
             </span>
             <ScoreNumber value={oppPts} className="font-black" />
-            <IconAvatar iconKey={oppSeatIcon} name={oppName} size="h-3.5 w-3.5" />
+            <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={oppName} size="h-3.5 w-3.5" />
           </span>
         </div>
       </div>
@@ -1659,7 +1661,7 @@ export default function KenoPvpMatchPage({ params }) {
           <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 px-4 py-2 text-sm shadow-[0_0_14px_rgba(0,229,255,0.15)] min-w-[210px]">
             <div className="flex items-center gap-3">
               <span className="relative inline-flex items-center gap-1.5 font-bold text-[#00ffa6]">
-                <IconAvatar iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-4 w-4" />
+                <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-4 w-4" />
                 <span style={myNameColor ? { color: myNameColor } : undefined}>
                   {me === "player1" ? p1Name : p2Name}{" "}
                   <ScoreNumber value={myPts} className="font-black" />
@@ -1672,7 +1674,7 @@ export default function KenoPvpMatchPage({ params }) {
                   {me === "player2" ? p2Name : p1Name}{" "}
                   <ScoreNumber value={oppPts} className="font-black" />
                 </span>
-                <IconAvatar iconKey={oppSeatIcon} name={me === "player2" ? p2Name : p1Name} size="h-4 w-4" />
+                <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={me === "player2" ? p2Name : p1Name} size="h-4 w-4" />
                 <EmoteBubble emote={incomingEmote} />
               </span>
             </div>

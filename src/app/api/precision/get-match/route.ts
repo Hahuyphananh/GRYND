@@ -12,6 +12,7 @@ import { db } from "../../../../db/client";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
 import {
   getWaitingLobby,
   readMatch,
@@ -29,7 +30,14 @@ import type { PrecisionState } from "../../../../lib/precision/types";
  */
 async function decoratePlayerBadges<T extends { userId: string }>(
   players: T[],
-): Promise<(T & { prestigeBadge: string | null; iconKey: string | null; nameColor: string | null })[]> {
+): Promise<
+  (T & {
+    prestigeBadge: string | null;
+    iconKey: string | null;
+    nameColor: string | null;
+    profileFrame: unknown;
+  })[]
+> {
   const humanIds = players
     .filter((p) => p.userId && p.userId !== "opponent" && p.userId !== "AI_BOT")
     .map((p) => p.userId);
@@ -39,6 +47,7 @@ async function decoratePlayerBadges<T extends { userId: string }>(
       prestigeBadge: null,
       iconKey: null,
       nameColor: null,
+      profileFrame: null,
     }));
   }
   const rows = await db
@@ -48,6 +57,7 @@ async function decoratePlayerBadges<T extends { userId: string }>(
       prestigeLevel: users.prestigeLevel,
       showPrestigeBadge: users.showPrestigeBadge,
       iconKey: users.selectedIcon,
+      equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
       glowColor: glows.color,
       isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
@@ -68,6 +78,10 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   const badgeByUser = new Map<string, string | null>();
   const iconByUser = new Map<string, string | null>();
   const colorByUser = new Map<string, string | null>();
+  const frameByUser = new Map<string, unknown>();
+  const frameByKey = await getProfileFramesByKeys(
+    rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+  );
   for (const row of rows) {
     badgeByUser.set(
       String(row.clerkId),
@@ -84,12 +98,15 @@ async function decoratePlayerBadges<T extends { userId: string }>(
         (Boolean(row.isPremium) ? row.chatColor || null : null) ||
         null,
     );
+    const frameKey = pickProfileFrameKey(row.equippedCosmetics);
+    frameByUser.set(String(row.clerkId), frameKey ? frameByKey.get(frameKey) || null : null);
   }
   return players.map((p) => ({
     ...p,
     prestigeBadge: badgeByUser.get(String(p.userId)) ?? null,
     iconKey: iconByUser.get(String(p.userId)) ?? null,
     nameColor: colorByUser.get(String(p.userId)) ?? null,
+    profileFrame: frameByUser.get(String(p.userId)) ?? null,
   }));
 }
 

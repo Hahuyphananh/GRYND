@@ -319,6 +319,8 @@ export async function GET(req: Request) {
         player2IconKey: identity.player2?.iconKey ?? null,
         player1NameColor: identity.player1?.nameColor ?? null,
         player2NameColor: identity.player2?.nameColor ?? null,
+        player1ProfileFrame: identity.player1?.profileFrame ?? null,
+        player2ProfileFrame: identity.player2?.profileFrame ?? null,
       },
     });
   } catch (error: any) {

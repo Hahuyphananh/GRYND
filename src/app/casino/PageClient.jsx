@@ -4,7 +4,7 @@ import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
-import IconAvatar from "../../components/IconAvatar";
+import FrameAvatar from "../../components/FrameAvatar";
 import Img1 from "../../images/rouletteimage.png";
 import Img2 from "../../images/blackjackimage.png";
 import Img3 from "../../images/pokerimage.png";
@@ -879,8 +879,9 @@ function MainComponent() {
             title={friendPresenceByGame[game.leaderboardKey].map((f) => f.name).join(", ")}
           >
             {friendPresenceByGame[game.leaderboardKey].slice(0, 4).map((friend) => (
-              <IconAvatar
+              <FrameAvatar
                 key={`${friend.id}-${friend.name}`}
+                frame={friend.profileFrame}
                 iconKey={friend.iconKey}
                 name={friend.name}
                 size="h-6 w-6"

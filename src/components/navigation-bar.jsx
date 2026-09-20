@@ -14,7 +14,7 @@ import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import BattlepassClaimBadge from "./BattlepassClaimBadge";
 import { IconCoins, IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
-import IconAvatar from "./IconAvatar";
+import FrameAvatar from "./FrameAvatar";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 
@@ -50,6 +50,8 @@ function NavigationBar({ currentPath = "" }) {
   const [profile, setProfile] = useState({
     name: "",
     selectedIcon: "",
+    // Equipped profile frame (token-shop `profile_frame`), or null.
+    profileFrame: null,
     selectedTitle: "",
     streakTitle: null,
     // Server-resolved prestige badge (null unless equipped + earned) plus
@@ -187,6 +189,7 @@ function NavigationBar({ currentPath = "" }) {
             ...prev,
             name: data.data.name || "",
             selectedIcon: data.data.selectedIcon || "",
+            profileFrame: data.data.equippedCosmetics?.profile_frame || null,
             streakTitle: data.data.streakTitle || null,
           }));
         if (includeMeta) {
@@ -509,7 +512,8 @@ function NavigationBar({ currentPath = "" }) {
                 <>
                   <div className="hidden items-center space-x-4 lg:flex">
                     <Link href="/profil" className="group flex items-center space-x-2">
-                      <IconAvatar
+                      <FrameAvatar
+                        frame={profile?.profileFrame}
                         iconKey={profile?.selectedIcon}
                         name={profile?.name || user?.firstName}
                         size="h-8 w-8"
@@ -639,7 +643,8 @@ function NavigationBar({ currentPath = "" }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3"
                 >
-                  <IconAvatar
+                  <FrameAvatar
+                    frame={profile?.profileFrame}
                     iconKey={profile?.selectedIcon}
                     name={profile?.name || user?.firstName}
                     size="h-10 w-10"

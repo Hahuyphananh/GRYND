@@ -38,7 +38,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import ReportModal from "../../../../components/ReportModal";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -210,6 +210,8 @@ function LockedInBetsPanel({
   oppName,
   myIconKey,
   oppIconKey,
+  myProfileFrame,
+  oppProfileFrame,
   myNameColor,
   oppNameColor,
 }) {
@@ -286,7 +288,7 @@ function LockedInBetsPanel({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <div className="mb-1.5 inline-flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-yellow-200">
-            <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
+            <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} size="h-4 w-4" />
             <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
               {myName}
             </span>
@@ -295,7 +297,7 @@ function LockedInBetsPanel({
         </div>
         <div>
           <div className="mb-1.5 inline-flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
-            <IconAvatar iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
+            <FrameAvatar frame={oppProfileFrame} iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
             <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
               {oppName}
             </span>
@@ -1021,30 +1023,36 @@ export default function RoulettePvpGamePage({ params }) {
         name: match?.player1Name || null,
         iconKey: match?.player1IconKey || null,
         nameColor: match?.player1NameColor || null,
+        profileFrame: match?.player1ProfileFrame || null,
       }
     : {
         name: match?.player2Name || null,
         iconKey: match?.player2IconKey || null,
         nameColor: match?.player2NameColor || null,
+        profileFrame: match?.player2ProfileFrame || null,
       };
   const oppSeatIdentity = match?.isAi
-    ? { name: null, iconKey: null, nameColor: null }
+    ? { name: null, iconKey: null, nameColor: null, profileFrame: null }
     : isPlayer1
       ? {
           name: match?.player2Name || null,
           iconKey: match?.player2IconKey || null,
           nameColor: match?.player2NameColor || null,
+          profileFrame: match?.player2ProfileFrame || null,
         }
       : {
           name: match?.player1Name || null,
           iconKey: match?.player1IconKey || null,
           nameColor: match?.player1NameColor || null,
+          profileFrame: match?.player1ProfileFrame || null,
         };
   const myDisplayName = mySeatIdentity.name || "You";
   const oppDisplayName =
     oppSeatIdentity.name || (match?.isAi ? "GRYND AI" : "Opponent");
   const mySeatIcon = mySeatIdentity.iconKey;
   const oppSeatIcon = oppSeatIdentity.iconKey;
+  const mySeatProfileFrame = mySeatIdentity.profileFrame;
+  const oppSeatProfileFrame = oppSeatIdentity.profileFrame;
   const myNameColor = mySeatIdentity.nameColor;
   const oppNameColor = oppSeatIdentity.nameColor;
   // The opponent is whoever occupies the seat we don't hold. Only
@@ -1816,7 +1824,7 @@ export default function RoulettePvpGamePage({ params }) {
         headline={headline}
         subline={subline}
         gameName="Roulette PvP"
-        opponent={{ name: oppName, iconKey: oppSeatIcon, isAi }}
+        opponent={{ name: oppName, iconKey: oppSeatIcon, profileFrame: oppSeatProfileFrame, isAi }}
         tokenDelta={tokenDelta}
         summary={[
           {
@@ -2016,7 +2024,7 @@ export default function RoulettePvpGamePage({ params }) {
                 <div className="grid grid-cols-2 gap-2 text-center">
                   <div>
                     <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/70">
-                      <IconAvatar iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
+                      <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
                       <span className="max-w-[90px] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
                         {myDisplayName}
                       </span>
@@ -2083,7 +2091,7 @@ export default function RoulettePvpGamePage({ params }) {
                   </div>
                   <div>
                     <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/70">
-                      <IconAvatar iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
+                      <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
                       <span className="max-w-[90px] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
                         {oppDisplayName}
                       </span>
@@ -2140,7 +2148,7 @@ export default function RoulettePvpGamePage({ params }) {
                   >
                     {myEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.3)]"><EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" /></span>}
                     <span className="inline-flex min-w-0 items-center gap-1">
-                      <IconAvatar iconKey={mySeatIcon} name={myDisplayName} size="h-5 w-5" />
+                      <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={myDisplayName} size="h-5 w-5" />
                       <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
                         {myDisplayName}
                       </span>
@@ -2160,7 +2168,7 @@ export default function RoulettePvpGamePage({ params }) {
                   >
                     {incomingEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]"><EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" /></span>}
                     <span className="inline-flex min-w-0 items-center gap-1">
-                      <IconAvatar iconKey={oppSeatIcon} name={oppDisplayName} size="h-5 w-5" />
+                      <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={oppDisplayName} size="h-5 w-5" />
                       <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
                         {oppDisplayName}
                       </span>
@@ -2195,6 +2203,8 @@ export default function RoulettePvpGamePage({ params }) {
                 oppName={oppDisplayName}
                 myIconKey={mySeatIcon}
                 oppIconKey={oppSeatIcon}
+                myProfileFrame={mySeatProfileFrame}
+                oppProfileFrame={oppSeatProfileFrame}
                 myNameColor={myNameColor}
                 oppNameColor={oppNameColor}
               />

@@ -6,6 +6,7 @@ import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { unoRoomStore } from "../../../../lib/unoRoomStore";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { resolveProfileFrame } from "../../../../lib/cosmetics";
 
 const MAX_SEATS = 6;
 const HOUSE_EDGE_PERCENT = 5;function getStore() {
@@ -30,10 +31,11 @@ function prestigeBadgeForUser(user) {
  *  values are stamped onto the in-memory player object. Best-effort:
  *  a lookup failure returns defaults so seat rendering never breaks. */
 async function seatIdentityForUser(user) {
-  if (!user) return { iconKey: null, nameColor: null };
+  if (!user) return { iconKey: null, nameColor: null, profileFrame: null };
   const [row] = await db
     .select({
       iconKey: users.selectedIcon,
+      equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
       glowColor: glows.color,
       isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
@@ -58,6 +60,7 @@ async function seatIdentityForUser(user) {
       row?.glowColor ||
       (Boolean(row?.isPremium) ? row?.chatColor || null : null) ||
       null,
+    profileFrame: await resolveProfileFrame(row?.equippedCosmetics ?? null),
   };
 }
 
@@ -311,6 +314,7 @@ function serializeGameForUser(room, userId) {
       prestigeBadge: p.prestigeBadge ?? null,
       iconKey: p.iconKey ?? null,
       nameColor: p.nameColor ?? null,
+      profileFrame: p.profileFrame ?? null,
     })),
 
     topCard: active.discardPile[active.discardPile.length - 1] || null,
@@ -502,6 +506,7 @@ export async function POST(request) {
       prestigeBadge: prestigeBadgeForUser(user),
       iconKey: hostIdentity.iconKey,
       nameColor: hostIdentity.nameColor,
+      profileFrame: hostIdentity.profileFrame ?? null,
     };
 
     const room = {
@@ -561,6 +566,7 @@ export async function POST(request) {
       prestigeBadge: prestigeBadgeForUser(user),
       iconKey: joinIdentity.iconKey,
       nameColor: joinIdentity.nameColor,
+      profileFrame: joinIdentity.profileFrame ?? null,
     };
     room.players.push(newPlayer);
 
@@ -631,6 +637,7 @@ export async function POST(request) {
         prestigeBadge: prestigeBadgeForUser(user),
         iconKey: joinIdentity.iconKey,
         nameColor: joinIdentity.nameColor,
+        profileFrame: joinIdentity.profileFrame ?? null,
       });
     }
 
@@ -681,6 +688,7 @@ export async function POST(request) {
       skipNextRound: false,
       iconKey: null,
       nameColor: null,
+      profileFrame: null,
     });
 
     return Response.json({

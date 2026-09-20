@@ -31,7 +31,7 @@ import {
   type FourInARowBoard,
 } from "../../../../lib/fourInARow";
 import NavigationBar from "../../../../components/navigation-bar";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
@@ -661,7 +661,7 @@ export default function FourInARowVsAiPage() {
               }`}
             >
               <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-              <IconAvatar iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
+              <FrameAvatar frame={myIdentity.profileFrame} iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
               <span
                 className="text-xs text-white/70"
                 style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}

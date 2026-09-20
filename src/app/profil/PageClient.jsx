@@ -10,10 +10,12 @@ import {
   DEFAULT_PROFILE_ACCENT,
   HEX_COLOR_REGEX,
   ACCENT_COLORS,
+  cosmeticFrameRing,
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
 import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseGlowModal from "../../components/ChooseGlowModal";
+import ChooseFrameModal from "../../components/ChooseFrameModal";
 import ChooseEmotesModal from "../../components/ChooseEmotesModal";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
@@ -141,6 +143,8 @@ export default function ProfilePage() {
   const [isGlowPickerOpen, setIsGlowPickerOpen] = useState(false);
   const [selectedGlowColor, setSelectedGlowColor] = useState(null);
   const [selectedGlowName, setSelectedGlowName] = useState(null);
+  // Owned profile-frame picker (token-shop `profile_frame` cosmetics).
+  const [isFramePickerOpen, setIsFramePickerOpen] = useState(false);
   // Equipped cosmetics (category → { key, name, visual }) from the official
   // cosmetics catalog — profile frame / badge / effects. Server-written only.
   const [equippedCosmetics, setEquippedCosmetics] = useState({});
@@ -214,6 +218,26 @@ export default function ProfilePage() {
     setSelectedGlowColor(glow?.color || null);
     setSelectedGlowName(glow?.name || null);
     setIsGlowPickerOpen(false);
+  };
+
+  // Reflect a frame equipped from ChooseFrameModal immediately, without a
+  // full profile reload. The server is still the source of truth; the next
+  // /api/get-user-tokens load re-syncs equippedCosmetics.
+  const handleEquipFrame = (frame) => {
+    setEquippedCosmetics((prev) => {
+      const next = { ...prev };
+      if (frame) {
+        next.profile_frame = {
+          key: frame.key,
+          name: frame.name,
+          visual: frame.visual,
+        };
+      } else {
+        delete next.profile_frame;
+      }
+      return next;
+    });
+    setIsFramePickerOpen(false);
   };
 
   const loadSpecialTitles = async () => {
@@ -1059,6 +1083,8 @@ export default function ProfilePage() {
     );
   }
 
+  const equippedFrame = cosmeticFrameRing(equippedCosmetics?.profile_frame?.visual);
+
   return (
     <div
       className="min-h-screen text-white"
@@ -1120,14 +1146,8 @@ export default function ProfilePage() {
                 onClick={() => setIsIconPickerOpen(true)}
                 aria-label="Change your Grynd icon"
                 title="Change your Grynd icon"
-                style={
-                  equippedCosmetics?.profile_frame?.visual?.color
-                    ? {
-                        boxShadow: `0 0 0 2px ${equippedCosmetics.profile_frame.visual.color}, 0 0 18px ${equippedCosmetics.profile_frame.visual.color}88`,
-                      }
-                    : undefined
-                }
-                className="group relative rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                style={equippedFrame.style}
+                className={`group relative rounded-full ${equippedFrame.cssClass || ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
               >
                 <IconAvatar
                   iconKey={profileInfo.selectedIcon}
@@ -2441,6 +2461,30 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
+              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+                <p className="mb-2 block text-sm text-gray-200">My Profile Frame</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditOpen(false);
+                    setIsFramePickerOpen(true);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`h-10 w-10 shrink-0 rounded-full border-2 border-white/10 ${
+                      equippedFrame.cssClass || ""
+                    }`}
+                    style={equippedFrame.style}
+                  />
+                  <span className="flex-1 text-left text-sm text-gray-200">
+                    {equippedCosmetics?.profile_frame?.name ||
+                      "Choose Your Profile Frame"}
+                  </span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+              </div>
               <label htmlFor="profil-edit-password" className="sr-only">
                 New password (optional)
               </label>
@@ -2528,6 +2572,13 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         open={isGlowPickerOpen}
         onClose={() => setIsGlowPickerOpen(false)}
         onEquipped={handleEquipGlow}
+      />
+
+      {/* Token-shop profile frame picker — owned frames only. */}
+      <ChooseFrameModal
+        open={isFramePickerOpen}
+        onClose={() => setIsFramePickerOpen(false)}
+        onEquipped={handleEquipFrame}
       />
 
       {/* In-game emote loadout manager — equipped animated emotes (max 9). */}

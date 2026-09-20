@@ -47,7 +47,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { fireConfetti, withReducedMotion } from "../../lib/animations";
-import IconAvatar from "../IconAvatar";
+import FrameAvatar from "../FrameAvatar";
 
 const CONFETTI_COLORS = ["#00e5ff", "#f5ff3b", "#ff4fd8", "#a855f7", "#34d399"];
 
@@ -688,12 +688,11 @@ export default function PvpResultScreen({
             {opponent && (
               <div className="mx-auto mt-5 flex w-full max-w-xs items-center justify-center gap-3 rounded-xl border border-white/10 bg-black/25 px-4 py-3">
                 {opponent.iconKey ? (
-                  <IconAvatar
+                  <FrameAvatar
+                    frame={opponent.profileFrame}
                     iconKey={opponent.iconKey}
                     name={opponent.name}
                     size="h-11 w-11"
-                    showFrame={false}
-                    rounded="rounded-full"
                   />
                 ) : (
                   <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-lg font-black text-[#d8fbff]">

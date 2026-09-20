@@ -2152,3 +2152,24 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     animation: none;
   }
 }
+
+/* ── Token-shop profile picture frames ────────────────────────────────
+   Backs `cosmetics.visual.cssClass` (see migration 0156). Each class is
+   drawn around a rounded avatar and owns its own ring + glow treatment. */
+.frame-neon-edge {
+  box-shadow:
+    0 0 0 2px #22d3ee,
+    0 0 16px rgba(34, 211, 238, 0.55);
+}
+
+.frame-platinum {
+  box-shadow:
+    0 0 0 3px #cdd6f4,
+    0 0 18px rgba(205, 214, 244, 0.5);
+}
+
+.frame-inferno {
+  box-shadow:
+    0 0 0 3px #f97316,
+    0 0 22px rgba(249, 115, 22, 0.65);
+}

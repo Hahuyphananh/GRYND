@@ -28,7 +28,7 @@ import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
-import IconAvatar from "../../../components/IconAvatar";
+import FrameAvatar from "../../../components/FrameAvatar";
 import PvpLobbyPage, { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { useSocket } from "../../../context/SocketProvider";
 import {
@@ -52,6 +52,7 @@ type AvailableMatch = {
   // enrichMatchesWithUsers in src/lib/plinko-pvp/serverStore.js.
   hostName?: string;
   hostIconKey?: string | null;
+  hostProfileFrame?: unknown;
 };
 
 // ── Inline SVG icon (kept in-file so this lobby doesn't pull in
@@ -417,7 +418,8 @@ export default function PlinkoPvpLobbyPage() {
         <span className="inline-flex items-center gap-2">
           <span>Lobby #{m.id}</span>
           <span className="text-[10px] text-white/60 inline-flex items-center gap-1.5">
-            <IconAvatar
+            <FrameAvatar
+              frame={m.hostProfileFrame}
               iconKey={m.hostIconKey}
               name={m.hostName}
               size="h-4 w-4"

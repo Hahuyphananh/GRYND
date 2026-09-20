@@ -73,6 +73,8 @@ export async function GET(req) {
         guestIconKey: guest?.iconKey ?? null,
         hostNameColor: host?.nameColor ?? null,
         guestNameColor: guest?.nameColor ?? null,
+        hostProfileFrame: host?.profileFrame ?? null,
+        guestProfileFrame: guest?.profileFrame ?? null,
         moveTimeLimit: getGameMoveSeconds(game),
         moveTimeRemaining: computeMoveTimeRemaining(game.moveDeadlineAt),
         replayTimeRemaining: computeReplayTimeRemaining(game.replayDeadlineAt),

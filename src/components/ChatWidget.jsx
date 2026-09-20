@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
-import IconAvatar from "./IconAvatar";
+import FrameAvatar from "./FrameAvatar";
 import {
   subscribeToBigWins,
   subscribeToChatMessages,
@@ -477,7 +477,8 @@ export default function ChatWidget() {
                             // profile_image_url snapshot is never rendered
                             // as a live avatar (falls back to default).
                             return (
-                              <IconAvatar
+                              <FrameAvatar
+                                frame={msg.profileFrame}
                                 iconKey={msg.iconKey}
                                 name={msg.displayName}
                                 size="h-9 w-9"

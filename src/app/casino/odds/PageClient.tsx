@@ -745,9 +745,11 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // color, resolved server-side (getSeatIdentity in the pvp/status route).
   const [myName, setMyName] = useState("You");
   const [myIconKey, setMyIconKey] = useState<string | null>(null);
+  const [myProfileFrame, setMyProfileFrame] = useState<unknown>(null);
   const [myNameColor, setMyNameColor] = useState<string | null>(null);
   const [opponentName, setOpponentName] = useState("Opponent");
   const [opponentIconKey, setOpponentIconKey] = useState<string | null>(null);
+  const [opponentProfileFrame, setOpponentProfileFrame] = useState<unknown>(null);
   const [opponentNameColor, setOpponentNameColor] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -828,9 +830,11 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         setMyName(d.myName || "You");
         setMyIconKey(d.myIconKey || null);
         setMyNameColor(d.myNameColor || null);
+        setMyProfileFrame(d.myProfileFrame || null);
         setOpponentName(d.opponentName || "Opponent");
         setOpponentIconKey(d.opponentIconKey || null);
         setOpponentNameColor(d.opponentNameColor || null);
+        setOpponentProfileFrame(d.opponentProfileFrame || null);
         setInteractiveState(d.gameState);
         setRoundHistory(d.rounds ?? []);
         setPickValue("");
@@ -1826,6 +1830,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             userLabel={myName}
             oppLabel={opponentName}
             oppIconKey={opponentIconKey}
+            oppProfileFrame={opponentProfileFrame}
             oppNameColor={opponentNameColor}
             wager={wagerLocked ?? wager}
             payout={displayGameState.payout}
@@ -1939,6 +1944,7 @@ function OddsGameDisplay({
   payout,
   onPlayAgain,
   oppIconKey,
+  oppProfileFrame,
   oppNameColor,
 }: {
   gameState: GameState;
@@ -1953,6 +1959,7 @@ function OddsGameDisplay({
   payout: number;
   onPlayAgain: () => void;
   oppIconKey?: string | null;
+  oppProfileFrame?: unknown;
   oppNameColor?: string | null;
 }) {
   const myPts = isPlayer1 ? gameState.p1Score : gameState.p2Score;
@@ -2286,6 +2293,7 @@ function OddsGameDisplay({
           opponent={{
             name: oppLabel,
             iconKey: oppIconKey || null,
+            profileFrame: oppProfileFrame || null,
             isAi: oppLabel === "AI",
           }}
           tokenDelta={

@@ -17,6 +17,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { glows, tokenSubscriptions, users } from "../db/schema";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "./stripe/subscriptions";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "./cosmetics";
 
 const ICON_KEY_REGEX = /^[a-z0-9][a-z0-9._-]{0,119}$/;
 const CLERK_ID_PREFIX = "user_";
@@ -58,6 +59,7 @@ export async function getSeatIdentity(player1Id, player2Id) {
       iconKey: users.selectedIcon,
       chatColor: users.chatColor,
       glowColor: glows.color,
+      equippedCosmetics: users.equippedCosmetics,
       isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
     })
     .from(users)
@@ -75,8 +77,21 @@ export async function getSeatIdentity(player1Id, player2Id) {
     .where(inArray(users.clerkId, clerkIds));
 
   const byClerkId = new Map(rows.map((row) => [row.clerkId, row]));
-  const resolve = (clerkId) =>
-    isRealUser(clerkId) ? resolveSeatIdentityRow(byClerkId.get(clerkId)) : null;
+  // One catalog query resolves both seats' equipped profile frames.
+  const frameByKey = await getProfileFramesByKeys(
+    rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+  );
+  const resolve = (clerkId) => {
+    if (!isRealUser(clerkId)) return null;
+    const row = byClerkId.get(clerkId);
+    const base = resolveSeatIdentityRow(row);
+    if (!base) return null;
+    const frameKey = pickProfileFrameKey(row?.equippedCosmetics);
+    return {
+      ...base,
+      profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+    };
+  };
 
   return {
     player1: resolve(player1Id),
@@ -97,8 +112,10 @@ export async function attachSeatIdentity(match) {
     player1Name: identity.player1?.name ?? null,
     player1IconKey: identity.player1?.iconKey ?? null,
     player1NameColor: identity.player1?.nameColor ?? null,
+    player1ProfileFrame: identity.player1?.profileFrame ?? null,
     player2Name: identity.player2?.name ?? null,
     player2IconKey: identity.player2?.iconKey ?? null,
     player2NameColor: identity.player2?.nameColor ?? null,
+    player2ProfileFrame: identity.player2?.profileFrame ?? null,
   };
 }

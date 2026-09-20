@@ -7,7 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
-import IconAvatar from "../../components/IconAvatar";
+import FrameAvatar from "../../components/FrameAvatar";
 import { useTranslation } from "../../hooks/useTranslation";
 
 const TABS = ["all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
@@ -221,11 +221,11 @@ function Podium({ items, myClerkId, tab, category }) {
             >
               #{item.rank}
             </span>
-            <IconAvatar
+            <FrameAvatar
+              frame={item.profileFrame}
               iconKey={item.icon_key || null}
               name={item.user?.name || item.name}
               size="h-10 w-10 sm:h-12 sm:w-12"
-              showFrame={false}
               className="border border-white/20"
             />
             <span className="mt-1.5 w-full truncate text-xs font-semibold text-[#c9f7ff] sm:text-sm">
@@ -648,11 +648,11 @@ export default function LeaderboardPage() {
                               className="flex min-w-0 items-center gap-2.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
                               title={`View ${item.user?.name || item.name}'s profile`}
                             >
-                              <IconAvatar
+                              <FrameAvatar
+                                frame={item.profileFrame}
                                 iconKey={item.icon_key || null}
                                 name={item.user?.name || item.name}
                                 size="h-9 w-9"
-                                showFrame={false}
                                 className="border border-white/20"
                               />
                               <span className="min-w-0">

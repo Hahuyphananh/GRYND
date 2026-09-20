@@ -47,7 +47,7 @@ import {
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -219,6 +219,7 @@ type PlayerSeatProps = {
   isMe: boolean;
   name: string;
   iconKey?: string | null;
+  profileFrame?: unknown;
   nameColor?: string | null;
   tiles: number;
   wagerLabel: string;
@@ -249,6 +250,7 @@ function PlayerSeat({
   isMe,
   name,
   iconKey,
+  profileFrame,
   nameColor,
   tiles,
   wagerLabel,
@@ -304,7 +306,7 @@ function PlayerSeat({
         <span className="relative flex min-w-0 items-center gap-2">
           {/* Official Grynd icon — falls back to a letter circle when
               the key is missing/invalid. */}
-          <IconAvatar iconKey={iconKey} name={name} size="h-7 w-7" />
+          <FrameAvatar frame={profileFrame} iconKey={iconKey} name={name} size="h-7 w-7" />
           <span
             className="truncate text-sm font-bold text-white/90"
             style={nameColor ? { color: nameColor } : undefined}
@@ -474,6 +476,7 @@ type PlayerSummary = {
   id: string;
   displayName: string;
   iconKey: string;
+  profileFrame?: unknown;
   nameColor?: string | null;
   missing?: boolean;
 };
@@ -1670,7 +1673,11 @@ export default function MinesPvpMatchPage({
         opponent={
           isAi
             ? { name: "GRYND AI", isAi: true }
-            : { name: oppName, iconKey: oppSummary?.iconKey || null }
+            : {
+                name: oppName,
+                iconKey: oppSummary?.iconKey || null,
+                profileFrame: oppSummary?.profileFrame || null,
+              }
         }
         tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
@@ -1879,6 +1886,7 @@ export default function MinesPvpMatchPage({
         isMe
         name={myDisplayName}
         iconKey={mySummary?.iconKey || null}
+        profileFrame={mySummary?.profileFrame || null}
         nameColor={mySummary?.nameColor || null}
         tiles={myPicks.length}
         wagerLabel={wagerLabel}
@@ -1893,6 +1901,7 @@ export default function MinesPvpMatchPage({
         isMe={false}
         name={opponentDisplayName}
         iconKey={oppSummary?.iconKey || null}
+        profileFrame={oppSummary?.profileFrame || null}
         nameColor={oppSummary?.nameColor || null}
         tiles={opponentPicks.length}
         wagerLabel={wagerLabel}

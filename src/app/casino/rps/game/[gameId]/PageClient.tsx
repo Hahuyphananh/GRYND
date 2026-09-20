@@ -22,7 +22,7 @@ import Footer from "../../../../../components/Footer";
 import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../../components/IconAvatar";
+import FrameAvatar from "../../../../../components/FrameAvatar";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
@@ -71,6 +71,8 @@ export default function RPSPvpGamePage() {
   const [myNameColor, setMyNameColor] = useState<string | null>(null);
   const [opponentIconKey, setOpponentIconKey] = useState<string | null>(null);
   const [opponentNameColor, setOpponentNameColor] = useState<string | null>(null);
+  const [myProfileFrame, setMyProfileFrame] = useState<unknown>(null);
+  const [opponentProfileFrame, setOpponentProfileFrame] = useState<unknown>(null);
   const [player1Id, setPlayer1Id] = useState<string | null>(null);
   const [player2Id, setPlayer2Id] = useState<string | null>(null);
   const [myChoice, setMyChoice] = useState<Choice | null>(null);
@@ -155,6 +157,8 @@ export default function RPSPvpGamePage() {
         setMyNameColor(game.myNameColor || null);
         setOpponentIconKey(game.opponentIconKey || null);
         setOpponentNameColor(game.opponentNameColor || null);
+        setMyProfileFrame(game.myProfileFrame || null);
+        setOpponentProfileFrame(game.opponentProfileFrame || null);
         setMyChoice(game.myChoice || null);
         setOpponentChoice(game.opponentChoice || null);
         setRoundsWon1(game.roundsWon1 || 0);
@@ -345,6 +349,7 @@ export default function RPSPvpGamePage() {
         opponent={{
           name: opponentName || "Opponent",
           iconKey: opponentIconKey,
+          profileFrame: opponentProfileFrame,
         }}
         tokenDelta={tokenDelta}
         summary={[
@@ -557,12 +562,12 @@ export default function RPSPvpGamePage() {
         <div className="w-full max-w-2xl flex flex-col items-center gap-4">
           <div className="w-full flex items-center justify-between sm:justify-center gap-4 sm:gap-10 text-xs sm:text-sm text-[#a8f4ff] font-semibold px-2">
             <span className="relative inline-flex items-center gap-1.5">
-              <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
+              <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} size="h-4 w-4" />
               <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
               <EmoteBubble emote={myEmote} side="mine" />
             </span>
             <span className="relative inline-flex items-center gap-1.5">
-              <IconAvatar iconKey={opponentIconKey} name={opponentName} size="h-4 w-4" />
+              <FrameAvatar frame={opponentProfileFrame} iconKey={opponentIconKey} name={opponentName} size="h-4 w-4" />
               <span style={opponentNameColor ? { color: opponentNameColor } : undefined}>{opponentName}</span>
               <EmoteBubble emote={incomingEmote} />
             </span>

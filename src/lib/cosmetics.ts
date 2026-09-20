@@ -19,7 +19,7 @@
 //   * Spends are a single atomic debit + ledger row (`spend`,
 //     reference_type `cosmetic`) — same discipline as the shop item buys.
 
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cosmetics, userCosmetics, users, tokenTransactions } from "../db/schema";
 
@@ -201,6 +201,73 @@ export type OwnedCosmetic = {
   unlockedAt: Date;
   equipped: boolean;
 };
+
+/**
+ * The public profile-frame payload every avatar surface renders. Server-owned:
+ * the key, display name and visual all come from the `cosmetics` catalog.
+ */
+export type ProfileFrame = {
+  key: string;
+  name: string;
+  visual: Record<string, unknown>;
+};
+
+/**
+ * Pull the equipped profile-frame key out of a raw `users.equipped_cosmetics`
+ * jsonb map (category → key). Returns null for anything malformed.
+ */
+export function pickProfileFrameKey(equipped: unknown): string | null {
+  if (!equipped || typeof equipped !== "object") return null;
+  const key = (equipped as Record<string, unknown>).profile_frame;
+  return typeof key === "string" && key ? key : null;
+}
+
+/**
+ * Bulk-resolve profile-frame keys to catalog rows. Unknown, disabled or
+ * non-frame keys are silently dropped, so a stale equipped key can never
+ * render. Used by the batch surfaces (leaderboards, chat) that decorate many
+ * players in one query.
+ */
+export async function getProfileFramesByKeys(
+  keys: (string | null | undefined)[],
+): Promise<Map<string, ProfileFrame>> {
+  const unique = Array.from(
+    new Set(keys.filter((key): key is string => typeof key === "string" && key.length > 0)),
+  );
+  const map = new Map<string, ProfileFrame>();
+  if (unique.length === 0) return map;
+
+  const rows = await db
+    .select({
+      key: cosmetics.key,
+      name: cosmetics.name,
+      category: cosmetics.category,
+      visual: cosmetics.visual,
+    })
+    .from(cosmetics)
+    .where(
+      and(
+        inArray(cosmetics.key, unique),
+        eq(cosmetics.enabled, true),
+        eq(cosmetics.category, "profile_frame"),
+      ),
+    );
+
+  for (const row of rows) {
+    map.set(row.key, { key: row.key, name: row.name, visual: row.visual });
+  }
+  return map;
+}
+
+/** Resolve a single equipped profile frame from a raw equipped map. */
+export async function resolveProfileFrame(
+  equipped: unknown,
+): Promise<ProfileFrame | null> {
+  const key = pickProfileFrameKey(equipped);
+  if (!key) return null;
+  const frames = await getProfileFramesByKeys([key]);
+  return frames.get(key) ?? null;
+}
 
 /** All cosmetics a user owns, joined with catalog metadata + equip state. */
 export async function getOwnedCosmetics(clerkId: string): Promise<OwnedCosmetic[]> {

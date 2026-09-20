@@ -47,7 +47,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually begins,
 // auto-stops when it ends or the user quits. No gameplay logic touched.
@@ -143,6 +143,7 @@ type PlayerHead = {
   id: string;
   displayName: string;
   iconKey: string | null;
+  profileFrame?: unknown;
   nameColor?: string | null;
   missing?: boolean;
 };
@@ -1040,6 +1041,7 @@ function PlayerSidePanel({
   seat,
   displayName,
   avatarKey,
+  profileFrame,
   nameColor,
   totalScore,
   isViewer,
@@ -1061,6 +1063,7 @@ function PlayerSidePanel({
   seat: "player1" | "player2";
   displayName: string;
   avatarKey?: string | null;
+  profileFrame?: unknown;
   nameColor?: string | null;
   totalScore: number;
   lastBallDelta?: number | null;
@@ -1131,7 +1134,7 @@ function PlayerSidePanel({
             {/* Official Grynd icon — previously passed as `avatarKey` but
                 never rendered. Falls back to a letter circle when the key
                 is missing/invalid. */}
-            <IconAvatar iconKey={avatarKey} name={displayName} size="h-5 w-5" />
+            <FrameAvatar frame={profileFrame} iconKey={avatarKey} name={displayName} size="h-5 w-5" />
             <span
               className="truncate"
               style={nameColor ? { color: nameColor } : undefined}
@@ -2705,6 +2708,8 @@ export default function PlinkoPvpMatchPage({
     : match.players?.p2?.displayName ?? shortId(match.player2Id);
   const p1IconKey = match.players?.p1?.iconKey ?? null;
   const p2IconKey = match.players?.p2?.iconKey ?? null;
+  const p1ProfileFrame = match.players?.p1?.profileFrame ?? null;
+  const p2ProfileFrame = match.players?.p2?.profileFrame ?? null;
   // Report target: the opponent is whoever occupies the seat we don't
   // hold. Real Clerk id comes from the enriched player head; fall back
   // to the raw player1Id/player2Id fields.
@@ -3168,6 +3173,7 @@ export default function PlinkoPvpMatchPage({
       seat="player1"
       displayName={p1Name}
       avatarKey={p1IconKey}
+      profileFrame={p1ProfileFrame}
       nameColor={match.players?.p1?.nameColor || null}
       totalScore={match.p1Score}
       lastBallDelta={p1Delta}
@@ -3194,6 +3200,7 @@ export default function PlinkoPvpMatchPage({
       seat="player2"
       displayName={p2Name}
       avatarKey={p2IconKey}
+      profileFrame={p2ProfileFrame}
       nameColor={match.players?.p2?.nameColor || null}
       totalScore={match.p2Score}
       lastBallDelta={p2Delta}

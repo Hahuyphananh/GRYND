@@ -4,6 +4,7 @@ import { asc, db, eq, resolveExpiredTurn, diceFlushRooms } from "../_lib";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
 import { sql } from "drizzle-orm";
 // This route is a plain GET that the page middleware does NOT cover (every
 // /api/* path is public there), and it can mutate room state via
@@ -24,6 +25,7 @@ async function enrichRoomPlayers(room) {
       prestigeLevel: users.prestigeLevel,
       showPrestigeBadge: users.showPrestigeBadge,
       iconKey: users.selectedIcon,
+      equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
       glowColor: glows.color,
       isPremium: sql`(${tokenSubscriptions.status} IS NOT NULL)`,
@@ -44,6 +46,10 @@ async function enrichRoomPlayers(room) {
   const badgeByUser = new Map();
   const iconByUser = new Map();
   const colorByUser = new Map();
+  const frameByUser = new Map();
+  const frameByKey = await getProfileFramesByKeys(
+    rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+  );
   for (const row of rows) {
     badgeByUser.set(
       String(row.clerkId),
@@ -62,6 +68,8 @@ async function enrichRoomPlayers(room) {
         (Boolean(row.isPremium) ? row.chatColor || null : null) ||
         null,
     );
+    const frameKey = pickProfileFrameKey(row.equippedCosmetics);
+    frameByUser.set(String(row.clerkId), frameKey ? frameByKey.get(frameKey) || null : null);
   }
   return {
     ...room,
@@ -74,6 +82,7 @@ async function enrichRoomPlayers(room) {
               ...p,
               prestigeBadge: badgeByUser.get(String(p.userId)) || null,
               iconKey: iconByUser.get(String(p.userId)) || "default",
+              profileFrame: frameByUser.get(String(p.userId)) || null,
               nameColor: colorByUser.get(String(p.userId)) || null,
             },
       ),

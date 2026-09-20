@@ -19,7 +19,7 @@ import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePi
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import ReportModal from "../../../../../components/ReportModal";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../../components/IconAvatar";
+import FrameAvatar from "../../../../../components/FrameAvatar";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
   IconFlag,
@@ -358,6 +358,7 @@ export default function Page() {
   });
   const [myName, setMyName] = useState("Player 1");
   const [myIconKey, setMyIconKey] = useState<string | null>(null);
+  const [myProfileFrame, setMyProfileFrame] = useState<unknown>(null);
   const [myNameColor, setMyNameColor] = useState<string | null>(null);
   // Emotes — both players already join the pool room, so reuse it.
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
@@ -368,6 +369,7 @@ export default function Page() {
   });
   const [oppName, setOppName] = useState(aiMode ? "AI" : "Player 2");
   const [oppIconKey, setOppIconKey] = useState<string | null>(null);
+  const [oppProfileFrame, setOppProfileFrame] = useState<unknown>(null);
   const [oppNameColor, setOppNameColor] = useState<string | null>(null);
   const [remoteAim, setRemoteAim] = useState<{
     angle: number;
@@ -1262,8 +1264,10 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       if (data.opponentName) setOppName(data.opponentName);
       if (data.viewerIconKey) setMyIconKey(data.viewerIconKey);
       if (data.viewerNameColor) setMyNameColor(data.viewerNameColor);
+      if (data.viewerProfileFrame) setMyProfileFrame(data.viewerProfileFrame);
       if (data.opponentIconKey) setOppIconKey(data.opponentIconKey);
       if (data.opponentNameColor) setOppNameColor(data.opponentNameColor);
+      if (data.opponentProfileFrame) setOppProfileFrame(data.opponentProfileFrame);
       // Capture opponent's clerkId for reporting
       if (data.match?.player1Id && data.match?.player2Id) {
         const oppId = data.viewerSeat === 1 ? data.match.player2Id : data.match.player1Id;
@@ -1429,7 +1433,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     <><div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:gap-4">
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-2 shadow-inner">
             <p className="relative flex items-center gap-1.5 font-bold">
-              <IconAvatar iconKey={myIconKey} name={myName} size="h-4 w-4" />
+              <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} size="h-4 w-4" />
               <span style={myNameColor ? { color: myNameColor } : undefined}>{myName}</span>
               <EmoteBubble emote={myEmote} side="mine" />
             </p>
@@ -1439,7 +1443,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
           <div className="rounded-xl border border-white/10 bg-[#1f1f1f]/90 p-2 text-right shadow-inner">
             <p className="relative flex items-center justify-end gap-1.5 font-bold">
               <span style={oppNameColor ? { color: oppNameColor } : undefined}>{oppName}</span>
-              <IconAvatar iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
+              <FrameAvatar frame={oppProfileFrame} iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
               <EmoteBubble emote={incomingEmote} />
             </p>
             <p className="text-xs text-cyan-100">{oppTeam ?? "unassigned"}</p>
@@ -1544,7 +1548,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         headline={headline}
         subline={subline}
         gameName="Pool Masters"
-        opponent={{ name: oppName, iconKey: oppIconKey || null }}
+        opponent={{ name: oppName, iconKey: oppIconKey || null, profileFrame: oppProfileFrame || null }}
         tokenDelta={tokenDelta}
         summary={[
           { label: "Result", value: won ? "Win" : "Loss" },
@@ -1877,7 +1881,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
     <div className="grid w-full grid-cols-2 gap-2">
       <div className="rounded-lg border border-white/10 bg-[#1f1f1f]/85 px-2 py-1">
         <p className="relative flex items-center gap-1.5 truncate text-xs font-bold">
-          <IconAvatar iconKey={myIconKey} name={myName} size="h-3.5 w-3.5" />
+          <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} size="h-3.5 w-3.5" />
           <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
             {myName}
           </span>
@@ -1892,7 +1896,7 @@ ${!canShoot ? "pointer-events-none" : ""}`}
           <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
             {oppName}
           </span>
-          <IconAvatar iconKey={oppIconKey} name={oppName} size="h-3.5 w-3.5" />
+          <FrameAvatar frame={oppProfileFrame} iconKey={oppIconKey} name={oppName} size="h-3.5 w-3.5" />
           <EmoteBubble emote={incomingEmote} />
         </p>
         <p className="truncate text-[10px] text-cyan-100">

@@ -19,7 +19,7 @@ import {
 import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import IconAvatar from "../../../../components/IconAvatar";
+import FrameAvatar from "../../../../components/FrameAvatar";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -985,7 +985,7 @@ const sitAsHuman = async (seatIndex: number) => {
                   {player.type === "ai" ? (
                     <IconRobot size={14} />
                   ) : (
-                    <IconAvatar iconKey={player.iconKey} name={player.name} size="h-4 w-4" />
+                    <FrameAvatar frame={player.profileFrame} iconKey={player.iconKey} name={player.name} size="h-4 w-4" />
                   )}
                   <span style={player.nameColor ? { color: player.nameColor } : undefined}>
                     {player.name}
@@ -1098,7 +1098,7 @@ const sitAsHuman = async (seatIndex: number) => {
               {entry.type === "ai" ? (
                 <IconRobot size={10} />
               ) : (
-                <IconAvatar iconKey={entry.iconKey} name={entry.name} size="h-3 w-3" />
+                <FrameAvatar frame={entry.profileFrame} iconKey={entry.iconKey} name={entry.name} size="h-3 w-3" />
               )}
               <span className="truncate" style={entry.nameColor ? { color: entry.nameColor } : undefined}>
                 {entry.name}
@@ -1422,7 +1422,7 @@ const sitAsHuman = async (seatIndex: number) => {
                               {occupant.type === "ai" ? (
                                 <IconRobot size={14} />
                               ) : (
-                                <IconAvatar iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
+                                <FrameAvatar frame={occupant.profileFrame} iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
                               )}
                               <span className="truncate" style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
                                 {occupant.name}

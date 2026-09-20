@@ -8,7 +8,7 @@
 // This module also owns how a SEAT is depicted (pfp, or the GRYND logo for the
 // AI seat). Keeping `SeatMark` here means the legend and the scoreboard rows
 // can never drift apart: a color and a face always mean the same thing.
-import IconAvatar from "./IconAvatar";
+import FrameAvatar from "./FrameAvatar";
 // The GRYND mark for the AI seat. The AI has no users row, so it can never
 // resolve an official icon key. Static import so the asset can't go missing
 // silently — `.src` is the hashed URL an <img> needs.
@@ -24,6 +24,8 @@ interface SeatMarkProps {
   name?: string | null;
   /** Official icon key for the seat (human players only). */
   iconKey?: string | null;
+  /** Equipped profile frame for the seat (human players only). */
+  profileFrame?: unknown;
   /** AI seat: always the GRYND logo, whatever `iconKey` says. */
   isAiGame?: boolean;
   /** Tailwind size classes (e.g. "h-5 w-5"). */
@@ -40,6 +42,7 @@ export function SeatMark({
   seat,
   name,
   iconKey,
+  profileFrame,
   isAiGame = false,
   size = "h-5 w-5",
   className = "",
@@ -56,7 +59,8 @@ export function SeatMark({
     );
   }
   return (
-    <IconAvatar
+    <FrameAvatar
+      frame={profileFrame}
       iconKey={iconKey || null}
       name={name || undefined}
       size={size}
@@ -72,6 +76,8 @@ interface DotsAndBoxesLegendProps {
   guestName: string;
   hostIconKey?: string | null;
   guestIconKey?: string | null;
+  hostProfileFrame?: unknown;
+  guestProfileFrame?: unknown;
   isAiGame?: boolean;
   /** The viewer's own seat — its chip is outlined so "which one am I?" needs no
    *  extra label. */
@@ -87,6 +93,8 @@ export default function DotsAndBoxesLegend({
   guestName,
   hostIconKey,
   guestIconKey,
+  hostProfileFrame,
+  guestProfileFrame,
   isAiGame = false,
   selfSeat = null,
   hostColor,
@@ -99,6 +107,7 @@ export default function DotsAndBoxesLegend({
       text: "text-amber-300",
       name: hostName,
       iconKey: hostIconKey,
+      profileFrame: hostProfileFrame,
     },
     {
       seat: "guest" as const,
@@ -106,6 +115,7 @@ export default function DotsAndBoxesLegend({
       text: "text-cyan-300",
       name: guestName,
       iconKey: guestIconKey,
+      profileFrame: guestProfileFrame,
     },
   ];
 
@@ -152,6 +162,7 @@ export default function DotsAndBoxesLegend({
               seat={entry.seat}
               name={entry.name}
               iconKey={entry.iconKey}
+              profileFrame={entry.profileFrame}
               isAiGame={isAiGame}
               size="h-4 w-4"
             />

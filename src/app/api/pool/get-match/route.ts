@@ -34,8 +34,10 @@ async function matchPayload(match: PoolMatchRow, userId: string | null) {
       match.player2Id === "AI" ? "AI" : opponent?.name ?? "Opponent",
     viewerIconKey: viewer?.iconKey ?? null,
     viewerNameColor: viewer?.nameColor ?? null,
+    viewerProfileFrame: viewer?.profileFrame ?? null,
     opponentIconKey: opponent?.iconKey ?? null,
     opponentNameColor: opponent?.nameColor ?? null,
+    opponentProfileFrame: opponent?.profileFrame ?? null,
   };
 }
 

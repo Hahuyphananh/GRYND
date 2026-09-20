@@ -2,6 +2,7 @@
 import React from "react";
 import { IconBomb, IconCircleCheck, IconFlag, IconRocket } from "@tabler/icons-react";
 import IconAvatar from "../IconAvatar";
+import { frameWrapperProps } from "../FrameAvatar";
 
 
 /**
@@ -115,7 +116,8 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
                       ? "border-red-500/50"
                       : "border-[#00e5ff]/40"
                   : "border-gray-500/20 bg-transparent text-gray-500"
-                }`}
+                } ${frameWrapperProps(player?.profileFrame).className}`}
+              style={frameWrapperProps(player?.profileFrame).style}
             >
               {player ? (
                 <IconAvatar

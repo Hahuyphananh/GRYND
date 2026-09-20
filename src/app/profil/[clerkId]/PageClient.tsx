@@ -11,12 +11,17 @@ import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
 import UserStatsTabs from "../../../components/UserStatsTabs";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
+import { cosmeticFrameRing } from "../../../lib/profileCosmetics";
 
 type PublicUser = {
   clerkId: string;
   name: string;
   selectedIcon: string | null;
   profileAccent: string | null;
+  // Equipped profile frame (server-resolved catalog name + visual), or null.
+  profileFrame:
+    | { key: string; name: string; visual: { cssClass?: string; color?: string } }
+    | null;
   level: number;
   xp: number;
   gamesWon: number;
@@ -148,6 +153,8 @@ export default function PublicProfilePage() {
     );
   }
 
+  const frame = cosmeticFrameRing(profile.profileFrame?.visual);
+
   return (
     <div className="relative min-h-screen text-white">
       <InteractiveCasinoBg variant="subtle" />
@@ -187,12 +194,17 @@ export default function PublicProfilePage() {
           }
         >
           <div className="flex items-center gap-4">
-            <IconAvatar
-              iconKey={profile.selectedIcon}
-              name={profile.name}
-              size="h-20 w-20"
-              className="border-2 border-[#FFD700]"
-            />
+            <span
+              className={`inline-flex shrink-0 rounded-full ${frame.cssClass}`}
+              style={frame.style}
+            >
+              <IconAvatar
+                iconKey={profile.selectedIcon}
+                name={profile.name}
+                size="h-20 w-20"
+                className="border-2 border-[#FFD700]"
+              />
+            </span>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold">{profile.name}</h1>

@@ -1,5 +1,6 @@
 import { getNeonSql } from "../db/neon";
 import { resolvePrestigeBadge } from "./prestige";
+import { getProfileFramesByKeys, pickProfileFrameKey } from "./cosmetics";
 
 let _sql = null;
 function getSql() {
@@ -364,6 +365,26 @@ function decoratePrestigeBadge(item) {
   return badge ? { ...rest, prestigeBadge: badge } : rest;
 }
 
+/**
+ * Attach each row's equipped profile frame (server-owned name + visual) and
+ * drop the raw `equipped_cosmetics` map so it never leaves the server. One
+ * catalog query decorates the whole page (see src/lib/cosmetics.ts).
+ */
+async function attachProfileFrames(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) return list;
+  const frames = await getProfileFramesByKeys(
+    list.map((item) => pickProfileFrameKey(item?.equipped_cosmetics)),
+  );
+  return list.map((item) => {
+    if (!item) return item;
+    const { equipped_cosmetics, ...rest } = item;
+    const key = pickProfileFrameKey(equipped_cosmetics);
+    const frame = key ? frames.get(key) : null;
+    return frame ? { ...rest, profileFrame: frame } : rest;
+  });
+}
+
 async function fetchRankedRows({
   fields,
   orderBy,
@@ -389,6 +410,7 @@ async function fetchRankedRows({
     "show_prestige_badge",
     "false",
   );
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   const meClause =
     clerkId && hasColumn(columns, "users", "clerk_id")
@@ -407,6 +429,7 @@ async function fetchRankedRows({
           ${xpField} AS xp,
           ${prestigeLevelField} AS prestige_level,
           ${showPrestigeBadgeField} AS show_prestige_badge,
+          ${equippedField} AS equipped_cosmetics,
           json_build_object(
             'name', ${nameField},
             'icon_key', ${iconKeyField}
@@ -432,11 +455,14 @@ async function fetchRankedRows({
 
   const row = result?.[0];
 
+  const items = Array.isArray(row?.items)
+    ? row.items.map(decoratePrestigeBadge)
+    : [];
+  const me = row?.me ? decoratePrestigeBadge(row.me) : null;
+
   return {
-    items: Array.isArray(row?.items)
-      ? row.items.map(decoratePrestigeBadge)
-      : [],
-    me: row?.me ? decoratePrestigeBadge(row.me) : null,
+    items: await attachProfileFrames(items),
+    me: me ? (await attachProfileFrames([me]))[0] : null,
   };
 }
 
@@ -697,6 +723,7 @@ export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
     "show_prestige_badge",
     "false",
   );
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   const meClause =
     clerkId && hasColumn(columns, "users", "clerk_id")
@@ -717,6 +744,7 @@ export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
           ${xpField} AS xp,
           ${prestigeLevelField} AS prestige_level,
           ${showPrestigeBadgeField} AS show_prestige_badge,
+          ${equippedField} AS equipped_cosmetics,
           json_build_object(
             'name', ${nameField},
             'icon_key', ${iconKeyField}
@@ -747,11 +775,13 @@ export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
   );
 
   const row = result?.[0];
+  const items = Array.isArray(row?.items)
+    ? row.items.map(decoratePrestigeBadge)
+    : [];
+  const me = row?.me ? decoratePrestigeBadge(row.me) : null;
   return {
-    items: Array.isArray(row?.items)
-      ? row.items.map(decoratePrestigeBadge)
-      : [],
-    me: row?.me ? decoratePrestigeBadge(row.me) : null,
+    items: await attachProfileFrames(items),
+    me: me ? (await attachProfileFrames([me]))[0] : null,
   };
 }
 
