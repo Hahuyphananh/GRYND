@@ -371,12 +371,15 @@ export default function PvpResultScreen({
               ...panelMotion,
               // A win settles with its small overshoot; a loss lands firmer and
               // flatter (no bounce), so the hand reads as a hit rather than a
-              // flourish. Deliberately the ONLY difference — no shake, no red
-              // wash, no extra negative effect.
+              // flourish; a draw lands dead neutral (a plain ease, no overshoot
+              // at all) so it never reads as a win. Deliberately the ONLY
+              // difference — no shake, no red wash, no extra negative effect.
               transition:
                 outcome === "loss"
                   ? { type: "spring", stiffness: 340, damping: 30 }
-                  : panelMotion.transition,
+                  : outcome === "draw"
+                    ? { duration: 0.3, ease: "easeOut" }
+                    : panelMotion.transition,
             })}
             className={`relative w-full rounded-2xl border-2 bg-gradient-to-b text-center ${style.gradient} ${
               compact

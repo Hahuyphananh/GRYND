@@ -1186,20 +1186,10 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 :root[data-theme="light"] .hover\:bg-\[\#FFD700\]\/80:hover {
   background-color: #f4c430 !important;
 }
-@keyframes fourInARowDrop {
-  from {
-    transform: translateY(calc(-1 * var(--drop-distance, 66px)));
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-.four-in-a-row-fall {
-  animation: fourInARowDrop 0.42s cubic-bezier(0.2, 0.9, 0.35, 1) both;
-}
-
 /* Four-In-A-Row: tactile arcade board */
+/* (The falling-disc motion is now a framer-motion drop + trail in
+   four-in-a-row/game/[gameId]/PageClient.tsx and play-ai/PageClient.tsx, so
+   the old single-disc CSS keyframe is gone.) */
 .four-in-a-row-board {
   position: relative;
   isolation: isolate;
@@ -1249,8 +1239,180 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 .four-in-a-row-drop-button:hover:not(:disabled) { box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 16px rgba(255,215,64,.45); }
 .four-in-a-row-drop-button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.08); }
-.four-in-a-row-drop-button:active:not(:disabled) { transform: translateY(1px); }
 .four-in-a-row-drop-button:disabled { color: #71809a; background: #25344c; box-shadow: none; }
+
+/* ── Four-In-A-Row interaction feedback ───────────────────────────────
+   Hover/selection affordance ONLY. Exactly ONE column and ONE landing cell
+   are ever marked at a time (never all 42 cells), and nothing here touches
+   gameplay state — it just makes "available", "selected" and "in flight"
+   readable before the existing falling animation takes over. */
+
+/* The hovered/selected column, drawn as a faint rail behind nothing else. */
+.four-in-a-row-column-hint {
+  border-radius: .9rem;
+  background: rgba(0, 229, 255, .08);
+  border: 1px solid rgba(0, 229, 255, .38);
+  box-shadow: inset 0 0 16px rgba(0, 229, 255, .14);
+  pointer-events: none;
+}
+
+/* The faded "your disc lands here" ghost — the real disc, dimmed. */
+.four-in-a-row-preview {
+  opacity: .4;
+  pointer-events: none;
+}
+
+/* Selected: a one-shot ring + fade-in (instant under reduced motion, whose
+   global rule zeroes animation durations). */
+.four-in-a-row-preview--pending {
+  opacity: .66;
+  outline: 3px solid rgba(0, 229, 255, .75);
+  outline-offset: 2px;
+  animation: fourInARowPending .16s ease-out both;
+}
+@keyframes fourInARowPending {
+  from { opacity: .28; }
+  to { opacity: .66; }
+}
+
+/* Hovered/selected column's drop button (doubled class so it outranks the
+   plain :hover rule, which is written with the same specificity). */
+.four-in-a-row-drop-button.four-in-a-row-drop-button--hint:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.12);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 18px rgba(255,215,64,.6);
+}
+.four-in-a-row-drop-button.four-in-a-row-drop-button--pending:not(:disabled) {
+  filter: brightness(1.2);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 22px rgba(0,229,255,.7);
+}
+
+/* Press = immediate feedback, sent before anything reaches the server. */
+.four-in-a-row-drop-button:active:not(:disabled) {
+  transform: translateY(2px) scale(.97);
+  filter: brightness(.95);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.22), 0 1px 0 #a66d0b, 0 0 18px rgba(255,215,64,.5);
+}
+
+/* ── Four-In-A-Row winning line ────────────────────────────────────────
+   The four connected discs get a brief staggered pop and settle into a
+   bright ring; every other disc steps back so the connection is the only
+   thing that reads. ONE-SHOT only — never a looping pulse. */
+.four-in-a-row-win {
+  position: relative;
+  z-index: 2;
+  outline: 3px solid rgba(255, 228, 121, .95);
+  outline-offset: 2px;
+  filter: brightness(1.08);
+  animation: fourInARowWin .34s ease-out both;
+  /* Stagger along the line so the four read as one connection. */
+  animation-delay: calc(var(--win-order, 0) * 90ms);
+}
+@keyframes fourInARowWin {
+  0% { transform: scale(.88); }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* Everything that is not part of the winning line steps back. */
+.four-in-a-row-dim {
+  opacity: .5;
+  filter: saturate(.5) brightness(.78);
+  transition: opacity .3s ease, filter .3s ease;
+}
+
+/* Reduced motion: no pop and no stagger (an animation-delay would otherwise
+   hold the disc at the 0% scale) — the ring alone marks the line. */
+@media (prefers-reduced-motion: reduce) {
+  .four-in-a-row-win { animation: none; }
+  .four-in-a-row-dim { transition: none; }
+}
+
+/* ── Four-In-A-Row turn / state hierarchy ──────────────────────────────
+   The active player reads strongest, whoever is waiting is visibly
+   secondary, a move in flight is clearly (but briefly) locked, and a
+   finished match hands the stage to the winning/result state. Everything
+   here settles instantly — nothing loops and nothing pulses. */
+.four-in-a-row-player {
+  transition: box-shadow .2s ease, opacity .2s ease;
+}
+.four-in-a-row-player--active {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .16), 0 0 18px rgba(250, 204, 21, .22);
+}
+.four-in-a-row-player--idle {
+  opacity: .55;
+}
+
+/* The action-area cue: strongest on your turn, muted while you wait. */
+.four-in-a-row-turn-line {
+  margin-bottom: .4rem;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  transition: color .2s ease, opacity .2s ease;
+}
+.four-in-a-row-turn-line--mine { color: #f5ff3b; }
+.four-in-a-row-turn-line--theirs,
+.four-in-a-row-turn-line--thinking { color: rgba(255, 255, 255, .45); }
+.four-in-a-row-turn-line--locked { color: #7cefff; }
+
+/* Move in flight: the columns read locked, briefly. Clicks were already
+   ignored while a move was in flight — this just says so. */
+.four-in-a-row-drop-controls--locked {
+  opacity: .5;
+  pointer-events: none;
+  transition: opacity .2s ease;
+}
+
+/* Reduced motion: the hierarchy still changes, it just snaps there. */
+@media (prefers-reduced-motion: reduce) {
+  .four-in-a-row-player,
+  .four-in-a-row-turn-line,
+  .four-in-a-row-drop-controls--locked { transition: none; }
+}
+
+/* ── Opponent activity cue ─────────────────────────────────────────────
+   A one-shot outline in the OTHER seat's own colour, played when that seat
+   takes the turn or its disc starts falling — so the opponent reads as a
+   participant rather than a static board-side label. It is a transient
+   overlay that ends invisible: it never replaces the static active ring, it
+   never loops, and it stays quieter than the local player's own interaction
+   feedback (it only ever shows while it is NOT your move). */
+.four-in-a-row-opponent-cue {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--cue-color, rgba(125, 211, 252, .7));
+  opacity: 0;
+  pointer-events: none;
+  animation: fourInARowOpponentCue .5s ease-out both;
+}
+@keyframes fourInARowOpponentCue {
+  0% { opacity: .72; transform: scale(1); }
+  70% { opacity: .26; transform: scale(1.035); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+
+/* Reduced motion: the opponent still changes state, it just doesn't ripple. */
+@media (prefers-reduced-motion: reduce) {
+  .four-in-a-row-opponent-cue { animation: none; opacity: 0; }
+}
+
+/* Brief turn-transition cue — small, static, gone in a moment. */
+.four-in-a-row-turn-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, .5);
+  background: rgba(3, 19, 43, .92);
+  padding: .3rem .9rem;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: #f5ff3b;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
+  backdrop-filter: blur(2px);
+}
 
 @media (max-width: 480px) {
   .four-in-a-row-board { gap: .3rem; padding: .65rem; }
