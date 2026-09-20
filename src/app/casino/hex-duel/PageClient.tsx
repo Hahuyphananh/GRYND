@@ -13,6 +13,7 @@ import { decideAIAction, type AIDifficulty, type AIAction, type AIStateSnapshot 
 import { useHexAudio } from "../../../lib/hexAudio";
 import { useChessClock } from "../../../lib/useChessClock";
 import HexBoard from "../../../components/HexBoard";
+import HexTroopCount from "../../../components/HexTroopCount";
 import HexActionPanel, { type ActionType } from "../../../components/HexActionPanel";
 import HexActionLog from "../../../components/HexActionLog";
 import HexTroopPopup from "../../../components/HexTroopPopup";
@@ -480,7 +481,13 @@ function TroopBar({ troops, maxTroops, color }: { troops: number; maxTroops: num
           }}
         />
       </div>
-      <span className="text-xs font-bold tabular-nums text-white/80 min-w-[2ch] text-right">{troops}</span>
+      {/* The same roll the board tiles use, so a player's total moves the
+          same way the tiles feeding it do. */}
+      <HexTroopCount
+        value={troops}
+        color={color}
+        className="text-xs font-bold text-white/80 min-w-[2ch] text-right"
+      />
     </div>
   );
 }
@@ -758,7 +765,7 @@ function StatusBar({
   }
 
   return (
-    <div className="text-center space-y-2">
+    <div data-hex-status="" className="text-center space-y-2">
       {!isGameOver && (
         <div className="flex items-center justify-center gap-2" style={{ animation: "turnSlideIn 0.35s ease-out" }}>
           <span
@@ -792,11 +799,29 @@ function StatusBar({
         </p>
       )}
 
-      {!isGameOver && !isAITurn && showEndTurn && (
+      {/* The End Turn button stays MOUNTED for the whole game and is only made
+          invisible when the move isn't the local player's (the AI's turn, the
+          opponent's turn, or a spectator). Unmounting it collapsed this row —
+          and with it the whole board, which sits directly below the status
+          bar — on every turn end, which is exactly the jump this removes.
+          `invisible` (visibility: hidden) keeps the identical box, and also
+          takes the button out of the tab order and the accessibility tree, so
+          the reserved space can never be focused or announced as an action
+          that isn't available. A fixed height keeps the two colour variants
+          (the bordered one and the pulsing yellow one) the same size too. */}
+      {!isGameOver && (
         <button
           onClick={onEndTurn}
-          className={`mt-2 px-5 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.15em] transition-all duration-200 ${
-            currentAP < ATTACK_COST
+          disabled={isAITurn || !showEndTurn}
+          tabIndex={isAITurn || !showEndTurn ? -1 : undefined}
+          /* NOTE: not `transition-all` — that would transition `visibility`
+             too, which flips at 50% of the duration, leaving the button
+             enabled-but-invisible for ~100ms when the turn comes back. The
+             colour/shadow/scale properties are listed explicitly instead. */
+          className={`mt-2 h-[34px] px-5 rounded-lg text-xs font-bold uppercase tracking-[0.15em] duration-200 transition-[color,background-color,border-color,box-shadow,transform,filter] ${
+            isAITurn || !showEndTurn
+              ? "invisible"
+              : currentAP < ATTACK_COST
               ? "bg-yellow-400 text-black shadow-[0_0_14px_rgba(250,204,21,0.5)] hover:bg-yellow-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(250,204,21,0.7)] animate-pulse"
               : "border border-white/15 text-slate-400 hover:text-white hover:border-white/30 hover:bg-white/5"
           }`}
@@ -956,6 +981,13 @@ export default function HexDuelPage() {
   const isGameOverEffective = effectiveWinner !== null;
   const isGameOver = isGameOverEffective;
   const showGame = gameMode !== "idle";
+  // The AI controls (and the "AI analyzing..." read-out beside them) can only
+  // act before the match's first move. They stay MOUNTED — invisible — after
+  // that instead of unmounting: their widths are what keep the control row
+  // above the board on a single line, so the board's position can't shift when
+  // the first move of the match lands.
+  const aiControlsLocked = p1MoveCount > 0 || p2MoveCount > 0;
+  const aiAnalyzing = aiEnabled && aiAction && aiThinking;
   // Record the session into "Recently played" (and the lobby's "Most
   // Played" counter) when the real match starts.
   useRecordPlayedGame("hex-duel", showGame);
@@ -2793,23 +2825,42 @@ export default function HexDuelPage() {
   const boardStage = (
     <>
 <div className="order-1 lg:order-2 flex flex-col items-center w-full">
-                {/* Waiting overlay for opponent's turn in multiplayer */}
-                {gameMode === "multiplayer" && !isLocalTurn && !isGameOver && opponentReady && (
+                {/* Turn banner. It is mounted for as long as the multiplayer
+                    match is — it does NOT come and go with the turn. It used
+                    to be a "Waiting for opponent" card that existed only on
+                    the opponent's turn, so ending a turn inserted it (and the
+                    next snapshot removed it again) and the board below it
+                    jumped by the card's full height. It is now the SAME box in
+                    both turn states — the same elements with the same classes,
+                    only the text, the hue and the spinner change — so the
+                    height is identical whether it's your move or theirs. */}
+                {gameMode === "multiplayer" && !isGameOver && (
                   <div
-                    className="relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border border-red-500/20 bg-gradient-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center"
-                    style={{ animation: "waitingFadeIn 0.4s ease-out, waitingPulse 2s ease-in-out infinite" }}
+                    data-hex-turn-band=""
+                    className={`relative z-20 mb-3 w-full max-w-md mx-auto rounded-xl border bg-gradient-to-b from-[#071230]/90 to-[#0a1a3f]/80 backdrop-blur-md p-4 text-center ${
+                      isLocalTurn ? "border-cyan-400/20" : "border-red-500/20"
+                    }`}
+                    style={isLocalTurn ? undefined : { animation: "waitingFadeIn 0.4s ease-out, waitingPulse 2s ease-in-out infinite" }}
                   >
                     <div className="flex items-center justify-center gap-3">
                       <span
-                        className="inline-block w-5 h-5 rounded-full border-2 border-red-400/30 border-t-red-400"
-                        style={{ animation: "waitingSpin 0.8s linear infinite" }}
+                        className={`inline-block w-5 h-5 rounded-full border-2 ${
+                          isLocalTurn ? "border-cyan-400/30 border-t-cyan-400" : "border-red-400/30 border-t-red-400"
+                        }`}
+                        style={isLocalTurn ? undefined : { animation: "waitingSpin 0.8s linear infinite" }}
                       />
-                      <span className="text-xs font-bold uppercase tracking-[0.15em] text-red-300">
-                        Waiting for opponent...
+                      <span className={`text-xs font-bold uppercase tracking-[0.15em] ${isLocalTurn ? "text-cyan-300" : "text-red-300"}`}>
+                        {isLocalTurn ? "Your move" : "Waiting for opponent..."}
                       </span>
                     </div>
-                    <p className="mt-1.5 text-[10px] text-slate-500">
-                      {opponentLabel} is planning their next move
+                    {/* `min-h` on the sub-line so a one-line hint and a
+                        two-line one occupy the same space at narrow widths. */}
+                    <p className="mt-1.5 min-h-[14px] text-[10px] text-slate-500">
+                      {isLocalTurn
+                        ? "Attack enemy tiles (1 AP) or displace troops (1 AP)"
+                        : opponentReady
+                        ? `${opponentLabel} is planning their next move`
+                        : `Connecting to ${opponentLabel}...`}
                     </p>
                   </div>
                 )}
@@ -3039,16 +3090,34 @@ export default function HexDuelPage() {
           </div>
 
           {/* ── AI Control Panel ────────────────────────────────────── */}
-          {showGame && p1MoveCount === 0 && p2MoveCount === 0 && (
-            <div className="mb-4 flex items-center justify-center gap-4 flex-wrap">
+          {/* This row is mounted for as long as the match is, and its items
+              keep their boxes once the match is under way. It used to be
+              gated on `p1MoveCount === 0 && p2MoveCount === 0`, so the FIRST
+              move of the match (which, on a fresh game, is the AI replying to
+              the player's first End Turn) unmounted the whole row and pulled
+              the board 48px up the page — the "board jumps when a turn ends"
+              the player sees. The controls can't act once a move exists, so
+              they are made invisible rather than unmounted: the same items
+              with the same widths, so the row keeps one line at every
+              breakpoint, and the sound toggle stays where it has always been
+              and stays usable mid-match. Same reasoning for the "AI
+              analyzing..." chip, which also used to wrap the row onto a
+              second line on phones while the AI was thinking. */}
+          {showGame && (
+            <div data-hex-ai-panel="" className="mb-4 flex items-center justify-center gap-4 flex-wrap">
               <button
                 onClick={() => {
   if (p1MoveCount === 0 && p2MoveCount === 0) {
     handleToggleAI();
   }
 }}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-[0.12em] transition-all duration-200 border ${
-                  aiEnabled
+                disabled={aiControlsLocked}
+                tabIndex={aiControlsLocked ? -1 : undefined}
+                title={aiControlsLocked ? "AI control is fixed once the match has started" : undefined}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-[0.12em] duration-200 transition-[color,background-color,border-color,box-shadow,transform] border ${
+                  aiControlsLocked
+                    ? "invisible"
+                    : aiEnabled
                     ? "bg-purple-500/30 text-purple-200 border-purple-400/60 shadow-[0_0_12px_rgba(168,85,247,0.3)]"
                     : "border-white/15 text-slate-400 hover:text-white hover:border-white/30 hover:bg-white/5"
                 }`}
@@ -3057,13 +3126,15 @@ export default function HexDuelPage() {
               </button>
 
               {aiEnabled && (
-                <div className="flex items-center gap-1.5">
+                <div className={`flex items-center gap-1.5 ${aiControlsLocked ? "invisible" : ""}`}>
                   <span className="text-[10px] text-slate-500 uppercase tracking-widest">Difficulty:</span>
                   {(["easy", "medium"] as AIDifficulty[]).map((d) => (
                     <button
                       key={d}
                       onClick={() => handleDifficultyChange(d)}
-                      className={`px-3 py-1 rounded-md text-[11px] font-medium transition-all duration-200 border capitalize ${
+                      disabled={aiControlsLocked}
+                      tabIndex={aiControlsLocked ? -1 : undefined}
+                      className={`px-3 py-1 rounded-md text-[11px] font-medium duration-200 transition-[color,background-color,border-color,box-shadow,transform] border capitalize ${
                         aiDifficulty === d
                           ? d === "easy" ? "bg-green-500/20 text-green-300 border-green-400/60" : "bg-yellow-500/20 text-yellow-300 border-yellow-400/60"
                           : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
@@ -3073,8 +3144,10 @@ export default function HexDuelPage() {
                 </div>
               )}
 
-              {aiEnabled && aiAction && aiThinking && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-purple-400/70 animate-pulse"><IconRobot size={12} /> AI analyzing...</span>
+              {aiEnabled && (
+                <span className={`inline-flex items-center gap-1 text-[10px] text-purple-400/70 animate-pulse ${aiAnalyzing ? "" : "invisible"}`}>
+                  <IconRobot size={12} /> AI analyzing...
+                </span>
               )}
 
                       {/* Sound toggle */}

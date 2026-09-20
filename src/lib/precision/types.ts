@@ -184,6 +184,15 @@ export interface PrecisionState {
       userId: string;
     };
   } | null;
+  /** The target the most recently DECIDED round was graded against.
+   *  Server-stamped at the same moment as `lastRoundStops` (see
+   *  `applyRoundResult` in `engine.ts`) and deliberately NOT cleared by the
+   *  next arm — so the round-result reveal, the arming recap board and the
+   *  end-of-match popup can all render the round's target from the decision
+   *  snapshot alone, even on a client that never observed the live
+   *  `targetMs` (fresh mount, reconnect, or a poll that landed after the
+   *  round had already closed). null before the first round is decided. */
+  lastRoundTargetMs: number | null;
   // Server-authoritative version counter — used by the reducer dedup logic.
   version: number;
   // Free-form payload for the eventual gameplay implementation. Treated as

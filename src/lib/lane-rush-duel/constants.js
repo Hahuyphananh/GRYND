@@ -287,6 +287,154 @@ export function scoreFromActions(actions, seat) {
   return total;
 }
 
+// ── Action identity + staleness guards ──────────────────────────────
+// Simultaneous play resolves a player action the moment it lands, so
+// the two hazards the old turn-based engine handled implicitly (turn
+// ownership + a queued partner) have to be handled explicitly:
+//   • a retried / double-submitted request must not resolve twice, and
+//   • a click computed against a stale board must not resolve against
+//     the row the player was actually looking at.
+// Both are keyed off values the client sends with every action.
+
+// Has this client-generated action id already been recorded? A blank
+// / missing id (legacy clients, AFK picks, the bot) is never a
+// duplicate — it just skips the guard.
+export function hasResolvedActionId(actions, actionId) {
+  const id = actionId == null ? "" : String(actionId);
+  if (!id) return false;
+  if (!Array.isArray(actions)) return false;
+  return actions.some(
+    (a) => a && a.actionId != null && String(a.actionId) === id,
+  );
+}
+
+// Is the action stale — i.e. was it computed for a different row than
+// the seat is standing on now? `expectedRound` is the row the client
+// rendered the click against. A missing/invalid `expectedRound` (AFK
+// picks, the bot, legacy clients) is never stale, so those callers
+// keep working unchanged.
+export function isStaleRoundAction({ expectedRound, currentLane }) {
+  if (expectedRound === null || expectedRound === undefined) return false;
+  const expected = Number(expectedRound);
+  if (!Number.isInteger(expected)) return false;
+  const lane = Number(currentLane);
+  if (!Number.isFinite(lane)) return true;
+  return expected !== lane;
+}
+
+// Release actions parked by the legacy turn-based (deferred-reveal)
+// engine. Rows created before simultaneous play can still carry a
+// `pending: true` entry; `scrubMatchForViewer` strips everything but
+// the seat/round off pending entries, so a stranded one is invisible
+// to both players AND never resolves — a silently swallowed action.
+// Clearing the flag lets the action count (its safe/points fields were
+// already resolved when it was parked).
+export function releasePendingActions(actions) {
+  if (!Array.isArray(actions)) return actions;
+  return actions.map((a) =>
+    a && a.pending === true ? { ...a, pending: false } : a,
+  );
+}
+
+// How many UNBANKED points a specific bust actually destroyed: replay
+// the seat's actions up to (not including) `bust` and take the run that
+// was in play at that moment. `bust` must be the ORIGINAL action entry
+// (identity match), which is what makes the number exact and
+// replay-safe — a refresh or a poll can never change it, because it is
+// derived from the immutable history rather than remembered client
+// state. Read-only display helper: it changes no rule or score.
+export function unbankedLostOnBust(actions, seat, bust) {
+  if (!Array.isArray(actions) || !bust) return 0;
+  let lastBanked = 0;
+  let total = 0;
+  for (const a of actions) {
+    if (a === bust) break;
+    if (!a || a.seat !== seat) continue;
+    if (a.action === "hold" && a.bankedTotal != null) {
+      lastBanked = Number(a.bankedTotal) || 0;
+      continue;
+    }
+    if (a.safe === false) {
+      total = lastBanked;
+      continue;
+    }
+    if (a.safe === true) total += Number(a.points) || 0;
+  }
+  return Math.max(0, total - lastBanked);
+}
+
+// How many points a specific BANK actually locked: the seat's banked
+// total at that hold minus its banked total just before it. A hold that
+// banks an empty run (already banked, nothing at risk) reports 0. Pure
+// read-only display helper — it describes a transition the server
+// already made and is never used by scoring. Because the values
+// telescope, the sum over a seat's holds always equals its current
+// banked total, which is what the UI's "+N moved" copy claims.
+export function bankedGainOnHold(actions, seat, hold) {
+  if (!Array.isArray(actions) || !hold || hold.action !== "hold") return 0;
+  let prev = 0;
+  for (const a of actions) {
+    if (a === hold) break;
+    if (a && a.seat === seat && a.action === "hold" && a.bankedTotal != null) {
+      prev = Number(a.bankedTotal) || 0;
+    }
+  }
+  return Math.max(0, (Number(hold.bankedTotal) || 0) - prev);
+}
+
+// Every BUST tile a seat has hit, keyed by the row it happened on:
+// { [round]: { path, tile, round, at, lost } } — `lost` is the unbanked
+// run that bust destroyed (see unbankedLostOnBust). A bust does not
+// move the seat, so its row keeps the marker until the seat resolves
+// that row with a safe pick or a correct flag (which clears it).
+export function bustsByLaneForSeat(actions, seat) {
+  const out = {};
+  if (!Array.isArray(actions)) return out;
+  for (const a of actions) {
+    if (!a || a.seat !== seat) continue;
+    const row = a.round ?? a.lane;
+    if (row === null || row === undefined) continue;
+    if (a.action === "pick" && a.safe === false) {
+      out[row] = {
+        path: a.path,
+        tile: a.tile,
+        round: row,
+        at: a.at,
+        lost: unbankedLostOnBust(actions, seat, a),
+      };
+      continue;
+    }
+    if ((a.action === "pick" || a.action === "flag") && a.safe === true) {
+      delete out[row];
+    }
+  }
+  return out;
+}
+
+// The seat's most recent bust, or null when the seat has since
+// resolved a row again (a safe pick / correct flag). Drives the
+// client's "you busted — unbanked run lost, banked total safe"
+// feedback so a red tile click never looks like it was ignored.
+export function latestBustFor(actions, seat) {
+  if (!Array.isArray(actions)) return null;
+  let last = null;
+  for (const a of actions) {
+    if (!a || a.seat !== seat) continue;
+    if (a.action !== "pick" && a.action !== "flag") continue;
+    last = a.safe === false ? a : null;
+  }
+  return last;
+}
+
+// A seat's unbanked (at-risk) run: accumulated points minus the locked
+// total. Never negative — a bust hard-resets the run to the locked
+// total, and holds can only lock what was accumulated.
+export function unbankedOf(match, seat) {
+  const score = scoreFromActions(match?.actions, seat);
+  const banked = bankedScoreOf(match, seat);
+  return Math.max(0, score - banked);
+}
+
 // ── Bot identity for Test vs Bot practice matches ─────────────────
 // A reserved clerkId-style id (`AI_BOT`), so practice opponents are
 // recognisable everywhere without a schema column. Bot matches are

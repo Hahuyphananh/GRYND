@@ -85,6 +85,8 @@ export function makeInitialMatch(
     targetMs: null,
     winnerSeat: null,
     lastRoundWinnerSeat: null,
+    // Stamped together with `lastRoundStops` when a round is decided.
+    lastRoundTargetMs: null,
     armingStartedAt: null,
     countdownEndsAt: null,
     roundGoInstant: null,
@@ -227,6 +229,13 @@ export interface EvaluateRoundResult {
   matchWinnerSeat: PlayerSeat | null;
   /** Per-seat telemetry for the decided round, graded with `diffMs`. */
   lastRoundStops: NonNullable<PrecisionState["lastRoundStops"]>;
+  /** The target the decided round was graded against. Carried on the result
+   *  so the server can stamp it onto the public state together with the
+   *  stops — a client can then render the round-result reveal from the
+   *  decision snapshot ALONE, without having had to observe the round's live
+   *  `targetMs` first (fresh mount, reconnect, or a poll that landed after
+   *  the round closed). */
+  lastRoundTargetMs: number;
 }
 
 /** Decide a round from the two server-stamped stops. Pure — no mutation of
@@ -276,6 +285,7 @@ export function evaluateRound(input: EvaluateRoundInput): EvaluateRoundResult {
     score: newScore,
     matchFinished,
     matchWinnerSeat,
+    lastRoundTargetMs: targetMs,
     lastRoundStops: {
       seat1: {
         stopInstant: graded1.stopInstant,
@@ -302,6 +312,9 @@ export function applyRoundResult(
   state.score = result.score;
   state.lastRoundWinnerSeat = result.roundWinnerSeat;
   state.lastRoundStops = result.lastRoundStops;
+  // The target this round was graded against. Kept across the next arm (like
+  // `lastRoundStops`) so the reveal + end-of-match recap always have it.
+  state.lastRoundTargetMs = result.lastRoundTargetMs;
   state.version += 1;
 }
 

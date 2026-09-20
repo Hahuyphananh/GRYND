@@ -4,14 +4,44 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import ReviewWall from "../../components/reviews/ReviewWall";
+import { getApprovedReviews, getReviewStats, type PublicReview, type ReviewStats } from "../../lib/reviews";
+import { buildAppJsonLd } from "../../lib/reviewJsonLd";
 
 export const metadata: Metadata = {
   title: "Player Reviews | GRYND",
   description:
     "See what players say about GRYND. Real reviews from verified players of our skill-based games.",
+  alternates: {
+    canonical: "/reviews",
+  },
 };
 
-export default function ReviewsPage() {
+/**
+ * The review data is fetched on the SERVER and handed to the wall as initial
+ * state, so the reviews, the star distribution and the rating totals are in the
+ * HTML that a crawler (or an AI answer engine) receives without running any
+ * JavaScript. It used to be fetched in the client only, which meant the page a
+ * machine saw was an empty shell.
+ *
+ * If the reviews table is unreachable we fall back to `null` and let the wall
+ * fetch on the client exactly as it used to — a database problem degrades this
+ * page, it doesn't 500 it.
+ */
+async function loadReviews(limit: number): Promise<{ reviews: PublicReview[]; stats: ReviewStats } | null> {
+  try {
+    const [reviews, stats] = await Promise.all([getApprovedReviews(limit), getReviewStats()]);
+    return { reviews, stats };
+  } catch (err) {
+    console.error("[reviews] server-side review load failed:", err);
+    return null;
+  }
+}
+
+export default async function ReviewsPage() {
+  const limit = 12;
+  const data = await loadReviews(limit);
+  const reviewJsonLd = buildAppJsonLd({ stats: data?.stats, reviews: data?.reviews ?? [] });
+
   return (
     <div className="relative min-h-screen">
       <InteractiveCasinoBg variant="subtle" />
@@ -32,7 +62,22 @@ export default function ReviewsPage() {
         <p className="mb-12 text-center text-lg text-[#c9f7ff]/80">
           Real ratings from verified players.
         </p>
-        <ReviewWall limit={12} />
+
+        {/* AggregateRating + the published reviews, built from the approved
+            rows fetched above — never a hardcoded score. Omitted entirely when
+            there is nothing real to report. */}
+        {reviewJsonLd && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewJsonLd) }}
+          />
+        )}
+
+        <ReviewWall
+          limit={limit}
+          initialReviews={data?.reviews ?? null}
+          initialStats={data?.stats ?? null}
+        />
       </div>
       <Footer />
     </div>

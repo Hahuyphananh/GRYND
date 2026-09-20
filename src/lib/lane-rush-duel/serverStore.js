@@ -11,15 +11,15 @@
 //     bad-tile layout (per lane, per risk path), derived from the
 //     shared server seed + the host's client seed + the match id.
 //   * 3-second ready banner auto-advance
-//   * turn enforcement (only the player whose turn it is can act)
-//   * DEFERRED REVEAL (the anti-copy mechanic): a pick is parked as
-//     a PENDING action and only resolved once the opponent has also
-//     acted on the same row (or the deadline force-picks them). The
-//     two picks reveal together, so neither player can mirror the
-//     other's current-row pick — you can only deduce from the rows
-//     already revealed to both. When the opponent's climb is over
-//     (busted/completed), the climber is alone and picks resolve
-//     immediately.
+//   * one authoritative, row-locked action transition per seat (both
+//     seats may act at any time — see SIMULTANEOUS PLAY below)
+//   * SIMULTANEOUS PLAY — each seat owns its lane on the shared tower
+//     and resolves an action the instant it lands (no turn queue and
+//     no parked "pending" row). Every mutation funnels through ONE
+//     row-locked transition (`act` → `applyEntryImmediately`), guarded
+//     by the client's `actionId` (idempotency) and `round`
+//     (staleness), so the two seats can never interleave a
+//     half-applied action.
 //   * FLAG BUDGET — each player gets MAX_FLAGS flag calls. A CORRECT
 //     flag claims the row (advance + points, the game continues) and
 //     reveals the bad tile to both players; a WRONG flag busts you.
@@ -40,26 +40,27 @@
 //     is safe or bad. It does not consume your turn and reveals
 //     nothing to the opponent mid-match (they only see that you
 //     peeked). Verifiable post-match against the revealed tower.
-//   * 20-second pick-window auto-pick (AFK → random tile, which may
-//     be the bad tile — that's the punishment for going AFK)
-//   * end-state resolution: bust / completed / both-banked settlement
+//   * 20-second pick-window auto-pick for a legacy turn-based row
+//     (AFK → random tile, which may be the bad tile — that's the
+//     punishment for going AFK)
+//   * end-state resolution: banked target / resignation (a bust only
+//     clears the unbanked run and never settles the match)
 //   * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
 //   * towers + server seed hidden from clients until match finishes
 //
 // State machine:
-//   waiting → ready → p1_turn → p2_turn → finished
-//   (waiting/ready/active → cancelled)
+//   waiting → ready → active → finished
+//   (waiting/ready/active → cancelled; p1_turn / p2_turn are legacy
+//    states, upgraded to `active` on the first poll)
 //
-// Turn progression: players alternate rows on the shared tower. A
-// pick or hold parks as pending; when the opponent answers the same
-// row (or the timer forces them), both resolve together and the
-// first actor of the pair starts the next row. If the opponent's
-// climb is over (busted or completed), the active player keeps
-// climbing alone and every pick resolves immediately. Banking never
-// ends a climb — both players keep alternating at reduced rates
-// until someone banks WIN_BANKED_SCORE (the 1,000-banked race), one
-// player completes the tower, or both climbs are over. A PEEK is
-// instant: it records privately and leaves the turn with the actor.
+// Turn progression: both seats act whenever they like on their own
+// lane. A pick/flag advances the seat's lane, or busts it — and a
+// bust only clears the UNBANKED run: it never ends the duel and never
+// touches the banked total. A hold locks the accumulated run into the
+// banked total and keeps the climb going at a halved rate. A PEEK is
+// instant, private, and keeps the seat's row. Only a banked total
+// reaching WIN_BANKED_SCORE (the 1,000-banked race) or a resignation
+// settles the match.
 
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -83,38 +84,30 @@ import {
   MAX_STAKE,
   MIN_STAKE,
   PICKABLE_STATES,
-  READY_WINDOW_MS,
   RESULT,
   RISK_PATH_KEYS,
   RISK_PATHS,
-  ROUND_PICK_DEADLINE_MS,
   WIN_BANKED_SCORE,
-  bankedWinnerOf,
   buildPlayerTower,
-  climbEnded,
   computePayout,
   decideBotAction,
   decideOutcome,
   finalScoreOf,
   flagsUsedBySeat,
+  hasResolvedActionId,
   isBotMatch,
+  isStaleRoundAction,
   isValidPath,
   laneMultiplier,
-  opponentOf,
   peeksUsedBySeat,
   pickPointsForSeat,
+  releasePendingActions,
   scoreFromActions,
   seatForUserId,
 } from "./constants";
 import { getServerSeedHash } from "../laneRunner";
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-function roundDeadlineMs(match) {
-  const t = Number(match?.roundTimerSeconds);
-  if (Number.isFinite(t) && t > 0) return t * 1000;
-  return ROUND_PICK_DEADLINE_MS;
-}
 
 // Stable deterministic hash from numeric stake to a signed 32-bit int
 // (FNV-1a, mirrors mines-pvp).
@@ -341,7 +334,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
   // nonce — is copied into seat 2. No second seed, no second layout:
   // every safe pick by either player narrows the same deduction.
   const firstPlayerId = Math.random() < 0.5 ? match.player1Id : userId;
-  const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [updated] = await tx
     .update(laneRushDuelMatches)
@@ -353,7 +345,10 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
       status: MATCH_STATUS.ACTIVE,
       firstPlayerId,
       currentTurnUserId: null,
-      roundDeadline: readyDeadline,
+      // Simultaneous play has NO per-turn window: both seats act
+      // whenever they like. Leaving the legacy ready-window deadline
+      // here would render a phantom countdown in the match header.
+      roundDeadline: null,
       startedAt: new Date(),
     })
     .where(
@@ -435,7 +430,7 @@ async function createBotMatch(tx, userId, difficulty) {
 // The bot is just another simultaneous player. The client periodically
 // wakes this endpoint, while the transaction below remains authoritative
 // for cooldowns, tower checks, busts, banks, and the 1,000-point finish.
-export async function botAct({ matchId, requesterId }) {
+export async function botAct({ matchId, requesterId, actionId }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
 
@@ -448,6 +443,13 @@ export async function botAct({ matchId, requesterId }) {
     }
     if (!PICKABLE_STATES.has(match.status)) {
       return { error: "Match is not active", status: 400 };
+    }
+
+    // Idempotency: one client wake-up (identified by `actionId`) must
+    // resolve exactly one bot action, even if the request is retried
+    // or two poll effects fire for the same state.
+    if (hasResolvedActionId(match.actions, actionId)) {
+      return { duplicate: true, match, status: match.status };
     }
 
     const actions = Array.isArray(match.actions) ? match.actions : [];
@@ -497,6 +499,7 @@ export async function botAct({ matchId, requesterId }) {
         : 0;
     }
 
+    if (actionId) entry.actionId = String(actionId);
     return await applyEntryImmediately(tx, match, entry, "player2");
   });
 }
@@ -582,21 +585,37 @@ async function fetchMatchForUpdate(tx, matchId) {
   return match || null;
 }
 
-// ── Act: pick a tile, flag, or hold ───────────────────────────────────
-// The core turn action. `action` is "pick" (with path + tileIndex),
-// "flag" (call a tile as the bad one — with path + tileIndex) or
-// "hold" (bank: locks your accumulated total toward the 1,000-banked
-// win). Validates participant / pickable state / turn / deadline,
-// then applies the action under the DEFERRED REVEAL model:
-//   * If the opponent already locked in an action for this row, the
-//     pair resolves together (resolveRound) — neither player sees the
-//     other's current-row pick before acting.
-//   * If the opponent is done (busted/completed — banking never ends
-//     a climb), the climber is alone — resolve immediately
-//     (applyEntryImmediately).
-//   * Otherwise the action is parked as `pending` and the turn passes
-//     to the opponent (parkPendingAction).
-export async function act({ userId, matchId, action, path, tileIndex }) {
+// ── Act: pick a tile, flag, hold, or peek ───────────────────────────
+// The ONE authoritative player transition. `action` is "pick" (with
+// path + tileIndex), "flag" (call a tile as the bad one — with path +
+// tileIndex), "hold" (bank: locks the accumulated run toward the
+// 1,000-banked win) or "peek" (private, instant, keeps the row).
+// Validates participant / pickable state / row / budgets, resolves the
+// tile against the seat's tower, updates the unbanked run (and the
+// locked banked total on a hold), then decides whether the duel
+// actually ended — all inside one row-locked transaction, so the two
+// seats can never interleave a half-applied action. A bust resolves
+// the action without ending the duel: only a banked total reaching
+// WIN_BANKED_SCORE (or a resignation) settles the match.
+//
+// TWO GUARDS keep this ONE transition atomic now that both seats act
+// independently:
+//   * `actionId` — the client's unique stamp for this action. A repeat
+//     (network retry, double tap, a second tab) is a benign no-op, so
+//     the same action can never resolve twice.
+//   * `round` — the row the client rendered the click against. If the
+//     seat has since moved (its own resolved action, or an AFK
+//     force-pick), the click is rejected rather than resolving on a
+//     row the player never saw.
+export async function act({
+  userId,
+  matchId,
+  action,
+  path,
+  tileIndex,
+  actionId,
+  round,
+}) {
   const actAction = String(action || "");
   if (
     actAction !== "pick" &&
@@ -632,13 +651,32 @@ export async function act({ userId, matchId, action, path, tileIndex }) {
       return { error: "Match is not active", status: 400 };
     }
 
+    // Idempotency: a retried POST (network hiccup, double tap, second
+    // tab) must not resolve the same action twice — that would double
+    // the points or double the bust. A repeat is a success no-op.
+    if (hasResolvedActionId(match.actions, actionId)) {
+      return { duplicate: true, match, status: match.status };
+    }
+
     const seat = seatForUser(match, userId);
     const lane = Number(seat === "player1" ? match.p1Lane : match.p2Lane) || 0;
 
+    // Staleness: reject a click computed against a row the seat has
+    // already left. `hold` has no row, so it is exempt.
+    if (
+      actAction !== "hold" &&
+      isStaleRoundAction({ expectedRound: round, currentLane: lane })
+    ) {
+      return {
+        error: "That level already changed — refreshing",
+        status: 409,
+      };
+    }
+
     // Flag budget: each player gets MAX_FLAGS calls per match. The
-    // limit is checked BEFORE the flag is recorded so a parked flag
-    // also consumes the budget (and a wrong flag ends the match
-    // anyway).
+    // limit is checked BEFORE the flag is recorded, so a spent flag
+    // always consumes the budget (a wrong flag busts you — it does not
+    // end the match).
     if (actAction === "flag" && flagsUsedBySeat(match, seat) >= MAX_FLAGS) {
       return { error: "No flags left this match", status: 400 };
     }
@@ -662,6 +700,9 @@ export async function act({ userId, matchId, action, path, tileIndex }) {
       autoPicked: false,
       at: new Date().toISOString(),
     };
+    if (actionId != null && String(actionId) !== "") {
+      entry.actionId = String(actionId);
+    }
 
     if (actAction === "pick" || actAction === "flag" || actAction === "peek") {
       const tower =
@@ -738,53 +779,11 @@ export async function act({ userId, matchId, action, path, tileIndex }) {
   });
 }
 
-// The most recent parked (unresolved) action, or null. Exactly one
-// player can have a pending action while it's the other player's turn.
-function lastPendingAction(match) {
-  const actions = Array.isArray(match.actions) ? match.actions : [];
-  for (let i = actions.length - 1; i >= 0; i -= 1) {
-    if (actions[i] && actions[i].pending === true) return actions[i];
-  }
-  return null;
-}
-
-// Park the first action of a row: persist it as pending and hand the
-// turn to the opponent. Their answer (or the AFK force-pick) resolves
-// the pair together.
-async function parkPendingAction(tx, match, entry, seat) {
-  const otherUserId = opponentOf(match, entry.userId);
-  const otherSeat = otherUserId === match.player1Id ? "player1" : "player2";
-  const actions = Array.isArray(match.actions)
-    ? [...match.actions, entry]
-    : [entry];
-
-  const [updated] = await tx
-    .update(laneRushDuelMatches)
-    .set({
-      status:
-        otherSeat === "player1" ? MATCH_STATUS.P1_TURN : MATCH_STATUS.P2_TURN,
-      currentTurnUserId: otherUserId,
-      roundDeadline: new Date(Date.now() + roundDeadlineMs(match)),
-      actions,
-      // Carry the AFK flags through (a parked action may be a
-      // force-pick for the player who timed out).
-      p1AutoPicked: Boolean(match.p1AutoPicked),
-      p2AutoPicked: Boolean(match.p2AutoPicked),
-    })
-    .where(
-      and(
-        eq(laneRushDuelMatches.id, match.id),
-        eq(laneRushDuelMatches.status, match.status),
-      ),
-    )
-    .returning();
-
-  return updated || match;
-}
-
-// Apply a lone action immediately — used when the opponent is already
-// done (banked/completed) and the climber keeps climbing alone, so
-// there is nothing to defer.
+// Apply one resolved action to the seat's lane/bank state. This is the
+// single write path for every action (pick, flag, hold, bot, AFK
+// force-pick): it moves the lane, locks the banked total on a hold, and
+// only settles the match when a hold actually banks the win target —
+// a bust here never ends the duel.
 async function applyEntryImmediately(tx, match, entry, seat) {
   const laneField = seat === "player1" ? "p1Lane" : "p2Lane";
   const heldField = seat === "player1" ? "p1Held" : "p2Held";
@@ -822,12 +821,10 @@ async function applyEntryImmediately(tx, match, entry, seat) {
   return await persistSimultaneousState(tx, next);
 }
 
-// Resolve a full row: both players acted (or were force-picked) on the
-// same row. `entry` is the NEW action that completes the pair; its
-// partner is the parked action already sitting in `match.actions`.
-// Apply both in chronological order, then either settle the match
-// (bust / completion / both done) or hand the next row to the first
-// actor of the pair.
+// Persist the post-action state for ONE seat. The other seat's lane and
+// held flag are written from the same row-locked snapshot (`next` was
+// derived from the locked read), so a write can never clobber a newer
+// change made by the other player — transactions serialize on the row.
 async function persistSimultaneousState(tx, next) {
   const [updated] = await tx
     .update(laneRushDuelMatches)
@@ -852,210 +849,9 @@ async function persistSimultaneousState(tx, next) {
   return updated || next;
 }
 
-async function resolveRound(tx, match, entry) {
-  const actions = Array.isArray(match.actions)
-    ? [...match.actions, entry]
-    : [entry];
-  const applied = actions.map((a) =>
-    a && a.pending === true ? { ...a, pending: false } : a,
-  );
-
-  let p1Lane = Number(match.p1Lane) || 0;
-  let p2Lane = Number(match.p2Lane) || 0;
-  let p1Held = Boolean(match.p1Held);
-  let p2Held = Boolean(match.p2Held);
-
-  for (const a of applied) {
-    if (a.action === "hold") {
-      // Banking moves you PAST the row you banked on (capped at the
-      // top — a hold never completes the tower). This keeps both
-      // players on the same row so the deferred pairing stays intact
-      // instead of drifting apart.
-      const nextLane = Math.min(Number(a.round) + 1, MAX_LANES - 1);
-      if (a.seat === "player1") {
-        p1Held = true;
-        p1Lane = Math.max(p1Lane, nextLane);
-      } else {
-        p2Held = true;
-        p2Lane = Math.max(p2Lane, nextLane);
-      }
-      continue;
-    }
-    // pick + flag: safe (or a correct flag) advances; a bad pick or
-    // a wrong flag busts. A correct flag only claims the row — it is
-    // no longer an instant win. Peeks are instant and never reach
-    // the pairing resolution.
-    if (a.safe === true) {
-      const newLane = Number(a.round) + 1;
-      if (a.seat === "player1") p1Lane = Math.max(p1Lane, newLane);
-      else p2Lane = Math.max(p2Lane, newLane);
-    }
-  }
-
-  // Settle-style callers re-append the last action, so hand them a
-  // match whose action list already contains everything except it.
-  const next = {
-    ...match,
-    p1Lane,
-    p2Lane,
-    p1Held,
-    p2Held,
-    actions: applied.slice(0, -1),
-  };
-  const lastAction = applied[applied.length - 1];
-
-  // A both-bust row is not special-cased anymore: afterRound's
-  // settlement compares final scores (two no-bank busts are 0 vs 0
-  // → DRAW; any banked total survives).
-  return await afterRound(tx, next, lastAction, lastAction.seat);
-}
-
-// ── Decide the match state after every action pair / lone action ─────
-// Shared by manual picks, holds, flags, busts, AFK force-picks, and
-// the bot. Checks, in order:
-//   1. The 1,000-BANKED RACE: the first player whose banked total
-//      reaches WIN_BANKED_SCORE (1,000) wins instantly. Banking
-//      never freezes the match — both keep climbing at reduced
-//      rates until someone locks 1,000.
-//   2. A single completer (lane ≥ MAX_LANES) wins outright.
-//   3. Fallback settlement — only when BOTH climbs are over
-//      (busted / completed): each player's final is finalScoreOf
-//      (a busted player keeps their banked total, 0 if never
-//      banked). Higher final wins; equal finals → DRAW.
-//   4. Otherwise the next turn: the last actor's opponent, unless
-//      that opponent's climb is over — then the actor climbs alone
-//      (the lone climber still needs to bank 1,000 to win).
-async function afterRound(tx, next, entry, lastSeat) {
-  const full = {
-    ...next,
-    actions: [
-      ...(Array.isArray(next.actions) ? next.actions : []),
-      entry,
-    ].filter(Boolean),
-  };
-
-  // Rule 1 — the 1,000-banked race: whoever locks ≥ WIN_BANKED_SCORE
-  // first takes the pot instantly. `bankedWinnerOf` scans the action
-  // history chronologically, so the first hold to cross the target
-  // wins (covers the both-bank-1000-on-the-same-row edge case).
-  const bankedWinner = bankedWinnerOf(full);
-  if (bankedWinner === "player1") {
-    return await resolveMatch(tx, next, {
-      loserId: next.player2Id,
-      reason: "banked_target",
-      action: entry,
-    });
-  }
-  if (bankedWinner === "player2") {
-    return await resolveMatch(tx, next, {
-      loserId: next.player1Id,
-      reason: "banked_target",
-      action: entry,
-    });
-  }
-
-  // Rule 2 — completing the tower is an instant win: no one can
-  // climb higher.
-  const p1Top = Number(full.p1Lane) >= MAX_LANES;
-  const p2Top = Number(full.p2Lane) >= MAX_LANES;
-  if (p1Top && !p2Top) {
-    return await resolveMatch(tx, next, {
-      loserId: next.player2Id,
-      reason: "completed",
-      action: entry,
-    });
-  }
-  if (p2Top && !p1Top) {
-    return await resolveMatch(tx, next, {
-      loserId: next.player1Id,
-      reason: "completed",
-      action: entry,
-    });
-  }
-
-  // Rule 3 — fallback settlement ONLY when both climbs are over
-  // (busted / completed). Banking by itself never settles: if one
-  // player busts, the survivor climbs on alone toward 1,000 banked;
-  // if both keep banking below the target, the race continues.
-  const p1Ended = climbEnded(full, "player1");
-  const p2Ended = climbEnded(full, "player2");
-  if (p1Ended && p2Ended) {
-    return await resolveByFinalScores(tx, next, entry);
-  }
-
-  return await advanceTurn(tx, next, lastSeat, entry);
-}
-
-// ── Advance the turn ──────────────────────────────────────────────────
-// `next` is the full post-action match state (already carries the
-// actor's updated lane/bank flags). The last actor's opponent picks
-// next UNLESS that opponent's climb is over (busted/completed) —
-// then the actor keeps climbing alone. A banked player is NOT done:
-// both players keep alternating at reduced rates until someone banks
-// WIN_BANKED_SCORE, completes, or both climbs are over.
-async function advanceTurn(tx, next, lastSeat, entry) {
-  const lastUserId =
-    lastSeat === "player1" ? next.player1Id : next.player2Id;
-  const otherUserId = opponentOf(next, lastUserId);
-  const otherSeat = otherUserId === next.player1Id ? "player1" : "player2";
-  const otherEnded = climbEnded(next, otherSeat);
-
-  // If the other player's climb is over, the actor climbs alone.
-  const nextUserId = otherEnded ? lastUserId : otherUserId;
-  const nextSeat =
-    nextUserId === next.player1Id ? "player1" : "player2";
-
-  const actions = Array.isArray(next.actions) ? next.actions : [];
-  const [updated] = await tx
-    .update(laneRushDuelMatches)
-    .set({
-      p1Lane: next.p1Lane,
-      p2Lane: next.p2Lane,
-      p1Held: next.p1Held,
-      p2Held: next.p2Held,
-      status:
-        nextSeat === "player1" ? MATCH_STATUS.P1_TURN : MATCH_STATUS.P2_TURN,
-      currentTurnUserId: nextUserId,
-      roundDeadline: new Date(Date.now() + roundDeadlineMs(next)),
-      actions: [...actions, entry],
-    })
-    .where(
-      and(
-        eq(laneRushDuelMatches.id, next.id),
-        eq(laneRushDuelMatches.status, next.status),
-      ),
-    )
-    .returning();
-
-  return updated || next;
-}
-
-// ── Settle the match by final scores (fallback) ──────────────────────
-// Only reached when BOTH climbs are over and nobody banked 1,000 (the
-// 1,000-banked race is checked first in afterRound). Each player's
-// final is finalScoreOf: a busted player keeps their banked total (0
-// if never banked — the insurance banking buys), a completed player
-// keeps everything. Higher final wins; equal finals → DRAW (both
-// refunded, no rake).
-async function resolveByFinalScores(tx, match, entry) {
-  const actions = Array.isArray(match.actions)
-    ? [...match.actions, entry].filter(Boolean)
-    : entry
-      ? [entry]
-      : [];
-  const withActions = { ...match, actions };
-  const p1Score = finalScoreOf(withActions, "player1");
-  const p2Score = finalScoreOf(withActions, "player2");
-
-  let result;
-  if (p1Score > p2Score) result = RESULT.PLAYER1;
-  else if (p2Score > p1Score) result = RESULT.PLAYER2;
-  else result = RESULT.DRAW;
-
-  return await settle(tx, match, { result, action: entry, score: { p1Score, p2Score } });
-}
-
-// ── Resolve on a bust or tower completion ─────────────────────────────
+// ── Resolve a settled match ───────────────────────────────────────────
+// Called only for a genuine end: a hold that banked the win target
+// (loser = the other seat) or a resignation. A bust never reaches here.
 async function resolveMatch(tx, match, { loserId, reason, action }) {
   const result = decideOutcome({
     loserId,
@@ -1216,12 +1012,17 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
         match.status === MATCH_STATUS.P2_TURN) &&
       match.player2Id
     ) {
+      // A `pending` entry parked by the old engine is scrubbed to
+      // `{ action: "pending" }` for clients, so leaving the flag set
+      // would hide a real action from BOTH players forever. Release
+      // those flags in the same write as the upgrade.
       const [upgraded] = await tx
         .update(laneRushDuelMatches)
         .set({
           status: MATCH_STATUS.ACTIVE,
           currentTurnUserId: null,
           roundDeadline: null,
+          actions: releasePendingActions(match.actions),
         })
         .where(
           and(
@@ -1242,8 +1043,14 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { match: advanced };
     }
 
+    // AFK auto-pick is a LEGACY turn-based concern: it only fires when a
+    // seat actually owns the turn. Simultaneous matches never set
+    // `currentTurnUserId`, so a leftover `roundDeadline` (e.g. the ready
+    // window written at join time) can't drag an active match into this
+    // path.
     if (
       PICKABLE_STATES.has(match.status) &&
+      match.currentTurnUserId &&
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
@@ -1280,9 +1087,9 @@ async function advanceFromReady(tx, match) {
 
 // AFK auto-pick: random path + random tile for the current player.
 // The tile CAN be the bad one — that's the punishment for going AFK.
-// Goes through the same deferred-reveal flow as a manual action:
-// parks as pending and only resolves when the opponent answers the
-// row (or immediately, when the opponent is already done).
+// Resolves immediately through the same single transition as a manual
+// action (a simultaneous match never parks an action as pending), so
+// an auto-pick can never strand a row.
 async function forcePick(tx, match) {
   const userId = match.currentTurnUserId;
   if (!userId) return match;
@@ -1319,7 +1126,7 @@ async function forcePick(tx, match) {
       ? 0
       : pickPointsForSeat(match, seat, lane, pathKey, match.difficulty),
     autoPicked: true,
-    pending: true,
+    pending: false,
     at: new Date().toISOString(),
   };
 
@@ -1328,23 +1135,7 @@ async function forcePick(tx, match) {
     [seat === "player1" ? "p1AutoPicked" : "p2AutoPicked"]: true,
   };
 
-  const oppSeat = seat === "player1" ? "player2" : "player1";
-  const oppEnded = climbEnded(match, oppSeat);
-
-  const pending = lastPendingAction(next);
-  const pairComplete =
-    pending !== null &&
-    pending.seat !== seat &&
-    Number(pending.round) === lane;
-
-  if (pairComplete) {
-    return await resolveRound(tx, next, entry);
-  }
-  if (oppEnded) {
-    entry.pending = false;
-    return await applyEntryImmediately(tx, next, entry, seat);
-  }
-  return await parkPendingAction(tx, next, entry, seat);
+  return await applyEntryImmediately(tx, next, entry, seat);
 }
 
 // Scrub server-only state from a match row before sending it to a
@@ -1363,10 +1154,11 @@ export function scrubMatchForViewer(match, viewerUserId) {
         ? "player2"
         : null;
 
-  // Deferred reveal: while an action is parked (pending), the other
-  // side must not learn anything about it — not even its type (pick /
-  // flag / hold / peek). Strip everything except who/where until it
-  // resolves.
+  // LEGACY rows only (the simultaneous engine never parks an action):
+  // while a `pending` entry is still parked, the other side must not
+  // learn anything about it — not even its type. Strip everything
+  // except who/where. The upgrade path in fetchMatchWithAutoResolve
+  // releases these flags as soon as either participant polls.
   const actions = Array.isArray(match.actions)
     ? match.actions.map((a) => {
         if (a && a.pending === true) {
@@ -1401,6 +1193,10 @@ export function scrubMatchForViewer(match, viewerUserId) {
   return {
     ...match,
     actions,
+    // A deadline only means something while a seat actually owns a turn.
+    // Simultaneous play has none, so a legacy/leftover deadline is
+    // scrubbed here instead of rendering a phantom "0s" countdown.
+    roundDeadline: match.currentTurnUserId ? match.roundDeadline : null,
     p1Tower: finished ? match.p1Tower : null,
     p2Tower: finished ? match.p2Tower : null,
     serverSeed: finished ? match.serverSeed : null,

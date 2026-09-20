@@ -109,6 +109,16 @@ export function ToastProvider({ children }) {
   const shouldReduce = useReducedMotion();
   const timersRef = useRef(new Map());
 
+  // The toast tray is a portal into <body>, which only exists in the browser.
+  // This used to be gated on `typeof document !== "undefined"` — but that same
+  // branch is taken during hydration (where document DOES exist) while the
+  // server rendered nothing, so React saw a tree that gained an element and
+  // reported a hydration mismatch on every page. A post-mount flag makes the
+  // first client render agree with the server (no tray), then the tray mounts
+  // for real once hydration is finished.
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => setPortalReady(true), []);
+
   const dismiss = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
     const timer = timersRef.current.get(id);
@@ -144,7 +154,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {typeof document !== "undefined" &&
+      {portalReady &&
         createPortal(
           <div
             aria-live="polite"

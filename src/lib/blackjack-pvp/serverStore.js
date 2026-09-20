@@ -55,6 +55,7 @@ import {
   isFreeAiMatch,
   calcHandValue,
   decideRoundWinner,
+  isBustedHand,
   drawCards,
   effectiveHandScore,
 } from "./constants";
@@ -1193,6 +1194,19 @@ async function resolveRound(tx, match) {
 
   const roundWinner = decision.winner; // 'player1' | 'player2' | 'draw'
 
+  // Snapshot the seat state the round was actually SCORED with. STAND is
+  // legal from BUSTED and records the seat as `stood` (the hand is final), so
+  // a hand that busted and then stood would otherwise be persisted as
+  // `stood` next to its `BUSTED_SCORE_SENTINEL` score — the round-end reveal
+  // and the round history read the state to mark the bust, and they must not
+  // disagree with the score.
+  const p1SnapshotState = isBustedHand(match.player1Hand, match.player1State)
+    ? PLAYER_STATE.BUSTED
+    : match.player1State;
+  const p2SnapshotState = isBustedHand(match.player2Hand, match.player2State)
+    ? PLAYER_STATE.BUSTED
+    : match.player2State;
+
   // Persist per-round snapshot BEFORE we mutate the match row so the
   // history always reflects the round's final state. Prompt 9 adds:
   //   * player{N}OriginalCards snapshot (deal-time pair, unmodified
@@ -1208,8 +1222,8 @@ async function resolveRound(tx, match) {
     player2OriginalCards: match.player2OriginalCards ?? [],
     player1Score: decision.p1Score,
     player2Score: decision.p2Score,
-    player1State: match.player1State,
-    player2State: match.player2State,
+    player1State: p1SnapshotState,
+    player2State: p2SnapshotState,
     player1UsedSwap: Number(match.player1UsedSwap) || 0,
     player2UsedSwap: Number(match.player2UsedSwap) || 0,
     player1UsedFreeze: Number(match.player1UsedFreeze) || 0,

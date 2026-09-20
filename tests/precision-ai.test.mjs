@@ -192,6 +192,37 @@ test("server-stamped telemetry is measured against the GO instant, never the cli
   assert.equal(isStopElapsedInRange(Number.NaN), false);
 });
 
+test("a decided round carries the target it was graded against, and keeps it", () => {
+  // The decision has to be self-describing: the client renders the round-result
+  // reveal from the decision snapshot alone, so the target cannot depend on the
+  // client having observed the live round's public `targetMs` (a fresh mount,
+  // a reconnect, or a poll that landed after the round closed never did).
+  const match = pvpMatch("test-decision-target");
+  assert.equal(match.lastRoundTargetMs, null, "nothing is stamped before a round is decided");
+  match.targetMs = 5_000;
+
+  const result = evaluateRound({
+    score: match.score,
+    seat1: { userId: "a", stop: computeStopTelemetry(ROUND_GO, ROUND_GO + 5_050) },
+    seat2: { userId: "b", stop: computeStopTelemetry(ROUND_GO, ROUND_GO + 4_000) },
+    targetMs: match.targetMs,
+  });
+  assert.equal(result.lastRoundTargetMs, 5_000);
+
+  applyRoundResult(match, result);
+  assert.equal(match.lastRoundTargetMs, 5_000);
+
+  // Arming the NEXT round hides the new target from the public state but must
+  // NOT erase the previous round's — the reveal/recap/popup still need it.
+  armRoundState(match, generateRoundNonce(), ROUND_GO + 20);
+  assert.equal(match.targetMs, null, "the new round's target stays private");
+  assert.equal(match.lastRoundTargetMs, 5_000, "the decided round's target survives the arm");
+
+  // And it survives the match being closed out (the end-of-match recap).
+  finishMatchState(match, 1);
+  assert.equal(match.lastRoundTargetMs, 5_000);
+});
+
 test("the closest stop takes the round", () => {
   const match = pvpMatch("test-closest");
   match.targetMs = 5_000;

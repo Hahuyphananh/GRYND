@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../../db";
 import { productReviews, users } from "../../../db/schema";
 import { captureServerEvent } from "../../../lib/analytics-server";
 import { parseAndValidateJson } from "../../../lib/security/validation";
+// Shared with the server-rendered /reviews page, so the numbers the wall shows
+// and the numbers in its structured data can never drift apart.
+import { getApprovedReviews, getReviewStats } from "../../../lib/reviews";
 
 export const runtime = "nodejs";
 
@@ -110,38 +113,10 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(50, Math.max(1, Number(new URL(req.url).searchParams.get("limit")) || 12));
     const mine = new URL(req.url).searchParams.get("mine") === "1";
 
-    const approved = await db
-      .select({
-        id: productReviews.id,
-        rating: productReviews.rating,
-        title: productReviews.title,
-        body: productReviews.body,
-        game: productReviews.game,
-        createdAt: productReviews.createdAt,
-        username: users.name,
-        // Official Grynd icon key for the reviewer's avatar (never an
-        // arbitrary profile-image URL).
-        iconKey: users.selectedIcon,
-      })
-      .from(productReviews)
-      .innerJoin(users, eq(productReviews.userId, users.id))
-      .where(eq(productReviews.status, "approved"))
-      .orderBy(desc(productReviews.createdAt))
-      .limit(limit);
-
-    const stats = await db
-      .select({
-        avg: sql<number>`COALESCE(AVG(rating), 0)`,
-        count: sql<number>`COUNT(*)`,
-        one: sql<number>`COUNT(*) FILTER (WHERE rating = 1)`,
-        two: sql<number>`COUNT(*) FILTER (WHERE rating = 2)`,
-        three: sql<number>`COUNT(*) FILTER (WHERE rating = 3)`,
-        four: sql<number>`COUNT(*) FILTER (WHERE rating = 4)`,
-        five: sql<number>`COUNT(*) FILTER (WHERE rating = 5)`,
-      })
-      .from(productReviews)
-      .where(eq(productReviews.status, "approved"))
-      .then((r) => r[0]);
+    const [approved, stats] = await Promise.all([
+      getApprovedReviews(limit),
+      getReviewStats(),
+    ]);
 
     let mineStatus: { submitted: boolean; status: string | null; rating: number | null } | null = null;
     if (mine) {
@@ -163,17 +138,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       reviews: approved,
-      stats: {
-        average: Number(stats?.avg ?? 0).toFixed(1),
-        count: Number(stats?.count ?? 0),
-        distribution: {
-          1: Number(stats?.one ?? 0),
-          2: Number(stats?.two ?? 0),
-          3: Number(stats?.three ?? 0),
-          4: Number(stats?.four ?? 0),
-          5: Number(stats?.five ?? 0),
-        },
-      },
+      stats,
       mine: mineStatus,
     });
   } catch (err) {

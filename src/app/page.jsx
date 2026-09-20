@@ -1,5 +1,7 @@
 import PageClient from "./PageClient";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
+import { getReviewAggregate } from "../lib/reviews";
+import { buildAppJsonLd } from "../lib/reviewJsonLd";
 
 export const metadata = {
   title: "GRYND — Competitive PvP Skill Gaming",
@@ -34,6 +36,25 @@ export const metadata = {
   },
 };
 
-export default function Page() {
-  return <PageClient />;
+export default async function Page() {
+  // The player rating, from the approved reviews only, cached for a few
+  // minutes and failing soft (null → no markup) so the home page can never be
+  // taken down by the reviews table. AI answer engines weight ratings heavily
+  // when deciding what to recommend, and this is the page they read first.
+  const reviewStats = await getReviewAggregate();
+  const ratingJsonLd = buildAppJsonLd({ stats: reviewStats });
+
+  return (
+    <>
+      {ratingJsonLd && (
+        <script
+          type="application/ld+json"
+          // Same entity (@id) as the reviews page, so the two never look like
+          // competing claims.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ratingJsonLd) }}
+        />
+      )}
+      <PageClient />
+    </>
+  );
 }

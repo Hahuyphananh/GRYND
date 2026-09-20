@@ -80,6 +80,15 @@ const VARIANT_CONFIG = {
 };
 
 // A friendly cartoon casino chip — used as the foreground depth layer.
+/* SVG geometry has to be byte-identical between the Node (SSR) render and
+ * the browser (hydration) render. Math.sin/Math.cos are not guaranteed to
+ * return the same last-ULP value in both engines, and React treats a differing
+ * attribute string as a hydration mismatch (the whole tree is then thrown away
+ * and re-rendered on the client). Every trig-derived coordinate goes through
+ * this 3-decimal snap so both renders agree; at these viewBox scales (<800)
+ * 0.001 is far below a device pixel. */
+const geo = (n) => Math.round(n * 1000) / 1000;
+
 const ChipSvg = ({ accent = "#ffd700", rim = "#9b6a00", id = "chip" }) => (
   <svg viewBox="0 0 100 100" fill="none" aria-hidden="true">
     <defs>
@@ -97,10 +106,10 @@ const ChipSvg = ({ accent = "#ffd700", rim = "#9b6a00", id = "chip" }) => (
     <circle cx="50" cy="50" r="44" fill={`url(#${id}-edge)`} />
     {Array.from({ length: 14 }).map((_, i) => {
       const angle = (i / 14) * Math.PI * 2;
-      const x1 = 50 + Math.cos(angle) * 38;
-      const y1 = 50 + Math.sin(angle) * 38;
-      const x2 = 50 + Math.cos(angle) * 46;
-      const y2 = 50 + Math.sin(angle) * 46;
+      const x1 = geo(50 + Math.cos(angle) * 38);
+      const y1 = geo(50 + Math.sin(angle) * 38);
+      const x2 = geo(50 + Math.cos(angle) * 46);
+      const y2 = geo(50 + Math.sin(angle) * 46);
       return (
         <line
           key={i}
@@ -232,18 +241,18 @@ const RouletteWireframe = ({ size, uid }) => (
       const next = ((i + 1) / 36) * Math.PI * 2;
       const r1 = 300;
       const r2 = 360;
-      const x1 = 400 + Math.cos(angle) * r1;
-      const y1 = 400 + Math.sin(angle) * r1;
-      const x2 = 400 + Math.cos(angle) * r2;
-      const y2 = 400 + Math.sin(angle) * r2;
-      const nx = 400 + Math.cos(next) * r2;
-      const ny = 400 + Math.sin(next) * r2;
+      const x1 = geo(400 + Math.cos(angle) * r1);
+      const y1 = geo(400 + Math.sin(angle) * r1);
+      const x2 = geo(400 + Math.cos(angle) * r2);
+      const y2 = geo(400 + Math.sin(angle) * r2);
+      const nx = geo(400 + Math.cos(next) * r2);
+      const ny = geo(400 + Math.sin(next) * r2);
       const colors = ["#ff4fd8", "#0a1a3d", "#00e5ff", "#0a1a3d"];
       const fill = colors[i % colors.length];
       return (
         <path
           key={i}
-          d={`M ${x1} ${y1} L ${x2} ${y2} A ${r2} ${r2} 0 0 1 ${nx} ${ny} L ${400 + Math.cos(next) * r1} ${400 + Math.sin(next) * r1} A ${r1} ${r1} 0 0 0 ${x1} ${y1} Z`}
+          d={`M ${x1} ${y1} L ${x2} ${y2} A ${r2} ${r2} 0 0 1 ${nx} ${ny} L ${geo(400 + Math.cos(next) * r1)} ${geo(400 + Math.sin(next) * r1)} A ${r1} ${r1} 0 0 0 ${x1} ${y1} Z`}
           fill={fill}
           fillOpacity={i % 4 === 0 ? 0.45 : 0.25}
           stroke="#00e5ff"

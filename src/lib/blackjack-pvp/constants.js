@@ -251,13 +251,30 @@ export function calcHandValue(cards) {
 }
 
 /**
+ * True when this seat's hand is a bust — over 21, or already marked
+ * `BUSTED`.
+ *
+ * The bust MUST be derived from the CARDS and not only from the persisted
+ * state: STAND is legal from `BUSTED` (it is the action that finalises a
+ * busted hand so the round can resolve) and it sets the seat to `STOOD`,
+ * which erased the bust flag. A hand that busted and then stood was
+ * therefore scored NUMERICALLY on the next compare — `25 > 18` won the
+ * round. Over 21 loses on every path, whichever terminal state the seat
+ * happens to be in.
+ */
+export function isBustedHand(cards, state) {
+  if (state === PLAYER_STATE.BUSTED) return true;
+  return calcHandValue(cards) > 21;
+}
+
+/**
  * Effective "score" used for round resolution comparisons.
  *   * Busted hands → `BUSTED_SCORE_SENTINEL` (-1) so a busted hand
  *     always loses to a non-busted 0..21 score.
  *   * Otherwise → `calcHandValue(hand)`.
  */
 export function effectiveHandScore(cards, state) {
-  if (state === PLAYER_STATE.BUSTED) return BUSTED_SCORE_SENTINEL;
+  if (isBustedHand(cards, state)) return BUSTED_SCORE_SENTINEL;
   return calcHandValue(cards);
 }
 
@@ -320,11 +337,13 @@ export function decideRoundWinner({
   p2Cards,
   p2State,
 }) {
+  // `effectiveHandScore` folds the bust into the score itself
+  // (`BUSTED_SCORE_SENTINEL`), so the plain numeric comparison below already
+  // expresses the rule: highest score ≤ 21 wins, a bust loses, equal scores
+  // are a draw.
   const p1Score = effectiveHandScore(p1Cards, p1State);
   const p2Score = effectiveHandScore(p2Cards, p2State);
 
-  // Equal scores are draws. A player with the higher calculated score
-  // wins; bust status is not used as a special loss condition.
   if (p1Score === p2Score) {
     return { winner: RESULT.DRAW, p1Score, p2Score };
   }

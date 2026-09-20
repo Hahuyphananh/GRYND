@@ -97,10 +97,73 @@ export function playBuzz() {
   setTimeout(() => playTone(140, 0.22, "square", 0.06), 90);
 }
 
-/** Play a soft positive "good reveal" chime (safe pick, good peek) */
+/** Play a soft positive "good reveal" chime (good peek) */
 export function playGoodReveal() {
   playTone(660, 0.09, "sine", 0.07);
   setTimeout(() => playTone(880, 0.12, "sine", 0.07), 70);
+}
+
+// ── Player's own gameplay cues ────────────────────────────────────────
+// The viewer's half of the same vocabulary the opponent cues use (see
+// below): ONE gesture per event, in the player's own bright sine family at
+// the player's own volume, so the two seats can never be mistaken for each
+// other. They exist so every rung of the feedback hierarchy has a voice —
+// the tap acknowledges the press (never claims a result), the safe cue
+// confirms a pick that survived, the bank cue locks a run in.
+//
+// Mute, volume and browser autoplay are handled once, centrally: these all
+// route through playTone → getSharedAudioContext(), which returns null while
+// the global gate is on and resumes the context on the first gesture.
+
+/** A tile/target was chosen — the quietest rung, deliberately short so
+ *  rapid tapping never turns into a rattle */
+export function playSelect() {
+  playTone(520, 0.05, "sine", 0.04);
+}
+
+/** Your pick survived (a safe tile, or a correct flag) — a confident rise,
+ *  brighter and slightly louder than the peek reveal it sits above */
+export function playSafePick() {
+  playTone(587, 0.08, "sine", 0.07);
+  setTimeout(() => playTone(784, 0.13, "sine", 0.075), 60);
+}
+
+/** Your run is locked in (a bank) — the safe rise, then a warm low body
+ *  that reads as "banked", mirroring the opponent's descending lock */
+export function playBank() {
+  playTone(440, 0.09, "sine", 0.07);
+  setTimeout(() => playTone(659, 0.11, "sine", 0.07), 70);
+  setTimeout(() => playTone(220, 0.24, "triangle", 0.045), 70);
+}
+
+// ── Opponent cues ─────────────────────────────────────────────────────
+// The rival's moves get their own quiet, dull family: lower in pitch and
+// roughly half the volume of the player's own cues, with a soft triangle
+// timbre instead of the player's bright sine / harsh square. The gesture
+// still matches the event (safe = rising, bank = lock, bust = falling), so
+// the meaning reads instantly — but a rival's play can never be mistaken
+// for your own.
+//
+// Mute is handled once, centrally: getSharedAudioContext() returns null
+// while the global audio gate is on, so these are silenced (and dropped
+// from Creator Mode recordings) exactly like every other game sound.
+
+/** Opponent survived a tile / called a row correctly (soft rising pair) */
+export function playOpponentPick() {
+  playTone(294, 0.07, "triangle", 0.03);
+  setTimeout(() => playTone(349, 0.09, "triangle", 0.025), 55);
+}
+
+/** Opponent banked their run (short, warm descending lock) */
+export function playOpponentBank() {
+  playTone(330, 0.1, "triangle", 0.035);
+  setTimeout(() => playTone(247, 0.16, "triangle", 0.03), 70);
+}
+
+/** Opponent hit the bad tile (low, dull thud — no bright edge) */
+export function playOpponentBust() {
+  playTone(150, 0.15, "triangle", 0.045);
+  setTimeout(() => playTone(110, 0.2, "triangle", 0.04), 80);
 }
 
 // Resume audio context on first user interaction

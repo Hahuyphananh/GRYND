@@ -2,6 +2,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 import ClerkSafeChatWidget from "../components/ClerkSafeChatWidget";
 import CookieConsentBanner from "../components/CookieConsentBanner";
+import GoogleAnalytics from "../components/GoogleAnalytics";
+import { ORGANIZATION_ID, buildWebsiteJsonLd } from "../lib/reviewJsonLd";
 import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
 import TawkProvider from "../components/TawkProvider";
@@ -62,10 +64,18 @@ export const metadata = {
   },
 };
 // Minimal, factual Organization structured data — name + URL only. No
-// ratings, reviews, or aggregate claims that the platform can't back.
+// ratings, reviews, or aggregate claims that the platform can't back. (The
+// player rating lives on the pages that own the reviews, built from the
+// approved rows — see src/lib/reviewJsonLd.ts.)
+//
+// `@id` is what lets other blocks reference this node: the WebSite block below
+// names it as publisher, and the application node on / and /reviews names it as
+// publisher too, so a crawler reads one linked graph instead of three
+// unrelated claims.
 export const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
+  "@id": ORGANIZATION_ID,
   name: "GRYND",
   url: `${SITE_URL}/`,
 };
@@ -79,6 +89,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
+        {/* The site itself, so an answer engine knows the name, the canonical
+            URL and who publishes it. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(buildWebsiteJsonLd()) }}
+        />
         <link rel="icon" type="image/png" href="/icon.png" />
         <link rel="icon" type="image/png" href="/images/smalllogo.png" />
         <link rel="apple-touch-icon" type="image/png" href="/icon-192.png" />
@@ -86,6 +102,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
 
       <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
+        {/* Google Analytics 4 (gtag.js) — on every page, from this one place.
+            Consent-gated: it only loads after the visitor accepts the cookie
+            banner (see the component for why). */}
+        <GoogleAnalytics />
+
         {/* Skip to content — accessibility */}
         <a
           href="#main-content"

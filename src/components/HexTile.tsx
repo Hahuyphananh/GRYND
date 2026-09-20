@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import { IconStar } from "@tabler/icons-react";
+import HexTroopCount from "./HexTroopCount";
 
 export type TileOwner = "neutral" | "player1" | "player2";
 
@@ -257,16 +258,19 @@ export default function HexTile({
             <IconStar size={10} className="inline text-yellow-400" /> CAP
           </span>
         )}
-        <span
+        {/* Rolls UP when troops arrive on this tile and DOWN when they are
+            spent or lost (see HexTroopCount) — the count is the move's
+            result, so it should read as a change, not as a static digit. */}
+        <HexTroopCount
+          value={troops}
+          color={troopColor}
+          glow={troopShadow}
           className="font-black leading-none"
           style={{
             fontSize: "clamp(16px, 3vw, 32px)",
             color: troopColor,
-            textShadow: troopShadow,
           }}
-        >
-          {troops}
-        </span>
+        />
         {isOwned && !capital && (
           <span
             className="font-bold leading-none mt-0.5 rounded-sm px-0.5"

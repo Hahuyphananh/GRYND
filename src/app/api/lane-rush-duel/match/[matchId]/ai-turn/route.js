@@ -26,8 +26,20 @@ export async function POST(req, { params }) {
     );
   }
 
+  // The client stamps each wake-up with a unique `actionId`, so a
+  // retried request (or two poll effects firing for the same state)
+  // resolves exactly one bot action instead of granting the bot a
+  // second, extra turn.
+  let body = null;
   try {
-    const result = await botAct({ matchId, requesterId: userId });
+    body = await req.json();
+  } catch (e) {
+    body = null;
+  }
+  const actionId = body?.actionId ?? null;
+
+  try {
+    const result = await botAct({ matchId, requesterId: userId, actionId });
 
     if (result.error) {
       // 409 = not the bot's turn / window expired — benign races the
@@ -39,6 +51,18 @@ export async function POST(req, { params }) {
       );
     }
 
+    if (result.duplicate) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          status: result.status,
+          duplicate: true,
+          result: null,
+          winnerId: null,
+        },
+      });
+    }
+
     broadcastMatchUpdate(matchId, {
       status: result.status,
       action: "bot",
@@ -48,6 +72,7 @@ export async function POST(req, { params }) {
       success: true,
       data: {
         status: result.status,
+        duplicate: false,
         result: result.result ?? null,
         winnerId: result.winnerId ?? null,
       },

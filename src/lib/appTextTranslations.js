@@ -109,10 +109,9 @@ export const APP_TEXT_TRANSLATIONS = {
           matchScore: "Score: {p1} – {p2}",
           nextRoundHint: "Next round starts shortly…",
           scoreCaption: "Best of 3",
-          subtitle: "Round {n} of 3: best-of-3",
+          subtitle: "Round {n} of {total} starts in {seconds}s…",
           title: "Round {n} incoming"
         },
-        bustTag: "(busted)",
         bustedPrefix: "Busted!",
         bustedRecoverHint: "Swap or freeze to recover.",
         bustedScore: "Busted",
@@ -138,11 +137,11 @@ export const APP_TEXT_TRANSLATIONS = {
         heldAdded: "(added to hand)",
         heldDiscarded: "(discarded)",
         heldReserved: "(reserved)",
-        historyDraw: "Round {n}: draw",
-        historyLose: "Round {n}: lost",
-        historyRow: "Round {n}, {seat}: {score} pts",
+        historyDraw: "Tied",
+        historyLose: "Lost",
+        historyRow: "Round {n}, {me}: {myScore} pts vs {opp}: {oppScore} pts",
         historyTitle: "Round history",
-        historyWin: "Round {n}: won",
+        historyWin: "Won",
         invalidId: "Invalid match id",
         leave: {
           body: "This is a free practice match — nothing is at stake. Leave and play again any time.",
@@ -152,7 +151,10 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         lobby: {
           back: "Back to lobby",
-          cancel: "Cancel lobby"
+          cancel: "Cancel lobby",
+          hostId: "Host #{id}",
+          lobbyId: "Lobby #{id}",
+          waitingMatch: "Your lobby #{id} is waiting for an opponent…"
         },
         lockedAfterStand: "Hand locked. Both hands reveal when the round ends",
         matchEndHeader: "Match over",
@@ -1635,10 +1637,9 @@ export const APP_TEXT_TRANSLATIONS = {
           matchScore: "Score : {p1} – {p2}",
           nextRoundHint: "La prochaine manche commence bientôt…",
           scoreCaption: "Meilleur des 3",
-          subtitle: "Manche {n} sur 3 : meilleur des 3",
+          subtitle: "Manche {n} sur {total} : début dans {seconds} s…",
           title: "Manche {n} à venir"
         },
-        bustTag: "(sauté)",
         bustedPrefix: "Vous avez sauté !",
         bustedRecoverHint: "Échangez ou figez pour vous en sortir.",
         bustedScore: "Dépassement",
@@ -1664,10 +1665,11 @@ export const APP_TEXT_TRANSLATIONS = {
         heldAdded: "(ajouté à la main)",
         heldDiscarded: "(défaussé)",
         heldReserved: "(réservé)",
-        historyDraw: "Manche {n} : égalité",
-        historyLose: "Manche {n} : perdue",historyRow: "Manche {n}, {seat} : {score} pts",
+        historyDraw: "Égalité",
+        historyLose: "Perdue",
+        historyRow: "Manche {n}, {me} : {myScore} pts vs {opp} : {oppScore} pts",
         historyTitle: "Historique des manches",
-        historyWin: "Manche {n} : gagnée",
+        historyWin: "Gagnée",
         invalidId: "Identifiant de match invalide",
         leave: {
           body: "C'est un match d'entraînement gratuit — rien n'est en jeu. Quittez et rejouez quand vous voulez.",
@@ -1677,7 +1679,10 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         lobby: {
           back: "Retour au salon",
-          cancel: "Annuler la lobby"
+          cancel: "Annuler la lobby",
+          hostId: "Hôte #{id}",
+          lobbyId: "Lobby #{id}",
+          waitingMatch: "Votre lobby #{id} attend un adversaire…"
         },
         lockedAfterStand: "Main verrouillée. Les deux mains se révèlent à la fin de la manche",
         matchEndHeader: "Match terminé",
@@ -2786,10 +2791,9 @@ export const APP_TEXT_TRANSLATIONS = {
           matchScore: "Marcador: {p1} – {p2}",
           nextRoundHint: "La siguiente ronda empieza pronto…",
           scoreCaption: "Mejor de 3",
-          subtitle: "Ronda {n} de 3: mejor de 3",
+          subtitle: "Ronda {n} de {total}: empieza en {seconds}s…",
           title: "Ronda {n} entrante"
         },
-        bustTag: "(pasado)",
         bustedPrefix: "¡Te pasaste!",
         bustedRecoverHint: "Cambia o congela para recuperarte.",
         bustedScore: "Pasado",
@@ -2815,11 +2819,11 @@ export const APP_TEXT_TRANSLATIONS = {
         heldAdded: "(añadido a la mano)",
         heldDiscarded: "(descartado)",
         heldReserved: "(reservado)",
-        historyDraw: "Ronda {n}: empate",
-        historyLose: "Ronda {n}: perdida",
-        historyRow: "Ronda {n}, {seat}: {score} pts",
+        historyDraw: "Empate",
+        historyLose: "Perdida",
+        historyRow: "Ronda {n}, {me}: {myScore} pts vs {opp}: {oppScore} pts",
         historyTitle: "Historial de rondas",
-        historyWin: "Ronda {n}: ganada",
+        historyWin: "Ganada",
         invalidId: "Identificador de partido no válido",
         leave: {
           body: "Es una partida de práctica gratuita: no hay nada en juego. Sal y vuelve a jugar cuando quieras.",
@@ -2829,7 +2833,10 @@ export const APP_TEXT_TRANSLATIONS = {
         },
         lobby: {
           back: "Volver al salón",
-          cancel: "Cancelar lobby"
+          cancel: "Cancelar lobby",
+          hostId: "Anfitrión #{id}",
+          lobbyId: "Lobby #{id}",
+          waitingMatch: "Tu lobby #{id} espera un oponente…"
         },
         lockedAfterStand: "Mano bloqueada. Ambas manos se revelan al final de la ronda",
         matchEndHeader: "Partido terminado",

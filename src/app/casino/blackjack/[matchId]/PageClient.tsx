@@ -1012,11 +1012,14 @@ export default function BlackjackPvpMatchPage({
         );
       case "ready":
         return t("blackjackPvp.status.ready", "Préparez-vous…");
-      case "between_rounds":
-        return t(
-          "blackjackPvp.status.betweenRounds",
-          "Manche suivante imminente…",
-        );
+      case "between_rounds": {
+        // The value names both rounds; without these replacements the banner
+        // printed the raw "{n}" / "{m}" tokens.
+        const decidedRound = Number(match.roundNumber) || 1;
+        return t("blackjackPvp.status.betweenRounds", "Manche suivante imminente…")
+          .replace("{n}", String(decidedRound))
+          .replace("{m}", String(Math.min(decidedRound + 1, TIEBREAK_ROUND_NUMBER)));
+      }
       // Round N/3 is rendered by <GameTableCenter /> for every active
       // round status. The status banner stays intentionally lean
       // during play, otherwise the same round number appears in two
@@ -1670,18 +1673,17 @@ export default function BlackjackPvpMatchPage({
         </h3>
         <div className="space-y-1.5">
           {rounds.map((r) => {
-            const myScore = viewerIsPlayer1
-              ? r.player1Score
-              : r.player2Score;
-            const oppScore = viewerIsPlayer1
-              ? r.player2Score
-              : r.player1Score;
-            const myBusted =
-              (viewerIsPlayer1 ? r.player1State : r.player2State) ===
-              "busted";
-            const oppBusted =
-              (viewerIsPlayer1 ? r.player2State : r.player1State) ===
-              "busted";
+            // Read the totals from the CARDS: a busted hand is stored with the
+            // bust sentinel (-1) so it always loses the comparison, and that
+            // sentinel must never be printed as a score.
+            const myScore = displayRoundScore(
+              viewerIsPlayer1 ? r.player1Hand : r.player2Hand,
+              viewerIsPlayer1 ? r.player1Score : r.player2Score,
+            );
+            const oppScore = displayRoundScore(
+              viewerIsPlayer1 ? r.player2Hand : r.player1Hand,
+              viewerIsPlayer1 ? r.player2Score : r.player1Score,
+            );
             const viewerWon = r.viewerWonThisRound === true;
             return (
               <div
@@ -1689,27 +1691,17 @@ export default function BlackjackPvpMatchPage({
                 className="flex items-center justify-between rounded-lg bg-[#08142f]/60 px-3 py-1.5"
               >
                 <span>
+                  {/* No bust tag: the score already reads as the hand's real
+                      total, so the parenthetical marker added nothing. */}
                   {t(
                     "blackjackPvp.historyRow",
-                    "Manche {n}, {me}: {myScore}{meTag} vs {opp}: {oppScore}{oppTag}",
+                    "Manche {n}, {me}: {myScore} pts vs {opp}: {oppScore} pts",
                   )
                     .replace("{n}", String(r.roundNumber))
                     .replace("{me}", mySeatLabel)
                     .replace("{myScore}", String(myScore))
-                    .replace(
-                      "{meTag}",
-                      myBusted
-                        ? ` ${t("blackjackPvp.bustTag", "(sauté)")}`
-                        : "",
-                    )
                     .replace("{opp}", oppSeatLabel)
-                    .replace("{oppScore}", String(oppScore))
-                    .replace(
-                      "{oppTag}",
-                      oppBusted
-                        ? ` ${t("blackjackPvp.bustTag", "(sauté)")}`
-                        : "",
-                    )}
+                    .replace("{oppScore}", String(oppScore))}
                 </span>
                 <span
                   className={
@@ -1723,8 +1715,8 @@ export default function BlackjackPvpMatchPage({
                   {r.roundWinner === "draw"
                     ? t("blackjackPvp.historyDraw", "Égalité")
                     : viewerWon
-                    ? t("blackjackPvp.historyWin", "Vous gagnez")
-                    : t("blackjackPvp.historyLose", "Vous perdez")}
+                    ? t("blackjackPvp.historyWin", "Gagnée")
+                    : t("blackjackPvp.historyLose", "Perdue")}
                 </span>
               </div>
             );
@@ -2978,10 +2970,17 @@ function RoundResultModal({
   // applied server-side (decideRoundWinner).
   const p1Hand = round.player1Hand;
   const p2Hand = round.player2Hand;
-  const p1Score = round.player1Score;
-  const p2Score = round.player2Score;
-  const p1Busted = round.player1State === "busted";
-  const p2Busted = round.player2State === "busted";
+  // A busted seat is recognised from the CARDS as well as the stored state:
+  // STAND finalises a busted hand and records the seat as `stood`, so the
+  // state alone would show an over-21 hand as a plain loss.
+  const p1Busted =
+    round.player1State === "busted" || calcHandValue(p1Hand) > 21;
+  const p2Busted =
+    round.player2State === "busted" || calcHandValue(p2Hand) > 21;
+  // Totals for display: a busted hand is stored as the -1 sentinel, so read
+  // the hand's real value instead of printing the sentinel.
+  const p1Score = displayRoundScore(p1Hand, round.player1Score);
+  const p2Score = displayRoundScore(p2Hand, round.player2Score);
 
   // Re-orient so the viewer always sees their own cards on the LEFT
   // seat (mirrors the live table layout).
@@ -3572,7 +3571,12 @@ function BetweenRoundsScreen({
     >
       <div className="mb-2 flex justify-center"><IconPlayerSkipForward size={28} className="text-[#FFD700]" /></div>
       <h3 className="text-xl sm:text-2xl font-black uppercase text-[#FFD700] tracking-widest">
-        {t("blackjackPvp.betweenRounds.title", "Manche suivante imminente")}
+        {/* The value carries the upcoming round number — `nextRound` is the
+            capped one, so a tiebreak never advertises "Round 5/4". */}
+        {t("blackjackPvp.betweenRounds.title", "Manche {n} imminente").replace(
+          "{n}",
+          String(nextRound),
+        )}
       </h3>
       <p className="mt-2 text-white/85 text-sm sm:text-base">
         {t(
@@ -3639,6 +3643,17 @@ function BetweenRoundsScreen({
 }
 
 // ── Helpers (mirror constants so the file is self-contained) ─────────
+/** The score to PRINT for a seat (round history + round-end reveal).
+ *
+ * The server stores a busted hand's score as `BUSTED_SCORE_SENTINEL` (-1) so
+ * that it always loses the numeric comparison. That sentinel is deliberately
+ * not a display value, so the hand's real total is recomputed from the cards
+ * the payload already carries; every other score is already this same number. */
+function displayRoundScore(hand: Card[] | null | undefined, storedScore: number): number {
+  if (!Array.isArray(hand) || hand.length === 0) return storedScore;
+  return calcHandValue(hand);
+}
+
 function calcHandValue(cards: Card[]): number {
   let value = 0;
   let aces = 0;

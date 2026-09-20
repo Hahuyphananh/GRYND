@@ -98,12 +98,32 @@ const PALETTE = {
   row: "border-cyan-700/30 bg-slate-900/80 hover:border-cyan-500/50",
 };
 
+/**
+ * Number formatting for anything rendered into the lobby markup.
+ *
+ * These must be byte-identical on the server and in the browser. Passing
+ * `undefined` as the locale uses whatever the runtime has — Node and the
+ * browser disagree on the grouping separator (and on digits/separators in
+ * other locales), which React reports as a hydration mismatch and answers by
+ * throwing the server-rendered tree away and re-rendering it on the client.
+ * Pinning the locale keeps the HTML the crawler receives identical to what a
+ * visitor sees, and keeps commas where this UI always put them.
+ */
+const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
+const BALANCE_FORMAT = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Grouped integer, e.g. 1000 → "1,000". */
+export function formatTokens(value) {
+  const n = Number(value);
+  return NUMBER_FORMAT.format(Number.isFinite(n) ? n : 0);
+}
+
 function formatBalance(balance) {
   if (balance === null || balance === undefined) return "…";
-  return Number(balance).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return BALANCE_FORMAT.format(Number(balance) || 0);
 }
 
 /**
@@ -438,7 +458,7 @@ export function PvpLobby({
                       stake === v ? PALETTE.chipActive : PALETTE.chipIdle
                     }`}
                   >
-                    {Number(v).toLocaleString()}
+                    {formatTokens(v)}
                   </button>
                 ))}
               </div>
@@ -473,7 +493,7 @@ export function PvpLobby({
                 </>
               ) : (
                 <>
-                  <span>{Number(stake).toLocaleString()}</span>
+                  <span>{formatTokens(stake)}</span>
                   <CoinIcon className="h-5 w-5 text-amber-900" />
                   <span> · {playLabel}</span>
                 </>

@@ -23,6 +23,25 @@ interface ReviewStats {
   distribution: Record<number, number>;
 }
 
+/**
+ * Review dates must render identically on the server and in the browser.
+ *
+ * `new Date(iso).toLocaleDateString()` uses whatever locale the runtime
+ * happens to have — Node's ICU default gave "2026-08-23" while the browser gave
+ * "23/08/2026" — and React treats that differing text as a hydration mismatch
+ * and re-renders the tree on the client. Pinning both the locale and the
+ * timezone makes the string deterministic, so the card a crawler receives is
+ * the card a visitor sees.
+ */
+const REVIEW_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+const formatReviewDate = (iso: string) => REVIEW_DATE_FORMAT.format(new Date(iso));
+
 function Stars({ value, size = "text-sm" }: { value: number; size?: string }) {
   return (
     <span className={`${size} tracking-tight`}>
@@ -35,14 +54,33 @@ function Stars({ value, size = "text-sm" }: { value: number; size?: string }) {
   );
 }
 
-export default function ReviewWall({ limit = 9 }: { limit?: number }) {
+/**
+ * The public review wall.
+ *
+ * `initialReviews` / `initialStats` come from the server render of
+ * /reviews, so the reviews and the rating totals are in the HTML a crawler
+ * receives without executing any JavaScript. When they are present the wall
+ * renders immediately instead of showing a loading state, and the mount fetch
+ * only refreshes what it can (the caller's own review status). When they are
+ * absent — the client-only call sites, or a failed server-side load — the wall
+ * behaves exactly as it always has.
+ */
+export default function ReviewWall({
+  limit = 9,
+  initialReviews = null,
+  initialStats = null,
+}: {
+  limit?: number;
+  initialReviews?: Review[] | null;
+  initialStats?: ReviewStats | null;
+}) {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [stats, setStats] = useState<ReviewStats | null>(null);
+  const [reviews, setReviews] = useState<Review[]>(initialReviews ?? []);
+  const [stats, setStats] = useState<ReviewStats | null>(initialStats);
   const [mine, setMine] = useState<{ submitted: boolean; status: string | null; rating: number | null } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialReviews === null);
   const [modalOpen, setModalOpen] = useState(false);
 
   const openReviewFlow = () => {
@@ -71,6 +109,9 @@ export default function ReviewWall({ limit = 9 }: { limit?: number }) {
       cancelled = true;
     };
   }, [limit]);
+
+  // The server already rendered the wall's content (see initialReviews), so
+  // never replace it with a loading placeholder.
 
   if (loading) {
     return <div className="py-10 text-center text-[#c9f7ff]/50">Loading reviews…</div>;
@@ -132,9 +173,14 @@ export default function ReviewWall({ limit = 9 }: { limit?: number }) {
             >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <Stars value={r.rating} />
-                <span className="text-[11px] text-[#c9f7ff]/40">
-                  {new Date(r.createdAt).toLocaleDateString()}
-                </span>
+                {/* <time> keeps the exact instant machine-readable (and
+                    stable) while the visible label stays deterministic. */}
+                <time
+                  dateTime={r.createdAt}
+                  className="text-[11px] text-[#c9f7ff]/40"
+                >
+                  {formatReviewDate(r.createdAt)}
+                </time>
               </div>
               {r.title && <h3 className="mb-1 font-bold text-white">{r.title}</h3>}
               {r.body && <p className="text-sm leading-relaxed text-[#c9f7ff]/80">{r.body}</p>}

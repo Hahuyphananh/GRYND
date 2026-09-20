@@ -164,6 +164,7 @@ export async function GET(req: NextRequest) {
       targetMs: null,
       winnerSeat: null,
       lastRoundWinnerSeat: null,
+      lastRoundTargetMs: null,
       armingStartedAt: null,
       countdownEndsAt: null,
       roundGoInstant: null,

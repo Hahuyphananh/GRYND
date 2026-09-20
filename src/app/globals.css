@@ -1376,6 +1376,45 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   }
 }
 
+/* Keno Catch Duel — one-shot MISS cue for a tile whose tap landed too
+   late. A short red flare that decays into the tile's existing static red
+   state, so a miss reads as an event and then gets out of the way of the
+   live glowing tile (no looping, no shake, no particles). Applied by
+   class only: the class stays stable while `missedTiles` holds, so a
+   re-render (the 100ms board clock, a poll or a socket push) never
+   replays it. */
+@keyframes kenoMissHit {
+  0% {
+    filter: brightness(2.2);
+    transform: scale(0.86);
+    box-shadow: 0 0 0 rgba(248, 113, 113, 0);
+  }
+  45% {
+    filter: brightness(1.35);
+    transform: scale(1.06);
+    box-shadow: 0 0 14px rgba(248, 113, 113, 0.65);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(248, 113, 113, 0);
+  }
+}
+
+.animate-keno-miss {
+  animation: kenoMissHit 0.3s ease-out;
+}
+
+/* With motion off the red flare is dropped ENTIRELY: the tile's existing
+   static red state is the information (the global prefers-reduced-motion
+   block above already collapses the animation; this keeps that explicit,
+   matching how the shared tile cues at the top of this file are handled). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-keno-miss {
+    animation: none;
+  }
+}
+
 @keyframes pageFadeSlideIn {
   from {
     opacity: 0;
