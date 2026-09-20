@@ -807,6 +807,26 @@ function MainComponent() {
               </span>
             ))}
           </div>
+
+          {/* Product Hunt featured badge — kept in the hero, under the CTAs,
+              so visitors actually see it (plain <a>/<img> embed; not routed
+              through next/image since it's a third-party badge image). */}
+          <div className="mt-6 flex justify-center">
+            <a
+              href="https://www.producthunt.com/products/grynd?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-grynd"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="GRYND on Product Hunt"
+            >
+              <img
+                alt="GRYND - Competitive multiplayer games, built to outplay. | Product Hunt"
+                width={250}
+                height={54}
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1251858&theme=dark&t=1789866264006"
+                className="h-[54px] w-[250px]"
+              />
+            </a>
+          </div>
           </motion.div>
         </div>
       </motion.section>

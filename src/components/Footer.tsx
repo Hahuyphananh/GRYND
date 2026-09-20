@@ -51,6 +51,24 @@ export default function Footer() {
             {/* SOCIALS — same component the contact page mounts, so the two
                 can't list different accounts. */}
             <SocialLinks testId="footer-social" className="mt-5" />
+
+            {/* Product Hunt featured badge — third-party badge image, so it is
+                a plain <img> rather than next/image (no remote-domain config). */}
+            <a
+              href="https://www.producthunt.com/products/grynd?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-grynd"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="GRYND on Product Hunt"
+              className="mt-5 inline-block"
+            >
+              <img
+                alt="GRYND - Competitive multiplayer games, built to outplay. | Product Hunt"
+                width={250}
+                height={54}
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1251858&theme=dark&t=1789866264006"
+                className="h-[54px] w-[250px]"
+              />
+            </a>
           </div>
 
           {/* NAVIGATION */}
