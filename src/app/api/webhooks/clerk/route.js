@@ -13,6 +13,7 @@ import { db } from "../../../../db";
 import { logError } from "../../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../../lib/icons";
 import { reconcileEmoteState } from "../../../../lib/emotes";
+import { searchNameFor } from "../../../../lib/searchName";
 
 export async function POST(req) {
   try {
@@ -41,16 +42,20 @@ export async function POST(req) {
           crypto.randomBytes(32).toString("hex"),
           12,
         );
+        const displayName =
+          username ||
+          `${first_name || ""} ${last_name || ""}`.trim() ||
+          "Player";
         const insertedRows = await db
           .insert(users)
           .values({
             clerkId: id,
             email,
             password,
-            name:
-              username ||
-              `${first_name || ""} ${last_name || ""}`.trim() ||
-              "Player",
+            name: displayName,
+            // Folded match key for /api/friends/search, derived from the same
+            // display name so the two always agree (src/lib/searchName.ts).
+            searchName: searchNameFor(displayName),
             balance: 1000,
             gamesWon: 0,
             gamesLost: 0,

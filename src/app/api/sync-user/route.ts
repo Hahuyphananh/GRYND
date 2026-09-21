@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { logError } from "../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../lib/icons";
 import { reconcileEmoteState } from "../../../lib/emotes";
+import { searchNameFor } from "../../../lib/searchName";
 import { validateObject } from "../../../lib/security/validation";
 
 export async function POST(req: Request) {
@@ -114,6 +115,9 @@ export async function POST(req: Request) {
         .values({
           clerkId,
           name: preferredName,
+          // Folded match key for /api/friends/search — kept in lockstep with
+          // `name` on every write (see src/lib/searchName.ts).
+          searchName: searchNameFor(preferredName),
           email,
           password: passwordHash,
         })
@@ -145,7 +149,12 @@ export async function POST(req: Request) {
 
         await db
           .update(users)
-          .set({ clerkId, name: preferredName, email })
+          .set({
+            clerkId,
+            name: preferredName,
+            searchName: searchNameFor(preferredName),
+            email,
+          })
           .where(eq(users.id, existingByEmail[0].id));
 
         return NextResponse.json(

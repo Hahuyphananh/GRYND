@@ -29,6 +29,7 @@
 // Callers inside a game settlement transaction pass their `tx` so the journal
 // insert + users update commit atomically with the result-processing flow.
 
+import { sql } from "drizzle-orm";
 import { getBattlepassProgress } from "./battlepass";
 import { db } from "../db";
 
@@ -196,17 +197,25 @@ export async function applyPrestigeResult({ clerkId, outcome, source, sourceId, 
     return { applied: false, reason: "invalid-source", delta: 0 };
   }
 
+  // NOTE on the query style used below: drizzle's `execute()` takes exactly
+  // ONE argument — `execute("… $1 …", [param])` silently DROPS the params and
+  // sends `$1` unbound, which Postgres rejects ("there is no parameter $1").
+  // Because this runs inside the caller's settlement transaction, that error
+  // poisons it: every later statement fails and the COMMIT becomes a silent
+  // ROLLBACK, so the whole settlement was discarded. Always bind through a
+  // `sql` template, and read rows off `.rows` (the node-postgres driver
+  // returns the full QueryResult, not an array of rows).
   const run = async (txc) => {
     // Row-lock the player so concurrent settlements serialize: each sees the
     // previous one's committed values (never double-applies).
-    const [user] = await txc.execute(
-      `SELECT id, xp, prestige_level AS "prestigeLevel",
-              prestige_net_wins AS "prestigeNetWins"
-         FROM users
-        WHERE clerk_id = $1
-        FOR UPDATE`,
-      [clerkId],
-    );
+    const userRes = await txc.execute(sql`
+      SELECT id, xp, prestige_level AS "prestigeLevel",
+             prestige_net_wins AS "prestigeNetWins"
+        FROM users
+       WHERE clerk_id = ${clerkId}
+       FOR UPDATE
+    `);
+    const user = userRes.rows[0];
     if (!user) return { applied: false, reason: "user-not-found", delta: 0 };
 
     const eligible = getBattlepassProgress(Number(user.xp) || 0).level >= 100;
@@ -230,33 +239,24 @@ export async function applyPrestigeResult({ clerkId, outcome, source, sourceId, 
     // Claim the event BEFORE mutating state. If another settlement for this
     // same (user, source, sourceId) already ran (retry, reconnect, double
     // processing, concurrent request), the conflict short-circuits here.
-    const claimed = await txc.execute(
-      `INSERT INTO prestige_results
-         (user_id, source, source_id, outcome, delta,
-          prestige_level_after, prestige_net_wins_after)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (user_id, source, source_id) DO NOTHING
-       RETURNING id`,
-      [
-        user.id,
-        gameKey,
-        eventId,
-        outcome,
-        next.delta,
-        next.level,
-        next.netWins,
-      ],
-    );
-    if (!claimed.length) return { applied: false, reason: "duplicate", delta: 0 };
+    const claimed = await txc.execute(sql`
+      INSERT INTO prestige_results
+        (user_id, source, source_id, outcome, delta,
+         prestige_level_after, prestige_net_wins_after)
+      VALUES (${user.id}, ${gameKey}, ${eventId}, ${outcome}, ${next.delta},
+              ${next.level}, ${next.netWins})
+      ON CONFLICT (user_id, source, source_id) DO NOTHING
+      RETURNING id
+    `);
+    if (!claimed.rows.length) return { applied: false, reason: "duplicate", delta: 0 };
 
     if (next.delta !== 0) {
-      await txc.execute(
-        `UPDATE users
-            SET prestige_level = $2,
-                prestige_net_wins = $3
-          WHERE id = $1`,
-        [user.id, next.level, next.netWins],
-      );
+      await txc.execute(sql`
+        UPDATE users
+           SET prestige_level = ${next.level},
+               prestige_net_wins = ${next.netWins}
+         WHERE id = ${user.id}
+      `);
     }
 
     return {

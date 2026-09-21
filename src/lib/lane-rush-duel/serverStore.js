@@ -997,6 +997,19 @@ async function recordPvPResult(tx, match, winnerId, result) {
 //   2. `p1_turn` / `p2_turn` deadline elapsed → force-pick a random
 //      tile for the current player (AFK nudge), then advance the
 //      turn OR resolve the match.
+// Compact fingerprint of the fields the auto-advance steps touch. Used
+// by fetchMatchWithAutoResolve to report whether a request actually
+// moved the match forward, so the /status ROUTE can push the new state
+// to the other player's socket.
+function phaseSignature(match) {
+  if (!match) return "";
+  return [
+    match.status ?? "",
+    match.currentTurnUserId ?? "",
+    match.roundDeadline ? new Date(match.roundDeadline).getTime() : "",
+  ].join("|");
+}
+
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -1004,6 +1017,13 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
     }
+
+    // The row's state BEFORE the auto-advance steps below. There is no
+    // background scheduler: the `ready` window only ends when a status
+    // request arrives, so without this flag the player whose request
+    // opened the match would be able to place tiles while the other
+    // client still showed the "get ready" banner.
+    const before = phaseSignature(match);
 
     // Upgrade matches created by the old turn-based implementation.
     // They become simultaneous as soon as either participant polls them.
@@ -1031,7 +1051,11 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
           ),
         )
         .returning();
-      return { match: upgraded || match };
+      const upgradedMatch = upgraded || match;
+      return {
+        match: upgradedMatch,
+        advanced: phaseSignature(upgradedMatch) !== before,
+      };
     }
 
     if (
@@ -1040,7 +1064,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
       const advanced = await advanceFromReady(tx, match);
-      return { match: advanced };
+      return { match: advanced, advanced: phaseSignature(advanced) !== before };
     }
 
     // AFK auto-pick is a LEGACY turn-based concern: it only fires when a
@@ -1055,10 +1079,10 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
       const advanced = await forcePick(tx, match);
-      return { match: advanced };
+      return { match: advanced, advanced: phaseSignature(advanced) !== before };
     }
 
-    return { match };
+    return { match, advanced: phaseSignature(match) !== before };
   });
 
   if (result?.match) {

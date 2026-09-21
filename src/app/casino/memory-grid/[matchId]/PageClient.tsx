@@ -40,11 +40,18 @@
 // phase, and again post-match); it is never visible during
 // reconstruction.
 //
-// Realtime: 1.5 s status polling (the source of truth for forward
-// progress, including the server's phase auto-advance / AFK
-// auto-lock) + a socket.io `lobby:updated` push on the per-match
-// room for near-instant opponent updates. A 100 ms tick drives the
-// phase countdown and hides the pattern at the server deadline.
+// Realtime: status polling (the source of truth for forward progress,
+// including the server's phase auto-advance / AFK auto-lock) + a
+// socket.io `lobby:updated` push on the per-match room for near-instant
+// opponent updates. The server has no background scheduler — a phase
+// opens when a request arrives — so the route also broadcasts the phase
+// it just opened and this client re-fetches on each phase deadline;
+// that keeps both players' discovery of a new MEMORIZE window within
+// milliseconds of each other instead of up to a poll tick apart (which
+// used to burn the entire 2.5–4s preview for whoever polled second).
+// A 100 ms tick drives the phase countdown and hides the pattern at the
+// server deadline, compared against the server's clock (see
+// `clockOffsetMs`) rather than raw `Date.now()`.
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -138,6 +145,9 @@ type MatchData = {
   // affect the official timing).
   phaseStartedAt: string | null;
   phaseDeadline: string | null;
+  // The server's clock at the moment the payload was built — the match
+  // view corrects for client clock skew with it.
+  serverNow?: string | null;
   p1Score: number;
   p2Score: number;
   p1Total: number;
@@ -383,6 +393,15 @@ export default function MemoryGridMatchPage({
   // Local clock: drives the phase countdown AND hides the pattern
   // at the server's absolute deadline (never wait for the poll).
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Offset from the server's clock (ms), refreshed from every status
+  // payload. Every phase boundary is an absolute SERVER timestamp, so a
+  // device clock running even a few seconds ahead used to expire the
+  // memorize deadline the instant the payload landed: the client flipped
+  // straight to reconstruct, the pattern (the yellow tiles) never
+  // rendered, and a tap was answered with "Submission rejected" because
+  // the server was still in memorize. Comparing server time to server
+  // time removes that whole class of failure.
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const aiTriggerRef = useRef("");
 
   const lastRoundRef = useRef("");
@@ -403,6 +422,20 @@ export default function MemoryGridMatchPage({
       const next = data.data.match as MatchData;
       setMatch(next);
       setError(null);
+      // Track the server's clock. The measured offset is biased low by
+      // the response's transit time, which only ever leaves the client
+      // counting down slightly longer than the server — the safe
+      // direction (the server stays authoritative on every deadline).
+      // The threshold keeps sub-frame jitter from re-rendering.
+      const serverNowMs = next?.serverNow
+        ? new Date(next.serverNow).getTime()
+        : Number.NaN;
+      if (Number.isFinite(serverNowMs)) {
+        const offset = serverNowMs - Date.now();
+        setClockOffsetMs((prev) =>
+          Math.abs(offset - prev) >= 250 ? offset : prev,
+        );
+      }
       if (Array.isArray(data.data.rounds)) {
         setRounds(data.data.rounds as RoundSnapshot[]);
       }
@@ -423,8 +456,11 @@ export default function MemoryGridMatchPage({
     // Socket room (MEMORY_GRID_MATCH_UPDATED) pushes opponent updates
     // instantly; this HTTP poll is a reconnect/consistency safety net.
     // Phase pacing comes from server timelines + the local 100ms clock,
-    // never from the poll rate, so 5s is safe and keeps match-time DB
-    // reads minimal.
+    // never from the poll rate. The server broadcasts every phase
+    // transition it discovers (see the /status route) and the client also
+    // re-fetches at each phase deadline (below), so 5s keeps match-time
+    // DB reads minimal without leaving a 2.5s memorize window
+    // undiscovered.
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [matchId, fetchStatus]);
@@ -465,7 +501,11 @@ export default function MemoryGridMatchPage({
   const deadlineMs = match?.phaseDeadline
     ? new Date(match.phaseDeadline).getTime()
     : null;
-  const msLeft = deadlineMs !== null ? Math.max(0, deadlineMs - nowMs) : null;
+  // Server-domain "now" — the local tick plus the measured clock
+  // offset, so the deadline comparison below happens in one clock.
+  const serverNowMs = nowMs + clockOffsetMs;
+  const msLeft =
+    deadlineMs !== null ? Math.max(0, deadlineMs - serverNowMs) : null;
 
   // The client-side phase. The pattern hides at the server's
   // absolute deadline; from the viewer's perspective reconstruct
@@ -507,6 +547,31 @@ export default function MemoryGridMatchPage({
   // the poll).
   const patternVisible =
     playing && isMemorize && Boolean(match?.pattern) && msLeft !== null && msLeft > 0;
+
+  // ── Re-fetch at each phase deadline ───────────────────────────────
+  // A phase only opens when a status request arrives (the server has no
+  // background scheduler), so whichever player polls first gets the new
+  // phase while the other waits for their own next tick. For MEMORIZE
+  // that is worse than a delay: the pattern is withheld as soon as the
+  // round moves on to reconstruct, so a poll landing after the 2.5–4s
+  // window finds nothing left to preview. Landing a request exactly on
+  // the deadline puts both players' discovery of the next phase within
+  // milliseconds of each other — with or without a live socket.
+  useEffect(() => {
+    if (
+      match?.status !== MATCH_STATUS.ACTIVE &&
+      match?.status !== MATCH_STATUS.READY
+    ) {
+      return;
+    }
+    if (deadlineMs === null || !Number.isFinite(deadlineMs)) return;
+    // Already elapsed and a poll has since confirmed it — arming here
+    // would spin; the regular tick picks the transition up instead.
+    const delay = deadlineMs - (Date.now() + clockOffsetMs);
+    if (delay <= 0) return;
+    const id = setTimeout(fetchStatus, delay + 150);
+    return () => clearTimeout(id);
+  }, [deadlineMs, clockOffsetMs, fetchStatus, match?.status]);
 
   // Per-seat submission state — drives the frozen-grid "Waiting for
   // opponent" flow.

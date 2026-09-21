@@ -1350,13 +1350,29 @@ async function recordPvPResult(tx, match, winnerId, result) {
   }).catch(() => {});
 }
 
+// Compact fingerprint of the fields a phase transition touches. Used to
+// tell whether a status fetch actually moved the match forward (see
+// fetchMatchWithAutoResolve) so the /status ROUTE can push the new phase
+// to the other player's socket immediately.
+function phaseSignature(match) {
+  if (!match) return "";
+  return [
+    match.status ?? "",
+    match.phase ?? "",
+    match.roundNumber ?? "",
+    match.roundDeadline ? new Date(match.roundDeadline).getTime() : "",
+  ].join("|");
+}
+
 // ── Status fetch with auto-resolve ────────────────────────────────────
 //
 // Runs the poll-driven auto-advance paths (see advancePhaseOnPoll):
 // ready → memorize; memorize deadline → reconstruct; reconstruct
 // deadline → AFK auto-lock of un-submitted seats and round
 // resolution. Then returns the raw match row — the /status ROUTE is
-// responsible for all per-viewer scrubbing.
+// responsible for all per-viewer scrubbing — plus an `advanced` flag
+// telling that route whether this request moved the match forward.
+
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -1364,6 +1380,18 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
     }
+
+    // The row's phase BEFORE the auto-advance steps below. There is no
+    // background scheduler — a phase only ever opens because a status
+    // request arrived — so a transition discovered here is invisible to
+    // the OTHER player until their own next poll (up to 5 s later). That
+    // matters most for MEMORIZE: its window is only 2.5–4 s, and once
+    // the round has moved on to reconstruct the pattern is never sent
+    // again, so a late poll doesn't merely shorten that player's preview
+    // — it loses it outright. Callers use `advanced` to broadcast the
+    // new phase to the per-match room so both players' next request is
+    // milliseconds away instead of one poll tick.
+    const before = phaseSignature(match);
 
     // Auto-advance the brief Ready window into round 1's memorize
     // phase.
@@ -1373,7 +1401,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
       const advanced = await advanceFromReady(tx, match);
-      return { match: advanced };
+      return { match: advanced, advanced: phaseSignature(advanced) !== before };
     }
 
     // Auto-advance phase deadlines (memorize → reconstruct → AFK
@@ -1386,7 +1414,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       const aiResult = await playAiTurnInTransaction(tx, advanced);
       advanced = aiResult.match || advanced;
     }
-    return { match: advanced };
+    return { match: advanced, advanced: phaseSignature(advanced) !== before };
   });
 }
 

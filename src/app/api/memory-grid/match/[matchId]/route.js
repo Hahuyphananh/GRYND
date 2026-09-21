@@ -53,6 +53,7 @@ import {
   phaseStartedAt,
   roundConfig,
 } from "../../../../../lib/memory-grid/constants";
+import { broadcastMatchUpdate } from "../../../../../lib/memory-grid/rooms";
 
 function normaliseMatchForViewer(match, viewerUserId) {
   if (!match) return null;
@@ -109,6 +110,14 @@ function normaliseMatchForViewer(match, viewerUserId) {
       memorizeMs: cfg.memorizeMs,
     },
     viewerIsPlayer1: match.player1Id === viewerUserId,
+    // The server's clock at the moment this payload was built. Client
+    // clocks are regularly off by seconds, and every phase boundary
+    // below is an absolute SERVER timestamp — a client running ahead
+    // would hide the memorize pattern (and flip itself into the
+    // reconstruct UI) the moment the payload landed, which is why the
+    // preview sometimes never appeared. The match view tracks the
+    // offset from this value and compares like-for-like.
+    serverNow: new Date().toISOString(),
     // Who has locked in their reconstruction this round (drives the
     // "Waiting for opponent" / "Opponent submitted" UI states).
     p1Submitted: Boolean(match.p1Submitted),
@@ -222,6 +231,22 @@ export async function GET(req, { params }) {
     // round-result screen from it before the server advances).
     const inResult = enrichedMatch.status === "active" && enrichedMatch.phase === PHASES.RESULT;
     const rounds = finished || inResult ? await fetchMatchRounds(matchId) : [];
+
+    // A phase transition only ever happens because a status request
+    // arrived (there is no background scheduler), so the player whose
+    // request triggered it sees the new phase in this response while the
+    // other player is still one poll tick — up to 5 s — behind. That is
+    // fatal for the memorize preview: its window is only 2.5–4 s and the
+    // pattern is never sent again once the round has moved to
+    // reconstruct. Push the new phase to the per-match room (fire and
+    // forget; a missed push just falls back to the poll).
+    if (result.advanced) {
+      broadcastMatchUpdate(matchId, {
+        phase: match.phase ?? null,
+        roundNumber: Number(match.roundNumber || 1),
+        status: match.status,
+      });
+    }
 
     return NextResponse.json({
       success: true,

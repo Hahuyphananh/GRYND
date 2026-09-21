@@ -32,6 +32,7 @@ import {
   crashArenaEntries,
 } from "../../db/schema";
 import { eq, and, ne, inArray, sql } from "drizzle-orm";
+import { searchNameFor } from "../searchName";
 
 /** Reserved Clerk id of the FIRST Crash Arena practice bot. Never a real account. */
 export const CRASH_ARENA_AI_CLERK_ID = "crash_arena_ai_bot";
@@ -98,11 +99,17 @@ export async function getOrCreateCrashArenaAiBot(index = 0): Promise<number> {
     .limit(1);
   if (existing[0]) return existing[0].id;
 
+  const botName =
+    index === 0 ? CRASH_ARENA_AI_NAME : `${CRASH_ARENA_AI_NAME} ${index + 1}`;
+
   const [created] = await db
     .insert(users)
     .values({
       clerkId,
-      name: index === 0 ? CRASH_ARENA_AI_NAME : `${CRASH_ARENA_AI_NAME} ${index + 1}`,
+      name: botName,
+      // Bots are real users rows, so they carry the same folded search key as
+      // everyone else (src/lib/searchName.ts).
+      searchName: searchNameFor(botName),
       email:
         index === 0
           ? CRASH_ARENA_AI_EMAIL

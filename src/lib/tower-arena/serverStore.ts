@@ -1111,7 +1111,18 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
   if (isPaid) {
     for (const r of ranked) {
       if (r.isAi) continue;
-      applyPrestigeResult({
+      // AWAITED on purpose. `applyPrestigeResult` runs its queries on the
+      // SAME transaction client it is handed, so firing it off without
+      // awaiting made it race everything that followed — the caller's
+      // next statement AND the transaction COMMIT — with pg throwing
+      // "Calling client.query() when the client is already executing a
+      // query". That is what broke every PAID finish: a 2-player resign
+      // 500'd (the client silently did nothing), and a ceiling collapse
+      // answered `matchFinished: true` while the whole transaction rolled
+      // back, leaving the match active, the eliminated seat active and no
+      // result popup. Free vs-AI matches never ran this block, which is
+      // why they were unaffected.
+      await applyPrestigeResult({
         tx,
         clerkId: r.userId,
         outcome: r.placement === 1 ? "win" : "loss",
@@ -1157,6 +1168,42 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
   }
 
   return { match, alreadyFinished: false };
+}
+
+// ── Decided standing (read-only) ───────────────────────────────────────
+//
+// The viewer's placement + payout for a seat whose result is ALREADY
+// decided while the match is still running — an eliminated player in a
+// 3+ seat game. Pure read-only mirror of the settlement math in
+// `finishMatchTx` and the resign branch of `removeParticipant`, so the
+// client can show the losing popup the moment a player is out without
+// inventing (or altering) any number: the real credit still happens once,
+// at finish, from the same helpers.
+function decidedStanding(match: any, player: any) {
+  const placement = Number(player?.placement);
+  if (!Number.isInteger(placement) || placement < 1) return null;
+  const isPaid = !match.isAi && match.wager > 0;
+  let payout = 0;
+  if (isPaid) {
+    const cfg = computePotPrize({ maxPlayers: match.maxPlayers, wager: match.wager });
+    const byPlacement = payoutsByPlacement({
+      maxPlayers: match.maxPlayers,
+      wager: match.wager,
+      prizePool: cfg.prizePool,
+    });
+    payout = Math.min(
+      byPlacement[Math.max(0, placement - 1)] ?? 0,
+      cfg.prizePool,
+    );
+  }
+  return {
+    placement,
+    payout,
+    net: payout - match.wager,
+    isWinner: match.isAi
+      ? placement <= paidPlacementsFor(match.maxPlayers)
+      : payout > match.wager,
+  };
 }
 
 // ── Resign / disconnect (idempotent, shared) ───────────────────────────
@@ -1771,6 +1818,11 @@ export async function getTowerArenaMatchProjection({ userId, matchId }: { userId
       status: me?.status ?? "active",
       reserveUsesRemaining: me?.reserveUsesRemaining ?? 0,
       reservedBlock: reserveState[userId] || null,
+      // Placement + payout already decided for this seat (null while the
+      // seat is still in the running). Drives the eliminated player's
+      // losing popup in a 3+ seat match, where the match plays on without
+      // them.
+      standing: decidedStanding(m, me),
     },
   };
 }

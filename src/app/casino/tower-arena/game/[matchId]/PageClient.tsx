@@ -978,6 +978,14 @@ export default function TowerArenaMatchPage() {
   // the player resigns, so their win/lose popup appears immediately.
   const [resignResult, setResignResult] = useState<any>(null);
   const [resignBusy, setResignBusy] = useState(false);
+  // Resignation failures used to be completely silent (the request 500'd and
+  // the button just appeared dead), so surface the reason inline.
+  const [resignError, setResignError] = useState<string | null>(null);
+  // One-shot guard for the viewer's OWN result popup. It is surfaced the
+  // moment their result is decided — when they resign, or when they are
+  // eliminated by a ceiling breach in a 3+ seat match that plays on without
+  // them — and a later poll must never re-open it after they dismiss it.
+  const matchResultShownRef = useRef(false);
   const [fallingBlock, setFallingBlock] = useState<{
     cells: any[]; // the dropped block's final cells (server-resolved)
     extra: any[]; // shed blocks' cells, pre-collapse positions (contact shock)
@@ -1073,6 +1081,34 @@ export default function TowerArenaMatchPage() {
       // The viewer's private projection supplies seat, ready, and status for
       // turn authorization and the ready gate.
       if (data.me) setMe(data.me);
+
+      // Own-elimination result popup. In a 3+ seat match the game carries on
+      // without an eliminated player, so surface their losing popup as soon
+      // as the server says their result is decided — otherwise they are left
+      // staring at a board they can no longer touch, with no result at all
+      // until the whole match ends. `standing` is the server's own settlement
+      // math (placement + payout), so nothing here invents a number; the
+      // final survivor still gets the win popup from the final rankings when
+      // the match completes.
+      const myStanding = data.me?.standing;
+      if (
+        data.match?.status === "active" &&
+        myStanding &&
+        !matchResultShownRef.current
+      ) {
+        matchResultShownRef.current = true;
+        setResignResult({
+          placement: myStanding.placement,
+          payout: Number(myStanding.payout || 0),
+          net: Number(myStanding.net || 0),
+          isWinner: Boolean(myStanding.isWinner),
+          wager: Number(data.match.wager || 0),
+          isAi: Boolean(data.match.isAi),
+          eliminated: true,
+        });
+        if (myStanding.isWinner) playVictory();
+        else playDefeat();
+      }
 
       // Detect a fresh ceiling-breach: the placements log grew and its
       // newest entry is a collapsed drop → the dropping player is eliminated
@@ -1304,6 +1340,7 @@ export default function TowerArenaMatchPage() {
   const resign = async () => {
     if (resignBusy || !isActive) return;
     setResignBusy(true);
+    setResignError(null);
     try {
       const res = await fetch("/api/tower-arena/resign", {
         method: "POST",
@@ -1312,6 +1349,9 @@ export default function TowerArenaMatchPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (data.ok) {
+        // The viewer's own result has now been surfaced — a later poll must
+        // not re-open the popup from the same standing.
+        matchResultShownRef.current = true;
         if (data.matchFinished || data.placement == null) {
           // The match ended (e.g. 2 players) or raced to a terminal state —
           // the finish flow derives the popup from the final rankings.
@@ -1328,7 +1368,11 @@ export default function TowerArenaMatchPage() {
           if (data.isWinner) playVictory();
           else playDefeat();
         }
+      } else {
+        setResignError(data.message || "Could not resign — please try again.");
       }
+    } catch {
+      setResignError("Could not resign — please try again.");
     } finally {
       setResignBusy(false);
     }
@@ -2173,13 +2217,20 @@ export default function TowerArenaMatchPage() {
           </p>
         </>
       ) : (
-        <button
-          onClick={resign}
-          disabled={resignBusy || !isActive}
-          className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
-        >
-          {resignBusy ? "Resigning…" : "Resign"}
-        </button>
+        <>
+          <button
+            onClick={resign}
+            disabled={resignBusy || !isActive}
+            className="mt-4 w-full rounded-lg border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/25 disabled:opacity-50"
+          >
+            {resignBusy ? "Resigning…" : "Resign"}
+          </button>
+          {resignError && (
+            <p className="mt-2 rounded-lg border border-red-500/30 bg-red-950/40 px-2 py-1.5 text-center text-[10px] font-semibold text-red-200">
+              {resignError}
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -2232,6 +2283,11 @@ export default function TowerArenaMatchPage() {
           </button>
         )}
       </div>
+      {resignError && (
+        <p className="mb-2 rounded-lg border border-red-500/30 bg-red-950/40 px-2 py-1 text-[10px] font-semibold text-red-200">
+          {resignError}
+        </p>
+      )}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {players
           .slice()
@@ -2402,7 +2458,11 @@ export default function TowerArenaMatchPage() {
             <CreatorResultOverlay
               open
               outcome={resignResult.isWinner ? "win" : "loss"}
-              headline={`${ordinal(resignResult.placement)} place`}
+              headline={
+                resignResult.eliminated
+                  ? `Eliminated · ${ordinal(resignResult.placement)} place`
+                  : `${ordinal(resignResult.placement)} place`
+              }
               subline={
                 resignResult.isAi ? "Free play — no tokens at stake." : undefined
               }

@@ -3,7 +3,7 @@ import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
-import removeAccents from "remove-accents";
+import { searchNameFor } from "../../../../lib/searchName";
 
 export async function POST(request) {
   const sql = getNeonSql();
@@ -35,12 +35,9 @@ export async function POST(request) {
     //  DEBUG 1
     const rawInput = parsed.data.name;
 
-    const normalized = removeAccents(
-      String(rawInput)
-        .toLowerCase()
-        .replace(/\s+/g, "") // important
-        .trim(),
-    );
+    // The ONE fold, shared with every write to `users.search_name` so the two
+    // sides can never drift (src/lib/searchName.ts).
+    const normalized = searchNameFor(rawInput);
 
     let currentUserId = null;
 
@@ -55,11 +52,16 @@ export async function POST(request) {
     //  DEBUG 3
     const queryString = normalized;
 
+    // Match on the folded `search_name`. The fallback to `name` covers rows
+    // written before the column was maintained (and any row seeded outside the
+    // app), so a search never silently returns nothing for a real account.
+    // The REPLACE/LOWER stay so a fallback name that still carries spaces or
+    // capitals matches the folded query too.
     const found = await sql`
   SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best,
     xp, prestige_level, show_prestige_badge
   FROM users
-  WHERE REPLACE(LOWER(search_name), ' ', '') LIKE '%' || ${queryString} || '%'
+  WHERE REPLACE(LOWER(COALESCE(NULLIF(search_name, ''), name)), ' ', '') LIKE '%' || ${queryString} || '%'
   ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
   ORDER BY name ASC
   LIMIT 10

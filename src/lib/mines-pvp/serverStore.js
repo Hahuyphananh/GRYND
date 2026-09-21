@@ -1251,6 +1251,23 @@ async function recordPvPResult(tx, match, winnerId, result) {
 // the match is not yet `finished`, so the client can't inspect mine
 // positions mid-match. Once status='finished' the board is exposed
 // for the post-match reveal.
+//
+// Returns `advanced: true` when this request actually moved the match
+// forward (ready → first pick, a forced AFK pick, or a resolve). The
+// /status ROUTE uses it to broadcast the new turn to the per-match
+// room: the sitting player's 20 s turn clock starts at the transition
+// timestamp, so a player who only learns about it on their own next
+// poll — up to 5 s later — can lose a quarter of their turn before
+// the UI even offers them the board.
+function phaseSignature(match) {
+  if (!match) return "";
+  return [
+    match.status ?? "",
+    match.currentTurnUserId ?? "",
+    match.roundDeadline ? new Date(match.roundDeadline).getTime() : "",
+  ].join("|");
+}
+
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
     let match = await fetchMatchForUpdate(tx, matchId);
@@ -1258,6 +1275,13 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
     }
+
+    // The row's state BEFORE the auto-advance steps below. There is no
+    // background scheduler: a turn only ever passes because a status
+    // request arrived, so the player whose request triggered it learns
+    // the new turn in this response while the other player waits for
+    // their own next poll (up to 5 s of a 20 s turn).
+    const before = phaseSignature(match);
 
     // 1) Auto-advance the brief Ready window into the first pick
     //    state.
@@ -1299,7 +1323,9 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
         // window after its previous pick has elapsed; a later poll
         // (or the client's delayed /ai-turn retrigger) takes it.
         if (!aiPickDelayElapsed(match)) {
-          return { match };
+          // `before` still refers to the pre-advance row: an AFK
+          // force-pick earlier in this same request counts too.
+          return { match, advanced: phaseSignature(match) !== before };
         }
         // It's the bot's turn. Make its pick inline.
         const { cellIndex } = chooseAiCell(match);
@@ -1346,7 +1372,7 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       }
     }
 
-    return { match };
+    return { match, advanced: phaseSignature(match) !== before };
   });
 
   if (result?.match) {

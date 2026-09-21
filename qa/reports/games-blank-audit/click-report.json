@@ -1,0 +1,275 @@
+{
+  "base": "http://localhost:3210",
+  "generatedAt": "2026-09-21T13:48:22.113Z",
+  "results": [
+    {
+      "href": "/casino/roulette",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/roulette",
+      "textChars": 2478,
+      "textNodes": 58,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Roulette PvP Lobby Pick a stake. ",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/blackjack",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/blackjack",
+      "textChars": 1738,
+      "textNodes": 42,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Blackjack PvP Lobby How to Play H",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/mines-pvp",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/mines-pvp",
+      "textChars": 2572,
+      "textNodes": 63,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Mines Duel Lobby You and your opp",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/memory-grid",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/memory-grid",
+      "textChars": 2622,
+      "textNodes": 61,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Memory Grid Lobby A best-of-5 rou",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/plinko",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/plinko",
+      "textChars": 1945,
+      "textNodes": 46,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Plinko Duel Lobby You and your op",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/poker/multi",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/poker/multi",
+      "textChars": 1712,
+      "textNodes": 49,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in ← BACK TO GAMES ♠ POKER ROYALE ♠ ",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/crash-arena",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/crash-arena",
+      "textChars": 1045,
+      "textNodes": 43,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in ← Back to Games Crash Arena Set y",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/chess",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/chess",
+      "textChars": 1433,
+      "textNodes": 44,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Chess Arena: Challenge Players Ho",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/keno",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/keno",
+      "textChars": 2137,
+      "textNodes": 50,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Keno Lobby 1v1 Keno Catch Duel. B",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/neon-flush",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/neon-flush",
+      "textChars": 1653,
+      "textNodes": 42,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Neon Flush Match colors and numbe",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/rps",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/rps",
+      "textChars": 1770,
+      "textNodes": 46,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Rock Paper Scissors Best-of-7 min",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/tower-arena",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/tower-arena",
+      "textChars": 2834,
+      "textNodes": 64,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Tower Arena Shared 2D Tower Survi",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/four-in-a-row",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/four-in-a-row",
+      "textChars": 1933,
+      "textNodes": 83,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Four-In-A-Row Create, join, and w",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/lane-runner",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/lane-runner",
+      "textChars": 3576,
+      "textNodes": 71,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Lane Rush Duel You and your oppon",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/pool-masters",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/pool-masters",
+      "textChars": 1860,
+      "textNodes": 79,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Pool Masters Lobby Create or join",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/hex-duel",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/hex-duel",
+      "textChars": 1404,
+      "textNodes": 65,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in HEX DUEL TACTICAL HEX ARENA ▦ HOW",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/dice-flush",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/dice-flush",
+      "textChars": 2142,
+      "textNodes": 36,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in DICE FLUSH Roll. Hold. Score. Dom",
+      "pageErrors": [
+        "SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input",
+        "Uncaught (in promise) SyntaxError: Unexpected end of JSON input"
+      ],
+      "blank": false
+    },
+    {
+      "href": "/casino/odds",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/odds",
+      "textChars": 996,
+      "textNodes": 38,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Odds Game Pick your number and pr",
+      "pageErrors": [
+        "SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input",
+        "SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "blank": false
+    },
+    {
+      "href": "/casino/precision",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/precision",
+      "textChars": 1888,
+      "textNodes": 41,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Precision Lobby Wager tokens and ",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/casino/dots-and-boxes",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/dots-and-boxes",
+      "textChars": 1501,
+      "textNodes": 44,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Dots & Boxes A classic pencil-and",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/games/poker/multi",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/poker/multi",
+      "textChars": 1286,
+      "textNodes": 38,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in ← BACK TO GAMES ♠ POKER ROYALE ♠ ",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/games/neon-flush",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/neon-flush",
+      "textChars": 1239,
+      "textNodes": 31,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Neon Flush Match colors and numbe",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/games/chess",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/chess",
+      "textChars": 1086,
+      "textNodes": 33,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Chess Arena: Challenge Players Ho",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/games/pool-masters",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/pool-masters",
+      "textChars": 1497,
+      "textNodes": 68,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Pool Masters Lobby Create or join",
+      "pageErrors": [],
+      "blank": false
+    },
+    {
+      "href": "/games/dice-flush",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/dice-flush",
+      "textChars": 852,
+      "textNodes": 16,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in DICE FLUSH Roll. Hold. Score. Dom",
+      "pageErrors": [
+        "SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input",
+        "SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "blank": false
+    },
+    {
+      "href": "/games/precision",
+      "clicked": true,
+      "finalUrl": "http://localhost:3210/games/precision",
+      "textChars": 1232,
+      "textNodes": 27,
+      "head": "Skip to main content Home Games Leaderboard Battlepass Settings Create account Sign in Precision Lobby Wager tokens and ",
+      "pageErrors": [],
+      "blank": false
+    }
+  ]
+}

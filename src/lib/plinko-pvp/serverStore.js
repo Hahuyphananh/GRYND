@@ -1729,6 +1729,23 @@ async function recordPvPResult(tx, match, winnerId, result) {
 //
 // The path also returns the freshly-updated match row so the client
 // can render the new state without an extra /status round-trip.
+//
+// `advanced` reports whether this request actually moved the match
+// forward (ready → ball_1, or an AFK auto-launch that resolved a
+// ball). The /status ROUTE uses it to broadcast the new ball to the
+// per-match room: there is no background scheduler, so the ball's
+// 20 s commit clock starts when a request arrives, and a player who
+// only finds out on their own next poll — up to 5 s later — starts
+// that window already behind.
+function phaseSignature(match) {
+  if (!match) return "";
+  return [
+    match.status ?? "",
+    match.currentBall ?? "",
+    match.roundDeadline ? new Date(match.roundDeadline).getTime() : "",
+  ].join("|");
+}
+
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -1736,6 +1753,10 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
     }
+
+    // The row's state BEFORE the auto-advance steps below — compared
+    // against it to report `advanced` to the caller.
+    const before = phaseSignature(match);
 
     // ── Inline orphan-ready sweep ───────────────────────────────────
     // Self-healing replacement for the previous server-side setTimeout
@@ -1778,7 +1799,11 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       // so the routine-state automatic advance never preserves the
       // ready flag (p{N}_ready is already false in this state). No
       // deferred clear is needed for this path.
-      return { match: advanced, autoResolvedBall: false };
+      return {
+        match: advanced,
+        autoResolvedBall: false,
+        advanced: phaseSignature(advanced) !== before,
+      };
     }
 
     // 2) Per-ball AFK auto-launch. Fires when the ball's 20-second
@@ -1803,10 +1828,21 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       // bothReady flip) gets to render the "Both ready —
       // launching!" badge. The SQL guard on the deferred query
       // prevents late firing from clobbering a real commit.
-      return { match: resolved, autoResolvedBall: true };
+      return {
+        match: resolved,
+        autoResolvedBall: true,
+        advanced: phaseSignature(resolved) !== before,
+      };
     }
 
-    return { match: cleanedMatch || match, autoResolvedBall: false };
+    return {
+      match: cleanedMatch || match,
+      autoResolvedBall: false,
+      // The sweep above only clears stray ready flags, so this is a
+      // no-op in practice — kept explicit rather than hardcoded false
+      // so any future advance added here is reported automatically.
+      advanced: phaseSignature(cleanedMatch || match) !== before,
+    };
   });
 }
 

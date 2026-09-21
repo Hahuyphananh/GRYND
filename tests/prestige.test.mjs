@@ -170,10 +170,30 @@ test("the module never writes Battle Pass level or XP", () => {
   // Prestige is an additive layer: reaching a tier preserves Level 100, XP,
   // rewards, titles, and cosmetics. The prestige write path only touches
   // prestige_level / prestige_net_wins.
-  assert.match(prestigeLib, /SET prestige_level = \$2,\s*prestige_net_wins = \$3/);
+  assert.match(prestigeLib, /SET prestige_level = [\s\S]*?prestige_net_wins = /);
   assert.ok(!/UPDATE users[\s\S]*?SET[\s\S]*?\bxp\s*=/.test(prestigeLib), "prestige must not write xp");
   assert.ok(!/\bxp = \$/.test(prestigeLib), "prestige must not write xp");
   assert.ok(!/SET[\s\S]*\blevel = /.test(prestigeLib), "prestige must not write the battlepass level column");
+});
+
+test("prestige binds its SQL through sql`` templates (never raw strings)", () => {
+  // Regression guard. drizzle's `execute()` takes exactly ONE argument, so
+  // `execute("SELECT … WHERE clerk_id = $1", [clerkId])` silently DROPS the
+  // bindings and Postgres rejects the query ("there is no parameter $1").
+  // Because this runs inside the caller's settlement transaction, that error
+  // poisons it and the COMMIT becomes a silent ROLLBACK — the whole
+  // settlement was discarded, which is what stopped paid Tower Arena
+  // finishes (resign / ceiling collapse) from settling at all.
+  assert.ok(
+    !/\.execute\(\s*`/.test(prestigeLib),
+    "must not call execute() with a raw string — bind through sql``",
+  );
+  // Every execute() call must receive a sql`` template.
+  const execCalls = prestigeLib.match(/\.execute\(/g) || [];
+  const templated = prestigeLib.match(/\.execute\(sql`/g) || [];
+  assert.equal(execCalls.length, templated.length, "every execute() binds via sql``");
+  // node-postgres returns a full QueryResult — rows live on `.rows`.
+  assert.ok(!/=\s*await\s+\w+\.execute\(/.test(prestigeLib) || /\.rows/.test(prestigeLib));
 });
 
 test("getPrestigeStatus exposes the battlepass-style read shape", () => {

@@ -29,6 +29,7 @@ import {
   fetchMatchWithAutoResolve,
   fetchMatchRounds,
 } from "../../../../../lib/plinko-pvp/serverStore";
+import { broadcastMatchUpdate } from "../../../../../lib/plinko-pvp/rooms";
 import {
   LAUNCHABLE_STATES,
   MATCH_STATUS,
@@ -219,6 +220,20 @@ export async function GET(req, { params }) {
         err && err.message ? err.message : err,
       );
       rounds = [];
+    }
+
+    // A ball only launches because a status request arrived (there is no
+    // background scheduler), so the player whose request advanced the
+    // match sees the new ball in this response while the other one is
+    // still one poll tick — up to 5 s of a 20 s commit window — behind.
+    // Push it to the per-match room so both seats get the same usable
+    // window (fire and forget; a missed push falls back to the poll).
+    if (result.advanced) {
+      broadcastMatchUpdate(matchId, {
+        status: match.status,
+        currentBall: match.currentBall ?? null,
+        roundDeadline: match.roundDeadline ?? null,
+      });
     }
 
     return NextResponse.json({

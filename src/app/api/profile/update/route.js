@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { searchNameFor } from "../../../../lib/searchName";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // NOTE: profile pictures are no longer accepted by this endpoint. Grynd
@@ -133,9 +134,15 @@ export async function POST(request) {
       }
     }
 
+    // `search_name` is the folded match key /api/friends/search reads, derived
+    // from the username on every write — `cleanName` is the new name, or the
+    // unchanged current one when this request carried no name. Without this a
+    // player who renamed could only be found by their OLD username: the column
+    // still held the previous name, because nothing else writes it.
     const updated = await sql`
       UPDATE users
       SET name = ${cleanName},
+          search_name = ${searchNameFor(cleanName)},
           email = ${cleanEmail},
           password = CASE
             WHEN ${Boolean(passwordHash)} THEN ${passwordHash}

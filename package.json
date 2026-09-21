@@ -17,6 +17,7 @@
     "test:icon-system": "node --import tsx --test tests/iconAssets.test.mjs tests/icons-db.test.mjs",
     "test:db-backup-restore": "node --test tests/db-backup-restore.test.mjs",
     "test:recently-played": "node --test tests/recently-played.test.mjs",
+    "test:search-name": "node --import tsx --test tests/search-name.test.mjs",
     "test:onboarding": "node --import tsx --test tests/onboarding-questionnaire.test.mjs tests/onboarding-flow.test.mjs tests/onboarding-preferences.test.mjs tests/game-recommendations.test.mjs",
     "test:recommendations": "node --import tsx --test tests/game-recommendations.test.mjs tests/lobby-for-you.test.mjs",
     "test:presence": "node --import tsx --test tests/game-presence.test.mjs",

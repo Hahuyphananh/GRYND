@@ -25,6 +25,7 @@
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { fetchMatchWithAutoResolve } from "../../../../../lib/lane-rush-duel/serverStore";
+import { broadcastMatchUpdate } from "../../../../../lib/lane-rush-duel/rooms";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
   bankRateForSeat,
@@ -189,6 +190,19 @@ export async function GET(req, { params }) {
       match.player1Id,
       match.player2Id,
     );
+
+    // The `ready` window only ends because a status request arrived (there
+    // is no background scheduler), so the player whose request started the
+    // match would otherwise be placing tiles while the other client was
+    // still on the "get ready" banner, waiting for its own poll. Push the
+    // transition to the per-match room so both seats start together (fire
+    // and forget; a missed push falls back to the poll).
+    if (result.advanced) {
+      broadcastMatchUpdate(matchId, {
+        status: match.status,
+        currentTurnUserId: match.currentTurnUserId ?? null,
+      });
+    }
 
     return NextResponse.json({
       success: true,

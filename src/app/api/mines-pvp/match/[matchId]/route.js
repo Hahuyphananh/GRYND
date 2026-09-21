@@ -43,6 +43,7 @@ import {
   fetchMatchRounds,
   enrichMatchWithPlayers,
 } from "../../../../../lib/mines-pvp/serverStore";
+import { broadcastMatchUpdate } from "../../../../../lib/mines-pvp/rooms";
 import {
   GRID_CELLS,
   MATCH_STATUS,
@@ -247,6 +248,22 @@ export async function GET(req, { params }) {
         err && err.message ? err.message : err,
       );
       enrichedMatch = match;
+    }
+
+    // A turn only ever passes because a status request arrived (there is
+    // no background scheduler), so the player whose request advanced the
+    // match sees the new turn in this response while the other one is
+    // still one poll tick — up to 5 s of a 20 s turn — behind. That is
+    // worst for the player whose turn it now IS: their clock is already
+    // running. Push the new turn to the per-match room so their board
+    // becomes usable within milliseconds (fire and forget; a missed push
+    // just falls back to the poll).
+    if (result.advanced) {
+      broadcastMatchUpdate(matchId, {
+        status: match.status,
+        currentTurnUserId: match.currentTurnUserId ?? null,
+        roundDeadline: match.roundDeadline ?? null,
+      });
     }
 
     // Always returns 1 row (this is a single-round game) — kept as
