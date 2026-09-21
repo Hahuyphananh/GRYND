@@ -65,7 +65,7 @@ export async function getSeatIdentity(player1Id, player2Id) {
     .from(users)
     .leftJoin(
       glows,
-      and(eq(glows.key, users.selectedGlow), eq(glows.enabled, true)),
+      eq(glows.key, users.selectedGlow),
     )
     .leftJoin(
       tokenSubscriptions,

@@ -291,7 +291,7 @@ export async function getOwnedCosmetics(clerkId: string): Promise<OwnedCosmetic[
   const equipped = appUser.equippedCosmetics || {};
   const map = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
-    if (row.cosmetic && row.cosmetic.enabled) map.set(row.key, row);
+    if (row.cosmetic) map.set(row.key, row);
   }
 
   return Array.from(map.values()).map((row) => ({
