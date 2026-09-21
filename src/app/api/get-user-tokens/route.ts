@@ -47,7 +47,6 @@ export async function POST(req: Request) {
       .select({
         balance: users.balance,
         name: users.name,
-        searchName: users.searchName,
         email: users.email,
         selectedIcon: users.selectedIcon,
         chatColor: users.chatColor,
@@ -98,8 +97,42 @@ export async function POST(req: Request) {
       if (!catalog) selectedIcon = DEFAULT_ICON_KEY;
     }
 
-    // Compute searchName from displayName if not set, for consistent friend search
-    const effectiveSearchName = user.searchName || user.displayName || user.name || clerkId;
+    // Compute streak title
+    const streakInfo = computeEquippedStreakTitle({
+      selectedStreakType: user.selectedStreakType,
+      dailyStreakCurrent: user.dailyStreakCurrent,
+      dailyStreakBest: user.dailyStreakBest,
+    });
+
+    // Equipped cosmetics (category → catalog metadata + visual payload) so the
+    // client can render profile frames / badges / effects. Server-written only
+    // (src/lib/cosmetics.ts); disabled or missing keys are dropped here.
+    const equippedMap: Record<string, string> = user.equippedCosmetics || {};
+    const equippedKeys = Object.values(equippedMap).filter(Boolean);
+    const equippedCosmetics: Record<
+      string,
+      { key: string; name: string; visual: Record<string, unknown> }
+    > = {};
+    if (equippedKeys.length > 0) {
+      const cosmeticRows = await db
+        .select({
+          key: cosmetics.key,
+          name: cosmetics.name,
+          category: cosmetics.category,
+          visual: cosmetics.visual,
+        })
+        .from(cosmetics)
+        .where(
+          and(inArray(cosmetics.key, equippedKeys), eq(cosmetics.enabled, true)),
+        );
+      for (const row of cosmeticRows) {
+        equippedCosmetics[row.category] = {
+          key: row.key,
+          name: row.name,
+          visual: row.visual,
+        };
+      }
+    }
 
     return NextResponse.json(
       {
@@ -107,7 +140,6 @@ export async function POST(req: Request) {
         data: {
           balance: user.balance,
           name: user.name,
-          searchName: effectiveSearchName,
           email: user.email,
           selectedIcon,
           // Equipped name color for the client-only (vs-AI) game seats —

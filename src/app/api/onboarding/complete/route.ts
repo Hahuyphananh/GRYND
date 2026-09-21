@@ -24,10 +24,7 @@ export async function POST() {
 
     await db
       .update(users)
-      .set({ 
-        onboardingCompletedAt: new Date(),
-        searchName: userData.name || userData.displayName || userId
-      })
+      .set({ onboardingCompletedAt: new Date() })
       .where(eq(users.clerkId, userId));
 
     return Response.json({ success: true });

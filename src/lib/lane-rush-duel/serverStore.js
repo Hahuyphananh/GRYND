@@ -73,22 +73,36 @@ import { randomHex } from "../laneRunner";
 import {
   ACTIVE_STATES,
   BOT_ACTION_INTERVAL_MS,
+  BOT_USER_ID,
+  DIFFICULTIES,
   LANE_RUSH_DUEL_LOCK_NAMESPACE,
   MATCH_STATUS,
+  MAX_FLAGS,
+  MAX_LANES,
+  MAX_PEEKS,
+  TERMINAL_STATES,
   MAX_STAKE,
   MIN_STAKE,
   PICKABLE_STATES,
   RESULT,
+  RISK_PATH_KEYS,
+  RISK_PATHS,
   WIN_BANKED_SCORE,
-  buildBridge,
+  buildPlayerTower,
   computePayout,
-  currentRowOf,
+  decideBotAction,
   decideOutcome,
-  flagsLeft,
-  hasLandedSafely,
+  finalScoreOf,
+  flagsUsedBySeat,
   hasResolvedActionId,
+  isBotMatch,
   isStaleRoundAction,
-  round2,
+  isValidPath,
+  laneMultiplier,
+  peeksUsedBySeat,
+  pickPointsForSeat,
+  releasePendingActions,
+  scoreFromActions,
   seatForUserId,
 } from "./constants";
 import { getServerSeedHash } from "../laneRunner";
@@ -259,10 +273,10 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
     })
     .returning();
 
-  // Derive the host's bridge with the match id as nonce — provably
-  // fair and locked before any joiner arrives. Shape: 10 rows, 1 bad
-  // tile per row (see constants.buildBridge).
-  const p1Bridge = buildBridge({
+  // Derive the host's tower with the match id as nonce — provably
+  // fair and locked before any joiner arrives. Shape: per lane, the
+  // bad tile for each risk path (see constants.buildPlayerTower).
+  const p1Tower = buildPlayerTower({
     serverSeed,
     clientSeed,
     nonce: match.id,
@@ -271,7 +285,7 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
 
   const [withTower] = await tx
     .update(laneRushDuelMatches)
-    .set({ p1Bridge, status: MATCH_STATUS.WAITING })
+    .set({ p1Tower })
     .where(eq(laneRushDuelMatches.id, match.id))
     .returning();
 
@@ -314,27 +328,27 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Insufficient balance", status: 400 };
   }
 
-  // SHARED BRIDGE: both players climb the SAME provably-fair layout
-  // (10 rows, 1 bad tile per row). The host's bridge — derived from the
+  // SHARED TOWER: both players climb the SAME provably-fair layout
+  // (bad tile per lane per path). The host's tower — derived from the
   // shared server seed + the host's client seed + the match id as
-  // nonce — is copied into seat 2. No second bridge, no second layout:
-  // every safe jump by either player narrows the same deduction.
+  // nonce — is copied into seat 2. No second seed, no second layout:
+  // every safe pick by either player narrows the same deduction.
   const firstPlayerId = Math.random() < 0.5 ? match.player1Id : userId;
 
   const [updated] = await tx
     .update(laneRushDuelMatches)
     .set({
       player2Id: userId,
-      // Both seats share the host's client seed + bridge (one layout).
+      // Both seats share the host's client seed + tower (one layout).
       p2ClientSeed: match.p1ClientSeed,
-      p2Bridge: match.p1Bridge,
+      p2Tower: match.p1Tower,
       status: MATCH_STATUS.ACTIVE,
       firstPlayerId,
-      currentTurnUserId:
-        firstPlayerId === match.player1Id ? "player1" : "player2",
-      // 15-second pick window per turn.
-      roundDeadline: new Date(Date.now() + 15000),
-      roundTimerSeconds: 15,
+      currentTurnUserId: null,
+      // Simultaneous play has NO per-turn window: both seats act
+      // whenever they like. Leaving the legacy ready-window deadline
+      // here would render a phantom countdown in the match header.
+      roundDeadline: null,
       startedAt: new Date(),
     })
     .where(
