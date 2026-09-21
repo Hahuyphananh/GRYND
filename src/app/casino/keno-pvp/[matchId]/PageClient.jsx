@@ -859,11 +859,17 @@ export default function KenoPvpMatchPage({ params }) {
   // number and the held board (built once per round) reports its Set's size.
   const boardDrawnCount = finalHoldBoard ? finalHoldBoard.drawnNumbers.size : drawnCount;
   const boardCaughtNumbers = finalHoldBoard ? finalHoldBoard.caughtNumbers : caughtNumbers;
-  const boardMyCatches = finalHoldBoard ? finalHoldBoard.myCatches : match.myCatches || [];
+  // `match` is null until the first status read lands, and these two lines sit
+  // ABOVE the loading / not-found early returns below (every hook above them
+  // has to run on every render). Dereferencing `match` directly threw
+  // "Cannot read properties of null (reading 'myCatches')" on the very first
+  // render — including the server pass — so the whole page died into Next's
+  // blank "Application error" shell instead of ever showing the board.
+  const boardMyCatches = finalHoldBoard ? finalHoldBoard.myCatches : match?.myCatches || [];
   const boardMyStats = finalHoldBoard ? finalHoldBoard.myStats : myStats;
   // The live opponent count is scrubbed away on settlement, so the held board
   // uses the final round's resolved catch count (already public) instead.
-  const boardOppCatchCount = finalHoldBoard ? oppResolvedTiles.length : match.opponentCatchCount;
+  const boardOppCatchCount = finalHoldBoard ? oppResolvedTiles.length : match?.opponentCatchCount;
 
   // O(1) ball lookup for the tile grid. Every tile used to scan
   // `boardSchedule` (40 × ≤10 comparisons on each 100ms tick) just to find its
