@@ -48,6 +48,7 @@ import Footer from "../../../../components/Footer";
 import ReportModal from "../../../../components/ReportModal";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay and auto-starts when the match actually begins,
 // auto-stops when it ends or the user quits. No gameplay logic touched.
@@ -1136,7 +1137,7 @@ function PlayerSidePanel({
                 is missing/invalid. */}
             <FrameAvatar frame={profileFrame} iconKey={avatarKey} name={displayName} size="h-5 w-5" />
             <span
-              className="truncate"
+              className={`truncate ${cosmeticEffectClass((profileFrame as any)?.usernameEffect?.visual) || ""}`}
               style={nameColor ? { color: nameColor } : undefined}
             >
               {displayName}

@@ -12,12 +12,14 @@
 // returned, so unconsumed surfaces keep their exact previous markup/layout.
 
 import IconAvatar from "./IconAvatar";
-import { cosmeticFrameRing } from "../lib/profileCosmetics";
+import { cosmeticFrameRing, cosmeticEffectClass } from "../lib/profileCosmetics";
 
 export type ProfileFramePayload = {
   key?: string;
   name?: string;
   visual?: unknown;
+  /** Equipped avatar effect, embedded on the frame payload by the server. */
+  avatarEffect?: { visual?: unknown } | null;
 } | null;
 
 /**
@@ -30,11 +32,16 @@ export function frameWrapperProps(frame?: ProfileFramePayload): {
   style: { boxShadow: string } | undefined;
 } {
   const ring = cosmeticFrameRing(frame?.visual);
-  return { className: ring.cssClass, style: ring.style };
+  const effectClass = cosmeticEffectClass(frame?.avatarEffect?.visual);
+  return {
+    className: `${ring.cssClass} ${effectClass || ""}`.trim(),
+    style: ring.style,
+  };
 }
 
 export default function FrameAvatar({
   frame = null,
+  avatarEffect = null,
   iconKey,
   name,
   size = "h-14 w-14",
@@ -42,21 +49,27 @@ export default function FrameAvatar({
 }: {
   /** Server-resolved profile frame (or null/undefined for none). */
   frame?: ProfileFramePayload;
+  /** Avatar effect (explicit prop; falls back to frame.avatarEffect). */
+  avatarEffect?: { visual?: unknown } | null;
   iconKey?: string | null;
   name?: string | null;
   size?: string;
   className?: string;
 }) {
   const ring = cosmeticFrameRing(frame?.visual);
+  // Avatar effect — explicit prop wins, else the effect embedded on the frame.
+  const effectClass = cosmeticEffectClass(
+    avatarEffect?.visual ?? frame?.avatarEffect?.visual,
+  );
   const avatar = (
     <IconAvatar iconKey={iconKey} name={name} size={size} className={className} />
   );
 
-  if (!ring.cssClass && !ring.style) return avatar;
+  if (!ring.cssClass && !ring.style && !effectClass) return avatar;
 
   return (
     <span
-      className={`inline-flex shrink-0 rounded-full ${ring.cssClass}`}
+      className={`relative inline-flex shrink-0 rounded-full ${ring.cssClass} ${effectClass || ""}`}
       style={ring.style}
       data-profile-frame={frame?.key || undefined}
     >

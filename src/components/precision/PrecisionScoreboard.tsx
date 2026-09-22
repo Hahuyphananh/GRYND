@@ -15,6 +15,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import RoundMarkers from "../casino/RoundMarkers";
 import FrameAvatar from "../FrameAvatar";
+import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import { TARGET_WINS, MAX_ROUNDS } from "../../lib/precision/constants";
 import { diffToRank } from "../../lib/precision/utils";
 import { PrecisionRankIcon } from "./PrecisionRankIcon";
@@ -177,7 +178,7 @@ function PrecisionScoreboardImpl({
         >          <p className="flex items-center gap-1.5 text-xs text-slate-300">
             <FrameAvatar frame={(seat1Player as any)?.profileFrame} iconKey={seat1Player?.iconKey} name={seat1Player?.name} size="h-4 w-4" />
             <span
-              className="truncate"
+              className={`truncate ${cosmeticEffectClass((seat1Player as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
               style={seat1Player?.nameColor ? { color: seat1Player.nameColor } : undefined}
             >
               {seat1Player?.name ?? t("games.precision.seat_alpha")}
@@ -222,7 +223,7 @@ function PrecisionScoreboardImpl({
         >          <p className="flex items-center gap-1.5 text-xs text-slate-300">
             <FrameAvatar frame={(seat2Player as any)?.profileFrame} iconKey={seat2Player?.iconKey} name={seat2Player?.name} size="h-4 w-4" />
             <span
-              className="truncate"
+              className={`truncate ${cosmeticEffectClass((seat2Player as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
               style={seat2Player?.nameColor ? { color: seat2Player.nameColor } : undefined}
             >
               {seat2Player?.name ?? t("games.precision.seat_bravo")}

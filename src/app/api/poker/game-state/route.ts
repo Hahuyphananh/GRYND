@@ -6,7 +6,7 @@ import { db } from "../../../../db/client";
 import { glows, pokerGames, tokenSubscriptions, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
+import { getFrameDecorations } from "../../../../lib/cosmetics";
 
 type Seat = {
   seat: number;
@@ -65,17 +65,16 @@ async function enrichPlayersIdentity(players: any[]) {
         ),
       )
       .where(inArray(users.clerkId, humanIds));
-    const frameByKey = await getProfileFramesByKeys(
-      rows.map((r) => pickProfileFrameKey(r.equippedCosmetics)),
+    const decorations = await getFrameDecorations(
+      rows.map((r) => r.equippedCosmetics),
     );
     const byId = new Map(
-      rows.map((r) => {
-        const frameKey = pickProfileFrameKey(r.equippedCosmetics);
+      rows.map((r, index) => {
         return [
           r.clerkId,
           {
             iconKey: r.iconKey || null,
-            profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+            profileFrame: decorations[index] || null,
             nameColor:
               r.glowColor ||
               (Boolean(r.isPremium) ? r.chatColor || null : null) ||

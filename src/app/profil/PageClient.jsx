@@ -11,12 +11,14 @@ import {
   HEX_COLOR_REGEX,
   ACCENT_COLORS,
   cosmeticFrameRing,
+  cosmeticEffectClass,
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
 import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseGlowModal from "../../components/ChooseGlowModal";
 import ChooseFrameModal from "../../components/ChooseFrameModal";
 import ChooseEmotesModal from "../../components/ChooseEmotesModal";
+import ChooseCosmeticModal from "../../components/ChooseCosmeticModal";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
@@ -33,6 +35,19 @@ const CHAT_COLORS = [
   "#22d3ee",
   "#facc15",
   "#e2e8f0",
+];
+
+// Cosmetic categories that can be equipped/unequipped straight from the
+// profile edit popup (everything the token Shop sells beyond frames and name
+// glows). A slot is only rendered for a category the user actually owns
+// something in, so the popup never shows empty pickers.
+const EQUIPPABLE_COSMETIC_CATEGORIES = [
+  { key: "badge", label: "My Badge", hint: "Shown next to your name." },
+  { key: "avatar_effect", label: "Avatar Effect", hint: "Plays around your avatar." },
+  { key: "username_effect", label: "Username Effect", hint: "Styles your displayed name." },
+  { key: "chat_effect", label: "Chat Effect", hint: "Styles your name in chat." },
+  { key: "profile_glow", label: "Profile Glow", hint: "Rings your whole profile card." },
+  { key: "prestige_effect", label: "Prestige Effect", hint: "Reserved for prestige players." },
 ];
 
 export default function ProfilePage() {
@@ -148,6 +163,15 @@ export default function ProfilePage() {
   // Equipped cosmetics (category → { key, name, visual }) from the official
   // cosmetics catalog — profile frame / badge / effects. Server-written only.
   const [equippedCosmetics, setEquippedCosmetics] = useState({});
+  // Everything the user owns (all categories) — drives which equip slots the
+  // edit popup renders. Loaded once alongside equipped cosmetics.
+  const [ownedCosmetics, setOwnedCosmetics] = useState([]);
+  // Category whose picker modal is open (null = closed). Non-frame categories
+  // only; frames keep using ChooseFrameModal.
+  const [cosmeticPickerCategory, setCosmeticPickerCategory] = useState(null);
+  // Whether the owned-cosmetics fetch finished, so the edit popup can tell
+  // "still loading" apart from "you own nothing yet".
+  const [ownedCosmeticsLoaded, setOwnedCosmeticsLoaded] = useState(false);
   // In-game emote loadout manager (owned animated emotes, max 9).
   const [isEmotesManagerOpen, setIsEmotesManagerOpen] = useState(false);
 
@@ -177,6 +201,35 @@ export default function ProfilePage() {
     }, 10000);
     return () => clearTimeout(timeoutId);
   }, [spectateOverlayUrl, spectateIsLoaded, spectateLoadError]);
+
+  const loadOwnedCosmetics = async () => {
+    try {
+      const response = await fetch("/api/cosmetics", { credentials: "include" });
+      const data = await response.json();
+      if (response.ok && data?.success && Array.isArray(data.owned)) {
+        setOwnedCosmetics(data.owned);
+        setOwnedCosmeticsLoaded(true);
+      }
+    } catch (err) {
+      console.error("[LOAD_OWNED_COSMETICS_ERROR]", err);
+    }
+  };
+
+  // Reflect a cosmetic equipped from ChooseCosmeticModal immediately, without
+  // a full profile reload. The next /api/get-user-tokens load re-syncs the
+  // server-authoritative equippedCosmetics map.
+  const handleEquipCosmetic = (category, item) => {
+    setEquippedCosmetics((prev) => {
+      const next = { ...prev };
+      if (item) {
+        next[category] = { key: item.key, name: item.name, visual: item.visual };
+      } else {
+        delete next[category];
+      }
+      return next;
+    });
+    setCosmeticPickerCategory(null);
+  };
 
   const loadStats = async () => {
     const res = await fetch("/api/user-stats", { credentials: "include" });
@@ -687,6 +740,7 @@ export default function ProfilePage() {
           loadStreakTitles(),
           loadMembership(),
           loadGlow(),
+          loadOwnedCosmetics(),
           loadPrestigeBadge(),
           loadFriends(),
           loadFriendPresence(),
@@ -705,6 +759,20 @@ export default function ProfilePage() {
 
     bootstrap();
   }, [isSignedIn, user]);
+
+  // Keep the owned-cosmetics list (and equipped map) in sync whenever a picker
+  // equips/unequips, or the user buys in another tab — dispatched as
+  // "profileUpdated". Makes newly bought items appear in the edit popup
+  // without a full page reload.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const refreshCosmetics = () => {
+      loadOwnedCosmetics();
+      loadProfileData();
+    };
+    window.addEventListener("profileUpdated", refreshCosmetics);
+    return () => window.removeEventListener("profileUpdated", refreshCosmetics);
+  }, [isSignedIn]);
 
   const loadStreakTitles = async () => {
     try {
@@ -1084,6 +1152,10 @@ export default function ProfilePage() {
   }
 
   const equippedFrame = cosmeticFrameRing(equippedCosmetics?.profile_frame?.visual);
+  // Equipped non-frame effects (cssClass is shipped in globals.css).
+  const profileGlowClass = cosmeticEffectClass(equippedCosmetics?.profile_glow?.visual);
+  const avatarEffectClass = cosmeticEffectClass(equippedCosmetics?.avatar_effect?.visual);
+  const usernameEffectClass = cosmeticEffectClass(equippedCosmetics?.username_effect?.visual);
 
   return (
     <div
@@ -1104,7 +1176,7 @@ export default function ProfilePage() {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div
-            className="relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+            className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${profileGlowClass || ""} ${prestigeBadge.prestigeUnlocked ? "prestige-aura" : ""}`}
             style={
               profileInfo.profileAccent
                 ? {
@@ -1147,7 +1219,7 @@ export default function ProfilePage() {
                 aria-label="Change your Grynd icon"
                 title="Change your Grynd icon"
                 style={equippedFrame.style}
-                className={`group relative rounded-full ${equippedFrame.cssClass || ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
+                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} ${prestigeBadge.prestigeUnlocked ? "prestige-crown" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
               >
                 <IconAvatar
                   iconKey={profileInfo.selectedIcon}
@@ -1169,7 +1241,10 @@ export default function ProfilePage() {
                         : undefined
                     }
                   >
-                    Name : {profileInfo.name || user.fullName || "Unknown user"}
+                    Name :{" "}
+                    <span className={usernameEffectClass || undefined}>
+                      {profileInfo.name || user.fullName || "Unknown user"}
+                    </span>
                   </p>
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
@@ -2485,6 +2560,56 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
+              {ownedCosmeticsLoaded &&
+                !EQUIPPABLE_COSMETIC_CATEGORIES.some((category) =>
+                  ownedCosmetics.some((item) => item.category === category.key),
+                ) && (
+                  <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3 text-sm text-gray-200">
+                    You don&apos;t own any cosmetics yet. Visit the{" "}
+                    <Link
+                      href="/shop"
+                      className="font-semibold text-[#00e5ff] underline hover:text-[#33ebff]"
+                    >
+                      Shop
+                    </Link>{" "}
+                    to unlock badges, avatar effects and more.
+                  </div>
+                )}
+              {EQUIPPABLE_COSMETIC_CATEGORIES.filter((category) =>
+                ownedCosmetics.some((item) => item.category === category.key),
+              ).map((category) => {
+                const equipped = equippedCosmetics?.[category.key];
+                const color = equipped?.visual?.color || "#a78bfa";
+                return (
+                  <div
+                    key={category.key}
+                    className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3"
+                  >
+                    <p className="mb-2 block text-sm text-gray-200">{category.label}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditOpen(false);
+                        setCosmeticPickerCategory(category.key);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-10 w-10 shrink-0 rounded-full border-2"
+                        style={{
+                          borderColor: `${color}99`,
+                          boxShadow: `0 0 12px ${color}66`,
+                        }}
+                      />
+                      <span className="flex-1 text-left text-sm text-gray-200">
+                        {equipped?.name || `Choose ${category.label}`}
+                      </span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                  </div>
+                );
+              })}
               <label htmlFor="profil-edit-password" className="sr-only">
                 New password (optional)
               </label>
@@ -2572,6 +2697,24 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         open={isGlowPickerOpen}
         onClose={() => setIsGlowPickerOpen(false)}
         onEquipped={handleEquipGlow}
+      />
+
+      {/* Token-shop cosmetic picker — owned items for a non-frame category. */}
+      <ChooseCosmeticModal
+        open={Boolean(cosmeticPickerCategory)}
+        category={cosmeticPickerCategory}
+        title={
+          EQUIPPABLE_COSMETIC_CATEGORIES.find(
+            (c) => c.key === cosmeticPickerCategory,
+          )?.label || "Choose Your Cosmetic"
+        }
+        subtitle={
+          EQUIPPABLE_COSMETIC_CATEGORIES.find(
+            (c) => c.key === cosmeticPickerCategory,
+          )?.hint
+        }
+        onClose={() => setCosmeticPickerCategory(null)}
+        onEquipped={(item) => handleEquipCosmetic(cosmeticPickerCategory, item)}
       />
 
       {/* Token-shop profile frame picker — owned frames only. */}

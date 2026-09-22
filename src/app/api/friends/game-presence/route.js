@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
+import { getFrameDecorations } from "../../../../lib/cosmetics";
 import { cacheGet, cacheSet } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
@@ -81,8 +81,11 @@ export async function GET() {
     `;
 
     // Batch-resolve friends' equipped profile frames in one catalog query.
-    const frameByKey = await getProfileFramesByKeys(
-      rows.map((row) => pickProfileFrameKey(row.equipped_cosmetics)),
+    const decorations = await getFrameDecorations(
+      rows.map((row) => row.equipped_cosmetics),
+    );
+    const decorationByRow = new Map(
+      rows.map((row, index) => [row, decorations[index]]),
     );
 
     const byGame = {};
@@ -92,12 +95,11 @@ export async function GET() {
       const parsed = parseCurrentGameId(row.current_game_id);
       const presenceState = row.computed_status || "offline";
 
-      const frameKey = pickProfileFrameKey(row.equipped_cosmetics);
       const friendPayload = {
         id: row.friend_id,
         name: row.name,
         iconKey: row.icon_key,
-        profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+        profileFrame: decorationByRow.get(row) || null,
         gameId: parsed.gameId,
       };
 

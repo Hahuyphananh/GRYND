@@ -576,6 +576,12 @@ async function runCrashArenaCrashSweep() {
       const isFoldOut = evt.kind === "fold-out";
       io.to(roomId).emit("lobby:updated", {
         tableId: evt.tableId,
+        // The settled round's id travels with the results so a client whose
+        // local "current round" pointer was never set (joined late, missed
+        // the round-start relay) still applies the settlement instead of
+        // silently dropping it — which left the table frozen on the fold-out
+        // "settling payouts" card.
+        roundId: evt.roundId,
         ...(isFoldOut
           ? { handOver: true, results: evt.results || null }
           : {

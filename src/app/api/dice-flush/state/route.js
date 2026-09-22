@@ -4,7 +4,7 @@ import { asc, db, eq, resolveExpiredTurn, diceFlushRooms } from "../_lib";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
+import { getFrameDecorations } from "../../../../lib/cosmetics";
 import { sql } from "drizzle-orm";
 // This route is a plain GET that the page middleware does NOT cover (every
 // /api/* path is public there), and it can mutate room state via
@@ -47,8 +47,11 @@ async function enrichRoomPlayers(room) {
   const iconByUser = new Map();
   const colorByUser = new Map();
   const frameByUser = new Map();
-  const frameByKey = await getProfileFramesByKeys(
-    rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+  const decorations = await getFrameDecorations(
+    rows.map((row) => row.equippedCosmetics),
+  );
+  const decorationByClerkId = new Map(
+    rows.map((row, index) => [String(row.clerkId), decorations[index]]),
   );
   for (const row of rows) {
     badgeByUser.set(
@@ -68,8 +71,7 @@ async function enrichRoomPlayers(room) {
         (Boolean(row.isPremium) ? row.chatColor || null : null) ||
         null,
     );
-    const frameKey = pickProfileFrameKey(row.equippedCosmetics);
-    frameByUser.set(String(row.clerkId), frameKey ? frameByKey.get(frameKey) || null : null);
+    frameByUser.set(String(row.clerkId), decorationByClerkId.get(String(row.clerkId)) || null);
   }
   return {
     ...room,

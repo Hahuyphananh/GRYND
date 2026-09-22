@@ -9,7 +9,7 @@ import {
 } from "../../../../db/schema";
 import { eq, ne, and, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../../../../lib/cosmetics";
+import { getFrameDecorations } from "../../../../lib/cosmetics";
 import {
   CRASH_WAGERS,
   CRASH_MIN_BUYIN_MULTIPLIER,
@@ -162,14 +162,11 @@ export async function GET(req: Request) {
       userIconKeyById = new Map(
         userRows.map((u) => [u.id, u.selectedIcon || "default"]),
       );
-      const frameByKey = await getProfileFramesByKeys(
-        userRows.map((u) => pickProfileFrameKey(u.equippedCosmetics)),
+      const decorations = await getFrameDecorations(
+        userRows.map((u) => u.equippedCosmetics),
       );
       userProfileFrameById = new Map(
-        userRows.map((u) => {
-          const key = pickProfileFrameKey(u.equippedCosmetics);
-          return [u.id, key ? frameByKey.get(key) || null : null];
-        }),
+        userRows.map((u, index) => [u.id, decorations[index] || null]),
       );
     }
 

@@ -32,6 +32,7 @@ import {
 } from "../../../../lib/fourInARow";
 import NavigationBar from "../../../../components/navigation-bar";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 // Shared creator-mode presentation layer (admin-only).
 import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
@@ -663,7 +664,7 @@ export default function FourInARowVsAiPage() {
               <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
               <FrameAvatar frame={myIdentity.profileFrame} iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
               <span
-                className="text-xs text-white/70"
+                className={`text-xs text-white/70 ${cosmeticEffectClass(myIdentity.profileFrame?.usernameEffect?.visual) || ""}`}
                 style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}
               >
                 {myDisplayName}

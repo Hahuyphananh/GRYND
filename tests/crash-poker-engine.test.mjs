@@ -129,13 +129,26 @@ test("a fold pause freezes the multiplier for FOLD_PAUSE_MS, then resumes from t
   assert.equal(didResume, true);
   assert.equal(resumed.pausedSince, null);
   assert.equal(resumed.pausedUntil, null);
-  assert.equal(resumed.pausedTotalMs, FOLD_PAUSE_MS + 500); // foldAt → after
-  assert.ok(Math.abs(curveMultiplierAt(resumed, after) - frozen) < 1e-9);
+  // Only the AGREED window is charged as pause. The 500ms the sweep needed to
+  // notice the deadline is real flight time — every client resumes its curve
+  // at the broadcast `pausedUntil`, so charging the sweep's latency as pause
+  // time would drag the server's curve behind the clients' on every fold.
+  assert.equal(resumed.pausedTotalMs, FOLD_PAUSE_MS);
+  const frozenCurveSeconds = timeToCrashMultiplier(frozen);
+  assert.ok(
+    Math.abs(
+      curveMultiplierAt(resumed, after) -
+        crashMultiplierAtTime(frozenCurveSeconds + 0.5),
+    ) < 1e-6,
+  );
+  assert.ok(curveMultiplierAt(resumed, after) > frozen);
 
-  // Later: the curve keeps climbing from the frozen value — 3s of effective
-  // flight (2s pre-fold + 1s post-resume) → crashMultiplierAtTime(3.0) = 2.0875x.
+  // Later: the curve keeps climbing from the frozen value — 3.5s of effective
+  // flight (2s pre-fold + 1.5s post-deadline).
   const later = curveMultiplierAt(resumed, after + 1000);
-  assert.ok(Math.abs(later - crashMultiplierAtTime(3.0)) < 1e-6);
+  assert.ok(
+    Math.abs(later - crashMultiplierAtTime(frozenCurveSeconds + 1.5)) < 1e-6,
+  );
   assert.ok(later > frozen);
 });
 
@@ -165,8 +178,46 @@ test("a fold during an open pause EXTENDS the window; the curve stays frozen", (
     extended.pausedUntil + 1000,
   );
   assert.equal(didResume, true);
-  assert.equal(resumed.pausedTotalMs, extended.pausedUntil - foldAt + 1000);
-  assert.ok(Math.abs(curveMultiplierAt(resumed, extended.pausedUntil + 1000) - frozen) < 1e-9);
+  // The pause costs exactly its own (extended) window, nothing more.
+  assert.equal(resumed.pausedTotalMs, extended.pausedUntil - foldAt);
+  const later = curveMultiplierAt(resumed, extended.pausedUntil + 1000);
+  assert.ok(
+    Math.abs(
+      later - crashMultiplierAtTime(timeToCrashMultiplier(frozen) + 1),
+    ) < 1e-6,
+  );
+  assert.ok(later > frozen);
+});
+
+test("pause accounting is sweep-latency independent — the server curve matches the clients' curve", () => {
+  const t0 = 1_000_000;
+  // Three folds, each resumed LATE by the sweep (it ticks ~1s while a hand
+  // runs, 15s when idle). Whatever the latency, the curve must depend only on
+  // real FLIGHT time — the multiplier every client renders.
+  const pauseStarts = [t0 + 2000, t0 + 8000, t0 + 15_000];
+  let hand = createHand({ players: SIX_PLAYERS, wager: 10, startedAt: t0 });
+  let pausedMs = 0;
+  let cursor = t0;
+  for (const since of pauseStarts) {
+    hand = pauseHandOnFold(hand, since);
+    pausedMs += FOLD_PAUSE_MS;
+    const resumedAt = since + FOLD_PAUSE_MS + 1200; // sweep noticed 1.2s late
+    const { hand: resumed, resumed: didResume } = resumePauseIfDue(hand, resumedAt);
+    assert.equal(didResume, true);
+    hand = resumed;
+    cursor = resumedAt;
+  }
+
+  for (const extra of [0, 1000, 5000]) {
+    const t = cursor + extra;
+    const flightSeconds = (t - t0 - pausedMs) / 1000;
+    assert.ok(
+      Math.abs(
+        curveMultiplierAt(hand, t) - crashMultiplierAtTime(flightSeconds),
+      ) < 1e-6,
+      `${t}: server ${curveMultiplierAt(hand, t)} vs curve ${crashMultiplierAtTime(flightSeconds)}`,
+    );
+  }
 });
 
 test("no pause fields → curveMultiplierAt is a plain continuous flight (legacy hands)", () => {
@@ -282,10 +333,13 @@ test("fold-out defers settlement: pause runs FOLD_PAUSE_MS + FOLD_OUT_SETTLE_GRA
   // The curve stays frozen the whole window (the fold reveal).
   assert.ok(Math.abs(curveMultiplierAt(pending, settleAt - 500) - frozeOutAt) < 1e-9);
   // The instant the deadline passes the pause closes and the flight resumes
-  // from the exact frozen value — no jump.
+  // from the frozen value — no jump (1ms of flight, at most 0.0006x on the
+  // fastest segment).
   const { hand: resumed, resumed: didResume } = resumePauseIfDue(pending, settleAt + 1);
   assert.equal(didResume, true);
-  assert.ok(Math.abs(curveMultiplierAt(resumed, settleAt + 1) - frozeOutAt) < 1e-9);
+  const after = curveMultiplierAt(resumed, settleAt + 1);
+  assert.ok(after >= frozeOutAt);
+  assert.ok(after - frozeOutAt <= 0.001);
 });
 
 // ── Folding ────────────────────────────────────────────────────────────────

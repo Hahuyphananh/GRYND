@@ -7,9 +7,10 @@ import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import {
-  getProfileFramesByKeys,
-  pickProfileFrameKey,
-  resolveProfileFrame,
+  getFrameDecorations,
+  getCosmeticsByKeysForCategory,
+  pickEquippedKey,
+  resolveEquippedCosmetic,
 } from "../../../../lib/cosmetics";
 import { sanitizeString } from "../../../../lib/security/validation";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
@@ -136,8 +137,18 @@ export async function GET(req) {
 
     // Batch-resolve every sender's equipped profile frame in one catalog
     // query (see src/lib/cosmetics.ts). Unknown/disabled keys drop out.
-    const frameByKey = await getProfileFramesByKeys(
-      rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+    const decorations = await getFrameDecorations(
+      rows.map((row) => row.equippedCosmetics),
+    );
+    const decorationByClerkId = new Map(
+      rows.map((row, index) => [row.clerkId, decorations[index]]),
+    );
+
+    // Batch-resolve every sender's equipped chat effect in one catalog query
+    // (see src/lib/cosmetics.ts). Unknown/disabled keys drop out.
+    const chatEffectByKey = await getCosmeticsByKeysForCategory(
+      "chat_effect",
+      rows.map((row) => pickEquippedKey(row.equippedCosmetics, "chat_effect")),
     );
 
     const messages = rows.reverse().map((msg) => {
@@ -186,10 +197,11 @@ export async function GET(req) {
         equippedCosmetics,
         ...cleanMsg
       } = msg;
-      const frameKey = pickProfileFrameKey(equippedCosmetics);
+      const chatEffectKey = pickEquippedKey(equippedCosmetics, "chat_effect");
       return {
         ...cleanMsg,
-        profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+        profileFrame: decorationByClerkId.get(msg.clerkId) ?? null,
+        chatEffect: chatEffectKey ? chatEffectByKey.get(chatEffectKey) || null : null,
         equippedTitle: primaryTitle,
         streakTitle: streakTitle || null,
         premium,
@@ -303,7 +315,9 @@ export async function POST(req) {
 
     // Sender's equipped profile frame — attached so the live socket message
     // and the optimistic/refetched feed render the same ring as history.
-    const profileFrame = await resolveProfileFrame(appUser?.equippedCosmetics);
+    const [profileFrame] = await getFrameDecorations([appUser?.equippedCosmetics]);
+    // Sender's equipped chat effect — same live/history parity as the frame.
+    const chatEffect = await resolveEquippedCosmetic("chat_effect", appUser?.equippedCosmetics);
 
     const inserted = await db
       .insert(chatMessages)
@@ -327,6 +341,7 @@ export async function POST(req) {
         message: {
           ...inserted[0],
           profileFrame,
+          chatEffect,
           selectedTitle,
           selectedSpecialTitle,
           equippedTitle,

@@ -39,6 +39,7 @@ import { motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../../components/navigation-bar";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import ReportModal from "../../../../components/ReportModal";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -289,7 +290,7 @@ function LockedInBetsPanel({
         <div>
           <div className="mb-1.5 inline-flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-yellow-200">
             <FrameAvatar frame={myProfileFrame} iconKey={myIconKey} name={myName} size="h-4 w-4" />
-            <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+            <span className={`truncate ${cosmeticEffectClass(myProfileFrame?.usernameEffect?.visual) || ""}`} style={myNameColor ? { color: myNameColor } : undefined}>
               {myName}
             </span>
           </div>
@@ -298,7 +299,7 @@ function LockedInBetsPanel({
         <div>
           <div className="mb-1.5 inline-flex min-w-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
             <FrameAvatar frame={oppProfileFrame} iconKey={oppIconKey} name={oppName} size="h-4 w-4" />
-            <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+            <span className={`truncate ${cosmeticEffectClass(oppProfileFrame?.usernameEffect?.visual) || ""}`} style={oppNameColor ? { color: oppNameColor } : undefined}>
               {oppName}
             </span>
           </div>
@@ -2025,7 +2026,7 @@ export default function RoulettePvpGamePage({ params }) {
                   <div>
                     <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/70">
                       <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={myDisplayName} size="h-4 w-4" />
-                      <span className="max-w-[90px] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+                      <span className={`max-w-[90px] truncate ${cosmeticEffectClass(mySeatProfileFrame?.usernameEffect?.visual) || ""}`} style={myNameColor ? { color: myNameColor } : undefined}>
                         {myDisplayName}
                       </span>
                     </div>
@@ -2092,7 +2093,7 @@ export default function RoulettePvpGamePage({ params }) {
                   <div>
                     <div className="mb-1 inline-flex items-center gap-1 text-[11px] font-bold text-white/70">
                       <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={oppDisplayName} size="h-4 w-4" />
-                      <span className="max-w-[90px] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+                      <span className={`max-w-[90px] truncate ${cosmeticEffectClass(oppSeatProfileFrame?.usernameEffect?.visual) || ""}`} style={oppNameColor ? { color: oppNameColor } : undefined}>
                         {oppDisplayName}
                       </span>
                     </div>
@@ -2149,7 +2150,7 @@ export default function RoulettePvpGamePage({ params }) {
                     {myEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-br-sm border border-cyan-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(0,229,255,.3)]"><EmoteArtwork emote={myEmote} imageClassName="h-7 w-7" /></span>}
                     <span className="inline-flex min-w-0 items-center gap-1">
                       <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={myDisplayName} size="h-5 w-5" />
-                      <span className="truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+                      <span className={`truncate ${cosmeticEffectClass(mySeatProfileFrame?.usernameEffect?.visual) || ""}`} style={myNameColor ? { color: myNameColor } : undefined}>
                         {myDisplayName}
                       </span>
                     </span>
@@ -2169,7 +2170,7 @@ export default function RoulettePvpGamePage({ params }) {
                     {incomingEmote && <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-xl rounded-bl-sm border border-fuchsia-300/60 bg-[#071531] px-2 py-1 text-base shadow-[0_0_18px_rgba(255,60,172,.35)]"><EmoteArtwork emote={incomingEmote} imageClassName="h-7 w-7" /></span>}
                     <span className="inline-flex min-w-0 items-center gap-1">
                       <FrameAvatar frame={oppSeatProfileFrame} iconKey={oppSeatIcon} name={oppDisplayName} size="h-5 w-5" />
-                      <span className="truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+                      <span className={`truncate ${cosmeticEffectClass(oppSeatProfileFrame?.usernameEffect?.visual) || ""}`} style={oppNameColor ? { color: oppNameColor } : undefined}>
                         {oppDisplayName}
                       </span>
                     </span>

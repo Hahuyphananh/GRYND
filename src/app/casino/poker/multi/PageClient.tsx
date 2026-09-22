@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
@@ -1846,7 +1847,10 @@ export default function PokerPage() {
                 {p.isAI ? null : (
                   <FrameAvatar frame={p.profileFrame} iconKey={p.iconKey} name={p.name} size="h-4 w-4" />
                 )}
-                <span style={p.nameColor ? { color: p.nameColor } : undefined}>
+                <span
+                  className={cosmeticEffectClass((p as any)?.profileFrame?.usernameEffect?.visual) || undefined}
+                  style={p.nameColor ? { color: p.nameColor } : undefined}
+                >
                   {p.name}
                 </span>
               </p>
@@ -2898,7 +2902,10 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                       {occupant.isAI ? null : (
                         <FrameAvatar frame={occupant.profileFrame} iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
                       )}
-                      <span className="truncate" style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
+                      <span
+                        className={`truncate ${cosmeticEffectClass((occupant as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
+                        style={occupant.nameColor ? { color: occupant.nameColor } : undefined}
+                      >
                         {occupant.name}
                       </span>
                       {occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}

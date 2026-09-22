@@ -24,6 +24,7 @@ import Footer from "../../../../components/Footer";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 // Shared Creator Mode foundation (admin-only): mounts the viewport
 // recorder + overlay, auto-starts when the match actually begins (a real
 // round_1..N is in play, i.e. left the waiting room) and auto-stops once
@@ -1123,6 +1124,10 @@ export default function KenoPvpMatchPage({ params }) {
   const oppSeatProfileFrame = oppSeatSummary?.profileFrame || null;
   const myNameColor = mySeatSummary?.nameColor || null;
   const oppNameColor = oppSeatSummary?.nameColor || null;
+  const myNameEffect =
+    cosmeticEffectClass(mySeatSummary?.profileFrame?.usernameEffect?.visual) || "";
+  const oppNameEffect =
+    cosmeticEffectClass(oppSeatSummary?.profileFrame?.usernameEffect?.visual) || "";
 
   // ── Creator Mode arrangement ──────────────────────────────────────
   // The SAME game content composes the normal page and the creator
@@ -1515,13 +1520,13 @@ export default function KenoPvpMatchPage({ params }) {
         <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
           <span className="inline-flex items-center gap-1 rounded-full border border-[#00ffa6]/40 bg-[#00ffa6]/15 px-2 py-0.5 text-[#00ffa6]">
             <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-3.5 w-3.5" />
-            <span className="max-w-[7rem] truncate" style={myNameColor ? { color: myNameColor } : undefined}>
+            <span className={`max-w-[7rem] truncate ${myNameEffect}`} style={myNameColor ? { color: myNameColor } : undefined}>
               {me === "player1" ? p1Name : p2Name}
             </span>
             <ScoreNumber value={myPts} className="font-black" />
           </span>
           <span className="inline-flex items-center gap-1 rounded-full border border-[#FFD700]/40 bg-[#FFD700]/15 px-2 py-0.5 text-[#FFD700]">
-            <span className="max-w-[7rem] truncate" style={oppNameColor ? { color: oppNameColor } : undefined}>
+            <span className={`max-w-[7rem] truncate ${oppNameEffect}`} style={oppNameColor ? { color: oppNameColor } : undefined}>
               {oppName}
             </span>
             <ScoreNumber value={oppPts} className="font-black" />
@@ -1668,7 +1673,10 @@ export default function KenoPvpMatchPage({ params }) {
             <div className="flex items-center gap-3">
               <span className="relative inline-flex items-center gap-1.5 font-bold text-[#00ffa6]">
                 <FrameAvatar frame={mySeatProfileFrame} iconKey={mySeatIcon} name={me === "player1" ? p1Name : p2Name} size="h-4 w-4" />
-                <span style={myNameColor ? { color: myNameColor } : undefined}>
+                <span
+                  className={myNameEffect || undefined}
+                  style={myNameColor ? { color: myNameColor } : undefined}
+                >
                   {me === "player1" ? p1Name : p2Name}{" "}
                   <ScoreNumber value={myPts} className="font-black" />
                 </span>
@@ -1676,7 +1684,10 @@ export default function KenoPvpMatchPage({ params }) {
               </span>
               <span className="text-white/40">–</span>
               <span className="relative inline-flex items-center gap-1.5 font-bold text-[#FFD700]">
-                <span style={oppNameColor ? { color: oppNameColor } : undefined}>
+                <span
+                  className={oppNameEffect || undefined}
+                  style={oppNameColor ? { color: oppNameColor } : undefined}
+                >
                   {me === "player2" ? p2Name : p1Name}{" "}
                   <ScoreNumber value={oppPts} className="font-black" />
                 </span>

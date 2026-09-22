@@ -13,6 +13,7 @@ import { CreatorResponsiveLayout } from "../../../../components/creator-mode/Cre
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat, playTick } from "../../../../lib/gameAudio";
@@ -1090,7 +1091,10 @@ export default function ChessAIPageInner() {
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 font-bold text-fuchsia-300">
                     <FrameAvatar frame={myIdentity.profileFrame} iconKey={myIdentity.iconKey} name={myDisplayName} size="h-5 w-5" />
-                    <span style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}>
+                    <span
+                      className={cosmeticEffectClass(myIdentity.profileFrame?.usernameEffect?.visual) || undefined}
+                      style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}
+                    >
                       {playerSideLabel}
                     </span>
                   </span>

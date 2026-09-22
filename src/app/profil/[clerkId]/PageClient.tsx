@@ -11,13 +11,23 @@ import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
 import UserStatsTabs from "../../../components/UserStatsTabs";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
-import { cosmeticFrameRing } from "../../../lib/profileCosmetics";
+import { cosmeticFrameRing, cosmeticEffectClass } from "../../../lib/profileCosmetics";
 
 type PublicUser = {
   clerkId: string;
   name: string;
   selectedIcon: string | null;
   profileAccent: string | null;
+  // Equipped non-frame effects (server-resolved catalog name + visual), or null.
+  avatarEffect:
+    | { key: string; name: string; visual: { cssClass?: string; color?: string } }
+    | null;
+  usernameEffect:
+    | { key: string; name: string; visual: { cssClass?: string; color?: string } }
+    | null;
+  profileGlow:
+    | { key: string; name: string; visual: { cssClass?: string; color?: string } }
+    | null;
   // Equipped profile frame (server-resolved catalog name + visual), or null.
   profileFrame:
     | { key: string; name: string; visual: { cssClass?: string; color?: string } }
@@ -38,6 +48,7 @@ type PublicUser = {
   highestTitle: string | null;
   selectedSpecialTitle: string | null;
   prestigeBadge: string | null;
+  prestigeUnlocked: boolean;
   dailyStreakCurrent: number;
   dailyStreakBest: number;
   // Leaderboard-style record (same shape the /classement boards read).
@@ -154,6 +165,9 @@ export default function PublicProfilePage() {
   }
 
   const frame = cosmeticFrameRing(profile.profileFrame?.visual);
+  const avatarEffectClass = cosmeticEffectClass(profile.avatarEffect?.visual);
+  const usernameEffectClass = cosmeticEffectClass(profile.usernameEffect?.visual);
+  const profileGlowClass = cosmeticEffectClass(profile.profileGlow?.visual);
 
   return (
     <div className="relative min-h-screen text-white">
@@ -183,7 +197,7 @@ export default function PublicProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8"
+          className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8 ${profileGlowClass || ""} ${profile.prestigeUnlocked ? "prestige-aura" : ""}`}
           style={
             profile.profileAccent
               ? {
@@ -195,7 +209,7 @@ export default function PublicProfilePage() {
         >
           <div className="flex items-center gap-4">
             <span
-              className={`inline-flex shrink-0 rounded-full ${frame.cssClass}`}
+              className={`relative inline-flex shrink-0 rounded-full ${frame.cssClass} ${avatarEffectClass || ""} ${profile.prestigeUnlocked ? "prestige-crown" : ""}`}
               style={frame.style}
             >
               <IconAvatar
@@ -207,7 +221,7 @@ export default function PublicProfilePage() {
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold">{profile.name}</h1>
+                <h1 className={`text-2xl font-bold ${usernameEffectClass || ""}`}>{profile.name}</h1>
                 {(profile.prestigeBadge ||
                   profile.selectedSpecialTitle ||
                   profile.selectedTitle) && (

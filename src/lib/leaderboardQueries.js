@@ -1,6 +1,6 @@
 import { getNeonSql } from "../db/neon";
 import { resolvePrestigeBadge } from "./prestige";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "./cosmetics";
+import { getFrameDecorations } from "./cosmetics";
 
 let _sql = null;
 function getSql() {
@@ -373,15 +373,14 @@ function decoratePrestigeBadge(item) {
 async function attachProfileFrames(items) {
   const list = Array.isArray(items) ? items : [];
   if (list.length === 0) return list;
-  const frames = await getProfileFramesByKeys(
-    list.map((item) => pickProfileFrameKey(item?.equipped_cosmetics)),
+  const decorations = await getFrameDecorations(
+    list.map((item) => item?.equipped_cosmetics),
   );
-  return list.map((item) => {
+  return list.map((item, index) => {
     if (!item) return item;
     const { equipped_cosmetics, ...rest } = item;
-    const key = pickProfileFrameKey(equipped_cosmetics);
-    const frame = key ? frames.get(key) : null;
-    return frame ? { ...rest, profileFrame: frame } : rest;
+    const decoration = decorations[index];
+    return decoration ? { ...rest, profileFrame: decoration } : rest;
   });
 }
 

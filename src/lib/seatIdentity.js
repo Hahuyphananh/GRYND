@@ -17,7 +17,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { glows, tokenSubscriptions, users } from "../db/schema";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "./stripe/subscriptions";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "./cosmetics";
+import { getFrameDecorations } from "./cosmetics";
 
 const ICON_KEY_REGEX = /^[a-z0-9][a-z0-9._-]{0,119}$/;
 const CLERK_ID_PREFIX = "user_";
@@ -78,18 +78,23 @@ export async function getSeatIdentity(player1Id, player2Id) {
 
   const byClerkId = new Map(rows.map((row) => [row.clerkId, row]));
   // One catalog query resolves both seats' equipped profile frames.
-  const frameByKey = await getProfileFramesByKeys(
-    rows.map((row) => pickProfileFrameKey(row.equippedCosmetics)),
+  // One catalog pass resolves both seats' frames + avatar effects. The
+  // avatar effect is embedded on the frame payload, so every
+  // <FrameAvatar frame={...}> seat renders it with no extra plumbing.
+  const decorations = await getFrameDecorations(
+    rows.map((row) => row.equippedCosmetics),
+  );
+  const decorationByClerkId = new Map(
+    rows.map((row, index) => [row.clerkId, decorations[index]]),
   );
   const resolve = (clerkId) => {
     if (!isRealUser(clerkId)) return null;
     const row = byClerkId.get(clerkId);
     const base = resolveSeatIdentityRow(row);
     if (!base) return null;
-    const frameKey = pickProfileFrameKey(row?.equippedCosmetics);
     return {
       ...base,
-      profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+      profileFrame: decorationByClerkId.get(clerkId) ?? null,
     };
   };
 

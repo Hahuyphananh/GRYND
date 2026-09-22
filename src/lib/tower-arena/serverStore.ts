@@ -35,7 +35,7 @@ import {
 import { applyLeaderboardCounters } from "../leaderboardCounters";import { applyPrestigeResult, resolvePrestigeBadge } from "../prestige";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../cosmetics";
+import { getFrameDecorations } from "../cosmetics";
 import {
   buildResourcePool,
   BLOCK_SHAPES,
@@ -1594,8 +1594,11 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
     })
     .from(users)
     .where(inArray(users.clerkId, ids));
-  const frameByKey = await getProfileFramesByKeys(
-    rows.map((row: any) => pickProfileFrameKey(row.equippedCosmetics)),
+  const decorations = await getFrameDecorations(
+    rows.map((row: any) => row.equippedCosmetics),
+  );
+  const decorationByClerkId = new Map(
+    rows.map((row: any, index: number) => [row.clerkId, decorations[index]]),
   );
   const map = new Map<
     string,
@@ -1607,11 +1610,10 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
     }
   >();
   for (const row of rows) {
-    const frameKey = pickProfileFrameKey(row.equippedCosmetics);
     map.set(row.clerkId, {
       name: row.name || "Player",
       iconKey: row.selectedIcon || DEFAULT_ICON_KEY,
-      profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+      profileFrame: decorationByClerkId.get(row.clerkId) || null,
       prestigeBadge: resolvePrestigeBadge({
         xp: row.xp,
         prestigeLevel: row.prestigeLevel,
@@ -1703,8 +1705,11 @@ export async function listOpenTowerArenaMatches({
   for (const p of playerRows) {
     countByMatch.set(p.matchId, (countByMatch.get(p.matchId) ?? 0) + 1);
   }
-  const hostFrameByKey = await getProfileFramesByKeys(
-    userRows.map((u) => pickProfileFrameKey(u.equippedCosmetics)),
+  const hostDecorations = await getFrameDecorations(
+    userRows.map((u) => u.equippedCosmetics),
+  );
+  const hostDecorationByClerkId = new Map(
+    userRows.map((u, index) => [u.clerkId, hostDecorations[index]]),
   );
   const hostDisplay = new Map(userRows.map((u) => [u.clerkId, u]));
   const excludeMyOpenLobby = excludeUserId
@@ -1731,10 +1736,9 @@ export async function listOpenTowerArenaMatches({
         hostUserId: m.hostUserId,
         hostName: host?.name ?? "Player",
         hostIconKey: host?.selectedIcon ?? DEFAULT_ICON_KEY,
-        hostProfileFrame: (() => {
-          const frameKey = pickProfileFrameKey(host?.equippedCosmetics);
-          return frameKey ? hostFrameByKey.get(frameKey) || null : null;
-        })(),
+        hostProfileFrame: host?.clerkId
+          ? hostDecorationByClerkId.get(host.clerkId) || null
+          : null,
         wager: m.wager,
         maxPlayers: m.maxPlayers,
         playerCount: countByMatch.get(m.id) ?? 0,

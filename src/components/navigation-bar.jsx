@@ -15,6 +15,7 @@ import AdminBadge from "./AdminBadge";
 import BattlepassClaimBadge from "./BattlepassClaimBadge";
 import { IconCoins, IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
+import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
 import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 
@@ -52,6 +53,7 @@ function NavigationBar({ currentPath = "" }) {
     selectedIcon: "",
     // Equipped profile frame (token-shop `profile_frame`), or null.
     profileFrame: null,
+    usernameEffect: null,
     selectedTitle: "",
     streakTitle: null,
     // Server-resolved prestige badge (null unless equipped + earned) plus
@@ -189,7 +191,21 @@ function NavigationBar({ currentPath = "" }) {
             ...prev,
             name: data.data.name || "",
             selectedIcon: data.data.selectedIcon || "",
-            profileFrame: data.data.equippedCosmetics?.profile_frame || null,
+            // Embed the equipped avatar effect on the frame payload so the
+            // shared <FrameAvatar> renders it (see src/lib/profileCosmetics).
+            profileFrame: (() => {
+              const frame = data.data.equippedCosmetics?.profile_frame || null;
+              const avatarEffect =
+                data.data.equippedCosmetics?.avatar_effect || null;
+              if (!frame && !avatarEffect) return null;
+              return {
+                key: frame?.key ?? null,
+                name: frame?.name ?? null,
+                visual: frame?.visual ?? null,
+                avatarEffect,
+              };
+            })(),
+            usernameEffect: data.data.equippedCosmetics?.username_effect || null,
             streakTitle: data.data.streakTitle || null,
           }));
         if (includeMeta) {
@@ -520,7 +536,7 @@ function NavigationBar({ currentPath = "" }) {
                         className="border border-[#00e5ff]/50 transition group-hover:scale-105"
                       />
                       <div className="flex flex-col leading-tight">
-                        <span className="text-xs text-[#c9f7ff] flex items-center gap-1.5">
+                        <span className={`text-xs text-[#c9f7ff] flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}>
                           {profile?.name ||
                             user?.username ||
                             user?.firstName ||
@@ -650,7 +666,7 @@ function NavigationBar({ currentPath = "" }) {
                     size="h-10 w-10"
                   />
                   <div>
-                    <div className="text-[#c9f7ff] text-sm flex items-center gap-1.5">{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
+                    <div className={`text-[#c9f7ff] text-sm flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}>{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
                     <div
                       className={`text-xs ${
                         profile?.prestigeBadge

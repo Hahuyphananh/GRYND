@@ -17,6 +17,7 @@ import PlayerList from "./PlayerList";
 import PlayerSidebar from "./PlayerSidebar";
 import IconAvatar from "../IconAvatar";
 import { frameWrapperProps } from "../FrameAvatar";
+import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import PotDisplay from "./PotDisplay";
 import TableBalance from "./TableBalance";
 import RoundTimer from "./RoundTimer";
@@ -949,7 +950,7 @@ export default function ArenaTable({
                       showFrame={false}
                     />
                   </span>
-                  <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
+                  <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"} ${cosmeticEffectClass(p?.profileFrame?.usernameEffect?.visual) || ""}`}>
                     {p.name}
                     {p.isYou ? " (You)" : ""}
                   </span>

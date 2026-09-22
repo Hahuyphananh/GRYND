@@ -15,6 +15,7 @@ import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
@@ -1000,7 +1001,10 @@ export default function DiceFlushPage() {
       <div className="flex items-center gap-2">
         <div className="relative inline-flex items-center gap-1.5 rounded-full bg-[#f87171]/20 border border-[#f87171]/30 px-3 py-1 text-sm font-black text-[#f87171]">
           <FrameAvatar frame={opponent?.profileFrame} iconKey={opponent?.iconKey || null} name={opponent?.name} size="h-4 w-4" />
-          <span style={opponent?.nameColor ? { color: opponent.nameColor } : undefined}>
+          <span
+            className={cosmeticEffectClass((opponent?.profileFrame as { usernameEffect?: { visual?: unknown } } | null)?.usernameEffect?.visual) || undefined}
+            style={opponent?.nameColor ? { color: opponent.nameColor } : undefined}
+          >
             {opponent?.name || "OPPONENT"}
           </span>
           {opponent?.prestigeBadge && (

@@ -5,7 +5,7 @@ import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
-import { getCosmeticByKey } from "../../../../lib/cosmetics";
+import { getCosmeticByKey, resolveEquippedCosmetic } from "../../../../lib/cosmetics";
 import { getLevelFromXp } from "../../../../lib/battlepass";
 import {
   getPrestigeStatus,
@@ -153,6 +153,14 @@ export async function GET(req: NextRequest) {
       equippedCosmetics: _equippedCosmetics,
       ...safeUser
     } = user;
+    // Equipped non-frame effects — resolved through the catalog so an
+    // unknown/disabled key can never render (name + visual are server-owned).
+    const [avatarEffect, usernameEffect, profileGlow] = await Promise.all([
+      resolveEquippedCosmetic("avatar_effect", user.equippedCosmetics),
+      resolveEquippedCosmetic("username_effect", user.equippedCosmetics),
+      resolveEquippedCosmetic("profile_glow", user.equippedCosmetics),
+    ]);
+
     return NextResponse.json({
       success: true,
       user: {
@@ -160,6 +168,9 @@ export async function GET(req: NextRequest) {
         level: battlepassLevel,
         selectedIcon: safeIcon,
         profileFrame,
+        avatarEffect,
+        usernameEffect,
+        profileGlow,
         prestige: prestige.prestige,
         prestigeNetWins: prestige.prestigeNetWins,
         nextPrestigeRequirement: prestige.nextPrestigeRequirement,

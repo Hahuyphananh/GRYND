@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
 import FrameAvatar from "./FrameAvatar";
+import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import {
   subscribeToBigWins,
   subscribeToChatMessages,
@@ -486,7 +487,10 @@ export default function ChatWidget() {
                               />
                             );
                           })()}
-                          <span style={msg.chatColor ? { color: msg.chatColor } : undefined}>
+                          <span
+                            className={cosmeticEffectClass(msg.chatEffect?.visual) || undefined}
+                            style={msg.chatColor ? { color: msg.chatColor } : undefined}
+                          >
                             {msg.displayName || "Player"}
                           </span>
                           {msg.premium ? (

@@ -43,7 +43,7 @@ import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../cosmetics";
+import { getFrameDecorations } from "../cosmetics";
 import {
   memoryGridMatches,
   memoryGridRounds,
@@ -1447,18 +1447,17 @@ export async function fetchMatchRounds(matchId) {
 // lobby rows and the match-view player cards show real names and
 // avatars. Best-effort: lookup failures degrade to the Clerk id
 // (never crash the route).
-function summariseUsers(rows, frameByKey) {
+function summariseUsers(rows, decorationByClerkId) {
   const out = {};
   for (const r of rows) {
     if (!r || !r.clerkId) continue;
-    const frameKey = pickProfileFrameKey(r.equippedCosmetics);
     out[r.clerkId] = {
       id: r.clerkId,
       displayName: r.displayName || r.clerkId,
       // Official Grynd icon key only — never an arbitrary avatar URL.
       iconKey: r.iconKey || "default",
       // Equipped profile frame (server-resolved catalog visual), or null.
-      profileFrame: frameKey ? frameByKey?.get(frameKey) || null : null,
+      profileFrame: decorationByClerkId?.get(r.clerkId) || null,
     };
   }
   return out;
@@ -1499,10 +1498,13 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
     );
     rows = [];
   }
-  const frameByKey = await getProfileFramesByKeys(
-    rows.map((r) => pickProfileFrameKey(r.equippedCosmetics)),
+  const decorations = await getFrameDecorations(
+    rows.map((r) => r.equippedCosmetics),
   );
-  const summary = summariseUsers(rows, frameByKey);
+  const decorationByClerkId = new Map(
+    rows.map((r, index) => [r.clerkId, decorations[index]]),
+  );
+  const summary = summariseUsers(rows, decorationByClerkId);
   const enrichOne = (m) => {
     if (!m) return m;
     const p1 = m.player1Id ? summary[m.player1Id] || null : null;

@@ -34,6 +34,7 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
 import RoundMarkers from "../../../../components/casino/RoundMarkers";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { RockFistIcon } from "../../../../components/icons/CustomIcons";
 import {
@@ -444,7 +445,10 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
           <div className="mb-2 flex items-center justify-center gap-5 text-xs font-semibold text-[#a8f4ff]">
             <span className="inline-flex items-center gap-1.5">
               <FrameAvatar frame={myIdentity.profileFrame} iconKey={myIdentity.iconKey} name={myDisplayName} size="h-4 w-4" />
-              <span style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}>
+              <span
+                className={cosmeticEffectClass(myIdentity.profileFrame?.usernameEffect?.visual) || undefined}
+                style={myIdentity.nameColor ? { color: myIdentity.nameColor } : undefined}
+              >
                 {myDisplayName}
               </span>
             </span>

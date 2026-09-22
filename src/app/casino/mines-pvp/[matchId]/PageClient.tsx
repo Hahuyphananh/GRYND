@@ -48,6 +48,7 @@ import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -308,7 +309,7 @@ function PlayerSeat({
               the key is missing/invalid. */}
           <FrameAvatar frame={profileFrame} iconKey={iconKey} name={name} size="h-7 w-7" />
           <span
-            className="truncate text-sm font-bold text-white/90"
+            className={`truncate text-sm font-bold text-white/90 ${cosmeticEffectClass((profileFrame as any)?.usernameEffect?.visual) || ""}`}
             style={nameColor ? { color: nameColor } : undefined}
           >
             {name}

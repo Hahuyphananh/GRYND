@@ -20,6 +20,7 @@ import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
@@ -987,7 +988,10 @@ const sitAsHuman = async (seatIndex: number) => {
                   ) : (
                     <FrameAvatar frame={player.profileFrame} iconKey={player.iconKey} name={player.name} size="h-4 w-4" />
                   )}
-                  <span style={player.nameColor ? { color: player.nameColor } : undefined}>
+                  <span
+                    className={cosmeticEffectClass((player as any)?.profileFrame?.usernameEffect?.visual) || undefined}
+                    style={player.nameColor ? { color: player.nameColor } : undefined}
+                  >
                     {player.name}
                   </span>
                   {(player as any).prestigeBadge && (
@@ -1100,7 +1104,10 @@ const sitAsHuman = async (seatIndex: number) => {
               ) : (
                 <FrameAvatar frame={entry.profileFrame} iconKey={entry.iconKey} name={entry.name} size="h-3 w-3" />
               )}
-              <span className="truncate" style={entry.nameColor ? { color: entry.nameColor } : undefined}>
+              <span
+                className={`truncate ${cosmeticEffectClass((entry as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
+                style={entry.nameColor ? { color: entry.nameColor } : undefined}
+              >
                 {entry.name}
               </span>
             </p>
@@ -1424,7 +1431,10 @@ const sitAsHuman = async (seatIndex: number) => {
                               ) : (
                                 <FrameAvatar frame={occupant.profileFrame} iconKey={occupant.iconKey} name={occupant.name} size="h-4 w-4" />
                               )}
-                              <span className="truncate" style={occupant.nameColor ? { color: occupant.nameColor } : undefined}>
+                              <span
+                                className={`truncate ${cosmeticEffectClass((occupant as any)?.profileFrame?.usernameEffect?.visual) || ""}`}
+                                style={occupant.nameColor ? { color: occupant.nameColor } : undefined}
+                              >
                                 {occupant.name}
                               </span>
                               {(occupant as any).prestigeBadge && (

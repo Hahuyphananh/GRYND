@@ -14,6 +14,7 @@ import {
 } from "@tabler/icons-react";
 import IconAvatar from "../IconAvatar";
 import { frameWrapperProps } from "../FrameAvatar";
+import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 
 /**
  * PlayerSidebar — poker-style player panel shown beside the game canvas.
@@ -107,7 +108,7 @@ export default function PlayerSidebar({
                 showFrame={false}
               />
             </span>
-            <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
+            <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"} ${cosmeticEffectClass(p?.profileFrame?.usernameEffect?.visual) || ""}`}>
               {p.name}
               {p.isYou ? " (You)" : ""}
             </span>
@@ -150,7 +151,7 @@ export default function PlayerSidebar({
                   showFrame={false}
                 />
               </span>
-              <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"}`}>
+              <span className={`truncate font-semibold flex-1 ${p.isYou ? "text-[#FFD700]" : "text-[#d8fbff]"} ${cosmeticEffectClass(p?.profileFrame?.usernameEffect?.visual) || ""}`}>
                 {p.name}
                 {p.isYou ? " (You)" : ""}
               </span>

@@ -40,7 +40,23 @@ export default function useMySeatIdentity() {
             name: data.data.name || null,
             iconKey: data.data.selectedIcon || null,
             nameColor: data.data.nameColor || null,
-            profileFrame: data.data.equippedCosmetics?.profile_frame || null,
+            // Embed the equipped avatar effect on the frame payload so the
+            // shared <FrameAvatar> renders it (see src/lib/profileCosmetics).
+            profileFrame: (() => {
+              const frame = data.data.equippedCosmetics?.profile_frame || null;
+              const avatarEffect =
+                data.data.equippedCosmetics?.avatar_effect || null;
+              const usernameEffect =
+                data.data.equippedCosmetics?.username_effect || null;
+              if (!frame && !avatarEffect && !usernameEffect) return null;
+              return {
+                key: frame?.key ?? null,
+                name: frame?.name ?? null,
+                visual: frame?.visual ?? null,
+                avatarEffect,
+                usernameEffect,
+              };
+            })(),
           });
         }
       } catch {

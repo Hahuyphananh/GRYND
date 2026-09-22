@@ -34,7 +34,7 @@ import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
-import { getProfileFramesByKeys, pickProfileFrameKey } from "../cosmetics";
+import { getFrameDecorations } from "../cosmetics";
 import {
   glows,
   minesPvpMatches,
@@ -1476,17 +1476,19 @@ export async function enrichMatchWithPlayers(match) {
           ),
         )
         .where(inArray(users.clerkId, clerkIds));
-      const frameByKey = await getProfileFramesByKeys(
-        rows.map((r) => pickProfileFrameKey(r.equippedCosmetics)),
+      const decorations = await getFrameDecorations(
+        rows.map((r) => r.equippedCosmetics),
+      );
+      const decorationByClerkId = new Map(
+        rows.map((r, index) => [r.clerkId, decorations[index]]),
       );
       for (const r of rows) {
         if (!r || !r.clerkId) continue;
-        const frameKey = pickProfileFrameKey(r.equippedCosmetics);
         summary[r.clerkId] = {
           id: r.clerkId,
           displayName: r.displayName || r.clerkId,
           iconKey: r.iconKey || "default",
-          profileFrame: frameKey ? frameByKey.get(frameKey) || null : null,
+          profileFrame: decorationByClerkId.get(r.clerkId) || null,
           // Equipped name color — same precedence as the chat route:
           // battlepass glow wins; the Grynd+ chat color only surfaces
           // for active members.

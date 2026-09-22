@@ -216,6 +216,24 @@ export type ProfileFrame = {
  * Pull the equipped profile-frame key out of a raw `users.equipped_cosmetics`
  * jsonb map (category → key). Returns null for anything malformed.
  */
+/**
+ * Generic equipped-key reader for any cosmetic category slot in the
+ * `users.equipped_cosmetics` jsonb map (category → key). Returns null for
+ * anything malformed or absent.
+ */
+export function pickEquippedKey(equipped: unknown, category: string): string | null {
+  if (!equipped || typeof equipped !== "object") return null;
+  const key = (equipped as Record<string, unknown>)[category];
+  return typeof key === "string" && key ? key : null;
+}
+
+/** A catalog cosmetic resolved to its public `{ key, name, visual }` shape. */
+export type CosmeticRef = {
+  key: string;
+  name: string;
+  visual: Record<string, unknown>;
+};
+
 export function pickProfileFrameKey(equipped: unknown): string | null {
   if (!equipped || typeof equipped !== "object") return null;
   const key = (equipped as Record<string, unknown>).profile_frame;
@@ -228,6 +246,106 @@ export function pickProfileFrameKey(equipped: unknown): string | null {
  * render. Used by the batch surfaces (leaderboards, chat) that decorate many
  * players in one query.
  */
+/**
+ * Bulk-resolve equipped keys for ONE cosmetic category from the enabled
+ * catalog. Unknown, disabled or wrong-category keys are silently dropped, so
+ * a stale equipped key can never render. The non-frame sibling of
+ * getProfileFramesByKeys (avatar / username / chat effects, profile glow).
+ */
+export async function getCosmeticsByKeysForCategory(
+  category: string,
+  keys: (string | null | undefined)[],
+): Promise<Map<string, CosmeticRef>> {
+  const unique = Array.from(
+    new Set(keys.filter((key): key is string => typeof key === "string" && key.length > 0)),
+  );
+  const map = new Map<string, CosmeticRef>();
+  if (unique.length === 0) return map;
+
+  const rows = await db
+    .select({
+      key: cosmetics.key,
+      name: cosmetics.name,
+      category: cosmetics.category,
+      visual: cosmetics.visual,
+    })
+    .from(cosmetics)
+    .where(
+      and(
+        inArray(cosmetics.key, unique),
+        eq(cosmetics.enabled, true),
+        eq(cosmetics.category, category),
+      ),
+    );
+
+  for (const row of rows) {
+    map.set(row.key, { key: row.key, name: row.name, visual: row.visual });
+  }
+  return map;
+}
+
+/** Resolve a single equipped cosmetic for one category (or null). */
+export async function resolveEquippedCosmetic(
+  category: string,
+  equipped: unknown,
+): Promise<CosmeticRef | null> {
+  const key = pickEquippedKey(equipped, category);
+  if (!key) return null;
+  const map = await getCosmeticsByKeysForCategory(category, [key]);
+  return map.get(key) ?? null;
+}
+
+/**
+ * Resolve each equipped map's profile decorations in one pass: the owned
+ * profile frame with the equipped avatar effect EMBEDDED on it. Because the
+ * effect rides along on the frame payload, any surface that already passes
+ * `frame={...}` to <FrameAvatar> renders the avatar effect with no extra
+ * plumbing. Returns one entry per input map (null when nothing is equipped).
+ */
+export type FrameDecoration = {
+  key: string | null;
+  name: string | null;
+  visual: unknown;
+  avatarEffect: CosmeticRef | null;
+  usernameEffect: CosmeticRef | null;
+};
+
+export async function getFrameDecorations(
+  equippedList: unknown[],
+): Promise<Array<FrameDecoration | null>> {
+  const frameKeys = equippedList.map((equipped) => pickProfileFrameKey(equipped));
+  const avatarKeys = equippedList.map((equipped) =>
+    pickEquippedKey(equipped, "avatar_effect"),
+  );
+  const usernameKeys = equippedList.map((equipped) =>
+    pickEquippedKey(equipped, "username_effect"),
+  );
+  const [frames, avatars, usernames] = await Promise.all([
+    getProfileFramesByKeys(frameKeys),
+    getCosmeticsByKeysForCategory("avatar_effect", avatarKeys),
+    getCosmeticsByKeysForCategory("username_effect", usernameKeys),
+  ]);
+
+  return equippedList.map((_, index) => {
+    const frameKey = frameKeys[index];
+    const avatarKey = avatarKeys[index];
+    const usernameKey = usernameKeys[index];
+    const frame = frameKey ? frames.get(frameKey) || null : null;
+    const avatarEffect = avatarKey ? avatars.get(avatarKey) || null : null;
+    const usernameEffect = usernameKey ? usernames.get(usernameKey) || null : null;
+    if (!frame && !avatarEffect && !usernameEffect) return null;
+    // A decoration always carries all three fields; the frame fields are null
+    // when only an effect is equipped.
+    return {
+      key: frame?.key ?? null,
+      name: frame?.name ?? null,
+      visual: frame?.visual ?? null,
+      avatarEffect,
+      usernameEffect,
+    };
+  });
+}
+
 export async function getProfileFramesByKeys(
   keys: (string | null | undefined)[],
 ): Promise<Map<string, ProfileFrame>> {
@@ -262,11 +380,11 @@ export async function getProfileFramesByKeys(
 /** Resolve a single equipped profile frame from a raw equipped map. */
 export async function resolveProfileFrame(
   equipped: unknown,
-): Promise<ProfileFrame | null> {
-  const key = pickProfileFrameKey(equipped);
-  if (!key) return null;
-  const frames = await getProfileFramesByKeys([key]);
-  return frames.get(key) ?? null;
+): Promise<FrameDecoration | null> {
+  // Full decoration (frame + avatar/username effects) so single-seat callers
+  // get the embedded effects too.
+  const [decoration] = await getFrameDecorations([equipped]);
+  return decoration ?? null;
 }
 
 /** All cosmetics a user owns, joined with catalog metadata + equip state. */

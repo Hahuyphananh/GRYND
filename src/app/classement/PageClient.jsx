@@ -8,6 +8,7 @@ import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import FrameAvatar from "../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import { useTranslation } from "../../hooks/useTranslation";
 
 const TABS = ["all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
@@ -228,7 +229,9 @@ function Podium({ items, myClerkId, tab, category }) {
               size="h-10 w-10 sm:h-12 sm:w-12"
               className="border border-white/20"
             />
-            <span className="mt-1.5 w-full truncate text-xs font-semibold text-[#c9f7ff] sm:text-sm">
+            <span
+              className={`mt-1.5 w-full truncate text-xs font-semibold text-[#c9f7ff] sm:text-sm ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
+            >
               {item.user?.name || item.name}
             </span>
             {isMe && (
@@ -656,7 +659,9 @@ export default function LeaderboardPage() {
                                 className="border border-white/20"
                               />
                               <span className="min-w-0">
-                                <span className="block max-w-[9rem] truncate font-semibold text-[#c9f7ff] transition-colors hover:text-[#00e5ff] hover:underline sm:max-w-none">
+                                <span
+                                  className={`block max-w-[9rem] truncate font-semibold text-[#c9f7ff] transition-colors hover:text-[#00e5ff] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
+                                >
                                   {item.user?.name || item.name}
                                   {item.prestigeBadge && (
                                     <span className="ml-1.5 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">

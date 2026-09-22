@@ -26,6 +26,7 @@ import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import {
   IconDeviceGamepad2,
@@ -552,7 +553,10 @@ function PlayerCard({
           {/* Official Grynd icon — falls back to a letter circle when
               the key is missing/invalid. */}
           <FrameAvatar frame={profileFrame} iconKey={iconKey} name={label} size="h-6 w-6" />
-          <span className="truncate" style={nameColor ? { color: nameColor } : undefined}>
+          <span
+            className={`truncate ${cosmeticEffectClass((profileFrame as any)?.usernameEffect?.visual) || ""}`}
+            style={nameColor ? { color: nameColor } : undefined}
+          >
             {label}
           </span>
           <EmoteBubble emote={emoteBubble} side={emoteSide ?? "incoming"} />

@@ -21,6 +21,13 @@ import {
 
 const DEFAULT_AI_DIFFICULTY = "medium";
 
+/** Wait past a fold-out deadline before forcing a reconcile of the table. */
+const HAND_OVER_RECONCILE_GRACE_MS = 4_000;
+/** Gap between forced reconciles while a fold-out freeze refuses to clear. */
+const HAND_OVER_RECONCILE_RETRY_MS = 4_000;
+/** Bounded: ~30s of nudges, then stop (the poll keeps running anyway). */
+const HAND_OVER_RECONCILE_MAX_ATTEMPTS = 8;
+
 /**
  * Build the hand payload the local roundSystem.startRound expects from a
  * server round snapshot (poll / socket). Contributions come from the
@@ -291,6 +298,40 @@ export default function useCrashArenaRound({
     return () => clearTimeout(timer);
   }, [foldPause]);
 
+  // ── Hand-over freeze watchdog ────────────────────────────────────────
+  // A fold-out freeze ("Hand over — settling payouts…") only ends when the
+  // settle results arrive: the sweep resolves the hand at `until` and
+  // broadcasts them. If that broadcast is ever missed — socket blip, a
+  // dropped room, a slow/skipped sweep tick — the table would sit frozen on
+  // the pause card FOREVER, because a fold-out pause deliberately never
+  // auto-resumes. So nudge a reconcile (roster + latest round poll) once the
+  // deadline has passed and keep nudging until the hand actually leaves
+  // "running". The reconcile applies the authoritative settled round, which
+  // is what clears the freeze.
+  useEffect(() => {
+    if (!foldPause?.handOver) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer = null;
+    const nudge = () => {
+      if (cancelled) return;
+      attempts += 1;
+      onRoomUpdateRef.current?.();
+      if (attempts < HAND_OVER_RECONCILE_MAX_ATTEMPTS) {
+        timer = setTimeout(nudge, HAND_OVER_RECONCILE_RETRY_MS);
+      }
+    };
+    timer = setTimeout(
+      nudge,
+      Math.max(0, Number(foldPause.until) - Date.now()) +
+        HAND_OVER_RECONCILE_GRACE_MS,
+    );
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [foldPause]);
+
   // ── Reducer ──────────────────────────────────────────────────────────
 
   const [roundState, dispatch] = useReducer((state, action) => {
@@ -400,6 +441,18 @@ export default function useCrashArenaRound({
           // start) catches up directly instead of waiting for a click.
           if (next.phase === "settling") {
             next = nextRound(next);
+          }
+          // STALE HAND RECOVERY: the mirror is still "running" on a DIFFERENT
+          // round than the server's live hand — the settle broadcast was
+          // missed, so the client is frozen on a fold-out pause (or flying a
+          // hand that no longer exists) while a new hand is already running.
+          // Adopt the server's hand instead of staying stuck forever.
+          if (
+            next.phase === "running" &&
+            action.localRoundId != null &&
+            String(action.localRoundId) !== String(sr.id)
+          ) {
+            next = nextRound({ ...next, phase: "settling" });
           }
           if (next.phase === "waiting") {
             next = startRound(next, action.wager, null, sr.seedHash ?? null, null, hand);
@@ -877,14 +930,23 @@ export default function useCrashArenaRound({
         recent = Date.now() - created < 90_000; // 90s window for finished rounds
       }
     }
-    if (!isActive && !recent) return;
+    // A client still mid-hand must NEVER be skipped by that window: a hand
+    // that ran past 90s (several fold pauses on a high curve) and settled on
+    // the server would otherwise never reconcile here, leaving the table
+    // frozen on its last fold-out pause with no way out.
+    const stuckMidHand = roundStateRef.current?.phase === "running";
+    if (!isActive && !recent && !stuckMidHand) return;
 
     lastSyncedRef.current = { id: roundId, status: roundStatus };
+    // The hand this client currently mirrors (read BEFORE the assignment
+    // below) — the reducer uses it to detect that it is stuck on a hand the
+    // server has already moved past.
+    const localRoundId = currentRoundIdRef.current;
     // A running round is the one folds must target.
     if (isActive) {
       currentRoundIdRef.current = roundId;
     }
-    dispatch({ type: "SYNC_ROUND", round: roundInfo, wager });
+    dispatch({ type: "SYNC_ROUND", round: roundInfo, wager, localRoundId });
 
     // The poll caught a hand that already CRASHED while we were mid-flight
     // (missed broadcast / socket blip) — animate the explosion at the
@@ -972,7 +1034,14 @@ export default function useCrashArenaRound({
       // applied the same authoritative payload, and the poll re-reads the
       // settled round after the modal was dismissed).
       if (payload?.handOver && payload?.results) {
-        applyServerSettlement(payload.results, currentRoundIdRef.current);
+        // Prefer the round id the settle broadcast carries over this client's
+        // own pointer: a client that never set it (late join, missed
+        // round-start relay) would otherwise DROP the authoritative results
+        // and stay frozen on the fold-out "settling payouts" card.
+        applyServerSettlement(
+          payload.results,
+          payload.roundId ?? currentRoundIdRef.current,
+        );
         // Every entered seat's insight is public once the hand settles.
         mergeRevealedSignals(payload.results.signals);
       }

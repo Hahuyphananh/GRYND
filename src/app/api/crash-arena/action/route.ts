@@ -15,6 +15,7 @@ import {
   curveMultiplierAt,
   isCrashDueAt,
   pauseHandOnFold,
+  resumePauseIfDue,
 } from "../../../../lib/crash-poker/roundSystem";
 import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import {
@@ -285,8 +286,29 @@ export async function POST(req: Request) {
       // ── Apply the fold through the pure engine. The fold multiplier is
       //    the server-authoritative curve value at THIS moment — a client
       //    can never report its own multiplier. ───────────────────────────
-      const foldMultiplier = curveMultiplierAt(hand, now);
-      const result = applyFold(hand, {
+      //
+      // Close an elapsed pause window FIRST: the crash-check sweep owns the
+      // resume but only ticks about once a second (15s when idle), so a fold
+      // landing in the gap after `pausedUntil` would otherwise be stamped
+      // with the FROZEN multiplier even though the curve really resumed at
+      // the deadline every client renders. That lag is how a later fold (an
+      // AI folding after you) could be recorded below the fold before it.
+      const foldHand = resumePauseIfDue(hand, now).hand as CrashPokerHand;
+      const curveFoldMultiplier = curveMultiplierAt(foldHand, now);
+      // Monotonic guard: an accepted fold is never stamped BELOW an earlier
+      // accepted fold in the same hand. The curve only climbs (pauses simply
+      // freeze it), so this only ever fires if pause accounting drifted —
+      // but the settlement RANKS by this multiplier, so the invariant is
+      // worth enforcing rather than assuming.
+      const highestFoldSoFar = foldHand.players.reduce(
+        (max: number, p) =>
+          p.foldedAtMultiplier != null
+            ? Math.max(max, Number(p.foldedAtMultiplier))
+            : max,
+        0,
+      );
+      const foldMultiplier = Math.max(curveFoldMultiplier, highestFoldSoFar, 1);
+      const result = applyFold(foldHand, {
         userId: actingUserId,
         multiplier: foldMultiplier,
       });

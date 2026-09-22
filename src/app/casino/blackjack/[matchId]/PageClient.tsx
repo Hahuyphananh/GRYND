@@ -60,6 +60,7 @@ import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import FrameAvatar, {
   type ProfileFramePayload,
 } from "../../../../components/FrameAvatar";
+import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import BlackjackCardBack from "../../../../components/BlackjackCardBack";
 import ReportModal from "../../../../components/ReportModal";
@@ -2086,7 +2087,7 @@ function OpponentHand({
             className="border border-[#FFD700]/40"
           />
           <h2
-            className="text-[#FFD700]/80 text-sm font-semibold"
+            className={`text-[#FFD700]/80 text-sm font-semibold ${cosmeticEffectClass((profileFrame as any)?.usernameEffect?.visual) || ""}`}
             style={nameColor ? { color: nameColor } : undefined}
           >
             {label}
@@ -2184,7 +2185,7 @@ function MyHand({
             className="border border-[#FFD700]/40"
           />
           <h2
-            className="text-[#FFD700] text-sm font-bold"
+            className={`text-[#FFD700] text-sm font-bold ${cosmeticEffectClass((profileFrame as any)?.usernameEffect?.visual) || ""}`}
             style={nameColor ? { color: nameColor } : undefined}
           >
             {label} ({t("blackjackPvp.you", "vous")})

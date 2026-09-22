@@ -3,6 +3,7 @@ import React from "react";
 import { IconBomb, IconCircleCheck, IconFlag, IconRocket } from "@tabler/icons-react";
 import IconAvatar from "../IconAvatar";
 import { frameWrapperProps } from "../FrameAvatar";
+import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 
 
 /**
@@ -140,7 +141,7 @@ export default function PlayerList({ players = [], maxSeats = 6, phase = "waitin
             </div>
 
             {/* Name */}
-            <span className={`text-xs font-semibold truncate max-w-[75px] ${player ? "text-[#d8fbff]" : "text-gray-500"}`}>
+            <span className={`text-xs font-semibold truncate max-w-[75px] ${player ? "text-[#d8fbff]" : "text-gray-500"} ${cosmeticEffectClass(player?.profileFrame?.usernameEffect?.visual) || ""}`}>
               {player ? player.name : "Empty"}
             </span>
 

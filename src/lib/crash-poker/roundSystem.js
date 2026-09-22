@@ -195,11 +195,22 @@ export function pauseHandOnFold(hand, now = Date.now(), pauseMs = FOLD_PAUSE_MS)
 }
 
 /**
- * Close the fold-pause window once it has elapsed. The consumed pause time
- * (now − pausedSince) is folded into pausedTotalMs and the window clears, so
- * the crash clock resumes from the exact frozen multiplier. The serving loop
- * (crash-check) calls this BEFORE every due/crash check — a crash that is
- * due the moment the window closes settles immediately, never while frozen.
+ * Close the fold-pause window once it has elapsed. The window's OWN length
+ * (pausedUntil − pausedSince) is folded into pausedTotalMs and the window
+ * clears, so the crash clock resumes from the exact frozen multiplier AT the
+ * deadline every client was given. The serving loop (crash-check) calls this
+ * BEFORE every due/crash check — a crash that is due the moment the window
+ * closes settles immediately, never while frozen.
+ *
+ * NOTE (why the window, not `now`): clients resume their curve at the
+ * absolute `pausedUntil` broadcast with the fold, but the sweep that persists
+ * the resume only ticks about once a second (15s when idle). Charging
+ * `now − pausedSince` therefore charged the sweep's own latency as pause time
+ * on EVERY fold, and the drift accumulated: the server's curve fell further
+ * and further behind the multiplier every client renders. That is how a fold
+ * accepted after an earlier one (an AI folding after you) could be stamped
+ * with a multiplier BELOW the fold before it. Only the agreed window is
+ * pause; the latency after it is real flight time.
  *
  * @param {object} hand
  * @param {number} [now] epoch ms
@@ -215,7 +226,7 @@ export function resumePauseIfDue(hand, now = Date.now()) {
   const pausedSince = hand?.pausedSince != null ? Number(hand.pausedSince) : null;
   const consumed =
     pausedSince != null && Number.isFinite(pausedSince)
-      ? Math.max(0, now - pausedSince)
+      ? Math.max(0, Math.min(now, pausedUntil) - pausedSince)
       : 0;
   return {
     hand: {
