@@ -539,6 +539,76 @@ function runSeed(match) {
   return `keno-pvp:${match?.id ?? 0}`;
 }
 
+// ── The bot's tap is an INSTANT, not a request ────────────────────────
+//
+// The bot is not a real actor: nothing it does happens until the server is
+// read. So its plan gives the instant it tapped — `liveStartedAt +
+// reactionMs`, which is always inside the tile's window (the window is a
+// parameter of the plan, and a reaction that cannot fit it is not a claim
+// at all). That instant decides every race on the tile, no matter when the
+// read — or the human's tap — actually reaches the server.
+//
+// This is what makes the AI actually play. If instead the claim were only
+// written when the server happened to be read at/after the due time, then
+// any human tap that arrived in the gap before the next poll would take a
+// tile the bot had already tapped (and a read that landed after the
+// deadline left the tile as a both-miss), so an ordinary human could beat
+// the bot without it ever claiming anything at all.
+//
+// Returns null when this match has no bot, no live tile, or the bot's plan
+// declines the tile. Otherwise:
+//   { claims: true, reactionMs, dueAtMs, windowMs }
+function aiPlanFor(match) {
+  if (!isFreeAiMatch(match)) return null;
+  if (match.player2Id !== KENO_AI_PLAYER_ID) return null;
+  if (!LIVE_STATES.has(match.status) || !hasLiveTile(match)) return null;
+
+  const windowMs = tileWindowMs(
+    Math.max(0, intOr(match.p1Tiles)) + Math.max(0, intOr(match.p2Tiles)),
+  );
+  const plan = chooseAiClaim({
+    seed: `${runSeed(match)}:ai`,
+    index: match.liveTileIndex,
+    tile: match.liveTile,
+    windowMs,
+    startedMs: liveStartedMs(match),
+  });
+  if (!plan.claims || plan.dueAtMs == null) return null;
+  return { ...plan, windowMs };
+}
+
+// ── Apply the bot's claim for the live tile ───────────────────────────
+//
+// Must run BEFORE the human's tap and before the both-miss: the bot's
+// instant is inside the window, so a tile it went for can never resolve as
+// a miss. The log entry carries the plan's own reaction (never the moment
+// this happened to run).
+async function applyAiClaim(tx, match, { now = Date.now(), plan }) {
+  const lives = applyClaimToLives({
+    claimantSeat: "player2",
+    p1Lives: match.p1Lives,
+    p2Lives: match.p2Lives,
+  });
+  const logEntry = tileLogEntry({
+    tile: match.liveTile,
+    index: match.liveTileIndex,
+    outcome: "player2",
+    at: now,
+    p1Lives: lives.p1Lives,
+    p2Lives: lives.p2Lives,
+    windowMs: plan.windowMs,
+    reactionMs: plan.reactionMs,
+  });
+
+  return await applyResolution(tx, match, {
+    now,
+    ...lives,
+    p1Tiles: Math.max(0, intOr(match.p1Tiles)),
+    p2Tiles: Math.max(0, intOr(match.p2Tiles)) + 1,
+    logEntry,
+  });
+}
+
 // ── Light the next tile ───────────────────────────────────────────────
 //
 // `reset` starts a brand-new run (lives back to 3, counters cleared): that
@@ -839,6 +909,13 @@ async function recordPvPResult(tx, match, winnerId, result) {
 async function resolveExpiredLiveTile(tx, match, { now = Date.now() } = {}) {
   if (!LIVE_STATES.has(match.status) || !hasLiveTile(match)) return match;
 
+  // The bot tapped BEFORE this tile expired (its due instant is inside the
+  // window by construction), so the tile is the bot's — not a both-miss.
+  const aiPlan = aiPlanFor(match);
+  if (aiPlan && aiPlan.dueAtMs <= now) {
+    return await applyAiClaim(tx, match, { now, plan: aiPlan });
+  }
+
   const windowMs = currentWindowMs(match);
   const lives = applyBothMissToLives({
     p1Lives: match.p1Lives,
@@ -873,9 +950,15 @@ async function resolveExpiredLiveTile(tx, match, { now = Date.now() } = {}) {
 //   * the FIRST accepted tap wins the tile: the claimant's tile count
 //     goes up, the opponent loses a life, and the next tile lights up
 //
-// A tap that arrives after the window is not a claim: the miss is
-// resolved (both lose a life) inside the same transaction, so the game
-// keeps moving even if the player is the only one polling.
+// In a free AI match the bot is graded on the same rule, by INSTANT rather
+// than by arrival: if the bot's scheduled tap (see `aiPlanFor`) precedes
+// this tap, the bot owns the tile and the tap is rejected — the client is
+// told so and reconciles. A human who taps first still wins the tile.
+//
+// A tap that arrives after the window is not a claim: the tile is resolved
+// inside the same transaction (the bot's claim if it went for the tile,
+// otherwise a both-miss — both lose a life), so the game keeps moving even
+// if the player is the only one polling.
 export async function claimTile({ userId, matchId, tile }) {
   const tileNumber = Number(tile);
   if (!Number.isInteger(tileNumber) || tileNumber < 1 || tileNumber > KENO_POOL_SIZE) {
@@ -917,6 +1000,22 @@ export async function claimTile({ userId, matchId, tile }) {
     if (now < startedMs) {
       return { error: "Tile is not live yet", status: 400 };
     }
+
+    // The bot's tap is an instant, not a request: if its scheduled instant
+    // for this tile precedes this tap, the tile is already the bot's. A
+    // human who is genuinely faster (their tap arrives first) still wins the
+    // tile — only a tap that came second loses it.
+    const aiPlan = aiPlanFor(match);
+    if (aiPlan && aiPlan.dueAtMs <= now) {
+      const advanced = await applyAiClaim(tx, match, { now, plan: aiPlan });
+      return {
+        error: "GRYND AI was faster",
+        status: 409,
+        match: advanced,
+        aiClaimed: true,
+      };
+    }
+
     if (!isClaimInWindow({ atMs: now, startedMs, deadlineMs })) {
       // The window closed before this tap arrived. The tap is not a
       // claim — and the tile counts as a both-miss, so resolve it.
@@ -970,7 +1069,9 @@ export async function claimTile({ userId, matchId, tile }) {
 // same server clock. Its plan is deterministic per (match, tile index) and
 // the store only writes a claim once the plan's absolute due time has
 // passed — so the bot can never tap early, and can never tap a tile that
-// is no longer live.
+// is no longer live. That due time is also the instant it is graded at, so
+// the bot's play never depends on when a client happened to ask (see
+// `aiPlanFor`).
 async function playAiTurnInTransaction(tx, match) {
   if (!match || !isFreeAiMatch(match) || match.player2Id !== KENO_AI_PLAYER_ID) {
     return { match, actions: 0, alreadyPlayed: true };
@@ -979,50 +1080,19 @@ async function playAiTurnInTransaction(tx, match) {
     return { match, actions: 0, alreadyPlayed: true };
   }
 
+  // No deadline guard here: the bot's due instant is inside the window by
+  // construction, so a read that arrives late (a backgrounded tab, a slow
+  // request) must still credit the claim the bot had already earned rather
+  // than letting the tile fall through to a both-miss. The tile is only ever
+  // resolved once, so this cannot double-resolve a tile that a human already
+  // took.
+  const plan = aiPlanFor(match);
+  if (!plan) return { match, actions: 0, alreadyPlayed: true };
+
   const now = Date.now();
-  const startedMs = liveStartedMs(match);
-  const deadlineMs = liveDeadlineMs(match);
-  const windowMs = currentWindowMs(match);
-  if (deadlineMs > 0 && now > deadlineMs + TAP_GRACE_MS) {
-    // The miss path owns this tile.
-    return { match, actions: 0, alreadyPlayed: true };
-  }
+  if (now < plan.dueAtMs) return { match, actions: 0, alreadyPlayed: false };
 
-  const plan = chooseAiClaim({
-    seed: `${runSeed(match)}:ai`,
-    index: match.liveTileIndex,
-    tile: match.liveTile,
-    windowMs,
-    startedMs,
-  });
-  if (!plan.claims || plan.dueAtMs == null || now < plan.dueAtMs) {
-    return { match, actions: 0, alreadyPlayed: false };
-  }
-
-  const lives = applyClaimToLives({
-    claimantSeat: "player2",
-    p1Lives: match.p1Lives,
-    p2Lives: match.p2Lives,
-  });
-  const logEntry = tileLogEntry({
-    tile: match.liveTile,
-    index: match.liveTileIndex,
-    outcome: "player2",
-    at: now,
-    p1Lives: lives.p1Lives,
-    p2Lives: lives.p2Lives,
-    windowMs,
-    reactionMs: plan.reactionMs,
-  });
-
-  const updated = await applyResolution(tx, match, {
-    now,
-    ...lives,
-    p1Tiles: Math.max(0, intOr(match.p1Tiles)),
-    p2Tiles: Math.max(0, intOr(match.p2Tiles)) + 1,
-    logEntry,
-  });
-
+  const updated = await applyAiClaim(tx, match, { now, plan });
   return { match: updated, actions: 1, alreadyPlayed: false };
 }
 

@@ -17,14 +17,18 @@
 //   9. the creator PORTRAIT frame (real shell + real portrait branch) renders
 //      the same board at phone width with no horizontal overflow;
 //  10. reduced motion renders a fully usable board (no lost state);
-//  11. no React nesting / hydration / runtime error surfaces anywhere.
+//  11. the waiting room (in-page panel, no full-screen takeover): the seats
+//      show the real player names, the Ready button readies the viewer
+//      locally, and the empty seat + Cancel Lobby only appear while the
+//      match is still waiting for an opponent;
+//  12. no React nesting / hydration / runtime error surfaces anywhere.
 //
 // Run: node qa/keno-survival-check.mjs
 //
-// Fully offline: Clerk, the socket, the router, analytics, nav/footer, the
-// waiting takeover and the creator-mode HOST are stubbed by the esbuild step;
-// the match payload comes from a stubbed `fetch`, so this is a MOCKED match —
-// no auth, no database, no dev server.
+// Fully offline: Clerk, the socket, the router, analytics, nav/footer and the
+// creator-mode HOST are stubbed by the esbuild step; the match payload comes
+// from a stubbed `fetch`, so this is a MOCKED match — no auth, no database, no
+// dev server. The waiting-room panel is NOT stubbed: it is the real component.
 
 import esbuild from "esbuild";
 import postcss from "postcss";
@@ -73,10 +77,6 @@ const STUBS = {
   `,
   "components/navigation-bar": `export default function Nav() { return null; }`,
   "components/Footer": `export default function Footer() { return null; }`,
-  "components/lobby/MatchWaiting": `
-    import React from "react";
-    export default function MatchWaiting() { return React.createElement("div", { "data-testid": "waiting" }); }
-  `,
   "components/creator-mode/CreatorModeHost": `
     import React from "react";
     export default function Host({ children }) { return children ?? null; }
@@ -677,6 +677,151 @@ check(
     JSON.stringify([...structuralErrors(pPageErr), ...pErr].slice(0, 3)),
   );
   await pctx.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WAITING ROOM — the in-page get-ready panel (waiting → ready)
+// ═══════════════════════════════════════════════════════════════════════════
+const readyState = {
+  status: "ready",
+  liveTile: null,
+  liveDeadline: null,
+  liveStartedAt: null,
+  viewerCanClaim: false,
+};
+
+{
+  const { context: wctx, page: wpage, pageErrors: wErr, consoleErrors: wcErr } =
+    await bootPage({ width: 1200, height: 900 });
+  await wpage.evaluate((overrides) => {
+    window.__ks.set(overrides);
+    window.__ks.mount();
+  }, readyState);
+  await wpage.waitForSelector('[role="status"]', { timeout: 10000 });
+
+  const readyText = (await text(wpage, "body")) || "";
+  check(
+    "the get-ready panel names both seats",
+    /Tester/.test(readyText) && /Rival/.test(readyText),
+    `panel=${JSON.stringify(readyText.slice(0, 160))}`,
+  );
+  check(
+    "the panel replaces the board until the run is live",
+    (await boardTiles(wpage)) === 0,
+    `tiles=${await boardTiles(wpage)}`,
+  );
+  const readyButtons = await count(wpage, "button");
+  await wpage.click('button:has-text("Ready")');
+  await wpage.waitForFunction(
+    () => /You're ready/.test(document.body.textContent || ""),
+    null,
+    { timeout: 5000 },
+  );
+  check(
+    "clicking Ready readies the viewer (local, optimistic)",
+    /You're ready ✓/.test(await text(wpage, "body")),
+    `buttons=${readyButtons}`,
+  );
+  check(
+    "readying up never sends a claim",
+    (await wpage.evaluate(
+      () => (window.__ks.posts || []).filter((p) => p.url.includes("/catch")).length,
+    )) === 0,
+  );
+  check(
+    "the ready panel raises no runtime errors",
+    structuralErrors(wErr).length === 0,
+    JSON.stringify(structuralErrors(wErr).slice(0, 3)),
+  );
+  await wpage.screenshot({ path: join(REPORTS, "keno-survival-ready-room.png") });
+  void wcErr;
+  await wctx.close();
+}
+
+{
+  // A free practice match starts in the SAME ready state (no matchmaking), so
+  // this is the screen a vs-AI player actually sees — at phone width.
+  const { context: actx2, page: apage2, pageErrors: aErr2 } = await bootPage({
+    width: 390,
+    height: 780,
+  });
+  await apage2.evaluate((overrides) => {
+    window.__ks.set({
+      ...overrides,
+      player2Id: "keno_ai_bot",
+      isAi: true,
+      stakeAmount: 0,
+    });
+    window.__ks.mount();
+  }, readyState);
+  await apage2.waitForSelector('[role="status"]', { timeout: 10000 });
+  const aiText = (await text(apage2, "body")) || "";
+  check(
+    "the vs-AI get-ready panel shows the bot seat and the free-practice line",
+    /GRYND AI/.test(aiText) && /Free practice/.test(aiText),
+    `panel=${JSON.stringify(aiText.slice(0, 200))}`,
+  );
+  const aiOverflow = await apage2.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  check(
+    "the panel fits a phone width with no overflow",
+    aiOverflow <= 2,
+    `overflow=${aiOverflow}`,
+  );
+  check(
+    "the vs-AI get-ready panel raises no runtime errors",
+    structuralErrors(aErr2).length === 0,
+    JSON.stringify(structuralErrors(aErr2).slice(0, 3)),
+  );
+  await apage2.screenshot({ path: join(REPORTS, "keno-survival-ai-ready.png") });
+  await actx2.close();
+}
+
+{
+  // Matchmaking: one seat is still empty, so the panel shows it waiting and
+  // offers the host's cancel instead of a Ready button.
+  const { context: mctx, page: mpage, pageErrors: mErr } = await bootPage({
+    width: 1200,
+    height: 900,
+  });
+  await mpage.evaluate(() => {
+    window.__ks.set({
+      status: "waiting",
+      player2Id: null,
+      liveTile: null,
+      liveDeadline: null,
+      liveStartedAt: null,
+      viewerCanClaim: false,
+      viewerCanCancel: true,
+      players: { p1: window.__ks.current.players.p1, p2: null },
+    });
+    window.__ks.mount();
+  });
+  await mpage.waitForSelector('[role="status"]', { timeout: 10000 });
+  const waitText = (await text(mpage, "body")) || "";
+  check(
+    "the waiting room shows the empty seat and the escrowed stake",
+    /Awaiting player/.test(waitText) && /escrowed/.test(waitText),
+    `panel=${JSON.stringify(waitText.slice(0, 160))}`,
+  );
+  check(
+    "no Ready button exists before an opponent joins",
+    (await count(mpage, 'button:has-text("Ready")')) === 0,
+  );
+  await mpage.click('button:has-text("Cancel Lobby")');
+  await mpage.waitForFunction(
+    () => (window.__ks.nav || []).includes("/casino/keno"),
+    null,
+    { timeout: 5000 },
+  );
+  check("Cancel Lobby returns the host to the lobby", true);
+  check(
+    "the waiting room raises no runtime errors",
+    structuralErrors(mErr).length === 0,
+    JSON.stringify(structuralErrors(mErr).slice(0, 3)),
+  );
+  await mctx.close();
 }
 
 {

@@ -23,7 +23,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
-import MatchWaiting from "../../../../components/lobby/MatchWaiting";
+import KenoWaitingPanel from "../../../../components/keno-pvp/KenoWaitingPanel";
 import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
@@ -94,6 +94,9 @@ const MISS_TEXT = {
   "No tile is live yet": "Wait for the next tile",
   "Match is not live": "Match over",
   "Tile is not live yet": "Not live yet",
+  // Free AI match: the bot's scheduled tap preceded this one, so the tile was
+  // already the bot's (the store grades the bot's tap at its own instant).
+  "GRYND AI was faster": "GRYND AI was faster",
 };
 const MISS_TEXT_FALLBACK = "Too slow";
 
@@ -106,6 +109,7 @@ const TAP_MISS_REASONS = new Set([
   "Too slow — the tile expired",
   "Match is not live",
   "No tile is live yet",
+  "GRYND AI was faster",
 ]);
 
 function missTextFor(reason) {
@@ -271,6 +275,10 @@ export default function KenoPvpMatchPage({ params }) {
   const [tapMiss, setTapMiss] = useState(null);
   const [showRules, setShowRules] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // Local (optimistic) "I have readied" flag for the get-ready panel. Keno
+  // has no server-side ready flag: the server lights the first tile when its
+  // own ready window elapses, so this only drives the player's own state.
+  const [selfReady, setSelfReady] = useState(false);
   const [flashSeat, setFlashSeat] = useState(null); // "you" | "opp" | null
   const [showResult, setShowResult] = useState(false);
 
@@ -808,6 +816,28 @@ export default function KenoPvpMatchPage({ params }) {
   const oppNameEffect =
     cosmeticEffectClass(oppSeatSummary?.profileFrame?.usernameEffect?.visual) || "";
 
+  // ── Waiting room (rendered in place of the board) ───────────────────
+  // Shown while the match is filling up and during the server's get-ready
+  // banner. The board only mounts once the run is live, so this is the whole
+  // content of the page until then.
+  const waitingPanelNode =
+    isWaiting || isReady ? (
+      <KenoWaitingPanel
+        matchId={matchId}
+        state={isReady ? "ready" : "waiting"}
+        isAi={Boolean(match.isAi)}
+        stakeAmount={match.stakeAmount}
+        myName={myName}
+        oppName={oppName}
+        mySeatSummary={mySeatSummary}
+        oppSeatSummary={oppSeatSummary}
+        selfReady={selfReady}
+        onReadyClick={() => setSelfReady(true)}
+        onCancel={isWaiting && match.viewerCanCancel ? cancelMatch : null}
+        cancelling={leaving}
+      />
+    ) : null;
+
   const statusLine = liveStatusText({
     isLive,
     hasLiveTile: liveTile != null,
@@ -1098,10 +1128,14 @@ export default function KenoPvpMatchPage({ params }) {
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
-        {livesNode}
-        <div className="w-full">{windowNode}</div>
-        <div className="mt-3 w-full">{boardNode}</div>
-        {leaveNode && <div className="mt-3 w-full">{leaveNode}</div>}
+        {waitingPanelNode || (
+          <>
+            {livesNode}
+            <div className="w-full">{windowNode}</div>
+            <div className="mt-3 w-full">{boardNode}</div>
+            {leaveNode && <div className="mt-3 w-full">{leaveNode}</div>}
+          </>
+        )}
       </div>
     </div>
   );
@@ -1124,29 +1158,6 @@ export default function KenoPvpMatchPage({ params }) {
 
   return (
     <>
-      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
-      {(isWaiting || isReady) && (
-        <MatchWaiting
-          state={isReady ? "ready" : "waiting"}
-          gameName="Keno PvP"
-          subtitle={
-            isReady
-              ? `${p1Name} vs ${p2Name} — the first tile lights in a moment.`
-              : `Your ${Number(match.stakeAmount).toLocaleString()} stake is escrowed. Someone with the same stake will join shortly.`
-          }
-          seats={
-            isWaiting
-              ? [
-                  { label: "You", name: "You", occupied: true },
-                  { label: "Opponent", occupied: false },
-                ]
-              : []
-          }
-          onCancel={isWaiting && match.viewerCanCancel ? cancelMatch : null}
-          cancelLabel="Cancel Lobby"
-        />
-      )}
-
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
@@ -1200,6 +1211,8 @@ export default function KenoPvpMatchPage({ params }) {
                       {error}
                     </div>
                   )}
+
+                  {waitingPanelNode}
 
                   {(isLive || isFinished) && (
                     <div className="space-y-3 sm:space-y-4">

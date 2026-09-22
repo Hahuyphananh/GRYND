@@ -405,6 +405,18 @@ const aiBody = store.slice(
   store.indexOf("async function playAiTurnInTransaction("),
   store.indexOf("export async function playAiTurn("),
 );
+const aiPlanBody = store.slice(
+  store.indexOf("function aiPlanFor("),
+  store.indexOf("async function applyAiClaim("),
+);
+const aiApplyBody = store.slice(
+  store.indexOf("async function applyAiClaim("),
+  store.indexOf("// ── claimTile (the main action)"),
+);
+const missBody = store.slice(
+  store.indexOf("async function resolveExpiredLiveTile("),
+  store.indexOf("// ── claimTile (the main action)"),
+);
 
 test("claimTile locks the row, then checks participation, liveness and the tile identity", () => {
   assert.ok(claimBody.includes("await fetchMatchForUpdate(tx, matchId)"));
@@ -452,20 +464,59 @@ test("auto-resolve lights the run, runs the bot, then expires the tile — in th
   assert.ok(expireAt > aiAt, "a due bot tap must be graded before the both-miss");
 });
 
-test("the bot obeys the same clock and window as a human", () => {
-  assert.ok(aiBody.includes("TAP_GRACE_MS"));
-  assert.ok(aiBody.includes("chooseAiClaim({"));
-  assert.ok(aiBody.includes("now < plan.dueAtMs"));
-  assert.ok(aiBody.includes('claimantSeat: "player2"'));
-  assert.ok(aiBody.includes("applyResolution(tx, match, {"));
+test("the bot's tap is an INSTANT inside the tile's window, not a request", () => {
+  // The plan carries the instant the bot tapped, derived from the same live
+  // window a human is graded against…
+  assert.ok(aiPlanBody.includes("chooseAiClaim({"));
+  assert.ok(aiPlanBody.includes("tileWindowMs("), "the plan must use the live window");
+  assert.ok(
+    aiPlanBody.includes("if (!plan.claims || plan.dueAtMs == null) return null;"),
+    "a declined plan is not a claim at all",
+  );
+  // …and the claim is written at that instant, never at the moment the server
+  // happened to be read.
+  assert.ok(aiApplyBody.includes('claimantSeat: "player2"'));
+  assert.ok(
+    aiApplyBody.includes("reactionMs: plan.reactionMs"),
+    "the log must carry the plan's reaction, not the read time",
+  );
+  assert.ok(
+    aiApplyBody.includes("windowMs: plan.windowMs"),
+    "the log must carry the plan's window",
+  );
+  assert.ok(aiApplyBody.includes("applyResolution(tx, match, {"));
+  assert.ok(aiBody.includes("aiPlanFor(match)"));
+  assert.ok(aiBody.includes("now < plan.dueAtMs"), "the bot never taps before its due instant");
+});
+
+test("the bot's due tap wins every race it started first", () => {
+  // A human tap that arrives after the bot's instant loses the tile — graded
+  // before the human's claim is applied.
+  const aiRaceAt = claimBody.indexOf("aiPlanFor(match)");
+  const humanClaimAt = claimBody.indexOf("const seat = seatForUser(match, userId)");
+  assert.ok(aiRaceAt > 0, "claimTile never grades the human tap against the bot's instant");
+  assert.ok(
+    humanClaimAt > aiRaceAt,
+    "the bot's instant must be graded BEFORE the human's claim is applied",
+  );
+  assert.ok(claimBody.includes('"GRYND AI was faster"'));
+  // …and a tile the bot went for can never fall through to a both-miss: the
+  // miss path credits the bot's claim first.
+  assert.ok(missBody.includes("aiPlanFor(match)"), "the both-miss never checks the bot's plan");
+  assert.ok(
+    missBody.indexOf("aiPlanFor(match)") < missBody.indexOf("applyBothMissToLives({"),
+    "the bot's due claim must be resolved before the both-miss",
+  );
 });
 
 test("the client keeps asking the server to run the bot while its tile is live", () => {
-  // The bot's claim is only written when the server is READ at/after the bot's
-  // own reaction time inside the live window (200–420ms in). The 5s backstop
-  // poll and the deadline nudge both land outside that window, so without a
-  // dedicated sweep the bot is never asked in time and every tile both-misses
-  // — the AI "does nothing".
+  // The bot's plan decides WHO wins a tile (the store grades its tap at its
+  // own instant), but nothing runs the bot until the server is read — so
+  // without this sweep the bot's claim would only ever appear on the next
+  // poll, up to 5s later, with a both-miss resolving tiles in between. The
+  // sweep is what makes the bot's tap land promptly in a free AI match
+  // (200–420ms into the tile); the 5s backstop poll and the deadline nudge
+  // both land too late to drive the board.
   // Slice out just the sweep effect (it sits directly above the socket
   // listener), so the assertions can't be satisfied by an unrelated poll.
   const sweepStart = page.indexOf("Free practice: let the bot actually take its turn");
