@@ -1994,10 +1994,15 @@ export default function MinesPvpMatchPage({
   ) : null;
 
   // ── The 5×5 gameboard (reused from solo mines) — padding/gaps shrink
-  // on small screens so the cells stay big and thumb-friendly. ──────
+  // on small screens so the cells stay big and thumb-friendly.
+  //
+  // `mines-board-frame` opts the board into the shared desktop sizing rule in
+  // globals.css: the board is square, so capping its WIDTH caps its height,
+  // which is what keeps all 25 cells above the fold instead of spilling past
+  // the turn indicator / seats / legend stack. ──────────────────────
   const boardNode = (
     <div
-      className="mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6"
+      className="mines-board-frame mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6"
     >
       <div className="grid grid-cols-5 gap-2 sm:gap-3">
         {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {

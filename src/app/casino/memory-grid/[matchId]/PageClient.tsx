@@ -1072,9 +1072,14 @@ export default function MemoryGridMatchPage({
   // recorded board looks big/large, but we still cap width slightly
   // so the controls underneath stay visible (not pushed off-screen).
   // Buttons themselves are not resized.
+  // Both board mounts (this one, used by the creator phone frame, and the
+  // normal-view copy further down) carry `memory-board-frame`, the shared
+  // desktop sizing hook defined in globals.css. The grid is square, so
+  // capping its width caps its height — that is what keeps the whole grid,
+  // plus the controls under it, on one screen.
   const mgBoardNode = (
     <div
-      className="mx-auto grid w-full max-w-lg gap-3"
+      className="memory-board-frame mx-auto grid w-full max-w-lg gap-3"
       style={{
         gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
       }}
@@ -1674,9 +1679,10 @@ export default function MemoryGridMatchPage({
 
         {/* The grid — full-width inside the shell so the board looks big, but
             capped slightly so the controls underneath stay visible. Buttons are
-            not resized here. */}
+            not resized here. On desktop `memory-board-frame` tightens that cap
+            to the viewport height, so the whole grid fits without scrolling. */}
         <div
-          className="mx-auto grid w-full max-w-lg gap-3"
+          className="memory-board-frame mx-auto grid w-full max-w-lg gap-3"
           style={{
             gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
           }}

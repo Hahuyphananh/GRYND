@@ -60,6 +60,8 @@
     "test:dots-and-boxes-ai": "node --import tsx --test tests/dots-and-boxes-ai.test.mjs",
     "verify:dnb-board": "node qa/dnb-board-check.mjs",
     "verify:footer-social": "node qa/footer-social-check.mjs",
+    "test:board-fit": "node --test tests/board-fit-desktop.test.mjs",
+    "verify:board-fit": "node qa/board-fit-check.mjs",
     "verify:ta-trail": "node qa/ta-trail-check.mjs",
     "verify:ta-rumble": "node qa/ta-rumble-check.mjs",
     "verify:ta-effects": "node qa/ta-trail-check.mjs && node qa/ta-rumble-check.mjs && node qa/ta-fall-motion-check.mjs",

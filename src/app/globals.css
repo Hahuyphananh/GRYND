@@ -94,6 +94,38 @@ body {
   animation: none !important;
 }
 
+/* ── Mines Duel / Memory Grid: same one-screen rule ────────────────────
+   Both games draw a SQUARE board full-width inside a centred column, so on
+   desktop the board took more height than the space left under the page's
+   chrome — the title / stake line / seat cards / turn indicator / legend
+   (Mines) and the title / round tracker / scoreboard / phase banner (Memory
+   Grid) — and the bottom rows needed a scroll to see. Capping the WIDTH caps
+   the HEIGHT on a square, so each board gets a viewport-derived width cap,
+   with the budget set to that page's measured chrome above the board
+   (qa/board-fit-check.mjs prints both numbers):
+
+     • Mines Duel  — 34rem (~544px) of chrome above the board
+     • Memory Grid — 32rem (~512px) of chrome above the board
+
+   The floor keeps the board usable (and the tiles thumb-sized) in a very
+   short window instead of collapsing it. Desktop only, and released inside
+   the creator frame: the recording frame is NOT the browser viewport, so a
+   `vh` cap there would shrink a recorded clip's board. */
+@media (min-width: 1024px) {
+  .mines-board-frame {
+    max-width: max(260px, calc(100vh - 34rem));
+  }
+
+  .memory-board-frame {
+    max-width: max(260px, calc(100vh - 32rem));
+  }
+
+  [data-creator-layout] .mines-board-frame,
+  [data-creator-layout] .memory-board-frame {
+    max-width: none;
+  }
+}
+
 /* ── Creator Mode frame fill ─────────────────────────────────────────
    <CreatorResponsiveLayout> drops the game page straight into the
    recording frame. These rules make the game's page root fill the frame
