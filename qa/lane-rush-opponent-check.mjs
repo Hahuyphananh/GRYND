@@ -850,6 +850,299 @@ check(
   [...rmFatal, ...rm.pageErrors].join(" | "),
 );
 
+// ═══════════════════════════════════════════════════════════════════════════
+// THE BALLS SIT ON THE TILES — and hop tile by tile, never beside the row
+// ═══════════════════════════════════════════════════════════════════════════
+// Each seat's profile picture is drawn ON the tile that seat is standing on —
+// the tile it clicked to reach its row — and travels to the next tile when it
+// moves. `data-token-row`/`data-token-tile` name the glass it claims to be on;
+// the avatar's painted centre must land on that tile's centre (a side-column
+// marker would be off by a whole row's width on the x axis).
+const tokenAlignment = (target) =>
+  target.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="lane-runner-token"]')].map((token) => {
+      const row = token.getAttribute("data-token-row");
+      const tile = Number(token.getAttribute("data-token-tile"));
+      const glass =
+        row === "start"
+          ? document.querySelector('[data-lane-start="true"]')
+          : document.querySelector(
+              `button[aria-label^="Row ${Number(row) + 1} tile ${tile + 1}"]`,
+            );
+      const avatar = token.querySelector('[data-token-avatar="true"]');
+      const seat = token.getAttribute("data-token-seat");
+      if (!glass || !avatar) return { seat, row, tile, missing: true };
+      const a = avatar.getBoundingClientRect();
+      const g = glass.getBoundingClientRect();
+      return {
+        seat,
+        row,
+        tile,
+        dx: Math.round(Math.abs(a.left + a.width / 2 - (g.left + g.width / 2))),
+        dy: Math.round(Math.abs(a.top + a.height / 2 - (g.top + g.height / 2))),
+      };
+    }),
+  );
+
+const tokenOn = (seat) =>
+  `[data-testid="lane-runner-token"][data-token-seat="${seat}"]`;
+
+{
+  const { context: tctx, page: tpage, pageErrors: tErr, consoleErrors: tcErr } =
+    await bootPage({ width: 1280, height: 1000 });
+  await tpage.evaluate(() => {
+    window.__lr.set({ isViewerTurn: true, currentTurnUserId: "user_1", myRow: 3, oppRow: 1 });
+    window.__lr.mount();
+  });
+  await tpage.waitForSelector(tokenOn("player1"), { timeout: 10000 });
+  // The board arrives with a spring. Give the tokens a beat to settle onto the
+  // glass before asserting the alignment (a failure here still reports through
+  // the measured dx/dy below, so the catch must not hide anything).
+  await tpage
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('[data-testid="lane-runner-token"]')].every(
+          (token) => {
+            const row = token.getAttribute("data-token-row");
+            const tile = Number(token.getAttribute("data-token-tile"));
+            const glass =
+              row === "start"
+                ? document.querySelector('[data-lane-start="true"]')
+                : document.querySelector(
+                    `button[aria-label^="Row ${Number(row) + 1} tile ${tile + 1}"]`,
+                  );
+            const avatar = token.querySelector('[data-token-avatar="true"]');
+            if (!glass || !avatar) return false;
+            const a = avatar.getBoundingClientRect();
+            const g = glass.getBoundingClientRect();
+            return (
+              Math.abs(a.left + a.width / 2 - (g.left + g.width / 2)) <= 2 &&
+              Math.abs(a.top + a.height / 2 - (g.top + g.height / 2)) <= 2
+            );
+          },
+        ),
+      null,
+      { timeout: 8000 },
+    )
+    .catch(() => {});
+
+  const aligned = await tokenAlignment(tpage);
+  check(
+    "exactly one standing token per seat is drawn on the bridge",
+    aligned.length === 2,
+    JSON.stringify(aligned),
+  );
+  check(
+    "each token sits centred ON a tile (never beside the row)",
+    aligned.every((t) => !t.missing && t.dx <= 2 && t.dy <= 2),
+    JSON.stringify(aligned),
+  );
+  // myRow = 3 and the last safe landing was row 2 tile 0; the opponent's row is
+  // 1 having crossed row 0 tile 1 — so the tokens name the tiles that were
+  // actually crossed, not the row each seat is choosing on.
+  check(
+    "…and it stands on the tile that seat crossed, not the row it is picking on",
+    aligned.some((t) => t.seat === "player1" && t.row === "2" && t.tile === 0) &&
+      aligned.some((t) => t.seat === "player2" && t.row === "0" && t.tile === 1),
+    JSON.stringify(aligned),
+  );
+  // Nothing stands beside a row any more: the old side column is gone.
+  check(
+    "the old side-column marker is gone from the rows",
+    (await tpage.evaluate(
+      () =>
+        [...document.querySelectorAll("[data-lane-row] > span.w-8")].length,
+    )) === 0,
+  );
+
+  const beforeHop = aligned.find((t) => t.seat === "player1");
+  // A SAFE click on row 3 tile 2 carries the seat to row 4 — and the token has
+  // to HOP onto the tile that was clicked (row 3 tile 2), not ride in a column.
+  await tpage.evaluate(() =>
+    window.__lr.pushAction(
+      { action: "jump", seat: "player1", userId: "user_1", row: 3, tile: 2, outcome: "safe", at: window.__lr.at(0) },
+      { isViewerTurn: true, currentTurnUserId: "user_1", myRow: 4, roundDeadline: window.__lr.at(12000) },
+    ),
+  );
+  await tpage.waitForFunction(
+    (sel) => {
+      const t = document.querySelector(sel);
+      return t && t.getAttribute("data-token-row") === "3";
+    },
+    tokenOn("player1"),
+    { timeout: 6000 },
+  );
+  const afterHop = (await tokenAlignment(tpage)).find((t) => t.seat === "player1");
+  check(
+    "a safe click hops the token onto the tile that was clicked",
+    afterHop.row === "3" && afterHop.tile === 2 && afterHop.dx <= 2 && afterHop.dy <= 2,
+    JSON.stringify(afterHop),
+  );
+  check(
+    "…and it really moved tile by tile",
+    beforeHop.row !== afterHop.row || beforeHop.tile !== afterHop.tile,
+    `${JSON.stringify(beforeHop)} → ${JSON.stringify(afterHop)}`,
+  );
+
+  // A fall resets the attempt, so the token goes back to the start platform —
+  // it must never be left hovering on a tile the seat is no longer on.
+  await tpage.evaluate(() =>
+    window.__lr.pushAction(
+      { action: "jump", seat: "player1", userId: "user_1", row: 4, tile: 1, outcome: "fell", at: window.__lr.at(0) },
+      {
+        isViewerTurn: false,
+        currentTurnUserId: "user_2",
+        myRow: 0,
+        broken: [{ row: 1, tile: 2 }, { row: 4, tile: 1 }],
+      },
+    ),
+  );
+  await tpage.waitForFunction(
+    (sel) => document.querySelector(sel)?.getAttribute("data-token-row") === "start",
+    tokenOn("player1"),
+    { timeout: 6000 },
+  );
+  const afterFall = (await tokenAlignment(tpage)).find((t) => t.seat === "player1");
+  check(
+    "a fall sends the token back to the start platform, centred on it",
+    afterFall.row === "start" && afterFall.dx <= 2 && afterFall.dy <= 2,
+    JSON.stringify(afterFall),
+  );
+  // The SAME board seen from seat 2, on a FRESH mount (so no jump from the
+  // phases above is in flight). The viewer's own token must be the one standing
+  // on its own tile — the hide-on-jump / colour keying has to follow the SEATS,
+  // not the literal "player1" — and both must be centred on the glass.
+  {
+    const seatTwo = await bootPage({ width: 1280, height: 1000 });
+    await seatTwo.page.evaluate(() => {
+      window.__lr.set({
+        viewerIsPlayer1: false,
+        myRow: 1,
+        oppRow: 3,
+        isViewerTurn: false,
+        currentTurnUserId: "user_1",
+      });
+      window.__lr.mount();
+    });
+    await seatTwo.page.waitForFunction(
+      () =>
+        document.querySelectorAll('[data-testid="lane-runner-token"]').length === 2,
+      null,
+      { timeout: 10000 },
+    );
+    const tokens = await tokenAlignment(seatTwo.page);
+    check(
+      "a seat-2 viewer sees both tokens, each centred on its own tile",
+      tokens.length === 2 &&
+        tokens.every((t) => !t.missing && t.dx <= 2 && t.dy <= 2) &&
+        tokens.some((t) => t.seat === "player2" && t.row === "0" && t.tile === 1) &&
+        tokens.some((t) => t.seat === "player1" && t.row === "2" && t.tile === 0),
+      JSON.stringify(tokens),
+    );
+    await seatTwo.context.close();
+  }
+
+  await tpage.screenshot({ path: join(REPORTS, "lane-rush-bridge-tokens.png"), fullPage: true });
+  const tFatal = structuralErrors(tcErr);
+  check(
+    "the on-tile token pass raises no structural error",
+    tFatal.length === 0 && tErr.length === 0,
+    [...tFatal, ...tErr].join(" | "),
+  );
+  await tctx.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE BOT ACTUALLY PLAYS — it must be woken until its turn is over
+// ═══════════════════════════════════════════════════════════════════════════
+// The store paces the bot (BOT_ACTION_INTERVAL_MS) and a safe tile KEEPS its
+// turn, so a wake-up that lands inside the throttle applies nothing. A page
+// that asked only once therefore left the bot frozen for the rest of its 15s
+// window: it lost the attempt to a timeout, reset to row 1 and looked like it
+// "does not play". This phase answers every ask with a throttled no-op and
+// proves the page keeps asking — then stops the moment the turn is not the
+// bot's.
+{
+  const { context: bctx, page: bpage, pageErrors: bErr, consoleErrors: bcErr } =
+    await bootPage({ width: 1200, height: 900 });
+  await bpage.evaluate(() => {
+    window.__lr.set({
+      player2Id: "AI_BOT",
+      player2Name: null,
+      player2IconKey: null,
+      player2NameColor: null,
+      player2ProfileFrame: null,
+      stakeAmount: 0,
+      isViewerTurn: false,
+      currentTurnUserId: "AI_BOT",
+      myRow: 1,
+      oppRow: 0,
+      roundDeadline: window.__lr.at(15000),
+    });
+    window.__lr.mount();
+  });
+
+  await bpage.waitForFunction(() => window.__lr.aiAsks().length >= 1, null, {
+    timeout: 10000,
+  });
+  check("a practice match asks the server to run the bot's turn", true);
+
+  // The answer applies nothing — the bot is throttled. The page has to ask
+  // AGAIN, or the bot never moves again for the rest of its window.
+  await bpage.waitForFunction(() => window.__lr.aiAsks().length >= 2, null, {
+    timeout: 9000,
+  });
+  const asks = await bpage.evaluate(() =>
+    window.__lr.aiAsks().map((p) => p.body?.actionId ?? null),
+  );
+  check(
+    "…and keeps asking while the bot still owns the turn (a throttled ask is retried)",
+    asks.length >= 2,
+    `asks=${asks.length}`,
+  );
+  check(
+    "…with the SAME idempotency key for an unchanged state, so a retry can never grant two actions",
+    new Set(asks).size === 1 && typeof asks[0] === "string",
+    JSON.stringify(asks),
+  );
+  check(
+    "the bot's window is not burned: no timeout has been recorded",
+    !/ran out of time/i.test(await bpage.evaluate(() => document.body.innerText)),
+  );
+
+  // The turn passes to the human: the page must stop waking a bot that is no
+  // longer playing (at most one ask already in flight when the turn flipped).
+  await bpage.evaluate(() => {
+    window.__lr.set({
+      currentTurnUserId: "user_1",
+      isViewerTurn: true,
+      roundDeadline: window.__lr.at(15000),
+    });
+    window.__lr.redeliver(1);
+  });
+  await bpage.waitForFunction(
+    () => /YOUR TURN/i.test(document.body.innerText),
+    null,
+    { timeout: 6000 },
+  );
+  const asksAtHandover = await bpage.evaluate(() => window.__lr.aiAsks().length);
+  await bpage.waitForTimeout(2600);
+  const asksAfter = await bpage.evaluate(() => window.__lr.aiAsks().length);
+  check(
+    "the page stops waking the bot once the turn is no longer its own",
+    asksAfter <= asksAtHandover + 1,
+    `asks ${asksAtHandover} → ${asksAfter}`,
+  );
+  await bpage.screenshot({ path: join(REPORTS, "lane-rush-bridge-ai-turn.png"), fullPage: true });
+  const bFatal = structuralErrors(bcErr);
+  check(
+    "the practice-bot pass raises no structural error",
+    bFatal.length === 0 && bErr.length === 0,
+    [...bFatal, ...bErr].join(" | "),
+  );
+  await bctx.close();
+}
+
 await browser.close();
 
 console.log(`\n${pass} passed, ${fail} failed`);

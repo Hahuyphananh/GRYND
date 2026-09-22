@@ -171,6 +171,12 @@ window.__lr.redeliver = (n = 1) => {
 
 window.__lr.at = (offsetMs = 0) => iso(Date.now() + offsetMs);
 
+// Every wake-up the page has sent to the practice bot, in order. The stub
+// answers each one with `success` WITHOUT applying an action, which is exactly
+// the throttled no-op the page has to retry through.
+window.__lr.aiAsks = () =>
+  (window.__lr.posts || []).filter((p) => p.url.includes("/ai-turn"));
+
 // ── Fake fetch ─────────────────────────────────────────────────────────────
 const realFetch = window.fetch?.bind(window);
 window.fetch = async (input, init) => {

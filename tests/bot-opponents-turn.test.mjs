@@ -250,7 +250,10 @@ test("tower arena: a 3s poll resolves a bot turn even if the ask is lost", () =>
 
 test("every bot whose turn is gated by the server has a client ask that clears the gate", () => {
   // Keno — a 200–420ms reaction band. The fixed-delay probe burst has to span
-  // the whole band, because a single ask can step over it.
+  // the whole band so the bot's claim lands while the player is watching that
+  // tile: the store grades the bot's tap at its OWN instant (so a late ask no
+  // longer loses the tile), but without the burst the claim only appears on the
+  // next 5s poll — after the tile has expired and a both-miss resolved.
   const kenoEngine = read("src/lib/keno-pvp/engine.js");
   const kenoPage = read("src/app/casino/keno-pvp/[matchId]/PageClient.jsx");
   const minReaction = num(kenoEngine.match(/const AI_MIN_REACTION_MS = ([\d_]+);/)?.[1]);
@@ -289,18 +292,50 @@ test("every bot whose turn is gated by the server has a client ask that clears t
     "a paced-hold answer stays success-shaped so the client can just re-ask",
   );
 
-  // Lane Rush Duel — the bot's actions are throttled; the page must resync and
-  // retry rather than burn the turn.
+  // Lane Rush Duel — the bot is paced server-side, so ONE ask per state is not
+  // enough: a wake-up that lands inside the throttle applies nothing (and still
+  // answers success), and a safe tile KEEPS the bot's turn. The page therefore
+  // has to keep waking it on the shared interval — a single latched ask leaves
+  // the bot frozen until its 15s window times out and resets it to row 1,
+  // which is the "the AI does not play" bug.
   const lanePage = read("src/app/casino/lane-runner/[matchId]/PageClient.jsx");
   const laneStore = read("src/lib/lane-rush-duel/serverStore.js");
-  assert.ok(read("src/lib/lane-rush-duel/constants.js").includes("export const BOT_ACTION_INTERVAL_MS"));
+  const laneConstants = read("src/lib/lane-rush-duel/constants.js");
+  assert.ok(laneConstants.includes("export const BOT_ACTION_INTERVAL_MS"));
   assert.ok(laneStore.includes("BOT_ACTION_INTERVAL_MS"), "the throttle lives on the server");
-  const laneStart = lanePage.indexOf("Test vs Bot: wake the bot while IT owns the turn");
+  const laneStart = lanePage.indexOf("Test vs Bot: keep waking the bot while IT owns the turn");
   assert.ok(laneStart > 0);
-  const laneBody = lanePage.slice(laneStart, laneStart + 2200);
+  const laneBody = lanePage.slice(laneStart, laneStart + 3400);
   assert.ok(laneBody.includes('`/api/lane-rush-duel/match/${matchId}/ai-turn`'));
+
+  // The page paces itself off the SHARED constant (never a private copy), so
+  // the client can never wake the bot faster than the server will apply it.
   assert.ok(
-    laneBody.includes("botTurnFiredRef.current = null;") && laneBody.includes("await fetchStatus()"),
-    "a throttled or raced ask must clear the turn key and resync",
+    lanePage.includes("BOT_WAKE_INTERVAL_MS = BOT_ACTION_INTERVAL_MS + 150"),
+    "the wake-up interval must be derived from the server's own throttle",
+  );
+  assert.ok(
+    laneBody.includes("timer = setTimeout(wake, BOT_WAKE_INTERVAL_MS)"),
+    "a throttled ask must re-arm the next wake-up instead of latching",
+  );
+  assert.ok(
+    laneBody.includes("await fetchStatus()"),
+    "every answer resyncs, so the next ask decides from the real board",
+  );
+  // It stops the moment the bot no longer owns the turn (its own fall, a
+  // timeout, the duel ending) — read from the LIVE payload, not the closure.
+  assert.ok(
+    laneBody.includes('if (live.currentTurnUserId !== "AI_BOT") return;') &&
+      laneBody.includes("matchRef.current"),
+    "the loop re-checks turn ownership against the newest payload",
+  );
+  // One action per state: the ask is deduped on (match, turn, action count).
+  assert.ok(
+    laneBody.includes("`${matchId}:bot:${live.currentTurnUserId}:${actionCount}`"),
+    "each ask carries the idempotency key the server dedupes on",
+  );
+  assert.ok(
+    !lanePage.includes("botTurnFiredRef"),
+    "the one-shot latch that froze the bot must be gone",
   );
 });

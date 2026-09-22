@@ -48,7 +48,10 @@ import {
   LANE_RUSH_DUEL_MATCH_UPDATED,
   laneRushDuelMatchRoom,
 } from "../../../../lib/lane-rush-duel/rooms";
-import { DIFFICULTIES } from "../../../../lib/lane-rush-duel/constants";
+import {
+  BOT_ACTION_INTERVAL_MS,
+  DIFFICULTIES,
+} from "../../../../lib/lane-rush-duel/constants";
 import {
   playVictory,
   playDefeat,
@@ -120,6 +123,47 @@ const wasResigned = (actions) =>
   Array.isArray(actions) &&
   actions.some((a) => a === "resign" || a?.action === "resign");
 
+/** The authoritative actions that happened BEFORE `action` (exclusive). */
+function historyBefore(actions, action) {
+  const list = Array.isArray(actions) ? actions : [];
+  const at = list.indexOf(action);
+  return at > 0 ? list.slice(0, at) : [];
+}
+
+/**
+ * WHERE A SEAT IS STANDING — a board object, not a row number.
+ *
+ * The shared bridge is crossed TILE BY TILE, so a player stands ON the tile
+ * they last crossed (the tile they clicked, which carried them to the next
+ * row). Their avatar is drawn on that tile, never beside the row:
+ *
+ *   • { kind: "tile", row, tile } — the tile the seat is standing on;
+ *   • { kind: "start" }           — the start platform (no tile yet);
+ *   • { kind: "crossed" }         — off the bridge (won): no token at all.
+ *
+ * The landing only counts while it sits in the row DIRECTLY below the seat's
+ * own progress. A fall (or a timeout) resets the seat to row 1, so a stale
+ * landing from a previous attempt can never strand its token mid-bridge.
+ *
+ * Pure presentation: it reads the server's action history and never decides a
+ * tile, a turn or a result.
+ */
+function ballAnchorFor({ actions, seat, row, rows }) {
+  const progress = Number(row);
+  if (!Number.isFinite(progress)) return { kind: "start" };
+  if (progress >= Number(rows)) return { kind: "crossed" };
+  if (progress <= 0) return { kind: "start" };
+  const landing = lastActionFor(
+    actions,
+    seat,
+    (a) => a.action === "jump" && (a.outcome === "safe" || a.outcome === "won"),
+  );
+  if (landing && Number(landing.row) === progress - 1) {
+    return { kind: "tile", row: Number(landing.row), tile: Number(landing.tile) };
+  }
+  return { kind: "start" };
+}
+
 // ── Presentation: the floating glass bridge ─────────────────────────
 // All of it is PRESENTATION ONLY — every state below is the server's
 // (`myRow`/`oppRow`/`broken`/`myFlags`/`oppFlags`/`roundDeadline`). Nothing
@@ -127,6 +171,14 @@ const wasResigned = (actions) =>
 
 /** The shared choice window length; the server owns the real deadline. */
 const BRIDGE_TOTAL_SECONDS = 15;
+
+// ── Waking the practice bot ───────────────────────────────────────
+// The bot is paced SERVER-side (`BOT_ACTION_INTERVAL_MS` in the store), so the
+// page wakes it on that same shared interval — never faster — with a small
+// cushion so a wake-up cannot land a millisecond inside the throttle and burn
+// a wake-up of the bot's 15s window.
+const BOT_FIRST_WAKE_MS = 350;
+const BOT_WAKE_INTERVAL_MS = BOT_ACTION_INTERVAL_MS + 150;
 
 /**
  * The 15s choice window as a bright glass ring. DISPLAY ONLY: when it
@@ -378,18 +430,138 @@ function GlassBreak({ tileRect, delay = 0.5 }) {
 }
 
 /**
+ * Where `el` sits inside `root`, in LAYOUT pixels — the sum of the offset chain
+ * up to `root`. Unlike `getBoundingClientRect` this ignores every ancestor
+ * TRANSFORM, so a board that is still arriving (a spring on `y`/`scale`) or a
+ * scaled creator frame cannot skew it: the token is a child of the same
+ * container, so layout coordinates are exactly where it belongs. Returns null
+ * if `root` is not in the element's offset chain (the caller falls back to
+ * viewport rects).
+ */
+function offsetWithin(el, root) {
+  let x = 0;
+  let y = 0;
+  let node = el;
+  while (node && node !== root) {
+    x += node.offsetLeft;
+    y += node.offsetTop;
+    node = node.offsetParent;
+  }
+  return node === root ? { x, y } : null;
+}
+
+/**
+ * A seat's STANDING token: the player's profile picture sitting ON the tile
+ * they are standing on, centred on that tile's glass — never beside the row.
+ *
+ * The tile is MEASURED rather than guessed, so the token stays centred on the
+ * glass at every breakpoint and inside the creator-mode portrait frame.
+ * Travelling between tiles is the jump overlay's job (it arcs from the previous
+ * tile onto the clicked one); this is only the resting position, and it is
+ * derived from the server's own history. The seat is hidden while its own jump
+ * is in the air, so exactly one avatar is ever on the board for a seat.
+ */
+function BridgeToken({ boardRef, tileRefs, startRef, anchor, layoutKey, seat, mine, identity, name }) {
+  const [placed, setPlaced] = useState(null);
+  const anchorKey =
+    anchor?.kind === "tile"
+      ? `t:${anchor.row}:${anchor.tile}`
+      : anchor?.kind ?? "none";
+
+  useEffect(() => {
+    const board = boardRef.current;
+    const el =
+      anchor?.kind === "tile"
+        ? tileRefs.current?.[`${anchor.row}:${anchor.tile}`]
+        : anchor?.kind === "start"
+          ? startRef.current
+          : null;
+    if (!board || !el) {
+      setPlaced(null);
+      return;
+    }
+    // Layout first: immune to the board's entrance spring, so the token is on
+    // its tile from its very first frame.
+    const local = offsetWithin(el, board);
+    if (local) {
+      setPlaced({
+        key: anchorKey,
+        x: local.x + el.offsetWidth / 2,
+        y: local.y + el.offsetHeight / 2,
+      });
+      return;
+    }
+    const b = board.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    setPlaced({
+      key: anchorKey,
+      x: r.left - b.left + r.width / 2,
+      y: r.top - b.top + r.height / 2,
+    });
+  }, [
+    boardRef,
+    tileRefs,
+    startRef,
+    anchorKey,
+    anchor?.kind,
+    anchor?.row,
+    anchor?.tile,
+    layoutKey,
+  ]);
+
+  // Never paint a token at a tile it has already left while the new one is
+  // being measured: the jump overlay is covering this seat at that moment.
+  if (anchor?.kind === "crossed") return null;
+  if (!placed || placed.key !== anchorKey) return null;
+
+  return (
+    <motion.span
+      data-testid="lane-runner-token"
+      data-token-seat={seat}
+      data-token-row={anchor.kind === "tile" ? anchor.row : "start"}
+      data-token-tile={anchor.kind === "tile" ? anchor.tile : -1}
+      initial={false}
+      animate={{ x: placed.x, y: placed.y }}
+      transition={{ type: "spring", stiffness: 360, damping: 26 }}
+      className="pointer-events-none absolute left-0 top-0 z-20"
+      // The bridge stacks its planks with `space-y-*`, which adds a top margin
+      // to every non-hidden sibling after the first — including this absolutely
+      // positioned token. Zero it inline so the token's measured centre is its
+      // real centre.
+      style={{ margin: 0 }}
+      title={mine ? "You are here" : `${name} is here`}
+    >
+      <span
+        data-token-avatar="true"
+        className={`block -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ${
+          mine ? "ring-cyan-300/90" : "ring-rose-300/90"
+        }`}
+      >
+        <FrameAvatar
+          frame={identity?.profileFrame}
+          iconKey={identity?.iconKey}
+          name={name}
+          size="h-7 w-7"
+        />
+      </span>
+    </motion.span>
+  );
+}
+
+/**
  * The player's JUMP, rendered from the SERVER's resolved action.
  *
  * It is pure presentation: the outcome (safe / fell / won) and the row/tile
  * come from the authoritative action history, never from anything the client
- * decides. It draws a lightweight avatar token over the bridge — an
- * anticipation squash into a curved arc with a landing squash for a SAFE jump,
- * or a leap toward the bad tile followed by a fall-through, a crack flash and
- * a small glass shatter for a BAD one — then removes itself. It is skipped
- * entirely under reduced motion (and a SAFE jump's glass impact rides the
- * existing Tailwind/framer-motion primitives, no new engine).
+ * decides. It draws a lightweight avatar token over the bridge — the seat hops
+ * OFF the tile it was standing on, arcs over the bridge and lands ON the tile
+ * it clicked: an anticipation squash into a curved arc with a landing squash
+ * for a SAFE jump, or a leap toward the bad tile followed by a fall-through, a
+ * crack flash and a small glass shatter for a BAD one — then removes itself. It
+ * is skipped entirely under reduced motion (and a SAFE jump's glass impact
+ * rides the existing Tailwind/framer-motion primitives, no new engine).
  */
-function JumpOverlay({ anim, boardRef, rowRefs, tileRefs, identity, name, onDone }) {
+function JumpOverlay({ anim, boardRef, tileRefs, startRef, identity, name, onDone }) {
   const [coords, setCoords] = useState(null);
   const doneRef = useRef(false);
   const finish = () => {
@@ -405,33 +577,48 @@ function JumpOverlay({ anim, boardRef, rowRefs, tileRefs, identity, name, onDone
       return undefined;
     }
     const b = board.getBoundingClientRect();
-    const anchorFor = (row) => {
-      const el = rowRefs.current?.[row];
+    // A tile (or the start platform) in BOARD coordinates: the top-left for the
+    // glass-break effects plus the centre the token travels to.
+    const rectForAnchor = (anchor) => {
+      const el =
+        anchor?.kind === "tile"
+          ? tileRefs.current?.[`${anchor.row}:${anchor.tile}`]
+          : anchor?.kind === "start"
+            ? startRef.current
+            : null;
       if (!el) return null;
       const r = el.getBoundingClientRect();
-      return { x: r.right - b.left - 18, y: r.top - b.top + r.height / 2 };
+      return {
+        x: r.left - b.left,
+        y: r.top - b.top,
+        w: r.width,
+        h: r.height,
+        cx: r.left - b.left + r.width / 2,
+        cy: r.top - b.top + r.height / 2,
+      };
     };
-    const from = anchorFor(anim.fromRow);
-    if (!from) {
+
+    const target = rectForAnchor(anim.toAnchor);
+    // A win hops UP off the top of the bridge, FROM the tile it was won on, so
+    // the token must leave the span upward — never swoop back down toward
+    // row 1.
+    const standing = rectForAnchor(anim.fromAnchor);
+    const fromRect = anim.outcome === "won" ? target : standing;
+    if (!fromRect) {
       finish();
       return undefined;
     }
-    let to = from;
+    const from = { x: fromRect.cx, y: fromRect.cy };
+    let to = target ? { x: target.cx, y: target.cy } : from;
     let tileRect = null;
     if (anim.outcome === "fell") {
-      const el = tileRefs.current?.[`${anim.fromRow}:${anim.tile}`];
-      if (el) {
-        const r = el.getBoundingClientRect();
-        tileRect = { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height };
-        to = { x: tileRect.x + tileRect.w / 2, y: tileRect.y + tileRect.h / 2 };
+      // The tile it went through: the glass breaks there, on impact.
+      if (target) {
+        tileRect = { x: target.x, y: target.y, w: target.w, h: target.h };
+        to = { x: target.cx, y: target.cy };
       }
     } else if (anim.outcome === "won") {
-      // A win hops UP off the top of the bridge. `from` is already the top row
-      // (the row the winning jump was made from), so the token must leave the
-      // span upward — never swoop back down toward row 1.
       to = { x: from.x, y: from.y - 34 };
-    } else {
-      to = anchorFor(Math.min(anim.fromRow + 1, 9)) || from;
     }
     setCoords({ from, to, tileRect });
     // Safety net: whatever happens to the animation, the overlay retires.
@@ -572,18 +759,38 @@ export default function LaneRushDuelMatchPage({ params }) {
   const actionIdRef = useRef(0);
   const syncSeqRef = useRef(0);
   const syncAbortRef = useRef(null);
-  const botTurnFiredRef = useRef(null);
+  // The newest match payload, readable from inside the bot's wake-up loop
+  // (the loop outlives the render that started it).
+  const matchRef = useRef(null);
   const expiredDeadlineRef = useRef(null);
   const jumpIdRef = useRef(0);
   const boardRef = useRef(null);
-  const rowRefs = useRef({});
   const tileRefs = useRef({});
+  // The start platform, so a seat that has not crossed a tile yet still has a
+  // board position to stand on.
+  const startRef = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  // Mirror the newest payload into a ref so the bot's wake-up loop (which
+  // outlives the render that started it) always reads the LIVE board rather
+  // than the closure it was created in.
+  useEffect(() => {
+    matchRef.current = match;
+  }, [match]);
+
+  // Re-measure the on-tile tokens whenever the board's geometry can have
+  // changed, so a token can never settle off-centre.
+  const [layoutRev, setLayoutRev] = useState(0);
+  useEffect(() => {
+    const bump = () => setLayoutRev((n) => n + 1);
+    window.addEventListener("resize", bump);
+    return () => window.removeEventListener("resize", bump);
   }, []);
 
   // A new matchId is a NEW duel — never inherit the previous one's state.
@@ -599,7 +806,6 @@ export default function LaneRushDuelMatchPage({ params }) {
     actingRef.current = false;
     syncSeqRef.current += 1;
     syncAbortRef.current?.abort();
-    botTurnFiredRef.current = null;
     expiredDeadlineRef.current = null;
     jumpIdRef.current = 0;
     setJumpAnim(null);
@@ -684,56 +890,77 @@ export default function LaneRushDuelMatchPage({ params }) {
   const mySeat = isPlayer1 ? "player1" : "player2";
   const oppSeat = isPlayer1 ? "player2" : "player1";
 
-  // ── Test vs Bot: wake the bot while IT owns the turn ─────────────
+  // ── Test vs Bot: keep waking the bot while IT owns the turn ──────
+  //
+  // The bot is paced SERVER-side (`BOT_ACTION_INTERVAL_MS`): a wake-up that
+  // arrives inside that throttle applies NOTHING and still answers `success`.
+  // A page that asked only ONCE therefore left the bot frozen for the rest of
+  // its 15s window, so it lost the attempt to a timeout and reset to row 1 —
+  // the AI "never plays". Worse, a safe tile KEEPS the bot's turn, so one ask
+  // per state can never carry it across the bridge.
+  //
+  // So while the turn is the bot's, this keeps waking it on the shared
+  // interval. Each ask carries an `actionId` keyed to (match, turn, action
+  // count), which is exactly what the server dedupes on: a repeat of the SAME
+  // state can never grant the bot a second action, while the next state is a
+  // new ask. The loop stops the moment the turn is no longer the bot's — its
+  // own fall, a timeout, or the duel ending.
   const botOwnsTurn =
     isBotMatch && !finished && !cancelled && match?.currentTurnUserId === "AI_BOT";
+  const botAskUrl = matchId
+    ? `/api/lane-rush-duel/match/${matchId}/ai-turn`
+    : null;
   useEffect(() => {
-    if (!botOwnsTurn) {
-      botTurnFiredRef.current = null;
-      return;
-    }
-    const turnKey = [
-      matchId,
-      match?.currentTurnUserId,
-      Array.isArray(match?.actions) ? match.actions.length : 0,
-    ].join(":");
-    if (botTurnFiredRef.current === turnKey) return;
-    const timer = setTimeout(async () => {
-      if (botTurnFiredRef.current === turnKey) return;
-      botTurnFiredRef.current = turnKey;
+    if (!botOwnsTurn || !botAskUrl) return undefined;
+    let cancelled = false;
+    let timer = null;
+
+    const wake = async () => {
+      if (cancelled || !mountedRef.current) return;
+      // Read the LIVE board: between wake-ups the turn may already have moved
+      // on (the bot's fall, a timeout resolved by the other tab, the duel
+      // ending), and an ask is only ever made while the bot still owns it.
+      const live = matchRef.current;
+      if (!live || live.player2Id !== "AI_BOT") return;
+      if (live.status === "finished" || live.status === "cancelled") return;
+      if (live.currentTurnUserId !== "AI_BOT") return;
+
+      const actionCount = Array.isArray(live.actions) ? live.actions.length : 0;
+      const actionId = `${matchId}:bot:${live.currentTurnUserId}:${actionCount}`;
       try {
-        const response = await fetch(
-          `/api/lane-rush-duel/match/${matchId}/ai-turn`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ actionId: `${matchId}:bot:${turnKey}` }),
-          },
-        );
-        const json = await response.json();
-        if (!mountedRef.current) return;
+        const response = await fetch(botAskUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ actionId }),
+        });
+        const json = await response.json().catch(() => null);
+        if (cancelled || !mountedRef.current) return;
         if (json?.success) {
           socket?.emit("room_event", {
             roomId: laneRushDuelMatchRoom(matchId),
             event: LANE_RUSH_DUEL_MATCH_UPDATED,
           });
-          await fetchStatus();
-        } else {
-          // Resync BEFORE retrying: if the board moved on (or the duel just
-          // ended) the next pass sees the real state and bails.
-          botTurnFiredRef.current = null;
-          await fetchStatus();
         }
+        // Resync on EVERY answer: a refusal (the bot no longer owns the turn)
+        // and a throttled no-op both mean the next wake-up has to decide from
+        // the authoritative board rather than this closure.
+        await fetchStatus();
       } catch {
-        if (mountedRef.current) {
-          botTurnFiredRef.current = null;
-          await fetchStatus();
-        }
+        if (cancelled || !mountedRef.current) return;
+        await fetchStatus();
       }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [botOwnsTurn, matchId, match?.currentTurnUserId, match?.actions, socket, fetchStatus]);
+
+      if (cancelled || !mountedRef.current) return;
+      timer = setTimeout(wake, BOT_WAKE_INTERVAL_MS);
+    };
+
+    timer = setTimeout(wake, BOT_FIRST_WAKE_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [botOwnsTurn, botAskUrl, matchId, socket, fetchStatus]);
 
   // ── Seat identity ────────────────────────────────────────────────
   const mySeatIdentity = isPlayer1
@@ -947,6 +1174,21 @@ export default function LaneRushDuelMatchPage({ params }) {
         outcome: a.outcome,
         fromRow: Math.max(0, Math.min(bridgeRows - 1, Number(a.row) || 0)),
         tile: Number(a.tile),
+        // The tile it CLICKED: where the hop lands, and the tile the seat now
+        // stands on. For a fall this is the glass it goes through.
+        toAnchor: {
+          kind: "tile",
+          row: Math.max(0, Math.min(bridgeRows - 1, Number(a.row) || 0)),
+          tile: Number(a.tile),
+        },
+        // The tile (or start platform) it was standing on when it clicked, so
+        // the arc leaves the board instead of starting mid-air.
+        fromAnchor: ballAnchorFor({
+          actions: historyBefore(match?.actions, a),
+          seat: mySeat,
+          row: Number(a.row) || 0,
+          rows: bridgeRows,
+        }),
       });
     }
   }, [match, myActionKey, myLastAction, shouldReduce, mySeat, bridgeRows, playBreakAtImpact]);
@@ -992,6 +1234,17 @@ export default function LaneRushDuelMatchPage({ params }) {
         outcome: a.outcome,
         fromRow: Math.max(0, Math.min(bridgeRows - 1, Number(a.row) || 0)),
         tile: Number(a.tile),
+        toAnchor: {
+          kind: "tile",
+          row: Math.max(0, Math.min(bridgeRows - 1, Number(a.row) || 0)),
+          tile: Number(a.tile),
+        },
+        fromAnchor: ballAnchorFor({
+          actions: historyBefore(match?.actions, a),
+          seat: oppSeat,
+          row: Number(a.row) || 0,
+          rows: bridgeRows,
+        }),
       });
     }
   }, [match, oppActionKey, oppLastResolved, shouldReduce, oppSeat, bridgeRows, playBreakAtImpact]);
@@ -1243,15 +1496,31 @@ export default function LaneRushDuelMatchPage({ params }) {
   }
 
   // ── The board — a floating glass bridge ──────────────────────────
-  // Each row is a suspended plank of semi-transparent glass tiles. A
-  // player's profile picture sits on the row they are standing on, so the
-  // bridge itself shows both seats' progress. Broken tiles are cracked and
-  // red for the rest of the match; flags are drawn for BOTH players.
-  // Untouched tiles are pixel-identical — safe/bad is never hinted at.
-  const myMarkerRow = Math.min(myRow, bridgeRows - 1);
-  const oppMarkerRow = Math.min(oppRow, bridgeRows - 1);
-  const iCrossed = myRow >= bridgeRows;
-  const oppCrossed = oppRow >= bridgeRows;
+  // Each row is a suspended plank of semi-transparent glass tiles. A player's
+  // profile picture sits ON THE TILE that player is standing on — the tile they
+  // clicked to get to their row — so the bridge shows both seats' progress TILE
+  // BY TILE rather than floating beside it. Broken tiles are cracked and red
+  // for the rest of the match; flags are drawn for BOTH players. Untouched
+  // tiles are pixel-identical — safe/bad is never hinted at.
+  const myAnchor = ballAnchorFor({
+    actions: match?.actions,
+    seat: mySeat,
+    row: myRow,
+    rows: bridgeRows,
+  });
+  const oppAnchor = ballAnchorFor({
+    actions: match?.actions,
+    seat: oppSeat,
+    row: oppRow,
+    rows: bridgeRows,
+  });
+  // A seat whose jump is in the air is drawn by the overlay instead, so exactly
+  // one avatar is ever standing on the board for a seat. Keyed on the SEATS,
+  // not on "player1", so a player sitting in seat 2 hides its own token while
+  // its own jump plays.
+  const myTokenVisible = jumpAnim?.seat !== mySeat;
+  const oppTokenVisible = jumpAnim?.seat !== oppSeat;
+  const layoutKey = `${layoutRev}:${bridgeRows}:${tileCount}`;
 
   // Glass is intact until it is struck. While a fall is in flight, the tile the
   // token is falling through keeps its unbroken styling; the shattered state
@@ -1289,6 +1558,9 @@ export default function LaneRushDuelMatchPage({ params }) {
       initial={shouldReduce ? false : { opacity: 0, y: 18, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 120, damping: 18 }}
+      // The planks settle as the board arrives; the on-tile tokens measure the
+      // glass, so they re-measure once that motion has finished.
+      onAnimationComplete={() => setLayoutRev((n) => n + 1)}
       className="relative"
     >
       {/* Suspension rails the planks hang from */}
@@ -1318,22 +1590,12 @@ export default function LaneRushDuelMatchPage({ params }) {
           // The row a seat chooses on is exactly `seatRow` (row index ===
           // rows crossed). The server gates the click on the same value.
           const isMyRow = row === myRow;
-          // While a seat's jump animation is playing, its steady marker is
-          // hidden so the animated token is the only avatar on the board.
-          const myHere =
-            !iCrossed && row === myMarkerRow && jumpAnim?.seat !== "player1";
-          const oppHere =
-            !oppCrossed && row === oppMarkerRow && jumpAnim?.seat !== "player2";
           const activeRow = isMyTurn && isMyRow && !finished && !cancelled;
           return (
             <div
               key={row}
               data-lane-row={row}
               data-goal={isGoal ? "true" : "false"}
-              ref={(el) => {
-                if (el) rowRefs.current[row] = el;
-                else delete rowRefs.current[row];
-              }}
               className={`relative flex items-center gap-1.5 rounded-none px-1 py-1 transition ${
                 isGoal
                   ? "bg-amber-400/[0.06]"
@@ -1474,44 +1736,47 @@ export default function LaneRushDuelMatchPage({ params }) {
                 })}
               </div>
 
-              {/* Standing markers — the seats' profile pictures sit on the
-                  row each player is currently on. Never block a tap. */}
-              <span className="pointer-events-none flex w-8 shrink-0 flex-col items-center justify-center gap-0.5">
-                {myHere && (
-                  <span
-                    title="You are here"
-                    className="rounded-full ring-2 ring-cyan-300/80"
-                  >
-                    <FrameAvatar
-                      frame={mySeatIdentity.profileFrame}
-                      iconKey={mySeatIdentity.iconKey}
-                      name={myDisplayName}
-                      size="h-6 w-6"
-                    />
-                  </span>
-                )}
-                {oppHere && (
-                  <span
-                    title={`${oppDisplayName} is here`}
-                    className="rounded-full ring-2 ring-rose-300/80"
-                  >
-                    <FrameAvatar
-                      frame={oppSeatIdentity.profileFrame}
-                      iconKey={oppSeatIdentity.iconKey}
-                      name={oppDisplayName}
-                      size="h-6 w-6"
-                    />
-                  </span>
-                )}
-              </span>
             </div>
           );
         })}
 
-        {/* Start platform */}
-        <div className="flex items-center justify-center gap-1.5 pt-1 text-[10px] font-black uppercase tracking-[0.2em] text-white/40">
+        {/* Start platform — the board position a seat stands on before it has
+            crossed its first tile. */}
+        <div
+          ref={startRef}
+          data-lane-start="true"
+          className="flex items-center justify-center gap-1.5 pt-1 text-[10px] font-black uppercase tracking-[0.2em] text-white/40"
+        >
           Start · row 1
         </div>
+
+        {/* The standings: one avatar per seat, sitting ON the tile that seat is
+            standing on. Never blocks a tap. */}
+        {myTokenVisible && (
+          <BridgeToken
+            boardRef={boardRef}
+            tileRefs={tileRefs}
+            startRef={startRef}
+            anchor={myAnchor}
+            layoutKey={layoutKey}
+            seat={mySeat}
+            mine
+            identity={mySeatIdentity}
+            name={myDisplayName}
+          />
+        )}
+        {oppTokenVisible && (
+          <BridgeToken
+            boardRef={boardRef}
+            tileRefs={tileRefs}
+            startRef={startRef}
+            anchor={oppAnchor}
+            layoutKey={layoutKey}
+            seat={oppSeat}
+            identity={oppSeatIdentity}
+            name={oppDisplayName}
+          />
+        )}
       </div>
 
       {jumpAnim && (
@@ -1519,8 +1784,8 @@ export default function LaneRushDuelMatchPage({ params }) {
           key={jumpAnim.id}
           anim={jumpAnim}
           boardRef={boardRef}
-          rowRefs={rowRefs}
           tileRefs={tileRefs}
+          startRef={startRef}
           identity={
             jumpAnim.seat === "player1" ? mySeatIdentity : oppSeatIdentity
           }
