@@ -364,6 +364,11 @@ export const STOP_HTTP_TIMEOUT_MS = 8000;
  * and the packet landing, and nothing else.
  */
 export function stopElapsedHint(elapsedMs?: number | null): number | null {
+  // `null`/`undefined` mean "there is no frozen elapsed to report" — an explicit
+  // absence, never a stop at 0ms. (`Number(null)` is 0, so the numeric
+  // coercion below alone shipped a bogus `elapsedMs: 0` for every caller that
+  // passed null to say "none".)
+  if (elapsedMs === null || elapsedMs === undefined) return null;
   const value = Number(elapsedMs);
   return Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
 }

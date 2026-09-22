@@ -78,7 +78,11 @@ function withFetch(handler) {
 
 function stopAck(socket) {
   return new Promise((resolve) => {
-    emitStop(socket, "match-1", "round-1", "nonce-1", resolve);
+    // Argument order: (socket, matchId, roundId, nonce, elapsedMs, onAck). The
+    // frozen-elapsed hint was inserted before the ACK callback, so the callback
+    // has to be passed in the LAST slot — passing it fifth made `onAck`
+    // undefined and every ACK-path test below blow up on a dead socket double.
+    emitStop(socket, "match-1", "round-1", "nonce-1", null, resolve);
   });
 }
 
@@ -195,6 +199,21 @@ test("an explicit refusal from the server is authoritative and is not retried", 
   } finally {
     net.restore();
   }
+});
+
+test("the frozen elapsed rides along with the stop (the server's only timing hint)", () => {
+  // The click is measured on the client's server-aligned clock and shipped with
+  // the stop, because the packet needs one delivery to reach the server. The
+  // server clamps it against its own measurement (see `resolveStopElapsedMs`),
+  // so this value must survive transport verbatim — rounded to a whole ms.
+  const socket = fakeSocket();
+  emitStop(socket, "match-1", "round-1", "nonce-1", 7_050.4, () => {});
+  assert.deepEqual(socket.emitted[0].payload, {
+    matchId: "match-1",
+    roundId: "round-1",
+    nonce: "nonce-1",
+    elapsedMs: 7050,
+  });
 });
 
 test("a fire-and-forget stop stays a plain emit", () => {

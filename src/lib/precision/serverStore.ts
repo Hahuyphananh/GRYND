@@ -842,8 +842,12 @@ function stopResult(
  *
  * Timing: the stop instant is the instant the request REACHED us
  * (`options.receivedAtMs`, stamped by the route before this transaction
- * touches the database, so a DB round trip cannot push the stop later) and
- * `elapsedMs = stopInstant - state.roundGoInstant`.
+ * touches the database) and `elapsedMs = stopInstant - state.roundGoInstant`.
+ *
+ * INVARIANT — that stamp is the ONLY clock reading this function may take.
+ * Nothing inside the transaction may call `Date.now()`: every instant it
+ * would produce is one delivery-plus-database later than the click (see
+ * `stopInstantMs` below).
  *
  * The client's own measurement rides along as `options.clientElapsedMs` —
  * the elapsed it froze at when the player clicked, on the same clock the
@@ -873,11 +877,21 @@ export async function recordRoundStop(
     clientElapsedMs?: number | null;
   } = {},
 ): Promise<RecordRoundStopResult> {
-  // Captured BEFORE the transaction below acquires a connection and issues
-  // BEGIN: on a pooled remote database that handshake costs a round trip, and
-  // paying it inside the stop measurement made every recorded stop later than
-  // the click by that much.
-  const requestInstant = Number.isFinite(options.receivedAtMs)
+  // The STOP instant: the instant the request REACHED the route (stamped there
+  // before its body parse and before its Clerk verification), which is the
+  // earliest instant this process can vouch for.
+  //
+  // It is deliberately read ONCE, outside the transaction, and it is the only
+  // clock reading allowed in this function. The transaction below acquires a
+  // pooled connection, issues BEGIN and takes the row lock with
+  // `SELECT … FOR UPDATE`; on a remote pooled database that is several round
+  // trips, and the lock can even wait behind a concurrent poll. Re-stamping
+  // `Date.now()` INSIDE the transaction (as this function used to, shadowing
+  // this value) charged all of that to the player's reaction time — a stop
+  // clicked at 7.05s was recorded as 10s and graded against a stop that was
+  // never made. `stopInstantMs` is therefore used for the measurement AND as
+  // the transaction's `now`, so the whole decision rests on one instant.
+  const stopInstantMs = Number.isFinite(options.receivedAtMs)
     ? Number(options.receivedAtMs)
     : Date.now();
   return db.transaction(async (tx) => {
@@ -891,12 +905,11 @@ export async function recordRoundStop(
     const row = mapMatchRow(raw as Record<string, unknown>);
     if (!row) return stopResult(null, { error: "Match not found." });
 
-    const requestInstant = Date.now();
-    const write = toWrite(row, requestInstant);
+    const write = toWrite(row, stopInstantMs);
     // The bot's stop may already be due (or the round may still be arming
     // because its countdown expired while no client was polling), so apply
     // the due transitions BEFORE validating the human's packet.
-    applyDueTransitions(write, requestInstant, { isAiGame: row.isAiGame });
+    applyDueTransitions(write, stopInstantMs, { isAiGame: row.isAiGame });
 
     const state = write.state;
 
@@ -960,7 +973,7 @@ export async function recordRoundStop(
         error: "Nonce mismatch. Stop packet rejected (possible replay).",
       });
     }
-    if (requestInstant < state.roundGoInstant) {
+    if (stopInstantMs < state.roundGoInstant) {
       return stopResult(state, {
         validationError: true,
         error: "Server clock produced a negative elapsed (unlikely).",
@@ -971,7 +984,7 @@ export async function recordRoundStop(
     // server-aligned display clock) inside the bounded window the server will
     // credit, falling back to our own measurement when the hint can't be
     // trusted. See `resolveStopElapsedMs` for the exact rules.
-    const serverElapsedMs = requestInstant - state.roundGoInstant;
+    const serverElapsedMs = stopInstantMs - state.roundGoInstant;
     const elapsedMs = resolveStopElapsedMs({
       serverElapsedMs,
       clientElapsedMs: options.clientElapsedMs,
@@ -992,7 +1005,7 @@ export async function recordRoundStop(
     write.pendingStops[userId] = telemetry;
 
     // Not both seats in yet — persist the bot's progress (if any) and wait.
-    if (!applyRoundResolutionIfReady(write, requestInstant)) {
+    if (!applyRoundResolutionIfReady(write, stopInstantMs)) {
       await persistMatch(tx, matchId, write);
       return stopResult(state, { bothStopped: false });
     }

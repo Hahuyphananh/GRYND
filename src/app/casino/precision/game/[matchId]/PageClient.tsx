@@ -406,14 +406,15 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     }
   }, [matchId, readySubmitting, selfReady, localSeat, socket, posthog, applySnapshot, stateRef, t]);
 
-  // ── Round-stop submit (bare STOP — server owns all timing) ─────
-  // The client sends ONLY a `{ matchId }` payload over the realtime
-  // socket. The server-side `recordRoundStop` stamps the STOP instant
-  // (`Date.now()` at receive time) and computes elapsed =
-  // `stopInstant - match.roundGoInstant` authoritatively. The client
-  // has no influence on either instant — see the "never trust the
-  // client" and "all timing on the server" invariants in the project
-  // README.
+  // ── Round-stop submit (server owns all timing) ─────────────────
+  // The client sends its replay envelope plus the elapsed it froze at when
+  // STOP was clicked, over the realtime socket. The server-side
+  // `recordRoundStop` measures the STOP at the instant the request REACHED the
+  // route and computes elapsed = `stopInstant - match.roundGoInstant`
+  // authoritatively — the client's number is a bounded HINT that can only
+  // cancel delivery lag (never buy extra time, never move the stop later). The
+  // GO instant is entirely the server's — see the "never trust the client" and
+  // "all timing on the server" invariants in the project README.
   //
   // Single-click enforcement: `stopLockedThisRoundRef` flips to `true`
   // synchronously the instant the handler runs, before any state
