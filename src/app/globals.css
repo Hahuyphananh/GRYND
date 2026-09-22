@@ -94,6 +94,27 @@ body {
   animation: none !important;
 }
 
+/* ── Chess: keep the WHOLE board on one screen (desktop) ───────────────
+   The board is a SQUARE, so capping its width caps its height. On desktop
+   the old `90vh` cap was always beaten by the 660px board column, which left
+   a board taller than the space under the header and the two player bars —
+   the bottom ranks needed a scroll to see. Capping by the viewport height
+   (minus a conservative header + player-bar budget) keeps every rank visible
+   at once, and the 340px floor stops it collapsing in a very short window.
+
+   Desktop only, and explicitly released inside the creator phone frame: the
+   recording frame is NOT the browser viewport, so a `vh` cap would shrink a
+   recorded clip's board. */
+@media (min-width: 1024px) {
+  .chess-board-frame {
+    max-width: max(340px, calc(100vh - 22rem));
+  }
+
+  [data-creator-layout] .chess-board-frame {
+    max-width: none;
+  }
+}
+
 /* ── Mines Duel / Memory Grid: same one-screen rule ────────────────────
    Both games draw a SQUARE board full-width inside a centred column, so on
    desktop the board took more height than the space left under the page's

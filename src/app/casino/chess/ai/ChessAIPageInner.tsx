@@ -718,7 +718,21 @@ export default function ChessAIPageInner() {
   }
 
   // ── Promotion piece selection ──
-  function onPromotionPieceCheck(sourceSquare: string, targetSquare: string, piece: string) {
+  //
+  // react-chessboard v4 calls `onPromotionPieceSelect(piece, from, to)` — the
+  // CHOSEN piece FIRST ("wQ"/"bN"), then the two squares (see PromotionOption
+  // in react-chessboard/dist). Reading the squares first meant `sourceSquare`
+  // received the piece string and `Chess.move()` threw on that bogus square,
+  // so clicking a promotion piece did nothing at all.
+  function onPromotionPieceCheck(
+    piece: string,
+    promoteFromSquare?: string,
+    promoteToSquare?: string,
+  ) {
+    // The dialog's backdrop click calls this with no arguments: never a move.
+    if (!promoteFromSquare || !promoteToSquare) return false;
+    const sourceSquare = promoteFromSquare;
+    const targetSquare = promoteToSquare;
     if (game.isGameOver() || !isPlayersTurn(game)) return false;
     if (moveIndex >= 0) return false;
 
@@ -726,7 +740,14 @@ export default function ChessAIPageInner() {
 
     const promo = piece ? piece[1]?.toLowerCase() : "q";
     const gameCopy = new Chess(game.fen());
-    const move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+    // chess.js v1 THROWS on an illegal move rather than returning null, and a
+    // throw here would escape the click handler and leave the dialog stuck.
+    let move = null;
+    try {
+      move = gameCopy.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+    } catch {
+      return false;
+    }
     if (!move) return false;
 
     if (move.captured) {
@@ -1046,7 +1067,7 @@ export default function ChessAIPageInner() {
 
               {/* BOARD — chess-board-wrap: the shake effect is disabled in
                   creator mode (see globals.css); the board itself is kept. */}
-              <div className={`chess-board-wrap relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+              <div className={`chess-board-wrap chess-board-frame relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
                 {/* chess-capture-flash: hidden in creator mode (see
                     globals.css) so recorded clips don't flash the board. */}
                 <AnimatePresence>

@@ -81,6 +81,7 @@
     "verify:fiar-result": "node qa/fiar-result-check.mjs",
     "verify:fiar-audio": "node qa/fiar-audio-check.mjs",
     "test:precision-ai": "node --import tsx --test tests/precision-ai.test.mjs tests/precision-match-cleanup.test.mjs tests/quick-queue-precision.test.mjs tests/precision-canonical-lifecycle.test.mjs tests/precision-round-clock.test.mjs tests/precision-rocket-axis.test.mjs tests/precision-match-view.test.mjs tests/precision-stop-transport.test.mjs",
+    "test:chess": "node --import tsx --test tests/chess-promotion.test.mjs tests/quick-queue-chess.test.mjs",
     "test:precision-db": "node --import tsx --env-file=.env.local --test tests/precision-persistence.test.mjs",
     "verify:precision-mobile": "node qa/precision-mobile-check.mjs",
     "verify:precision-flow": "node qa/precision-flow-check.mjs",

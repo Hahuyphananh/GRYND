@@ -553,8 +553,19 @@ export default function ChessGamePage() {
     return true;
   }
 
-  // Handle promotion piece selection from react-chessboard dialog
-  async function onPromotionPieceCheck(sourceSquare, targetSquare, piece) {
+  // Handle promotion piece selection from the react-chessboard dialog.
+  //
+  // react-chessboard v4 calls `onPromotionPieceSelect(piece, from, to)` — the
+  // CHOSEN piece FIRST ("wQ"/"bN"), then the two squares (see PromotionOption
+  // in react-chessboard/dist). This handler used to read the squares first, so
+  // `sourceSquare` was handed the piece string, `Chess.move()` threw on that
+  // bogus square and the whole selection blew up inside the click — which is
+  // why choosing a piece did nothing at all.
+  async function onPromotionPieceCheck(piece, promoteFromSquare, promoteToSquare) {
+    // The dialog's backdrop click calls this with no arguments: never a move.
+    if (!promoteFromSquare || !promoteToSquare) return false;
+    const sourceSquare = promoteFromSquare;
+    const targetSquare = promoteToSquare;
     if (isSpectator) return false;
     if (moveIndex >= 0) return false;
 
@@ -563,9 +574,21 @@ export default function ChessGamePage() {
       if (gameData?.status !== "in_progress") return false;
       const promo = piece ? piece[1]?.toLowerCase() : "q";
       const localGame = new Chess(displayFen);
-      const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+      // chess.js v1 THROWS on an illegal move (it does not return null), so a
+      // stale board must read as "not promoted" rather than escape the click.
+      let localMove = null;
+      try {
+        localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+      } catch {
+        return false;
+      }
       localGame.undo();
       if (!localMove) return false;
+      // The pre-move is queued HERE, with the piece the player actually chose.
+      // react-chessboard calls onDrop right after this handler, and that path
+      // queues its own pre-move with promotion "q" — so the guard must be set
+      // too, or a knight promotion would silently become a queen.
+      promotionHandledRef.current = true;
       premoveRef.current = { from: sourceSquare, to: targetSquare, promotion: promo };
       setPremove({ from: sourceSquare, to: targetSquare });
       return true;
@@ -579,7 +602,14 @@ export default function ChessGamePage() {
 
     const promo = piece ? piece[1]?.toLowerCase() : "q"; // e.g., "wQ" → "q"
     const localGame = new Chess(displayFen);
-    const localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+    // chess.js v1 THROWS on an illegal move (it does not return null), so a
+    // stale board must read as "not promoted" rather than escape the click.
+    let localMove = null;
+    try {
+      localMove = localGame.move({ from: sourceSquare, to: targetSquare, promotion: promo });
+    } catch {
+      return false;
+    }
     if (!localMove) return false;
 
     const isCapture = localMove.captured !== undefined;
@@ -764,7 +794,7 @@ export default function ChessGamePage() {
               </div>
 
               {/* BOARD */}
-              <div className={`relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full max-w-[90vh] aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
+              <div className={`chess-board-frame relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
                 {/* Capture flash overlay */}
                 <AnimatePresence>
                   {captureFlash && (
