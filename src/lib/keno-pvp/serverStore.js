@@ -1,6 +1,6 @@
 // src/lib/keno-pvp/serverStore.js
 //
-// Server-side canonical helpers for the Keno PvP ("Keno Catch Duel")
+// Server-side canonical helpers for the Keno PvP "Keno Survival Duel"
 // match system.
 //
 // Why a dedicated serverStore (mirrors `src/lib/slots-pvp/serverStore.js`
@@ -8,26 +8,25 @@
 // be authoritative on the server:
 //   * matchmaking lock (stake-keyed) prevents lobby-race duplicates
 //   * both stakes escrowed at create/join so settlement is balance-neutral
-//   * the shared draw + glow schedule are server-generated and derived
-//     from the server-set round deadline (identical for both)
-//   * catches are graded against the server clock (anti-cheat — a
-//     client can never self-report a catch; the tap must land inside
-//     the tile's 0.8s glow window + a small hidden network grace)
+//   * the live tile + its deadline are server-set, so both players race
+//     for the SAME tile with the SAME window (no client can pick its own)
+//   * claims are graded against the server clock — a claim only counts if
+//     it arrived inside the tile's window (+ a small hidden network
+//     grace), so a client can never self-report a win
+//   * the window tightens by 100ms for every claimed tile, derived from
+//     server-owned counters (a client cannot slow the game down)
+//   * a tile nobody claims is resolved by the server as a BOTH-MISS, so
+//     the match progresses even if both players go AFK
 //   * 3-second ready banner auto-advance
-//   * round deadlines auto-resolve (scores computed, winner stamped,
-//     next round opened) — the game progresses even if both players
-//     go AFK
-//   * end-state resolution per the first-to-10-points rulebook
-//   * 3-minute match clock: at the next round boundary after it
-//     expires (nobody at POINTS_TO_WIN), the match enters a 30-second
-//     OVERTIME countdown; when it ends the player with the most tiles
-//     (highest cumulative score) wins — an overtime tie refunds each
-//     player 95% of their stake (5% rake per side)
+//   * end-state resolution per the survival rulebook (lives 3 → 0)
 //   * 90/10 payout split (winner 1.9× stake, house keeps 0.1×)
 //
 // State machine:
-//   waiting → ready → round_1 … round_16 → overtime → finished
-//   (waiting/ready/round_N/overtime → cancelled)
+//   waiting → ready → <live> → finished
+//   (waiting → cancelled; a disconnect mid-run settles as a forfeit win)
+//
+// `<live>` is MATCH_STATUS.LIVE — one continuous survival run that reuses
+// the legacy `round_1` enum value (see constants.js).
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -46,43 +45,40 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorKenoQueued, mirrorKenoTransition } from "./canonicalLifecycle";
 import {
   ACTIVE_STATES,
-  BALL_COUNT,
   KENO_AI_PLAYER_ID,
   KENO_PVP_LOCK_NAMESPACE,
+  KENO_POOL_SIZE,
+  LIVE_STATES,
   MATCH_STATUS,
-  MATCH_TIME_LIMIT_MS,
-  MAX_ROUNDS,
   MAX_STAKE,
   MIN_STAKE,
-  OVERTIME_DRAW_FEE_PCT,
-  OVERTIME_MS,
-  POINTS_TO_WIN,
   READY_WINDOW_MS,
   RESULT,
-  ROUND_MS,
-  ROUND_STATES,
-  ROUND_TIMER_SECONDS,
+  STARTING_LIVES,
+  START_WINDOW_MS,
+  TAP_GRACE_MS,
+  TILE_LOG_LIMIT,
   computePayout,
   isFreeAiMatch,
   round2,
 } from "./constants";
 import {
-  ballSchedule,
-  computeRoundStats,
-  decideMatchResult,
-  decideRoundWinner,
-  generateDraw,
-  gradeCatch,
-  chooseAiCatchPlan,
+  applyBothMissToLives,
+  applyClaimToLives,
+  capTileLog,
+  chooseAiClaim,
+  decideSurvivalResult,
+  isClaimInWindow,
+  pickLiveTile,
+  tileLogEntry,
+  tileWindowMs,
 } from "./engine";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-function roundDeadlineMs(match) {
-  const t = Number(match?.roundTimerSeconds);
-  if (Number.isFinite(t) && t > 0) return t * 1000;
-  return ROUND_MS;
-}
+// Opening window, stored on the row for compatibility with the legacy
+// `round_timer_seconds` column (the live window shrinks from here).
+const OPENING_WINDOW_SECONDS = Math.ceil(START_WINDOW_MS / 1000);
 
 // Seat label ("player1" | "player2") for a user in a given match row.
 export function seatForUser(match, userId) {
@@ -204,7 +200,7 @@ export async function enrichMatchesWithUsers(matchOrMatches) {
     rows.map((r) => r.equippedCosmetics),
   );
   const decorationByClerkId = new Map(
-    rows.map((r, index) => [r.clerkId, decorations[index]]),
+    rows.map((r, i) => [r.clerkId, decorations[i]]),
   );
   const summary = summariseUsers(rows, decorationByClerkId);
   const enrichOne = (m) => {
@@ -246,9 +242,8 @@ function hashStakeToInt(stake) {
 
 // ── Create a free human-vs-AI match ───────────────────────────────────
 //
-// The bot occupies player2. No stake is escrowed; it catches balls from
-// the same server-generated stream and is graded by the same clock/window
-// rules as a human catch.
+// The bot occupies player2. No stake is escrowed; it races for the same
+// live tiles as the human and is graded by the same clock/window rules.
 export async function createAiMatch({ userId }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
 
@@ -263,14 +258,15 @@ export async function createAiMatch({ userId }) {
         status: MATCH_STATUS.READY,
         isAi: true,
         currentRound: 1,
-        roundsWonPlayer1: 0,
-        roundsWonPlayer2: 0,
-        p1Score: 0,
-        p2Score: 0,
-        currentDraw: null,
-        p1Catches: null,
-        p2Catches: null,
-        roundTimerSeconds: ROUND_TIMER_SECONDS,
+        p1Lives: STARTING_LIVES,
+        p2Lives: STARTING_LIVES,
+        p1Tiles: 0,
+        p2Tiles: 0,
+        liveTile: null,
+        liveTileIndex: 0,
+        usedTiles: [],
+        tileLog: [],
+        roundTimerSeconds: OPENING_WINDOW_SECONDS,
         roundDeadline: readyDeadline,
         houseFee: "0.00",
         prizePaid: "0.00",
@@ -278,83 +274,6 @@ export async function createAiMatch({ userId }) {
       })
       .returning();
     return { match, joined: true };
-  });
-}
-
-// Append every AI catch through the same server-clock schedule and
-// quality validation used by catchBall. A plan entry that is too early
-// or too late is simply a bot miss; it is never written as a fake catch.
-async function playAiTurnInTransaction(tx, match) {
-  if (!match || !isFreeAiMatch(match) || match.player2Id !== KENO_AI_PLAYER_ID) {
-    return { match, actions: 0, alreadyPlayed: true };
-  }
-  if (!ROUND_STATES.has(match.status) || !match.roundDeadline) {
-    return { match, actions: 0, alreadyPlayed: true };
-  }
-
-  const schedule = ballSchedule(
-    new Date(match.roundDeadline).getTime(),
-    Array.isArray(match.currentDraw) ? match.currentDraw : [],
-  );
-  const plan = chooseAiCatchPlan({
-    draw: match.currentDraw,
-    roundNumber: match.currentRound,
-    seed: `${match.id}:${match.currentRound}`,
-  });
-  let current = match;
-  let actions = 0;
-  const now = Date.now();
-  const caught = new Set(
-    (Array.isArray(current.p2Catches) ? current.p2Catches : [])
-      .map((entry) => Number(entry?.number))
-      .filter((number) => Number.isInteger(number)),
-  );
-
-  for (const planned of plan) {
-    if (caught.has(planned.number)) continue;
-    const ball = schedule.find((entry) => entry.number === planned.number);
-    if (!ball || now < ball.releaseMs + planned.reactionMs || now > ball.acceptedUntilMs) {
-      continue;
-    }
-
-    const quality = gradeCatch(now, ball);
-    if (!quality) continue;
-    const catchEntry = {
-      number: planned.number,
-      quality,
-      caughtAt: new Date(now).toISOString(),
-    };
-    const nextCatches = [
-      ...(Array.isArray(current.p2Catches) ? current.p2Catches : []),
-      catchEntry,
-    ];
-    const [updated] = await tx
-      .update(kenoPvpMatches)
-      .set({ p2Catches: nextCatches })
-      .where(
-        and(
-          eq(kenoPvpMatches.id, current.id),
-          eq(kenoPvpMatches.status, current.status),
-        ),
-      )
-      .returning();
-    if (!updated) break;
-    current = updated;
-    caught.add(planned.number);
-    actions += 1;
-  }
-
-  return { match: current, actions, alreadyPlayed: false };
-}
-
-export async function playAiTurn({ userId, matchId }) {
-  return await db.transaction(async (tx) => {
-    const match = await fetchMatchForUpdate(tx, matchId);
-    if (!match) return { error: "Match not found", status: 404 };
-    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
-      return { error: "Forbidden", status: 403 };
-    }
-    return await playAiTurnInTransaction(tx, match);
   });
 }
 
@@ -428,14 +347,15 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
       stakeAmount: stake,
       status: MATCH_STATUS.WAITING,
       currentRound: 1,
-      roundsWonPlayer1: 0,
-      roundsWonPlayer2: 0,
-      p1Score: 0,
-      p2Score: 0,
-      currentDraw: null,
-      p1Catches: null,
-      p2Catches: null,
-      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      p1Lives: STARTING_LIVES,
+      p2Lives: STARTING_LIVES,
+      p1Tiles: 0,
+      p2Tiles: 0,
+      liveTile: null,
+      liveTileIndex: 0,
+      usedTiles: [],
+      tileLog: [],
+      roundTimerSeconds: OPENING_WINDOW_SECONDS,
       houseFee: "0.00",
       prizePaid: "0.00",
       startedAt: null,
@@ -561,7 +481,7 @@ export async function cancelMatch({ userId, matchId }) {
   });
 }
 
-// ── Row lock + auto-advance plumbing ──────────────────────────────────
+// ── Row lock + survival-run plumbing ──────────────────────────────────
 
 async function fetchMatchForUpdate(tx, matchId) {
   const [match] = await tx
@@ -572,124 +492,216 @@ async function fetchMatchForUpdate(tx, matchId) {
   return match;
 }
 
-// Open the first round (from the READY banner) or the next round (from
-// a resolved round). Generates the shared draw, sets the round deadline
-// (= open + ROUND_MS) and clears per-round catches.
-async function startRound(tx, match, roundNumber) {
-  const now = Date.now();
-  const draw = generateDraw();
-  const deadline = new Date(now + ROUND_MS);
+function intOr(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
 
+function usedTilesOf(match) {
+  return Array.isArray(match?.usedTiles) ? match.usedTiles : [];
+}
+
+function tileLogOf(match) {
+  return Array.isArray(match?.tileLog) ? match.tileLog : [];
+}
+
+// Tiles claimed so far by either player — the value the shrinking window
+// is derived from (a both-miss does NOT speed the game up).
+export function claimedTotal(match) {
+  return Math.max(0, intOr(match?.p1Tiles)) + Math.max(0, intOr(match?.p2Tiles));
+}
+
+// How long the CURRENT live tile stays claimable.
+export function currentWindowMs(match) {
+  return tileWindowMs(claimedTotal(match));
+}
+
+function liveDeadlineMs(match) {
+  const raw = match?.roundDeadline;
+  const ms = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function liveStartedMs(match) {
+  const raw = match?.liveStartedAt;
+  const ms = raw ? new Date(raw).getTime() : NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function hasLiveTile(match) {
+  const tile = Number(match?.liveTile);
+  return Number.isInteger(tile) && tile >= 1 && tile <= KENO_POOL_SIZE;
+}
+
+// Stable server-side seed for the tile draw + the bot plan. Never sent to
+// a client.
+function runSeed(match) {
+  return `keno-pvp:${match?.id ?? 0}`;
+}
+
+// ── Light the next tile ───────────────────────────────────────────────
+//
+// `reset` starts a brand-new run (lives back to 3, counters cleared): that
+// is the `ready → live` transition. Without it the run continues from the
+// current lives/tiles/log.
+async function lightNextTile(tx, match, { now = Date.now(), reset = false } = {}) {
+  const lives1 = reset ? STARTING_LIVES : Math.max(0, intOr(match.p1Lives));
+  const lives2 = reset ? STARTING_LIVES : Math.max(0, intOr(match.p2Lives));
+  const tiles1 = reset ? 0 : Math.max(0, intOr(match.p1Tiles));
+  const tiles2 = reset ? 0 : Math.max(0, intOr(match.p2Tiles));
+  const log = reset ? [] : capTileLog(tileLogOf(match), TILE_LOG_LIMIT);
+  const used = reset ? [] : usedTilesOf(match);
+  const index = reset ? 0 : Math.max(0, intOr(match.liveTileIndex));
+
+  const tile = pickLiveTile({ seed: runSeed(match), index, used });
+  if (tile == null) {
+    // Board exhausted with nobody eliminated — the run cannot continue.
+    // (Reached only through the defensive re-entry path; the normal
+    // advance path settles from inside applyResolution.)
+    const resolved = await persistRunState(tx, match, {
+      p1Lives: lives1,
+      p2Lives: lives2,
+      p1Tiles: tiles1,
+      p2Tiles: tiles2,
+      log,
+      used,
+      live: null,
+      index,
+    });
+    return await settleMatch(tx, resolved, {
+      result: decideSurvivalResult({
+        p1Lives: lives1,
+        p2Lives: lives2,
+        p1Tiles: tiles1,
+        p2Tiles: tiles2,
+        exhausted: true,
+      }) || RESULT.DRAW,
+      reason: "exhausted",
+    });
+  }
+
+  const windowMs = tileWindowMs(tiles1 + tiles2);
   const [updated] = await tx
     .update(kenoPvpMatches)
     .set({
-      status: statusForRoundNumber(roundNumber),
-      currentRound: roundNumber,
-      currentDraw: draw,
-      p1Catches: [],
-      p2Catches: [],
-      roundDeadline: deadline,
+      status: MATCH_STATUS.LIVE,
+      p1Lives: lives1,
+      p2Lives: lives2,
+      p1Tiles: tiles1,
+      p2Tiles: tiles2,
+      tileLog: log,
+      usedTiles: [...used, tile],
+      liveTile: tile,
+      liveTileIndex: index,
+      liveStartedAt: new Date(now),
+      roundDeadline: new Date(now + windowMs),
     })
     .where(eq(kenoPvpMatches.id, match.id))
     .returning();
-
   return updated || match;
 }
 
-function statusForRoundNumber(n) {
-  const clamped = Math.max(1, Math.min(MAX_ROUNDS, Number(n) || 1));
-  return `round_${clamped}`;
-}
-
-// ── Resolve a finished round ──────────────────────────────────────────
-//
-// Scores both players' catches, stamps the round winner onto a
-// keno_pvp_rounds history row, accumulates match scores, and either
-// opens the next round, enters the 30s overtime countdown (3-minute
-// match clock expired with nobody at POINTS_TO_WIN), or settles the
-// match (a player reached POINTS_TO_WIN, or round MAX_ROUNDS just
-// completed as a backstop).
-async function resolveRound(tx, match) {
-  const p1Catches = Array.isArray(match.p1Catches) ? match.p1Catches : [];
-  const p2Catches = Array.isArray(match.p2Catches) ? match.p2Catches : [];
-  const roundWinner = decideRoundWinner(p1Catches, p2Catches);
-  const p1Stats = computeRoundStats(p1Catches);
-  const p2Stats = computeRoundStats(p2Catches);
-
-  const roundsWonPlayer1 = (Number(match.roundsWonPlayer1) || 0) +
-    (roundWinner === RESULT.PLAYER1 ? 1 : 0);
-  const roundsWonPlayer2 = (Number(match.roundsWonPlayer2) || 0) +
-    (roundWinner === RESULT.PLAYER2 ? 1 : 0);
-  const p1Score = (Number(match.p1Score) || 0) + p1Stats.score;
-  const p2Score = (Number(match.p2Score) || 0) + p2Stats.score;
-
-  // History row first so the replay always reflects the final round.
-  await tx.insert(kenoPvpRounds).values({
-    matchId: match.id,
-    roundNumber: Number(match.currentRound) || 1,
-    sharedDraw: Array.isArray(match.currentDraw) ? match.currentDraw : [],
-    player1Catches: p1Catches,
-    player2Catches: p2Catches,
-    player1Score: p1Stats.score,
-    player2Score: p2Stats.score,
-    roundWinner,
-  });
-
+// Persist the run columns without touching the live tile (used by the
+// board-exhausted path, where there is no next tile to light).
+async function persistRunState(tx, match, { p1Lives, p2Lives, p1Tiles, p2Tiles, log, used, live, index }) {
   const [updated] = await tx
     .update(kenoPvpMatches)
     .set({
-      roundsWonPlayer1,
-      roundsWonPlayer2,
-      p1Score,
-      p2Score,
-      currentDraw: null,
-      p1Catches: [],
-      p2Catches: [],
+      p1Lives,
+      p2Lives,
+      p1Tiles,
+      p2Tiles,
+      tileLog: log,
+      usedTiles: used,
+      liveTile: live,
+      liveTileIndex: index,
+      liveStartedAt: live == null ? null : match.liveStartedAt,
       roundDeadline: null,
     })
     .where(eq(kenoPvpMatches.id, match.id))
     .returning();
-
-  const next = updated || match;
-
-  const matchOver =
-    p1Score >= POINTS_TO_WIN ||
-    p2Score >= POINTS_TO_WIN ||
-    (Number(next.currentRound) || 1) >= MAX_ROUNDS;
-
-  if (matchOver) {
-    return await settleMatch(tx, next);
-  }
-
-  // Match clock: once the 3-minute budget (measured from `startedAt`,
-  // when the opponent joined) is spent with nobody at POINTS_TO_WIN,
-  // don't open another round — enter the 30-second overtime countdown
-  // instead. `startedAt` is always set by the time a round is live
-  // (set on join); the guard keeps matches without one on the round
-  // cap path.
-  const startedMs = next.startedAt ? new Date(next.startedAt).getTime() : 0;
-  if (startedMs > 0 && Date.now() >= startedMs + MATCH_TIME_LIMIT_MS) {
-    return await enterOvertime(tx, next);
-  }
-
-  return await startRound(tx, next, (Number(next.currentRound) || 1) + 1);
+  return updated || match;
 }
 
-// Enter the 30-second overtime countdown. No new draw is generated —
-// catching is closed (overtime is not a ROUND_STATE) and the countdown
-// deadline is stamped onto `round_deadline` so both clients render the
-// same timer from the match row. `fetchMatchWithAutoResolve` settles
-// by most tiles when it expires.
-async function enterOvertime(tx, match) {
-  const deadline = new Date(Date.now() + OVERTIME_MS);
+// ── Apply one resolved tile ───────────────────────────────────────────
+//
+// `logEntry` is already fully written (survivor lives, outcome, timing).
+// This persists the run state and then either lights the next tile or
+// settles the match, so both resolution paths (a claim and a both-miss)
+// share one implementation.
+async function applyResolution(tx, match, {
+  now = Date.now(),
+  p1Lives,
+  p2Lives,
+  p1Tiles,
+  p2Tiles,
+  logEntry,
+}) {
+  const log = capTileLog([...tileLogOf(match), logEntry], TILE_LOG_LIMIT);
+  const used = usedTilesOf(match);
+  const index = Math.max(0, intOr(match.liveTileIndex));
+
+  const result = decideSurvivalResult({
+    p1Lives,
+    p2Lives,
+    p1Tiles,
+    p2Tiles,
+    exhausted: false,
+  });
+  if (result) {
+    const resolved = await persistRunState(tx, match, {
+      p1Lives,
+      p2Lives,
+      p1Tiles,
+      p2Tiles,
+      log,
+      used,
+      live: null,
+      index,
+    });
+    return await settleMatch(tx, resolved, { result, reason: "eliminated" });
+  }
+
+  const nextIndex = index + 1;
+  const nextTile = pickLiveTile({ seed: runSeed(match), index: nextIndex, used });
+  if (nextTile == null) {
+    const resolved = await persistRunState(tx, match, {
+      p1Lives,
+      p2Lives,
+      p1Tiles,
+      p2Tiles,
+      log,
+      used,
+      live: null,
+      index: nextIndex,
+    });
+    return await settleMatch(tx, resolved, {
+      result:
+        decideSurvivalResult({
+          p1Lives,
+          p2Lives,
+          p1Tiles,
+          p2Tiles,
+          exhausted: true,
+        }) || RESULT.DRAW,
+      reason: "exhausted",
+    });
+  }
+
+  const windowMs = tileWindowMs(p1Tiles + p2Tiles);
   const [updated] = await tx
     .update(kenoPvpMatches)
     .set({
-      status: MATCH_STATUS.OVERTIME,
-      roundDeadline: deadline,
-      currentDraw: null,
-      p1Catches: [],
-      p2Catches: [],
+      p1Lives,
+      p2Lives,
+      p1Tiles,
+      p2Tiles,
+      tileLog: log,
+      usedTiles: [...used, nextTile],
+      liveTile: nextTile,
+      liveTileIndex: nextIndex,
+      liveStartedAt: new Date(now),
+      roundDeadline: new Date(now + windowMs),
     })
     .where(eq(kenoPvpMatches.id, match.id))
     .returning();
@@ -697,33 +709,19 @@ async function enterOvertime(tx, match) {
 }
 
 // ── Settle the match ──────────────────────────────────────────────────
-//
-// Decide the match result (first-to-10-points rulebook; for an
-// overtime settle that means "most tiles wins" — cumulative score is
-// monotonic in tiles caught), apply the 90/10 payout (or a refund on
-// a DRAW), stamp the row finished and bump the leaderboard
-// side-effects. `{ overtime: true }` makes an overtime DRAW refund
-// each player 95% of their stake (5% rake per side → 10% total);
-// normal draws stay a full refund.
-async function settleMatch(tx, match, options = {}) {
-  const overtime = Boolean(options && options.overtime);
-  const result = decideMatchResult(match);
+
+async function settleMatch(tx, match, { result, reason = "resolved" } = {}) {
+  const finalResult = result || RESULT.DRAW;
   const isAi = isFreeAiMatch(match);
   const payout = isAi
-    ? { winnerNet: 0, houseFee: 0, prizePaid: 0, refundEach: 0 }
-    : computePayout({
-        stakeAmount: match.stakeAmount,
-        result,
-        drawFeePct: overtime && result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
-      });
+    ? { winnerNet: 0, houseFee: 0, prizePaid: 0, refundEach: null }
+    : computePayout({ stakeAmount: match.stakeAmount, result: finalResult });
 
   let winnerId = null;
-  if (result === RESULT.PLAYER1) winnerId = match.player1Id;
-  else if (result === RESULT.PLAYER2) winnerId = match.player2Id;
+  if (finalResult === RESULT.PLAYER1) winnerId = match.player1Id;
+  else if (finalResult === RESULT.PLAYER2) winnerId = match.player2Id;
 
-  if (!isAi && result === RESULT.DRAW) {
-    // Refund both players — full stake for a normal draw, 95% (5%
-    // rake per side) for an overtime tie, per computePayout.
+  if (!isAi && finalResult === RESULT.DRAW) {
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
@@ -732,7 +730,7 @@ async function settleMatch(tx, match, options = {}) {
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
       .where(eq(users.clerkId, match.player2Id));
-  } else if (!isAi) {
+  } else if (!isAi && winnerId) {
     await tx
       .update(users)
       .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
@@ -741,7 +739,7 @@ async function settleMatch(tx, match, options = {}) {
 
   const settlement = {
     winnerId,
-    result,
+    result: finalResult,
     houseFee: payout.houseFee.toFixed(2),
     prizePaid: payout.prizePaid.toFixed(2),
   };
@@ -751,9 +749,15 @@ async function settleMatch(tx, match, options = {}) {
     .set({
       status: MATCH_STATUS.FINISHED,
       roundDeadline: null,
+      liveTile: null,
+      liveStartedAt: null,
       currentDraw: null,
-      p1Catches: [],
-      p2Catches: [],
+      p1Catches: null,
+      p2Catches: null,
+      // Legacy score columns keep a human-readable tally for history
+      // rows: tiles claimed first this match.
+      p1Score: Math.max(0, intOr(match.p1Tiles)),
+      p2Score: Math.max(0, intOr(match.p2Tiles)),
       ...settlement,
       endedAt: new Date(),
     })
@@ -768,27 +772,19 @@ async function settleMatch(tx, match, options = {}) {
   });
 
   if (!isAi) {
-    await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
+    await recordPvPResult(tx, finalRow, winnerId, finalResult).catch(() => {});
   }
 
-  return finalRow;
+  return { ...finalRow, settleReason: reason };
 }
 
 // Best-effort stat side-effect — mirrors mines-pvp / slots-pvp.
-// Bumps pvpWins / gamesWon / gamesLost / totalWon / totalWagered /
-// biggestWin on the users rows so the global PvP leaderboards stay
-// fresh without re-running aggregate queries.
 async function recordPvPResult(tx, match, winnerId, result) {
   if (!winnerId) return;
   const loserId =
     result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!loserId) return;
 
-  // Legacy per-seat counters — the public profile reads games_won /
-  // games_lost. The money/streak/daily counters (totalWon, totalWagered,
-  // biggestWin, daily_*, weekly_*, XP/level) are all maintained by
-  // applyLeaderboardCounters below; bumping them here too would double-
-  // count every settled match.
   await tx
     .update(users)
     .set({ gamesWon: sql`${users.gamesWon} + 1` })
@@ -817,11 +813,8 @@ async function recordPvPResult(tx, match, winnerId, result) {
     payout: 0,
   }).catch(() => {});
 
-  // Permanent Prestige — server-authoritative PvP hook. This runs on the
-  // same guarded single-execution path as the stats above (the match flips
-  // to `finished` once inside this transaction) and the prestige_results
-  // journal keyed by (user, source, source_id) makes a duplicate or
-  // concurrent settlement of this match a no-op.
+  // Permanent Prestige — server-authoritative PvP hook, guarded by the
+  // (user, source, source_id) journal so a duplicate settlement no-ops.
   await applyPrestigeResult({
     tx,
     clerkId: winnerId,
@@ -838,17 +831,55 @@ async function recordPvPResult(tx, match, winnerId, result) {
   }).catch(() => {});
 }
 
-// ── catchBall (the main action) ───────────────────────────────────────
+// ── The both-miss ─────────────────────────────────────────────────────
 //
-// Server-authoritative catch action. The client sends the ball NUMBER
-// it tapped; the server derives the ball's release window from the
-// round deadline, grades the tap against the server clock, and appends
-// the catch to the player's per-round catches. A ball can be caught at
-// most once per player, and only while its window is open.
-export async function catchBall({ userId, matchId, ball }) {
-  const ballNumber = Number(ball);
-  if (!Number.isInteger(ballNumber) || ballNumber < 1 || ballNumber > 40) {
-    return { error: "Invalid ball", status: 400 };
+// The live tile's window (plus the hidden network grace) elapsed with
+// nobody claiming it: both players lose a life, and the run continues —
+// or ends if that took someone's last life.
+async function resolveExpiredLiveTile(tx, match, { now = Date.now() } = {}) {
+  if (!LIVE_STATES.has(match.status) || !hasLiveTile(match)) return match;
+
+  const windowMs = currentWindowMs(match);
+  const lives = applyBothMissToLives({
+    p1Lives: match.p1Lives,
+    p2Lives: match.p2Lives,
+  });
+  const logEntry = tileLogEntry({
+    tile: match.liveTile,
+    index: match.liveTileIndex,
+    outcome: "both_miss",
+    at: now,
+    p1Lives: lives.p1Lives,
+    p2Lives: lives.p2Lives,
+    windowMs,
+  });
+
+  return await applyResolution(tx, match, {
+    now,
+    ...lives,
+    p1Tiles: Math.max(0, intOr(match.p1Tiles)),
+    p2Tiles: Math.max(0, intOr(match.p2Tiles)),
+    logEntry,
+  });
+}
+
+// ── claimTile (the main action) ───────────────────────────────────────
+//
+// The client sends the TILE NUMBER it tapped. The server grades the tap
+// against the server clock, so a client can never self-report a claim:
+
+//   * the tile must be the live tile
+//   * the tap must land inside [liveStartedAt, roundDeadline + grace]
+//   * the FIRST accepted tap wins the tile: the claimant's tile count
+//     goes up, the opponent loses a life, and the next tile lights up
+//
+// A tap that arrives after the window is not a claim: the miss is
+// resolved (both lose a life) inside the same transaction, so the game
+// keeps moving even if the player is the only one polling.
+export async function claimTile({ userId, matchId, tile }) {
+  const tileNumber = Number(tile);
+  if (!Number.isInteger(tileNumber) || tileNumber < 1 || tileNumber > KENO_POOL_SIZE) {
+    return { error: "Invalid tile", status: 400 };
   }
 
   return await db.transaction(async (tx) => {
@@ -858,90 +889,162 @@ export async function catchBall({ userId, matchId, ball }) {
     if (!isParticipant(match, userId)) {
       return { error: "Forbidden", status: 403 };
     }
-    if (!ROUND_STATES.has(match.status)) {
-      return { error: "Match is not in a catch round", status: 400 };
+    if (!LIVE_STATES.has(match.status)) {
+      return { error: "Match is not live", status: 400 };
     }
-    if (
-      match.roundDeadline &&
-      new Date(match.roundDeadline).getTime() <= Date.now()
-    ) {
-      return { error: "Round has ended", status: 409 };
-    }
-
-    const draw = Array.isArray(match.currentDraw) ? match.currentDraw : [];
-    if (!draw.includes(ballNumber)) {
-      return { error: "Ball is not in this round's draw", status: 400 };
-    }
-
-    const seat = seatForUser(match, userId);
-    const catchesKey = seat === "player1" ? "p1Catches" : "p2Catches";
-    const ownCatches = Array.isArray(match[catchesKey])
-      ? match[catchesKey]
-      : [];
-    if (ownCatches.some((c) => c && Number(c.number) === ballNumber)) {
-      return { error: "Ball already caught", status: 409 };
+    if (!hasLiveTile(match)) {
+      // The run has not lit a tile yet (or is between tiles) — the caller
+      // simply retries on the next poll.
+      return { error: "No tile is live yet", status: 409 };
     }
 
     const now = Date.now();
-    const deadline = new Date(match.roundDeadline).getTime();
-    const schedule = ballSchedule(deadline, draw);
-    const ballWindow = schedule.find((b) => b.number === ballNumber);
-    if (!ballWindow) {
-      return { error: "Ball is not in this round's draw", status: 400 };
-    }
-    if (now < ballWindow.releaseMs) {
-      return { error: "Ball has not been released yet", status: 400 };
-    }
-    if (now > ballWindow.acceptedUntilMs) {
-      return { error: "Ball expired", status: 400 };
+    const deadlineMs = liveDeadlineMs(match);
+    const startedMs = liveStartedMs(match);
+    const windowMs = currentWindowMs(match);
+
+    if (tileNumber !== Number(match.liveTile)) {
+      // Not the tile that is lit. If the live tile's window has already
+      // closed, resolve that miss here so a stale board cannot stall the
+      // match; either way this tap is not a claim.
+      if (deadlineMs > 0 && now > deadlineMs + TAP_GRACE_MS) {
+        const advanced = await resolveExpiredLiveTile(tx, match, { now });
+        return { error: "That tile is no longer live", status: 409, match: advanced };
+      }
+      return { error: "That tile is not live", status: 409 };
     }
 
-    const quality = gradeCatch(now, ballWindow);
-    if (!quality) {
-      return { error: "Ball not catchable at this instant", status: 400 };
+    if (now < startedMs) {
+      return { error: "Tile is not live yet", status: 400 };
+    }
+    if (!isClaimInWindow({ atMs: now, startedMs, deadlineMs })) {
+      // The window closed before this tap arrived. The tap is not a
+      // claim — and the tile counts as a both-miss, so resolve it.
+      const advanced = await resolveExpiredLiveTile(tx, match, { now });
+      return { error: "Too slow — the tile expired", status: 409, match: advanced };
     }
 
-    const catchEntry = {
-      number: ballNumber,
-      quality,
-      caughtAt: new Date(now).toISOString(),
-    };
-    const nextCatches = [...ownCatches, catchEntry];
+    const seat = seatForUser(match, userId);
+    const lives = applyClaimToLives({
+      claimantSeat: seat,
+      p1Lives: match.p1Lives,
+      p2Lives: match.p2Lives,
+    });
+    const reactionMs = Math.max(0, now - startedMs);
+    const logEntry = tileLogEntry({
+      tile: tileNumber,
+      index: match.liveTileIndex,
+      outcome: seat,
+      at: now,
+      p1Lives: lives.p1Lives,
+      p2Lives: lives.p2Lives,
+      windowMs,
+      reactionMs,
+    });
 
-    const [updated] = await tx
-      .update(kenoPvpMatches)
-      .set(
-        seat === "player1"
-          ? { p1Catches: nextCatches }
-          : { p2Catches: nextCatches },
-      )
-      .where(
-        and(
-          eq(kenoPvpMatches.id, matchId),
-          eq(kenoPvpMatches.status, match.status),
-        ),
-      )
-      .returning();
-
-    if (!updated) {
-      return { error: "Round state changed, try again", status: 409 };
-    }
+    const updated = await applyResolution(tx, match, {
+      now,
+      ...lives,
+      p1Tiles: Math.max(0, intOr(match.p1Tiles)) + (seat === "player1" ? 1 : 0),
+      p2Tiles: Math.max(0, intOr(match.p2Tiles)) + (seat === "player2" ? 1 : 0),
+      logEntry,
+    });
 
     return {
       match: updated,
-      catch: catchEntry,
-      stats: computeRoundStats(nextCatches),
+      claim: {
+        tile: tileNumber,
+        seat,
+        reactionMs,
+        windowMs,
+        at: logEntry.at,
+      },
+      finished: updated?.status === MATCH_STATUS.FINISHED,
     };
+  });
+}
+
+// ── Server AI ─────────────────────────────────────────────────────────
+//
+// The bot races for the same live tile as a human and is graded by the
+// same server clock. Its plan is deterministic per (match, tile index) and
+// the store only writes a claim once the plan's absolute due time has
+// passed — so the bot can never tap early, and can never tap a tile that
+// is no longer live.
+async function playAiTurnInTransaction(tx, match) {
+  if (!match || !isFreeAiMatch(match) || match.player2Id !== KENO_AI_PLAYER_ID) {
+    return { match, actions: 0, alreadyPlayed: true };
+  }
+  if (!LIVE_STATES.has(match.status) || !hasLiveTile(match)) {
+    return { match, actions: 0, alreadyPlayed: true };
+  }
+
+  const now = Date.now();
+  const startedMs = liveStartedMs(match);
+  const deadlineMs = liveDeadlineMs(match);
+  const windowMs = currentWindowMs(match);
+  if (deadlineMs > 0 && now > deadlineMs + TAP_GRACE_MS) {
+    // The miss path owns this tile.
+    return { match, actions: 0, alreadyPlayed: true };
+  }
+
+  const plan = chooseAiClaim({
+    seed: `${runSeed(match)}:ai`,
+    index: match.liveTileIndex,
+    tile: match.liveTile,
+    windowMs,
+    startedMs,
+  });
+  if (!plan.claims || plan.dueAtMs == null || now < plan.dueAtMs) {
+    return { match, actions: 0, alreadyPlayed: false };
+  }
+
+  const lives = applyClaimToLives({
+    claimantSeat: "player2",
+    p1Lives: match.p1Lives,
+    p2Lives: match.p2Lives,
+  });
+  const logEntry = tileLogEntry({
+    tile: match.liveTile,
+    index: match.liveTileIndex,
+    outcome: "player2",
+    at: now,
+    p1Lives: lives.p1Lives,
+    p2Lives: lives.p2Lives,
+    windowMs,
+    reactionMs: plan.reactionMs,
+  });
+
+  const updated = await applyResolution(tx, match, {
+    now,
+    ...lives,
+    p1Tiles: Math.max(0, intOr(match.p1Tiles)),
+    p2Tiles: Math.max(0, intOr(match.p2Tiles)) + 1,
+    logEntry,
+  });
+
+  return { match: updated, actions: 1, alreadyPlayed: false };
+}
+
+export async function playAiTurn({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+      return { error: "Forbidden", status: 403 };
+    }
+    return await playAiTurnInTransaction(tx, match);
   });
 }
 
 // ── Status fetch with auto-resolve ────────────────────────────────────
 //
-// Two auto-advance paths, driven by the client polling (the single
-// source of forward progress):
-//   1. `ready` deadline elapsed → open round 1.
-//   2. `round_N` deadline elapsed → resolve the round (score both
-//      sides, stamp the winner, open the next round or settle).
+// Auto-advance paths, all driven by the client polling (the single source
+// of forward progress):
+//   1. `ready` deadline elapsed → light the first tile.
+//   2. a live run with no tile on the board (defensive) → light one.
+//   3. free AI match → run the bot's due claim.
+//   4. the live tile's window (plus grace) elapsed → both-miss.
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -952,45 +1055,33 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
 
     let current = match;
 
-    // 1) Ready banner → round 1.
+    // 1) Ready banner → first tile.
     if (
       current.status === MATCH_STATUS.READY &&
       current.roundDeadline &&
       new Date(current.roundDeadline).getTime() <= Date.now()
     ) {
-      current = await startRound(tx, current, 1);
+      current = await lightNextTile(tx, current, { reset: true });
     }
 
-    // 2) Free AI catch recovery: process any planned balls whose
-    // server-clock reaction window is currently reachable. The helper
-    // writes only through the same catch shape as a human submission.
-    if (
-      isFreeAiMatch(current) &&
-      ROUND_STATES.has(current.status) &&
-      current.roundDeadline &&
-      new Date(current.roundDeadline).getTime() > Date.now()
-    ) {
+    // 2) A live run must always have a tile on the board.
+    if (LIVE_STATES.has(current.status) && !hasLiveTile(current)) {
+      current = await lightNextTile(tx, current, { reset: false });
+    }
+
+    // 3) The bot's due claim (free matches only). Runs before the expiry
+    //    check so a due tap beats the both-miss.
+    if (isFreeAiMatch(current) && LIVE_STATES.has(current.status)) {
       const aiResult = await playAiTurnInTransaction(tx, current);
       current = aiResult.match || current;
     }
 
-    // 3) Round deadline elapsed → resolve (and possibly settle).
-    if (
-      ROUND_STATES.has(current.status) &&
-      current.roundDeadline &&
-      new Date(current.roundDeadline).getTime() <= Date.now()
-    ) {
-      current = await resolveRound(tx, current);
-    }
-
-    // 4) Overtime countdown elapsed → settle by most tiles (an
-    //    overtime tie is a DRAW refunding 95% per player).
-    if (
-      current.status === MATCH_STATUS.OVERTIME &&
-      current.roundDeadline &&
-      new Date(current.roundDeadline).getTime() <= Date.now()
-    ) {
-      current = await settleMatch(tx, current, { overtime: true });
+    // 4) Window elapsed → the tile is a both-miss.
+    if (LIVE_STATES.has(current.status) && hasLiveTile(current)) {
+      const deadlineMs = liveDeadlineMs(current);
+      if (deadlineMs > 0 && Date.now() > deadlineMs + TAP_GRACE_MS) {
+        current = await resolveExpiredLiveTile(tx, current, { now: Date.now() });
+      }
     }
 
     return { match: current };
@@ -1002,27 +1093,19 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
   return result;
 }
 
-// Scrub server-only state from a match row before sending it to a
-// client. The OPPONENT's per-round catches are private until the round
-// resolves — the viewer only ever sees their OWN ticket + the shared
-// draw (which is identical for both players, so it leaks nothing). A
-// non-participant spectator sees neither side's catches.
-export function scrubMatchForViewer(match, viewerUserId) {
+// The survival duel has no hidden per-player state: the live tile, both
+// players' claimed tiles (the public tile log) and the lives are all
+// visible by design, since both players watch every tile resolve. The
+// legacy per-round catch columns are cleared before a row is handed to a
+// client anyway — this keeps that guarantee in one place.
+export function scrubMatchForViewer(match) {
   if (!match) return match;
-  const isFinished = match.status === MATCH_STATUS.FINISHED;
-  if (isFinished) {
-    return { ...match };
-  }
-  const viewerIsP1 = Boolean(viewerUserId) && match.player1Id === viewerUserId;
-  const viewerIsP2 = Boolean(viewerUserId) && match.player2Id === viewerUserId;
-  return {
-    ...match,
-    p1Catches: viewerIsP1 && Array.isArray(match.p1Catches) ? match.p1Catches : null,
-    p2Catches: viewerIsP2 && Array.isArray(match.p2Catches) ? match.p2Catches : null,
-  };
+  return { ...match, currentDraw: null, p1Catches: null, p2Catches: null };
 }
 
-// ── Round history ─────────────────────────────────────────────────────
+// ── Round history (legacy) ────────────────────────────────────────────
+// The survival duel writes no round rows; this stays so pre-rework
+// matches still render their replay.
 
 export async function fetchMatchRounds(matchId) {
   return db
@@ -1066,26 +1149,15 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       return { error: "Caller is not a participant", status: 403 };
     }
 
+    // The OPPONENT wins the match outright: the leaver's lives are zeroed
+    // and the standard 90/10 payout applies.
     const loserIsP1 = match.player1Id === loserClerkId;
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
-
-    // The OPPONENT wins the match outright. Their cumulative score is
-    // forced to POINTS_TO_WIN so decideMatchResult picks them; then the
-    // standard 90/10 payout applies.
-    const tallies = {
-      roundsWonPlayer1: loserIsP1 ? 0 : 1,
-      roundsWonPlayer2: loserIsP1 ? 1 : 0,
-      p1Score: loserIsP1 ? 0 : POINTS_TO_WIN,
-      p2Score: loserIsP1 ? POINTS_TO_WIN : 0,
-    };
-    const result = decideMatchResult(tallies);
+    const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
     const isAi = isFreeAiMatch(match);
     const payout = isAi
       ? { winnerNet: 0, houseFee: 0, prizePaid: 0 }
-      : computePayout({
-          stakeAmount: match.stakeAmount,
-          result,
-        });
+      : computePayout({ stakeAmount: match.stakeAmount, result });
 
     if (!isAi) {
       await tx
@@ -1105,11 +1177,16 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       .update(kenoPvpMatches)
       .set({
         status: MATCH_STATUS.FINISHED,
-        ...tallies,
+        p1Lives: loserIsP1 ? 0 : Math.max(0, intOr(match.p1Lives)),
+        p2Lives: loserIsP1 ? Math.max(0, intOr(match.p2Lives)) : 0,
+        p1Score: Math.max(0, intOr(match.p1Tiles)),
+        p2Score: Math.max(0, intOr(match.p2Tiles)),
         roundDeadline: null,
+        liveTile: null,
+        liveStartedAt: null,
         currentDraw: null,
-        p1Catches: [],
-        p2Catches: [],
+        p1Catches: null,
+        p2Catches: null,
         ...settlement,
         endedAt: new Date(),
       })
@@ -1123,8 +1200,6 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
     });
 
-    // Record AFTER the row update so the stat side-effect sees the
-    // freshly stamped prizePaid (mirrors settleMatch).
     if (!isAi) {
       await recordPvPResult(tx, finalRow, winnerUserId, result).catch(() => {});
     }
@@ -1144,6 +1219,6 @@ export async function fetchMatch(matchId) {
 }
 
 // Re-exports so routes/tests use one rounding helper + one source of
-// truth for the first-to-10-points shape.
+// truth for the survival rulebook.
 export { round2 };
-export { BALL_COUNT, MAX_ROUNDS, POINTS_TO_WIN };
+export { KENO_POOL_SIZE, STARTING_LIVES };

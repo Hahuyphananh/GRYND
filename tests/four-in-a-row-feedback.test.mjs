@@ -53,6 +53,19 @@ for (const [name, src] of PAGES) {
     assert.match(src, /hintRow >= 0/);
   });
 
+  test(`Four-In-A-Row (${name}) pins every coin so the board can never reflow`, () => {
+    // The rail, the preview and the falling-disc layer are grid items TOO, and
+    // CSS Grid places definite-position items before auto-placed ones. If the
+    // 42 coins were auto-placed, the grid would flow them AROUND the hover
+    // layer — shifting the whole board the moment a column was hovered. Every
+    // cell must therefore carry its own explicit placement.
+    assert.match(src, /gridRowStart: rowIndex \+ 1/);
+    assert.match(src, /gridColumnStart: colIndex \+ 1/);
+    // …on the SAME style object as the win-line ordering (no `undefined`
+    // branch that would leave a coin auto-placed).
+    assert.doesNotMatch(src, /style=\{\s*isWinCell\s*\?/);
+  });
+
   test(`Four-In-A-Row (${name}) previews the player's own disc`, () => {
     // The preview reuses the real Disc component (no new visual).
     assert.match(src, /<Disc[\s\S]{0,120}four-in-a-row-preview/);

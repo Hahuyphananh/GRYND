@@ -18,10 +18,10 @@ import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseGlowModal from "../../components/ChooseGlowModal";
 import ChooseFrameModal from "../../components/ChooseFrameModal";
 import ChooseEmotesModal from "../../components/ChooseEmotesModal";
-import ChooseCosmeticModal from "../../components/ChooseCosmeticModal";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
+import { useTranslation } from "../../hooks/useTranslation";
 
 // Grynd+ chat color palette (matches the neon casino aesthetic).
 const CHAT_COLORS = [
@@ -37,22 +37,13 @@ const CHAT_COLORS = [
   "#e2e8f0",
 ];
 
-// Cosmetic categories that can be equipped/unequipped straight from the
-// profile edit popup (everything the token Shop sells beyond frames and name
-// glows). A slot is only rendered for a category the user actually owns
-// something in, so the popup never shows empty pickers.
-const EQUIPPABLE_COSMETIC_CATEGORIES = [
-  { key: "badge", label: "My Badge", hint: "Shown next to your name." },
-  { key: "avatar_effect", label: "Avatar Effect", hint: "Plays around your avatar." },
-  { key: "username_effect", label: "Username Effect", hint: "Styles your displayed name." },
-  { key: "chat_effect", label: "Chat Effect", hint: "Styles your name in chat." },
-  { key: "profile_glow", label: "Profile Glow", hint: "Rings your whole profile card." },
-  { key: "prestige_effect", label: "Prestige Effect", hint: "Reserved for prestige players." },
-];
-
 export default function ProfilePage() {
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useClerk();
+  // Both history panels resolve their copy through the app-wide bundle
+  // (src/lib/appTextTranslations.js → `profile.*`) so EN / FR / ES render -
+  // the French headings and table labels used to be hardcoded here.
+  const { t } = useTranslation();
 
   const [userTokens, setUserTokens] = useState(null);
   const [profileInfo, setProfileInfo] = useState({
@@ -163,12 +154,10 @@ export default function ProfilePage() {
   // Equipped cosmetics (category → { key, name, visual }) from the official
   // cosmetics catalog — profile frame / badge / effects. Server-written only.
   const [equippedCosmetics, setEquippedCosmetics] = useState({});
-  // Everything the user owns (all categories) — drives which equip slots the
-  // edit popup renders. Loaded once alongside equipped cosmetics.
+  // Everything the user owns (all categories). The unified profile picker
+  // (ChooseFrameModal) loads its own copy; this drives the edit popup's
+  // "you own nothing yet" hint.
   const [ownedCosmetics, setOwnedCosmetics] = useState([]);
-  // Category whose picker modal is open (null = closed). Non-frame categories
-  // only; frames keep using ChooseFrameModal.
-  const [cosmeticPickerCategory, setCosmeticPickerCategory] = useState(null);
   // Whether the owned-cosmetics fetch finished, so the edit popup can tell
   // "still loading" apart from "you own nothing yet".
   const [ownedCosmeticsLoaded, setOwnedCosmeticsLoaded] = useState(false);
@@ -196,7 +185,10 @@ export default function ProfilePage() {
     if (!spectateOverlayUrl || spectateIsLoaded || spectateLoadError) return;
     const timeoutId = setTimeout(() => {
       setSpectateLoadError(
-        "Spectate view timed out. Please retry or ask your friend to reopen the game."
+        t(
+          "profile.friends.spectateTimeout",
+          "Spectate view timed out. Please retry or ask your friend to reopen the game.",
+        ),
       );
     }, 10000);
     return () => clearTimeout(timeoutId);
@@ -215,10 +207,14 @@ export default function ProfilePage() {
     }
   };
 
-  // Reflect a cosmetic equipped from ChooseCosmeticModal immediately, without
-  // a full profile reload. The next /api/get-user-tokens load re-syncs the
-  // server-authoritative equippedCosmetics map.
+  // Reflect a cosmetic equipped (or cleared) from the unified profile picker
+  // immediately, without a full profile reload. Frames and every effect
+  // category route through here — the picker is the one place they are all
+  // equipped — and the picker stays open so several slots can be changed in a
+  // row. The next /api/get-user-tokens load re-syncs the server-authoritative
+  // equippedCosmetics map.
   const handleEquipCosmetic = (category, item) => {
+    if (!category) return;
     setEquippedCosmetics((prev) => {
       const next = { ...prev };
       if (item) {
@@ -228,14 +224,15 @@ export default function ProfilePage() {
       }
       return next;
     });
-    setCosmeticPickerCategory(null);
   };
 
   const loadStats = async () => {
     const res = await fetch("/api/user-stats", { credentials: "include" });
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(data.error || "Failed to load stats");
+      throw new Error(
+        data.error || t("profile.errors.statsFailed", "Failed to load stats"),
+      );
     }
     setStats(data.stats);
   };
@@ -271,26 +268,6 @@ export default function ProfilePage() {
     setSelectedGlowColor(glow?.color || null);
     setSelectedGlowName(glow?.name || null);
     setIsGlowPickerOpen(false);
-  };
-
-  // Reflect a frame equipped from ChooseFrameModal immediately, without a
-  // full profile reload. The server is still the source of truth; the next
-  // /api/get-user-tokens load re-syncs equippedCosmetics.
-  const handleEquipFrame = (frame) => {
-    setEquippedCosmetics((prev) => {
-      const next = { ...prev };
-      if (frame) {
-        next.profile_frame = {
-          key: frame.key,
-          name: frame.name,
-          visual: frame.visual,
-        };
-      } else {
-        delete next.profile_frame;
-      }
-      return next;
-    });
-    setIsFramePickerOpen(false);
   };
 
   const loadSpecialTitles = async () => {
@@ -386,7 +363,9 @@ export default function ProfilePage() {
     } else {
       setPrestigeBadge((prev) => ({
         ...prev,
-        error: data?.error || "Could not update your badge",
+        error:
+          data?.error ||
+          t("profile.titles.badgeFailed", "Could not update your badge"),
       }));
     }
   };
@@ -408,7 +387,10 @@ export default function ProfilePage() {
 
     if (tokensData.success && tokensData.data) {
       setUserTokens(Number(tokensData.data.balance || 0));
-      const name = tokensData.data.name || user?.fullName || "Unknown user";
+      const name =
+        tokensData.data.name ||
+        user?.fullName ||
+        t("profile.info.unknownUser", "Unknown user");
       const email = tokensData.data.email || user?.emailAddresses?.[0]?.emailAddress || "";
       const selectedIcon = tokensData.data.selectedIcon || "";
       const profileAccent = tokensData.data.profileAccent || null;
@@ -505,12 +487,6 @@ export default function ProfilePage() {
     setFriendsStatus("");
     const normalized = String(searchValue || "").trim();
 
-    console.log(" FRONT INPUT:", searchValue);
-    console.log(" FRONT NORMALIZED:", normalized);
-
-    console.log("FRONTEND SEARCH INPUT:", `"${searchValue}"`);
-    console.log("FRONTEND NORMALIZED:", `"${normalized}"`);
-
     if (!normalized) {
       setFriendSearchResults([]);
       return;
@@ -526,9 +502,19 @@ export default function ProfilePage() {
       });
       const data = await response.json();
 
-      console.log(" FRIEND SEARCH FULL RESPONSE:", data);
+      // Surface a failure instead of rendering the same empty state as "no
+      // user matches this name" — a broken search used to look like a search
+      // that found nothing.
       if (!response.ok || !data.success) {
         setFriendSearchResults([]);
+        setFriendsStatus(
+          data?.error ||
+            data?.debug?.error ||
+            t(
+              "profile.friends.searchFailed",
+              "Could not search users. Please try again.",
+            ),
+        );
         return;
       }
 
@@ -540,14 +526,19 @@ export default function ProfilePage() {
       setFriendSearchResults(users);
     } catch (err) {
       console.error("[SEARCH_FRIENDS_ERROR]", err);
-      setFriendsStatus(err.message || "Could not search users.");
+      setFriendsStatus(
+        err.message ||
+          t("profile.friends.searchFailed", "Could not search users. Please try again."),
+      );
     } finally {
       setIsSearchingFriends(false);
     }
   };
 
   const handleRemoveFriend = async (friendId) => {
-    const confirmed = window.confirm("Remove this friend?");
+    const confirmed = window.confirm(
+      t("profile.friends.confirmRemove", "Remove this friend?"),
+    );
     if (!confirmed) return;
 
     setFriendsStatus("");
@@ -563,15 +554,20 @@ export default function ProfilePage() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to remove friend");
+        throw new Error(
+          data.error ||
+            t("profile.friends.removeFailed", "Could not remove friend."),
+        );
       }
 
-      setFriendsStatus("Friend removed.");
+      setFriendsStatus(t("profile.friends.removed", "Friend removed."));
       await loadFriends();
       await loadFriendPresence(); // keep UI in sync
     } catch (err) {
       console.error("[REMOVE_FRIEND_ERROR]", err);
-      setFriendsStatus(err.message || "Could not remove friend.");
+      setFriendsStatus(
+        err.message || t("profile.friends.removeFailed", "Could not remove friend."),
+      );
     }
   };
 
@@ -614,7 +610,7 @@ export default function ProfilePage() {
     if (presence?.presenceState === "offline" || !presence?.lastSeenAt) {
       return {
         state: "offline",
-        label: "Offline",
+        label: t("profile.friends.offline", "Offline"),
         color: "text-gray-400",
       };
     }
@@ -625,14 +621,14 @@ export default function ProfilePage() {
     ) {
       return {
         state: "in_game",
-        label: `In game: ${normalizedGameKey}`,
+        label: t("profile.friends.inGame", { game: normalizedGameKey }),
         color: "text-yellow-400",
       };
     }
 
     return {
       state: "online",
-      label: "Online",
+      label: t("profile.friends.online", "Online"),
       color: "text-green-400",
     };
   };
@@ -647,12 +643,19 @@ export default function ProfilePage() {
         body: JSON.stringify({ friendId }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || "Failed to add friend");
-      setFriendsStatus(data.message || "Friend invite sent.");
+      if (!response.ok || !data.success)
+        throw new Error(
+          data.error || t("profile.friends.inviteFailed", "Could not add friend."),
+        );
+      setFriendsStatus(
+        data.message || t("profile.friends.inviteSent", "Friend invite sent."),
+      );
       await loadFriendInvites();
     } catch (err) {
       console.error("[INVITE_FRIEND_ERROR]", err);
-      setFriendsStatus(err.message || "Could not send invite.");
+      setFriendsStatus(
+        err.message || t("profile.friends.inviteFailed", "Could not add friend."),
+      );
     }
   };
 
@@ -695,12 +698,19 @@ export default function ProfilePage() {
       });
       const data = await response.json();
       if (!response.ok || !data.success)
-        throw new Error(data.error || "Failed to respond to invite");
-      setFriendsStatus(data.message || "Invite updated.");
+        throw new Error(
+          data.error ||
+            t("profile.friends.respondFailed", "Could not update invite."),
+        );
+      setFriendsStatus(
+        data.message || t("profile.friends.inviteUpdated", "Invite updated."),
+      );
       await Promise.all([loadFriends(), loadFriendInvites(), loadFriendPresence()]);
     } catch (err) {
       console.error("[RESPOND_FRIEND_INVITE_ERROR]", err);
-      setFriendsStatus(err.message || "Could not update invite.");
+      setFriendsStatus(
+        err.message || t("profile.friends.respondFailed", "Could not update invite."),
+      );
     }
   };
 
@@ -712,7 +722,10 @@ export default function ProfilePage() {
     const generateData = await generateRes.json();
 
     if (!generateRes.ok || !generateData.success) {
-      throw new Error(generateData.error || "Could not generate referral code");
+      throw new Error(
+        generateData.error ||
+          t("profile.referral.generateFailed", "Could not generate referral code"),
+      );
     }
 
     setStats((prev) => {
@@ -753,7 +766,9 @@ export default function ProfilePage() {
         }
       } catch (err) {
         console.error("[PROFILE_BOOTSTRAP_ERROR]", err);
-        setError(err.message || "Erreur lors du chargement des données");
+        setError(
+          err.message || t("profile.errors.loadFailed", "Could not load your profile."),
+        );
       }
     };
 
@@ -818,7 +833,9 @@ export default function ProfilePage() {
   const handleSaveChatColor = async () => {
     setChatColorMsg(null);
     if (!/^#[0-9a-fA-F]{6}$/.test(chatColor)) {
-      setChatColorMsg("Enter a valid hex color like #00e5ff.");
+      setChatColorMsg(
+        t("profile.membership.invalidHex", "Enter a valid hex color like #00e5ff."),
+      );
       return;
     }
     try {
@@ -829,20 +846,29 @@ export default function ProfilePage() {
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        setChatColorMsg("Chat color saved!");
+        setChatColorMsg(t("profile.membership.saved", "Chat color saved!"));
         setMembership((m) => (m ? { ...m, chatColor } : m));
       } else {
-        setChatColorMsg(data.error || "Could not save color.");
+        setChatColorMsg(
+          data.error || t("profile.membership.saveFailed", "Could not save color."),
+        );
       }
     } catch (err) {
-      setChatColorMsg("Could not save color.");
+      setChatColorMsg(
+        t("profile.membership.saveFailed", "Could not save color."),
+      );
     }
   };
 
   const handleSaveCosmetics = async () => {
     setCosmeticsMsg(null);
     if (!HEX_COLOR_REGEX.test(cosmetics.accent)) {
-      setCosmeticsMsg("Enter a valid hex accent color like #00e5ff.");
+      setCosmeticsMsg(
+        t(
+          "profile.customization.invalidHex",
+          "Enter a valid hex accent color like #00e5ff.",
+        ),
+      );
       return;
     }
     try {
@@ -855,13 +881,20 @@ export default function ProfilePage() {
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        setCosmeticsMsg("Profile customization saved!");
+        setCosmeticsMsg(
+          t("profile.customization.saved", "Profile customization saved!"),
+        );
         await loadProfileData();
       } else {
-        setCosmeticsMsg(data.error || "Could not save customization.");
+        setCosmeticsMsg(
+          data.error ||
+            t("profile.customization.saveFailed", "Could not save customization."),
+        );
       }
     } catch (err) {
-      setCosmeticsMsg("Could not save customization.");
+      setCosmeticsMsg(
+        t("profile.customization.saveFailed", "Could not save customization."),
+      );
     }
   };
 
@@ -875,13 +908,19 @@ export default function ProfilePage() {
       });
       if (response.ok) {
         setChatColor("#00e5ff");
-        setChatColorMsg("Chat color reset to default.");
+        setChatColorMsg(
+          t("profile.membership.resetDone", "Chat color reset to default."),
+        );
         setMembership((m) => (m ? { ...m, chatColor: null } : m));
       } else {
-        setChatColorMsg("Could not reset color.");
+        setChatColorMsg(
+          t("profile.membership.resetFailed", "Could not reset color."),
+        );
       }
     } catch (err) {
-      setChatColorMsg("Could not reset color.");
+      setChatColorMsg(
+        t("profile.membership.resetFailed", "Could not reset color."),
+      );
     }
   };
 
@@ -958,7 +997,12 @@ export default function ProfilePage() {
 
   const handleCopyReferralCode = async () => {
     if (!stats?.referralCode) {
-      setReferralStatus("No referral code found yet. Please wait a second and try again.");
+      setReferralStatus(
+        t(
+          "profile.referral.missingCode",
+          "No referral code found yet. Please wait a second and try again.",
+        ),
+      );
       return;
     }
 
@@ -968,29 +1012,42 @@ export default function ProfilePage() {
       } else {
         fallbackCopy(stats.referralCode);
       }
-      setReferralStatus(`Copied: ${stats.referralCode}`);
+      setReferralStatus(
+        t("profile.referral.copied", { code: stats.referralCode }),
+      );
     } catch (err) {
       console.error("[COPY_REFERRAL_CODE_ERROR]", err);
       try {
         fallbackCopy(stats.referralCode);
-        setReferralStatus(`Copied with fallback: ${stats.referralCode}`);
+        setReferralStatus(
+          t("profile.referral.copiedFallback", { code: stats.referralCode }),
+        );
       } catch (fallbackError) {
-        setReferralStatus("Could not copy code. Please copy manually.");
+        setReferralStatus(
+          t(
+            "profile.referral.copyFailed",
+            "Could not copy code. Please copy manually.",
+          ),
+        );
       }
     }
   };
 
   const handleShareReferralCode = async () => {
     if (!stats?.referralCode) return;
-    const message = `Join me on GRYND with my referral code: ${stats.referralCode}`;
+    const message = t("profile.referral.shareMessage", {
+      code: stats.referralCode,
+    });
 
     try {
       if (navigator.share) {
         await navigator.share({
-          title: "GRYND Referral",
+          title: t("profile.referral.shareTitle", "GRYND Referral"),
           text: message,
         });
-        setReferralStatus("Referral code shared successfully!");
+        setReferralStatus(
+          t("profile.referral.shared", "Referral code shared successfully!"),
+        );
         return;
       }
 
@@ -999,10 +1056,15 @@ export default function ProfilePage() {
       } else {
         fallbackCopy(message);
       }
-      setReferralStatus("Share not available. Message copied to clipboard.");
+      setReferralStatus(
+        t(
+          "profile.referral.shareUnavailable",
+          "Share not available. Message copied to clipboard.",
+        ),
+      );
     } catch (err) {
       console.error("[SHARE_REFERRAL_CODE_ERROR]", err);
-      setReferralStatus("Share cancelled");
+      setReferralStatus(t("profile.referral.shareCancelled", "Share cancelled"));
     }
   };
 
@@ -1019,15 +1081,21 @@ export default function ProfilePage() {
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to redeem code");
+        throw new Error(
+          data.error || t("profile.referral.redeemFailed", "Unable to redeem code"),
+        );
       }
 
-      setReferralStatus(`Code redeemed! You got ${data.reward} bonus tokens.`);
+      setReferralStatus(
+        t("profile.referral.redeemed", { amount: data.reward }),
+      );
       setReferralCodeInput("");
       await Promise.all([loadStats(), loadProfileData()]);
     } catch (err) {
       console.error("[REDEEM_REFERRAL_ERROR]", err);
-      setReferralStatus(err.message || "Unable to redeem code");
+      setReferralStatus(
+        err.message || t("profile.referral.redeemFailed", "Unable to redeem code"),
+      );
     }
   };
 
@@ -1048,7 +1116,7 @@ export default function ProfilePage() {
       if (normalizedPassword) payload.password = normalizedPassword;
 
       if (!Object.keys(payload).length) {
-        setEditStatus("No changes to save.");
+        setEditStatus(t("profile.edit.noChanges", "No changes to save."));
         return;
       }
 
@@ -1062,7 +1130,9 @@ export default function ProfilePage() {
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to update profile");
+        throw new Error(
+          data.error || t("profile.edit.updateFailed", "Failed to update profile"),
+        );
       }
 
       setProfileInfo((prev) => ({
@@ -1076,11 +1146,15 @@ export default function ProfilePage() {
         email: data.profile.email,
         password: "",
       }));
-      setEditStatus("Profile updated successfully.");
+      setEditStatus(
+        t("profile.edit.saved", "Profile updated successfully."),
+      );
       window.dispatchEvent(new Event("profileUpdated")); // ADD THIS
     } catch (err) {
       console.error("[EDIT_PROFILE_ERROR]", err);
-      setEditStatus(err.message || "Could not save changes.");
+      setEditStatus(
+        err.message || t("profile.edit.saveFailed", "Could not save changes."),
+      );
     } finally {
       setIsSavingEdit(false);
     }
@@ -1101,10 +1175,15 @@ export default function ProfilePage() {
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Delete account failed");
+        throw new Error(
+          data.error ||
+            t("profile.danger.requestFailed", "Delete account failed"),
+        );
       }
 
-      setDeleteStatus("Account deleted. Signing out...");
+      setDeleteStatus(
+        t("profile.danger.done", "Account deleted. Signing out..."),
+      );
       // Sweep device session artifacts (admin_mfa cookie, per-user caches,
       // game-session tokens) before revoking. The keepalive server call
       // survives both branches below, including the hard redirect when
@@ -1121,7 +1200,9 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error("[DELETE_ACCOUNT_ERROR]", err);
-      setDeleteError(err.message || "Could not delete account");
+      setDeleteError(
+        err.message || t("profile.danger.failed", "Could not delete account"),
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -1130,7 +1211,9 @@ export default function ProfilePage() {
   if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#003366]">
-        <div className="text-2xl text-[#00e5ff]">Chargement...</div>
+        <div className="text-2xl text-[#00e5ff]">
+          {t("profile.loading", "Loading…")}
+        </div>
       </div>
     );
   }
@@ -1139,12 +1222,14 @@ export default function ProfilePage() {
     return (
       <div className="flex h-screen items-center justify-center bg-[#003366]">
         <div className="text-center">
-          <p className="mb-4 text-xl text-gray-300">Connectez-vous pour voir votre profil</p>
+          <p className="mb-4 text-xl text-gray-300">
+            {t("profile.signedOut.prompt", "Sign in to view your profile")}
+          </p>
           <a
             href="/sign-in?redirect_url=/profil"
             className="rounded-lg bg-[#FFD700] px-6 py-3 text-[#003366] hover:bg-[#FFD700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#003366]"
           >
-            Connexion
+            {t("profile.signedOut.signIn", "Sign in")}
           </a>
         </div>
       </div>
@@ -1171,7 +1256,7 @@ export default function ProfilePage() {
   bg-gradient-to-r from-purple-400 to-pink-500 
   bg-clip-text text-transparent"
         >
-          Your Profile
+          {t("profile.title", "Your Profile")}
         </h1>
 
         <div className="grid gap-8 md:grid-cols-2">
@@ -1187,14 +1272,16 @@ export default function ProfilePage() {
             }
           >
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl text-[#00e5ff]">Infos Personnelles</h2>
+              <h2 className="text-xl text-[#00e5ff]">
+                {t("profile.info.title", "Personal info")}
+              </h2>
               <div className="flex items-center gap-3">
                 <Link
                   href="/settings"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-1 text-sm font-medium text-[#9dd8ff] hover:bg-[#00e5ff]/25 hover:text-[#00e5ff]"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                  Settings
+                  {t("profile.info.settings", "Settings")}
                 </Link>
                 <button
                   onClick={() => {
@@ -1206,7 +1293,7 @@ export default function ProfilePage() {
                   " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 }
               >
-                Edit Profile
+                {t("profile.info.edit", "Edit Profile")}
               </button>
               </div>
             </div>
@@ -1216,8 +1303,8 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={() => setIsIconPickerOpen(true)}
-                aria-label="Change your Grynd icon"
-                title="Change your Grynd icon"
+                aria-label={t("profile.info.changeIcon", "Change your Grynd icon")}
+                title={t("profile.info.changeIcon", "Change your Grynd icon")}
                 style={equippedFrame.style}
                 className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} ${prestigeBadge.prestigeUnlocked ? "prestige-crown" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
               >
@@ -1241,14 +1328,17 @@ export default function ProfilePage() {
                         : undefined
                     }
                   >
-                    Name :{" "}
+                    {t("profile.info.name", "Name")}:{" "}
                     <span className={usernameEffectClass || undefined}>
-                      {profileInfo.name || user.fullName || "Unknown user"}
+                      {profileInfo.name ||
+                        user.fullName ||
+                        t("profile.info.unknownUser", "Unknown user")}
                     </span>
                   </p>
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
-                      {membership.title || "GRYND+ Elite"}
+                      {membership.title ||
+                        t("profile.info.membershipFallback", "GRYND+ Elite")}
                     </span>
                   )}
                   {equippedCosmetics?.badge && (
@@ -1279,7 +1369,10 @@ export default function ProfilePage() {
                     </span>
                   )}
                 </div>
-                <p>Email : {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}</p>
+                <p>
+                  {t("profile.info.email", "Email")}:{" "}
+                  {profileInfo.email || user.emailAddresses?.[0]?.emailAddress}
+                </p>
                 {/* Streak info line */}
                 <p className="text-xs text-amber-300 mt-1">
                   <svg
@@ -1289,36 +1382,51 @@ export default function ProfilePage() {
                   >
                     <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                   </svg>{" "}
-                  Daily Streak: {streakState.dailyStreakCurrent} day
-                  {(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""} (Best:{" "}
-                  {streakState.dailyStreakBest})
+                  {t("profile.info.dailyStreak", {
+                    count: streakState.dailyStreakCurrent,
+                    unit:
+                      (streakState.dailyStreakCurrent || 0) === 1
+                        ? t("profile.info.unitDay", "day")
+                        : t("profile.info.unitDays", "days"),
+                    best: streakState.dailyStreakBest,
+                  })}
                 </p>
                 {/* Competitive identity strip — real leaderboard record data
                     (same source as /classement). Only rows with data render. */}
                 {stats?.record && (
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">
                     <span className="text-green-300">
-                      {Number(stats.record.wins || 0)}W
+                      {Number(stats.record.wins || 0)}
+                      {t("profile.info.wins", "W")}
                     </span>
                     <span className="text-red-300/90">
-                      {Number(stats.record.losses || 0)}L
+                      {Number(stats.record.losses || 0)}
+                      {t("profile.info.losses", "L")}
                     </span>
                     <span className="text-white/60">
-                      {Number(stats.record.winRate || 0).toFixed(1)}% win rate
+                      {t("profile.info.winRate", {
+                        percent: Number(stats.record.winRate || 0).toFixed(1),
+                      })}
                     </span>
                     {Number(stats.record.currentStreak || 0) > 0 && (
                       <span className="inline-flex items-center gap-1 text-[#f5ff3b]">
                         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                           <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                         </svg>
-                        {Number(stats.record.currentStreak)} win streak
+                        {t("profile.info.winStreak", {
+                          count: Number(stats.record.currentStreak),
+                        })}
                       </span>
                     )}
                   </div>
                 )}
               </div>
             </div>
-            <p>Membre depuis : {new Date(user.createdAt).toLocaleDateString()}</p>
+            <p>
+              {t("profile.info.memberSince", {
+                date: new Date(user.createdAt).toLocaleDateString(),
+              })}
+            </p>
           </div>
 
           <div
@@ -1326,8 +1434,12 @@ export default function ProfilePage() {
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center"
           >
-            <h2 className="text-xl text-[#00e5ff] mb-2">Solde de Tokens</h2>
-            <p className="text-3xl font-bold">{userTokens ?? 0} tokens</p>
+            <h2 className="text-xl text-[#00e5ff] mb-2">
+              {t("profile.balance.title", "Token balance")}
+            </h2>
+            <p className="text-3xl font-bold">
+              {t("profile.balance.amount", { amount: userTokens ?? 0 })}
+            </p>
             {error && <p className="mt-2 text-red-500">{error}</p>}
           </div>
         </div>
@@ -1338,12 +1450,14 @@ rounded-xl p-6
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-[#00e5ff]">Battlepass Level</h2>
+            <h2 className="text-xl text-[#00e5ff]">
+              {t("profile.battlepass.title", "Battlepass Level")}
+            </h2>
             <div
               className="rounded-full px-3 py-1 bg-[#00e5ff] text-[#001933] 
 shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             >
-              Level {stats?.currentLevel ?? 1}
+              {t("profile.battlepass.level", { level: stats?.currentLevel ?? 1 })}
               {stats?.levelProgress?.maxLevel
                 ? ` / ${stats.levelProgress.maxLevel}`
                 : ""}
@@ -1358,34 +1472,51 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           </div>
           <div className="mt-2 flex justify-between text-sm text-gray-300">
             <span>
-              {Number(stats?.levelProgress?.prevLevelRequired ?? 0).toLocaleString()} XP
+              {t("profile.battlepass.xp", {
+                amount: Number(
+                  stats?.levelProgress?.prevLevelRequired ?? 0,
+                ).toLocaleString(),
+              })}
             </span>
-            <span>{levelProgressPercent.toFixed(2)}%</span>
             <span>
-              {Number(stats?.levelProgress?.nextLevelRequired ?? 0).toLocaleString()} XP next level
+              {t("profile.battlepass.percent", {
+                percent: levelProgressPercent.toFixed(2),
+              })}
+            </span>
+            <span>
+              {t("profile.battlepass.nextLevel", {
+                amount: Number(
+                  stats?.levelProgress?.nextLevelRequired ?? 0,
+                ).toLocaleString(),
+              })}
             </span>
           </div>
           <div className="mt-3 text-xs text-[#7dd3fc]">
-            Earn XP by wagering tokens and completing quests.
+            {t(
+              "profile.battlepass.earn",
+              "Earn XP by wagering tokens and completing quests.",
+            )}
           </div>
           <Link
             href="/battlepass"
             className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[#f5ff3b] hover:text-yellow-300"
           >
-            View Battlepass →
+            {t("profile.battlepass.view", "View Battlepass →")}
           </Link>
         </div>
 
         <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-emerald-300">Grynd+ Membership</h2>
+            <h2 className="text-xl text-emerald-300">
+              {t("profile.membership.title", "Grynd+ Membership")}
+            </h2>
             {membership?.active ? (
               <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
-                Active
+                {t("profile.membership.active", "Active")}
               </span>
             ) : (
               <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-sm text-gray-400">
-                Not subscribed
+                {t("profile.membership.inactive", "Not subscribed")}
               </span>
             )}
           </div>
@@ -1393,7 +1524,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           {membership?.active ? (
             <>
               <p className="mb-3 text-sm text-gray-300">
-                Custom chat name color — Grynd+ perk.
+                {t(
+                  "profile.membership.chatPerk",
+                  "Custom chat name color — Grynd+ perk.",
+                )}
               </p>
 
               <div className="mb-3 flex flex-wrap gap-2">
@@ -1402,7 +1536,9 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                     key={color}
                     type="button"
                     onClick={() => setChatColor(color)}
-                    aria-label={`Set chat color ${color}`}
+                    aria-label={t("profile.membership.setChatColor", {
+                      color,
+                    })}
                     title={color}
                     className={`h-8 w-8 rounded-full border-2 transition ${
                       chatColor.toLowerCase() === color.toLowerCase()
@@ -1419,7 +1555,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   type="color"
                   value={chatColor}
                   onChange={(e) => setChatColor(e.target.value)}
-                  aria-label="Custom chat color"
+                  aria-label={t(
+                    "profile.membership.chatColorLabel",
+                    "Custom chat color",
+                  )}
                   className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
                 />
                 <input
@@ -1427,15 +1566,22 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   value={chatColor}
                   onChange={(e) => setChatColor(e.target.value.trim())}
                   maxLength={7}
-                  aria-label="Custom chat color hex value"
+                  aria-label={t(
+                    "profile.membership.chatColorHexLabel",
+                    "Custom chat color hex value",
+                  )}
                   className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-emerald-400 focus:outline-none"
                 />
               </div>
 
               <div className="mb-4 flex items-center gap-2 rounded bg-black/30 px-3 py-2 text-sm">
-                <span className="text-gray-400">Preview:</span>
+                <span className="text-gray-400">
+                  {t("profile.membership.preview", "Preview:")}
+                </span>
                 <span className="font-bold" style={{ color: chatColor }}>
-                  {profileInfo.name || user.fullName || "YourName"}
+                  {profileInfo.name ||
+                    user.fullName ||
+                    t("profile.membership.yourName", "Your name")}
                 </span>
               </div>
 
@@ -1445,14 +1591,14 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   onClick={handleSaveChatColor}
                   className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#001a0e] transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
                 >
-                  Save color
+                  {t("profile.membership.save", "Save color")}
                 </button>
                 <button
                   type="button"
                   onClick={handleResetChatColor}
                   className="rounded-lg border border-white/20 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
                 >
-                  Reset
+                  {t("profile.membership.reset", "Reset")}
                 </button>
               </div>
 
@@ -1462,9 +1608,12 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             </>
           ) : (
             <p className="text-sm text-gray-400">
-              Unlock custom chat colors with a Grynd+ membership.{" "}
+              {t(
+                "profile.membership.locked",
+                "Unlock custom chat colors with a Grynd+ membership.",
+              )}{" "}
               <a href="/shop" className="text-emerald-300 underline">
-                See the shop
+                {t("profile.membership.seeShop", "See the shop")}
               </a>
               .
             </p>
@@ -1474,10 +1623,12 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
         {/* Grynd+ Profile Customization */}
         <div className="mt-8 rounded-xl border border-sky-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(56,189,248,0.15)]">
           <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="text-xl text-sky-300">Profile Customization</h2>
+            <h2 className="text-xl text-sky-300">
+              {t("profile.customization.title", "Profile Customization")}
+            </h2>
             {membership?.active && (
               <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
-                Grynd+
+                {t("profile.customization.badge", "Grynd+")}
               </span>
             )}
           </div>
@@ -1485,17 +1636,24 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           {membership?.active ? (
             <>
               <p className="mb-4 text-sm text-gray-300">
-                Accent color — Grynd+ perk. Shown on your profile card.
+                {t(
+                  "profile.customization.perk",
+                  "Accent color — Grynd+ perk. Shown on your profile card.",
+                )}
               </p>
 
-              <p className="mb-2 text-sm font-semibold text-sky-300">Accent color</p>
+              <p className="mb-2 text-sm font-semibold text-sky-300">
+                {t("profile.customization.accent", "Accent color")}
+              </p>
               <div className="mb-2 flex flex-wrap gap-2">
                 {ACCENT_COLORS.map((color) => (
                   <button
                     key={color}
                     type="button"
                     onClick={() => setCosmetics((c) => ({ ...c, accent: color }))}
-                    aria-label={`Set accent color ${color}`}
+                    aria-label={t("profile.customization.setAccent", {
+                      color,
+                    })}
                     title={color}
                     className={`h-8 w-8 rounded-full border-2 transition ${
                       cosmetics.accent.toLowerCase() === color.toLowerCase()
@@ -1511,7 +1669,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   type="color"
                   value={cosmetics.accent}
                   onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value }))}
-                  aria-label="Custom accent color"
+                  aria-label={t(
+                    "profile.customization.accentLabel",
+                    "Custom accent color",
+                  )}
                   className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
                 />
                 <input
@@ -1519,7 +1680,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   value={cosmetics.accent}
                   onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value.trim() }))}
                   maxLength={7}
-                  aria-label="Custom accent hex value"
+                  aria-label={t(
+                    "profile.customization.accentHexLabel",
+                    "Custom accent hex value",
+                  )}
                   className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-none"
                 />
               </div>
@@ -1530,7 +1694,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                   onClick={handleSaveCosmetics}
                   className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
                 >
-                  Save customization
+                  {t("profile.customization.save", "Save customization")}
                 </button>
               </div>
 
@@ -1538,9 +1702,12 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             </>
           ) : (
             <p className="text-sm text-gray-400">
-              Customize your profile with a Grynd+ membership.{" "}
+              {t(
+                "profile.customization.locked",
+                "Customize your profile with a Grynd+ membership.",
+              )}{" "}
               <a href="/shop" className="text-sky-300 underline">
-                See the shop
+                {t("profile.customization.seeShop", "See the shop")}
               </a>
               .
             </p>
@@ -1553,9 +1720,14 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
         <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#18071f]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.12)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl text-fuchsia-300">Emotes</h2>
+              <h2 className="text-xl text-fuchsia-300">
+                {t("profile.emotes.title", "Emotes")}
+              </h2>
               <p className="mt-1 text-sm text-gray-300">
-                Choose up to 9 animated emotes to use in games. GG and NICE MOVE are always available.
+                {t(
+                  "profile.emotes.description",
+                  "Choose up to 9 animated emotes to use in games. GG and NICE MOVE are always available.",
+                )}
               </p>
             </div>
             <button
@@ -1563,7 +1735,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               onClick={() => setIsEmotesManagerOpen(true)}
               className="rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18071f]"
             >
-              Manage emotes
+              {t("profile.emotes.manage", "Manage emotes")}
             </button>
           </div>
           <EmoteLoadoutStrip onChange={setIsEmotesManagerOpen} />
@@ -1577,7 +1749,9 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             aria-expanded={titlesOpen}
             aria-controls="titles-section-body"
           >
-            <h2 className="text-xl text-fuchsia-300">Titles</h2>
+            <h2 className="text-xl text-fuchsia-300">
+              {t("profile.titles.title", "Titles")}
+            </h2>
             <svg
               className={`w-5 h-5 text-fuchsia-300 transition-transform duration-200 ${titlesOpen ? "rotate-180" : ""}`}
               viewBox="0 0 24 24"
@@ -1600,7 +1774,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                       : "bg-white/10 text-gray-300"
                   }`}
                 >
-                  Special Titles
+                  {t("profile.titles.tabSpecial", "Special Titles")}
                 </button>
 
                 <button
@@ -1609,7 +1783,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                     titlesView === "vip" ? "bg-cyan-500 text-white" : "bg-white/10 text-gray-300"
                   }`}
                 >
-                  VIP Titles
+                  {t("profile.titles.tabVip", "VIP Titles")}
                 </button>
                 <button
                   onClick={() => setTitlesView("streak")}
@@ -1619,7 +1793,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                       : "bg-white/10 text-gray-300"
                   }`}
                 >
-                  Streak Titles{" "}
+                  {t("profile.titles.tabStreak", "Streak Titles")}{" "}
                   <svg
                     className="w-4 h-4 inline text-amber-400"
                     viewBox="0 0 24 24"
@@ -1636,7 +1810,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                       : "bg-white/10 text-gray-300"
                   }`}
                 >
-                  👑 Prestige
+                  👑 {t("profile.titles.tabPrestige", "Prestige")}
                 </button>
               </div>
 
@@ -1664,15 +1838,27 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                         </p>
 
                         <p className="font-semibold text-white">
-                          {isUnlocked ? title.name : "?????"}
+                          {isUnlocked
+                            ? title.name
+                            : t("profile.titles.hidden", "?????")}
                         </p>
 
                         <p className="text-xs text-slate-300">
-                          {isUnlocked ? title.description : "Locked secret title"}
+                          {isUnlocked
+                            ? title.description
+                            : t(
+                                "profile.titles.lockedSecret",
+                                "Locked secret title",
+                              )}
                         </p>
 
                         {isEquipped && (
-                          <p className="mt-2 text-yellow-300 text-xs">Click again to unequip</p>
+                          <p className="mt-2 text-yellow-300 text-xs">
+                            {t(
+                              "profile.titles.clickToUnequip",
+                              "Click again to unequip",
+                            )}
+                          </p>
                         )}
                       </button>
                     );
@@ -1684,7 +1870,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                 <div className="space-y-4">
                   <div className="rounded-lg border border-amber-300/40 bg-amber-500/10 p-4">
                     <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">
-                      Current Streak
+                      {t("profile.titles.currentStreak", "Current Streak")}
                     </p>
                     <p className="text-2xl font-bold text-white">
                       <svg
@@ -1694,18 +1880,25 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                       >
                         <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                       </svg>{" "}
-                      {streakState.dailyStreakCurrent} day
-                      {(streakState.dailyStreakCurrent || 0) !== 1 ? "s" : ""}
+                      {streakState.dailyStreakCurrent}{" "}
+                      {(streakState.dailyStreakCurrent || 0) === 1
+                        ? t("profile.info.unitDay", "day")
+                        : t("profile.info.unitDays", "days")}
                     </p>
                     <p className="text-sm text-amber-200 mt-1">
-                      Best: {streakState.dailyStreakBest} day
-                      {(streakState.dailyStreakBest || 0) !== 1 ? "s" : ""}
+                      {t("profile.titles.bestStreak", {
+                        count: streakState.dailyStreakBest,
+                        unit:
+                          (streakState.dailyStreakBest || 0) === 1
+                            ? t("profile.info.unitDay", "day")
+                            : t("profile.info.unitDays", "days"),
+                      })}
                     </p>
                   </div>
 
                   <div className="rounded-lg border border-amber-300/30 bg-amber-500/5 p-4">
                     <p className="text-xs uppercase tracking-wider text-amber-300 mb-3">
-                      Equip Streak Title
+                      {t("profile.titles.equipStreak", "Equip Streak Title")}
                     </p>
                     <div className="flex flex-wrap gap-2 mb-3">
                       <button
@@ -1720,8 +1913,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                             : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
                         }`}
                       >
-                        {streakState.streakTitleCurrent || "No title"}
-                        {streakState.selectedStreakType === "current" ? " (equipped)" : ""}
+                        {streakState.streakTitleCurrent ||
+                          t("profile.titles.noTitle", "No title")}
+                        {streakState.selectedStreakType === "current"
+                          ? t("profile.titles.equippedSuffix", " (equipped)")
+                          : ""}
                       </button>
                       <button
                         onClick={() =>
@@ -1735,8 +1931,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                             : "border border-amber-400/40 text-amber-200 hover:bg-amber-500/20"
                         }`}
                       >
-                        {streakState.streakTitleBest || "No title"}
-                        {streakState.selectedStreakType === "best" ? " (equipped)" : ""}
+                        {streakState.streakTitleBest ||
+                          t("profile.titles.noTitle", "No title")}
+                        {streakState.selectedStreakType === "best"
+                          ? t("profile.titles.equippedSuffix", " (equipped)")
+                          : ""}
                       </button>
                     </div>
                     {streakState.selectedStreakType && (
@@ -1744,14 +1943,17 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                         onClick={() => handleEquipStreakTitle("")}
                         className="text-xs text-amber-400 hover:text-amber-300 underline"
                       >
-                        Unequip streak title
+                        {t(
+                          "profile.titles.unequipStreak",
+                          "Unequip streak title",
+                        )}
                       </button>
                     )}
                   </div>
 
                   <div>
                     <p className="text-xs uppercase tracking-wider text-amber-300 mb-2">
-                      All Streak Milestones
+                      {t("profile.titles.milestones", "All Streak Milestones")}
                     </p>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {streakState.allStreakTitles.map((milestone) => {
@@ -1768,7 +1970,11 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                                 : "border-slate-700 bg-slate-900/60 opacity-50"
                             }`}
                           >
-                            <span className="text-slate-400">{milestone.days} days</span>
+                            <span className="text-slate-400">
+                              {t("profile.titles.daysCount", {
+                                count: milestone.days,
+                              })}
+                            </span>
                             <span className="ml-2 font-semibold text-white">{milestone.title}</span>
                             {reached && (
                               <svg
@@ -1837,13 +2043,24 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                         </p>
 
                         <p className="font-semibold text-white">
-                          {unlocked ? title.title : "Locked"}
+                          {unlocked
+                            ? title.title
+                            : t("profile.titles.locked", "Locked")}
                         </p>
 
-                        <p className="text-xs text-slate-300">Unlock at Level {title.level}</p>
+                        <p className="text-xs text-slate-300">
+                          {t("profile.titles.unlockAt", {
+                            level: title.level,
+                          })}
+                        </p>
 
                         {equipped && (
-                          <p className="mt-2 text-yellow-300 text-xs">Click again to unequip</p>
+                          <p className="mt-2 text-yellow-300 text-xs">
+                            {t(
+                              "profile.titles.clickToUnequip",
+                              "Click again to unequip",
+                            )}
+                          </p>
                         )}
                       </button>
                     );
@@ -1859,20 +2076,21 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-widest text-violet-300">
-                        Prestige badge
+                        {t("profile.titles.prestigeBadge", "Prestige badge")}
                       </p>
                       <p className="text-lg font-bold text-white">
                         {prestigeBadge.display ||
-                          `Prestige ${prestigeBadge.prestige}`}
+                          t("profile.titles.prestigeFallback", {
+                            level: prestigeBadge.prestige,
+                          })}
                       </p>
                     </div>
                   </div>
                   <p className="mt-3 text-sm text-slate-300">
-                    Show your permanent Prestige tier next to your name
-                    instead of a normal title. The tier always comes from
-                    your real server progress — you can only ever display
-                    the Prestige you actually earned, and your existing
-                    titles stay available whenever you switch back.
+                    {t(
+                      "profile.titles.prestigeDesc",
+                      "Show your permanent Prestige tier next to your name instead of a normal title. The tier always comes from your real server progress — you can only ever display the Prestige you actually earned, and your existing titles stay available whenever you switch back.",
+                    )}
                   </p>
                   {prestigeBadge.prestigeUnlocked ? (
                     <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1885,19 +2103,27 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                         className="rounded-lg border border-violet-300/60 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35 disabled:opacity-50"
                       >
                         {prestigeBadge.enabled
-                          ? "Click to hide the Prestige badge"
-                          : "Display Prestige badge"}
+                          ? t(
+                              "profile.titles.hidePrestige",
+                              "Click to hide the Prestige badge",
+                            )
+                          : t(
+                              "profile.titles.showPrestige",
+                              "Display Prestige badge",
+                            )}
                       </button>
                       {prestigeBadge.enabled && (
                         <span className="rounded-full border border-yellow-300/70 bg-yellow-300/10 px-2.5 py-0.5 text-xs font-semibold text-yellow-200">
-                          Equipped
+                          {t("profile.titles.equippedTag", "Equipped")}
                         </span>
                       )}
                     </div>
                   ) : (
                     <p className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
-                      🔒 Prestige unlocks at Level 100 — keep climbing the
-                      Battle Pass to earn your first Prestige tier.
+                      {t(
+                        "profile.titles.prestigeLocked",
+                        "🔒 Prestige unlocks at Level 100 — keep climbing the Battle Pass to earn your first Prestige tier.",
+                      )}
                     </p>
                   )}
                   {prestigeBadge.error && (
@@ -1916,22 +2142,34 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">Referral System</h2>
+          <h2 className="text-xl text-[#00e5ff] mb-4">
+            {t("profile.referral.title", "Referral System")}
+          </h2>
 
           <div className="grid gap-4 md:grid-cols-3 mb-4">
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
-              <p className="text-sm text-gray-300">Your Referral Code</p>
+              <p className="text-sm text-gray-300">
+                {t("profile.referral.code", "Your Referral Code")}
+              </p>
               <p className="text-2xl font-bold text-[#00e5ff]">
-                {stats?.referralCode ? stats.referralCode : "No code yet"}
+                {stats?.referralCode
+                  ? stats.referralCode
+                  : t("profile.referral.noCode", "No code yet")}
               </p>
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
-              <p className="text-sm text-gray-300">Total Referrals</p>
+              <p className="text-sm text-gray-300">
+                {t("profile.referral.total", "Total Referrals")}
+              </p>
               <p className="text-2xl font-bold">{stats?.referrals ?? 0}</p>
             </div>
             <div className="rounded-lg border border-[#FFD700]/40 p-4">
-              <p className="text-sm text-gray-300">Referral Earnings</p>
-              <p className="text-2xl font-bold">{stats?.referralEarnings ?? 0} tokens</p>
+              <p className="text-sm text-gray-300">
+                {t("profile.referral.earnings", "Referral Earnings")}
+              </p>
+              <p className="text-2xl font-bold">
+                {stats?.referralEarnings ?? 0} {t("profile.tokens", "tokens")}
+              </p>
             </div>
           </div>
 
@@ -1950,7 +2188,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
                 " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               }
             >
-              Copy Code
+              {t("profile.referral.copy", "Copy Code")}
             </button>
 
             <button
@@ -1960,19 +2198,19 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
   hover:bg-[#00e5ff]/10 
   shadow-[0_0_10px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
-              Share Code
+              {t("profile.referral.share", "Share Code")}
             </button>
           </div>
 
           <div className="flex flex-col md:flex-row gap-3">
             <label htmlFor="profil-redeem-code" className="sr-only">
-              Enter referral code
+              {t("profile.referral.enterCode", "Enter referral code")}
             </label>
             <input
               id="profil-redeem-code"
               value={referralCodeInput}
               onChange={(e) => setReferralCodeInput(e.target.value)}
-              placeholder="Enter referral code"
+              placeholder={t("profile.referral.enterCode", "Enter referral code")}
               className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring-[#FFD700]"
             />
@@ -1980,7 +2218,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring
               onClick={handleRedeemCode}
               className="rounded bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
-              Redeem
+              {t("profile.referral.redeem", "Redeem")}
             </button>
           </div>
 
@@ -1992,25 +2230,32 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">Add Friends</h2>
+          <h2 className="text-xl text-[#00e5ff] mb-4">
+            {t("profile.friends.addTitle", "Add Friends")}
+          </h2>
           <div className="flex gap-2 mb-4">
             <label htmlFor="profil-friend-search" className="sr-only">
-              Search users by name
+              {t("profile.friends.searchLabel", "Search users by name")}
             </label>
             <input
               id="profil-friend-search"
               value={friendSearch}
               onChange={(e) => setFriendSearch(e.target.value)}
-              placeholder="Type letters to search users (like Ctrl+F)"
+              placeholder={t(
+                "profile.friends.searchPlaceholder",
+                "Type letters to search users (like Ctrl+F)",
+              )}
               className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             />
             <button
-              onClick={handleSearchFriends}
+              onClick={() => handleSearchFriends()}
               disabled={isSearchingFriends}
               className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
-              {isSearchingFriends ? "Searching..." : "Refresh"}
+              {isSearchingFriends
+                ? t("profile.friends.searching", "Searching...")
+                : t("profile.friends.search", "Search")}
             </button>
           </div>
 
@@ -2035,12 +2280,14 @@ bg-gradient-to-r from-[#00ffcc] to-[#00e5ff]
 shadow-[0_0_10px_rgba(0,255,200,0.6)] 
 hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 >
-                  Add Friend
+                  {t("profile.friends.add", "Add Friend")}
                 </button>
               </div>
             ))}
             {friendSearch && friendSearchResults.length === 0 && !isSearchingFriends && (
-              <p className="text-sm text-gray-300">No users found for this name.</p>
+              <p className="text-sm text-gray-300">
+                {t("profile.friends.noResults", "No users found for this name.")}
+              </p>
             )}
           </div>
 
@@ -2052,7 +2299,9 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl text-[#00e5ff]">My Friends</h2>
+            <h2 className="text-xl text-[#00e5ff]">
+              {t("profile.friends.title", "My Friends")}
+            </h2>
 
             <button
               onClick={async () => {
@@ -2062,7 +2311,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
               }}
               className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
             >
-              Refresh
+              {t("profile.friends.refresh", "Refresh")}
             </button>
           </div>
           <div className="mb-4 flex gap-2">
@@ -2070,13 +2319,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
               onClick={() => setActiveFriendsTab("friends")}
               className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
             >
-              Friends
+              {t("profile.friends.tabFriends", "Friends")}
             </button>
             <button
               onClick={() => setActiveFriendsTab("invites")}
               className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
             >
-              Invites ({receivedInvites.length})
+              {t("profile.friends.tabInvites", "Invites")} (
+              {receivedInvites.length})
             </button>
           </div>
           {activeFriendsTab === "friends" && (
@@ -2149,17 +2399,24 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                           <button
                             onClick={() => {
                               if (!isAllowedSpectateUrl(spectateUrl)) {
-                                setFriendsStatus("This spectate link is invalid.");
+                                setFriendsStatus(
+                                  t(
+                                    "profile.friends.spectateInvalidLink",
+                                    "This spectate link is invalid.",
+                                  ),
+                                );
                                 return;
                               }
                               setSpectateLoadError("");
                               setSpectateIsLoaded(false);
                               setSpectateOverlayUrl(spectateUrl);
                             }}
-                            aria-label={`Spectate ${friend.name}`}
+                            aria-label={t("profile.friends.spectateLabel", {
+                              name: friend.name,
+                            })}
                             className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                           >
-                            Spectate
+                            {t("profile.friends.spectate", "Spectate")}
                           </button>
                         );
                       })()}
@@ -2169,19 +2426,23 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                           e.preventDefault();
                           handleRemoveFriend(friend.id);
                         }}
-                        aria-label={`Remove ${friend.name}`}
+                        aria-label={t("profile.friends.removeLabel", {
+                          name: friend.name,
+                        })}
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
 bg-gradient-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
 hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
-                        Remove
+                        {t("profile.friends.remove", "Remove")}
                       </button>
                     </div>
                   </a>
                 ))
               ) : (
-                <p className="text-sm text-gray-300">No friends yet.</p>
+                <p className="text-sm text-gray-300">
+                  {t("profile.friends.none", "No friends yet.")}
+                </p>
               )}
             </div>
           )}
@@ -2201,29 +2462,37 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                     <div className="flex-1">
                       <p className="text-sm font-semibold">{invite.sender_name}</p>
                       <p className="text-xs text-gray-300">
-                        Sent {new Date(invite.created_at).toLocaleString()}
+                        {t("profile.friends.sentAt", {
+                          date: new Date(invite.created_at).toLocaleString(),
+                        })}
                       </p>
                     </div>
                     <div className="flex flex-col gap-1">
                       <button
                         onClick={() => handleRespondToInvite(invite.id, "accept")}
-                        aria-label={`Accept invite from ${invite.sender_name}`}
+                        aria-label={t("profile.friends.acceptLabel", {
+                          name: invite.sender_name,
+                        })}
                         className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
-                        Accept
+                        {t("profile.friends.accept", "Accept")}
                       </button>
                       <button
                         onClick={() => handleRespondToInvite(invite.id, "decline")}
-                        aria-label={`Decline invite from ${invite.sender_name}`}
+                        aria-label={t("profile.friends.declineLabel", {
+                          name: invite.sender_name,
+                        })}
                         className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                       >
-                        Decline
+                        {t("profile.friends.decline", "Decline")}
                       </button>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-300">No pending invites.</p>
+                <p className="text-sm text-gray-300">
+                  {t("profile.friends.noInvites", "No pending invites.")}
+                </p>
               )}
             </div>
           )}
@@ -2239,11 +2508,14 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                 }}
                 className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
               >
-                Close Spectate
+                {t("profile.friends.spectateClose", "Close Spectate")}
               </button>
               {!spectateIsLoaded && !spectateLoadError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-sm text-gray-200">
-                  Loading spectate view...
+                  {t(
+                    "profile.friends.spectateLoading",
+                    "Loading spectate view...",
+                  )}
                 </div>
               )}
               {spectateLoadError && (
@@ -2257,7 +2529,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                     }}
                     className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
-                    Retry
+                    {t("profile.friends.spectateRetry", "Retry")}
                   </button>
                 </div>
               )}
@@ -2265,17 +2537,26 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                 <iframe
                   src={spectateOverlayUrl}
                   className="h-full w-full border-0"
-                  title="Friend spectate view"
+                  title={t(
+                    "profile.friends.spectateTitle",
+                    "Friend spectate view",
+                  )}
                   onLoad={() => setSpectateIsLoaded(true)}
                   onError={() =>
                     setSpectateLoadError(
-                      "Unable to render spectate page. The game may have ended or embedding is blocked."
+                      t(
+                        "profile.friends.spectateFailed",
+                        "Unable to render spectate page. The game may have ended or embedding is blocked.",
+                      ),
                     )
                   }
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-6 text-center text-red-300">
-                  Invalid spectate destination.
+                  {t(
+                    "profile.friends.spectateInvalid",
+                    "Invalid spectate destination.",
+                  )}
                 </div>
               )}
             </div>
@@ -2287,7 +2568,9 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">User Statistics</h2>
+          <h2 className="text-xl text-[#00e5ff] mb-4">
+            {t("profile.stats.title", "User Statistics")}
+          </h2>
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
           {/* Tabbed stat panel — mirrors the /classement leaderboard
               (record / weekly / streaks) instead of a flat grid. */}
@@ -2299,15 +2582,25 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">Historique des Paris</h2>
+          <h2 className="text-xl text-[#00e5ff] mb-4">
+            {t("profile.betHistory.title", "Bet history")}
+          </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="border-b border-[#FFD700] text-[#00e5ff]">
                 <tr>
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-4 py-2">Jeu / Événement</th>
-                  <th className="px-4 py-2">Mise</th>
-                  <th className="px-4 py-2">Résultat</th>
+                  <th className="px-4 py-2">
+                    {t("profile.betHistory.date", "Date")}
+                  </th>
+                  <th className="px-4 py-2">
+                    {t("profile.betHistory.game", "Game / event")}
+                  </th>
+                  <th className="px-4 py-2">
+                    {t("profile.betHistory.stake", "Stake")}
+                  </th>
+                  <th className="px-4 py-2">
+                    {t("profile.betHistory.result", "Result")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -2316,9 +2609,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     <tr key={idx} className="border-b border-[#FFD700]/20">
                       <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
                       <td className="px-4 py-2">
-                        {bet.type || bet.event || bet.game_type || "Inconnu"}
+                        {bet.type ||
+                          bet.event ||
+                          bet.game_type ||
+                          t("profile.betHistory.unknown", "Unknown")}
                       </td>
-                      <td className="px-4 py-2">{bet.amount} tokens</td>
+                      <td className="px-4 py-2">
+                        {bet.amount} {t("profile.tokens", "tokens")}
+                      </td>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
                           <span
@@ -2331,10 +2629,10 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                             }`}
                           >
                             {bet.result === "won"
-                              ? "Gagné"
+                              ? t("profile.betHistory.won", "Won")
                               : bet.result === "lost"
-                                ? "Perdu"
-                                : "Égalité"}
+                                ? t("profile.betHistory.lost", "Lost")
+                                : t("profile.betHistory.draw", "Draw")}
                           </span>
 
                           {bet.result !== "pending" && (
@@ -2348,10 +2646,10 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                               }`}
                             >
                               {bet.tokenDiff > 0
-                                ? `+${Number(bet.tokenDiff).toFixed(2)} tokens`
+                                ? `+${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
                                 : bet.tokenDiff < 0
-                                  ? `${Number(bet.tokenDiff).toFixed(2)} tokens`
-                                  : "±0.00 tokens"}
+                                  ? `${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
+                                  : `±0.00 ${t("profile.tokens", "tokens")}`}
                             </span>
                           )}
                         </div>
@@ -2361,7 +2659,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 ) : (
                   <tr>
                     <td colSpan="4" className="text-center py-4 text-gray-400">
-                      Aucun pari trouvé
+                      {t("profile.betHistory.empty", "No bets found")}
                     </td>
                   </tr>
                 )}
@@ -2375,14 +2673,22 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">Historique des Achats de Jetons</h2>
+          <h2 className="text-xl text-[#00e5ff] mb-4">
+            {t("profile.purchaseHistory.title", "Token purchase history")}
+          </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="border-b border-[#FFD700] text-[#00e5ff]">
                 <tr>
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-4 py-2">Forfait</th>
-                  <th className="px-4 py-2">Jetons</th>
+                  <th className="px-4 py-2">
+                    {t("profile.purchaseHistory.date", "Date")}
+                  </th>
+                  <th className="px-4 py-2">
+                    {t("profile.purchaseHistory.pack", "Pack")}
+                  </th>
+                  <th className="px-4 py-2">
+                    {t("profile.purchaseHistory.tokens", "Tokens")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -2393,17 +2699,20 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                         {new Date(purchase.createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-2">
-                        {purchase.note || purchase.referenceId || "Achat"}
+                        {purchase.note ||
+                          purchase.referenceId ||
+                          t("profile.purchaseHistory.purchase", "Purchase")}
                       </td>
                       <td className="px-4 py-2 text-green-400">
-                        +{Number(purchase.amount ?? 0).toLocaleString()} tokens
+                        +{Number(purchase.amount ?? 0).toLocaleString()}{" "}
+                        {t("profile.tokens", "tokens")}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
                     <td colSpan="3" className="text-center py-4 text-gray-400">
-                      Aucun achat trouvé
+                      {t("profile.purchaseHistory.empty", "No purchases found")}
                     </td>
                   </tr>
                 )}
@@ -2420,13 +2729,18 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           className="mt-8 border border-red-500 bg-red-950/40 border border-red-500/40 
 shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
         >
-          <h2 className="text-xl text-red-400 mb-2">Danger Zone: Delete Account</h2>
+          <h2 className="text-xl text-red-400 mb-2">
+            {t("profile.danger.title", "Danger Zone: Delete Account")}
+          </h2>
           <p className="text-red-200 mb-4">
-            Warning: This action is permanent. Your account and data will be removed forever.
+            {t(
+              "profile.danger.warning",
+              "Warning: This action is permanent. Your account and data will be removed forever.",
+            )}
           </p>
 
           <label className="text-sm text-red-200" htmlFor="profil-delete-password">
-            Confirm password
+            {t("profile.danger.confirmPassword", "Confirm password")}
           </label>
           <input
             id="profil-delete-password"
@@ -2434,7 +2748,10 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="mt-2 w-full rounded border border-red-400/40 bg-red-900/20 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
-            placeholder="Enter your password"
+            placeholder={t(
+              "profile.danger.passwordPlaceholder",
+              "Enter your password",
+            )}
           />
 
           <button
@@ -2443,10 +2760,13 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
           >
             {isDeleting
-              ? "Deleting..."
+              ? t("profile.danger.deleting", "Deleting...")
               : delayDone
-                ? "Confirm permanent deletion"
-                : `Confirm in ${countdown}s`}
+                ? t(
+                    "profile.danger.confirm",
+                    "Confirm permanent deletion",
+                  )
+                : t("profile.danger.confirmIn", { seconds: countdown })}
           </button>
 
           {deleteError && <p className="mt-3 text-sm text-red-300">{deleteError}</p>}
@@ -2460,32 +2780,36 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
 shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
           >
-            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">Edit Profile</h3>
+            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">
+              {t("profile.edit.title", "Edit Profile")}
+            </h3>
             <div className="space-y-3">
               <label htmlFor="profil-edit-name" className="sr-only">
-                Name
+                {t("profile.edit.name", "Name")}
               </label>
               <input
                 id="profil-edit-name"
                 value={editForm.name}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="Name"
+                placeholder={t("profile.edit.name", "Name")}
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <label htmlFor="profil-edit-email" className="sr-only">
-                Email
+                {t("profile.edit.email", "Email")}
               </label>
               <input
                 id="profil-edit-email"
                 value={editForm.email}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
-                placeholder="Email"
+                placeholder={t("profile.edit.email", "Email")}
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
-                <p className="mb-2 block text-sm text-gray-200">My Grynd Icon</p>
+                <p className="mb-2 block text-sm text-gray-200">
+                  {t("profile.edit.icon", "My Grynd Icon")}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -2501,13 +2825,15 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     showFrame={false}
                   />
                   <span className="flex-1 text-left text-sm text-gray-200">
-                    Choose Your Icon
+                    {t("profile.edit.chooseIcon", "Choose Your Icon")}
                   </span>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
-                <p className="mb-2 block text-sm text-gray-200">My Name Glow</p>
+                <p className="mb-2 block text-sm text-gray-200">
+                  {t("profile.edit.glow", "My Name Glow")}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -2531,13 +2857,16 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     Aa
                   </span>
                   <span className="flex-1 text-left text-sm text-gray-200">
-                    {selectedGlowName || "Choose Your Name Glow"}
+                    {selectedGlowName ||
+                      t("profile.edit.chooseGlow", "Choose Your Name Glow")}
                   </span>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
               <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
-                <p className="mb-2 block text-sm text-gray-200">My Profile Frame</p>
+                <p className="mb-2 block text-sm text-gray-200">
+                  {t("profile.edit.frame", "My Profile Frame")}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -2555,70 +2884,54 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   />
                   <span className="flex-1 text-left text-sm text-gray-200">
                     {equippedCosmetics?.profile_frame?.name ||
-                      "Choose Your Profile Frame"}
+                      t(
+                        "profile.edit.chooseFrame",
+                        "Choose Your Profile Frame",
+                      )}
                   </span>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
-              </div>
-              {ownedCosmeticsLoaded &&
-                !EQUIPPABLE_COSMETIC_CATEGORIES.some((category) =>
-                  ownedCosmetics.some((item) => item.category === category.key),
-                ) && (
-                  <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3 text-sm text-gray-200">
-                    You don&apos;t own any cosmetics yet. Visit the{" "}
+                {/* Every profile cosmetic lives behind this ONE picker: the
+                    frame plus the badge / avatar / username / chat effects and
+                    the profile + prestige glows. The old per-category rows are
+                    gone so nothing has to be equipped in several places. */}
+                <p className="mt-2 text-xs text-gray-400">
+                  {t(
+                    "profile.edit.frameHint",
+                    "Frames, badges, avatar / username / chat effects and profile glows are all equipped here.",
+                  )}
+                </p>
+                {ownedCosmeticsLoaded && ownedCosmetics.length === 0 && (
+                  <p className="mt-2 text-xs text-gray-300">
+                    {t(
+                      "profile.edit.noCosmeticsLead",
+                      "You don't own any cosmetics yet. Visit the",
+                    )}{" "}
                     <Link
                       href="/shop"
                       className="font-semibold text-[#00e5ff] underline hover:text-[#33ebff]"
                     >
-                      Shop
+                      {t("profile.edit.shop", "Shop")}
                     </Link>{" "}
-                    to unlock badges, avatar effects and more.
-                  </div>
+                    {t(
+                      "profile.edit.noCosmeticsTail",
+                      "to unlock frames, badges, avatar, username and chat effects.",
+                    )}
+                  </p>
                 )}
-              {EQUIPPABLE_COSMETIC_CATEGORIES.filter((category) =>
-                ownedCosmetics.some((item) => item.category === category.key),
-              ).map((category) => {
-                const equipped = equippedCosmetics?.[category.key];
-                const color = equipped?.visual?.color || "#a78bfa";
-                return (
-                  <div
-                    key={category.key}
-                    className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3"
-                  >
-                    <p className="mb-2 block text-sm text-gray-200">{category.label}</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditOpen(false);
-                        setCosmeticPickerCategory(category.key);
-                      }}
-                      className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="h-10 w-10 shrink-0 rounded-full border-2"
-                        style={{
-                          borderColor: `${color}99`,
-                          boxShadow: `0 0 12px ${color}66`,
-                        }}
-                      />
-                      <span className="flex-1 text-left text-sm text-gray-200">
-                        {equipped?.name || `Choose ${category.label}`}
-                      </span>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
-                    </button>
-                  </div>
-                );
-              })}
+              </div>
               <label htmlFor="profil-edit-password" className="sr-only">
-                New password (optional)
+                {t("profile.edit.password", "New password (optional)")}
               </label>
               <input
                 id="profil-edit-password"
                 type="password"
                 value={editForm.password}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
-                placeholder="New password (optional)"
+                placeholder={t(
+                  "profile.edit.password",
+                  "New password (optional)",
+                )}
                 className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
 focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
               />
@@ -2631,7 +2944,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 onClick={() => setIsEditOpen(false)}
                 className="rounded border border-white/30 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               >
-                Close
+                {t("profile.edit.close", "Close")}
               </button>
               <button
                 disabled={isSavingEdit}
@@ -2641,7 +2954,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
                 }
               >
-                {isSavingEdit ? "Saving..." : "Save changes"}
+                {isSavingEdit
+                  ? t("profile.edit.saving", "Saving...")
+                  : t("profile.edit.save", "Save changes")}
               </button>
             </div>
           </div>
@@ -2664,10 +2979,15 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
               >
                 <path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z" />
               </svg>{" "}
-              Level Up! You reached Level {levelUpModal.level}
+              {t("profile.levelUp.title", {
+                level: levelUpModal.level,
+              })}
             </p>
             <p className="mt-2 text-gray-200">
-              Keep wagering and completing quests — rewards unlock soon.
+              {t(
+                "profile.levelUp.body",
+                "Keep wagering and completing quests — rewards unlock soon.",
+              )}
             </p>
             <button
               onClick={() => setLevelUpModal(null)}
@@ -2676,7 +2996,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
                 " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
               }
             >
-              Awesome!
+              {t("profile.levelUp.close", "Awesome!")}
             </button>
           </div>
         </div>
@@ -2699,29 +3019,14 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         onEquipped={handleEquipGlow}
       />
 
-      {/* Token-shop cosmetic picker — owned items for a non-frame category. */}
-      <ChooseCosmeticModal
-        open={Boolean(cosmeticPickerCategory)}
-        category={cosmeticPickerCategory}
-        title={
-          EQUIPPABLE_COSMETIC_CATEGORIES.find(
-            (c) => c.key === cosmeticPickerCategory,
-          )?.label || "Choose Your Cosmetic"
-        }
-        subtitle={
-          EQUIPPABLE_COSMETIC_CATEGORIES.find(
-            (c) => c.key === cosmeticPickerCategory,
-          )?.hint
-        }
-        onClose={() => setCosmeticPickerCategory(null)}
-        onEquipped={(item) => handleEquipCosmetic(cosmeticPickerCategory, item)}
-      />
-
-      {/* Token-shop profile frame picker — owned frames only. */}
+      {/* The single profile-cosmetics picker: owned frames + badges + avatar /
+          username / chat effects + glows, all equippable in one place. */}
       <ChooseFrameModal
         open={isFramePickerOpen}
         onClose={() => setIsFramePickerOpen(false)}
-        onEquipped={handleEquipFrame}
+        onEquipped={({ category, item }) =>
+          handleEquipCosmetic(category, item)
+        }
       />
 
       {/* In-game emote loadout manager — equipped animated emotes (max 9). */}

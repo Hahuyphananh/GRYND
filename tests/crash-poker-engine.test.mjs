@@ -17,7 +17,6 @@ import {
   CRASH_CURVE_TIMELINE,
   PLATFORM_FEE,
   FOLD_PAUSE_MS,
-  FOLD_OUT_SETTLE_GRACE_MS,
 } from "../src/lib/crash-poker/constants.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -308,7 +307,7 @@ test("timeToCrashMultiplier inverts crashMultiplierAtTime across the whole timel
   assert.equal(timeToCrashMultiplier(0.5), 0);
 });
 
-test("fold-out defers settlement: pause runs FOLD_PAUSE_MS + FOLD_OUT_SETTLE_GRACE_MS and the curve freezes until the deadline", () => {
+test("fold-out defers settlement: the pause is exactly FOLD_PAUSE_MS and the curve freezes until the settle deadline", () => {
   const two = [
     { userId: 1, name: "A" },
     { userId: 2, name: "B" },
@@ -321,13 +320,17 @@ test("fold-out defers settlement: pause runs FOLD_PAUSE_MS + FOLD_OUT_SETTLE_GRA
 
   const now = 1_000_000 + 2000;
   const frozeOutAt = curveMultiplierAt(hand, now); // value the curve held at fold time
-  // The fold route defers the settle: it pauses the folded hand for the fold
-  // pause PLUS the fold-out grace and stamps settlePendingAt on the persisted
-  // hand so the crash-check sweep settles it exactly at that deadline.
-  const defer = pauseHandOnFold(res.hand, now, FOLD_PAUSE_MS + FOLD_OUT_SETTLE_GRACE_MS);
-  const settleAt = now + FOLD_PAUSE_MS + FOLD_OUT_SETTLE_GRACE_MS;
+  // The fold route defers the settle: it freezes the folded hand for the
+  // SAME window as any other fold and stamps settlePendingAt on the
+  // persisted hand so the settlement runs exactly at that deadline (the
+  // route schedules it, the table's client wakes it, the sweep backstops
+  // it). There is no extra settle grace — that only ever extended the
+  // "settling payouts" card past the reveal it was waiting on.
+  const defer = pauseHandOnFold(res.hand, now, FOLD_PAUSE_MS);
+  const settleAt = now + FOLD_PAUSE_MS;
   assert.equal(defer.pausedSince, now);
   assert.equal(defer.pausedUntil, settleAt);
+  assert.equal(settleAt - now, FOLD_PAUSE_MS, "fold-out freezes for FOLD_PAUSE_MS");
 
   const pending = { ...defer, settlePendingAt: settleAt };
   // The curve stays frozen the whole window (the fold reveal).

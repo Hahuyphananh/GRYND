@@ -1024,11 +1024,21 @@ export default function ConnectFourGamePage() {
                     : ""
               }
               style={
-                isWinCell
-                  ? ({
-                      ["--win-order" as string]: winOrder.get(cellKey) ?? 0,
-                    } as CSSProperties)
-                  : undefined
+                {
+                  // Explicit placement for EVERY cell. The interaction
+                  // feedback (column rail + landing preview) and the
+                  // falling-disc layer are grid items too, and the grid places
+                  // definite-position items before auto-placed ones — so an
+                  // auto-placed coin board would flow around them and the
+                  // whole board would shift the moment a column is hovered.
+                  gridRowStart: rowIndex + 1,
+                  gridColumnStart: colIndex + 1,
+                  ...(isWinCell
+                    ? {
+                        ["--win-order" as string]: winOrder.get(cellKey) ?? 0,
+                      }
+                    : {}),
+                } as CSSProperties
               }
             />
           );

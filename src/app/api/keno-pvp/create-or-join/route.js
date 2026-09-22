@@ -1,6 +1,6 @@
 // src/app/api/keno-pvp/create-or-join/route.js
 //
-// POST — stake-keyed matchmaking for Keno Catch Duel:
+// POST — stake-keyed matchmaking for the Keno Survival Duel:
 //   1. Look for an open match with matching stake (different host).
 //   2. If found → join it (deduct stake, transition to `ready` with a
 //      3-second banner).

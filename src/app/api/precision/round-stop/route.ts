@@ -130,6 +130,13 @@ export async function POST(req: NextRequest) {
           success: false,
           error: result.error,
           validationError: result.validationError,
+          // True when the refusal is really "you already stopped this round".
+          // The client's socket-ACK timeout fallback re-submits the same stop
+          // over HTTPS, so it has to be able to tell "your click is already
+          // recorded" apart from a genuine rejection — without it, a stop that
+          // reached the server but lost its ACK would show the player an error
+          // for a round the server had already accepted.
+          alreadySubmitted: result.alreadySubmitted,
           bothStopped: result.bothStopped,
           roundWinnerSeat: result.roundWinnerSeat,
           matchFinished: result.matchFinished,

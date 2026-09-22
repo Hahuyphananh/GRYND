@@ -1,7 +1,7 @@
 // src/lib/keno-pvp/rooms.js
 //
 // Shared Socket.IO room-id constants + a safe server-side broadcast
-// helper for the Keno PvP ("Keno Catch Duel") match system. Centralised
+// helper for the Keno PvP ("Keno Survival Duel") match system. Centralised
 // so the lobby page, the match view, and the server store all agree on
 // room naming — a typo in only one would silently break the per-match
 // live-update channel.
@@ -22,9 +22,10 @@
 //
 //   In match view, both players are members of the per-match room.
 //   When Player A POSTs /api/keno-pvp/match/[matchId]/catch and the
-//   server records the catch, Player A's client emits the same
-//   room_event — Player B's status poll fires inside ~50 ms (socket
-//   round trip) instead of waiting for the next poll.
+//   server records the claim (and lights the next tile), Player A's
+//   client emits the same room_event — Player B's status poll fires
+//   inside ~50 ms (socket round trip) instead of waiting for the next
+//   poll.
 //
 //   Polling remains active as a safety net for cases where the socket
 //   round-trip drops (mobile suspend, etc.).

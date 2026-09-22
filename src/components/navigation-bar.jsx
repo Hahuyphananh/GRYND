@@ -54,6 +54,11 @@ function NavigationBar({ currentPath = "" }) {
     // Equipped profile frame (token-shop `profile_frame`), or null.
     profileFrame: null,
     usernameEffect: null,
+    // Equipped NAME GLOW (a Battle Pass reward) — the catalog hex this display
+    // name is coloured + haloed with, or null for none. Comes from the
+    // `glowColor` field of /api/get-user-tokens (the glow row joined on
+    // `users.selectedGlow`), not from `nameColor`.
+    glowColor: null,
     selectedTitle: "",
     streakTitle: null,
     // Server-resolved prestige badge (null unless equipped + earned) plus
@@ -206,6 +211,11 @@ function NavigationBar({ currentPath = "" }) {
               };
             })(),
             usernameEffect: data.data.equippedCosmetics?.username_effect || null,
+            // Equipped NAME GLOW hex, resolved server-side in this same payload
+            // (the glow's catalog `color`, left-joined on `selectedGlow`). It
+            // is deliberately NOT `nameColor`: that one falls back to the
+            // Grynd+ chat colour, which must not paint the display name.
+            glowColor: data.data.glowColor || null,
             streakTitle: data.data.streakTitle || null,
           }));
         if (includeMeta) {
@@ -405,6 +415,16 @@ function NavigationBar({ currentPath = "" }) {
     }
   }, [pathname, profile.prestige, profile.prestigeUnlocked]);
 
+  // The equipped name glow: the same treatment the profile card gives the
+  // display name — the catalog hex as the text colour plus its halo.
+  // `undefined` (no glow equipped) leaves the stylesheet colour in place.
+  const nameGlowStyle = profile.glowColor
+    ? {
+        color: profile.glowColor,
+        textShadow: `0 0 12px ${profile.glowColor}66`,
+      }
+    : undefined;
+
   return (
     <>
       {/* The navbar renders fully visible on mount (initial={false}) — no
@@ -536,7 +556,11 @@ function NavigationBar({ currentPath = "" }) {
                         className="border border-[#00e5ff]/50 transition group-hover:scale-105"
                       />
                       <div className="flex flex-col leading-tight">
-                        <span className={`text-xs text-[#c9f7ff] flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}>
+                        <span
+                          data-testid="nav-user-name"
+                          className={`text-xs text-[#c9f7ff] flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
+                          style={nameGlowStyle}
+                        >
                           {profile?.name ||
                             user?.username ||
                             user?.firstName ||
@@ -666,7 +690,14 @@ function NavigationBar({ currentPath = "" }) {
                     size="h-10 w-10"
                   />
                   <div>
-                    <div className={`text-[#c9f7ff] text-sm flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}>{profile?.name || "User"}{isAdmin && <AdminBadge />}</div>
+                    <div
+                      data-testid="nav-user-name"
+                      className={`text-[#c9f7ff] text-sm flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
+                      style={nameGlowStyle}
+                    >
+                      {profile?.name || "User"}
+                      {isAdmin && <AdminBadge />}
+                    </div>
                     <div
                       className={`text-xs ${
                         profile?.prestigeBadge

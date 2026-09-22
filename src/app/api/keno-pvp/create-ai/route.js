@@ -1,4 +1,4 @@
-// POST — create a free human-vs-AI Keno Catch Duel match.
+// POST — create a free human-vs-AI Keno Survival Duel match.
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createAiMatch } from "../../../../lib/keno-pvp/serverStore";

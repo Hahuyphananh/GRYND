@@ -7,7 +7,7 @@ import {
   crashArenaEntries,
 } from "../../../../db/schema";
 import { eq, and } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { broadcastTableUpdate } from "../../../../lib/crash-arena/rooms";
 import {
@@ -21,7 +21,6 @@ import { settleCrashPokerHand } from "../../../../lib/crash-poker/settleHand";
 import {
   roundMoney,
   FOLD_PAUSE_MS,
-  FOLD_OUT_SETTLE_GRACE_MS,
 } from "../../../../lib/crash-poker/constants";
 import {
   resolveCrashArenaAiBotId,
@@ -49,17 +48,26 @@ import { logError } from "../../../../lib/logError";
  *      server's current time and applies the fold through the pure engine.
  *   4. Persists to crash_arena_entries + the round's hand state.
  *   5. If the fold leaves exactly one active player the hand is OVER
- *      (fold-out): the curve freezes for FOLD_PAUSE_MS plus a settle grace
- *      and the hand is stamped settlePendingAt — the crash-check sweep
- *      resolves the ranked payouts at that deadline and broadcasts the
- *      results. The action route never settles the hand itself.
+ *      (fold-out): the curve freezes for FOLD_PAUSE_MS — exactly like any
+ *      other fold — and the hand is stamped settlePendingAt = the pause
+ *      deadline. The ranked payouts are resolved AT that deadline, not in
+ *      this route.
  *
  * FOLD-OUT DEFER (race safety): a fold-out used to settle in this route,
  * but two seats folding back-to-back raced the fold-pause accounting and
  * the hand-ends-now settle. Now a fold-out just freezes the curve with a
  * settlePendingAt deadline, exactly like a normal pause — every later
- * action is rejected while the deadline is pending, and the SINGLE crash
- * sweep (the only writer past the deadline) settles + broadcasts once.
+ * action is rejected while the deadline is pending, and the settlement
+ * (settleCrashPokerHand, which row-locks the round and no-ops once
+ * settled) runs ONCE at that deadline. Three independent wake-ups race for
+ * it and the row lock serializes them:
+ *   • this route schedules it in `after()` (below) — the primary path, so
+ *     the results land ~FOLD_PAUSE_MS after the fold even if the folding
+ *     player closes the tab;
+ *   • the folding table's client calls /api/crash-arena/settle at the
+ *     same deadline, so the results arrive in an HTTP response instead of
+ *     waiting for a socket broadcast;
+ *   • the realtime-server crash sweep still resolves it as the backstop.
  *
  * CRASH CUT-OFF (deterministic ordering): the crash moment is fixed
  * server-side — round creation time + the curve's growth rate. An action
@@ -331,11 +339,12 @@ export async function POST(req: Request) {
       let pause: { from: number; until: number; handOver?: boolean } | null = null;
       let persistedHand;
       if (result.handOver) {
-        persistedHand = pauseHandOnFold(
-          nextHand,
-          now,
-          FOLD_PAUSE_MS + FOLD_OUT_SETTLE_GRACE_MS,
-        );
+        // A fold-out freezes the curve for the SAME window as any other fold
+        // — there is no extra settle grace. The hand is settled AT this
+        // deadline (scheduled right after this transaction commits), so the
+        // table reads the reveal and then gets the results, never a freeze
+        // that outlives the pause.
+        persistedHand = pauseHandOnFold(nextHand, now, FOLD_PAUSE_MS);
         persistedHand = {
           ...persistedHand,
           settlePendingAt: Number(persistedHand.pausedUntil),
@@ -431,11 +440,13 @@ export async function POST(req: Request) {
 
     const { table, hand, result, actingHandPlayer, actingUserId, pause } = outcome;
 
-    // A fold-out is NOT settled here — the transaction above froze the
-    // curve with a settlePendingAt deadline; the crash-check sweep settles
-    // it at that deadline and broadcasts the results (one consistent
-    // broadcast instead of a per-fold settle + a pause nailed to it). No
-    // results are attached to this fold.
+    // A fold-out is NOT settled inline — the transaction above froze the
+    // curve with a settlePendingAt deadline, and the settlement itself is
+    // scheduled for that deadline just below (one consistent resolution
+    // instead of a per-fold settle raced by the pause accounting). No
+    // results are attached to the fold response: the client gets them from
+    // the settle call it makes at the same deadline, and the sweep can
+    // resolve them first if the table's client never gets there.
 
     // Best-effort fanout so the whole table sees the fold instantly. The
     // folding player's PRIVATE insight is now public — folded equals shown.
@@ -453,6 +464,17 @@ export async function POST(req: Request) {
       ...(pause ? { pause } : {}),
       ...(result.handOver ? { handOver: true } : {}),
     });
+
+    // ── Fold-out: the hand is settled AT the pause deadline, not now.
+    //    Scheduling it here (instead of leaving it to the crash sweep)
+    //    keeps the freeze at exactly FOLD_PAUSE_MS: the sweep only ticks
+    //    every second while a hand runs — and every 15s when its
+    //    running-hand hint has idled — so a fold-out used to sit on the
+    //    "settling payouts" card for far longer than the pause it was
+    //    waiting on (or forever, if the sweep isn't running at all).
+    if (result.handOver && pause) {
+      scheduleFoldOutSettlement(roundId, Number(pause.until));
+    }
 
     return NextResponse.json({
       success: true,
@@ -480,5 +502,53 @@ export async function POST(req: Request) {
       metadata: { operation: "submit_fold" },
     });
     return NextResponse.json({ success: false, error: "Server error" }, { status: 500 });
+  }
+}
+
+/**
+ * Resolve a committed fold-out at its pause deadline.
+ *
+ * The fold-out is already decided (one active player left) and the curve is
+ * frozen with `settlePendingAt` = that deadline, so this only has to WAIT
+ * for the reveal window and then settle — `settleCrashPokerHand` row-locks
+ * the round, recomputes the ranking and no-ops once the round is settled,
+ * so a race with the client's /api/crash-arena/settle wake-up or the
+ * realtime-server crash sweep is harmless. The results broadcast from
+ * whichever writer got there first.
+ *
+ * Runs in `after()` so the fold response is never delayed by the pause.
+ * Best-effort by design: a serverless runtime may cut the callback short
+ * and a process restart loses it entirely — the folding table's client and
+ * the crash sweep both cover that.
+ *
+ * @param roundId the fold-out round to settle
+ * @param settleAt absolute epoch-ms the pause window closes
+ */
+function scheduleFoldOutSettlement(roundId: number, settleAt: number): void {
+  const run = async () => {
+    const waitMs = Math.max(0, Number(settleAt) - Date.now());
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    try {
+      await settleCrashPokerHand(roundId);
+    } catch (err) {
+      await logError({
+        errorType: "crash_arena_fold_out_settle_error",
+        errorMessage:
+          err instanceof Error ? err.message : "Fold-out settlement failed",
+        stackTrace: err instanceof Error ? err.stack : undefined,
+        endpoint: "/api/crash-arena/action",
+        game: "Crash Arena",
+        metadata: { operation: "settle_fold_out", roundId },
+      }).catch(() => {});
+    }
+  };
+  try {
+    after(run);
+  } catch {
+    // No request scope / older runtime — fire and forget so the hand still
+    // settles without holding the response open.
+    void run().catch(() => {});
   }
 }

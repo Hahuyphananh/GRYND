@@ -21,7 +21,18 @@ import {
 
 const DEFAULT_AI_DIFFICULTY = "medium";
 
-/** Wait past a fold-out deadline before forcing a reconcile of the table. */
+/**
+ * Settle wake-up for a due fold-out: the first attempt lands just past the
+ * server's own pause deadline. The route compares that deadline against
+ * SERVER time, so a client clock running ahead is answered with 409
+ * "still frozen" — hence the small buffer instead of firing exactly at it.
+ */
+const FOLD_OUT_SETTLE_FIRST_DELAY_MS = 300;
+/** Gap between wake-up attempts while the server still reports it frozen. */
+const FOLD_OUT_SETTLE_RETRY_MS = 700;
+/** Bounded: ~6s of wake-ups, then the table poll takes over. */
+const FOLD_OUT_SETTLE_MAX_ATTEMPTS = 8;
+/** Wait past a fold-out deadline before the first safety-net reconcile. */
 const HAND_OVER_RECONCILE_GRACE_MS = 4_000;
 /** Gap between forced reconciles while a fold-out freeze refuses to clear. */
 const HAND_OVER_RECONCILE_RETRY_MS = 4_000;
@@ -183,6 +194,11 @@ export default function useCrashArenaRound({
   const currentMultiplierRef = useRef(1.0);
   const onRoomUpdateRef = useRef(onRoomUpdate);
   onRoomUpdateRef.current = onRoomUpdate;
+  // Latest `applyServerSettlement`, which this file declares AFTER the
+  // fold-out resolution effect below. A callback body is evaluated at call
+  // time but a deps array is evaluated during render, so referencing the
+  // const directly from that effect would hit its temporal dead zone.
+  const applyServerSettlementRef = useRef(null);
 
   const [busy, setBusy] = useReducer((_, v) => v, false);
   const [error, setError] = useReducer((_, v) => v, null);
@@ -298,39 +314,116 @@ export default function useCrashArenaRound({
     return () => clearTimeout(timer);
   }, [foldPause]);
 
-  // ── Hand-over freeze watchdog ────────────────────────────────────────
+  // ── Fold-out resolution ──────────────────────────────────────────────
   // A fold-out freeze ("Hand over — settling payouts…") only ends when the
-  // settle results arrive: the sweep resolves the hand at `until` and
-  // broadcasts them. If that broadcast is ever missed — socket blip, a
-  // dropped room, a slow/skipped sweep tick — the table would sit frozen on
-  // the pause card FOREVER, because a fold-out pause deliberately never
-  // auto-resumes. So nudge a reconcile (roster + latest round poll) once the
-  // deadline has passed and keep nudging until the hand actually leaves
-  // "running". The reconcile applies the authoritative settled round, which
-  // is what clears the freeze.
+  // hand is SETTLED — the freeze deliberately never auto-resumes (the
+  // payout is still pending), so whatever resolves it is what clears the
+  // card. The hand's outcome is already decided by the fold; all that is
+  // left is the settlement, and this effect makes sure the table gets its
+  // results at the pause deadline (~FOLD_PAUSE_MS after the fold) instead
+  // of waiting on a socket broadcast that may never come.
+  //
+  // It wakes the server's deadline-guarded settle — the route refuses to
+  // settle before `settlePendingAt` on SERVER time, so a client can't force
+  // an early payout — and applies the authoritative results from the
+  // response, then relays them to the room exactly like a fold does. That
+  // covers the two ways a fold-out used to hang:
+  //   • the realtime-server sweep is the game clock for hand-overs, so a
+  //     skipped/slow/idle tick (1s while hands run, 15s when idle) — or no
+  //     sweep at all — left the card up far past the reveal it was waiting
+  //     on;
+  //   • the settle broadcast no-ops when the API and socket run in separate
+  //     processes, so the results only ever arrived on the 10s poll.
+  // A bounded refetch nudge stays as the safety net for the paths that
+  // resolve server-side (another seat won the race, or the hand was already
+  // settled): the poll applies the authoritative settled round.
   useEffect(() => {
     if (!foldPause?.handOver) return;
+    const roundId = currentRoundIdRef.current;
+    const until = Number(foldPause.until) || 0;
     let cancelled = false;
     let attempts = 0;
-    let timer = null;
-    const nudge = () => {
+    let retryTimer = null;
+    let reconcileAttempts = 0;
+    let reconcileTimer = null;
+
+    const reconcile = () => {
+      if (!cancelled) onRoomUpdateRef.current?.();
+    };
+
+    const wake = async () => {
       if (cancelled) return;
       attempts += 1;
-      onRoomUpdateRef.current?.();
-      if (attempts < HAND_OVER_RECONCILE_MAX_ATTEMPTS) {
-        timer = setTimeout(nudge, HAND_OVER_RECONCILE_RETRY_MS);
+      // Without a round pointer there is nothing to settle — the reconcile
+      // below is what pulls the round in.
+      if (roundId) {
+        try {
+          const res = await fetch("/api/crash-arena/settle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ roundId }),
+          });
+          const data = await res.json().catch(() => null);
+          if (cancelled) return;
+          const results = data?.data?.results ?? null;
+          if (data?.success && results) {
+            // Authoritative results in hand — apply them and tell the rest
+            // of the table so nobody waits for their own poll.
+            applyServerSettlementRef.current?.(results, roundId);
+            mergeRevealedSignals(results.signals);
+            if (socket) {
+              socket.emit(CRASH_ARENA_READY, {
+                tableId,
+                handOver: true,
+                results,
+              });
+            }
+            return;
+          }
+          if (data?.success) {
+            // Already settled (another seat got there first, or the server
+            // resolved it) — the reconcile applies the settled round.
+            reconcile();
+            return;
+          }
+        } catch {
+          // Network error — fall through to the retry below.
+        }
+      }
+      reconcile();
+      if (attempts < FOLD_OUT_SETTLE_MAX_ATTEMPTS) {
+        retryTimer = setTimeout(wake, FOLD_OUT_SETTLE_RETRY_MS);
       }
     };
-    timer = setTimeout(
-      nudge,
-      Math.max(0, Number(foldPause.until) - Date.now()) +
-        HAND_OVER_RECONCILE_GRACE_MS,
+
+    const firstTimer = setTimeout(
+      wake,
+      Math.max(0, until - Date.now()) + FOLD_OUT_SETTLE_FIRST_DELAY_MS,
     );
+    // Safety net (nothing to reconcile before the deadline): keep nudging a
+    // refetch while the freeze refuses to clear, then stop — the 10s poll
+    // keeps running regardless.
+    reconcileTimer = setInterval(() => {
+      if (cancelled) return;
+      // Nothing to reconcile before the settle deadline — plus a grace for
+      // the wake-up above to land first.
+      if (Date.now() < until + HAND_OVER_RECONCILE_GRACE_MS) return;
+      if (reconcileAttempts >= HAND_OVER_RECONCILE_MAX_ATTEMPTS) {
+        clearInterval(reconcileTimer);
+        return;
+      }
+      reconcileAttempts += 1;
+      reconcile();
+    }, HAND_OVER_RECONCILE_RETRY_MS);
+
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      clearTimeout(firstTimer);
+      if (retryTimer) clearTimeout(retryTimer);
+      if (reconcileTimer) clearInterval(reconcileTimer);
     };
-  }, [foldPause]);
+  }, [foldPause, tableId, socket, mergeRevealedSignals]);
 
   // ── Reducer ──────────────────────────────────────────────────────────
 
@@ -666,6 +759,8 @@ export default function useCrashArenaRound({
     lastSyncedRef.current = { id: rid, status: "settled" };
     dispatch({ type: "SETTLE_FROM_SERVER", results });
   }, []);
+  // Expose it to the fold-out resolution effect above (see the ref's note).
+  applyServerSettlementRef.current = applyServerSettlement;
 
   /**
    * Submit a FOLD for the current hand (or for a bot via `forBot`). The

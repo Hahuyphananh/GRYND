@@ -2,14 +2,15 @@
 
 // src/app/casino/keno/page.jsx
 //
-// MULTIPLAYER LOBBY for the Keno game (1v1 "Keno Catch Duel").
+// MULTIPLAYER LOBBY for the Keno game (1v1 "Keno Survival Duel").
 //
-// Keno is now a skill-based 1v1 game: both players face the SAME
-// shared 10-ball draw each round and race to catch the balls on the
-// server-declared release schedule — perfect-timed taps score bonus
-// points. This page is the single entry point: matchmaking / scoring
-// / payout logic lives in `src/lib/keno-pvp/serverStore.js` (the same
-// engine powering the in-match view at /casino/keno-pvp/[matchId]).
+// Keno is a skill-based 1v1 survival game: both players start with 3
+// lives and race for the SAME lit tile. The first tap claims the tile and
+// costs the opponent a life; a tile nobody claims is a both-miss (both
+// lose a life). The window tightens 100ms per claimed tile. This page is
+// the single entry point: matchmaking / scoring / payout logic lives in
+// `src/lib/keno-pvp/serverStore.js` (the same engine powering the
+// in-match view at /casino/keno-pvp/[matchId]).
 //
 // Flow:
 //   1. Pick a stake (preset chips or custom).
@@ -279,13 +280,13 @@ export default function KenoLobbyPage() {
       title="Keno Lobby"
       subtitle={
         <>
-          1v1 <b>Keno Catch Duel</b>. Both players face the <b>same</b>{" "}
-          10-ball draw. Catch each ball as it drops (each tile glows for
-          <b>1 second</b>, so timing matters but isn't brutal). Catching
-          more compounds (the classic keno multiplier table: 5 balls =
-          50 pts, 10 balls = 5000 pts). <b>First to 10 points</b> takes
-          the pot <b>1.9× their stake</b>, house takes 0.1×. Miss the
-          window and the ball is gone.
+          1v1 <b>Keno Survival Duel</b>. Both players start with{" "}
+          <b>3 lives</b> and race for the <b>same lit tile</b>. Tap it
+          first to claim it and take a life off your opponent — if
+          nobody taps in time, <b>both</b> lose a life. The window starts
+          at <b>1.6s</b> and tightens <b>100ms per claimed tile</b> (floor
+          0.4s), so the endgame is pure reaction time. First to strip all
+          3 lives takes the pot <b>1.9× their stake</b>, house takes 0.1×.
         </>
       }
       icon={
@@ -296,33 +297,36 @@ export default function KenoLobbyPage() {
         title: "How to Play",
         sections: [
           {
-            heading: "Catch the glowing tile",
+            heading: "Race for the lit tile",
             body: (
               <>
-                Each round <b>10 tiles</b> from the 1–40 board light up
-                one at a time. Both players chase the <b>same draw</b>.
-                Tap a tile while it glows (<b>1 second</b> window) to
-                catch it; tap after the glow fades and it&apos;s a miss.
+                <b>One tile</b> from the 1–40 board is lit for both
+                players. Tap it first to <b>claim</b> it and take a life
+                off your opponent. If nobody taps before the window
+                closes, <b>both</b> players lose a life.
               </>
             ),
           },
           {
-            heading: "Keno multiplier points",
+            heading: "Survive 3 lives",
             body: (
               <>
-                Tiles caught → points, compounding: 5 tiles = 50 pts, all
-                10 = 5,000 pts. The last tiles are worth the most.
+                You start with <b>3 lives</b>. Lose them all and you are
+                eliminated — your opponent takes the pot. If a tile goes
+                unclaimed while you are both on your last life, the match
+                ends as a draw and both stakes are refunded.
               </>
             ),
           },
           {
-            heading: "Win the match",
+            heading: "The window tightens",
             body: (
               <>
-                <b>First to 10 points</b> takes the pot. 1.9× their
-                stake, house takes 0.1×. A 3-minute match clock with 30s
-                overtime settles close games; an overtime tie refunds both
-                players.
+                The first tile gives you <b>1.6s</b>. Every tile either
+                player claims shaves <b>100ms</b> off the next window,
+                down to a <b>0.4s</b> floor — later tiles are won on
+                reaction alone. Winner takes 1.9× their stake; the house
+                keeps 0.1×.
               </>
             ),
           },
@@ -373,7 +377,7 @@ export default function KenoLobbyPage() {
               <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
             </span>
           </span>
-          <span className="text-[10px] text-white/40">Catch Duel</span>
+          <span className="text-[10px] text-white/40">Survival Duel</span>
         </span>
       )}
       onJoin={(l) => joinSpecific(l.id)}

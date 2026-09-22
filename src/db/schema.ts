@@ -3437,18 +3437,24 @@ export const plinkoPvpRoundsRelations = relations(plinkoPvpRounds, ({ one }) => 
   }),
 }));
 
-// ── KENO PvP ("Keno Catch Duel") ─────────────────────────────────────
-// 1v1 skill keno: both players face the SAME shared 10-ball draw each
-// round and race to catch the balls on the server-declared release
-// schedule. First to 10 cumulative points takes the match; the higher
-// total wins (tie → full refund) after the 5-round hard cap. Payout
-// is the standard 90/10 split.
+// ── KENO PvP ("Keno Survival Duel") ─────────────────────────────────
+// 1v1 survival keno: both players start with 3 lives and ONE tile is lit
+// for both at a time. The first player to tap the live tile claims it and
+// costs the opponent a life; a tile nobody claims in time is a BOTH-MISS
+// (both lose a life). The claim window starts at 1.6s, tightens 100ms per
+// claimed tile and floors at 0.4s. Lives at 0 = eliminated (opponent
+// takes the pot); both eliminated on the same both-miss = draw (full
+// refund). Payout is the standard 90/10 split.
 //
-// Match flow: waiting → ready → round_1 … round_16 → overtime →
-// finished (waiting/ready/round_N/overtime → cancelled). After the
-// 3-minute match clock, a 30s overtime settles by most tiles (tie →
-// 95% refund each). Mirrors slots_pvp (match + rounds child table,
-// jsonb draws/catches, round deadline + timer).
+// Match flow: waiting → ready → <live> → finished (waiting → cancelled).
+// The live run reuses the legacy `round_1` enum value for its whole
+// duration (see src/lib/keno-pvp/constants.js — MATCH_STATUS.LIVE);
+// nothing advances a round any more, and the legacy round_2…round_16 /
+// overtime values exist only so pre-rework history rows still read.
+// `round_deadline` is the live tile's expiry and `round_timer_seconds`
+// the opening window in seconds. The keno_pvp_rounds child table is
+// legacy-only now: the public per-tile log on the match row (tile_log)
+// carries the replay instead.
 export const kenoPvpStatusEnum = pgEnum("keno_pvp_status", [
   "waiting",
   "ready",
@@ -3484,33 +3490,50 @@ export const kenoPvpMatches = pgTable(
     // True for free human-vs-AI matches. The bot occupies player2Id
     // but is not a real user and must never receive token/stat updates.
     isAi: boolean("is_ai").notNull().default(false),
-    // 1 / 2 / 3 / 4 / 5 — which round the match is collecting catches
-    // for right now. Stamped at match creation and advanced at each
-    // round resolution.
+    // Survival lives. Start at 3; a lost tile (the opponent claimed the
+    // live tile first, or a both-miss) costs one. 0 = eliminated.
+    p1Lives: integer("p1_lives").notNull().default(3),
+    p2Lives: integer("p2_lives").notNull().default(3),
+    // Tiles each player claimed first this match. Feeds the shrinking
+    // claim window (1.6s − 100ms per claim, floor 0.4s) and the
+    // board-exhausted tiebreak.
+    p1Tiles: integer("p1_tiles").notNull().default(0),
+    p2Tiles: integer("p2_tiles").notNull().default(0),
+    // The tile currently lit for BOTH players (1..40), or NULL when no
+    // tile is live. `roundDeadline` is its expiry and `liveStartedAt`
+    // when it lit up.
+    liveTile: integer("live_tile"),
+    liveTileIndex: integer("live_tile_index").notNull().default(0),
+    liveStartedAt: timestamp("live_started_at"),
+    // Tiles already drawn this match — a tile never lights twice.
+    usedTiles: jsonb("used_tiles")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // Public per-tile history for the match feed / replay:
+    // [{tile,index,outcome,at,p1Lives,p2Lives,windowMs,reactionMs}, ...]
+    tileLog: jsonb("tile_log")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // LEGACY (pre-rework multi-round game): current_round / rounds_won_* /
+    // p1_score / p2_score / current_draw / p1_catches / p2_catches are no
+    // longer written by the survival engine. Kept so historical rows stay
+    // readable.
     currentRound: integer("current_round").notNull().default(1),
-    // Match score — rounds won by each player (first to 3 wins).
     roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
     roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
-    // Aggregate round scores across all rounds. Compared at match end
-    // to break a rounds-won tie.
     p1Score: integer("p1_score").notNull().default(0),
     p2Score: integer("p2_score").notNull().default(0),
-    // The CURRENT round's shared draw — array of 10 unique ball numbers
-    // (1..KENO_POOL_SIZE). Server-generated when the round opens; ball
-    // release timing is derived from `round_deadline` + the shared
-    // constants (see src/lib/keno-pvp/constants.js), so both players
-    // see the identical stream.
+    // LEGACY: the pre-rework round's shared 10-ball draw.
     currentDraw: jsonb("current_draw").default(sql`NULL`),
-    // Per-round catch commits — array of { number, quality, caughtAt }
-    // for the CURRENT round. Server-authoritative; one catch per ball
-    // per player. Reset when the next round opens.
+    // LEGACY: pre-rework per-round catch commits.
     p1Catches: jsonb("p1_catches").default(sql`NULL`),
     p2Catches: jsonb("p2_catches").default(sql`NULL`),
-    // Per-round decision-window deadline = round open time +
-    // ROUND_DURATION_MS (the 10-ball release schedule plus the final
-    // ball's expiry). Mirrors slots-pvp's round_deadline semantics.
+    // Deadline of the CURRENT live tile (= live_started_at + the current
+    // window). NULL when no tile is live.
     roundDeadline: timestamp("round_deadline"),
-    roundTimerSeconds: integer("round_timer_seconds").notNull().default(15),
+    // Opening claim window in seconds (legacy column name; the window
+    // shrinks by 100ms per claimed tile down to 0.4s).
+    roundTimerSeconds: integer("round_timer_seconds").notNull().default(2),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
     result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
@@ -3528,8 +3551,10 @@ export const kenoPvpMatches = pgTable(
   })
 );
 
-// One row per round of a Keno PvP match (up to 5 rows per match).
-// Cascade-deleted with the parent match so history stays tidy.
+// LEGACY: one row per round of a pre-rework Keno PvP match. The survival
+// duel does not write rounds — it keeps its replay in
+// keno_pvp_matches.tile_log — so this table only exists for historical
+// rows now. Cascade-deleted with the parent match so history stays tidy.
 export const kenoPvpRounds = pgTable(
   "keno_pvp_rounds",
   {

@@ -33,6 +33,7 @@ export async function POST(req: Request) {
           email: null,
           selectedIcon: DEFAULT_ICON_KEY,
           nameColor: null,
+          glowColor: null,
           profileAccent: null,
           streakTitle: null,
           selectedStreakType: null,
@@ -149,6 +150,13 @@ export async function POST(req: Request) {
           nameColor:
             user.glowColor ||
             (Boolean(user.isPremium) ? user.chatColor || null : null),
+          // The equipped BATTLE PASS name glow on its own — the catalog hex of
+          // `users.selectedGlow` (already left-joined below), or null when
+          // nothing is equipped. `nameColor` above cannot be used for this: it
+          // deliberately falls back to the Grynd+ chat colour, which is a chat
+          // and in-game-seat colour, not a name glow. The navbar styles the
+          // display name with this, so it must be the glow and only the glow.
+          glowColor: user.glowColor || null,
           profileAccent: user.profileAccent,
           streakTitle: streakInfo.title,
           selectedStreakType: user.selectedStreakType,

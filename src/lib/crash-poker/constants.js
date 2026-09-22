@@ -120,6 +120,13 @@ export function timeToCrashMultiplier(m) {
  * (pausedSince/pausedUntil/pausedTotalMs on the hand), the crash-check
  * sweep resumes it and every client freezes until the SAME absolute
  * `pausedUntil` deadline broadcast with the fold.
+ *
+ * A fold-out (the fold left exactly one active player) uses the SAME window
+ * and is settled at that deadline — the action route schedules the
+ * settlement, the table's client wakes it, and the crash sweep backstops
+ * both. There is deliberately no extra settle grace on top: the hand's
+ * outcome is already decided by the fold, so anything longer than this
+ * window is just the "settling payouts" card outliving the reveal.
  */
 export const FOLD_PAUSE_MS = 3000;
 
@@ -154,14 +161,6 @@ export const NEXT_ROUND_COUNTDOWN_MS = 8_000;
  * anchor is reached.
  */
 export const CRASH_START_DELAY_MS = 5_000;
-
-/**
- * Grace period (ms) added to the fold-pause length when the fold causes
- * a fold-out (hand over). Gives the server one tick to settle the hand and
- * broadcast the results before the pause window closes — clients stay
- * frozen with a "hand over" popup until the settled broadcast arrives.
- */
-export const FOLD_OUT_SETTLE_GRACE_MS = 1_500;
 
 /** Entry result values used by Crash Arena hands. */
 export const RESULT_WON = "won";

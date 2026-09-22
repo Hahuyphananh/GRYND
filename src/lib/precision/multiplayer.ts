@@ -299,13 +299,19 @@ export interface PrecisionStopAck {
   error?: string;
 }
 
-/** Maximum time we'll wait for the realtime-server's ACK callback before
- *  surfacing a network-timeout error to the caller. Mirrors the
- *  AbortController timeout that the realtime-server's Next.js proxy
- *  uses internally — both client and server must agree on the same
- *  bound so the player UI doesn't strand `stopSubmitting=true` on a
- *  half-broken connection. */
-export const STOP_ACK_TIMEOUT_MS = 4000;
+/** Maximum time we'll wait for the realtime-server's ACK callback before we
+ *  stop trusting the socket and re-submit the stop over HTTPS.
+ *
+ *  Deliberately LONGER than the realtime-server's own 4s forward bound
+ *  (`realtime-server/server.js` → `precision:stop`): the proxy always answers
+ *  with its own `{ success: false, error }` when Next.js doesn't reply in
+ *  time, and that verdict is more useful than giving up first. When the full
+ *  window passes with no ACK at all, the SOCKET is what failed — see the
+ *  HTTPS fallback in `emitStop`. */
+export const STOP_ACK_TIMEOUT_MS = 6000;
+
+/** Bound on the HTTPS fallback so a STOP can never hang the button. */
+export const STOP_HTTP_TIMEOUT_MS = 8000;
 
 /**
  * Fire the per-player reaction-time stop event over the realtime socket.
@@ -327,8 +333,28 @@ export const STOP_ACK_TIMEOUT_MS = 4000;
  * firing). The timeout wrapper forwards the `err` slot as an
  * `{ success: false, error: ... }` payload so the page's existing
  * handleStopClick ACK handling can flip the button back to enabled.
- * Matches the realtime-server-side `AbortController` (also 4s) so the
- * client and server sides agree on the same bound.
+ *
+ * ── Bug fix: a missing ACK re-submits over HTTPS ──
+ * "Network timeout — server didn't ACK within 4000ms. Please try again."
+ * was the wrong answer for a stop that never made it: `socket.timeout()`
+ * only proves the SOCKET answered, not that the stop reached the server.
+ * Socket.IO buffers emits while the transport is down and replays them on
+ * reconnect, so a blip at the wrong instant produced (a) this error and
+ * (b) the same packet landing much later — graded against an elapsed time
+ * that has nothing to do with the click, or refused outright. Either way
+ * the round was lost for a click the player actually made.
+ *
+ * So an ACK timeout now re-submits the SAME stop (same `roundId` +
+ * `nonce`, so the replay envelope still validates) over HTTPS via
+ * `submitStopOverHttp`, which needs no socket. That is safe because the
+ * server keeps one stop per seat per round: a stop already recorded comes
+ * back as `alreadySubmitted`, which we report to the caller as success.
+ *
+ * An explicit refusal from the realtime server (`err === null`,
+ * `success: false`) is authoritative and is NOT retried — that covers a
+ * stale roundId/nonce, a duplicate, a non-participant caller, and the
+ * proxy's own timeout, where re-submitting behind the player's back could
+ * only produce a confusing second verdict.
  */
 export function emitStop(
   socket: RealtimeSocket,
@@ -337,27 +363,80 @@ export function emitStop(
   nonce: string,
   onAck?: (ack: PrecisionStopAck) => void,
 ): void {
-  if (onAck) {
-    socket.timeout(STOP_ACK_TIMEOUT_MS).emit(
-      SOCKET_NAMESPACE.stopEvent,
-      { matchId, roundId, nonce },
-      (err: Error | null, ack?: PrecisionStopAck) => {
-        if (err) {
+  if (!onAck) {
+    socket.emit(SOCKET_NAMESPACE.stopEvent, { matchId, roundId, nonce });
+    return;
+  }
+
+  socket.timeout(STOP_ACK_TIMEOUT_MS).emit(
+    SOCKET_NAMESPACE.stopEvent,
+    { matchId, roundId, nonce },
+    (err: Error | null, ack?: PrecisionStopAck) => {
+      if (!err) {
+        onAck(ack ?? { success: false, error: "Empty ACK from server." });
+        return;
+      }
+      // No ACK at all — the socket, not the request, failed. Re-submit over
+      // HTTPS so the click is never silently thrown away mid-round.
+      void submitStopOverHttp(matchId, roundId, nonce)
+        .then((result) => {
+          if (result?.success === true || result?.alreadySubmitted === true) {
+            onAck({ success: true });
+            return;
+          }
+          onAck({
+            success: false,
+            error:
+              result?.error ||
+              "Network timeout — the server did not confirm your stop within " +
+                String(STOP_ACK_TIMEOUT_MS) +
+                "ms. Please try again.",
+          });
+        })
+        .catch(() => {
           onAck({
             success: false,
             error:
               "Network timeout — server didn't ACK within " +
               String(STOP_ACK_TIMEOUT_MS) +
-              "ms. Please try again.",
+              "ms, and the backup request failed. Please try again.",
           });
-          return;
-        }
-        onAck(ack ?? { success: false, error: "Empty ACK from server." });
-      },
-    );
-    return;
+        });
+    },
+  );
+}
+
+/**
+ * Re-submit a stop straight to `/api/precision/round-stop` — no socket in the
+ * path. Used by `emitStop` when the realtime ACK never arrives, and available
+ * to any caller that has to stop a round without a live socket.
+ *
+ * The caller is authenticated by the Clerk session cookie (the route derives
+ * the userId itself and ignores any id in the body), so this is the same
+ * server-authoritative `recordRoundStop` path the socket proxy uses — just a
+ * different transport. The replay envelope (`roundId` + `nonce`) is passed
+ * through untouched, so a stop that races the socket packet is rejected as a
+ * duplicate rather than double-counted.
+ */
+export async function submitStopOverHttp(
+  matchId: string,
+  roundId: string,
+  nonce: string,
+): Promise<PrecisionRoundStopResponse> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STOP_HTTP_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_ROUTES.roundStop, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ matchId, roundId, nonce }),
+      signal: controller.signal,
+    });
+    return (await res.json()) as PrecisionRoundStopResponse;
+  } finally {
+    clearTimeout(timer);
   }
-  socket.emit(SOCKET_NAMESPACE.stopEvent, { matchId, roundId, nonce });
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

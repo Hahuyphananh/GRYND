@@ -232,8 +232,41 @@ try {
     JSON.stringify(idle),
   );
 
+  // The board must be IMMUNE to the hover feedback: the rail/preview are grid
+  // items too, so if the coins were auto-placed the grid would reflow around
+  // them (the whole board shifted on hover before). Measure every cell before
+  // and after the hover: not one may move, and the board may not resize.
+  const cellRects = () =>
+    page.evaluate(() => {
+      const round = (n) => Number(n.toFixed(2));
+      const board = document.querySelector(".four-in-a-row-board");
+      const b = board.getBoundingClientRect();
+      return {
+        board: { w: round(b.width), h: round(b.height) },
+        cells: [...document.querySelectorAll("[data-cell]")].map((el) => {
+          const r = el.getBoundingClientRect();
+          return `${el.dataset.cell}@${round(r.x)},${round(r.y)},${round(r.width)}x${round(r.height)}`;
+        }),
+      };
+    });
+  const rectsBefore = await cellRects();
   await page.hover('[data-cell="5-3"]');
   await page.waitForSelector('[data-testid="fiar-column-preview"]');
+  await page.waitForTimeout(120);
+  const rectsAfter = await cellRects();
+  const movedCells = rectsBefore.cells.filter(
+    (rect, i) => rect !== rectsAfter.cells[i],
+  );
+  check(
+    "hovering a column never moves a single coin (no layout reflow)",
+    movedCells.length === 0 &&
+      rectsBefore.board.w === rectsAfter.board.w &&
+      rectsBefore.board.h === rectsAfter.board.h,
+    movedCells.length === 0
+      ? `board ${rectsAfter.board.w}x${rectsAfter.board.h} unchanged`
+      : `${movedCells.length} moved, e.g. ${movedCells[0]} -> ${rectsAfter.cells[rectsBefore.cells.indexOf(movedCells[0])]}`,
+  );
+
   const hover = await page.evaluate(() => {
     const strip = document.querySelector('[data-testid="fiar-column-hint"]');
     const preview = document.querySelector('[data-testid="fiar-column-preview"]');

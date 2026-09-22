@@ -1,17 +1,12 @@
 /**
- * PvP Keno ("Keno Catch Duel") — engine unit tests.
+ * PvP Keno ("Keno Survival Duel") — engine + constants unit tests.
  *
- * Pure-function tests for the shared constants + deterministic helpers
- * in `src/lib/keno-pvp/constants.js` and `src/lib/keno-pvp/engine.js`.
- * The shared-draw generation, the tile glow schedule, the binary
- * catch grading (in the 1s glow window or not), the keno-multiplier
- * round scoring and the round/match decision rules are the contract
- * every other piece of the match system depends on, so they're tested
+ * Pure-function tests for `src/lib/keno-pvp/constants.js` and
+ * `src/lib/keno-pvp/engine.js`. The survival rules (3 lives, one live
+ * tile claimed by the fastest tap, a both-miss that costs BOTH players a
+ * life, and the 1.6s → 0.4s shrinking window) are the contract the store,
+ * both API routes and the client all depend on, so they are tested
  * exhaustively (valid + invalid inputs, boundaries, determinism).
- *
- * The engine imports the keno multiplier table from
- * `src/lib/kenoMultipliers.ts` (TypeScript), so this suite runs with
- * the tsx loader, mirroring `test:reports`.
  *
  * Run:  node --import tsx --test tests/keno-pvp-engine.test.mjs
  */
@@ -20,425 +15,393 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  MATCH_STATUS,
   ACTIVE_STATES,
-  ROUND_STATES,
-  TERMINAL_STATES,
-  MAX_ROUNDS,
-  POINTS_TO_WIN,
-  BALL_COUNT,
-  BALL_INTERVAL_MS,
-  CATCH_GRACE_MS,
-  GLOW_MS,
-  KENO_POOL_SIZE,
-  ROUND_MS,
-  ROUND_TIMER_SECONDS,
-  READY_WINDOW_MS,
-  FINISHED_GRACE_MS,
-  MATCH_TIME_LIMIT_MS,
-  OVERTIME_MS,
-  OVERTIME_DRAW_FEE_PCT,
+  DB_STATUS_VALUES,
   HOUSE_FEE_PCT,
-  WINNER_RATIO,
   HOUSE_RATIO,
-  STAKE_PRESETS,
-  MIN_STAKE,
-  MAX_STAKE,
+  KENO_AI_PLAYER_ID,
+  KENO_POOL_SIZE,
   KENO_PVP_LOCK_NAMESPACE,
+  LIVE_STATES,
+  MATCH_STATUS,
+  MAX_STAKE,
+  MIN_STAKE,
+  MIN_WINDOW_MS,
+  OVERTIME_DRAW_FEE_PCT,
+  READY_WINDOW_MS,
   RESULT,
+  ROUND_STATES,
+  STAKE_PRESETS,
+  STARTING_LIVES,
+  START_WINDOW_MS,
+  TAP_GRACE_MS,
+  TERMINAL_STATES,
+  WINNER_RATIO,
+  WINDOW_STEP_MS,
   computePayout,
-  round2,
+  isFreeAiMatch,
+  pickNonNegativeInt,
   pickPositiveInt,
-  statusForRoundNumber,
-  roundNumberForStatus,
-  isRoundStatus,
+  round2,
 } from "../src/lib/keno-pvp/constants.js";
 
 import {
-  CATCH_QUALITY,
-  ballSchedule,
-  computeRoundStats,
-  decideMatchResult,
-  decideRoundWinner,
-  generateDraw,
-  gradeCatch,
+  applyBothMissToLives,
+  applyClaimToLives,
+  capTileLog,
+  decideSurvivalResult,
+  isClaimInWindow,
+  pickLiveTile,
+  remainingTiles,
+  tileLogEntry,
+  tileWindowMs,
+  usedTileSet,
+  windowRemainingMs,
 } from "../src/lib/keno-pvp/engine.js";
 
 // ════════════════════════════════════════════════════════════════════
 // Constants
 // ════════════════════════════════════════════════════════════════════
 
-test("status enum matches the keno_pvp_status pgEnum (migrations 0061 + 0064)", () => {
-  assert.deepEqual(Object.values(MATCH_STATUS), [
-    "waiting",
-    "ready",
-    "round_1",
-    "round_2",
-    "round_3",
-    "round_4",
-    "round_5",
-    "round_6",
-    "round_7",
-    "round_8",
-    "round_9",
-    "round_10",
-    "round_11",
-    "round_12",
-    "round_13",
-    "round_14",
-    "round_15",
-    "round_16",
-    "overtime",
-    "finished",
-    "cancelled",
-  ]);
+test("every MATCH_STATUS value is a valid keno_pvp_status enum value", () => {
+  const db = new Set(DB_STATUS_VALUES);
+  for (const value of Object.values(MATCH_STATUS)) {
+    assert.ok(db.has(value), `${value} is not in DB_STATUS_VALUES`);
+  }
+  assert.equal(DB_STATUS_VALUES.length, 21);
 });
 
-test("state sets partition the status machine correctly", () => {
-  assert.equal(ACTIVE_STATES.size, 18); // ready + 16 rounds + overtime
-  assert.equal(ROUND_STATES.size, 16); // overtime is NOT a catch round
+test("the live run reuses the round_1 enum slot (no new enum value needed)", () => {
+  assert.equal(MATCH_STATUS.LIVE, "round_1");
+  assert.equal(MATCH_STATUS.LIVE, MATCH_STATUS.ROUND_1);
+  assert.ok(DB_STATUS_VALUES.includes(MATCH_STATUS.LIVE));
+});
+
+test("state sets model waiting → ready → live → finished", () => {
   assert.equal(TERMINAL_STATES.size, 2);
-  for (const s of ROUND_STATES) assert.ok(ACTIVE_STATES.has(s));
-  for (const s of TERMINAL_STATES) assert.ok(!ACTIVE_STATES.has(s));
-  assert.ok(ACTIVE_STATES.has(MATCH_STATUS.OVERTIME));
-  assert.ok(!ROUND_STATES.has(MATCH_STATUS.OVERTIME));
+  assert.ok(TERMINAL_STATES.has(MATCH_STATUS.FINISHED));
+  assert.ok(TERMINAL_STATES.has(MATCH_STATUS.CANCELLED));
+  assert.ok(!ACTIVE_STATES.has(MATCH_STATUS.FINISHED));
+  assert.ok(!ACTIVE_STATES.has(MATCH_STATUS.WAITING));
+  assert.ok(ACTIVE_STATES.has(MATCH_STATUS.READY));
+  assert.ok(ACTIVE_STATES.has(MATCH_STATUS.LIVE));
+  // The survival run is the only "catch round" state.
+  assert.equal(LIVE_STATES.size, 1);
+  assert.ok(LIVE_STATES.has(MATCH_STATUS.LIVE));
+  assert.ok(!LIVE_STATES.has(MATCH_STATUS.READY));
+  assert.equal(ROUND_STATES, LIVE_STATES);
+  for (const state of LIVE_STATES) assert.ok(ACTIVE_STATES.has(state));
 });
 
-test("a match is first-to-10-points with a 16-round cap feeding a 3-minute clock + overtime", () => {
-  assert.equal(POINTS_TO_WIN, 10);
-  assert.equal(MAX_ROUNDS, 16);
-  assert.equal(MATCH_TIME_LIMIT_MS, 3 * 60 * 1000);
-  assert.equal(OVERTIME_MS, 30 * 1000);
-  assert.equal(OVERTIME_DRAW_FEE_PCT, 0.05);
-});
-
-test("statusForRoundNumber maps 1..16 → round_N and clamps out-of-range", () => {
-  assert.equal(statusForRoundNumber(1), MATCH_STATUS.ROUND_1);
-  assert.equal(statusForRoundNumber(3), MATCH_STATUS.ROUND_3);
-  assert.equal(statusForRoundNumber(5), MATCH_STATUS.ROUND_5);
-  assert.equal(statusForRoundNumber(10), MATCH_STATUS.ROUND_10);
-  assert.equal(statusForRoundNumber(16), MATCH_STATUS.ROUND_16);
-  assert.equal(statusForRoundNumber(0), MATCH_STATUS.ROUND_1); // clamps low
-  assert.equal(statusForRoundNumber(99), MATCH_STATUS.ROUND_16); // clamps high
-  assert.equal(statusForRoundNumber(undefined), MATCH_STATUS.ROUND_1);
-});
-
-test("roundNumberForStatus round-trips round_N and rejects other states", () => {
-  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_1), 1);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_4), 4);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_5), 5);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_6), 6);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.ROUND_16), 16);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.OVERTIME), null);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.READY), null);
-  assert.equal(roundNumberForStatus(MATCH_STATUS.FINISHED), null);
-  assert.equal(isRoundStatus(MATCH_STATUS.ROUND_2), true);
-  assert.equal(isRoundStatus(MATCH_STATUS.ROUND_16), true);
-  assert.equal(isRoundStatus(MATCH_STATUS.OVERTIME), false);
-  assert.equal(isRoundStatus(MATCH_STATUS.READY), false);
-  assert.equal(isRoundStatus(MATCH_STATUS.CANCELLED), false);
-});
-
-test("stake + house-fee constants match the standard 90/10 split", () => {
-  assert.equal(MIN_STAKE, 1);
-  assert.equal(MAX_STAKE, 100000); // economy cap (GLOBAL_MAX_BET)
-  assert.ok(STAKE_PRESETS.length > 0);
-  assert.equal(HOUSE_FEE_PCT, 0.1);
-  assert.equal(WINNER_RATIO, 0.9);
-  assert.equal(HOUSE_RATIO, 0.1);
-  assert.equal(typeof KENO_PVP_LOCK_NAMESPACE, "number");
-  assert.ok(KENO_PVP_LOCK_NAMESPACE > 0);
-  assert.deepEqual(Object.values(RESULT), ["player1", "player2", "draw"]);
-});
-
-test("round timing: 10 tiles each glowing 0.8s, spaced 1.2s apart, ≈ 11.6s round", () => {
-  assert.equal(BALL_COUNT, 10);
+test("survival rulebook constants: 3 lives, 1.6s → 0.4s window, 100ms per claim", () => {
+  assert.equal(STARTING_LIVES, 3);
+  assert.equal(START_WINDOW_MS, 1600);
+  assert.equal(WINDOW_STEP_MS, 100);
+  assert.equal(MIN_WINDOW_MS, 400);
+  assert.equal(TAP_GRACE_MS, 120);
   assert.equal(KENO_POOL_SIZE, 40);
-  // The LAST tile stops glowing exactly at the round deadline.
-  assert.equal(ROUND_MS, GLOW_MS + (BALL_COUNT - 1) * BALL_INTERVAL_MS);
-  assert.equal(ROUND_MS, 11600);
-  assert.equal(ROUND_TIMER_SECONDS, 12); // ceil(ROUND_MS / 1000)
-  assert.equal(GLOW_MS, 800); // the visible 0.8s catch window
-  assert.equal(CATCH_GRACE_MS, 150); // hidden network cushion
-  assert.equal(BALL_INTERVAL_MS, 1200);
+  assert.ok(START_WINDOW_MS > MIN_WINDOW_MS);
+  // The opening window is deliberately slower than the retired 0.8s glow.
+  assert.ok(START_WINDOW_MS > 800);
+});
+
+test("stake + identity constants are unchanged by the rework", () => {
+  assert.deepEqual(STAKE_PRESETS, [10, 25, 50, 100, 250, 500]);
+  assert.equal(MIN_STAKE, 1);
+  assert.equal(MAX_STAKE, 100000);
+  assert.equal(HOUSE_FEE_PCT, 0.10);
+  assert.equal(WINNER_RATIO, 0.90);
+  assert.equal(HOUSE_RATIO, 0.10);
+  assert.equal(OVERTIME_DRAW_FEE_PCT, 0.05); // legacy rows only
   assert.equal(READY_WINDOW_MS, 3000);
-  assert.equal(FINISHED_GRACE_MS, 5000);
+  assert.equal(KENO_AI_PLAYER_ID, "keno_ai_bot");
+  assert.equal(KENO_PVP_LOCK_NAMESPACE, 0x4b505650 & 0x7fffffff);
+  assert.equal(isFreeAiMatch({ isAi: true }), true);
+  assert.equal(isFreeAiMatch({}), false);
+  assert.equal(isFreeAiMatch(null), false);
 });
 
-// ════════════════════════════════════════════════════════════════════
-// Draw generation
-// ════════════════════════════════════════════════════════════════════
+test("computePayout: winner takes 1.9x net, draw refunds in full", () => {
+  const win = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
+  assert.equal(win.winnerNet, 190);
+  assert.equal(win.loserNet, -100);
+  assert.equal(win.houseFee, 10);
+  assert.equal(win.prizePaid, 190);
 
-test("generateDraw returns 10 unique numbers in 1..40", () => {
-  for (let i = 0; i < 20; i += 1) {
-    const draw = generateDraw();
-    assert.equal(draw.length, BALL_COUNT);
-    assert.equal(new Set(draw).size, BALL_COUNT);
-    for (const n of draw) {
-      assert.ok(Number.isInteger(n) && n >= 1 && n <= KENO_POOL_SIZE);
-    }
-  }
-});
+  const draw = computePayout({ stakeAmount: 100, result: RESULT.DRAW });
+  assert.equal(draw.refundEach, 100);
+  assert.equal(draw.houseFee, 0);
 
-test("generateDraw is random (not a fixed sequence)", () => {
-  const draws = new Set();
-  for (let i = 0; i < 10; i += 1) {
-    draws.add(generateDraw().join(","));
-  }
-  assert.ok(draws.size > 1, "expected more than one distinct draw");
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Ball release schedule
-// ════════════════════════════════════════════════════════════════════
-
-test("ballSchedule derives identical, evenly-spaced 1s glow windows from the round deadline", () => {
-  const deadline = 10_000_000;
-  const draw = [5, 12, 27, 3, 40, 9, 18, 33, 21, 7];
-  const schedule = ballSchedule(deadline, draw);
-  assert.equal(schedule.length, BALL_COUNT);
-  for (let i = 0; i < schedule.length; i += 1) {
-    const ball = schedule[i];
-    assert.equal(ball.index, i);
-    assert.equal(ball.number, draw[i]);
-    assert.equal(ball.releaseMs, deadline - ROUND_MS + i * BALL_INTERVAL_MS);
-    // Visible glow is exactly 1s; the catch window extends a hidden
-    // network grace beyond it.
-    assert.equal(ball.expiresMs, ball.releaseMs + GLOW_MS);
-    assert.equal(ball.acceptedUntilMs, ball.expiresMs + CATCH_GRACE_MS);
-  }
-  // The final tile's VISIBLE glow ends exactly at the round deadline;
-  // its hidden grace tail is clipped by round resolution.
-  const last = schedule[schedule.length - 1];
-  assert.equal(last.expiresMs, deadline);
-  assert.equal(last.acceptedUntilMs, deadline + CATCH_GRACE_MS);
-});
-
-test("ballSchedule handles malformed input defensively", () => {
-  assert.deepEqual(ballSchedule(10_000_000, null), []);
-  assert.deepEqual(ballSchedule(10_000_000, []), []);
-  assert.deepEqual(ballSchedule(NaN, [1, 2]), []);
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Catch-quality grading
-// ════════════════════════════════════════════════════════════════════
-
-function makeBall(deadline, draw, index) {
-  return ballSchedule(deadline, draw)[index];
-}
-
-test("gradeCatch: 1s glow + hidden network grace is catchable (binary)", () => {
-  const deadline = 10_000_000;
-  const ball = makeBall(deadline, [7, 8, 9, 10, 11, 12, 13, 14, 15, 16], 0);
-  // Inside the glow window → caught.
-  assert.equal(gradeCatch(ball.releaseMs, ball), CATCH_QUALITY.GOOD);
-  assert.equal(gradeCatch(ball.releaseMs + GLOW_MS / 2, ball), CATCH_QUALITY.GOOD);
-  assert.equal(gradeCatch(ball.expiresMs, ball), CATCH_QUALITY.GOOD);
-  // Inside the hidden network grace (tapped while glowing, arrived a
-  // beat late) → still caught.
-  assert.equal(gradeCatch(ball.expiresMs + CATCH_GRACE_MS, ball), CATCH_QUALITY.GOOD);
-  // Before the tile lights up → not catchable.
-  assert.equal(gradeCatch(ball.releaseMs - 1, ball), null);
-  // Past the grace tail → miss, not a catch.
-  assert.equal(gradeCatch(ball.acceptedUntilMs + 1, ball), null);
-  // Malformed inputs → not catchable.
-  assert.equal(gradeCatch(NaN, ball), null);
-  assert.equal(gradeCatch(123, null), null);
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Round scoring (keno multiplier + perfect bonus)
-// ════════════════════════════════════════════════════════════════════
-
-test("computeRoundStats uses the keno multiplier table for the number caught", () => {
-  assert.deepEqual(computeRoundStats([]), { caught: 0, perfects: 0, score: 0 });
-  // 1 catch → multiplier[1][1] = 3.
-  assert.deepEqual(computeRoundStats([{ number: 5, quality: "good" }]), {
-    caught: 1,
-    perfects: 0,
-    score: 3,
-  });
-  // 5 catches → multiplier[5][5] = 50.
-  const five = [1, 2, 3, 4, 5].map((number) => ({ number, quality: "good" }));
-  assert.deepEqual(computeRoundStats(five), { caught: 5, perfects: 0, score: 50 });
-  // 10 catches → multiplier[10][10] = 5000.
-  const ten = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((number) => ({ number, quality: "good" }));
-  assert.deepEqual(computeRoundStats(ten), { caught: 10, perfects: 0, score: 5000 });
-});
-
-test("computeRoundStats: no timing bonus — quality never affects the score", () => {
-  // Even "perfect"-shaped history entries score the plain multiplier.
-  const catches = [
-    { number: 1, quality: "perfect" },
-    { number: 2, quality: "perfect" },
-    { number: 3, quality: "good" },
-  ];
-  // multiplier[3][3] = 10, perfects pinned at 0.
-  assert.deepEqual(computeRoundStats(catches), {
-    caught: 3,
-    perfects: 0,
-    score: 10,
-  });
-});
-
-test("computeRoundStats ignores malformed entries", () => {
-  assert.deepEqual(computeRoundStats(null), { caught: 0, perfects: 0, score: 0 });
-  assert.deepEqual(computeRoundStats([null, { number: 1, quality: "good" }]), {
-    caught: 1,
-    perfects: 0,
-    score: 3,
-  });
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Round winner
-// ════════════════════════════════════════════════════════════════════
-
-test("decideRoundWinner: higher score wins", () => {
-  const p1 = [1, 2, 3].map((number) => ({ number, quality: "good" })); // 10 pts
-  const p2 = [1, 2].map((number) => ({ number, quality: "good" })); // 6 pts
-  assert.equal(decideRoundWinner(p1, p2), RESULT.PLAYER1);
-  assert.equal(decideRoundWinner(p2, p1), RESULT.PLAYER2);
-});
-
-test("decideRoundWinner: exact score ties draw (score is monotonic in catches)", () => {
-  // Same catch count → same multiplier → draw.
-  const a = [{ number: 1, quality: "good" }]; // 3
-  const b = [{ number: 2, quality: "good" }]; // 3
-  assert.equal(decideRoundWinner(a, b), RESULT.DRAW);
-  // Nothing caught on either side → draw.
-  assert.equal(decideRoundWinner([], []), RESULT.DRAW);
-  assert.equal(decideRoundWinner(null, null), RESULT.DRAW);
-  // Equal counts with different numbers → still draw.
-  const x = [1, 2, 3].map((number) => ({ number, quality: "good" })); // 10
-  const y = [7, 8, 9].map((number) => ({ number, quality: "good" })); // 10
-  assert.equal(decideRoundWinner(x, y), RESULT.DRAW);
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Match result
-// ════════════════════════════════════════════════════════════════════
-
-test("decideMatchResult: higher cumulative score wins (first to POINTS_TO_WIN)", () => {
-  // Player 1 crossed 10 points first → wins even though P2 has more round wins.
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 2, p1Score: 10, p2Score: 6 }),
-    RESULT.PLAYER1,
-  );
-  // Player 2 crossed 10 points first → wins.
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 1, p1Score: 3, p2Score: 10 }),
-    RESULT.PLAYER2,
-  );
-});
-
-test("decideMatchResult: both crossed 10 in the same round → higher total wins; tie → draw", () => {
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 1, p1Score: 10, p2Score: 15 }),
-    RESULT.PLAYER2,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 1, p1Score: 15, p2Score: 10 }),
-    RESULT.PLAYER1,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 1, p1Score: 10, p2Score: 10 }),
-    RESULT.DRAW,
-  );
-});
-
-test("decideMatchResult: 5-round cap with nobody at 10 → higher total wins; equal → draw", () => {
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 8, p2Score: 5 }),
-    RESULT.PLAYER1,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 5, p2Score: 8 }),
-    RESULT.PLAYER2,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 2, roundsWonPlayer2: 2, p1Score: 8, p2Score: 8 }),
-    RESULT.DRAW,
-  );
-  assert.equal(decideMatchResult({}), RESULT.DRAW);
-});
-
-test("decideMatchResult: forfeit tally forces the opponent to win", () => {
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 0, roundsWonPlayer2: 1, p1Score: 0, p2Score: POINTS_TO_WIN }),
-    RESULT.PLAYER2,
-  );
-  assert.equal(
-    decideMatchResult({ roundsWonPlayer1: 1, roundsWonPlayer2: 0, p1Score: POINTS_TO_WIN, p2Score: 0 }),
-    RESULT.PLAYER1,
-  );
-});
-
-// ════════════════════════════════════════════════════════════════════
-// Payout
-// ════════════════════════════════════════════════════════════════════
-
-test("computePayout: normal win → winner gets stake + 90% of loser's stake", () => {
-  const payout = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
-  assert.equal(payout.winnerNet, 190);
-  assert.equal(payout.loserNet, -100);
-  assert.equal(payout.houseFee, 10);
-  assert.equal(payout.prizePaid, 190);
-  assert.equal(payout.refundEach, null);
-});
-
-test("computePayout: draw refunds both, no fee", () => {
-  const payout = computePayout({ stakeAmount: 100, result: RESULT.DRAW });
-  assert.equal(payout.winnerNet, null);
-  assert.equal(payout.loserNet, null);
-  assert.equal(payout.houseFee, 0);
-  assert.equal(payout.prizePaid, 0);
-  assert.equal(payout.refundEach, 100);
-});
-
-test("computePayout: overtime tie refunds 95% each (5% rake per side, 10% total)", () => {
-  const payout = computePayout({
+  const legacyTie = computePayout({
     stakeAmount: 100,
     result: RESULT.DRAW,
-    drawFeePct: OVERTIME_DRAW_FEE_PCT,
+    drawFeePct: 0.05,
   });
-  assert.equal(payout.winnerNet, null);
-  assert.equal(payout.loserNet, null);
-  assert.equal(payout.houseFee, 10); // 5% of each stake → 10% of the pot
-  assert.equal(payout.prizePaid, 0);
-  assert.equal(payout.refundEach, 95);
-  // Decimal stakes round to 2dp.
-  const odd = computePayout({ stakeAmount: 40, result: RESULT.DRAW, drawFeePct: 0.05 });
-  assert.equal(odd.refundEach, 38);
-  assert.equal(odd.houseFee, 4);
+  assert.equal(legacyTie.refundEach, 95);
+  assert.equal(legacyTie.houseFee, 10);
+
+  assert.throws(() => computePayout({ stakeAmount: -1, result: RESULT.DRAW }));
+  assert.throws(() => computePayout({ stakeAmount: 10, result: "nobody" }));
 });
 
-test("computePayout validates inputs", () => {
-  assert.throws(() => computePayout({ stakeAmount: -1, result: RESULT.PLAYER1 }), RangeError);
-  assert.throws(() => computePayout({ stakeAmount: 100, result: "bogus" }), RangeError);
-  assert.throws(
-    () => computePayout({ stakeAmount: 100, result: RESULT.DRAW, drawFeePct: 1.5 }),
-    RangeError,
+test("format helpers round + clamp the way the store expects", () => {
+  assert.equal(round2(1.005), 1);
+  assert.equal(round2("2.345"), 2.35);
+  assert.equal(round2(NaN), 0);
+  assert.equal(pickPositiveInt(0, 7), 7);
+  assert.equal(pickPositiveInt("3", 7), 3);
+  assert.equal(pickPositiveInt(undefined, 7), 7);
+  assert.equal(pickNonNegativeInt(0, 9), 0);
+  assert.equal(pickNonNegativeInt(-4, 9), 9);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// The shrinking window
+// ════════════════════════════════════════════════════════════════════
+
+test("tileWindowMs: 1.6s start, −100ms per claimed tile, 0.4s floor", () => {
+  assert.equal(tileWindowMs(0), 1600);
+  assert.equal(tileWindowMs(1), 1500);
+  assert.equal(tileWindowMs(5), 1100);
+  assert.equal(tileWindowMs(11), 500);
+  assert.equal(tileWindowMs(12), 400);
+  assert.equal(tileWindowMs(13), 400); // floor holds
+  assert.equal(tileWindowMs(40), 400);
+});
+
+test("tileWindowMs is defensive about junk input", () => {
+  assert.equal(tileWindowMs(-3), 1600);
+  assert.equal(tileWindowMs(NaN), 1600);
+  assert.equal(tileWindowMs(undefined), 1600);
+  assert.equal(tileWindowMs("4"), 1200);
+  assert.equal(tileWindowMs(2.9), 1400); // truncated, not rounded up
+});
+
+test("windowRemainingMs never goes negative", () => {
+  assert.equal(windowRemainingMs({ deadlineMs: 5000, atMs: 4000 }), 1000);
+  assert.equal(windowRemainingMs({ deadlineMs: 5000, atMs: 5000 }), 0);
+  assert.equal(windowRemainingMs({ deadlineMs: 5000, atMs: 6000 }), 0);
+  assert.equal(windowRemainingMs({ deadlineMs: NaN, atMs: 1 }), 0);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Tile draw
+// ════════════════════════════════════════════════════════════════════
+
+test("usedTileSet + remainingTiles ignore junk and keep the board order", () => {
+  const used = [3, 3, "7", 0, 41, null, 12.5, 40];
+  assert.deepEqual([...usedTileSet(used)].sort((a, b) => a - b), [3, 7, 40]);
+  const remaining = remainingTiles(used);
+  assert.equal(remaining.length, KENO_POOL_SIZE - 3);
+  assert.equal(remaining[0], 1);
+  assert.equal(remaining[remaining.length - 1], 39);
+  assert.ok(!remaining.includes(3));
+  assert.ok(!remaining.includes(40));
+  assert.equal(remainingTiles(null).length, KENO_POOL_SIZE);
+});
+
+test("pickLiveTile is deterministic per (seed, index) and never repeats", () => {
+  const seed = "keno-pvp:17";
+  const first = pickLiveTile({ seed, index: 0, used: [] });
+  assert.ok(first >= 1 && first <= KENO_POOL_SIZE);
+  // Same inputs → same tile (a retry can never move the live tile).
+  assert.equal(pickLiveTile({ seed, index: 0, used: [] }), first);
+  // A different seed picks a different stream.
+  assert.notEqual(pickLiveTile({ seed: "keno-pvp:18", index: 0, used: [] }), first);
+
+  // Walk the whole board: every pick is fresh, and the used list grows.
+  const used = [];
+  const picked = new Set();
+  for (let i = 0; i < KENO_POOL_SIZE; i += 1) {
+    const tile = pickLiveTile({ seed, index: i, used });
+    assert.ok(Number.isInteger(tile), `index ${i} produced no tile`);
+    assert.ok(!picked.has(tile), `tile ${tile} was drawn twice`);
+    picked.add(tile);
+    used.push(tile);
+  }
+  assert.equal(picked.size, KENO_POOL_SIZE);
+});
+
+test("pickLiveTile returns null once the board is exhausted", () => {
+  const used = Array.from({ length: KENO_POOL_SIZE }, (_, i) => i + 1);
+  assert.equal(pickLiveTile({ seed: "keno-pvp:1", index: 40, used }), null);
+  assert.deepEqual(remainingTiles(used), []);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Claim grading
+// ════════════════════════════════════════════════════════════════════
+
+test("isClaimInWindow: the window plus the hidden grace, nothing else", () => {
+  const window = {
+    startedMs: 1000,
+    deadlineMs: 2600, // 1.6s window
+  };
+  // Before the tile lights up (it raced the previous resolution).
+  assert.equal(isClaimInWindow({ ...window, atMs: 999 }), false);
+  // Exactly at the start and at the deadline — both count.
+  assert.equal(isClaimInWindow({ ...window, atMs: 1000 }), true);
+  assert.equal(isClaimInWindow({ ...window, atMs: 2600 }), true);
+  // Inside the grace tail: still a claim (the tap was made while lit).
+  assert.equal(isClaimInWindow({ ...window, atMs: 2720 }), true);
+  // Past the grace: too slow.
+  assert.equal(isClaimInWindow({ ...window, atMs: 2721 }), false);
+});
+
+test("isClaimInWindow: a custom grace + malformed input never accept a claim", () => {
+  const window = { startedMs: 0, deadlineMs: 1000 };
+  assert.equal(isClaimInWindow({ ...window, atMs: 1100, graceMs: 0 }), false);
+  assert.equal(isClaimInWindow({ ...window, atMs: 1000, graceMs: 0 }), true);
+  assert.equal(isClaimInWindow({ ...window, atMs: NaN }), false);
+  assert.equal(isClaimInWindow({ startedMs: NaN, deadlineMs: 1, atMs: 1 }), false);
+  assert.equal(isClaimInWindow({ startedMs: 0, deadlineMs: NaN, atMs: 1 }), false);
+  assert.equal(isClaimInWindow({}), false);
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Lives
+// ════════════════════════════════════════════════════════════════════
+
+test("applyClaimToLives: the claimant keeps their lives, the opponent loses one", () => {
+  assert.deepEqual(
+    applyClaimToLives({ claimantSeat: "player1", p1Lives: 3, p2Lives: 3 }),
+    { p1Lives: 3, p2Lives: 2 },
   );
-  assert.throws(
-    () => computePayout({ stakeAmount: 100, result: RESULT.DRAW, drawFeePct: -0.1 }),
-    RangeError,
+  assert.deepEqual(
+    applyClaimToLives({ claimantSeat: "player2", p1Lives: 3, p2Lives: 3 }),
+    { p1Lives: 2, p2Lives: 3 },
+  );
+  // Lives never go below zero.
+  assert.deepEqual(
+    applyClaimToLives({ claimantSeat: "player1", p1Lives: 3, p2Lives: 1 }),
+    { p1Lives: 3, p2Lives: 0 },
+  );
+  // An unknown seat changes nothing.
+  assert.deepEqual(
+    applyClaimToLives({ claimantSeat: null, p1Lives: 2, p2Lives: 2 }),
+    { p1Lives: 2, p2Lives: 2 },
+  );
+});
+
+test("applyBothMissToLives: every player loses one, floored at zero", () => {
+  assert.deepEqual(applyBothMissToLives({ p1Lives: 3, p2Lives: 3 }), {
+    p1Lives: 2,
+    p2Lives: 2,
+  });
+  assert.deepEqual(applyBothMissToLives({ p1Lives: 1, p2Lives: 2 }), {
+    p1Lives: 0,
+    p2Lives: 1,
+  });
+  assert.deepEqual(applyBothMissToLives({ p1Lives: 0, p2Lives: 0 }), {
+    p1Lives: 0,
+    p2Lives: 0,
+  });
+  // Malformed input falls back to a full bar (never "already eliminated").
+  assert.deepEqual(applyBothMissToLives({}), {
+    p1Lives: STARTING_LIVES - 1,
+    p2Lives: STARTING_LIVES - 1,
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Result decision
+// ════════════════════════════════════════════════════════════════════
+
+test("decideSurvivalResult: null while both players still have lives", () => {
+  assert.equal(decideSurvivalResult({ p1Lives: 3, p2Lives: 3 }), null);
+  assert.equal(decideSurvivalResult({ p1Lives: 1, p2Lives: 1 }), null);
+  assert.equal(decideSurvivalResult({}), null);
+});
+
+test("decideSurvivalResult: a player at zero lives is eliminated", () => {
+  assert.equal(decideSurvivalResult({ p1Lives: 0, p2Lives: 2 }), RESULT.PLAYER2);
+  assert.equal(decideSurvivalResult({ p1Lives: 2, p2Lives: 0 }), RESULT.PLAYER1);
+  assert.equal(decideSurvivalResult({ p1Lives: -1, p2Lives: 1 }), RESULT.PLAYER2);
+});
+
+test("decideSurvivalResult: a both-miss that eliminates BOTH ends as a draw", () => {
+  assert.equal(decideSurvivalResult({ p1Lives: 0, p2Lives: 0 }), RESULT.DRAW);
+  assert.equal(
+    decideSurvivalResult({ p1Lives: 0, p2Lives: 0, exhausted: true }),
+    RESULT.DRAW,
+  );
+});
+
+test("decideSurvivalResult: an exhausted board settles on lives, then tiles", () => {
+  // More lives wins.
+  assert.equal(
+    decideSurvivalResult({ p1Lives: 2, p2Lives: 1, p1Tiles: 0, p2Tiles: 0, exhausted: true }),
+    RESULT.PLAYER1,
+  );
+  assert.equal(
+    decideSurvivalResult({ p1Lives: 1, p2Lives: 2, exhausted: true }),
+    RESULT.PLAYER2,
+  );
+  // Equal lives → more tiles wins.
+  assert.equal(
+    decideSurvivalResult({ p1Lives: 1, p2Lives: 1, p1Tiles: 4, p2Tiles: 3, exhausted: true }),
+    RESULT.PLAYER1,
+  );
+  // Everything equal → draw (full refund).
+  assert.equal(
+    decideSurvivalResult({ p1Lives: 1, p2Lives: 1, p1Tiles: 3, p2Tiles: 3, exhausted: true }),
+    RESULT.DRAW,
+  );
+  // Lives alone never end a match that is not exhausted.
+  assert.equal(
+    decideSurvivalResult({ p1Lives: 2, p2Lives: 1, exhausted: false }),
+    null,
   );
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Misc helpers
+// The public tile log
 // ════════════════════════════════════════════════════════════════════
 
-test("round2 / pickPositiveInt behave like the other PvP games", () => {
-  assert.equal(round2(0.1 + 0.2), 0.3);
-  assert.equal(round2("12.345"), 12.35);
-  assert.equal(round2(null), 0);
-  assert.equal(pickPositiveInt(null, 10), 10);
-  assert.equal(pickPositiveInt(0, 10), 10);
-  assert.equal(pickPositiveInt("20", 10), 20);
-  assert.equal(pickPositiveInt(15.9, 10), 15);
+test("tileLogEntry records the tile, the outcome, survivors and timing", () => {
+  const at = Date.UTC(2026, 0, 1, 0, 0, 5);
+  const entry = tileLogEntry({
+    tile: 17,
+    index: 3,
+    outcome: "player2",
+    at,
+    p1Lives: 2,
+    p2Lives: 3,
+    windowMs: 1300,
+    reactionMs: 412.9,
+  });
+  assert.deepEqual(entry, {
+    tile: 17,
+    index: 3,
+    outcome: "player2",
+    at: new Date(at).toISOString(),
+    p1Lives: 2,
+    p2Lives: 3,
+    windowMs: 1300,
+    reactionMs: 412,
+  });
+  // A both-miss carries no reaction time.
+  const miss = tileLogEntry({
+    tile: 4,
+    index: 0,
+    outcome: "both_miss",
+    at,
+    p1Lives: 2,
+    p2Lives: 2,
+    windowMs: 1600,
+  });
+  assert.equal(miss.reactionMs, null);
 });
 
-console.log("\n✅ All Keno Catch Duel engine tests passed!\n");
+test("capTileLog keeps the newest entries and drops junk", () => {
+  const log = Array.from({ length: 5 }, (_, i) => ({ tile: i + 1, index: i }));
+  assert.equal(capTileLog(log, 3).length, 3);
+  assert.deepEqual(
+    capTileLog(log, 3).map((e) => e.tile),
+    [3, 4, 5],
+  );
+  assert.deepEqual(capTileLog([null, { index: 1 }, { tile: 9, index: 2 }], 5), [
+    { tile: 9, index: 2 },
+  ]);
+  assert.deepEqual(capTileLog(null, 5), []);
+});

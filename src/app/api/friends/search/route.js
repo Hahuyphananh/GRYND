@@ -39,6 +39,16 @@ export async function POST(request) {
     // sides can never drift (src/lib/searchName.ts).
     const normalized = searchNameFor(rawInput);
 
+    // A query that folds away to nothing (spaces, punctuation) would otherwise
+    // become `LIKE '%%'` and return the first 10 accounts in the table.
+    if (!normalized) {
+      return Response.json({
+        success: true,
+        users: [],
+        debug: { rawInput, normalized, resultCount: 0 },
+      });
+    }
+
     let currentUserId = null;
 
     const current = await sql`
@@ -57,12 +67,29 @@ export async function POST(request) {
     // app), so a search never silently returns nothing for a real account.
     // The REPLACE/LOWER stay so a fallback name that still carries spaces or
     // capitals matches the folded query too.
-    const found = await sql`
+    //
+    // The self-exclusion is a whole separate statement, NOT an inline
+    // `sql`${currentUserId ? sql`AND id != ...` : sql``}` fragment:
+    // `getNeonSql()` (src/db/neon.ts) is a plain tagged-template helper, not
+    // Neon's nesting-capable one — a nested fragment is interpolated as a bare
+    // `$n` placeholder, so the previous form produced
+    // `... LIKE $1 $2 ORDER BY` and every search failed to parse (500), which
+    // the profile UI swallowed as "no results".
+    const found = currentUserId
+      ? await sql`
   SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best,
     xp, prestige_level, show_prestige_badge
   FROM users
   WHERE REPLACE(LOWER(COALESCE(NULLIF(search_name, ''), name)), ' ', '') LIKE '%' || ${queryString} || '%'
-  ${currentUserId ? sql`AND id != ${currentUserId}` : sql``}
+    AND id != ${currentUserId}
+  ORDER BY name ASC
+  LIMIT 10
+`
+      : await sql`
+  SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best,
+    xp, prestige_level, show_prestige_badge
+  FROM users
+  WHERE REPLACE(LOWER(COALESCE(NULLIF(search_name, ''), name)), ' ', '') LIKE '%' || ${queryString} || '%'
   ORDER BY name ASC
   LIMIT 10
 `;

@@ -1,216 +1,297 @@
 // src/lib/keno-pvp/engine.js
 //
-// Pure game-logic for the Keno PvP ("Keno Catch Duel") match system —
-// no DB, no side effects, fully unit-testable. The server store calls
-// these helpers to stay authoritative; the client imports the same
-// timing helpers (ballSchedule / gradeCatch) so its animations and
-// the server's grading always agree.
+// Pure game logic for the 1v1 Keno SURVIVAL DUEL — no DB, no side
+// effects, fully unit-testable. The server store calls these helpers to
+// stay authoritative; the client imports the same window helper so its
+// ring/timer always agrees with the server's grading.
 //
-// The skill model: both players face the SAME 10-tile draw. Tiles
-// light up one at a time and each GLOWS for GLOW_MS (0.8s) — tap the
-// glowing tile while it's lit to catch it. A tap after the glow fades
-// is a miss (no points, tile turns red). Catching is binary: in the
-// window or not.
-// Round score = keno multiplier for the number caught (catching more
-// compounds: 5 tiles = 50, 10 tiles = 5000). No timing bonus — the
-// goal is to click the most tiles.
-// Match result = first to POINTS_TO_WIN cumulative points.
+// The skill model: ONE tile is lit at a time and BOTH players race for
+// it. Tap it first → you claim the tile and your opponent loses a life.
+// Nobody taps in time → both players lose a life. The window tightens
+// with every claimed tile, so the match ends as a pure reaction test.
+// Lose all your lives and the match is over (both eliminated on the same
+// both-miss at once → DRAW).
 
 import {
-  BALL_COUNT,
-  BALL_INTERVAL_MS,
-  CATCH_GRACE_MS,
-  GLOW_MS,
   KENO_POOL_SIZE,
-  MAX_ROUNDS,
-  POINTS_TO_WIN,
+  MIN_WINDOW_MS,
   RESULT,
-  ROUND_MS,
+  STARTING_LIVES,
+  START_WINDOW_MS,
+  TAP_GRACE_MS,
+  WINDOW_STEP_MS,
 } from "./constants";
-import { getKenoMultiplier } from "../kenoMultipliers";
 
-// ── Draw generation ──────────────────────────────────────────────────
-
-/** Generate a fresh shared draw: BALL_COUNT unique numbers from the
- *  1..KENO_POOL_SIZE pool (Fisher-Yates partial shuffle). */
-export function generateDraw() {
-  const all = Array.from({ length: KENO_POOL_SIZE }, (_, i) => i + 1);
-  for (let i = 0; i < BALL_COUNT; i += 1) {
-    const j = i + Math.floor(Math.random() * (KENO_POOL_SIZE - i));
-    [all[i], all[j]] = [all[j], all[i]];
-  }
-  return all.slice(0, BALL_COUNT);
+// A lives value that is missing or malformed must never be read as "this
+// player is eliminated" (a nil column would otherwise end a live match).
+// Anything unusable falls back to a full bar.
+function lifeOr(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return STARTING_LIVES;
+  return Math.max(0, Math.trunc(n));
 }
 
-// ── Tile glow schedule ───────────────────────────────────────────────
-//
-// The round deadline (match.round_deadline) is set when the round
-// opens and equals openTime + ROUND_MS. Tile i (0-based) lights up at
-// `deadline - ROUND_MS + i * BALL_INTERVAL_MS` and GLOWS for GLOW_MS:
-//   expiresMs       = releaseMs + GLOW_MS            (the visible window)
-//   acceptedUntilMs = expiresMs + CATCH_GRACE_MS     (hidden network
-//                      cushion — a tap sent while glowing still lands)
-// The client drives its glow/ring visuals off expiresMs so the ring
-// always empties at the visible 1s mark; the server grades against
-// acceptedUntilMs so slow connections don't turn well-timed taps into
-// false misses.
-// Both clients derive the SAME schedule from the same deadline, so the
-// glow-stream is identical for both players.
-
-/**
- * Compute the glow schedule for a round given its deadline (ms).
- * Returns an array of { index, number, releaseMs, expiresMs,
- * acceptedUntilMs }.
- */
-export function ballSchedule(roundDeadlineMs, draw) {
-  const deadline = Number(roundDeadlineMs);
-  if (!Number.isFinite(deadline)) return [];
-  const numbers = Array.isArray(draw) ? draw : [];
-  return numbers.slice(0, BALL_COUNT).map((number, i) => {
-    const releaseMs = deadline - ROUND_MS + i * BALL_INTERVAL_MS;
-    return {
-      index: i,
-      number: Number(number),
-      releaseMs,
-      expiresMs: releaseMs + GLOW_MS,
-      acceptedUntilMs: releaseMs + GLOW_MS + CATCH_GRACE_MS,
-    };
-  });
-}
-
-// ── Catch grading (binary) ───────────────────────────────────────────
-//
-// Quality vocabulary stored in the catches jsonb. Grading is binary
-// now — a tile is either caught inside its 0.8s glow window or missed.
-// Successful catches are stored as 'good'; 'perfect'/'late' remain in
-// the enum only so old resolved-round history keeps its shape.
-
-export const CATCH_QUALITY = Object.freeze({
-  PERFECT: "perfect",
-  GOOD: "good",
-  LATE: "late",
-});
-
-/**
- * Grade a catch attempt at `caughtAtMs` for the given tile window.
- * Returns CATCH_QUALITY.GOOD when the tap landed inside the catch
- * window [releaseMs, acceptedUntilMs] (the 0.8s glow plus the hidden
- * network grace), else null (too early / long past the glow).
- */
-export function gradeCatch(caughtAtMs, ball) {
-  const at = Number(caughtAtMs);
-  if (!Number.isFinite(at)) return null;
-  if (!ball || !Number.isFinite(ball.releaseMs)) return null;
-  if (at < ball.releaseMs || at > ball.acceptedUntilMs) return null;
-  return CATCH_QUALITY.GOOD;
-}
-
-// ── Round scoring ────────────────────────────────────────────────────
-
-/**
- * Compute a player's round stats from their catches array (each entry
- * { number, quality, caughtAt }):
- *   { caught, perfects, score }
- * score = getKenoMultiplier(caught, caught) — the classic house table
- * (1→3, 5→50, 10→5000). Catching more compounds exponentially, so the
- * dominant strategy is to catch as many tiles as possible. There is no
- * timing bonus anymore (perfects is kept at 0 for shape compatibility).
- */
-export function computeRoundStats(catches) {
-  const list = Array.isArray(catches) ? catches : [];
-  // Only well-formed catch entries count (defensive: the server never
-  // writes nulls, but a malformed payload must not skew the score).
-  const valid = list.filter(
-    (c) => c && Number.isInteger(Number(c.number)) && typeof c.quality === "string",
-  );
-  const caught = valid.length;
-  const multiplier = caught > 0 ? getKenoMultiplier(caught, caught) || 0 : 0;
-  return {
-    caught,
-    perfects: 0,
-    score: multiplier,
-  };
-}
-
-/**
- * Decide who wins a round given both players' catches.
- * Highest score wins; an exact score tie is a DRAW (no round-win for
- * either side). The keno multiplier is strictly increasing in the
- * number caught, so a score tie implies an equal catch count — no
- * further tiebreaks exist.
- */
-export function decideRoundWinner(p1Catches, p2Catches) {
-  const p1 = computeRoundStats(p1Catches);
-  const p2 = computeRoundStats(p2Catches);
-  if (p1.score > p2.score) return RESULT.PLAYER1;
-  if (p2.score > p1.score) return RESULT.PLAYER2;
-  return RESULT.DRAW;
-}
-
-// ── Match result ─────────────────────────────────────────────────────
-
-/**
- * Decide the MATCH result from the cumulative round scores.
- *
- * The caller (serverStore.resolveRound) ends the match as soon as a
- * player's aggregate score reaches POINTS_TO_WIN; this function only
- * decides WHO wins the ended match:
- *   * Higher cumulative score wins.
- *   * Exact tie → DRAW (full refund, no rake).
- * `roundsWonPlayer1/2` are accepted for call-shape compatibility but
- * no longer influence the decision (round wins are display-only now).
- */
-export function decideMatchResult({ roundsWonPlayer1, roundsWonPlayer2, p1Score, p2Score }) {
-  const s1 = Number(p1Score) || 0;
-  const s2 = Number(p2Score) || 0;
-  if (s1 > s2) return RESULT.PLAYER1;
-  if (s2 > s1) return RESULT.PLAYER2;
-  return RESULT.DRAW;
-}
-
-// ── Server AI catch plan ──────────────────────────────────────────────
-// The AI reacts to the same timed stream as a human. The plan is
-// deterministic per match/round, but the server still checks the real
-// clock before writing each catch. This gives the bot realistic misses
-// and reaction time without trusting client timestamps or inventing
-// catches outside the normal catch window.
-const AI_CATCH_RATES = [0.48, 0.44, 0.4, 0.36, 0.32];
-
-function aiHash(value) {
-  const text = String(value ?? "");
+// ── Deterministic hashing ─────────────────────────────────────────────
+// FNV-1a 32-bit. Used for the tile pick and the AI plan so a match can be
+// replayed deterministically from its id, while still looking random to
+// the players (the seed is server-side only).
+function hash32(text) {
+  const value = String(text ?? "");
   let hash = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
 }
 
-/**
- * Return the balls the AI will attempt to catch in a round and its
- * reaction delay for each attempt. The server decides whether a plan
- * entry is actually catchable when the endpoint/poll runs.
- */
-export function chooseAiCatchPlan({ draw, roundNumber = 1, seed = "" } = {}) {
-  const numbers = Array.isArray(draw)
-    ? [...new Set(draw)].filter(
-        (number) => Number.isInteger(Number(number)) && Number(number) >= 1 && Number(number) <= KENO_POOL_SIZE,
-      ).slice(0, BALL_COUNT)
-    : [];
-  const round = Math.max(1, Math.min(AI_CATCH_RATES.length, Number(roundNumber) || 1));
-  const catchRate = AI_CATCH_RATES[round - 1];
+// ── The shrinking window ──────────────────────────────────────────────
 
-  return numbers.flatMap((number, index) => {
-    const base = aiHash(`${seed}:${round}:${number}:${index}`);
-    if (base % 1000 >= catchRate * 1000) return [];
-    return [{
-      number: Number(number),
-      reactionMs: 150 + (aiHash(`${seed}:${round}:${number}:reaction`) % 251),
-    }];
-  });
+/**
+ * How long the live tile stays claimable after `claimedTotal` tiles have
+ * been claimed in this match. Starts at START_WINDOW_MS and tightens by
+ * WINDOW_STEP_MS per claim, never below MIN_WINDOW_MS.
+ *
+ * Both players (and the server) derive the SAME window from the same
+ * public claim count, so the ring a player sees is the window the server
+ * grades against.
+ */
+export function tileWindowMs(claimedTotal) {
+  const claimed = Number(claimedTotal);
+  const n = Number.isFinite(claimed) && claimed > 0 ? Math.floor(claimed) : 0;
+  return Math.max(MIN_WINDOW_MS, START_WINDOW_MS - WINDOW_STEP_MS * n);
 }
 
-// Re-export the multiplier table lookup so routes/tests use the same
-// source of truth as the solo-keno scoring.
-export { getKenoMultiplier };
-export { MAX_ROUNDS, POINTS_TO_WIN };
+/** Milliseconds left in the current window (never negative). */
+export function windowRemainingMs({ deadlineMs, atMs }) {
+  const deadline = Number(deadlineMs);
+  const at = Number(atMs);
+  if (!Number.isFinite(deadline) || !Number.isFinite(at)) return 0;
+  return Math.max(0, deadline - at);
+}
+
+// ── Tile draw ─────────────────────────────────────────────────────────
+
+/** Normalise a stored `used_tiles` jsonb value into a Set of 1..40. */
+export function usedTileSet(usedTiles) {
+  const set = new Set();
+  if (!Array.isArray(usedTiles)) return set;
+  for (const raw of usedTiles) {
+    const n = Number(raw);
+    if (Number.isInteger(n) && n >= 1 && n <= KENO_POOL_SIZE) set.add(n);
+  }
+  return set;
+}
+
+/** Board numbers not yet drawn this match (ascending). */
+export function remainingTiles(usedTiles) {
+  const used = usedTileSet(usedTiles);
+  const out = [];
+  for (let n = 1; n <= KENO_POOL_SIZE; n += 1) if (!used.has(n)) out.push(n);
+  return out;
+}
+
+/**
+ * The next live tile: a deterministic pick from the numbers this match
+ * has not drawn yet, keyed on the match seed + the tile index. Returns
+ * null when the board is exhausted (the caller settles the match).
+ */
+export function pickLiveTile({ seed = "", index = 0, used = [] } = {}) {
+  const remaining = remainingTiles(used);
+  if (remaining.length === 0) return null;
+  const h = hash32(`${seed}:tile:${Math.trunc(Number(index) || 0)}`);
+  return remaining[h % remaining.length];
+}
+
+// ── Claim grading ─────────────────────────────────────────────────────
+
+/**
+ * True when a claim arriving at `atMs` was made while the tile was lit —
+ * i.e. inside [startedMs, deadlineMs + grace]. The grace is the hidden
+ * network cushion (TAP_GRACE_MS): a tap sent while the tile was visibly
+ * glowing still counts, so a slow connection never turns a winning tap
+ * into a both-miss. Taps earlier than `startedMs` (a race with the
+ * previous tile's resolution) and taps past the grace are rejected.
+ */
+export function isClaimInWindow({
+  atMs,
+  startedMs,
+  deadlineMs,
+  graceMs = TAP_GRACE_MS,
+}) {
+  const at = Number(atMs);
+  const started = Number(startedMs);
+  const deadline = Number(deadlineMs);
+  const grace = Number.isFinite(Number(graceMs)) ? Number(graceMs) : TAP_GRACE_MS;
+  if (!Number.isFinite(at) || !Number.isFinite(started) || !Number.isFinite(deadline)) {
+    return false;
+  }
+  return at >= started && at <= deadline + grace;
+}
+
+// ── Outcome resolution ────────────────────────────────────────────────
+
+/**
+ * Lives after a claim: the claimant keeps everything, the opponent loses
+ * one life.
+ */
+export function applyClaimToLives({ claimantSeat, p1Lives, p2Lives }) {
+  const p1 = lifeOr(p1Lives);
+  const p2 = lifeOr(p2Lives);
+  if (claimantSeat === "player1") return { p1Lives: p1, p2Lives: Math.max(0, p2 - 1) };
+  if (claimantSeat === "player2") return { p1Lives: Math.max(0, p1 - 1), p2Lives: p2 };
+  return { p1Lives: p1, p2Lives: p2 };
+}
+
+/** Lives after a both-miss: every player still in the match loses one. */
+export function applyBothMissToLives({ p1Lives, p2Lives }) {
+  return {
+    p1Lives: Math.max(0, lifeOr(p1Lives) - 1),
+    p2Lives: Math.max(0, lifeOr(p2Lives) - 1),
+  };
+}
+
+/**
+ * The match result from the survival state, or null when the match is
+ * still live.
+ *
+ *   * A player at 0 lives is eliminated; the other side wins.
+ *   * Both at 0 (a both-miss that takes the last life from each) → DRAW.
+ *   * `exhausted` (the 1..40 board has no tile left to draw) → the
+ *     higher life count wins; equal lives fall through to tiles claimed;
+ *     still equal → DRAW.
+ */
+export function decideSurvivalResult({
+  p1Lives,
+  p2Lives,
+  p1Tiles = 0,
+  p2Tiles = 0,
+  exhausted = false,
+} = {}) {
+  const l1 = lifeOr(p1Lives);
+  const l2 = lifeOr(p2Lives);
+  if (l1 <= 0 && l2 <= 0) return RESULT.DRAW;
+  if (l2 <= 0) return RESULT.PLAYER1;
+  if (l1 <= 0) return RESULT.PLAYER2;
+  if (!exhausted) return null;
+  // Lives first (they ARE the score), then the tiles each player claimed.
+  if (l1 > l2) return RESULT.PLAYER1;
+  if (l2 > l1) return RESULT.PLAYER2;
+  const t1 = Math.max(0, Math.trunc(Number(p1Tiles) || 0));
+  const t2 = Math.max(0, Math.trunc(Number(p2Tiles) || 0));
+  if (t1 > t2) return RESULT.PLAYER1;
+  if (t2 > t1) return RESULT.PLAYER2;
+  return RESULT.DRAW;
+}
+
+// ── Public tile log ───────────────────────────────────────────────────
+//
+// One entry per resolved tile, in order. Public to both players: a tile
+// that has been resolved is finished information (both players watched
+// it happen), so it powers the match feed and the board's claimed/missed
+// states. Entries are small and the log is capped at the board size.
+
+export const TILE_OUTCOME = Object.freeze({
+  PLAYER1: "player1",
+  PLAYER2: "player2",
+  BOTH_MISS: "both_miss",
+});
+
+/**
+ * Build one log entry. `livesAfter` is the post-resolution life pair, so
+ * a client replaying the log never has to recompute the rules.
+ */
+export function tileLogEntry({
+  tile,
+  index,
+  outcome,
+  at,
+  p1Lives,
+  p2Lives,
+  windowMs,
+  reactionMs = null,
+}) {
+  return {
+    tile: Number(tile),
+    index: Math.max(0, Math.trunc(Number(index) || 0)),
+    outcome,
+    at: new Date(at ?? Date.now()).toISOString(),
+    p1Lives: Math.max(0, Math.trunc(Number(p1Lives) || 0)),
+    p2Lives: Math.max(0, Math.trunc(Number(p2Lives) || 0)),
+    windowMs: Math.max(0, Math.trunc(Number(windowMs) || 0)),
+    reactionMs:
+      reactionMs == null || !Number.isFinite(Number(reactionMs))
+        ? null
+        : Math.max(0, Math.trunc(Number(reactionMs))),
+  };
+}
+
+/** Keep only the newest `limit` entries (defensive cap). */
+export function capTileLog(log, limit = KENO_POOL_SIZE) {
+  const list = Array.isArray(log) ? log.filter((e) => e && Number.isInteger(Number(e.tile))) : [];
+  const max = Math.max(1, Math.trunc(Number(limit) || KENO_POOL_SIZE));
+  return list.length > max ? list.slice(list.length - max) : list;
+}
+
+// ── Server AI plan ────────────────────────────────────────────────────
+//
+// The bot plays the same race as a human and is graded by the same server
+// clock: for each tile it either decides to go for it (with a reaction
+// delay drawn deterministically from the match seed) or not. A reaction
+// slower than the current window is a physical miss — the bot simply
+// cannot tap in time — which is what makes late tiles winnable.
+
+// Share of tiles the bot goes for. Steamrolled by a fast human on the
+// opening (1.6s) tiles; genuinely competitive once the window tightens.
+const AI_CLAIM_RATE = 0.55;
+
+// Reaction band, in ms. The floor keeps the bot beatable on the 400ms
+// floor window; the ceiling is under the opening window so a human who
+// is not looking still loses the first tiles.
+const AI_MIN_REACTION_MS = 200;
+const AI_REACTION_JITTER_MS = 220;
+
+/**
+ * The bot's plan for one live tile:
+ *   { claims, reactionMs, dueAtMs | null }
+ * `claims` false = the bot does not tap this tile at all (both-miss).
+ * `dueAtMs` is an absolute server timestamp, so the store only has to
+ * compare it against the clock.
+ */
+export function chooseAiClaim({
+  seed = "",
+  index = 0,
+  tile,
+  windowMs,
+  startedMs = 0,
+} = {}) {
+  const n = Math.trunc(Number(index) || 0);
+  const tileNumber = Number(tile);
+  const window = Number(windowMs);
+  if (!Number.isFinite(tileNumber) || !Number.isFinite(window) || window <= 0) {
+    return { claims: false, reactionMs: null, dueAtMs: null };
+  }
+
+  const roll = (hash32(`${seed}:${n}:${tileNumber}:go`) % 1000) / 1000;
+  if (roll >= AI_CLAIM_RATE) {
+    return { claims: false, reactionMs: null, dueAtMs: null };
+  }
+
+  const reactionMs =
+    AI_MIN_REACTION_MS + (hash32(`${seed}:${n}:${tileNumber}:reaction`) % AI_REACTION_JITTER_MS);
+  if (reactionMs > window) {
+    // The window is shorter than the bot can physically react — the tile
+    // goes unclaimed by the bot (the human can still take it, or it
+    // both-misses).
+    return { claims: false, reactionMs, dueAtMs: null };
+  }
+
+  const started = Number(startedMs);
+  return {
+    claims: true,
+    reactionMs,
+    dueAtMs: Number.isFinite(started) ? started + reactionMs : null,
+  };
+}
+
+export { MIN_WINDOW_MS, START_WINDOW_MS, WINDOW_STEP_MS };

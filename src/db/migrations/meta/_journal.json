@@ -1016,6 +1016,13 @@
       "when": 1800000007000,
       "tag": "0163_lane_rush_shared_bridge",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1800000008000,
+      "tag": "0164_keno_survival_duel",
+      "breakpoints": true
     }
   ]
 }
