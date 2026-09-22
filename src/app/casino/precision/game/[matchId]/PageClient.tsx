@@ -448,7 +448,11 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     // until the ROUND resolved — which, against the bot, is a whole server
     // read after the AI's own stop — so the timer visibly refused to stop on
     // click. `freezeTimer` parks both on the spot.
-    freezeTimer();
+    // The value the player is timing against — and the number the results will
+    // show for them. It is measured on the server's GO clock, and it rides
+    // along with the stop packet as the bounded hint that lets the server
+    // credit the click instead of the packet's arrival (see `emitStop`).
+    const frozenElapsedMs = freezeTimer();
     setStopSubmitting(true);
     setError(null);
     setSelfStopPending(true);
@@ -474,6 +478,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
       matchId,
       stateRef.current?.roundId ?? "",
       stateRef.current?.roundNonce ?? "",
+      frozenElapsedMs,
       (ack) => {
         setStopSubmitting(false);
         if (!ack || ack.success !== true) {

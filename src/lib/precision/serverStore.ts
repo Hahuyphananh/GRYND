@@ -49,6 +49,7 @@ import {
   isArmedRoundDue,
   isStopElapsedInRange,
   makeInitialMatch,
+  resolveStopElapsedMs,
   revealArmedRoundState,
   rollRandomTarget,
 } from "./engine";
@@ -839,9 +840,18 @@ function stopResult(
  * Record one seat's STOP for the round in flight, then decide the round if
  * both seats have submitted.
  *
- * Server-authoritative timing: the STOP instant is `Date.now()` at receive
- * time and `elapsedMs = stopInstant - state.roundGoInstant`. A client-supplied
- * millisecond value is never accepted (the route ignores any it is sent).
+ * Timing: the stop instant is the instant the request REACHED us
+ * (`options.receivedAtMs`, stamped by the route before this transaction
+ * touches the database, so a DB round trip cannot push the stop later) and
+ * `elapsedMs = stopInstant - state.roundGoInstant`.
+ *
+ * The client's own measurement rides along as `options.clientElapsedMs` —
+ * the elapsed it froze at when the player clicked, on the same clock the
+ * server scores from. It is a HINT with no authority: `resolveStopElapsedMs`
+ * clamps it against our own measurement (never later than it, never more than
+ * `STOP_CLIENT_SLACK_MS` earlier, never below `MIN_STOP_MS`), so it can only
+ * cancel transport lag — the gap between the click and the packet landing —
+ * and never buy a stop the player did not make.
  *
  * Replay protection (unchanged from the in-memory implementation):
  *   * phase must be `active` and the caller must occupy a seat;
@@ -856,7 +866,20 @@ export async function recordRoundStop(
   userId: string,
   roundId: string,
   nonce: string,
+  options: {
+    /** Instant the route received the request (ms since epoch). */
+    receivedAtMs?: number;
+    /** The elapsed the client froze at when the player clicked. */
+    clientElapsedMs?: number | null;
+  } = {},
 ): Promise<RecordRoundStopResult> {
+  // Captured BEFORE the transaction below acquires a connection and issues
+  // BEGIN: on a pooled remote database that handshake costs a round trip, and
+  // paying it inside the stop measurement made every recorded stop later than
+  // the click by that much.
+  const requestInstant = Number.isFinite(options.receivedAtMs)
+    ? Number(options.receivedAtMs)
+    : Date.now();
   return db.transaction(async (tx) => {
     const [raw] = await tx
       .select(MATCH_COLUMNS)
@@ -944,7 +967,19 @@ export async function recordRoundStop(
       });
     }
 
-    const telemetry = computeStopTelemetry(state.roundGoInstant, requestInstant);
+    // Grade the STOP at the instant the player actually clicked (their
+    // server-aligned display clock) inside the bounded window the server will
+    // credit, falling back to our own measurement when the hint can't be
+    // trusted. See `resolveStopElapsedMs` for the exact rules.
+    const serverElapsedMs = requestInstant - state.roundGoInstant;
+    const elapsedMs = resolveStopElapsedMs({
+      serverElapsedMs,
+      clientElapsedMs: options.clientElapsedMs,
+    });
+    const telemetry = computeStopTelemetry(
+      state.roundGoInstant,
+      state.roundGoInstant + elapsedMs,
+    );
     if (!isStopElapsedInRange(telemetry.elapsedMs)) {
       // Out of bounds — recorded telemetry would be garbage, so the packet is
       // dropped without touching the round.

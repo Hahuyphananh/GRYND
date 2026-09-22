@@ -31,6 +31,7 @@ import {
   elapsedSince,
   pairScheduledGo,
   resolveRoundAnchorLocal,
+  serverClockNow,
   type ScheduledGoPairing,
 } from "../lib/precision/roundClock";
 import type { PrecisionState } from "../lib/precision/types";
@@ -39,6 +40,11 @@ export interface UsePrecisionRoundClockOptions {
   state: PrecisionState | null;
   /** The canonical match refresh (from `usePrecisionMatchState`). */
   refreshState: () => Promise<void>;
+  /** Device→server wall-clock offset from `usePrecisionMatchState`. Correcting
+   *  for it is what keeps the displayed elapsed equal to the elapsed the
+   *  server scores: an uncorrected device clock that is off by a second makes
+   *  the player stop a second away from the target they were shown. */
+  serverClockOffsetMs?: number;
 }
 
 export interface UsePrecisionRoundClockResult {
@@ -58,8 +64,18 @@ export interface UsePrecisionRoundClockResult {
 export function usePrecisionRoundClock({
   state,
   refreshState,
+  serverClockOffsetMs = 0,
 }: UsePrecisionRoundClockOptions): UsePrecisionRoundClockResult {
   const [timerMs, setTimerMs] = useState(0);
+  // Read through a ref so the effects that schedule work (and the callbacks
+  // they call) keep a stable identity while the offset is refined by polls.
+  const offsetRef = useRef(serverClockOffsetMs);
+  offsetRef.current = serverClockOffsetMs;
+  /** The server's wall clock as this device best knows it. */
+  const serverNow = useCallback(
+    () => serverClockNow(Date.now(), offsetRef.current),
+    [],
+  );
   const [selfFrozenElapsedMs, setSelfFrozenElapsedMs] = useState<number | null>(null);
   const [countdownMs, setCountdownMs] = useState<number | null>(null);
 
@@ -118,11 +134,15 @@ export function usePrecisionRoundClock({
     if (state?.phase !== "arming") return;
     const endsAt = state?.countdownEndsAt;
     if (typeof endsAt !== "number") return;
+    // `deviceNowMs` is the SERVER-aligned clock, not raw `Date.now()`: the
+    // pairing is only skew-free if the wall clock handed to it is the one the
+    // server stamps in (see `estimateServerClockOffset`). `localNowMs` stays
+    // the monotonic `performance.now()` — adjacent statements, one tick.
     scheduledGoRef.current = pairScheduledGo({
       countdownEndsAt: endsAt,
       roundSequence: state?.roundSequence ?? 0,
       localNowMs: performance.now(),
-      deviceNowMs: Date.now(),
+      deviceNowMs: serverClockNow(Date.now(), offsetRef.current),
     });
   }, [state?.phase, state?.countdownEndsAt, state?.roundSequence]);
 
@@ -144,7 +164,7 @@ export function usePrecisionRoundClock({
         goInstant: state?.roundGoInstant ?? null,
         roundSequence: state?.roundSequence ?? null,
         localNowMs: performance.now(),
-        deviceNowMs: Date.now(),
+        deviceNowMs: serverClockNow(Date.now(), offsetRef.current),
       });
       startTimer(anchor);
     } else {
@@ -167,11 +187,14 @@ export function usePrecisionRoundClock({
       setCountdownMs(null);
       return;
     }
-    const tick = () => setCountdownMs(Math.max(0, endsAt - Date.now()));
+    // `endsAt` is a SERVER instant, so it is compared against the aligned
+    // clock — a skewed device must not see (or act on) a countdown that is
+    // seconds away from the server's.
+    const tick = () => setCountdownMs(Math.max(0, endsAt - serverNow()));
     tick();
     const id = setInterval(tick, 100);
     return () => clearInterval(id);
-  }, [state?.phase, state?.countdownEndsAt]);
+  }, [state?.phase, state?.countdownEndsAt, serverNow]);
 
   // ── Fast re-poll the instant the countdown expires ─────────────
   // The server flips `arming` → `active` at the server-stamped
@@ -194,7 +217,7 @@ export function usePrecisionRoundClock({
     if (typeof endsAt !== "number") return;
     let attempts = 0;
     const pollIfDue = () => {
-      if (Date.now() < endsAt) return;
+      if (serverNow() < endsAt) return;
       attempts += 1;
       void refreshState();
       if (attempts >= ARMING_FAST_POLL_MAX_ATTEMPTS) clearInterval(id);
@@ -202,7 +225,7 @@ export function usePrecisionRoundClock({
     const id = setInterval(pollIfDue, ARMING_FAST_POLL_INTERVAL_MS);
     pollIfDue();
     return () => clearInterval(id);
-  }, [state?.phase, state?.countdownEndsAt, refreshState]);
+  }, [state?.phase, state?.countdownEndsAt, refreshState, serverNow]);
 
   // Stop the rAF loop on unmount so a torn-down React tree never keeps
   // ticking a frame callback.

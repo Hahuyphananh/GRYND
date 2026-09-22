@@ -41,6 +41,10 @@ window.__ks = {
   portrait: false,
   current: null,
   fetchCount: 0,
+  // How many bot claims the fake ai-turn route still owes. The real store only
+  // writes a bot claim when it is read inside the live tile's window, so the
+  // harness mirrors that: no claim until the page asks.
+  aiClaims: 0,
   updatedEvent: KENO_PVP_MATCH_UPDATED,
 };
 
@@ -226,6 +230,24 @@ window.fetch = async (input, init) => {
     window.__ks.posts.push(record);
 
     if (url.includes("/ai-turn")) {
+      const payload = window.__ks.current;
+      const tile = Number(payload?.liveTile);
+      // The scripted bot: claim the live tile for player2 the first time the
+      // page asks, exactly as the server store would once the bot's own
+      // reaction time has passed.
+      if (
+        payload?.isAi &&
+        Number(window.__ks.aiClaims) > 0 &&
+        payload?.status === "round_1" &&
+        Number.isInteger(tile) &&
+        tile >= 1
+      ) {
+        window.__ks.aiClaims -= 1;
+        window.__ks.current = applyClaim(payload, "player2", tile, Date.now());
+        window.__ks.cues.push("ai-claim");
+        record.claimed = { seat: "player2", tile };
+        return json({ success: true, data: { actions: 1 } });
+      }
       return json({ success: true, data: { actions: 0 } });
     }
     if (url.includes("/cancel")) {
@@ -299,6 +321,24 @@ window.fetch = async (input, init) => {
 // ── Test controls ──────────────────────────────────────────────────────────
 window.__ks.setPortrait = (on) => {
   window.__ks.portrait = Boolean(on);
+};
+
+// Flip the current match into a free (human vs bot) match with `claims` bot
+// taps owed, on a freshly lit tile.
+window.__ks.setAi = (claims = 1) => {
+  window.__ks.set({
+    player2Id: "keno_ai_bot",
+    isAi: true,
+    status: "round_1",
+    liveTile: 17,
+    liveTileIndex: 0,
+    liveStartedAt: window.__ks.at(-300),
+    liveDeadline: window.__ks.at(1300),
+    windowMs: 1600,
+    viewerCanClaim: true,
+  });
+  window.__ks.aiClaims = Math.max(0, Number(claims) || 0);
+  return window.__ks.current;
 };
 
 // Append ONE resolved tile to the public log (the opponent's claim, or a

@@ -24,6 +24,7 @@ import {
 } from "../lib/precision/constants";
 import { isStaleSnapshot } from "../lib/precision/matchView";
 import { joinMatchRoom, leaveMatchRoom } from "../lib/precision/multiplayer";
+import { estimateServerClockOffset } from "../lib/precision/roundClock";
 import type { PrecisionState } from "../lib/precision/types";
 import type { RealtimeSocket } from "../lib/socket";
 
@@ -47,6 +48,11 @@ export interface UsePrecisionMatchStateResult {
   state: PrecisionState | null;
   /** Latest snapshot, readable from async handlers without re-binding them. */
   stateRef: React.MutableRefObject<PrecisionState | null>;
+  /** `deviceWallClock - serverWallClock`, estimated from the poll's own round
+   *  trip (see `estimateServerClockOffset`). 0 until the first response that
+   *  carries the server's clock. The round clock uses it to express the
+   *  server's GO instant without inheriting the device's clock skew. */
+  serverClockOffsetMs: number;
   lookup: PrecisionLookup;
   /** Apply a server snapshot if it is not older than what is on screen.
    *  Returns true when it was applied. */
@@ -63,6 +69,9 @@ export function usePrecisionMatchState({
 }: UsePrecisionMatchStateOptions): UsePrecisionMatchStateResult {
   const [state, setState] = useState<PrecisionState | null>(null);
   const [lookup, setLookup] = useState<PrecisionLookup>("pending");
+  // Device→server wall-clock offset, refreshed on every poll that carries the
+  // server's own `now`. 0 (uncorrected) until the first such response.
+  const [serverClockOffsetMs, setServerClockOffsetMs] = useState(0);
 
   // Keep a ref of latest state so async handlers always operate on the
   // freshest copy. Matches the closure-protection pattern used elsewhere.
@@ -122,10 +131,22 @@ export function usePrecisionMatchState({
       // end-popup's auto-return effect navigates away once the replay window
       // expires, so there's no UX benefit to continued polling.
       if (stateRef.current?.phase === "finished") return;
+      const sentAtDeviceMs = Date.now();
       const res = await fetch(`/api/precision/get-match?matchId=${encodeURIComponent(matchId)}`, {
         cache: "no-store",
       });
       const data = await res.json();
+      // Align the display clock to the server's, using this response's own
+      // round trip. Without it the round timer is bridged through the device's
+      // wall clock, so a skewed device shows a round that is seconds away from
+      // the one the server scores — the player stops on the number they see and
+      // is graded as if they never stopped at all.
+      const offsetMs = estimateServerClockOffset({
+        sentAtDeviceMs,
+        receivedAtDeviceMs: Date.now(),
+        serverNowMs: Number(data?.now),
+      });
+      if (offsetMs !== null) setServerClockOffsetMs(offsetMs);
       const next = data?.match as PrecisionState | null | undefined;
       // `matchId` is echoed on every snapshot — ignore a response that
       // belongs to a different match (an in-flight fetch that resolved after
@@ -274,5 +295,5 @@ export function usePrecisionMatchState({
     };
   }, [socket, matchId, applySnapshot]);
 
-  return { state, stateRef, lookup, applySnapshot, refreshState };
+  return { state, stateRef, serverClockOffsetMs, lookup, applySnapshot, refreshState };
 }

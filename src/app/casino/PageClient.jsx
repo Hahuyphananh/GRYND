@@ -1248,6 +1248,16 @@ function MainComponent() {
               <p className="mt-2 text-sm text-[#9dd8ff] opacity-80">
                 {t("home.casino_lobby.no_results_hint")}
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setActiveFilter("all");
+                }}
+                className="mt-5 rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
+              >
+                Clear search & filters
+              </button>
             </div>
           )}
       </div>

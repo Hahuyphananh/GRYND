@@ -238,6 +238,18 @@ const KenoTile = memo(function KenoTile({
 // a fraction early, see the tile still live, and wait for the poll.
 const DEADLINE_NUDGE_CUSHION_MS = 300;
 
+// When a free (AI) match re-asks the server to run the bot's turn, measured
+// from the moment the page learns of the live tile.
+//
+// The bot's claim is graded SERVER-side against its own reaction time —
+// 200–420ms into the tile's window — so a coarse poll can never catch it: the
+// 5s backstop poll and the deadline nudge both land outside the window, and
+// the store refuses to claim once the tile has expired. A short burst (plus
+// one immediate ask) covers the whole reaction band without polling for the
+// entire window: whichever probe first lands at/after the bot's due time is
+// the one that writes the claim.
+const AI_TURN_PROBE_OFFSETS_MS = [140, 300, 460];
+
 export default function KenoPvpMatchPage({ params }) {
   const router = useRouter();
   const posthog = usePostHog();
@@ -452,6 +464,62 @@ export default function KenoPvpMatchPage({ params }) {
     }, delay);
     return () => clearTimeout(timer);
   }, [matchId, match?.liveDeadline, match?.tapGraceMs, clockOffset, fetchStatus]);
+
+  // ── Free practice: let the bot actually take its turn ────────────────
+  // A free (AI) match's bot claims are decided and written SERVER-side, but
+  // only when the server is read at/after the bot's own reaction time inside
+  // the live tile's window. Nothing else reads that often — the 5s backstop
+  // poll and the deadline nudge are both too late, and the store explicitly
+  // refuses to claim once the window has expired. Without this sweep the bot
+  // is never asked in time, so every tile resolves as a both-miss and the AI
+  // appears to do nothing at all.
+  //
+  // The sweep uses the dedicated ai-turn route (it only runs the bot's due
+  // claim and returns a count, rather than a full match read) and pulls the
+  // board once the bot has actually tapped. Scoped to a free AI match, where
+  // this viewer is the human seat, with a live tile on the board — a
+  // human-vs-human duel keeps its single 5s poll.
+  useEffect(() => {
+    if (!matchId || !match?.isAi || !match?.viewerIsPlayer1) return undefined;
+    if (!match?.viewerCanClaim) return undefined;
+
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        const res = await fetch(`/api/keno-pvp/match/${matchId}/ai-turn`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({}),
+        });
+        const json = await res.json();
+        if (cancelled) return;
+        // The bot tapped: repaint the board (its claim + the next live tile).
+        if (json?.success && Number(json.data?.actions) > 0) void fetchStatus();
+      } catch {
+        // Network failure — the next probe retries.
+      }
+    };
+
+    // One ask straight away (covers a tile we only learned about late), then
+    // the burst across the bot's reaction band.
+    void probe();
+    const timers = AI_TURN_PROBE_OFFSETS_MS.map((offset) =>
+      setTimeout(probe, offset),
+    );
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+  }, [
+    matchId,
+    match?.isAi,
+    match?.viewerIsPlayer1,
+    match?.viewerCanClaim,
+    match?.liveTile,
+    match?.liveTileIndex,
+    fetchStatus,
+  ]);
 
   // Socket live-update: refresh instantly on opponent actions.
   useEffect(() => {

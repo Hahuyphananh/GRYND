@@ -11,7 +11,9 @@ import IconAvatar from "../../../components/IconAvatar";
 import { IconFlag } from "@tabler/icons-react";
 import UserStatsTabs from "../../../components/UserStatsTabs";
 import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
+import ErrorState from "../../../components/states/ErrorState";
 import { cosmeticFrameRing, cosmeticEffectClass } from "../../../lib/profileCosmetics";
+import { useApiResource } from "../../../hooks/useApiResource";
 
 type PublicUser = {
   clerkId: string;
@@ -80,7 +82,6 @@ export default function PublicProfilePage() {
   const router = useRouter();
   const { user: currentUser } = useUser();
   const [profile, setProfile] = useState<PublicUser | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showReportModal, setShowReportModal] = useState(false);
   const [bets, setBets] = useState<any[]>([]);
@@ -91,27 +92,46 @@ export default function PublicProfilePage() {
 
   const isOwnProfile = currentUser?.id === clerkId;
 
+  // Cache-first: a profile the visitor has seen before paints instantly from
+  // the persisted SWR cache, then refreshes in the background.
+  const profileResource = useApiResource<{
+    success: boolean;
+    user: PublicUser;
+    error?: string;
+  }>(clerkId ? `/api/user/public-profile?clerkId=${encodeURIComponent(clerkId)}` : null);
+  const loading = profileResource.isLoading && !profile;
+
+  useEffect(() => {
+    const data = profileResource.data;
+    if (data?.success) {
+      setProfile(data.user);
+      setError("");
+    } else if (data && !data.success) {
+      setError(data.error || "User not found");
+    }
+  }, [profileResource.data]);
+
+  useEffect(() => {
+    if (profileResource.error) {
+      const message =
+        profileResource.error instanceof Error ? profileResource.error.message : "";
+      setError(message || "Failed to load profile");
+    }
+  }, [profileResource.error]);
+
   useEffect(() => {
     if (!clerkId) return;
-    setLoading(true);
-    Promise.all([
-      fetch(`/api/user/public-profile?clerkId=${encodeURIComponent(clerkId)}`).then((res) => res.json()),
-      fetch(`/api/user/public-bet-history?clerkId=${encodeURIComponent(clerkId)}&limit=${BETS_PAGE_SIZE}&offset=0`).then((res) => res.json()),
-    ])
-      .then(([profileData, betData]) => {
-        if (profileData.success) {
-          setProfile(profileData.user);
-        } else {
-          setError(profileData.error || "User not found");
-        }
-        if (betData.success) {
-          setBets(betData.bets || []);
-          setBetsHasMore(betData.hasMore || false);
-          setBetsOffset(BETS_PAGE_SIZE);
-        }
+    fetch(`/api/user/public-bet-history?clerkId=${encodeURIComponent(clerkId)}&limit=${BETS_PAGE_SIZE}&offset=0`)
+      .then((res) => res.json())
+      .then((betData) => {
+        if (!betData.success) return;
+        setBets(betData.bets || []);
+        setBetsHasMore(betData.hasMore || false);
+        setBetsOffset(BETS_PAGE_SIZE);
       })
-      .catch(() => setError("Failed to load profile"))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        // Bet history is secondary; a failure just leaves the list empty.
+      });
   }, [clerkId]);
 
   const loadMoreBets = async () => {
@@ -144,21 +164,23 @@ export default function PublicProfilePage() {
     );
   }
 
-  if (error || !profile) {
+  if (!loading && (error || !profile)) {
+    const notFound = /not found/i.test(error || "");
     return (
       <div className="relative min-h-screen text-white">
         <InteractiveCasinoBg variant="subtle" />
         <NavigationBar currentPath="/profil" />
-        <div className="max-w-2xl mx-auto px-6 pt-24 text-center">
-          <h1 className="text-2xl font-bold text-red-400 mb-4">
-            {error || "User not found"}
-          </h1>
-          <button
-            onClick={() => router.back()}
-            className="px-6 py-3 rounded-xl bg-[#00e5ff] text-[#001933] font-bold hover:bg-[#00e5ff]/80 transition"
-          >
-            Go Back
-          </button>
+        <div className="mx-auto max-w-2xl px-6 pt-24">
+          <ErrorState
+            title={notFound ? "Player not found" : "We couldn't load this profile"}
+            description={
+              notFound
+                ? "That player doesn't exist — the link may be out of date."
+                : error || "Something went wrong while loading this profile."
+            }
+            onRetry={notFound ? undefined : profileResource.refresh}
+            homeHref="/classement"
+          />
         </div>
       </div>
     );

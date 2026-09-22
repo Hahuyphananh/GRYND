@@ -1292,7 +1292,7 @@ io.on("connection", (socket) => {
   // the match room (including the sender) ONLY once BOTH seats have
   // submitted (`bothStopped === true`) — partial stops keep the
   // sender's optimistic "stopped, awaiting opponent" UI intact.
-  socket.on("precision:stop", async ({ matchId, roundId, nonce } = {}, ack) => {
+  socket.on("precision:stop", async ({ matchId, roundId, nonce, elapsedMs } = {}, ack) => {
     const matchIdStr = String(matchId || "");
     if (!matchIdStr) {
       if (typeof ack === "function") ack({ success: false, error: "Missing matchId." });
@@ -1351,6 +1351,14 @@ io.on("connection", (socket) => {
             token: socket.data.clerkToken,
             roundId: roundIdStr,
             nonce: nonceStr,
+            // The player's own frozen elapsed (the number on their screen when
+            // they clicked), forwarded verbatim as a HINT. The Next.js route
+            // clamps it against its own receive-time measurement, so the
+            // realtime layer stays as dumb about timing as it always was —
+            // it forwards a value, it never decides one.
+            ...(Number.isFinite(Number(elapsedMs))
+              ? { elapsedMs: Number(elapsedMs) }
+              : {}),
           }),
           signal: forwardController.signal,
         },

@@ -139,6 +139,7 @@ const STUBS = {
     export const playCountdownGo = () => rec("playCountdownGo");
     export const playCrash = () => rec("playCrash");
     export const playBuzz = () => rec("playBuzz");
+    export const playGlassBreak = () => rec("playGlassBreak");
     export const playGoodReveal = () => rec("playGoodReveal");
     export const playOpponentPick = () => rec("playOpponentPick");
     export const playOpponentBank = () => rec("playOpponentBank");
@@ -290,10 +291,14 @@ check(
 const summit = await page.evaluate(() => {
   const label = document.querySelector('[title*="the top of the bridge"]');
   if (!label) return null;
-  const row = label.closest('div[class*="rounded-2xl"]');
+  // Stable hook — the row is no longer identified by a rounded-* class (tiles
+  // and rows are sharp-edged now).
+  const row = label.closest('[data-lane-row]');
   return {
     rowLabel: label.textContent?.trim() ?? null,
-    amber: Boolean(row?.className.includes("amber")),
+    amber:
+      row?.getAttribute("data-goal") === "true" &&
+      Boolean(row?.className.includes("amber")),
   };
 });
 check(
@@ -418,13 +423,19 @@ check(
   modeFlagPost?.body?.row === 1 && modeFlagPost?.body?.tile === 0,
   JSON.stringify(modeFlagPost?.body),
 );
+// A flag must be clearly visible on the board — a large flag icon centred on
+// the tile — while the tile number stays readable underneath it.
+const flaggedTile = await page.evaluate(() => {
+  const el = document.querySelector('button[aria-label*="your flag"]');
+  return {
+    text: el?.textContent?.trim() ?? "",
+    icons: el?.querySelectorAll("svg").length ?? 0,
+  };
+});
 check(
-  "the flag is a subtle corner badge that keeps the tile number visible",
-  /\d/.test(
-    (await page.evaluate(
-      () => document.querySelector('button[aria-label*="your flag"]')?.textContent?.trim() ?? "",
-    )) || "",
-  ),
+  "a flagged tile shows a visible flag icon and keeps the tile number readable",
+  /\d/.test(flaggedTile.text) && flaggedTile.icons >= 1,
+  JSON.stringify(flaggedTile),
 );
 
 // 5. Broken tiles are visibly broken, and flags are PUBLIC to both players.
@@ -550,8 +561,11 @@ await page.waitForSelector(
 check("a bad jump plays the fall-through animation", true);
 check(
   "…with a glass shatter on the broken tile",
-  (await count(page, '[data-testid="lane-runner-jump"] span[class*="bg-white/70"]')) >= 1,
-  `shards=${await count(page, '[data-testid="lane-runner-jump"] span[class*="bg-white/70"]')}`,
+  (await count(page, '[data-testid="lane-runner-jump"] [data-testid="lane-runner-shard"]')) >=
+    1 &&
+    (await count(page, '[data-testid="lane-runner-jump"] [data-testid="lane-runner-crack"]')) >=
+      1,
+  `shards=${await count(page, '[data-testid="lane-runner-jump"] [data-testid="lane-runner-shard"]')} cracks=${await count(page, '[data-testid="lane-runner-jump"] [data-testid="lane-runner-crack"]')}`,
 );
 await page.waitForFunction(
   () => /hit a broken tile — back to row 1/i.test(document.body.innerText),

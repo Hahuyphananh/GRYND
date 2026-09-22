@@ -5,6 +5,8 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter, usePathname } from "next/navigation";
 import ReviewModal from "./ReviewModal";
 import IconAvatar from "../IconAvatar";
+import ErrorState from "../states/ErrorState";
+import { useApiResource } from "../../hooks/useApiResource";
 
 interface Review {
   id: number;
@@ -80,8 +82,19 @@ export default function ReviewWall({
   const [reviews, setReviews] = useState<Review[]>(initialReviews ?? []);
   const [stats, setStats] = useState<ReviewStats | null>(initialStats);
   const [mine, setMine] = useState<{ submitted: boolean; status: string | null; rating: number | null } | null>(null);
-  const [loading, setLoading] = useState(initialReviews === null);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Cache-first load; the server-rendered reviews (initialReviews) stay on
+  // screen while this refreshes in the background, so a slow or offline
+  // network never blanks the wall.
+  const resource = useApiResource<{
+    success: boolean;
+    reviews: Review[];
+    stats: ReviewStats;
+    mine: { submitted: boolean; status: string | null; rating: number | null };
+  }>(`/api/reviews?limit=${limit}&mine=1`);
+
+  const loading = initialReviews === null && resource.isLoading;
 
   const openReviewFlow = () => {
     // Signed-out visitors get sent to sign-in first and return to the
@@ -94,27 +107,31 @@ export default function ReviewWall({
   };
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/reviews?limit=${limit}&mine=1`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled || !data.success) return;
-        setReviews(data.reviews);
-        setStats(data.stats);
-        setMine(data.mine);
-      })
-      .catch(() => {})
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [limit]);
+    const data = resource.data;
+    if (!data?.success) return;
+    if (Array.isArray(data.reviews)) setReviews(data.reviews);
+    if (data.stats) setStats(data.stats);
+    setMine(data.mine ?? null);
+  }, [resource.data]);
 
   // The server already rendered the wall's content (see initialReviews), so
   // never replace it with a loading placeholder.
 
   if (loading) {
     return <div className="py-10 text-center text-[#c9f7ff]/50">Loading reviews…</div>;
+  }
+
+  // The wall has nothing to show and the request failed — offer a retry
+  // instead of silently rendering the empty state (which would read as
+  // "nobody has reviewed us yet").
+  if (resource.error && reviews.length === 0) {
+    return (
+      <ErrorState
+        title="Reviews couldn't load"
+        description="We couldn't fetch the reviews just now. Give it another try."
+        onRetry={resource.refresh}
+      />
+    );
   }
 
   return (

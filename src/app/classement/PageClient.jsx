@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
@@ -10,6 +10,8 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import FrameAvatar from "../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useApiResource } from "../../hooks/useApiResource";
+import AsyncState from "../../components/states/AsyncState";
 
 const TABS = ["all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
 
@@ -270,7 +272,6 @@ export default function LeaderboardPage() {
   const [tab, setTab] = useState("all-time");
   const [category, setCategory] = useState("wins");
   const [game, setGame] = useState("chess");
-  const [reloadKey, setReloadKey] = useState(0);
 
   const selectTab = (next) => {
     setTab(next);
@@ -280,12 +281,6 @@ export default function LeaderboardPage() {
   };
   // Per-game boards always rank by wins.
   const displayCategory = isPerGameTab(tab) ? "wins" : category;
-  const [items, setItems] = useState([]);
-  const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [myStats, setMyStats] = useState(null);
-  const [error, setError] = useState(null);
-
   const myClerkId = isSignedIn ? user?.id : null;
 
   const endpoint = useMemo(() => {
@@ -302,48 +297,19 @@ export default function LeaderboardPage() {
     return `/api/leaderboard/all-time?limit=50&category=${category}`;
   }, [tab, category, game]);
 
-  useEffect(() => {
-    const safeJson = async (response) => {
-      const text = await response.text();
-      if (!text) return {};
+  // Cache-first: the board paints immediately from the persisted SWR cache
+  // and refreshes in the background (and again automatically on reconnect).
+  const board = useApiResource(endpoint);
+  const statsResource = useApiResource(isSignedIn ? "/api/user/stats" : null);
 
-      try {
-        return JSON.parse(text);
-      } catch {
-        return {};
-      }
-    };
-
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const [res, statsRes] = await Promise.all([
-          fetch(endpoint),
-          fetch("/api/user/stats"),
-        ]);
-        const [data, statsData] = await Promise.all([
-          safeJson(res),
-          safeJson(statsRes),
-        ]);
-
-        if (!res.ok) setError(data.error || t("leaderboard.load_error"));
-
-        setItems(Array.isArray(data.items) ? data.items : []);
-        setMe(data.me || null);
-        setMyStats(statsData.userStats || null);
-      } catch {
-        setItems([]);
-        setMe(null);
-        setError(t("leaderboard.load_error"));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [endpoint, reloadKey, t]);
+  const items = Array.isArray(board.data?.items) ? board.data.items : [];
+  const me = board.data?.me || null;
+  const myStats = statsResource.data?.userStats || null;
+  const loading = board.isLoading;
+  const error = board.error
+    ? board.error.message || t("leaderboard.load_error")
+    : null;
+  const refresh = board.refresh;
 
   const showPodium =
     !loading && !error && items.length > 0 && !isStreakTab(tab);
@@ -564,20 +530,15 @@ export default function LeaderboardPage() {
           />
         )}
 
-        <div className="w-full overflow-x-auto rounded-lg border border-[#00e5ff]/50 bg-[#08142f] p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]">
-          {error && (
-            <div className="mb-4 flex flex-col items-center gap-3 rounded-md border border-red-400/40 bg-red-950/40 px-4 py-3 text-center text-sm text-red-200 sm:flex-row sm:justify-between">
-              <span>{error}</span>
-              <button
-                onClick={() => setReloadKey((k) => k + 1)}
-                className="shrink-0 rounded-md border border-red-300/50 bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-100 transition-colors hover:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-              >
-                Try again
-              </button>
-            </div>
-          )}
-
-          {loading ? (
+        <AsyncState
+          className="w-full overflow-x-auto rounded-lg border border-[#00e5ff]/50 bg-[#08142f] p-4 shadow-[0_0_28px_rgba(0,229,255,0.2)]"
+          isLoading={loading}
+          error={board.error}
+          hasData={board.hasData}
+          isEmpty={items.length === 0}
+          onRetry={refresh}
+          cachedAt={board.cachedAt}
+          skeleton={
             <div className="space-y-2 py-2" aria-busy="true" aria-label="Loading leaderboard">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <div key={i} className="flex animate-pulse items-center gap-3 rounded-md px-2 py-3">
@@ -590,7 +551,8 @@ export default function LeaderboardPage() {
                 </div>
               ))}
             </div>
-          ) : !error && items.length === 0 ? (
+          }
+          empty={
             <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
               <svg className="h-10 w-10 text-[#00e5ff]/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v9a5 5 0 01-10 0V4z"/><path d="M7 9h10"/></svg>
               <p className="text-lg font-bold text-[#f5ff3b]">
@@ -606,8 +568,9 @@ export default function LeaderboardPage() {
                 PLAY NOW
               </Link>
             </div>
-          ) : (
-            <AnimatePresence mode="wait">
+          }
+        >
+          <AnimatePresence mode="wait">
               <motion.table
                 key={isPerGameTab(tab) ? `${tab}-${game}` : `${tab}-${category}`}
                 initial={{ opacity: 0 }}
@@ -687,9 +650,8 @@ export default function LeaderboardPage() {
                   })}
                 </tbody>
               </motion.table>
-            </AnimatePresence>
-          )}
-        </div>
+          </AnimatePresence>
+        </AsyncState>
 
         {/* Competitive CTA — the board should make you want to play. */}
         {!loading && !error && (

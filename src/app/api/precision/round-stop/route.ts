@@ -7,6 +7,11 @@
 //                after the precision:roundArmStart broadcast)
 //   - nonce    : server-rolled cryptographic nonce (read from
 //                match.roundNonce at the same time)
+//   - elapsedMs: OPTIONAL, the elapsed the client froze at when the player
+//                clicked. A bounded hint, never an authority — it can only
+//                move the graded stop EARLIER, by at most
+//                `STOP_CLIENT_SLACK_MS`, and never past the server's own
+//                measurement (see `resolveStopElapsedMs` in the engine).
 // The server stamps the STOP instant at receive time and computes the
 // elapsed time authoritatively as
 // `stopInstant - match.roundGoInstant`. The server uses that elapsed
@@ -36,6 +41,13 @@ import { logError } from "../../../../lib/logError";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Stamp the STOP the moment the request lands. This is the earliest instant
+  // this process can vouch for, and it is deliberately captured before the
+  // body parse and before `recordRoundStop` opens its transaction (whose
+  // connection handshake against a pooled remote database is a real round trip
+  // — charging it to the player pushed every recorded stop later than the
+  // click).
+  const receivedAtMs = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
     const matchId = String(body?.matchId ?? "");
@@ -48,6 +60,18 @@ export async function POST(req: NextRequest) {
     // authoritative userId; direct callers authenticate via their session
     // cookie. A spoofed body.userId is ignored — a malicious client can
     // no longer submit a STOP (or a Ready) on another player's behalf.
+    // The elapsed the player's client froze at when they hit STOP — the
+    // number on their screen, measured against the same server GO instant this
+    // route scores from. It is a HINT, not an input: `recordRoundStop` clamps
+    // it against its own measurement (see `resolveStopElapsedMs`). It is
+    // carried for exactly one reason — the packet needs one delivery to get
+    // here, so our own stamp is the click plus that lag, and a MISS tier that
+    // starts at 100ms would grade a dead-on click as a miss without it.
+    const claimedElapsedMs = Number(body?.elapsedMs);
+    const clientElapsedMs = Number.isFinite(claimedElapsedMs)
+      ? claimedElapsedMs
+      : null;
+
     const token = typeof body?.token === "string" ? body.token : "";
     let userId = "";
     if (token) {
@@ -101,17 +125,20 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    // The route no longer accepts `stopMs` from the network. The
-    // server stamps the STOP instant inside `recordRoundStop` and
-    // computes elapsed authoritatively from `match.roundGoInstant`.
-    // Any stopMs in the request body is intentionally ignored \u2014 the
-    // client cannot influence the score.
+    // The route does not accept a `stopMs` instant from the network: the
+    // server stamps the STOP instant inside `recordRoundStop` and computes
+    // elapsed authoritatively from `match.roundGoInstant`. The only timing
+    // value read from the body is the bounded `elapsedMs` hint above, which
+    // the server clamps against its own measurement.
 
     // One transaction: lock the match row, apply any transition whose
     // instant has passed (the arming countdown reveal, the bot's due stop),
     // validate the replay envelope, stamp the STOP instant, and grade the
     // round once both seats have submitted.
-    const result = await recordRoundStop(matchId, userId, roundId, nonce);
+    const result = await recordRoundStop(matchId, userId, roundId, nonce, {
+      receivedAtMs,
+      clientElapsedMs,
+    });
     if (!result.match) {
       return NextResponse.json(
         { success: false, error: "Match not found." },

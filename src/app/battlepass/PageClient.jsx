@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useApiResource } from "../../hooks/useApiResource";
+import AsyncState from "../../components/states/AsyncState";
 import {
   REWARD_RARITIES,
   REWARD_TYPES,
@@ -50,9 +52,11 @@ const CLAIMABLE_UI_TYPES = new Set([
 
 export default function BattlepassPageClient() {
   const { t } = useTranslation();
+  // Cache-first: the pass renders instantly from the persisted cache and
+  // refreshes in the background (and on reconnect).
+  const resource = useApiResource("/api/battlepass");
   const [pass, setPass] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const loading = resource.isLoading && !pass;
   const [failedEmoteRewards, setFailedEmoteRewards] = useState({});
   // Prestige tier that just unlocked and is being celebrated (null = none).
   const [prestigeCelebrated, setPrestigeCelebrated] = useState(null);
@@ -61,28 +65,11 @@ export default function BattlepassPageClient() {
   const [claimingKey, setClaimingKey] = useState(null);
   const [claimError, setClaimError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/battlepass");
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
-      if (!res.ok || !data.success) {
-        setError(data.error || "Could not load the battlepass.");
-      } else {
-        setPass(data.pass);
-      }
-    } catch {
-      setError("Could not load the battlepass.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Mirror the fetched pass into local state so the in-place claim updates
+  // below (setPass) keep working without a refetch.
   useEffect(() => {
-    load();
-  }, [load]);
+    if (resource.data?.pass) setPass(resource.data.pass);
+  }, [resource.data]);
 
   const claimReward = async (reward, level) => {
     if (claimingKey) return;
@@ -248,15 +235,18 @@ export default function BattlepassPageClient() {
           </p>
         </div>
 
-        {loading ? (
-          <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center text-[#9dd8ff]">
-            {t("ui.loading")}
-          </div>
-        ) : error ? (
-          <div className="rounded-xl border border-red-400/30 bg-[#0b224f]/85 p-10 text-center text-red-300">
-            {error}
-          </div>
-        ) : (
+        <AsyncState
+          isLoading={loading}
+          error={resource.error}
+          hasData={Boolean(pass)}
+          onRetry={resource.refresh}
+          cachedAt={resource.cachedAt}
+          skeleton={
+            <div className="rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-10 text-center text-[#9dd8ff]">
+              {t("ui.loading")}
+            </div>
+          }
+        >
           <>
             {/* Current status — Level-100 players see the permanent Prestige track */}
             {pass.prestigeUnlocked ? (
@@ -677,7 +667,7 @@ export default function BattlepassPageClient() {
               </div>
             </div>
           </>
-        )}
+        </AsyncState>
       </main>
 
       {/* Prestige-advancement celebration — fires only when the server-

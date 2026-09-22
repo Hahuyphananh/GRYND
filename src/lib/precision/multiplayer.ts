@@ -356,21 +356,37 @@ export const STOP_HTTP_TIMEOUT_MS = 8000;
  * proxy's own timeout, where re-submitting behind the player's back could
  * only produce a confusing second verdict.
  */
+/**
+ * The elapsed the local client froze at when STOP was clicked, rounded to a
+ * whole millisecond and dropped when unusable. This is the ONLY timing value
+ * the client ever reports, and the server treats it as a bounded hint (see
+ * `resolveStopElapsedMs`): it can cancel the delivery lag between the click
+ * and the packet landing, and nothing else.
+ */
+export function stopElapsedHint(elapsedMs?: number | null): number | null {
+  const value = Number(elapsedMs);
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : null;
+}
+
 export function emitStop(
   socket: RealtimeSocket,
   matchId: string,
   roundId: string,
   nonce: string,
+  elapsedMs?: number | null,
   onAck?: (ack: PrecisionStopAck) => void,
 ): void {
+  const hint = stopElapsedHint(elapsedMs);
+  const packet =
+    hint === null ? { matchId, roundId, nonce } : { matchId, roundId, nonce, elapsedMs: hint };
   if (!onAck) {
-    socket.emit(SOCKET_NAMESPACE.stopEvent, { matchId, roundId, nonce });
+    socket.emit(SOCKET_NAMESPACE.stopEvent, packet);
     return;
   }
 
   socket.timeout(STOP_ACK_TIMEOUT_MS).emit(
     SOCKET_NAMESPACE.stopEvent,
-    { matchId, roundId, nonce },
+    packet,
     (err: Error | null, ack?: PrecisionStopAck) => {
       if (!err) {
         onAck(ack ?? { success: false, error: "Empty ACK from server." });
@@ -378,7 +394,7 @@ export function emitStop(
       }
       // No ACK at all — the socket, not the request, failed. Re-submit over
       // HTTPS so the click is never silently thrown away mid-round.
-      void submitStopOverHttp(matchId, roundId, nonce)
+      void submitStopOverHttp(matchId, roundId, nonce, hint)
         .then((result) => {
           if (result?.success === true || result?.alreadySubmitted === true) {
             onAck({ success: true });
@@ -416,21 +432,26 @@ export function emitStop(
  * server-authoritative `recordRoundStop` path the socket proxy uses — just a
  * different transport. The replay envelope (`roundId` + `nonce`) is passed
  * through untouched, so a stop that races the socket packet is rejected as a
- * duplicate rather than double-counted.
+ * duplicate rather than double-counted. The frozen elapsed rides along as the
+ * same bounded hint the socket packet carries.
  */
 export async function submitStopOverHttp(
   matchId: string,
   roundId: string,
   nonce: string,
+  elapsedMs?: number | null,
 ): Promise<PrecisionRoundStopResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), STOP_HTTP_TIMEOUT_MS);
+  const hint = stopElapsedHint(elapsedMs);
   try {
     const res = await fetch(API_ROUTES.roundStop, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ matchId, roundId, nonce }),
+      body: JSON.stringify(
+        hint === null ? { matchId, roundId, nonce } : { matchId, roundId, nonce, elapsedMs: hint },
+      ),
       signal: controller.signal,
     });
     return (await res.json()) as PrecisionRoundStopResponse;

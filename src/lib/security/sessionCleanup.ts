@@ -14,6 +14,8 @@
 // onboarding-tour state) are deliberately NOT cleared — they are not
 // login indicators.
 
+import { clearPersistentCache } from "../cache/persistentSwrCache";
+
 const SESSION_STORAGE_PREFIXES = ["admin:", "navmeta:"];
 const LOCAL_STORAGE_PREFIXES = ["hexDuelAiSessionId:"];
 const CLEAR_SESSION_ENDPOINT = "/api/auth/clear-session";
@@ -52,6 +54,9 @@ export function clearClientSessionArtifacts(): void {
 
   removeKeysByPrefix(window.sessionStorage, SESSION_STORAGE_PREFIXES);
   removeKeysByPrefix(window.localStorage, LOCAL_STORAGE_PREFIXES);
+  // Drop the persisted SWR payloads so the next player on this device never
+  // sees the previous session's cached data.
+  clearPersistentCache();
 
   try {
     // Best-effort non-HttpOnly app cookie. The HttpOnly admin_mfa cookie

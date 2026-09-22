@@ -58,6 +58,7 @@ import {
   playBuzz,
   playSelect,
   playSafePick,
+  playGlassBreak,
 } from "../../../../lib/gameAudio";
 import {
   IconClock,
@@ -284,6 +285,99 @@ function BridgeSeat({
 }
 
 /**
+ * A panel of glass giving way.
+ *
+ * Everything is delayed to `delay` — the instant the falling token actually
+ * reaches the tile. Playing it on mount made the glass appear to shatter in
+ * mid-air, before the player had landed on it at all, which is why the tiles
+ * never read as breaking "on impact".
+ *
+ * Three beats: a bright impact flash, a crack web snapping out from the point
+ * of contact, and a spray of shards thrown off the tile.
+ */
+function GlassBreak({ tileRect, delay = 0.5 }) {
+  const cx = tileRect.x + tileRect.w / 2;
+  const cy = tileRect.y + tileRect.h / 2;
+  const reach = Math.max(tileRect.w, tileRect.h) * 0.7;
+  const SHARDS = 12;
+
+  return (
+    <>
+      {/* the impact flash */}
+      <motion.span
+        aria-hidden
+        data-testid="lane-runner-impact"
+        className="absolute rounded-full"
+        style={{
+          left: cx - 22,
+          top: cy - 22,
+          width: 44,
+          height: 44,
+          background:
+            "radial-gradient(circle, rgba(255,255,255,0.95), rgba(186,230,253,0.45) 45%, transparent 72%)",
+        }}
+        initial={{ opacity: 0, scale: 0.3 }}
+        animate={{ opacity: [0, 1, 0], scale: [0.3, 1.35, 1.7] }}
+        transition={{ duration: 0.42, delay, times: [0, 0.25, 1], ease: "easeOut" }}
+      />
+
+      {/* the crack web — 7 splits radiating from the impact point */}
+      {[0, 52, 104, 156, 208, 260, 312].map((deg, i) => (
+        <motion.span
+          key={`crack-${i}`}
+          aria-hidden
+          data-testid="lane-runner-crack"
+          className="absolute bg-white/85"
+          style={{
+            left: cx,
+            top: cy,
+            width: 1.5,
+            height: reach,
+            transformOrigin: "0% 50%",
+            rotate: `${deg}deg`,
+          }}
+          initial={{ opacity: 0.95, scaleX: 0.08 }}
+          animate={{ opacity: 0, scaleX: 1 }}
+          transition={{ duration: 0.5, delay, ease: "easeOut" }}
+        />
+      ))}
+
+      {/* the shards — spun off the tile as real glass flakes */}
+      {Array.from({ length: SHARDS }, (_, i) => {
+        const a = (i / SHARDS) * Math.PI * 2 + 0.4;
+        const dist = 30 + (i % 3) * 9;
+        return (
+          <motion.span
+            key={`shard-${i}`}
+            aria-hidden
+            data-testid="lane-runner-shard"
+            className="absolute"
+            style={{
+              left: cx,
+              top: cy,
+              width: i % 2 ? 5 : 8,
+              height: i % 2 ? 9 : 5,
+              background:
+                "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(186,230,253,0.35))",
+              clipPath: "polygon(0% 0%, 100% 18%, 72% 100%, 8% 74%)",
+            }}
+            initial={{ x: -4, y: -4, opacity: 1, rotate: i * 42, scale: 1 }}
+            animate={{
+              x: Math.cos(a) * dist,
+              y: Math.sin(a) * dist * 0.85 + 16,
+              opacity: 0,
+              rotate: i * 42 + 210,
+              scale: 0.7,
+            }}
+            transition={{ duration: 0.62, delay, ease: "easeOut" }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/**
  * The player's JUMP, rendered from the SERVER's resolved action.
  *
  * It is pure presentation: the outcome (safe / fell / won) and the row/tile
@@ -341,7 +435,9 @@ function JumpOverlay({ anim, boardRef, rowRefs, tileRefs, identity, name, onDone
     }
     setCoords({ from, to, tileRect });
     // Safety net: whatever happens to the animation, the overlay retires.
-    const t = setTimeout(finish, anim.outcome === "fell" ? 1000 : 800);
+    // The fall now includes the delayed shatter (impact at 0.5s + 0.62s
+    // shards), so the overlay must outlive it.
+    const t = setTimeout(finish, anim.outcome === "fell" ? 1400 : 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anim]);
@@ -360,54 +456,10 @@ function JumpOverlay({ anim, boardRef, rowRefs, tileRefs, identity, name, onDone
       data-jump-outcome={anim.outcome}
       className="pointer-events-none absolute inset-0 z-30 overflow-visible"
     >
-      {isFall && tileRect && (
-        <>
-          {/* the crack flash on the tile that broke */}
-          {[0, 34, -30].map((deg, i) => (
-            <motion.span
-              key={`crack-${i}`}
-              aria-hidden
-              className="absolute bg-white/80"
-              style={{
-                left: tileRect.x + tileRect.w / 2,
-                top: tileRect.y,
-                width: 2,
-                height: tileRect.h,
-                transformOrigin: "center",
-                rotate: `${deg}deg`,
-              }}
-              initial={{ opacity: 0.9, scaleY: 0.2 }}
-              animate={{ opacity: 0, scaleY: 1.15 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            />
-          ))}
-          {/* the glass shatter */}
-          {[0, 1, 2, 3, 4, 5].map((i) => {
-            const a = (i / 6) * Math.PI * 2;
-            return (
-              <motion.span
-                key={`shard-${i}`}
-                aria-hidden
-                className="absolute rounded-[1px] bg-white/70"
-                style={{
-                  left: tileRect.x + tileRect.w / 2 - 3,
-                  top: tileRect.y + tileRect.h / 2 - 5,
-                  width: 6,
-                  height: 10,
-                }}
-                initial={{ x: 0, y: 0, opacity: 1, rotate: i * 60 }}
-                animate={{
-                  x: Math.cos(a) * 34,
-                  y: Math.sin(a) * 30 + 8,
-                  opacity: 0,
-                  rotate: i * 60 + 160,
-                }}
-                transition={{ duration: 0.65, ease: "easeOut" }}
-              />
-            );
-          })}
-        </>
-      )}
+      {/* The glass breaks at the moment of impact, not when the fall starts:
+          the token's tile contact lands at `times[2]` of its 0.8s arc, i.e.
+          ~0.5s in. */}
+      {isFall && tileRect && <GlassBreak tileRect={tileRect} delay={0.5} />}
 
       {/* the player token: anticipation → arc → landing squash (SAFE),
           or leap → fall-through (BAD) */}
@@ -830,6 +882,30 @@ export default function LaneRushDuelMatchPage({ params }) {
     fetchStatus();
   }, [livePhase, match?.currentTurnUserId, deadlineMs, secondsLeft, fetchStatus]);
 
+  // ── Audio: the tile shattering ────────────────────────────────────
+  // The glass gives way at the END of the fall, not when the action resolves:
+  // the jump overlay's impact lands ~0.5s into the arc, so the crack has to be
+  // scheduled to that same beat or it would sound while the token is still in
+  // the air. Reduced motion skips the fall animation entirely — the tile breaks
+  // immediately — so the sound fires with it. (Same 0.5s impact constant the
+  // overlay uses; see <GlassBreak>.)
+  const GLASS_BREAK_IMPACT_MS = 500;
+  const playBreakAtImpact = useCallback(
+    (quieter = false) => {
+      const fire = () => {
+        if (!mountedRef.current) return;
+        // A rival's break is mixed down so it can never be mistaken for yours.
+        playGlassBreak(quieter ? 0.6 : 1);
+      };
+      if (shouldReduce) {
+        fire();
+        return;
+      }
+      setTimeout(fire, GLASS_BREAK_IMPACT_MS);
+    },
+    [shouldReduce],
+  );
+
   // ── Audio: the viewer's own resolution ───────────────────────────
   const myLastAction = useMemo(
     () => lastActionFor(match?.actions, mySeat, (a) => a.action !== "flag"),
@@ -849,9 +925,15 @@ export default function LaneRushDuelMatchPage({ params }) {
     mySeenKeyRef.current = myActionKey;
     const a = myLastAction;
     if (!a) return;
-    if (a.action === "timeout" || a.outcome === "timed_out") playBuzz();
-    else if (a.outcome === "safe" || a.outcome === "won") playSafePick();
-    else if (a.outcome === "fell") playBuzz();
+    if (a.action === "timeout" || a.outcome === "timed_out") {
+      // A timeout breaks no tile — it keeps the buzz.
+      playBuzz();
+    } else if (a.outcome === "safe" || a.outcome === "won") {
+      playSafePick();
+    } else if (a.outcome === "fell") {
+      // You went through the glass.
+      playBreakAtImpact();
+    }
     // The jump is a visual echo of the SERVER's resolved action — it reads the
     // outcome from the history and never influences the game state.
     if (
@@ -867,7 +949,7 @@ export default function LaneRushDuelMatchPage({ params }) {
         tile: Number(a.tile),
       });
     }
-  }, [match, myActionKey, myLastAction, shouldReduce, mySeat, bridgeRows]);
+  }, [match, myActionKey, myLastAction, shouldReduce, mySeat, bridgeRows, playBreakAtImpact]);
 
   // ── Audio: the opponent's resolution ─────────────────────────────
   const oppLastResolved = useMemo(
@@ -896,7 +978,8 @@ export default function LaneRushDuelMatchPage({ params }) {
     oppSeenKeyRef.current = oppActionKey;
     const a = oppLastResolved;
     if (!a) return;
-    if (a.outcome === "fell" || a.outcome === "timed_out") playOpponentBust();
+    if (a.outcome === "timed_out") playOpponentBust();
+    else if (a.outcome === "fell") playBreakAtImpact(true);
     else if (a.outcome === "safe" || a.outcome === "won") playOpponentPick();
     if (
       !shouldReduce &&
@@ -911,7 +994,7 @@ export default function LaneRushDuelMatchPage({ params }) {
         tile: Number(a.tile),
       });
     }
-  }, [match, oppActionKey, oppLastResolved, shouldReduce, oppSeat, bridgeRows]);
+  }, [match, oppActionKey, oppLastResolved, shouldReduce, oppSeat, bridgeRows, playBreakAtImpact]);
 
   // ── Actions ──────────────────────────────────────────────────────
   const doAction = useCallback(
@@ -1170,6 +1253,37 @@ export default function LaneRushDuelMatchPage({ params }) {
   const iCrossed = myRow >= bridgeRows;
   const oppCrossed = oppRow >= bridgeRows;
 
+  // Glass is intact until it is struck. While a fall is in flight, the tile the
+  // token is falling through keeps its unbroken styling; the shattered state
+  // appears exactly as the impact animation lands (~0.5s), so the tile reads as
+  // breaking ON impact instead of already being broken when the jump starts.
+  //
+  // Only a FRESHLY broken tile is held back — a repeat visit to a tile that was
+  // already broken must keep showing it as broken. `prevBrokenRef` carries the
+  // broken set from the previous server snapshot, which is exactly the set as
+  // it stood before this jump.
+  const prevBrokenRef = useRef(brokenSet);
+  useEffect(() => {
+    prevBrokenRef.current = brokenSet;
+  }, [brokenSet]);
+
+  const [pendingBreakKey, setPendingBreakKey] = useState(null);
+  useEffect(() => {
+    const clear = () => setPendingBreakKey((cur) => (cur === null ? cur : null));
+    if (jumpAnim?.outcome !== "fell") {
+      clear();
+      return undefined;
+    }
+    const k = key(jumpAnim.fromRow, jumpAnim.tile);
+    if (prevBrokenRef.current?.has(k)) {
+      clear();
+      return undefined;
+    }
+    setPendingBreakKey(k);
+    const timer = setTimeout(() => setPendingBreakKey(null), 520);
+    return () => clearTimeout(timer);
+  }, [jumpAnim]);
+
   const board = (
     <motion.div
       initial={shouldReduce ? false : { opacity: 0, y: 18, scale: 0.98 }}
@@ -1214,11 +1328,13 @@ export default function LaneRushDuelMatchPage({ params }) {
           return (
             <div
               key={row}
+              data-lane-row={row}
+              data-goal={isGoal ? "true" : "false"}
               ref={(el) => {
                 if (el) rowRefs.current[row] = el;
                 else delete rowRefs.current[row];
               }}
-              className={`relative flex items-center gap-1.5 rounded-2xl px-1 py-1 transition ${
+              className={`relative flex items-center gap-1.5 rounded-none px-1 py-1 transition ${
                 isGoal
                   ? "bg-amber-400/[0.06]"
                   : activeRow
@@ -1241,10 +1357,10 @@ export default function LaneRushDuelMatchPage({ params }) {
                 {row + 1}
               </span>
 
-              <div className="flex flex-1 items-center gap-1.5">
+              <div className="flex flex-1 flex-wrap items-center justify-center gap-1.5">
                 {Array.from({ length: tileCount }, (_, tile) => {
                   const k = key(row, tile);
-                  const broken = brokenSet.has(k);
+                  const broken = brokenSet.has(k) && k !== pendingBreakKey;
                   const myFlag = myFlagSet.has(k);
                   const oppFlag = oppFlagSet.has(k);
                   const flaggableNow = flagMode && flaggableSet.has(k);
@@ -1270,12 +1386,16 @@ export default function LaneRushDuelMatchPage({ params }) {
                               ? `Row ${row + 1} tile ${tile + 1} — opponent flag`
                               : `Row ${row + 1} tile ${tile + 1}`
                       }
-                      className={`group relative h-11 flex-1 overflow-hidden rounded-xl border text-[11px] font-black backdrop-blur-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+                      className={`group relative h-12 w-12 shrink-0 overflow-hidden rounded-none border-2 text-[11px] font-black backdrop-blur-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:h-14 sm:w-14 ${
                         broken
-                          ? "border-rose-400/60 bg-rose-950/50 text-rose-200/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
-                          : myFlag || oppFlag
-                            ? "border-amber-300/30 bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
-                            : flaggableNow
+                          ? "border-rose-400/70 bg-rose-950/60 text-rose-200/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
+                          : myFlag && oppFlag
+                            ? "border-violet-300/80 bg-violet-400/15 text-white shadow-[0_0_16px_-4px_rgba(196,181,253,0.9)]"
+                            : myFlag
+                              ? "border-amber-300/80 bg-amber-400/20 text-white shadow-[0_0_16px_-4px_rgba(251,191,36,0.95)]"
+                              : oppFlag
+                                ? "border-rose-300/80 bg-rose-400/20 text-white shadow-[0_0_16px_-4px_rgba(251,113,133,0.95)]"
+                                : flaggableNow
                               ? "cursor-pointer border-amber-300/70 bg-amber-400/15 text-amber-100 shadow-[0_0_18px_-4px_rgba(251,191,36,0.7),inset_0_1px_0_rgba(255,255,255,0.4)]"
                               : actionable
                                 ? "cursor-pointer border-cyan-200/45 bg-white/10 text-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_22px_-16px_rgba(34,211,238,0.9)] hover:border-cyan-200/90 hover:bg-white/20 hover:shadow-[0_0_22px_-4px_rgba(34,211,238,0.7),inset_0_1px_0_rgba(255,255,255,0.5)]"
@@ -1288,37 +1408,63 @@ export default function LaneRushDuelMatchPage({ params }) {
                         className="pointer-events-none absolute -left-1/3 top-0 h-[200%] w-1/2 rotate-[16deg] bg-gradient-to-r from-white/0 via-white/25 to-white/0 opacity-60 transition-opacity group-hover:opacity-90"
                       />
                       {broken ? (
-                        <>
-                          <span
-                            aria-hidden
-                            className="pointer-events-none absolute inset-0"
-                          >
-                            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 rotate-[26deg] bg-rose-300/45" />
-                            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 -rotate-[20deg] bg-rose-300/35" />
-                          </span>
-                          <IconX size={14} className="relative mx-auto" />
-                        </>
+                        /* Shattered glass, permanently: a crack web radiating
+                           from the impact point plus translucent shards, so
+                           a dead tile reads as broken glass at a glance. */
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-0"
+                        >
+                          <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.20),transparent_62%)]" />
+                          {[-104, -62, -26, 14, 52, 86].map((deg, i) => (
+                            <span
+                              key={`broke-crack-${i}`}
+                              className="absolute left-1/2 top-1/2 h-px w-[125%] origin-left bg-white/55"
+                              style={{ transform: `translateY(-50%) rotate(${deg}deg)` }}
+                            />
+                          ))}
+                          <span className="absolute left-[16%] top-[20%] h-2 w-2 rotate-45 bg-white/25" />
+                          <span className="absolute bottom-[18%] right-[14%] h-2.5 w-1.5 -rotate-12 bg-white/20" />
+                          <span className="absolute bottom-[12%] left-[34%] h-1.5 w-1.5 rotate-12 bg-white/25" />
+                          <IconX
+                            size={16}
+                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-rose-200/90"
+                          />
+                        </span>
                       ) : (
                         <>
-                          {/* The tile number always stays readable… */}
-                          <span className="relative">{tile + 1}</span>
-                          {/* …with the flag as a small, subtle corner badge
-                              that never covers the tile. Public to both
-                              players (yours amber, theirs rose). */}
-                          {myFlag && (
+                          {/* The tile number stays readable, dimmed when a
+                              flag sits on the tile. */}
+                          <span
+                            className={`relative z-10 ${
+                              myFlag || oppFlag ? "opacity-45" : ""
+                            }`}
+                          >
+                            {tile + 1}
+                          </span>
+                          {/* Memory flags are a first-class board object, not
+                              a corner badge: a large glowing flag centred on
+                              the tile. Public to both players — yours amber,
+                              the opponent's rose, both violet. */}
+                          {(myFlag || oppFlag) && (
                             <span
                               aria-hidden
-                              className="pointer-events-none absolute right-0.5 top-0.5 text-amber-300/80"
+                              className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-0.5"
                             >
-                              <IconFlag size={9} />
-                            </span>
-                          )}
-                          {oppFlag && (
-                            <span
-                              aria-hidden
-                              className="pointer-events-none absolute left-0.5 top-0.5 text-rose-300/80"
-                            >
-                              <IconFlag size={9} />
+                              {oppFlag && (
+                                <IconFlag
+                                  size={18}
+                                  stroke={2.4}
+                                  className="text-rose-300 drop-shadow-[0_0_5px_rgba(251,113,133,0.95)]"
+                                />
+                              )}
+                              {myFlag && (
+                                <IconFlag
+                                  size={18}
+                                  stroke={2.4}
+                                  className="text-amber-300 drop-shadow-[0_0_5px_rgba(251,191,36,0.95)]"
+                                />
+                              )}
                             </span>
                           )}
                         </>

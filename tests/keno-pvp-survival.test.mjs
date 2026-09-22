@@ -460,6 +460,60 @@ test("the bot obeys the same clock and window as a human", () => {
   assert.ok(aiBody.includes("applyResolution(tx, match, {"));
 });
 
+test("the client keeps asking the server to run the bot while its tile is live", () => {
+  // The bot's claim is only written when the server is READ at/after the bot's
+  // own reaction time inside the live window (200–420ms in). The 5s backstop
+  // poll and the deadline nudge both land outside that window, so without a
+  // dedicated sweep the bot is never asked in time and every tile both-misses
+  // — the AI "does nothing".
+  // Slice out just the sweep effect (it sits directly above the socket
+  // listener), so the assertions can't be satisfied by an unrelated poll.
+  const sweepStart = page.indexOf("Free practice: let the bot actually take its turn");
+  assert.ok(sweepStart > 0, "the bot sweep effect is missing entirely");
+  const probeBody = page.slice(sweepStart, page.indexOf("// Socket live-update"));
+  assert.ok(
+    probeBody.includes("AI_TURN_PROBE_OFFSETS_MS.map(") &&
+      probeBody.includes("setTimeout(probe, offset)"),
+    "the page must schedule its asks for the bot",
+  );
+  assert.ok(
+    probeBody.includes("/ai-turn"),
+    "the sweep drives the bot through the ai-turn route",
+  );
+  assert.ok(
+    probeBody.includes("Number(json.data?.actions) > 0") &&
+      probeBody.includes("fetchStatus()"),
+    "a bot tap repaints the board",
+  );
+  // Scoped: free AI matches only, only while a live tile is on the board, and
+  // only for the human seat — a human duel keeps its single 5s poll.
+  assert.ok(
+    probeBody.includes("!match?.isAi || !match?.viewerIsPlayer1"),
+    "only the human seat of a free AI match sweeps",
+  );
+  assert.ok(
+    probeBody.includes("!match?.viewerCanClaim"),
+    "the sweep only runs while a live tile is claimable",
+  );
+  // The burst has to span the bot's whole reaction band — 200ms floor, 420ms
+  // ceiling (AI_MIN_REACTION_MS + AI_REACTION_JITTER_MS) — or a probe can step
+  // over the window and the bot never gets its turn.
+  const offsets = (page.match(/AI_TURN_PROBE_OFFSETS_MS = \[([^\]]+)\]/) || [])[1];
+  const probeOffsets = (offsets || "")
+    .split(",")
+    .map((n) => Number(n.trim()))
+    .filter((n) => Number.isFinite(n));
+  assert.ok(probeOffsets.length >= 3, "the burst must have several probes");
+  assert.ok(
+    Math.max(...probeOffsets) >= 420,
+    "the last probe must land after the bot's slowest possible reaction",
+  );
+  assert.ok(
+    Math.min(...probeOffsets) <= 200,
+    "the first waited probe must land inside the bot's fastest reaction band",
+  );
+});
+
 test("settlement clears the live tile and pays the winner", () => {
   const settleBody = store.slice(
     store.indexOf("async function settleMatch("),

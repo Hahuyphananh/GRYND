@@ -1,5 +1,21 @@
 export const APP_TEXT_TRANSLATIONS = {
   en: {
+    states: {
+      emptyTitle: "Nothing here yet",
+      emptyDescription: "Once you start playing, your activity will show up here.",
+      errorTitle: "We couldn't load this",
+      errorDescription: "Something went wrong on our end. Check your connection and try again.",
+      retry: "Try again",
+      backHome: "Back to home",
+      offlineTitle: "You're offline",
+      offlineDescription: "We can't reach the server right now. We'll retry automatically as soon as you're back online.",
+      offlineCached: "Showing saved data from {when}. We'll refresh it the moment you're back online.",
+      retryNow: "Retry now",
+      retrying: "Retrying…",
+      showingSaved: "Showing saved data",
+      bannerOffline: "You're offline — showing saved data",
+      backOnline: "Back online — refreshing",
+    },
     stickyCta: {
       play: "Play now",
       claim: "Claim Free Tokens",
@@ -1772,6 +1788,22 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   fr: {
+    states: {
+      emptyTitle: "Rien à afficher pour le moment",
+      emptyDescription: "Dès que vous commencerez à jouer, votre activité apparaîtra ici.",
+      errorTitle: "Impossible de charger cette page",
+      errorDescription: "Une erreur s'est produite de notre côté. Vérifiez votre connexion et réessayez.",
+      retry: "Réessayer",
+      backHome: "Retour à l'accueil",
+      offlineTitle: "Vous êtes hors ligne",
+      offlineDescription: "Impossible de joindre le serveur. Nous réessaierons automatiquement dès que la connexion reviendra.",
+      offlineCached: "Données enregistrées de {when}. Nous les actualiserons dès votre retour en ligne.",
+      retryNow: "Réessayer",
+      retrying: "Nouvelle tentative…",
+      showingSaved: "Données enregistrées",
+      bannerOffline: "Hors ligne — données enregistrées",
+      backOnline: "De nouveau en ligne — actualisation",
+    },
     stickyCta: {
       play: "Jouer maintenant",
       claim: "Réclame des jetons gratuits",
@@ -3167,6 +3199,22 @@ export const APP_TEXT_TRANSLATIONS = {
     },
   },
   es: {
+    states: {
+      emptyTitle: "Aún no hay nada aquí",
+      emptyDescription: "Cuando empieces a jugar, tu actividad aparecerá aquí.",
+      errorTitle: "No pudimos cargar esto",
+      errorDescription: "Algo falló de nuestro lado. Revisa tu conexión e inténtalo de nuevo.",
+      retry: "Reintentar",
+      backHome: "Volver al inicio",
+      offlineTitle: "Estás sin conexión",
+      offlineDescription: "No podemos contactar con el servidor. Reintentaremos automáticamente cuando vuelvas a estar en línea.",
+      offlineCached: "Mostrando datos guardados de {when}. Los actualizaremos en cuanto vuelvas a estar en línea.",
+      retryNow: "Reintentar ahora",
+      retrying: "Reintentando…",
+      showingSaved: "Mostrando datos guardados",
+      bannerOffline: "Sin conexión — datos guardados",
+      backOnline: "De nuevo en línea — actualizando",
+    },
     stickyCta: {
       play: "Jugar ahora",
       claim: "Reclama fichas gratis",

@@ -6,6 +6,8 @@ import { ThemeProvider } from "../context/ThemeContext";
 import { SocketProvider } from "../context/SocketProvider";
 import PresenceHeartbeat from "../components/PresenceHeartbeat";
 import RouteTransition from "../components/RouteTransition";
+import { SWRProvider } from "../components/SWRProvider";
+import OfflineBanner from "../components/states/OfflineBanner";
 import { PostHogProvider } from "../components/PostHogProvider";
 import { PostHogIdentify } from "../components/PostHogIdentify";
 import { FunnelTracker } from "../components/FunnelTracker";
@@ -25,8 +27,16 @@ function AppProviders({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <LanguageProvider>
         <SocketProvider>
-          <PresenceHeartbeat />
-          <RouteTransition>{children}</RouteTransition>
+          {/* Global data layer: cache-first fetching with background
+              revalidation, a persistent cache, and automatic revalidation
+              when the device comes back online. */}
+          <SWRProvider>
+            <PresenceHeartbeat />
+            {/* One connectivity notice for the whole app — every screen
+                inherits the offline/online signal from here. */}
+            <OfflineBanner />
+            <RouteTransition>{children}</RouteTransition>
+          </SWRProvider>
         </SocketProvider>
       </LanguageProvider>
     </ThemeProvider>

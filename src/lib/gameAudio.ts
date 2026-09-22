@@ -91,6 +91,72 @@ export function playCrash() {
   setTimeout(() => playTone(55, 0.7, "square", 0.06), 160);
 }
 
+/**
+ * A pane of glass giving way.
+ *
+ * Synthesised rather than sampled (this module ships no audio files): a
+ * filtered noise burst for the crack, then a scatter of detuned high partials
+ * that glide down as each shard loses energy, over a soft low knock so the hit
+ * lands with weight. The partials are randomised per call, so a match full of
+ * breaks never sounds like the same sample on loop.
+ *
+ * `volume` scales the whole gesture — the opponent's break is mixed quieter so
+ * a rival's board event can't be mistaken for your own.
+ */
+export function playGlassBreak(volume = 1) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const out = getSharedOutputNode() || ctx.destination;
+  const now = ctx.currentTime;
+
+  // 1. The crack — a burst of noise, bright and gone in a fifth of a second.
+  const length = Math.floor(ctx.sampleRate * 0.28);
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) {
+    // Shaped noise: full at impact, decaying fast (the glass gives once).
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.2);
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const highpass = ctx.createBiquadFilter();
+  highpass.type = "highpass";
+  highpass.frequency.value = 1400;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.22 * volume, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+  noise.connect(highpass).connect(noiseGain).connect(out);
+  noise.start(now);
+  noise.stop(now + 0.3);
+
+  // 2. The shards — five ringing partials, each slightly detuned and dropped
+  //    in a fraction later than the last, tumbling away from the impact.
+  const partials = [1860, 2480, 3120, 3970, 4620];
+  partials.forEach((base, i) => {
+    const freq = base * (0.94 + Math.random() * 0.12);
+    const start = now + i * 0.022 + Math.random() * 0.02;
+    const duration = 0.16 + Math.random() * 0.22;
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, start);
+    // A small downward glide reads as a shard losing its ring.
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.82, start + duration);
+    oscGain.gain.setValueAtTime(0.0001, start);
+    oscGain.gain.exponentialRampToValueAtTime(
+      Math.max(0.008, (0.05 - i * 0.006) * volume),
+      start + 0.008,
+    );
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(oscGain).connect(out);
+    osc.start(start);
+    osc.stop(start + duration + 0.05);
+  });
+
+  // 3. Body — a soft low knock so the impact has weight under the splinters.
+  playTone(150, 0.16, "triangle", 0.05 * volume);
+}
+
 /** Play a short low "bad reveal" buzz (mine hit, bad peek) */
 export function playBuzz() {
   playTone(180, 0.18, "square", 0.06);

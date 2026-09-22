@@ -30,6 +30,7 @@ const page = read("src/app/casino/lane-runner/[matchId]/PageClient.jsx");
 const store = read("src/lib/lane-rush-duel/serverStore.js");
 const actRoute = read("src/app/api/lane-rush-duel/match/[matchId]/act/route.js");
 const matchRoute = read("src/app/api/lane-rush-duel/match/[matchId]/route.js");
+const audio = read("src/lib/gameAudio.ts");
 const constants = read("src/lib/lane-rush-duel/constants.js");
 const aiRoute = read("src/app/api/lane-rush-duel/match/[matchId]/ai-turn/route.js");
 
@@ -66,7 +67,7 @@ test("the jump animation is presentation-only and server-driven", () => {
   assert.ok(page.includes("!shouldReduce"));
 });
 
-test("the memory-flag UI is subtle, public and gated to personal landings", () => {
+test("the memory-flag UI is prominent, public and gated to personal landings", () => {
   // The remaining budget is shown in the HUD…
   assert.ok(
     page.includes('data-testid="lane-runner-flags-left"'),
@@ -91,18 +92,87 @@ test("the memory-flag UI is subtle, public and gated to personal landings", () =
     page.includes("if (!flaggableSet.has(k)) return;"),
     "flag mode refuses any tile this seat never landed on",
   );
-  // The flag is a small corner badge; the tile number stays readable.
-  assert.ok(page.includes("<span className=\"relative\">{tile + 1}</span>"));
+  // The flag is a first-class board object, not a corner badge: a large,
+  // glowing flag centred on the tile so it can actually be seen on the board.
   assert.ok(
-    page.includes("absolute right-0.5 top-0.5 text-amber-300/80") &&
-      page.includes("absolute left-0.5 top-0.5 text-rose-300/80"),
-    "both seats' flags are drawn in a corner badge",
+    page.includes(
+      "pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-0.5",
+    ),
+    "the flag is centred on the tile",
+  );
+  assert.ok(
+    page.includes("text-rose-300 drop-shadow-[0_0_5px_rgba(251,113,133,0.95)]") &&
+      page.includes("text-amber-300 drop-shadow-[0_0_5px_rgba(251,191,36,0.95)]"),
+    "both seats' flags are drawn large and glowing",
+  );
+  assert.ok(
+    page.includes('myFlag || oppFlag ? "opacity-45" : ""'),
+    "the tile number stays readable, dimmed under a flag",
   );
   // The server stays authoritative — the client only asks.
   assert.ok(
     page.includes('doAction("flag"'),
     "placing a flag is a server action, not local state",
   );
+});
+
+test("bridge tiles are square glass panels with sharp edges", () => {
+  assert.ok(
+    page.includes("h-12 w-12 shrink-0 overflow-hidden rounded-none border-2"),
+    "every tile is a square, sharp-edged panel",
+  );
+  assert.ok(page.includes("sm:h-14 sm:w-14"), "…that scales up on desktop");
+  assert.ok(
+    !page.includes("h-11 flex-1 overflow-hidden rounded-xl"),
+    "the old rounded, stretched tile is gone",
+  );
+  assert.ok(
+    !page.includes("flex flex-1 items-center gap-1.5"),
+    "tiles are no longer stretched to fill the row",
+  );
+});
+
+test("a breaking tile cracks like glass, on the beat of the impact", () => {
+  assert.ok(page.includes("playGlassBreak"), "the glass-break cue is wired in");
+  assert.ok(page.includes("playBreakAtImpact()"), "your own fall plays it");
+  assert.ok(
+    page.includes("playBreakAtImpact(true)"),
+    "the opponent's fall plays it too, mixed down",
+  );
+  // Scheduled to the impact, never fired on the state change.
+  assert.ok(
+    page.includes("setTimeout(fire, GLASS_BREAK_IMPACT_MS)"),
+    "the crack is delayed to the moment the glass gives way",
+  );
+  // A timeout breaks no tile, so it must keep the plain buzz.
+  assert.ok(
+    page.includes("A timeout breaks no tile"),
+    "a timeout is not a glass break",
+  );
+  // The cue is synthesised (this module ships no audio files): a filtered
+  // noise crack plus ringing partials, randomised so repeats never loop.
+  assert.ok(
+    audio.includes("export function playGlassBreak("),
+    "playGlassBreak exists in the shared audio module",
+  );
+  assert.ok(
+    audio.includes('highpass') && audio.includes("partials"),
+    "it is a noise crack over scattered shard partials",
+  );
+});
+
+test("the glass breaks on impact, not when the fall starts", () => {
+  assert.ok(page.includes("function GlassBreak("), "a dedicated break effect exists");
+  assert.ok(
+    page.includes("<GlassBreak tileRect={tileRect} delay={0.5} />"),
+    "the shatter is delayed to the moment the token lands",
+  );
+  assert.ok(
+    page.includes("pendingBreakKey"),
+    "a freshly broken tile only flips to shattered as the impact lands",
+  );
+  // The failed tile also keeps a permanent shattered look.
+  assert.ok(page.includes("bg-white/55"), "the static crack web is drawn");
 });
 
 test("the bridge renders top-first, so the summit is row 10 — never row 1", () => {

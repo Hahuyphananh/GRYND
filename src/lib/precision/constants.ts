@@ -119,6 +119,28 @@ export const PLAYER_STOP_INPUT_DEFAULT_MS = 5_000;
 export const MIN_STOP_MS = 50;
 export const MAX_STOP_MS = 60_000;
 
+// ── Crediting the player's own STOP instant ──────────────────────────────
+//
+// The player's click is measured on the server's clock (the display clock is
+// aligned to the server's GO instant — see `roundClock.ts`), but the packet
+// still has to travel: browser → realtime server → the round-stop route. The
+// route stamps `Date.now()` when the request lands, so on its own the recorded
+// stop is the CLICK plus that whole delivery lag. In a game whose MISS tier
+// starts at 100ms, that grades an honest, dead-on click as a miss — the round
+// looks like it was never stopped.
+//
+// So the client also reports the elapsed it froze at (its own server-clock
+// measurement) and the server credits it back: never LATER than the server's
+// own measurement, and never more than this much EARLIER than it. The
+// allowance is deliberately small — it exists to cancel transport lag, not to
+// launder a bad stop. A multi-second delay (a dead socket falling back to
+// HTTPS) is indistinguishable from a fabricated instant, so a stop that far
+// out keeps the server's own measurement.
+//
+// Tunable, but treat it as a fairness/integrity dial: it is the most a client
+// can gain by lying about its click.
+export const STOP_CLIENT_SLACK_MS = 400;
+
 // ── Anomaly-detection thresholds ─────────────────────────────────────────
 //
 // All four numbers below define the soft signal that fires `console.warn`

@@ -567,6 +567,66 @@ check(
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
+// AI MATCH — the bot must actually take its turn
+// ═══════════════════════════════════════════════════════════════════════════
+// The bot's claims are graded SERVER-side inside the live tile's window, so
+// the client has to keep asking while that window is open. This phase proves
+// the page drives that without the human touching anything — the regression
+// where the AI sat still for a whole match.
+{
+  const { context: actx, page: apage, pageErrors: aErr } = await bootPage({
+    width: 1200,
+    height: 900,
+  });
+  await apage.evaluate(() => {
+    window.__ks.setAi(1);
+    window.__ks.mount();
+  });
+  await apage.waitForFunction(
+    () => (window.__ks.posts || []).some((p) => p.url.includes("/ai-turn")),
+    null,
+    { timeout: 8000 },
+  );
+  check("a free AI match asks the server to run the bot's turn", true);
+
+  await apage.waitForFunction(
+    () =>
+      document.querySelector('button[aria-label*="claimed by your opponent"]') !==
+      null,
+    null,
+    { timeout: 8000 },
+  );
+  const humanTaps = await apage.evaluate(
+    () =>
+      (window.__ks.posts || []).filter((p) => p.url.includes("/catch")).length,
+  );
+  check(
+    "…and the bot's claim is painted without the human tapping anything",
+    humanTaps === 0,
+    `humanTaps=${humanTaps}`,
+  );
+
+  // The bot is still subject to the rules: its claim costs the human a life.
+  const livesLabels = await apage.evaluate(() =>
+    [...document.querySelectorAll('[aria-label$="lives left"]')].map((el) =>
+      el.getAttribute("aria-label"),
+    ),
+  );
+  check(
+    "…and it costs the human a life like any other claim",
+    livesLabels.includes("2 of 3 lives left") &&
+      livesLabels.includes("3 of 3 lives left"),
+    JSON.stringify(livesLabels),
+  );
+  check(
+    "the AI phase raises no runtime errors",
+    aErr.length === 0,
+    JSON.stringify(aErr.slice(0, 3)),
+  );
+  await apage.screenshot({ path: join(REPORTS, "keno-survival-ai-turn.png") });
+  await actx.close();
+}
+
 // PORTRAIT (creator frame, real shell) + reduced motion
 // ═══════════════════════════════════════════════════════════════════════════
 {
