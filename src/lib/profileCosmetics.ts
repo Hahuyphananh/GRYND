@@ -63,6 +63,18 @@ export type FrameRing = {
   style: { boxShadow: string } | undefined;
 };
 
+/**
+ * Render className for a NON-frame cosmetic effect (avatar effect, username
+ * shimmer, chat shimmer, profile glow, prestige effect). These are pure CSS
+ * classes shipped in globals.css, keyed by the catalog `cssClass`; anything
+ * unknown or malformed renders nothing. Returns null when there is no usable
+ * class so callers can omit the prop entirely.
+ */
+export function cosmeticEffectClass(visual: unknown): string | null {
+  const { cssClass } = normalizeCosmeticVisual(visual);
+  return cssClass || null;
+}
+
 export function cosmeticFrameRing(visual: unknown): FrameRing {
   const { cssClass, color } = normalizeCosmeticVisual(visual);
   return {

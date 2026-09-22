@@ -3185,12 +3185,38 @@ export const laneRushDuelMatches = pgTable(
     // elapsed before the player acted (persisted for history).
     p1AutoPicked: boolean("p1_auto_picked").notNull().default(false),
     p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
+    // ── SHARED GLASS BRIDGE (the redesigned game) ─────────────────
+    // ONE bridge per match, shared by both seats: 10 rows, exactly one
+    // bad tile per row. SERVER-SIDE layout
+    // ({ rows, tiles, difficulty, badTiles, commitment }) — clients only
+    // ever receive bridgeClientView(bridge, { broken }) + the public
+    // flags, never this object.
+    bridge: jsonb("bridge")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Rows crossed per seat: 0 = standing at the start, 10 = crossed
+    // the whole bridge (that seat wins).
+    p1Row: integer("p1_row").notNull().default(0),
+    p2Row: integer("p2_row").notNull().default(0),
+    // Bad tiles already stepped on: [{row,tile}, …] — public knowledge and
+    // broken for the rest of the match.
+    broken: jsonb("broken")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // Memory flags per seat: [{row,tile}, …] — visible to both players.
+    p1Flags: jsonb("p1_flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    p2Flags: jsonb("p2_flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Chronological action history: [{ userId, seat, action:
-    // "pick"|"hold", tile, safe, lane, multiplier, autoPicked, at }]
+    // "jump"|"flag", row, tile, outcome, autoPicked, at }]
     actions: jsonb("actions")
       .notNull()
       .default(sql`'[]'::jsonb`),
-    // Pick-window deadline (20s per turn).
+    // Tile-choice deadline (15s per choice; the timer resets after every
+    // successful jump).
     roundDeadline: timestamp("round_deadline"),
     roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     // Final match bookkeeping.

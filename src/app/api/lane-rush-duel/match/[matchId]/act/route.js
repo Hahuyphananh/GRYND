@@ -1,18 +1,20 @@
 // src/app/api/lane-rush-duel/match/[matchId]/act/route.js
 //
-// POST — perform a row action: pick a tile (`action: "pick"` with
-// `tileIndex`), flag a tile (`action: "flag"`), peek (`action:
-// "peek"`) or bank your run (`action: "hold"`). The server store
-// validates the action inside one row-locked transaction and applies
-// it through the single authoritative transition.
+// POST — a player action on the shared bridge:
+//   * TILE SELECTION — `action: "jump"` (or the legacy alias `"pick"`) with the
+//     `row` the player is standing on and the `tile` they chose; or
+//   * MEMORY FLAG — `action: "flag"` with the `row`/`tile` of a tile THIS player
+//     personally landed on safely (max 2 per match, public, append-only, and it
+//     never consumes the turn).
+// The server store validates the action inside one row-locked transaction and
+// applies it through the single authoritative transition.
 //
 // The client stamps every action with:
 //   * `actionId` — a unique id, so a retried POST is an idempotent
-//     no-op instead of a second resolution (double points / double
-//     bust) — and
-//   * `round` — the lane the click was rendered against, so a stale
-//     click is rejected instead of resolving on a row the player
-//     never saw.
+//     no-op instead of a second resolution (double advance / double
+//     fall) — and
+//   * `row` — the row the click was rendered against, so a stale click
+//     is rejected instead of resolving on a row the player never saw.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
@@ -44,25 +46,31 @@ export async function POST(req, { params }) {
   }
 
   const action = String(body?.action || "");
-  const path = String(body?.path || "");
-  const tileIndex = body?.tileIndex;
+  // TILE SELECTION (`jump`) sends the `row` the player is standing on plus the
+  // `tile` they chose; a MEMORY FLAG (`flag`) sends the row/tile to flag.
+  const row = body?.row ?? null;
+  const tile = body?.tile ?? null;
   const actionId = body?.actionId ?? null;
-  const round = body?.round ?? null;
 
   try {
-    const result = await act({
-      userId,
-      matchId,
-      action,
-      path,
-      tileIndex,
-      actionId,
-      round,
-    });
+    const result = await act({ userId, matchId, action, row, tile, actionId });
 
     if (result.error) {
+      // A tile that arrived after its 15s window still MOVED the match (the
+      // attempt ended and the turn switched), so push it — otherwise the
+      // opponent's board would wait for its next poll to see the timeout.
+      if (result.timedOut) {
+        broadcastMatchUpdate(matchId, {
+          status: result.matchStatus,
+          action: "timeout",
+        });
+      }
       return NextResponse.json(
-        { success: false, error: result.error },
+        {
+          success: false,
+          error: result.error,
+          timedOut: result.timedOut === true,
+        },
         { status: result.status || 400 },
       );
     }
@@ -82,11 +90,26 @@ export async function POST(req, { params }) {
       });
     }
 
-    // Best-effort live push to the per-match room so the opponent's
-    // status poll fires inside ~50ms instead of waiting 1.5s.
+    // Best-effort live push to the per-match room so BOTH seats' status poll
+    // fires inside ~50ms instead of waiting for the 5s safety net.
+    //
+    // BROKEN-TILE UPDATE: a tile that was just stepped on stays broken for the
+    // rest of the match and is public from that moment, so the exact tile rides
+    // this existing event (null on a safe choice). The payload carries only
+    // public information — the one tile that broke plus the public broken list —
+    // never the bridge layout, and a safe tile is never revealed.
     broadcastMatchUpdate(matchId, {
       status: result.status,
       action,
+      brokeTile: result.newlyBroken ? result.brokeTile : null,
+      broken: Array.isArray(result.broken) ? result.broken : undefined,
+      // MEMORY FLAGS are PUBLIC: a newly placed flag (null when this action was
+      // a tile choice) plus both seats' full flag lists, so both players see it
+      // immediately. Flags only ever mark a tile that seat landed on safely, so
+      // nothing hidden is revealed by them.
+      flagPlaced: result.flagPlaced ?? null,
+      p1Flags: Array.isArray(result.p1Flags) ? result.p1Flags : undefined,
+      p2Flags: Array.isArray(result.p2Flags) ? result.p2Flags : undefined,
     });
 
     return NextResponse.json({

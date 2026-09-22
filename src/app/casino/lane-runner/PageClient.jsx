@@ -34,7 +34,6 @@ import {
 } from "../../../lib/lane-rush-duel/rooms";
 import {
   DIFFICULTIES,
-  DIFFICULTY_POINT_MULT,
   STAKE_PRESETS,
 } from "../../../lib/lane-rush-duel/constants";
 import { IconShieldCheck } from "@tabler/icons-react";
@@ -186,8 +185,8 @@ export default function LaneRushDuelLobbyPage() {
   );
 
   // Test vs Bot — zero-stake practice match against the server-side
-  // bot. Same rules, no money: the bot climbs with the same bust odds
-  // as a human and banks when its points meet its risk target.
+  // bot. Same rules, no money: the bot crosses the same shared bridge,
+  // avoiding tiles it has watched break (and spending its flags on hard).
   const createBotMatch = useCallback(
     async (chosenDifficulty) => {
       setBusy(true);
@@ -312,16 +311,16 @@ export default function LaneRushDuelLobbyPage() {
       title="Lane Rush Duel"
       subtitle={
         <>
-          You and your opponent race the <b>same tower</b> — one
-          provably-fair layout. Picks reveal together, so every safe
-          pick either of you makes narrows the odds for both. On your
-          turn          pick a tile (<b className="text-emerald-300">safe</b>{" "}
-          earns points, <b className="text-rose-300">bad</b> busts you) or{" "}
-          <b className="text-amber-300">BANK</b> to lock your points —
-          you keep climbing, but every pick after a bank pays half. Two{" "}
-          private <b>peeks</b> per match can turn a coin flip into a sure
-          climb. <b>First to bank 1,000 points wins</b> — bust, and only
-          what you banked survives. 1.9× your stake, house takes 0.1×.
+          You and your opponent cross the <b>same glass bridge</b> — one
+          provably-fair layout, <b>10 rows with exactly one bad tile
+          each</b>. On your turn pick a tile on your row: a{" "}
+          <b className="text-emerald-300">safe</b> tile carries you on and
+          you pick again, a <b className="text-rose-300">bad</b> one breaks
+          that tile for good and sends you back to row 1. Mark tiles you
+          have landed on with <b className="text-amber-300">memory flags</b>{" "}
+          (2 each, both players see them). You get 15 seconds per choice.{" "}
+          <b>First across row 10 wins</b> — 1.9× your stake, house takes
+          0.1×.
         </>
       }
       icon={
@@ -332,55 +331,50 @@ export default function LaneRushDuelLobbyPage() {
         title: "How to Play",
         sections: [
           {
-            heading: "Race the same tower",
+            heading: "Cross the same bridge",
             body: (
               <>
-                You and your opponent race the <b>same tower</b> — one
-                provably-fair layout, same difficulty. Every safe pick
-                either of you makes shows up on both boards and
-                eliminates a bad-tile candidate.
+                Both players cross the <b>same bridge</b> — one
+                provably-fair layout, same difficulty. It has{" "}
+                <b>10 rows</b> and <b>exactly one bad tile per row</b>.
+                Whoever crosses row 10 first wins.
               </>
             ),
           },
           {
-            heading: "Climb or bank",
+            heading: "Pick your tile",
             body: (
               <>
-                On your turn pick a tile in your current lane.{" "}
-                <b className="text-emerald-300">safe</b> earns points,{" "}
-                <b className="text-rose-300">bad</b> busts you, or{" "}
-                <b className="text-amber-300">BANK</b> to lock your
-                points as your banked score — the game continues, but
-                every pick after a bank pays half (stacking lower with
-                each extra bank), and only banked points survive a bust.
-                Your pick stays hidden until your opponent answers the
-                same level — both reveal together, so nobody can copy.
+                On your turn you pick a tile on the row you are standing
+                on, with <b>15 seconds</b> to decide. A{" "}
+                <b className="text-emerald-300">safe</b> tile carries you
+                one row further and it stays your turn — you pick again
+                with a fresh 15 seconds. A{" "}
+                <b className="text-rose-300">bad</b> tile ends your
+                attempt: it <b>stays broken</b> for the rest of the match
+                and you start again from row 1. Let the clock run out and
+                your attempt ends the same way.
               </>
             ),
           },
           {
-            heading: "Peek or flag",
+            heading: "Remember with flags",
             body: (
               <>
-                Each match gives you <b>2 private peeks</b> (learn if a
-                tile in your current lane is safe or bad before you pick
-                — without spending your turn) and <b>2 flags</b> (call
-                the bad tile: correct claims the row, wrong busts you).
-                Both budgets are scarce, so spending them at the right
-                moment is the skill.
+                Each match gives you <b>2 memory flags</b>. You can flag
+                only a tile you <b>personally landed on safely</b>, and
+                flags are <b>public</b> — both players see them. A flag
+                can never be moved or removed. Placing one costs you
+                nothing and never ends your turn.
               </>
             ),
-          },            {
-              heading: "Win the pot",
-              body: (
-                <>
-                  The match is a race: the <b>first player to bank
-                  1,000 points wins</b>. Banking locks your score and
-                  never ends your climb — you keep playing at a reduced
-                  rate, and the race continues until someone banks 1,000
-                  (or completes the tower). Bust before banking 1,000 and
-                  you lose everything you hadn&apos;t banked. 1.9× your
-                stake, house takes 0.1×.
+          },
+          {
+            heading: "Win the pot",
+            body: (
+              <>
+                The first player to <b>cross row 10 wins</b> the match
+                instantly. 1.9× your stake, house takes 0.1×.
               </>
             ),
           },
@@ -388,7 +382,7 @@ export default function LaneRushDuelLobbyPage() {
             heading: "Provably fair",
             body: (
               <>
-                Every lane hides one bad tile. The tower derives from
+                Every row hides one bad tile. The bridge derives from
                 one shared server seed (hash shown before the match) +
                 the host&apos;s client seed, both revealed after.
               </>
@@ -498,13 +492,8 @@ export default function LaneRushDuelLobbyPage() {
               ))}
             </div>
             <p className="mt-1 text-[9px] leading-tight text-white/40">
-              {DIFFICULTIES[difficulty]?.width} tiles per lane · full
-              climb ={" "}
-              {(
-                2400 *
-                (DIFFICULTY_POINT_MULT[difficulty] ?? 1)
-              ).toLocaleString()}{" "}
-              pts. Joiners inherit.
+              {DIFFICULTIES[difficulty]?.width} tiles per row · 10 rows,
+              one bad tile each · 2 memory flags each. Joiners inherit.
             </p>
           </div>
         </div>
@@ -517,14 +506,15 @@ export default function LaneRushDuelLobbyPage() {
             Skill duel.
           </p>
           <p>
-            Every lane hides one bad tile. Each lane you pick your{" "}
-            <b>odds</b> (Safe / Balanced / Risky paths), choose when to
-            risk another climb or bank your points, and track the{" "}
-            bad-tile pattern to call it for a win. Once you HOLD, your
-            opponent must climb past you or bust trying. Towers are{" "}
-            <b>provably fair</b>: both derive from one shared server
-            seed (hash shown before the match) + each player's own
-            client seed, revealed after.
+            You and your rival cross the {" "}
+            <b>same 10-row bridge</b>, one bad tile hidden in every
+            row. A safe tile keeps your turn; a bad tile breaks for
+            good and sends you back to Row 1. Spend your two{" "}
+            <b>memory flags</b> to remember the tiles you survived.
+            First to cross row 10 wins. The bridge is{" "}
+            <b>provably fair</b>: both players derive it from one
+            shared server seed (hash shown before the match) + the
+            match's client seed, revealed after.
           </p>
         </div>
       }

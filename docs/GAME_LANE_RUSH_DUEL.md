@@ -1,24 +1,25 @@
 # Lane Rush Duel — Game Guide
 
-Lane Rush Duel is a **high-risk climbing race** on a shared, provably-fair tower. Both players climb their own lane of the same tower, alternating turns: pick safe tiles to gain points, bank your score to protect it, flag the hidden bad tile, and be the **first to bank 1,000 points** to win.
+Lane Rush Duel is a **memory-deduction race** across one shared, provably-fair glass bridge. Both players cross the **same 10 rows**, alternating turns: each row hides exactly one bad tile, a safe step keeps your turn, and the **first player to cross row 10 wins**.
 
 ## How a match works
 
-1. **Matchmaking** — pick a stake (free AI practice is token-free). A shared tower is generated provably-fair from a server seed; both players see the same difficulty and the same lanes.
-2. **Alternating turns** — picks are **deferred**: they park as pending and only reveal once both players have acted on the row, so neither player can mirror the other's pick.
+1. **Matchmaking** — pick a stake (free AI practice is token-free). ONE bridge is generated provably-fair from a shared server seed, the host's client seed and the match id; both players see the same difficulty and the exact same rows.
+2. **Alternating turns** — only the player whose turn is live may choose, and only on the row they are standing on. The server owns the turn: a stale click or a replay can never resolve twice.
 3. **On your turn, choose one of:**
 
-   - **PICK a tile** in your current lane — safe advances your lane (your score grows); the **bad tile** busts you (instant loss of everything unbanked).
-   - **FLAG** — call the bad tile (limited budget per match). A correct flag claims the row (advance + points, play continues) and reveals the bad tile to both players; a wrong flag busts you.
-   - **HOLD (BANK)** — lock your accumulated points as your **safe score** and keep climbing. Banking never ends the climb, but each pick after your Nth bank earns **points × 0.5^N** (first bank → 50%, halving each extra bank). Only banked points are safe — busting costs you everything unbanked.
-   - **PEEK** — spend one of a limited number of peeks (before your pick/flag/bank) to privately learn whether a chosen tile is safe or the bad tile. The opponent only sees that you peeked, not which tile or the answer.
+   - **PICK a tile** on your current row — a **safe** tile advances you one row and you **keep the turn** (choose again immediately); the row's single **bad tile** breaks for the rest of the match, ends your attempt and sends you **back to Row 1**, handing the turn to your opponent.
+   - **FLAG** — mark a tile you **personally landed on safely**, so you can remember it (2 flags per match, public to both players, append-only, never consumes your turn). Flags never assert safety the server has not already witnessed.
 
 ## Win conditions
 
-- **First to 1,000 banked points** wins instantly — it's a race to lock 1,000, not to out-score the opponent.
-- **Bust** — your climb ends; you keep only your banked total. The survivor keeps climbing alone.
-- **Complete all lanes** — the completer wins outright.
-- **Fallback** — if both climbs end before 1,000 banked, the higher final score (banked total for a busted player) takes the pot; equal finals is a draw (full refund).
+- **First across row 10** wins immediately.
+- **A fall never ends the match** — it only breaks a tile, resets that player to Row 1 and passes the turn.
+- **Resignation** — the resigner forfeits and the opponent wins.
+
+## Timer
+
+- Every tile choice has a **15-second** window. A safe step resets it; a fall starts your opponent's fresh window. The server clock is authoritative, and letting the window expire ends your attempt exactly like a fall (without breaking a tile).
 
 ## Payout
 
@@ -30,7 +31,8 @@ Lane Rush Duel is a **high-risk climbing race** on a shared, provably-fair tower
 
 | Constant | Value |
 | --- | --- |
-| Win target | 1,000 banked points |
-| Flag budget | Limited per match (prevents free wins) |
-| Peek budget | Limited per match |
-| Bank decay | × 0.5 per extra bank |
+| Bridge rows | 10 |
+| Bad tiles per row | Exactly 1 |
+| Tiles per row | Difficulty-based (easy 4 / medium 3 / hard 2) |
+| Choice window | 15 seconds |
+| Memory flags per player | 2 |

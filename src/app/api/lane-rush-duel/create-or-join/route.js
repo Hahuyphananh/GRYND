@@ -5,7 +5,7 @@
 //   2. If found → join it (deduct stake, transition to `ready` with
 //      a 3-second banner, server rolls the first-player turn order).
 //   3. Otherwise → create a fresh waiting match (deduct stake, lock
-//      in the host's difficulty + provably-fair tower).
+//      in the host's difficulty + provably-fair shared bridge).
 //
 // `difficulty` is REQUIRED at create time and IGNORED at join time —
 // the joiner just consumes whatever difficulty the host picked.
@@ -31,7 +31,6 @@ function normaliseMatch(match) {
     player2Id: match.player2Id,
     stakeAmount: Number(match.stakeAmount),
     difficulty: match.difficulty,
-    tilesPerLane: match.tilesPerLane,
     status: match.status,
     firstPlayerId: match.firstPlayerId,
     currentTurnUserId: match.currentTurnUserId,

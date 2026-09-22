@@ -1,11 +1,14 @@
 // src/app/api/lane-rush-duel/match/[matchId]/ai-turn/route.js
 //
-// POST — execute the practice bot's turn (mirrors the PvP ai-turn
-// /ai-turn pattern). The match page fires this when it's the bot's
-// turn; the server store runs `decideBotAction` and applies the move
-// through the same advance/resolve paths as a human. The bot picks
-// tiles at random (same bust odds as a player) and decides when to
-// HOLD based on the multiplier ladder and the chicken-game state.
+// POST — execute the practice bot's turn (mirrors the PvP /ai-turn
+// pattern). The match page fires this while the bot owns the turn; the
+// server store runs `decideBridgeBotAction` and applies the tile choice
+// through the SAME transition as a human (`applyBridgeJump`), so the bot
+// obeys the shared-bridge rules exactly like a player: a safe tile
+// advances it one row and keeps its turn, a bad tile resets its attempt
+// and hands the turn back, and crossing row 10 wins. It picks a tile on
+// the row it is standing on, avoiding tiles it has watched break
+// (difficulty-dependent).
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
@@ -63,9 +66,14 @@ export async function POST(req, { params }) {
       });
     }
 
+    // The bot's fall breaks a tile exactly like a human's, so it rides the
+    // same existing event: both seats learn the broken tile without waiting
+    // for a poll. Only public information (the tile + the public broken list).
     broadcastMatchUpdate(matchId, {
       status: result.status,
       action: "bot",
+      brokeTile: result.newlyBroken ? result.brokeTile : null,
+      broken: Array.isArray(result.broken) ? result.broken : undefined,
     });
 
     return NextResponse.json({

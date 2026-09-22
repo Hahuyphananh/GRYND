@@ -172,7 +172,7 @@ export default function LaneRushDuelHistoryPage() {
                       <th className="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500">#</th>
                       <th className="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500">Date</th>
                       <th className="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500">Mode</th>
-                      <th className="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500">Tower</th>
+                      <th className="px-4 py-3 text-left text-[10px] uppercase tracking-widest text-slate-500">Difficulty</th>
                       <th className="px-4 py-3 text-right text-[10px] uppercase tracking-widest text-slate-500">Wager</th>
                       <th className="px-4 py-3 text-center text-[10px] uppercase tracking-widest text-slate-500">Result</th>
                       <th className="px-4 py-3 text-right text-[10px] uppercase tracking-widest text-slate-500">Payout</th>
@@ -266,23 +266,36 @@ export default function LaneRushDuelHistoryPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
+                          {/* Bridge outcome: rows crossed per seat (10 = crossed
+                              the whole bridge) plus how many tiles the match
+                              left broken. */}
                           <span className="inline-flex items-center gap-1 text-xs text-slate-300">
                             <span
-                              className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300 ${
-                                g.myHeld ? "ring-1 ring-amber-300/50" : ""
+                              className={`rounded bg-cyan-500/15 px-1.5 py-0.5 font-bold text-cyan-300${
+                                g.myRow >= 10 ? " ring-1 ring-amber-300/50" : ""
                               }`}
-                              title={`Level ${g.myLane}${g.myHeld ? " (banked)" : ""}`}
+                              title={`You: ${g.myRow}/10 rows`}
                             >
-                              {Number(g.myPoints).toLocaleString()} pts
+                              {Number(g.myRow) || 0}/10
                             </span>
-                            <IconFlag size={11} className="text-white/30" />
+                            {Number(g.brokenCount) > 0 && (
+                              <>
+                                <IconFlag size={11} className="text-white/30" />
+                                <span
+                                  className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                                  title={`${g.brokenCount} tile(s) broken`}
+                                >
+                                  {g.brokenCount} broken
+                                </span>
+                              </>
+                            )}
                             <span
-                              className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300 ${
-                                g.oppHeld ? "ring-1 ring-amber-300/50" : ""
+                              className={`rounded bg-rose-500/15 px-1.5 py-0.5 font-bold text-rose-300${
+                                g.oppRow >= 10 ? " ring-1 ring-amber-300/50" : ""
                               }`}
-                              title={`Level ${g.oppLane}${g.oppHeld ? " (banked)" : ""}`}
+                              title={`Opponent: ${g.oppRow}/10 rows`}
                             >
-                              {Number(g.oppPoints).toLocaleString()} pts
+                              {Number(g.oppRow) || 0}/10
                             </span>
                           </span>
                         </td>

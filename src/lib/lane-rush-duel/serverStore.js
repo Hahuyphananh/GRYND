@@ -6,61 +6,46 @@
 //   * matchmaking lock (stake-keyed) prevents lobby-race duplicates
 //   * host-picked difficulty is locked at lobby creation; joiner
 //     gets the same difficulty
-//   * server randomizes the turn order at match creation
-//   * ONE SHARED provably-fair tower: both players climb the same
-//     bad-tile layout (per lane, per risk path), derived from the
-//     shared server seed + the host's client seed + the match id.
+//   * server randomizes who selects first (the coin-flipped first
+//     player owns the opening 15s window)
+//   * ONE SHARED provably-fair bridge: 10 rows, EXACTLY one bad tile
+//     per row, derived from the shared server seed + the host's client
+//     seed + the match id as nonce. Both players cross the SAME bridge
+//     and it never regenerates mid-match.
 //   * 3-second ready banner auto-advance
-//   * one authoritative, row-locked action transition per seat (both
-//     seats may act at any time — see SIMULTANEOUS PLAY below)
-//   * SIMULTANEOUS PLAY — each seat owns its lane on the shared tower
-//     and resolves an action the instant it lands (no turn queue and
-//     no parked "pending" row). Every mutation funnels through ONE
-//     row-locked transition (`act` → `applyEntryImmediately`), guarded
-//     by the client's `actionId` (idempotency) and `round`
-//     (staleness), so the two seats can never interleave a
-//     half-applied action.
-//   * FLAG BUDGET — each player gets MAX_FLAGS flag calls. A CORRECT
-//     flag claims the row (advance + points, the game continues) and
-//     reveals the bad tile to both players; a WRONG flag busts you.
-//   * SOFT BANK — HOLD locks your accumulated points as your SAFE
-//     score and you KEEP climbing; every pick after your Nth bank
-//     pays × 0.5^N. Only banked points survive a bust. Banking moves
-//     you past the row you banked on (it never completes the tower),
-//     so both players stay on the same row and the deferred pairing
-//     keeps working.
-//   * 1,000-BANKED RACE — the match is a race to BANK
-//     WIN_BANKED_SCORE (1,000) points: the first player whose
-//     banked total reaches 1,000 wins instantly. Banking never
-//     freezes the match — both players keep climbing (at reduced
-//     rates) until someone banks 1,000, completes, or both climbs
-//     are over.
-//   * PEEK — spend one of MAX_PEEKS calls on your turn to instantly
-//     and privately learn whether a chosen tile on your current lane
-//     is safe or bad. It does not consume your turn and reveals
-//     nothing to the opponent mid-match (they only see that you
-//     peeked). Verifiable post-match against the revealed tower.
-//   * 20-second pick-window auto-pick for a legacy turn-based row
-//     (AFK → random tile, which may be the bad tile — that's the
-//     punishment for going AFK)
-//   * end-state resolution: banked target / resignation (a bust only
-//     clears the unbanked run and never settles the match)
+//   * TURN-BASED tile selection — only the seat that owns the turn may
+//     choose, and only on the row it is standing on. Every mutation
+//     funnels through ONE row-locked transition (`act` →
+//     `applyBridgeJump`), guarded by the client's `actionId`
+//     (idempotency) and `row` (staleness), so a replayed or stale click
+//     can never resolve twice.
+//   * SAFE tile → advance one row and KEEP the turn (choose again).
+//     BAD tile → the tile breaks for the rest of the match, the attempt
+//     ends (progress resets to row 1) and the turn passes to the
+//     opponent. Safe tiles are never permanently revealed.
+//     Row BRIDGE_ROWS crossed → that player wins immediately.
+//   * MEMORY FLAGS — BRIDGE_FLAGS_PER_PLAYER per player, placeable only
+//     on a row the seat personally landed on safely, visible to both
+//     players, and never consuming the turn.
+//   * 15-second choice window per tile (AFK → the attempt simply ends:
+//     back to row 1 and the turn hands over, breaking NO tile — see
+//     timeoutAttempt)
+//   * end-state resolution: crossing the bridge / resignation (a fall
+//     never settles the match)
 //   * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
-//   * towers + server seed hidden from clients until match finishes
+//   * the bridge layout + server seed are hidden from clients until the
+//     match finishes (the client receives geometry + broken tiles only)
 //
 // State machine:
 //   waiting → ready → active → finished
 //   (waiting/ready/active → cancelled; p1_turn / p2_turn are legacy
 //    states, upgraded to `active` on the first poll)
 //
-// Turn progression: both seats act whenever they like on their own
-// lane. A pick/flag advances the seat's lane, or busts it — and a
-// bust only clears the UNBANKED run: it never ends the duel and never
-// touches the banked total. A hold locks the accumulated run into the
-// banked total and keeps the climb going at a halved rate. A PEEK is
-// instant, private, and keeps the seat's row. Only a banked total
-// reaching WIN_BANKED_SCORE (the 1,000-banked race) or a resignation
-// settles the match.
+// Turn progression: the seat that owns the turn selects a tile on the
+// row it is standing on. A safe tile advances it one row and it keeps
+// choosing; a bad tile ends its attempt (back to row 1) and hands the
+// turn over. Only crossing the last row or a resignation settles the
+// match.
 
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -71,38 +56,34 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { randomHex } from "../laneRunner";
 import {
-  ACTIVE_STATES,
   BOT_ACTION_INTERVAL_MS,
   BOT_USER_ID,
+  BRIDGE_ACTIONS,
+  BRIDGE_ROWS,
+  BRIDGE_TILE_CHOICE_SECONDS,
+  bridgeClientView,
+  bridgeTurnAfterJump,
+  brokenTilesOf,
+  buildSharedBridge,
+  canPlaceFlag,
+  decideBridgeBotAction,
+  flagPlacement,
+  isTileBroken,
+  resolveJump,
+  seatRow,
   DIFFICULTIES,
   LANE_RUSH_DUEL_LOCK_NAMESPACE,
   MATCH_STATUS,
-  MAX_FLAGS,
-  MAX_LANES,
-  MAX_PEEKS,
   TERMINAL_STATES,
   MAX_STAKE,
   MIN_STAKE,
   PICKABLE_STATES,
+  READY_WINDOW_MS,
   RESULT,
-  RISK_PATH_KEYS,
-  RISK_PATHS,
-  WIN_BANKED_SCORE,
-  buildPlayerTower,
   computePayout,
-  decideBotAction,
   decideOutcome,
-  finalScoreOf,
-  flagsUsedBySeat,
   hasResolvedActionId,
   isBotMatch,
-  isStaleRoundAction,
-  isValidPath,
-  laneMultiplier,
-  peeksUsedBySeat,
-  pickPointsForSeat,
-  releasePendingActions,
-  scoreFromActions,
   seatForUserId,
 } from "./constants";
 import { getServerSeedHash } from "../laneRunner";
@@ -127,6 +108,35 @@ export function seatForUser(match, userId) {
 
 export function isParticipant(match, userId) {
   return seatForUser(match, userId) !== null;
+}
+
+// ── Shared bridge helpers ─────────────────────────────────────────────
+// The bridge is persisted on the match row at creation (one layout per
+// match, read by both seats). Rows created before the bridge existed fall
+// back to deriving it from the row's committed seeds — the bridge is a pure
+// function of those seeds, so the derived layout is identical to what
+// creation would have stored and cannot change mid-match.
+function bridgeForMatch(match) {
+  const stored = match?.bridge;
+  if (stored && Array.isArray(stored.badTiles) && stored.badTiles.length > 0) {
+    return stored;
+  }
+  return buildSharedBridge({
+    serverSeed: match?.serverSeed,
+    clientSeed: match?.p1ClientSeed,
+    nonce: match?.id,
+    difficulty: match?.difficulty,
+  });
+}
+
+// Absolute deadline for the current tile choice (15s).
+function nextTurnDeadline(now = Date.now()) {
+  return new Date(now + BRIDGE_TILE_CHOICE_SECONDS * 1000);
+}
+
+// The clerkId of the opponent of the seat that just acted.
+function opponentIdOf(match, seat) {
+  return seat === "player1" ? match.player2Id : match.player1Id;
 }
 
 // Validate stake + difficulty at lobby creation time.
@@ -251,7 +261,7 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
 
   // Shared server seed (revealed post-match) + the host's client
   // seed. The match id becomes the nonce once the row exists — the
-  // SHARED tower is derived after insert so we can use the serial id.
+  // SHARED BRIDGE is derived after insert so we can use the serial id.
   // The hash is shown pre-match; the seed revealed after.
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
@@ -263,29 +273,29 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
       player1Id: userId,
       stakeAmount: Number(stakeAmount).toFixed(2),
       difficulty: String(difficulty).toLowerCase(),
-      tilesPerLane: DIFFICULTIES[String(difficulty).toLowerCase()].width,
       status: MATCH_STATUS.WAITING,
       serverSeed,
       serverSeedHash,
       p1ClientSeed: clientSeed,
-      roundTimerSeconds: 20,
+      roundTimerSeconds: BRIDGE_TILE_CHOICE_SECONDS,
       startedAt: null,
     })
     .returning();
 
-  // Derive the host's tower with the match id as nonce — provably
-  // fair and locked before any joiner arrives. Shape: per lane, the
-  // bad tile for each risk path (see constants.buildPlayerTower).
-  const p1Tower = buildPlayerTower({
+  // THE SHARED BRIDGE: ONE layout per match, derived from the committed
+  // seeds with the match id as nonce and stored on the match row — so both
+  // seats read the exact same 10 rows, and it can never regenerate mid-match
+  // (it is a pure function of those seeds).
+  const bridge = buildSharedBridge({
     serverSeed,
     clientSeed,
     nonce: match.id,
     difficulty: match.difficulty,
   });
 
-  const [withTower] = await tx
+  const [withBridge] = await tx
     .update(laneRushDuelMatches)
-    .set({ p1Tower })
+    .set({ bridge })
     .where(eq(laneRushDuelMatches.id, match.id))
     .returning();
 
@@ -297,7 +307,7 @@ async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
     }).catch(() => {});
   }
 
-  const queuedMatch = withTower || match;
+  const queuedMatch = withBridge || match;
   mirrorQueueCreated({ gameKey: "lane-rush-duel", matchId: queuedMatch.id, playerCount: 1, queuedAt: queuedMatch.createdAt ? new Date(queuedMatch.createdAt) : undefined, mode: `pvp:${queuedMatch.difficulty}` });
   return { match: queuedMatch, joined: false };
 }
@@ -328,27 +338,33 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Insufficient balance", status: 400 };
   }
 
-  // SHARED TOWER: both players climb the SAME provably-fair layout
-  // (bad tile per lane per path). The host's tower — derived from the
-  // shared server seed + the host's client seed + the match id as
-  // nonce — is copied into seat 2. No second seed, no second layout:
-  // every safe pick by either player narrows the same deduction.
+  // Coin-flip who selects first. The joined match keeps the host's already
+  // stored shared bridge (one layout for both seats — the joiner's client
+  // seed is copied in purely so the layout stays re-derivable).
   const firstPlayerId = Math.random() < 0.5 ? match.player1Id : userId;
+
+  // Brief 3-second "Get ready" window (same convention as mines-pvp /
+  // keno-pvp / memory-grid): the coin-flipped first player's 15s choice
+  // window must NOT start ticking while both clients are still reading the
+  // match-found banner — otherwise the opening turn could be lost to a
+  // timeout neither player ever saw. The first status poll after this
+  // deadline opens the real window via `advanceFromReady`.
+  const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [updated] = await tx
     .update(laneRushDuelMatches)
     .set({
       player2Id: userId,
-      // Both seats share the host's client seed + tower (one layout).
       p2ClientSeed: match.p1ClientSeed,
-      p2Tower: match.p1Tower,
-      status: MATCH_STATUS.ACTIVE,
+      status: MATCH_STATUS.READY,
       firstPlayerId,
+      // TILE SELECTION IS TURN-BASED on the shared bridge: turn ownership is
+      // seeded by `advanceFromReady` when the ready window closes, together
+      // with the opening 15s window. (Turn ownership is the server's, never
+      // the client's.)
       currentTurnUserId: null,
-      // Simultaneous play has NO per-turn window: both seats act
-      // whenever they like. Leaving the legacy ready-window deadline
-      // here would render a phantom countdown in the match header.
-      roundDeadline: null,
+      roundDeadline: readyDeadline,
+      roundTimerSeconds: BRIDGE_TILE_CHOICE_SECONDS,
       startedAt: new Date(),
     })
     .where(
@@ -376,16 +392,20 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
 // Creates a zero-stake match with the reserved bot id in seat 2. No
 // balance is escrowed, the ready banner starts immediately, and the
 // first player is rolled (bot or human) exactly like a real match.
-// Both seats share one client seed + one tower, exactly like a real
+// Both seats share one client seed + one bridge, exactly like a real
 // PvP match — the provably-fair reveal still verifies.
 async function createBotMatch(tx, userId, difficulty) {
   const diff = String(difficulty).toLowerCase();
-  const config = DIFFICULTIES[diff];
 
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
-  // One shared client seed → one shared tower for both seats.
+  // One shared client seed → one shared bridge for both seats.
   const clientSeed = randomHex(16);
+
+  // Coin-flip who selects first; that seat owns the opening 15s window. The
+  // human's client polls `ai-turn` while the bot owns the turn, so a bot-first
+  // match still starts.
+  const firstPlayerId = Math.random() < 0.5 ? userId : BOT_USER_ID;
 
   const [match] = await tx
     .insert(laneRushDuelMatches)
@@ -394,34 +414,35 @@ async function createBotMatch(tx, userId, difficulty) {
       player2Id: BOT_USER_ID,
       stakeAmount: "0.00",
       difficulty: diff,
-      tilesPerLane: config.width,
       status: MATCH_STATUS.ACTIVE,
       serverSeed,
       serverSeedHash,
       p1ClientSeed: clientSeed,
       p2ClientSeed: clientSeed,
-      firstPlayerId: Math.random() < 0.5 ? userId : BOT_USER_ID,
-      currentTurnUserId: null,
-      roundDeadline: null,
-      roundTimerSeconds: 20,
+      firstPlayerId,
+      currentTurnUserId: firstPlayerId,
+      roundDeadline: nextTurnDeadline(),
+      roundTimerSeconds: BRIDGE_TILE_CHOICE_SECONDS,
       startedAt: new Date(),
     })
     .returning();
 
-  const tower = buildPlayerTower({
+  // One shared bridge for the practice match too (same seeds, match id as
+  // nonce) — the human and the bot cross the identical 10 rows.
+  const bridge = buildSharedBridge({
     serverSeed,
     clientSeed,
     nonce: match.id,
     difficulty: diff,
   });
 
-  const [withTowers] = await tx
+  const [withBridge] = await tx
     .update(laneRushDuelMatches)
-    .set({ p1Tower: tower, p2Tower: tower })
+    .set({ bridge })
     .where(eq(laneRushDuelMatches.id, match.id))
     .returning();
 
-  const botMatch = withTowers || match;
+  const botMatch = withBridge || match;
   mirrorQueueCreated({ gameKey: "lane-rush-duel", matchId: botMatch.id, playerCount: 2, queuedAt: botMatch.createdAt ? new Date(botMatch.createdAt) : undefined, mode: `ai:${botMatch.difficulty}` });
   return { match: botMatch, joined: true };
 }
@@ -429,7 +450,8 @@ async function createBotMatch(tx, userId, difficulty) {
 // ── Bot executor ─────────────────────────────────────────────────────
 // The bot is just another simultaneous player. The client periodically
 // wakes this endpoint, while the transaction below remains authoritative
-// for cooldowns, tower checks, busts, banks, and the 1,000-point finish.
+// for turn ownership, the choice window, the bridge layout, the tiles that
+// are already broken, and the win.
 export async function botAct({ matchId, requesterId, actionId }) {
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -452,6 +474,23 @@ export async function botAct({ matchId, requesterId, actionId }) {
       return { duplicate: true, match, status: match.status };
     }
 
+    // The bot plays by the same rules as a human: it only acts when the turn
+    // is its own. The human's client polls this endpoint; turn ownership stays
+    // server-side.
+    if (match.currentTurnUserId !== BOT_USER_ID) return match;
+
+    // …and the 15s window is just as authoritative for the bot. A wake-up that
+    // arrives after the window closed ends the bot's attempt (back to Row 1,
+    // turn handed over) exactly like a human's late click: the bot never gets
+    // to act on borrowed time.
+    if (
+      match.roundDeadline &&
+      new Date(match.roundDeadline).getTime() <= Date.now()
+    ) {
+      const timedOut = await timeoutAttempt(tx, match);
+      return { ...timedOut, timedOut: true };
+    }
+
     const actions = Array.isArray(match.actions) ? match.actions : [];
     const lastBotAction = [...actions]
       .reverse()
@@ -463,44 +502,46 @@ export async function botAct({ matchId, requesterId, actionId }) {
       return match;
     }
 
-    const decision = decideBotAction(match);
-    if (!decision) return { error: "Bot cannot act", status: 409 };
+    const bridge = bridgeForMatch(match);
+    const decision = decideBridgeBotAction({
+      match,
+      seat: "player2",
+      bridge,
+      random: Math.random,
+      // Tile selection only: the memory-flag action is wired separately.
+      allowFlags: false,
+    });
+    if (!decision || decision.action !== BRIDGE_ACTIONS.JUMP) return match;
 
-    const lane = Number(match.p2Lane) || 0;
+    const outcome = resolveJump({
+      bridge,
+      broken: brokenTilesOf(match),
+      row: decision.row,
+      tile: decision.tile,
+    });
+
     const entry = {
       userId: BOT_USER_ID,
       seat: "player2",
-      action: decision.action,
-      tile: null,
-      safe: null,
-      lane,
-      round: lane,
-      points: 0,
+      action: BRIDGE_ACTIONS.JUMP,
+      row: decision.row,
+      tile: decision.tile,
+      outcome: outcome.outcome,
+      safe: outcome.outcome !== "fell",
       autoPicked: false,
-      pending: false,
       at: new Date().toISOString(),
     };
-
-    if (decision.action === "hold") {
-      entry.bankedTotal = scoreFromActions(match.actions, "player2");
-    } else {
-      const pathKey = decision.path && isValidPath(decision.path)
-        ? decision.path
-        : "balanced";
-      const idx = Number(decision.tileIndex);
-      const tower = Array.isArray(match.p2Tower) ? match.p2Tower : [];
-      const laneLayout = tower[lane] || {};
-      const badTile = Number(laneLayout[pathKey]);
-      entry.path = pathKey;
-      entry.tile = idx;
-      entry.safe = idx !== badTile;
-      entry.points = entry.safe
-        ? pickPointsForSeat(match, "player2", lane, pathKey, match.difficulty)
-        : 0;
-    }
-
     if (actionId) entry.actionId = String(actionId);
-    return await applyEntryImmediately(tx, match, entry, "player2");
+
+    const brokenBefore = brokenTilesOf(match);
+    const applied = await applyBridgeJump(tx, match, {
+      entry,
+      seat: "player2",
+      outcome,
+    });
+    // The bot's fall breaks a tile exactly like a human's, so it rides the
+    // same realtime signal.
+    return { ...applied, ...brokeTileSignal({ outcome, brokenBefore }) };
   });
 }
 
@@ -585,59 +626,39 @@ async function fetchMatchForUpdate(tx, matchId) {
   return match || null;
 }
 
-// ── Act: pick a tile, flag, hold, or peek ───────────────────────────
-// The ONE authoritative player transition. `action` is "pick" (with
-// path + tileIndex), "flag" (call a tile as the bad one — with path +
-// tileIndex), "hold" (bank: locks the accumulated run toward the
-// 1,000-banked win) or "peek" (private, instant, keeps the row).
-// Validates participant / pickable state / row / budgets, resolves the
-// tile against the seat's tower, updates the unbanked run (and the
-// locked banked total on a hold), then decides whether the duel
-// actually ended — all inside one row-locked transaction, so the two
-// seats can never interleave a half-applied action. A bust resolves
-// the action without ending the duel: only a banked total reaching
-// WIN_BANKED_SCORE (or a resignation) settles the match.
+// ── Act: TILE SELECTION on the shared bridge ────────────────────────
+// The ONE authoritative player transition. `action` is "jump" (the
+// redesigned name; "pick" is accepted as a legacy alias) and carries
+// the `row` the player is standing on plus the `tile` they chose.
+// Validates participant / pickable state / TURN OWNERSHIP / the row,
+// resolves the tile against the ONE SHARED bridge, then applies it
+// through `applyBridgeJump` — all inside one row-locked transaction, so
+// a replayed or stale click can never be interleaved or resolved twice.
+// A fall ends the seat's attempt and hands the turn over; it never
+// settles the match. Only crossing row BRIDGE_ROWS (or a resignation)
+// ends the duel.
 //
-// TWO GUARDS keep this ONE transition atomic now that both seats act
-// independently:
+// TWO GUARDS keep this ONE transition atomic:
 //   * `actionId` — the client's unique stamp for this action. A repeat
 //     (network retry, double tap, a second tab) is a benign no-op, so
 //     the same action can never resolve twice.
-//   * `round` — the row the client rendered the click against. If the
-//     seat has since moved (its own resolved action, or an AFK
-//     force-pick), the click is rejected rather than resolving on a
-//     row the player never saw.
-export async function act({
-  userId,
-  matchId,
-  action,
-  path,
-  tileIndex,
-  actionId,
-  round,
-}) {
+//   * `row` — the row the client rendered the click against. If the
+//     seat has since moved (its own resolved action, an AFK
+//     auto-select, or the opponent's turn), the click is rejected
+//     rather than resolving on a row the player never saw.
+export async function act({ userId, matchId, action, row, tile, actionId }) {
+  // The player actions on the shared bridge are TILE SELECTION (`jump`) and
+  // placing a MEMORY FLAG (`flag`).
   const actAction = String(action || "");
-  if (
-    actAction !== "pick" &&
-    actAction !== "hold" &&
-    actAction !== "flag" &&
-    actAction !== "peek"
-  ) {
+  const wantsFlag = actAction === BRIDGE_ACTIONS.FLAG;
+  if (actAction !== BRIDGE_ACTIONS.JUMP && !wantsFlag) {
     return { error: "Invalid action", status: 400 };
   }
 
-  // pick / flag / peek all need a validated risk path + tile index.
-  let idx = null;
-  let pathKey = null;
-  if (actAction === "pick" || actAction === "flag" || actAction === "peek") {
-    pathKey = String(path || "");
-    if (!isValidPath(pathKey)) {
-      return { error: "Invalid risk path", status: 400 };
-    }
-    idx = Number(tileIndex);
-    if (!Number.isInteger(idx) || idx < 0) {
-      return { error: "Invalid tile index", status: 400 };
-    }
+  const selectedTile = Number(tile);
+  const selectedRow = Number(row);
+  if (!Number.isInteger(selectedTile) || selectedTile < 0) {
+    return { error: "Invalid tile index", status: 400 };
   }
 
   return await db.transaction(async (tx) => {
@@ -653,116 +674,42 @@ export async function act({
 
     // Idempotency: a retried POST (network hiccup, double tap, second
     // tab) must not resolve the same action twice — that would double
-    // the points or double the bust. A repeat is a success no-op.
+    // the row or double the fall. A repeat is a success no-op.
     if (hasResolvedActionId(match.actions, actionId)) {
       return { duplicate: true, match, status: match.status };
     }
 
     const seat = seatForUser(match, userId);
-    const lane = Number(seat === "player1" ? match.p1Lane : match.p2Lane) || 0;
+    const bridge = bridgeForMatch(match);
 
-    // Staleness: reject a click computed against a row the seat has
-    // already left. `hold` has no row, so it is exempt.
-    if (
-      actAction !== "hold" &&
-      isStaleRoundAction({ expectedRound: round, currentLane: lane })
-    ) {
-      return {
-        error: "That level already changed — refreshing",
-        status: 409,
-      };
-    }
-
-    // Flag budget: each player gets MAX_FLAGS calls per match. The
-    // limit is checked BEFORE the flag is recorded, so a spent flag
-    // always consumes the budget (a wrong flag busts you — it does not
-    // end the match).
-    if (actAction === "flag" && flagsUsedBySeat(match, seat) >= MAX_FLAGS) {
-      return { error: "No flags left this match", status: 400 };
-    }
-
-    // Peek budget: MAX_PEEKS private peeks per match. Checked before
-    // recording so a peek always consumes the budget.
-    if (actAction === "peek" && peeksUsedBySeat(match, seat) >= MAX_PEEKS) {
-      return { error: "No peeks left this match", status: 400 };
-    }
-
-    // Build the action record. `round` is the 0-based row being
-    // climbed — the authoritative key for the boards and for pairing
-    // the two players' moves on the same row.
-    const entry = {
-      userId,
-      seat,
-      action: actAction,
-      lane,
-      round: lane,
-      pending: false,
-      autoPicked: false,
-      at: new Date().toISOString(),
-    };
-    if (actionId != null && String(actionId) !== "") {
-      entry.actionId = String(actionId);
-    }
-
-    if (actAction === "pick" || actAction === "flag" || actAction === "peek") {
-      const tower =
-        seat === "player1"
-          ? Array.isArray(match.p1Tower)
-            ? match.p1Tower
-            : []
-          : Array.isArray(match.p2Tower)
-            ? match.p2Tower
-            : [];
-      const laneLayout = tower[lane] || {};
-      if (idx >= RISK_PATHS[pathKey].tiles) {
-        return { error: "Invalid tile index", status: 400 };
+    // ── MEMORY FLAG ────────────────────────────────────────────────
+    // A flag is not a tile choice: it never consumes the turn, never moves a
+    // row, never breaks a tile and never touches the bridge. Its ONLY gate is
+    // that the seat must have PERSONALLY landed safely on that exact tile,
+    // which is validated against the server's own action history — never
+    // against the request. A flag is append-only: existing flags are never
+    // moved, removed or reordered, and the budget is a hard 2 per match.
+    if (wantsFlag) {
+      const check = canPlaceFlag({
+        match,
+        seat,
+        row: selectedRow,
+        tile: selectedTile,
+        bridge,
+      });
+      if (!check.ok) {
+        return { error: check.error, status: 409 };
       }
-      const badTile = Number(laneLayout[pathKey]);
-      entry.path = pathKey;
-      entry.tile = idx;
-      if (actAction === "peek") {
-        // PRIVATE peek: instantly learn whether this tile is safe or
-        // bad. No points, no lane change, does NOT consume the turn.
-        // The result is a fact of the shared tower, so it's
-        // verifiable post-match; mid-match it's scrubbed from the
-        // opponent's view.
-        entry.pending = false;
-        entry.peekResult = idx === badTile ? "bad" : "safe";
-      } else if (actAction === "flag") {
-        // A CORRECT flag claims the row — advance + points and the
-        // game CONTINUES (no instant win); a WRONG flag busts you.
-        // Encoded as `safe` so the shared pick/flag resolution and
-        // scoreFromActions treat it identically to a safe pick.
-        const correct = idx === badTile;
-        entry.flagCorrect = correct;
-        entry.safe = correct;
-        entry.points = correct
-          ? pickPointsForSeat(match, seat, lane, pathKey, match.difficulty)
-          : 0;
-      } else {
-        entry.safe = idx !== badTile;
-        entry.points = entry.safe
-          ? pickPointsForSeat(match, seat, lane, pathKey, match.difficulty)
-          : 0;
-      }
-    }
 
-    if (actAction === "hold") {
-      // Bank: lock the seat's accumulated points as their safe score.
-      // The match does NOT end — they keep climbing at a reduced
-      // rate; only this locked total survives a later bust.
-      entry.bankedTotal = scoreFromActions(match.actions, seat);
-    }
-
-    // A peek is INSTANT: record it and return — the turn stays with
-    // the actor, who can still pick/flag/bank on this row.
-    if (actAction === "peek") {
-      const actions = Array.isArray(match.actions)
-        ? [...match.actions, entry]
-        : [entry];
-      const [updated] = await tx
+      const placement = flagPlacement({
+        match,
+        seat,
+        row: selectedRow,
+        tile: selectedTile,
+      });
+      const [flagged] = await tx
         .update(laneRushDuelMatches)
-        .set({ actions })
+        .set({ [placement.field]: placement.flags })
         .where(
           and(
             eq(laneRushDuelMatches.id, match.id),
@@ -770,88 +717,189 @@ export async function act({
           ),
         )
         .returning();
-      return updated || { ...match, actions };
+
+      const applied = flagged || { ...match, [placement.field]: placement.flags };
+      // Both seats' flags travel on the match payload (they are PUBLIC), so the
+      // realtime push below can hand them out without a refetch.
+      return {
+        ...applied,
+        flagPlaced: {
+          seat,
+          row: Number(selectedRow),
+          tile: Number(selectedTile),
+        },
+      };
     }
 
-    // Simultaneous play resolves this action immediately. The opponent
-    // has an independent lane and can submit their own action at any time.
-    return await applyEntryImmediately(tx, match, entry, seat);
+    const currentRow = seatRow(match, seat);
+
+    // ONLY THE CURRENT PLAYER MAY ACT. Turn ownership is the server's, not
+    // the client's: a stale tab (or the opponent) can never select a tile
+    // out of turn.
+    if (!match.currentTurnUserId || match.currentTurnUserId !== userId) {
+      return { error: "Not your turn", status: 409 };
+    }
+
+    // THE 15s WINDOW IS AUTHORITATIVE. A tile submitted after `roundDeadline`
+    // is NOT a valid choice: the attempt is over. Resolve the expiry here (back
+    // to Row 1, turn to the opponent) and refuse the late click, so a slow
+    // client — or a device clock running behind — can never buy extra time.
+    // The same resolution runs on the status read, so both routes agree.
+    if (
+      match.roundDeadline &&
+      new Date(match.roundDeadline).getTime() <= Date.now()
+    ) {
+      const timedOut = await timeoutAttempt(tx, match);
+      return {
+        error: "Time ran out — the attempt ended",
+        status: 409,
+        timedOut: true,
+        matchStatus: timedOut.status,
+      };
+    }
+
+    // THE SELECTED ROW MUST BE THE PLAYER'S CURRENT ROW: a click rendered
+    // against a row the player has since left (their own resolved action, a
+    // fall, an AFK auto-select) is refused instead of resolving on a row they
+    // never saw.
+    if (!Number.isInteger(selectedRow) || selectedRow !== currentRow) {
+      return { error: "That level already changed — refreshing", status: 409 };
+    }
+
+    const tiles = Number(bridge?.tiles) || 1;
+    if (selectedTile >= tiles) {
+      return { error: "Invalid tile index", status: 400 };
+    }
+
+    // Resolve the choice against the ONE SHARED bridge (pure engine: safe →
+    // advance, bad → break the tile + fall to row 1, row 10 crossed → win).
+    const outcome = resolveJump({
+      bridge,
+      broken: brokenTilesOf(match),
+      row: currentRow,
+      tile: selectedTile,
+    });
+
+    const entry = {
+      userId,
+      seat,
+      action: BRIDGE_ACTIONS.JUMP,
+      row: currentRow,
+      tile: selectedTile,
+      outcome: outcome.outcome,
+      safe: outcome.outcome !== "fell",
+      autoPicked: false,
+      at: new Date().toISOString(),
+    };
+    if (actionId != null && String(actionId) !== "") {
+      entry.actionId = String(actionId);
+    }
+
+    // The public broken set BEFORE this jump — used to tell a freshly broken
+    // tile from one that was already broken, so the realtime push can announce
+    // only a genuine change.
+    const brokenBefore = brokenTilesOf(match);
+    const applied = await applyBridgeJump(tx, match, { entry, seat, outcome });
+    return { ...applied, ...brokeTileSignal({ outcome, brokenBefore }) };
   });
 }
 
-// Apply one resolved action to the seat's lane/bank state. This is the
-// single write path for every action (pick, flag, hold, bot, AFK
-// force-pick): it moves the lane, locks the banked total on a hold, and
-// only settles the match when a hold actually banks the win target —
-// a bust here never ends the duel.
-async function applyEntryImmediately(tx, match, entry, seat) {
-  const laneField = seat === "player1" ? "p1Lane" : "p2Lane";
-  const heldField = seat === "player1" ? "p1Held" : "p2Held";
-  const currentLane = Number(match[laneField]) || 0;
-  let nextLane = currentLane;
-  let nextHeld = Boolean(match[heldField]);
-  if (entry.action === "hold") {
-    nextHeld = true;
-    // Banking locks the current run and keeps the player moving.
-    nextLane = (currentLane + 1) % MAX_LANES;
-  } else if (entry.safe === false) {
-    // Bust only resets the unbanked run. The player remains at the
-    // current lane and can immediately try again independently.
-    nextLane = currentLane;
-  } else {
-    nextLane = (currentLane + 1) % MAX_LANES;
-  }
-
-  const actions = [
-    ...(Array.isArray(match.actions) ? match.actions : []),
-    entry,
-  ];
-  const next = { ...match, [laneField]: nextLane, [heldField]: nextHeld, actions };
-
-  // A completed lane cycle is not a match result; only a banked score
-  // reaching the target ends the race.
-  if (entry.action === "hold" && Number(entry.bankedTotal) >= WIN_BANKED_SCORE) {
-    return await resolveMatch(tx, next, {
-      loserId: seat === "player1" ? match.player2Id : match.player1Id,
-      reason: "banked_target",
-      action: entry,
-    });
-  }
-
-  return await persistSimultaneousState(tx, next);
+// ── Broken-tile signal (for the realtime push) ─────────────────────────
+// A tile that is stepped on stays BROKEN for the rest of the match and becomes
+// public knowledge, so the routes can push it on the existing per-match event
+// instead of making both seats wait for their next poll. The signal carries
+// ONLY public information:
+//   * `brokeTile`   — the exact tile this jump hit (`{row,tile}`), or null when
+//     the choice was safe;
+//   * `newlyBroken` — true only the first time that tile broke (a repeat visit
+//     reports the tile but changes nothing);
+//   * `broken`      — the public broken list after the jump.
+// It never contains the bridge layout, and a SAFE tile never becomes public.
+function brokeTileSignal({ outcome, brokenBefore = [] }) {
+  const brokeTile = outcome?.brokeTile ?? null;
+  return {
+    brokeTile,
+    newlyBroken: Boolean(
+      brokeTile && !isTileBroken(brokenBefore, brokeTile.row, brokeTile.tile),
+    ),
+    broken: Array.isArray(outcome?.broken) ? outcome.broken : brokenBefore,
+  };
 }
 
-// Persist the post-action state for ONE seat. The other seat's lane and
-// held flag are written from the same row-locked snapshot (`next` was
-// derived from the locked read), so a write can never clobber a newer
-// change made by the other player — transactions serialize on the row.
-async function persistSimultaneousState(tx, next) {
+// Apply ONE resolved tile choice to the match. This is the single write path
+// for every jump — human, bot and AFK auto-select — and it owns the three
+// outcomes of the redesigned rules:
+//   • SAFE  → that player advances one row, KEEPS the turn, and the 15s
+//             choice window resets (they may choose again);
+//   • BAD   → the tile breaks for the rest of the match, that player's
+//             attempt ends (progress resets to row 1) and the turn switches
+//             to the opponent;
+//   • ROW 10 crossed → that player is the winner and the match settles
+//             immediately (credits, rake, stats — the shared settle path).
+// The turn/deadline move in the SAME write as the row, so no reader can ever
+// see a seat that advanced while the turn did not move.
+async function applyBridgeJump(tx, match, { entry, seat, outcome }) {
+  const actions = [...(Array.isArray(match.actions) ? match.actions : []), entry];
+  const broken = Array.isArray(outcome.broken) ? outcome.broken : brokenTilesOf(match);
+
+  // MEMORY FLAGS ARE NEVER TOUCHED HERE. A flag can only mark a tile its owner
+  // landed on safely (see canPlaceFlag), and a safe tile never breaks — so a
+  // flag can never refer to a broken tile and is never rewritten. The update
+  // below therefore leaves both flag columns exactly as they are: a flag cannot
+  // be removed or moved by any jump.
+  const shared = {
+    broken,
+    actions,
+  };
+
+  // ONE source of truth for the row + turn consequence of the jump (pure
+  // engine helper): safe → advance + keep the turn, bad → reset + hand over,
+  // row 10 crossed → win and end.
+  const turn = bridgeTurnAfterJump({ match, seat, outcome });
+
+  if (turn.ended) {
+    // Crossed the last row → winner, immediately. `resolveMatch` handles the
+    // settlement (winner credited, 10% rake, stats/prestige).
+    return await resolveMatch(
+      tx,
+      { ...match, ...shared, [turn.rowField]: BRIDGE_ROWS },
+      {
+        loserId: opponentIdOf(match, seat),
+        reason: "crossed_bridge",
+        action: entry,
+      },
+    );
+  }
+
   const [updated] = await tx
     .update(laneRushDuelMatches)
     .set({
-      p1Lane: next.p1Lane,
-      p2Lane: next.p2Lane,
-      p1Held: next.p1Held,
-      p2Held: next.p2Held,
+      ...shared,
+      // A fall ends the attempt: progress resets to row 1 (0 rows crossed).
+      // A safe choice advances exactly one row.
+      [turn.rowField]: turn.row,
       status: MATCH_STATUS.ACTIVE,
-      currentTurnUserId: null,
-      roundDeadline: null,
-      actions: next.actions,
+      // Safe → the SAME player chooses again; bad → the opponent is up.
+      currentTurnUserId: turn.turnUserId,
+      // "The timer resets after every successful jump" (and a fall starts the
+      // opponent's fresh window).
+      roundDeadline: nextTurnDeadline(),
     })
     .where(
       and(
-        eq(laneRushDuelMatches.id, next.id),
-        eq(laneRushDuelMatches.status, next.status),
+        eq(laneRushDuelMatches.id, match.id),
+        eq(laneRushDuelMatches.status, match.status),
       ),
     )
     .returning();
 
-  return updated || next;
+  return updated || { ...match, ...shared, [turn.rowField]: turn.row };
 }
 
 // ── Resolve a settled match ───────────────────────────────────────────
-// Called only for a genuine end: a hold that banked the win target
-// (loser = the other seat) or a resignation. A bust never reaches here.
+// Called only for a genuine end: a seat crossing row BRIDGE_ROWS (the
+// loser is the other seat) or a resignation. A fall never reaches here —
+// it resets the attempt and hands the turn over.
 async function resolveMatch(tx, match, { loserId, reason, action }) {
   const result = decideOutcome({
     loserId,
@@ -908,10 +956,14 @@ async function settle(tx, match, { result, action, reason }) {
       houseFee: payout.houseFee.toFixed(2),
       prizePaid: payout.prizePaid.toFixed(2),
       actions,
-      // Stored finals = what each player kept (banked totals for
-      // busts, accumulated for completions).
-      p1Points: finalScoreOf({ ...match, actions }, "player1"),
-      p2Points: finalScoreOf({ ...match, actions }, "player2"),
+      // The bridge state as it stood at the end (the winner crossed row 10; a
+      // resignation keeps both seats where they were) — persisted here so the
+      // win path doesn't lose the final rows/broken tiles.
+      p1Row: Number(match.p1Row) || 0,
+      p2Row: Number(match.p2Row) || 0,
+      broken: Array.isArray(match.broken) ? match.broken : brokenTilesOf(match),
+      p1Flags: Array.isArray(match.p1Flags) ? match.p1Flags : [],
+      p2Flags: Array.isArray(match.p2Flags) ? match.p2Flags : [],
       endedAt: new Date(),
     })
     .where(eq(laneRushDuelMatches.id, match.id))
@@ -992,11 +1044,12 @@ async function recordPvPResult(tx, match, winnerId, result) {
 }
 
 // ── Status fetch with auto-resolve ────────────────────────────────────
-// Two auto-advance paths (mirrors mines-pvp):
+// Auto-advance paths (mirrors mines-pvp; there is no background scheduler,
+// so these run on the status read and use the SERVER's clock):
 //   1. `ready` deadline elapsed → advance to the first pick state.
-//   2. `p1_turn` / `p2_turn` deadline elapsed → force-pick a random
-//      tile for the current player (AFK nudge), then advance the
-//      turn OR resolve the match.
+//   2. the current player's 15s choice window elapsed with no tile
+//      selected → end that attempt (back to Row 1) and hand the turn to
+//      the opponent (see timeoutAttempt).
 // Compact fingerprint of the fields the auto-advance steps touch. Used
 // by fetchMatchWithAutoResolve to report whether a request actually
 // moved the match forward, so the /status ROUTE can push the new state
@@ -1025,39 +1078,6 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     // client still showed the "get ready" banner.
     const before = phaseSignature(match);
 
-    // Upgrade matches created by the old turn-based implementation.
-    // They become simultaneous as soon as either participant polls them.
-    if (
-      (match.status === MATCH_STATUS.P1_TURN ||
-        match.status === MATCH_STATUS.P2_TURN) &&
-      match.player2Id
-    ) {
-      // A `pending` entry parked by the old engine is scrubbed to
-      // `{ action: "pending" }` for clients, so leaving the flag set
-      // would hide a real action from BOTH players forever. Release
-      // those flags in the same write as the upgrade.
-      const [upgraded] = await tx
-        .update(laneRushDuelMatches)
-        .set({
-          status: MATCH_STATUS.ACTIVE,
-          currentTurnUserId: null,
-          roundDeadline: null,
-          actions: releasePendingActions(match.actions),
-        })
-        .where(
-          and(
-            eq(laneRushDuelMatches.id, match.id),
-            eq(laneRushDuelMatches.status, match.status),
-          ),
-        )
-        .returning();
-      const upgradedMatch = upgraded || match;
-      return {
-        match: upgradedMatch,
-        advanced: phaseSignature(upgradedMatch) !== before,
-      };
-    }
-
     if (
       match.status === MATCH_STATUS.READY &&
       match.roundDeadline &&
@@ -1067,18 +1087,49 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       return { match: advanced, advanced: phaseSignature(advanced) !== before };
     }
 
-    // AFK auto-pick is a LEGACY turn-based concern: it only fires when a
-    // seat actually owns the turn. Simultaneous matches never set
-    // `currentTurnUserId`, so a leftover `roundDeadline` (e.g. the ready
-    // window written at join time) can't drag an active match into this
-    // path.
+    // Heal a playable bridge match that has no turn owner (rows created
+    // before the opening turn was initialized, or a turn cleared by the
+    // legacy upgrade). With no `currentTurnUserId` the "only the current
+    // player may act" rule would reject EVERY seat forever, so hand the
+    // opening choice to the first player with a fresh 15s window.
+    if (
+      PICKABLE_STATES.has(match.status) &&
+      match.player2Id &&
+      !match.currentTurnUserId
+    ) {
+      const openingTurnUserId = match.firstPlayerId || match.player1Id || null;
+      if (openingTurnUserId) {
+        const [healed] = await tx
+          .update(laneRushDuelMatches)
+          .set({
+            currentTurnUserId: openingTurnUserId,
+            roundDeadline: nextTurnDeadline(),
+          })
+          .where(
+            and(
+              eq(laneRushDuelMatches.id, match.id),
+              eq(laneRushDuelMatches.status, match.status),
+              isNull(laneRushDuelMatches.currentTurnUserId),
+            ),
+          )
+          .returning();
+        const healedMatch = healed || match;
+        return {
+          match: healedMatch,
+          advanced: phaseSignature(healedMatch) !== before,
+        };
+      }
+    }
+
+    // TIMEOUT: the 15s window elapsed with no tile chosen → the current
+    // player's attempt ends (Row 1) and the turn switches to the opponent.
     if (
       PICKABLE_STATES.has(match.status) &&
       match.currentTurnUserId &&
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
-      const advanced = await forcePick(tx, match);
+      const advanced = await timeoutAttempt(tx, match);
       return { match: advanced, advanced: phaseSignature(advanced) !== before };
     }
 
@@ -1092,12 +1143,16 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
 }
 
 async function advanceFromReady(tx, match) {
+  // READY → ACTIVE. The opening tile choice belongs to the coin-flipped
+  // first player and gets a fresh 15s window — clearing the turn here would
+  // deadlock the match (nobody could ever be "the current player").
+  const openingTurnUserId = match.firstPlayerId || match.player1Id || null;
   const [updated] = await tx
     .update(laneRushDuelMatches)
     .set({
       status: MATCH_STATUS.ACTIVE,
-      currentTurnUserId: null,
-      roundDeadline: null,
+      currentTurnUserId: openingTurnUserId,
+      roundDeadline: openingTurnUserId ? nextTurnDeadline() : null,
     })
     .where(
       and(
@@ -1109,125 +1164,96 @@ async function advanceFromReady(tx, match) {
   return updated || match;
 }
 
-// AFK auto-pick: random path + random tile for the current player.
-// The tile CAN be the bad one — that's the punishment for going AFK.
-// Resolves immediately through the same single transition as a manual
-// action (a simultaneous match never parks an action as pending), so
-// an auto-pick can never strand a row.
-async function forcePick(tx, match) {
+// TIMEOUT — the 15s choice window elapsed with no tile selected. The server
+// ends THAT player's attempt: progress resets to Row 1 and the turn passes to
+// the opponent. NO tile is chosen, so no bad tile breaks and no hidden board
+// state is touched; the expiry is recorded in the history as a `timeout` entry.
+//
+// Server-authoritative by construction: this is reached from the status read
+// (there is no client-side resolution and no background scheduler), so the
+// countdown a device renders can never decide the result — the deadline is
+// re-compared against the server's own clock here.
+async function timeoutAttempt(tx, match) {
   const userId = match.currentTurnUserId;
   if (!userId) return match;
 
   const seat = seatForUser(match, userId);
   if (!seat) return match;
 
-  const lane = Number(seat === "player1" ? match.p1Lane : match.p2Lane) || 0;
-  const pathKey = RISK_PATH_KEYS[Math.floor(Math.random() * RISK_PATH_KEYS.length)];
-  const tilesPerLane = RISK_PATHS[pathKey].tiles;
-  const tower =
-    seat === "player1"
-      ? Array.isArray(match.p1Tower)
-        ? match.p1Tower
-        : []
-      : Array.isArray(match.p2Tower)
-        ? match.p2Tower
-        : [];
-  const laneLayout = tower[lane] || {};
-  const badTile = Number(laneLayout[pathKey]);
-  const idx = Math.floor(Math.random() * tilesPerLane);
-  const didFail = idx === badTile;
+  // ONE source of truth for the consequence: row → 0, turn → opponent.
+  const turn = bridgeTurnAfterJump({
+    match,
+    seat,
+    outcome: { outcome: "timed_out", to: 0 },
+  });
 
   const entry = {
     userId,
     seat,
-    action: "pick",
-    path: pathKey,
-    tile: idx,
-    safe: !didFail,
-    lane,
-    round: lane,
-    points: didFail
-      ? 0
-      : pickPointsForSeat(match, seat, lane, pathKey, match.difficulty),
-    autoPicked: true,
-    pending: false,
+    action: BRIDGE_ACTIONS.TIMEOUT,
+    row: seatRow(match, seat),
+    outcome: "timed_out",
     at: new Date().toISOString(),
   };
+  const actions = [...(Array.isArray(match.actions) ? match.actions : []), entry];
 
-  const next = {
-    ...match,
-    [seat === "player1" ? "p1AutoPicked" : "p2AutoPicked"]: true,
-  };
+  const [updated] = await tx
+    .update(laneRushDuelMatches)
+    .set({
+      actions,
+      // The attempt is over: back to Row 1 (0 rows crossed)…
+      [turn.rowField]: turn.row,
+      status: MATCH_STATUS.ACTIVE,
+      // …and the opponent's own fresh 15s window starts now.
+      currentTurnUserId: turn.turnUserId,
+      roundDeadline: nextTurnDeadline(),
+    })
+    .where(
+      and(
+        eq(laneRushDuelMatches.id, match.id),
+        eq(laneRushDuelMatches.status, match.status),
+      ),
+    )
+    .returning();
 
-  return await applyEntryImmediately(tx, next, entry, seat);
+  return (
+    updated || {
+      ...match,
+      actions,
+      [turn.rowField]: turn.row,
+      currentTurnUserId: turn.turnUserId,
+      roundDeadline: nextTurnDeadline(),
+    }
+  );
 }
 
-// Scrub server-only state from a match row before sending it to a
-// client. Hides both towers (bad tile positions) and the server seed
-// until the match reaches `finished`. Also hides the OPPONENT's
-// auto-pick flag mid-match so neither side can infer the other's AFK
-// state, and redacts the OPPONENT's PEEK details (which tile + the
-// safe/bad answer) so peeks stay private until the tower is revealed.
+// Scrub server-only state from a match row before sending it to a client.
+// Hides the SERVER SEED until the match reaches `finished` (so the shared
+// bridge's derivation stays provably fair), stamps the viewer's seat, and
+// replaces the raw bridge layout with the public client view.
 export function scrubMatchForViewer(match, viewerUserId) {
   if (!match) return match;
   const finished = match.status === MATCH_STATUS.FINISHED;
-  const viewerSeat =
-    viewerUserId === match.player1Id
-      ? "player1"
-      : viewerUserId === match.player2Id
-        ? "player2"
-        : null;
-
-  // LEGACY rows only (the simultaneous engine never parks an action):
-  // while a `pending` entry is still parked, the other side must not
-  // learn anything about it — not even its type. Strip everything
-  // except who/where. The upgrade path in fetchMatchWithAutoResolve
-  // releases these flags as soon as either participant polls.
-  const actions = Array.isArray(match.actions)
-    ? match.actions.map((a) => {
-        if (a && a.pending === true) {
-          return {
-            action: "pending",
-            userId: a.userId,
-            seat: a.seat,
-            lane: a.lane,
-            round: a.round,
-            pending: true,
-            autoPicked: a.autoPicked === true,
-            at: a.at,
-          };
-        }
-        // A resolved PEEK is private: the opponent learns only that
-        // you peeked, never which tile or the answer, until finish.
-        if (a && a.action === "peek" && a.seat !== viewerSeat && !finished) {
-          return {
-            action: "peek",
-            userId: a.userId,
-            seat: a.seat,
-            lane: a.lane,
-            round: a.round,
-            pending: false,
-            at: a.at,
-          };
-        }
-        return a;
-      })
-    : match.actions;
 
   return {
     ...match,
-    actions,
-    // A deadline only means something while a seat actually owns a turn.
-    // Simultaneous play has none, so a legacy/leftover deadline is
-    // scrubbed here instead of rendering a phantom "0s" countdown.
+    // The SHARED bridge. Mid-match the client gets ONLY the public view —
+    // row geometry, the broken tiles and the commitment hash — so the
+    // layout's hidden bad tiles never leave the server and the memory /
+    // deduction is genuine. At `finished` the full layout is revealed,
+    // exactly like the server seed.
+    bridge:
+      finished && match.bridge
+        ? match.bridge
+        : bridgeClientView(bridgeForMatch(match), {
+            broken: brokenTilesOf(match),
+          }),
+    // A deadline only means something while a seat actually owns a turn: a
+    // finished match has none, so a leftover deadline is scrubbed here
+    // instead of rendering a phantom "0s" countdown.
     roundDeadline: match.currentTurnUserId ? match.roundDeadline : null,
-    p1Tower: finished ? match.p1Tower : null,
-    p2Tower: finished ? match.p2Tower : null,
     serverSeed: finished ? match.serverSeed : null,
     serverSeedHash: match.serverSeedHash,
-    // Mid-match: only the viewer's own auto-pick flag is meaningful.
-    p1AutoPicked: finished ? Boolean(match.p1AutoPicked) : false,
-    p2AutoPicked: finished ? Boolean(match.p2AutoPicked) : false,
   };
 }
 

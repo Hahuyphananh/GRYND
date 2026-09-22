@@ -3,8 +3,10 @@
 // GET — paginated match history for the current user. Returns
 // FINISHED Lane Rush Duel matches (both PvP and Test vs Bot
 // practice), each in viewer perspective:
-//   * `viewerIsPlayer1`, `myLane` / `oppLane`, `myHeld` / `oppHeld`
-//     plus the banked multipliers
+//   * `viewerIsPlayer1` plus the shared-bridge outcome: `myRow` /
+//     `oppRow` (rows crossed, 10 = crossed the whole bridge),
+//     `brokenCount` (tiles broken for the rest of the match) and each
+//     seat's public memory flags
 //   * `result`: "win" | "loss" | "draw" (viewer-relative — the
 //     stored `result` column is seat-absolute 'player1'|'player2')
 //   * `payout`: prizePaid on a win, stakeAmount on a draw (refund),
@@ -91,12 +93,13 @@ export async function GET(req) {
     const games = rows.map((row) => {
       const viewerIsPlayer1 = row.player1Id === clerkId;
       const isBot = row.player2Id === "AI_BOT";
-      const myLane = Number(viewerIsPlayer1 ? row.p1Lane : row.p2Lane) || 0;
-      const oppLane = Number(viewerIsPlayer1 ? row.p2Lane : row.p1Lane) || 0;
-      const myHeld = Boolean(viewerIsPlayer1 ? row.p1Held : row.p2Held);
-      const oppHeld = Boolean(viewerIsPlayer1 ? row.p2Held : row.p1Held);
-      const myPoints = Number(viewerIsPlayer1 ? row.p1Points : row.p2Points) || 0;
-      const oppPoints = Number(viewerIsPlayer1 ? row.p2Points : row.p1Points) || 0;
+      // Shared-bridge outcome: rows crossed per seat, how many tiles the
+      // match broke, and both seats' public memory flags.
+      const myRow = Number(viewerIsPlayer1 ? row.p1Row : row.p2Row) || 0;
+      const oppRow = Number(viewerIsPlayer1 ? row.p2Row : row.p1Row) || 0;
+      const brokenCount = Array.isArray(row.broken) ? row.broken.length : 0;
+      const myFlags = (viewerIsPlayer1 ? row.p1Flags : row.p2Flags) || [];
+      const oppFlags = (viewerIsPlayer1 ? row.p2Flags : row.p1Flags) || [];
 
       const isDraw = row.result === "draw" || !row.winnerId;
       const isWin = !isDraw && row.winnerId === clerkId;
@@ -116,12 +119,11 @@ export async function GET(req) {
         prizePaid: prize,
         payout: isWin ? prize : isDraw ? stake : 0,
         viewerIsPlayer1,
-        myLane,
-        oppLane,
-        myHeld,
-        oppHeld,
-        myPoints,
-        oppPoints,
+        myRow,
+        oppRow,
+        brokenCount,
+        myFlags,
+        oppFlags,
         opponentName: isBot
           ? "Bot"
           : namesByClerkId.get(opponentClerkId) || "Opponent",

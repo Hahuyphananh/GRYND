@@ -1,25 +1,24 @@
 // src/app/api/lane-rush-duel/match/[matchId]/route.js
 //
 // GET — fetch current match state with auto-resolve behaviour. The
-// server store handles two auto-advance paths inside
-// `fetchMatchWithAutoResolve`:
-//   1. `ready` deadline elapsed → advance to the first pick state.
-//   2. `p1_turn` / `p2_turn` deadline elapsed → force-pick a random
-//      tile for the current player (AFK nudge), then advance the
-//      turn OR resolve the match.
+// server store handles these auto-advance paths inside
+// `fetchMatchWithAutoResolve` (all on the SERVER clock):
+//   1. a playable match with no turn owner → seed the opening turn.
+//   2. `ready` deadline elapsed → advance to the active state.
+//   3. the current player's 15s choice window elapsed → end that
+//      attempt (back to Row 1) and hand the turn to the opponent.
 //
 // Visibility model:
-//   • Both players climb the SAME shared tower (bad tile per lane per
-//     risk path). During active play the tower and the server seed
-//     are HIDDEN (null) — only the server seed HASH is visible, so
-//     each player can verify fairness after the match without seeing
-//     the layout early.
-//   • DEFERRED REVEAL: an action parks as `pending` until the
-//     opponent answers the same row. Pending entries are scrubbed to
-//     `{ action: "pending", seat, round }` — neither side learns the
-//     other's current-row pick (not even its type) before acting.
-//     `myPending` / `oppPending` tell the client who has locked in.
-//   • Once `finished`: full reveal — the shared tower, the server
+//   • Both players cross the SAME shared bridge (10 rows, exactly one
+//     bad tile per row). During play the layout's hidden bad tiles are
+//     NOT sent: `bridge` is the client view only (geometry + the tiles
+//     that are already broken + the commitment hash), so each player
+//     can verify fairness after the match without seeing the solution
+//     early. `myRow` / `oppRow` are each seat's progress and
+//     `myFlags` / `oppFlags` are the public memory flags (2 each).
+//   • Turn ownership is server-side: `currentTurnUserId` + `isViewerTurn`
+//     tell the client whose 15s choice window is live (`roundDeadline`).
+//   • Once `finished`: full reveal — the bridge layout, the server
 //     seed, and the full action history.
 
 import { NextResponse } from "next/server";
@@ -28,12 +27,13 @@ import { fetchMatchWithAutoResolve } from "../../../../../lib/lane-rush-duel/ser
 import { broadcastMatchUpdate } from "../../../../../lib/lane-rush-duel/rooms";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
-  bankRateForSeat,
-  bankedScoreOf,
-  banksUsedBySeat,
-  climbEnded,
-  RISK_PATHS,
-  scoreFromActions,
+  BRIDGE_FLAGS_PER_PLAYER,
+  BRIDGE_ROWS,
+  BRIDGE_TILE_CHOICE_SECONDS,
+  brokenTilesOf,
+  flagsLeftForSeat,
+  flagsOf,
+  seatRow,
 } from "../../../../../lib/lane-rush-duel/constants";
 
 function normaliseMatchForViewer(match, viewerUserId) {
@@ -43,33 +43,7 @@ function normaliseMatchForViewer(match, viewerUserId) {
   const seat = viewerIsPlayer1 ? "player1" : "player2";
   const opponentSeat = viewerIsPlayer1 ? "player2" : "player1";
 
-  const myLane = Number(seat === "player1" ? match.p1Lane : match.p2Lane) || 0;
-  const oppLane =
-    Number(opponentSeat === "player1" ? match.p1Lane : match.p2Lane) || 0;
-  const myHeld = Boolean(seat === "player1" ? match.p1Held : match.p2Held);
-  const oppHeld = Boolean(
-    opponentSeat === "player1" ? match.p1Held : match.p2Held,
-  );
   const actions = Array.isArray(match.actions) ? match.actions : [];
-  const myScore = scoreFromActions(actions, seat);
-  const oppScore = scoreFromActions(actions, opponentSeat);
-  // Soft bank: locked totals, bank counts, live rates, and climb
-  // status (busted/completed) for both seats.
-  const myBanked = bankedScoreOf(match, seat);
-  const oppBanked = bankedScoreOf(match, opponentSeat);
-  const myBanks = banksUsedBySeat(match, seat);
-  const oppBanks = banksUsedBySeat(match, opponentSeat);
-  const myRate = bankRateForSeat(match, seat);
-  const oppRate = bankRateForSeat(match, opponentSeat);
-  const myEnded = climbEnded(match, seat);
-  const oppEnded = climbEnded(match, opponentSeat);
-  // Who has locked in an (unresolved) action for the current row.
-  const myPending = actions.some(
-    (a) => a && a.pending === true && a.seat === seat,
-  );
-  const oppPending = actions.some(
-    (a) => a && a.pending === true && a.seat === opponentSeat,
-  );
 
   return {
     id: match.id,
@@ -77,48 +51,41 @@ function normaliseMatchForViewer(match, viewerUserId) {
     player2Id: match.player2Id,
     stakeAmount: Number(match.stakeAmount),
     difficulty: match.difficulty,
-    tilesPerLane: match.tilesPerLane,
     status: match.status,
     firstPlayerId: match.firstPlayerId,
     currentTurnUserId: match.currentTurnUserId,
+    // TIMER: the deadline is absolute server time, and `serverNow` is the
+    // server's own clock at the moment of this response. A client measures its
+    // remaining time as `roundDeadline - serverNow` (never against its own
+    // clock), so a reconnect — or a device with a skewed clock — still shows
+    // the correct remaining time. The countdown is DISPLAY ONLY: the timeout
+    // is resolved server-side against `roundDeadline` (see timeoutAttempt), so
+    // a client clock can never decide a result.
     roundDeadline: match.roundDeadline,
-    roundTimerSeconds: match.roundTimerSeconds,
+    serverNow: new Date().toISOString(),
+    roundTimerSeconds: match.roundTimerSeconds ?? BRIDGE_TILE_CHOICE_SECONDS,
     viewerIsPlayer1,
     isViewerTurn: match.currentTurnUserId === viewerUserId,
-    myPending,
-    oppPending,
-    myLane,
-    myHeld,
-    myScore,
-    myBanked,
-    myBanks,
-    myRate,
-    myEnded,
-    oppLane,
-    oppHeld,
-    oppScore,
-    oppBanked,
-    oppBanks,
-    oppRate,
-    oppEnded,
-    // Risk-path config so the client renders the path picker with
-    // the exact same odds/points the server enforces.
-    riskPaths: RISK_PATHS,
-    // Action history — full reveal at finished; safe mid-match (only
-    // safe picks + holds exist before resolution).
+    // ── Shared bridge (the redesigned game) ───────────────────────────
+    // `bridge` is already scrubbed by the store: geometry + broken tiles +
+    // commitment mid-match (never the layout), full reveal at finish. Both
+    // seats read the SAME layout, and the rows below are each seat's
+    // progress on it — a fall resets a row to 0, crossing BRIDGE_ROWS wins.
+    bridge: match.bridge ?? null,
+    bridgeRows: BRIDGE_ROWS,
+    tileCount: Number(match.bridge?.tiles) || null,
+    myRow: seatRow(match, seat),
+    oppRow: seatRow(match, opponentSeat),
+    broken: brokenTilesOf(match),
+    myFlags: flagsOf(match, seat),
+    oppFlags: flagsOf(match, opponentSeat),
+    myFlagsLeft: flagsLeftForSeat(match, seat),
+    oppFlagsLeft: flagsLeftForSeat(match, opponentSeat),
+    flagsPerPlayer: BRIDGE_FLAGS_PER_PLAYER,
+    // Action history — every jump/timeout/flag in order, for both seats.
     actions,
-    // Towers + server seed: hidden mid-match, revealed at finish.
-    myTower: finished
-      ? seat === "player1"
-        ? match.p1Tower
-        : match.p2Tower
-      : null,
-    // The opponent's tower is never part of the viewer payload. In
-    // simultaneous play it has no interactive purpose and must not
-    // expose hidden board state.
-    oppTower: null,
-    p1Points: Number(match.p1Points) || 0,
-    p2Points: Number(match.p2Points) || 0,
+    // The SERVER SEED is hidden mid-match and revealed at finish, so both
+    // players can re-derive the shared bridge and verify it was fair.
     serverSeed: finished ? match.serverSeed : null,
     serverSeedHash: match.serverSeedHash,
     p1ClientSeed: match.p1ClientSeed,

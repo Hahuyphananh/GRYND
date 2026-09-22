@@ -45,7 +45,7 @@ GRYND currently features 20 games:
 | **Rock Paper Scissors** | Best-of-7 PvP duel                            |
 | **Tower Arena**         | Multiplayer physics-based tower-stacking game |
 | **Four in a Row**       | Strategic Connect Four-style duel             |
-| **Lane Rush Duel**      | Competitive tower-climbing PvP race           |
+| **Lane Rush Duel**      | Shared 10-row glass-bridge memory duel        |
 | **Pool Masters**        | Physics-based 8-ball pool                     |
 | **Hex Duel**            | Turn-based hex-grid strategy game             |
 | **Dice Flush**          | Yahtzee-style dice strategy game              |
