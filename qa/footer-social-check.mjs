@@ -13,6 +13,9 @@
 //   4. No network is listed twice.
 //   5. The contact page reuses the same row component instead of keeping its own
 //      copy of the links (a second copy is how the surfaces drift apart).
+//   6. The footer also names the community in WORDS ("Reddit Community"),
+//      pointing at the exact subreddit in a new tab, and takes that URL from
+//      the shared list rather than hardcoding a second copy.
 //
 // Run: node qa/footer-social-check.mjs
 
@@ -28,8 +31,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // The official profiles, transcribed from the live accounts. Order matters:
 // it's the order they appear in the footer.
-const EXPECTED = [      {
-        name: "Instagram", href: "https://www.instagram.com/grynd.gg/" },
+const EXPECTED = [
+  // The subreddit leads the row: it is the community hub, not a feed.
+  { name: "Reddit", href: "https://www.reddit.com/r/GRYND/" },
+  {
+    name: "Instagram", href: "https://www.instagram.com/grynd.gg/" },
   { name: "TikTok", href: "https://www.tiktok.com/@grynd.gg" },
   { name: "YouTube", href: "https://www.youtube.com/@TryGrynd" },
   { name: "LinkedIn", href: "https://www.linkedin.com/in/grynd-gg/" },
@@ -197,6 +203,85 @@ try {
     JSON.stringify(hrefs),
   );
 
+  // ── The clearly labelled community link ───────────────────────────────
+  // The icon row is discoverable but carries no visible text, so the footer's
+  // Navigation column also names the destination outright. It has to point at
+  // the exact subreddit, in a new tab, with the same external-link hardening
+  // as the icons.
+  const community = await page.evaluate(() => {
+    const anchor = [...document.querySelectorAll("a")].find(
+      (el) => el.textContent.replace(/\s+/g, " ").trim() === "Reddit Community",
+    );
+    if (!anchor) return null;
+    return {
+      text: anchor.textContent.replace(/\s+/g, " ").trim(),
+      href: anchor.getAttribute("href"),
+      target: anchor.getAttribute("target"),
+      rel: anchor.getAttribute("rel"),
+    };
+  });
+  check(
+    "the footer names the community in words, not just an icon",
+    community?.text === "Reddit Community",
+    JSON.stringify(community),
+  );
+  check(
+    "…at the exact subreddit URL, opened in a new tab with noopener noreferrer",
+    community?.href === "https://www.reddit.com/r/GRYND/" &&
+      community.target === "_blank" &&
+      /noopener/.test(community.rel || "") &&
+      /noreferrer/.test(community.rel || ""),
+    JSON.stringify(community),
+  );
+
+  // ── Mobile ────────────────────────────────────────────────────────────
+  // The footer is the one surface mounted on every page, so the community
+  // link has to be reachable and tappable at phone width too — in the icon
+  // row AND as the labelled entry.
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await phone.goto(base, { waitUntil: "networkidle" });
+  await phone.waitForSelector('[data-testid="footer-social"]');
+  const mobile = await phone.evaluate(() => {
+    const anchor = [...document.querySelectorAll("a")].find(
+      (el) => el.textContent.replace(/\s+/g, " ").trim() === "Reddit Community",
+    );
+    const tile = document.querySelector(
+      '[data-testid="footer-social"] a[href="https://www.reddit.com/r/GRYND/"]',
+    );
+    const rect = anchor?.getBoundingClientRect();
+    const doc = document.documentElement;
+    return {
+      labelled: anchor
+        ? {
+            href: anchor.getAttribute("href"),
+            target: anchor.getAttribute("target"),
+            visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+            inViewportX: Boolean(rect && rect.left >= 0 && rect.right <= doc.clientWidth + 1),
+          }
+        : null,
+      tile: Boolean(tile),
+      overflow: doc.scrollWidth - doc.clientWidth,
+    };
+  });
+  check(
+    "the community link is present and tappable at phone width",
+    Boolean(mobile.labelled?.visible && mobile.labelled.inViewportX) && mobile.tile,
+    JSON.stringify(mobile),
+  );
+  check(
+    "…still at the exact subreddit, opening in a new tab",
+    mobile.labelled?.href === "https://www.reddit.com/r/GRYND/" &&
+      mobile.labelled.target === "_blank" &&
+      mobile.tile,
+    JSON.stringify(mobile.labelled),
+  );
+  check(
+    "the footer does not overflow sideways once the row gains a seventh tile",
+    mobile.overflow <= 2,
+    `overflow=${mobile.overflow}`,
+  );
+  await phone.close();
+
   await browser.close();
 
   // ── One list, two surfaces ────────────────────────────────────────────
@@ -204,13 +289,31 @@ try {
   // assertion): the contact page has to mount the shared row rather than carry
   // its own copy of the URLs, which is how the two would drift.
   const PROFILE_HOSTS =
-    /instagram\.com|tiktok\.com|x\.com|youtube\.com|linkedin\.com|producthunt\.com/i;
+    /instagram\.com|tiktok\.com|x\.com|youtube\.com|linkedin\.com|producthunt\.com|reddit\.com/i;
   const read = (rel) => readFileSync(join(root, rel), "utf8");
+
+  // The labelled link must borrow the URL from the shared list rather than
+  // hardcode its own copy — one subreddit, one place to change it.
+  const footerSrc = read("src/components/Footer.tsx");
+  check(
+    "the footer's community link reuses the shared social list's URL",
+    footerSrc.includes("REDDIT_COMMUNITY.href") && !/reddit\.com/i.test(footerSrc),
+    `reuses=${footerSrc.includes("REDDIT_COMMUNITY.href")}`,
+  );
+
+  // The Product Hunt BADGE is a third-party embed (an <a> to their site plus
+  // their widget image), not one of our profile links — and both the landing
+  // page and the footer carry it deliberately. Strip just those two URLs
+  // before asking whether a page hardcoded a profile URL of its own.
+  const stripBadges = (src) =>
+    src
+      .replace(/https:\/\/www\.producthunt\.com\/products\/grynd\?embed=true[^"']*/gi, "")
+      .replace(/https:\/\/api\.producthunt\.com[^"']*/gi, "");
 
   const contactSrc = read("src/app/contact/PageClient.jsx");
   check(
     "contact page mounts the shared SocialLinks row (no second copy of the list)",
-    contactSrc.includes("<SocialLinks") && !PROFILE_HOSTS.test(contactSrc),
+    contactSrc.includes("<SocialLinks") && !PROFILE_HOSTS.test(stripBadges(contactSrc)),
     `mounts=${contactSrc.includes("<SocialLinks")}`,
   );
   check(
@@ -222,7 +325,7 @@ try {
   const homeSrc = read("src/app/PageClient.jsx");
   check(
     "landing page mounts the shared row and hardcodes no profile URL",
-    homeSrc.includes("<SocialLinks") && !PROFILE_HOSTS.test(homeSrc),
+    homeSrc.includes("<SocialLinks") && !PROFILE_HOSTS.test(stripBadges(homeSrc)),
     `mounts=${homeSrc.includes("<SocialLinks")}`,
   );
 

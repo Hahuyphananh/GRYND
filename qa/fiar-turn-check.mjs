@@ -174,7 +174,9 @@ async function mount(page, state) {
   await page.waitForTimeout(340);
 }
 
-const ACTIVE_RING = "rgba(255, 255, 255, 0.16)";
+// The active card's ring, mirrored from .four-in-a-row-player--active in
+// globals.css (cyan HUD ring, no white/gold glow).
+const ACTIVE_RING = "rgba(0, 229, 255, 0.5)";
 const MUTED = "rgba(255, 255, 255, 0.45)";
 
 try {

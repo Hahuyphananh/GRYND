@@ -78,16 +78,20 @@ export const HARNESS_CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #05070f; }
   #root { width: var(--board-width, 560px); }
-  .four-in-a-row-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 12px; position: relative; }
+  /* The board and the drop-arrow row share ONE column geometry (same gap,
+     same inline padding, same 1px frame) — that is what keeps each arrow
+     centred on its own column, so the mirror has to keep them in step. */
+  .four-in-a-row-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 12px; border: 1px solid transparent; position: relative; }
   .four-in-a-row-disc { aspect-ratio: 1; width: 100%; border-radius: 999px; }
   .four-in-a-row-slot { background: #061b3b; }
   .four-in-a-row-disc-blue { background: rgb(2, 132, 199); }
   .four-in-a-row-disc-purple { background: rgb(147, 51, 234); }
-  .four-in-a-row-drop-controls { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+  .four-in-a-row-drop-controls { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding-inline: 12px; border: 1px solid transparent; }
+  .four-in-a-row-drop-button { width: 100%; height: 2.1rem; }
   .four-in-a-row-win {
     position: relative; z-index: 2;
-    outline: 3px solid rgba(255, 228, 121, .95); outline-offset: 2px;
-    filter: brightness(1.08);
+    outline: 3px solid rgba(245, 255, 59, .95); outline-offset: 3px;
+    filter: brightness(1.12) saturate(1.15);
     animation: fourInARowWin .34s ease-out both;
     animation-delay: calc(var(--win-order, 0) * 90ms);
   }
@@ -97,7 +101,7 @@ export const HARNESS_CSS = `
      relative utility to each card; the harness has no Tailwind, so it is
      folded into the shared base rule. */
   .four-in-a-row-player { position: relative; transition: box-shadow .2s ease, opacity .2s ease; }
-  .four-in-a-row-player--active { box-shadow: 0 0 0 2px rgba(255, 255, 255, .16), 0 0 18px rgba(250, 204, 21, .22); }
+  .four-in-a-row-player--active { box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .5), 0 0 18px rgba(0, 229, 255, .22); }
   .four-in-a-row-player--idle { opacity: .55; }
   .four-in-a-row-turn-line { margin-bottom: .4rem; font-size: .7rem; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
   .four-in-a-row-turn-line--mine { color: rgb(245, 255, 59); }
@@ -123,10 +127,11 @@ export const HARNESS_CSS = `
     .four-in-a-row-opponent-cue { animation: none; opacity: 0; }
   }
   .four-in-a-row-turn-pill {
-    border-radius: 999px; border: 1px solid rgba(250, 204, 21, .5);
-    background: rgba(3, 19, 43, .92); padding: .3rem .9rem;
+    border-radius: 0; border: 1px solid rgba(245, 255, 59, .55);
+    background: rgba(3, 19, 43, .96); padding: .36rem 1.6rem;
     font-size: .7rem; font-weight: 800; letter-spacing: .18em;
     text-transform: uppercase; color: rgb(245, 255, 59);
+    clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
   }
   @media (prefers-reduced-motion: reduce) {
     .four-in-a-row-win { animation: none; }

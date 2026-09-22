@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import LogoSmiley from "../images/logo1.png";
-import SocialLinks from "./SocialLinks";
+import SocialLinks, { REDDIT_COMMUNITY } from "./SocialLinks";
 
 export default function Footer() {
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -101,6 +101,21 @@ export default function Footer() {
               <Link href="/reviews" className={linkClass}>
                 Reviews
               </Link>
+
+              {/* COMMUNITY — the subreddit is a destination rather than site
+                  navigation, so it opens in a new tab under the same
+                  rel="noopener noreferrer" the social row and the Product Hunt
+                  badge use. The URL is the shared social list's own entry, so
+                  the icon tile and this label can never point at different
+                  places. */}
+              <a
+                href={REDDIT_COMMUNITY.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={linkClass}
+              >
+                Reddit Community
+              </a>
             </div>
           </div>
 

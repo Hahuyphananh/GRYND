@@ -7,12 +7,28 @@ import {
   IconBrandInstagram,
   IconBrandLinkedin,
   IconBrandProducthunt,
+  IconBrandReddit,
   IconBrandTiktok,
   IconBrandX,
   IconBrandYoutube,
 } from "@tabler/icons-react";
 
+// The official GRYND subreddit — the community hub, and the one network here
+// that is a place to TALK rather than a feed to follow, so it leads the row.
+//
+// Exported on its own because a surface that renders a labelled LINK rather
+// than an icon tile (the footer's "Reddit Community" entry) must reuse this
+// exact URL: a second hardcoded copy is how the two drift apart.
+// The URL is the subreddit as given, with its trailing slash — a bare
+// reddit.com/r/GRYND costs the visitor a redirect hop.
+export const REDDIT_COMMUNITY = {
+  name: "Reddit",
+  href: "https://www.reddit.com/r/GRYND/",
+  Icon: IconBrandReddit,
+};
+
 export const SOCIAL_LINKS = [
+  REDDIT_COMMUNITY,
   {
     name: "Instagram",
     href: "https://www.instagram.com/grynd.gg/",

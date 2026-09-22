@@ -713,12 +713,12 @@ export default function FourInARowVsAiPage() {
 
   const creatorBoard = (
     <>
-      <div className="bg-[#0b224f]/85 border border-[#00e5ff]/25 rounded-2xl shadow-[0_0_28px_rgba(0,229,255,0.15)] p-3 sm:p-4">
+      <div className="four-in-a-row-panel border p-3 sm:p-4">
         {aiTurnLineNode}
 
         {/* Drop buttons */}
         <div
-          className={`four-in-a-row-drop-controls mb-3 grid grid-cols-7 gap-2 ${
+          className={`four-in-a-row-drop-controls mb-3 grid grid-cols-7 ${
             turnState === "locked"
               ? "four-in-a-row-drop-controls--locked"
               : ""
@@ -754,7 +754,7 @@ export default function FourInARowVsAiPage() {
         {/* Board */}
         <div
           ref={boardRef}
-          className="four-in-a-row-board grid grid-cols-7 gap-2 p-3 rounded-2xl border"
+          className="four-in-a-row-board grid grid-cols-7"
           onMouseOver={handleBoardPointerOver}
           onMouseLeave={() => setHoverCol(null)}
         >
@@ -921,13 +921,13 @@ export default function FourInARowVsAiPage() {
         <div className="flex gap-2">
           <button
             onClick={resetGame}
-            className="px-4 py-2.5 rounded-lg text-sm font-bold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors"
+            className="rounded-sm border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
           >
             New Game
           </button>
           <button
             onClick={() => router.push("/casino/four-in-a-row")}
-            className="px-4 py-2.5 rounded-lg text-sm font-bold bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30 transition-colors"
+            className="rounded-sm border border-cyan-400/30 bg-cyan-500/15 px-4 py-2.5 text-sm font-bold text-cyan-200 transition-colors hover:bg-cyan-500/30"
           >
             Back to Lobby
           </button>
@@ -969,7 +969,7 @@ export default function FourInARowVsAiPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
       >
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-center mb-1 text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 via-purple-400 to-indigo-500 drop-shadow-[0_0_18px_rgba(168,85,247,0.55)] tracking-wide">
+        <h1 className="logo-text text-2xl sm:text-3xl font-black text-center mb-1 uppercase tracking-[0.12em] text-[#7cefff] drop-shadow-[0_0_16px_rgba(0,229,255,0.45)]">
           FOUR-IN-A-ROW vs AI
         </h1>
       </motion.div>

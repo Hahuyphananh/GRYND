@@ -1239,134 +1239,60 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 :root[data-theme="light"] .hover\:bg-\[\#FFD700\]\/80:hover {
   background-color: #f4c430 !important;
 }
-/* Four-In-A-Row: sharp HUD board.
-   (The falling-disc motion is now a framer-motion drop + trail in
+/* Four-In-A-Row: tactile arcade board */
+/* (The falling-disc motion is now a framer-motion drop + trail in
    four-in-a-row/game/[gameId]/PageClient.tsx and play-ai/PageClient.tsx, so
    the old single-disc CSS keyframe is gone.) */
-
-/* ── Shared column geometry ────────────────────────────────────────────
-   The board grid and the drop-arrow row are laid out from ONE set of
-   values: the same box width, the same 1px frame, the same inline padding
-   and the same gap — which is what puts every arrow dead centre over its
-   own column at every size. (The arrow row used to run the panel's full
-   width with no padding while the board was inset and padded, so the
-   arrows fanned out of line — worst at the two outer columns.) A new size
-   only has to change --fiar-pad / --fiar-gap and BOTH grids follow. */
-.four-in-a-row-board,
-.four-in-a-row-drop-controls {
-  --fiar-gap: 0.5rem;
-  --fiar-pad: 0.75rem;
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: var(--fiar-gap);
-  width: min(100%, calc((100svh - 17rem) * 1.166));
-  max-width: 100%;
-  margin-inline: auto;
-}
-
-/* The board draws the neon frame; the arrow row reserves the same 1px so
-   the two content boxes are identical and the columns line up exactly. */
 .four-in-a-row-board {
   position: relative;
   isolation: isolate;
-  padding: var(--fiar-pad);
-  border: 1px solid rgba(0, 229, 255, .55);
-  border-radius: 3px;
-  background:
-    linear-gradient(rgba(0, 229, 255, .05) 1px, transparent 1px) 0 0 / 100% 2.5rem,
-    linear-gradient(180deg, #061530 0%, #030d22 58%, #01060f 100%);
-  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .07), inset 0 0 44px rgba(0, 229, 255, .05), 0 18px 34px rgba(0, 0, 0, .5), 0 0 26px rgba(0, 229, 255, .16);
+  background: linear-gradient(145deg, #155aa0 0%, #0a3269 52%, #06234d 100%);
+  border-color: rgba(0, 229, 255, 0.72);
+  box-shadow: inset 0 4px 0 rgba(255,255,255,.14), inset 0 -9px 0 rgba(0,0,0,.3), 0 18px 30px rgba(0,0,0,.35), 0 0 22px rgba(0, 229, 255, .28), 0 0 52px rgba(123, 47, 255, .16);
 }
 
-/* HUD corner brackets — the sharp frame accent, painted above the board.
-   Decorative only. */
 .four-in-a-row-board::before {
   content: "";
   position: absolute;
-  inset: -1px;
-  z-index: 3;
+  inset: 5px;
+  z-index: -1;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 229, 255, .2);
+  box-shadow: 0 0 12px rgba(0, 229, 255, .12);
   pointer-events: none;
-  background:
-    linear-gradient(#00e5ff, #00e5ff) left top / 14px 2px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) left top / 2px 14px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) right top / 14px 2px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) right top / 2px 14px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) left bottom / 14px 2px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) left bottom / 2px 14px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) right bottom / 14px 2px no-repeat,
-    linear-gradient(#00e5ff, #00e5ff) right bottom / 2px 14px no-repeat;
-  filter: drop-shadow(0 0 4px rgba(0, 229, 255, .8));
-}
-
-.four-in-a-row-drop-controls {
-  border: 1px solid transparent;
-  padding-inline: var(--fiar-pad);
 }
 
 .four-in-a-row-disc {
   aspect-ratio: 1;
   width: 100%;
   border-radius: 999px;
-  border: 1px solid rgba(1, 6, 16, .8);
+  border: 2px solid rgba(0,0,0,.3);
+  box-shadow: inset 0 5px 5px rgba(255,255,255,.34), inset 0 -7px 8px rgba(0,0,0,.3), 0 4px 5px rgba(0,0,0,.35);
   transition: transform .18s ease, filter .18s ease;
 }
 
-/* An empty cell is an angular socket, not a glossy pit. */
 .four-in-a-row-slot {
-  border-radius: 5px;
-  background: radial-gradient(circle at 50% 46%, #04142b 0 44%, #020914 74%, #010409 100%);
-  border-color: rgba(0, 229, 255, .22);
-  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .1), inset 0 7px 11px rgba(0, 0, 0, .72);
+  background: radial-gradient(circle at 35% 28%, #214d7a 0 12%, #061b3b 62%, #020d22 100%);
+  border-color: rgba(0,0,0,.55);
+  box-shadow: inset 0 6px 9px rgba(0,0,0,.65), inset 0 -2px 2px rgba(255,255,255,.08), 0 2px 2px rgba(255,255,255,.08);
 }
 
-/* Flat neon tokens: a hard bright rim around a dark core, instead of the
-   old glossy white highlight. */
-.four-in-a-row-disc-blue {
-  background: radial-gradient(circle at 50% 40%, #4cc7ff 0%, #0b7ec0 46%, #032c4d 100%);
-  box-shadow: inset 0 0 0 2px rgba(190, 240, 255, .8), inset 0 0 12px rgba(0, 229, 255, .5), inset 0 -6px 12px rgba(0, 0, 0, .45), 0 0 14px rgba(0, 229, 255, .5), 0 0 30px rgba(0, 229, 255, .18);
-}
-.four-in-a-row-disc-purple {
-  background: radial-gradient(circle at 50% 40%, #d8b4fe 0%, #8b26e8 46%, #38076b 100%);
-  box-shadow: inset 0 0 0 2px rgba(238, 213, 255, .8), inset 0 0 12px rgba(192, 132, 252, .5), inset 0 -6px 12px rgba(0, 0, 0, .45), 0 0 14px rgba(192, 132, 252, .5), 0 0 30px rgba(123, 47, 255, .22);
-}
+.four-in-a-row-disc-blue { background: radial-gradient(circle at 32% 24%, #e0f2fe 0 8%, #38bdf8 22%, #0284c7 64%, #075985 100%); box-shadow: inset 0 5px 5px rgba(255,255,255,.38), inset 0 -7px 8px rgba(0,0,0,.3), 0 0 11px rgba(56,189,248,.45), 0 4px 5px rgba(0,0,0,.35); }
+.four-in-a-row-disc-purple { background: radial-gradient(circle at 32% 24%, #f3e8ff 0 8%, #c084fc 22%, #9333ea 64%, #6b21a8 100%); box-shadow: inset 0 5px 5px rgba(255,255,255,.38), inset 0 -7px 8px rgba(0,0,0,.3), 0 0 11px rgba(192,132,252,.45), 0 4px 5px rgba(0,0,0,.35); }
 
-/* ── Drop arrows ───────────────────────────────────────────────────────
-   Angular cyan chips that fill in on hover, so the row reads as one HUD
-   rail sitting directly over the columns it commands. */
 .four-in-a-row-drop-button {
-  width: 100%;
   height: 2.1rem;
-  border: 1px solid rgba(0, 229, 255, .45);
-  border-radius: 2px;
-  color: #7cefff;
-  font-size: .95rem;
+  border: 1px solid rgba(255, 228, 121, .65);
+  border-radius: .7rem;
+  color: #08213d;
   font-weight: 900;
-  line-height: 1;
-  background: linear-gradient(180deg, rgba(0, 229, 255, .13), rgba(0, 229, 255, .03));
-  box-shadow: inset 0 0 10px rgba(0, 229, 255, .1), 0 0 9px rgba(0, 229, 255, .1);
-  transition: transform .12s ease, color .12s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+  background: linear-gradient(180deg, #ffe889, #f7bd22);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 5px 10px rgba(0,0,0,.22);
+  transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
 }
-.four-in-a-row-drop-button:hover:not(:disabled) {
-  color: #031026;
-  border-color: #7cefff;
-  background: linear-gradient(180deg, #7cefff, #00c2dd);
-  box-shadow: 0 0 16px rgba(0, 229, 255, .55), inset 0 0 0 1px rgba(255, 255, 255, .28);
-}
-.four-in-a-row-drop-button:disabled {
-  color: rgba(124, 239, 255, .28);
-  border-color: rgba(0, 229, 255, .14);
-  background: rgba(255, 255, 255, .015);
-  box-shadow: none;
-}
-
-/* A card panel for the game's own surfaces: sharp, cyan-edged, no glow.
-   Scoped to four-in-a-row so the shared .casino-surface look stays as is. */
-.four-in-a-row-panel {
-  border-radius: 3px;
-  border: 1px solid rgba(0, 229, 255, .28);
-  background: linear-gradient(180deg, rgba(3, 19, 43, .82), rgba(2, 8, 22, .88));
-  box-shadow: 0 18px 35px rgba(0, 0, 0, .45), 0 0 24px rgba(0, 229, 255, .07);
-}
+.four-in-a-row-drop-button:hover:not(:disabled) { box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 16px rgba(255,215,64,.45); }
+.four-in-a-row-drop-button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.08); }
+.four-in-a-row-drop-button:disabled { color: #71809a; background: #25344c; box-shadow: none; }
 
 /* ── Four-In-A-Row interaction feedback ───────────────────────────────
    Hover/selection affordance ONLY. Exactly ONE column and ONE landing cell
@@ -1376,10 +1302,10 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 
 /* The hovered/selected column, drawn as a faint rail behind nothing else. */
 .four-in-a-row-column-hint {
-  border-radius: 2px;
-  background: linear-gradient(180deg, rgba(0, 229, 255, .16), rgba(0, 229, 255, .02));
-  border: 1px solid rgba(0, 229, 255, .5);
-  box-shadow: inset 0 0 20px rgba(0, 229, 255, .16), 0 0 16px rgba(0, 229, 255, .12);
+  border-radius: .9rem;
+  background: rgba(0, 229, 255, .08);
+  border: 1px solid rgba(0, 229, 255, .38);
+  box-shadow: inset 0 0 16px rgba(0, 229, 255, .14);
   pointer-events: none;
 }
 
@@ -1392,36 +1318,33 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 /* Selected: a one-shot ring + fade-in (instant under reduced motion, whose
    global rule zeroes animation durations). */
 .four-in-a-row-preview--pending {
-  opacity: .7;
-  outline: 2px dashed rgba(124, 239, 255, .95);
-  outline-offset: 3px;
+  opacity: .66;
+  outline: 3px solid rgba(0, 229, 255, .75);
+  outline-offset: 2px;
   animation: fourInARowPending .16s ease-out both;
 }
 @keyframes fourInARowPending {
   from { opacity: .28; }
-  to { opacity: .7; }
+  to { opacity: .66; }
 }
 
 /* Hovered/selected column's drop button (doubled class so it outranks the
    plain :hover rule, which is written with the same specificity). */
 .four-in-a-row-drop-button.four-in-a-row-drop-button--hint:not(:disabled) {
-  color: #031026;
-  border-color: #7cefff;
-  background: linear-gradient(180deg, #7cefff, #00c2dd);
-  box-shadow: 0 0 18px rgba(0, 229, 255, .65), inset 0 0 0 1px rgba(255, 255, 255, .28);
+  transform: translateY(-2px);
+  filter: brightness(1.12);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 18px rgba(255,215,64,.6);
 }
 .four-in-a-row-drop-button.four-in-a-row-drop-button--pending:not(:disabled) {
-  color: #031026;
-  border-color: #f5ff3b;
-  background: linear-gradient(180deg, #f5ff3b, #c8d400);
-  box-shadow: 0 0 22px rgba(245, 255, 59, .6), inset 0 0 0 1px rgba(255, 255, 255, .3);
+  filter: brightness(1.2);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.45), 0 3px 0 #a66d0b, 0 0 22px rgba(0,229,255,.7);
 }
 
 /* Press = immediate feedback, sent before anything reaches the server. */
 .four-in-a-row-drop-button:active:not(:disabled) {
-  transform: translateY(1px) scale(.98);
+  transform: translateY(2px) scale(.97);
   filter: brightness(.95);
-  box-shadow: 0 0 14px rgba(0, 229, 255, .5);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.22), 0 1px 0 #a66d0b, 0 0 18px rgba(255,215,64,.5);
 }
 
 /* ── Four-In-A-Row winning line ────────────────────────────────────────
@@ -1431,9 +1354,9 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 .four-in-a-row-win {
   position: relative;
   z-index: 2;
-  outline: 3px solid rgba(245, 255, 59, .95);
-  outline-offset: 3px;
-  filter: brightness(1.12) saturate(1.15);
+  outline: 3px solid rgba(255, 228, 121, .95);
+  outline-offset: 2px;
+  filter: brightness(1.08);
   animation: fourInARowWin .34s ease-out both;
   /* Stagger along the line so the four read as one connection. */
   animation-delay: calc(var(--win-order, 0) * 90ms);
@@ -1464,11 +1387,10 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
    finished match hands the stage to the winning/result state. Everything
    here settles instantly — nothing loops and nothing pulses. */
 .four-in-a-row-player {
-  border-radius: 3px;
-  transition: box-shadow .2s ease, opacity .2s ease, border-color .2s ease;
+  transition: box-shadow .2s ease, opacity .2s ease;
 }
 .four-in-a-row-player--active {
-  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .5), 0 0 18px rgba(0, 229, 255, .22);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .16), 0 0 18px rgba(250, 204, 21, .22);
 }
 .four-in-a-row-player--idle {
   opacity: .55;
@@ -1483,7 +1405,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   text-transform: uppercase;
   transition: color .2s ease, opacity .2s ease;
 }
-.four-in-a-row-turn-line--mine { color: #f5ff3b; text-shadow: 0 0 12px rgba(245, 255, 59, .4); }
+.four-in-a-row-turn-line--mine { color: #f5ff3b; }
 .four-in-a-row-turn-line--theirs,
 .four-in-a-row-turn-line--thinking { color: rgba(255, 255, 255, .45); }
 .four-in-a-row-turn-line--locked { color: #7cefff; }
@@ -1530,52 +1452,51 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   .four-in-a-row-opponent-cue { animation: none; opacity: 0; }
 }
 
-/* Brief turn-transition cue — small, angular, gone in a moment. */
+/* Brief turn-transition cue — small, static, gone in a moment. */
 .four-in-a-row-turn-pill {
-  border-radius: 0;
-  border: 1px solid rgba(245, 255, 59, .55);
-  background: linear-gradient(180deg, rgba(3, 19, 43, .96), rgba(1, 7, 18, .96));
-  padding: .36rem 1.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, .5);
+  background: rgba(3, 19, 43, .92);
+  padding: .3rem .9rem;
   font-size: .7rem;
   font-weight: 800;
   letter-spacing: .18em;
   text-transform: uppercase;
   color: #f5ff3b;
-  text-shadow: 0 0 12px rgba(245, 255, 59, .4);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .45), 0 0 20px rgba(245, 255, 59, .14);
-  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
   backdrop-filter: blur(2px);
 }
 
 @media (max-width: 480px) {
-  .four-in-a-row-board,
-  .four-in-a-row-drop-controls { --fiar-gap: .3rem; --fiar-pad: .6rem; }
+  .four-in-a-row-board { gap: .3rem; padding: .65rem; }
+  .four-in-a-row-drop-controls { gap: .3rem; }
   .four-in-a-row-drop-button { height: 1.8rem; }
 }
 
 /* Keep the complete board and controls visible in the viewport. The board
-   stays square by sizing its cells from the available width/height — and the
-   arrow row follows the SAME width, so the two can never drift out of
-   column at any breakpoint. */
+   stays square by sizing its cells from the available width/height. */
 .four-in-a-row-viewport {
   max-height: none;
   overflow: visible;
 }
 
+.four-in-a-row-board {
+  width: min(100%, calc((100svh - 17rem) * 1.166));
+  max-width: 100%;
+  margin-inline: auto;
+}
+
 @media (max-width: 1023px) {
   .four-in-a-row-viewport { max-height: none; overflow: visible; }
-  .four-in-a-row-board,
-  .four-in-a-row-drop-controls { width: min(100%, 78vw); }
+  .four-in-a-row-board { width: min(100%, 78vw); }
 }
 
 @media (max-width: 480px) {
-  .four-in-a-row-board,
-  .four-in-a-row-drop-controls { width: min(100%, calc(100vw - 2rem)); }
+  .four-in-a-row-board { width: min(100%, calc(100vw - 2rem)); }
 }
 
 @media (max-height: 700px) and (min-width: 1024px) {
-  .four-in-a-row-board,
-  .four-in-a-row-drop-controls { width: min(100%, calc((100svh - 13rem) * 1.166)); }
+  .four-in-a-row-board { width: min(100%, calc((100svh - 13rem) * 1.166)); }
 }
 
 /* Creator Mode: the board is laid out inside the FIXED recording frame (the
@@ -1593,11 +1514,13 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   width: 100%;
   margin-inline: auto;
 }
-.four-in-a-row-creator-stage .four-in-a-row-board,
-.four-in-a-row-creator-stage .four-in-a-row-drop-controls {
+.four-in-a-row-creator-stage .four-in-a-row-board {
   width: 100%;
   max-width: 100%;
   margin-inline: 0;
+}
+.four-in-a-row-creator-stage .four-in-a-row-drop-controls {
+  gap: 0.6rem;
 }
 .four-in-a-row-creator-stage .four-in-a-row-drop-button {
   height: 3.25rem;

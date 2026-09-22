@@ -49,22 +49,25 @@ export const AI_HARNESS_CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #05070f; }
   #root { width: var(--board-width, 560px); }
-  .four-in-a-row-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 12px; }
+  /* The board and the drop-arrow row share ONE column geometry (same gap,
+     same inline padding, same 1px frame) — that is what keeps each arrow
+     centred on its own column, so the mirror has to keep them in step. */
+  .four-in-a-row-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 12px; border: 1px solid transparent; }
   .four-in-a-row-disc { aspect-ratio: 1; width: 100%; border-radius: 999px; }
   .four-in-a-row-slot { background: #061b3b; }
   .four-in-a-row-disc-blue { background: rgb(2, 132, 199); }
   .four-in-a-row-disc-purple { background: rgb(147, 51, 234); }
-  .four-in-a-row-drop-controls { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-  .four-in-a-row-drop-button { height: 32px; }
+  .four-in-a-row-drop-controls { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding-inline: 12px; border: 1px solid transparent; }
+  .four-in-a-row-drop-button { width: 100%; height: 2.1rem; }
   /* Interaction-feedback rules mirrored from globals.css. */
-  .four-in-a-row-column-hint { border-radius: .9rem; background: rgba(0, 229, 255, .08); border: 1px solid rgba(0, 229, 255, .38); pointer-events: none; }
+  .four-in-a-row-column-hint { border-radius: 2px; background: rgba(0, 229, 255, .1); border: 1px solid rgba(0, 229, 255, .5); pointer-events: none; }
   .four-in-a-row-preview { opacity: .4; pointer-events: none; }
-  .four-in-a-row-preview--pending { opacity: .66; }
+  .four-in-a-row-preview--pending { opacity: .7; outline: 2px dashed rgba(124, 239, 255, .95); outline-offset: 3px; }
   /* Turn / state hierarchy (mirrored from globals.css). The page adds the
      relative utility to each chip; the harness has no Tailwind, so it is
      folded into the shared base rule. */
   .four-in-a-row-player { position: relative; transition: box-shadow .2s ease, opacity .2s ease; }
-  .four-in-a-row-player--active { box-shadow: 0 0 0 2px rgba(255, 255, 255, .16), 0 0 18px rgba(250, 204, 21, .22); }
+  .four-in-a-row-player--active { box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .5), 0 0 18px rgba(0, 229, 255, .22); }
   .four-in-a-row-player--idle { opacity: .55; }
   .four-in-a-row-turn-line { margin-bottom: .4rem; font-size: .7rem; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
   .four-in-a-row-turn-line--mine { color: rgb(245, 255, 59); }

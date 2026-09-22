@@ -994,7 +994,7 @@ export default function ConnectFourGamePage() {
   const c4BoardNode = (
     <div
       ref={boardRef}
-      className="four-in-a-row-board grid grid-cols-7 gap-2 p-3 rounded-2xl border"
+      className="four-in-a-row-board grid grid-cols-7"
       onMouseOver={handleBoardPointerOver}
       onMouseLeave={() => setHoverCol(null)}
     >
@@ -1144,7 +1144,7 @@ export default function ConnectFourGamePage() {
   );
   const c4DropControlsNode = (
     <div
-      className={`four-in-a-row-drop-controls grid grid-cols-7 gap-2 ${
+      className={`four-in-a-row-drop-controls grid grid-cols-7 ${
         turnState === "locked" ? "four-in-a-row-drop-controls--locked" : ""
       }`}
     >
@@ -1168,7 +1168,7 @@ export default function ConnectFourGamePage() {
               setHoverCol((current) => (current === col ? null : current))
             }
             disabled={!canPlay || !playable}
-            className={`four-in-a-row-drop-button min-h-[44px] min-w-[44px]${
+            className={`four-in-a-row-drop-button min-h-[44px]${
               highlighted ? " four-in-a-row-drop-button--hint" : ""
             }${pending ? " four-in-a-row-drop-button--pending" : ""}`}
             title={`Drop in column ${col + 1}`}
@@ -1208,7 +1208,7 @@ export default function ConnectFourGamePage() {
                 </p>
               </div>
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${activeTimer <= 10 ? "bg-red-500/20 text-red-300" : "bg-green-500/15 text-green-300"}`}
+                className={`shrink-0 rounded-sm border px-2 py-0.5 font-mono text-xs font-bold ${activeTimer <= 10 ? "border-red-400/40 bg-red-500/20 text-red-300" : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"}`}
               >
                 ⏱ {activeTimer}s
               </span>
@@ -1402,7 +1402,7 @@ export default function ConnectFourGamePage() {
       <div className="four-in-a-row-viewport max-w-5xl mx-auto relative overflow-visible rounded-2xl pb-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-extrabold text-yellow-300">
+            <h1 className="logo-text text-2xl font-black uppercase tracking-[0.08em] text-[#f5ff3b] drop-shadow-[0_0_14px_rgba(245,255,59,0.35)] sm:text-3xl">
               Four-In-A-Row: Match #{gameId}
             </h1>
             {isSpectator && (
@@ -1427,14 +1427,14 @@ export default function ConnectFourGamePage() {
           </div>
           <button
             onClick={() => router.push("/casino/four-in-a-row")}
-            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 hover-lift"
+            className="rounded-sm border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-cyan-200 transition-colors hover:bg-cyan-500/20"
           >
             Back to Lobby
           </button>
         </div>
 
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
-          <div className="casino-surface p-3 rounded-2xl">
+          <div className="casino-surface four-in-a-row-panel p-3">
             <div className="flex justify-between items-center mb-4">
               <div>
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/70 text-sm">
@@ -1516,10 +1516,6 @@ export default function ConnectFourGamePage() {
               </div>
             </div>
 
-            {c4TurnLineNode}
-
-            {c4DropControlsNode}
-
             {/* Emotes */}
             <div className="mb-3 flex justify-center">
               <EmotePicker
@@ -1531,11 +1527,17 @@ export default function ConnectFourGamePage() {
               />
             </div>
 
+            {c4TurnLineNode}
+
+            {/* The drop rail sits directly on the board it commands, one
+                arrow per column. */}
+            {c4DropControlsNode}
+
             {c4BoardNode}
           </div>
 
           <div
-            className={`casino-surface p-4 rounded-2xl ${canPlay ? "turn-active-glow" : ""}`}
+            className={`casino-surface four-in-a-row-panel p-4 ${canPlay ? "turn-active-glow" : ""}`}
           >
             <h2 className="text-base font-bold text-yellow-300 mb-3 flex items-center gap-2 uppercase tracking-wider">
               <IconTarget size={16} aria-hidden />
@@ -1565,7 +1567,7 @@ export default function ConnectFourGamePage() {
                 Color
               </span>
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                className={`inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-xs font-semibold ${
                   game?.role === "host"
                     ? "bg-green-500/15 text-green-300 border border-green-400/30"
                     : game?.role === "guest"
