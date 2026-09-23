@@ -6,25 +6,74 @@ import Link from "next/link";
 import posthog from "posthog-js";
 import { useTranslation } from "../hooks/useTranslation";
 import {
+  CMP_NOT_APPLICABLE_EVENT,
   getCookieConsent,
+  OPEN_CONSENT_BANNER_EVENT,
   setCookieConsent,
   type CookieConsent,
 } from "../lib/cookieConsent";
+import { updateGoogleConsent } from "../lib/googleConsent";
 
-export default function CookieConsentBanner() {
+/**
+ * @param suppressForCmp  True for visitors in the EEA, the UK and Switzerland,
+ *   where Google's certified CMP is the prompt that has to appear (Google
+ *   requires it, and the TCF consent string it writes is what our ad partners
+ *   read). Showing this banner there as well would mean two prompts over two
+ *   consent records that can disagree.
+ */
+export default function CookieConsentBanner({
+  suppressForCmp = false,
+}: {
+  suppressForCmp?: boolean;
+}) {
   const [visible, setVisible] = useState(false);
+  const [suppressed, setSuppressed] = useState(suppressForCmp);
   const shouldReduceMotion = useReducedMotion();
   const { t } = useTranslation();
 
-  // Show the banner only until the visitor makes a choice.
+  // Show the banner only until the visitor makes a choice, and re-apply a
+  // stored answer to Consent Mode on every visit (the defaults are denied, so
+  // a returning visitor who accepted would otherwise be treated as anonymous).
+  //
+  // Skipped when Google's CMP owns consent: there its own updates are the
+  // authority, and pushing ours on top could contradict the answer the visitor
+  // just gave it.
   useEffect(() => {
-    if (getCookieConsent() === null) setVisible(true);
+    if (suppressForCmp) return;
+    const stored = getCookieConsent();
+    if (stored === null) setVisible(true);
+    else updateGoogleConsent(stored === "accepted");
+  }, [suppressForCmp]);
+
+  // Google's CMP re-checked the visitor and found its regulations don't apply
+  // (an EU edge location routing someone who is actually outside the EEA, and
+  // similar proxy cases). Its message will never render, so this banner has to
+  // stop standing aside.
+  useEffect(() => {
+    if (!suppressForCmp) return;
+    const takeOver = () => setSuppressed(false);
+    window.addEventListener(CMP_NOT_APPLICABLE_EVENT, takeOver);
+    return () => window.removeEventListener(CMP_NOT_APPLICABLE_EVENT, takeOver);
+  }, [suppressForCmp]);
+
+  // Withdrawal. The footer's "Manage cookies" link asks for this banner so a
+  // decision is as easy to change as it was to make (GDPR art. 7(3)).
+  useEffect(() => {
+    const reopen = () => {
+      setSuppressed(false);
+      setVisible(true);
+    };
+    window.addEventListener(OPEN_CONSENT_BANNER_EVENT, reopen);
+    return () => window.removeEventListener(OPEN_CONSENT_BANNER_EVENT, reopen);
   }, []);
 
-  if (!visible) return null;
+  if (!visible || suppressed) return null;
 
   const choose = (value: CookieConsent) => {
     setCookieConsent(value);
+    // Our banner is the consent source outside the EEA/UK/CH, so its answer is
+    // what lifts the Consent Mode defaults (see lib/googleConsent.ts).
+    updateGoogleConsent(value === "accepted");
     try {
       if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
         if (value === "accepted") posthog.opt_in_capturing();

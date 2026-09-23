@@ -24,7 +24,7 @@ const sections = [
     content: [
       "We use your information to provide, maintain, and improve our services. This includes processing wagers and payouts, calculating rankings and leaderboards, displaying your profile and game history, running the chat and review features, sending account and marketing emails, detecting fraudulent or abusive behavior, and complying with legal obligations.",
       "Public information: your display name, profile picture, level, titles, streaks, and gameplay statistics are shown publicly on leaderboards, rankings, profiles, the Top Wins feed, and (for approved reviews) the reviews page. Your email address and date of birth are never displayed publicly.",
-      "We do not sell your personal information, and we do not use it for advertising or to track you across other websites.",
+      "We do not sell your personal information. We do show advertising on our browsing pages, served by Google AdSense \u2014 see \u201cAdvertising\u201d below for exactly where it appears and how you control it.",
     ],
   },
   {
@@ -42,6 +42,15 @@ const sections = [
     ],
   },
   {
+    title: "Advertising",
+    content: [
+      "We keep GRYND free to play in part with advertising served by Google AdSense. Ads appear only on browsing pages \u2014 the home page, the games hub, the leaderboard, the battlepass and the game lobbies. They never appear on a live match page, so a game in progress is never interrupted by advertising.",
+      "Google and its advertising partners may set cookies or read device identifiers in order to serve and measure ads and to limit how often you see the same ad. Where your consent is required, ads are non-personalised until you consent, and ad click identifiers are redacted from ad requests.",
+      "Visitors in the European Economic Area, the United Kingdom and Switzerland are shown a consent message from Google's certified consent management platform, which records your choices and lets you refuse as easily as you accept; that choice is also passed to our advertising partners as an industry-standard consent signal. Visitors elsewhere are shown our own cookie banner.",
+      "You can change or withdraw your advertising consent at any time with the \u201cManage cookies\u201d link in the footer of every page. We do not sell your personal information.",
+    ],
+  },
+  {
     title: "Support & Live Chat",
     content: [
       "Our support chat is provided by Tawk.to. When you use the live chat widget, Tawk.to processes your chat messages and contact details under its own privacy policy, as a service provider to us. Chat messages you send on the platform (global and game rooms) are stored by us, are visible to other players, and may be moderated.",
@@ -56,7 +65,8 @@ const sections = [
   {
     title: "Data Sharing & Third Parties",
     content: [
-      "We share personal data only with the service providers we use to operate the platform, who process it on our behalf under contractual obligations: Clerk (authentication), Neon and Vercel Postgres (database hosting), Vercel (hosting), Upstash (caching), Supabase (supporting services), PostHog (analytics), Sentry (error monitoring), Resend (email delivery), and Tawk.to (support chat).",
+      "We share personal data only with the service providers we use to operate the platform, who process it on our behalf under contractual obligations: Clerk (authentication), Neon and Vercel Postgres (database hosting), Vercel (hosting), Upstash (caching), Supabase (supporting services), PostHog (analytics), Sentry (error monitoring), Resend (email delivery), Tawk.to (support chat), and Google (advertising, through AdSense).",
+      "Advertising is served through Google AdSense, which processes ad data as an independent controller under its own privacy policy rather than as our service provider; the consent signals described under \u201cAdvertising\u201d are how your choices reach it.",
       "If token purchases are enabled, payment processing is handled by a third-party payment processor; we do not store your card or other payment instrument details.",
       "We may also disclose information where required by law, to enforce our Terms, or to protect the rights, property, or safety of our users or the public.",
     ],
@@ -81,7 +91,7 @@ const sections = [
     content: [
       "GRYND uses strictly necessary cookies and similar technologies to operate and secure the platform: authentication and session cookies (Clerk), a short-lived CSRF-protection cookie, and — for administrators only — a 24-hour security cookie used for the admin second-factor check. These are essential; without them you cannot sign in or use core features.",
       "We also use browser storage (localStorage and sessionStorage) for preferences such as your theme, language, cookie-consent choice, onboarding-tour progress, and short-lived caches of your level and status, as well as a temporary game-session identifier used by some games.",
-      "Where analytics or diagnostics involve non-essential technologies (PostHog, Sentry), we obtain your consent before enabling them. You can manage or delete cookies and storage through your browser settings at any time; disabling essential cookies may prevent you from signing in or using the platform.",
+      "Where analytics, diagnostics or advertising involve non-essential technologies (PostHog, Sentry, Google AdSense), we obtain your consent before enabling them \u2014 see \u201cAnalytics & Diagnostics\u201d and \u201cAdvertising\u201d above. You can change or withdraw that choice at any time with the \u201cManage cookies\u201d link in the footer. You can also manage or delete cookies and storage through your browser settings; disabling essential cookies may prevent you from signing in or using the platform.",
     ],
   },
   {
@@ -131,7 +141,7 @@ export default function PrivacyPolicyPage() {
             Privacy Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
-            Last updated: September 4, 2026
+            Last updated: September 23, 2026
           </p>
 
           <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">

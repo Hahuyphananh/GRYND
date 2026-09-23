@@ -1,15 +1,3 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import Script from "next/script";
-import { COOKIE_CONSENT_EVENT, getCookieConsent } from "../lib/cookieConsent";
-
-/**
- * AdSense publisher ID for the GRYND property. Public by design — it ships in
- * the page source either way.
- */
-export const ADSENSE_CLIENT = "ca-pub-4903728316211815";
-
 /**
  * Google AdSense loader, for the pages we monetise: the home page, the game
  * hub, the leaderboard, the battlepass and the game lobbies.
@@ -31,49 +19,39 @@ export const ADSENSE_CLIENT = "ca-pub-4903728316211815";
  *     src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4903728316211815"
  *     crossorigin="anonymous"></script>
  *
- * CONSENT FIRST. AdSense sets advertising cookies, so it is a non-essential
- * provider under both our published privacy policy and the cookie-consent
- * banner, which promise that such providers only run once the visitor accepts
- * (Quebec's Law 25 | GDPR). The tag is therefore absent from the
- * server-rendered HTML and only fetched after consent reads "accepted",
- * mirroring components/GoogleAnalytics.tsx and PostHogProvider.tsx. A visitor
- * who declines — or never answers — makes no request to googlesyndication.com
- * and gets no advertising cookies.
+ * WHY THIS IS NOT GATED ON OUR OWN BANNER ANY MORE. It used to be: the tag was
+ * only injected once the visitor accepted, which meant it was never in the
+ * HTML we served. That was wrong twice over.
  *
- * NOTE for whoever files the AdSense review: Google's site verification reads
- * the RAW HTML for the tag in <head>, which a consent gate by definition does
- * not put there. If the property needs to pass that review, temporarily hoist
- * the loader into src/app/layout.tsx's <head> until it is approved, then put it
- * back behind the gate — the contract test in tests/adsense.test.mjs pins the
- * page allow-list either way.
+ *   1. Google's certified CMP is delivered BY the AdSense tag — "your existing
+ *      Google Publisher Tag or AdSense tag deploys user messages once the
+ *      message is published in the relevant product"
+ *      (https://developers.google.com/funding-choices/fc-api-docs). With the
+ *      tag gated, EEA/UK/Swiss visitors could never be prompted at all, which
+ *      is the exact revenue loss the certified-CMP requirement exists to
+ *      prevent. No tag means no message means no consent means no ad.
+ *   2. AdSense's site review reads the served HTML for `adsbygoogle.js`. A tag
+ *      that only appears after a consent click is invisible to that crawler.
+ *
+ * Consent is NOT loosened by un-gating. The four Consent Mode signals start
+ * denied (components/ConsentModeDefault.tsx), so until a consent source speaks
+ * the ad requests carry no advertising cookie and no personalisation, and ad
+ * click identifiers are redacted. Google's CMP then resolves consent for
+ * EEA/UK/Swiss visitors and our own banner for everyone else.
+ *
+ * This is a server component with no client JavaScript: the tag has to be in
+ * the initial HTML, not injected after hydration. React hoists `async` scripts
+ * into <head>, deduplicated, so rendering it here lands it where Google
+ * expects while still keeping it off the match pages.
  */
+export const ADSENSE_CLIENT = "ca-pub-4903728316211815";
+
 export default function AdSenseScript() {
-  const [accepted, setAccepted] = useState(false);
-
-  useEffect(() => {
-    const sync = () => setAccepted(getCookieConsent() === "accepted");
-
-    sync();
-    // The banner records the choice and fires COOKIE_CONSENT_EVENT, so
-    // accepting enables ads in the same session (no reload); another tab's
-    // choice arrives through `storage`.
-    window.addEventListener(COOKIE_CONSENT_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(COOKIE_CONSENT_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
-
-  // Not in the markup, and never fetched, until consent is granted.
-  if (!accepted) return null;
-
   return (
-    <Script
+    <script
       id="adsbygoogle-init"
       async
       crossOrigin="anonymous"
-      strategy="afterInteractive"
       src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
     />
   );

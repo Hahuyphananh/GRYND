@@ -1,26 +1,31 @@
 // tests/adsense.test.mjs
 //
-// Contract tests for the Google AdSense loader.
+// Contract tests for the AdSense loader and the consent architecture around it.
 //
-// AdSense is the one third-party script we deliberately do NOT load
-// everywhere. It is scoped to the pages a player browses *between* games —
-// the home page, the game hub, the leaderboard, the battlepass and the game
-// lobbies — and it must stay off:
+// AdSense is the one third-party script we deliberately do NOT load everywhere.
+// It is scoped to the pages a player browses *between* games — the home page,
+// the game hub, the leaderboard, the battlepass and the game lobbies — and it
+// must stay off:
 //
 //   1. every match page (the `[matchId]` / `game/[gameId]` / `table/[tableId]`
 //      routes) — an ad next to a wager in progress is an intrusion; and
 //   2. the games whose lobby and board are ONE page (Dice Flush and Odds
 //      today), where there is no lobby route to scope to that isn't the board.
 //
-// Both of those are easy to break by accident, and the failure is silent: an
-// extra page just starts showing ads. So the page list below is asserted as an
-// exact SET against what the app actually renders — a new page that picks the
-// loader up, or a protected page that gains it, fails this test by name.
+// The page list is asserted as an exact SET against what the app actually
+// renders, so a new page that picks the loader up — or a protected page that
+// gains it — fails by name.
 //
-// Like Google Analytics, the loader is CONSENT-GATED, so the second contract
-// is the render guard: nothing may be mounted, and no request made, until the
-// visitor accepts. The snippet is asserted VERBATIM against Google's, because
-// the publisher ID and the `crossorigin` attribute are what make it work.
+// Four more contracts are pinned here, and all four are silent when broken:
+//
+//   - the tag is SERVER-RENDERED, because Google's site review reads the served
+//     HTML for it and Google's certified CMP is delivered by that same tag;
+//   - Consent Mode defaults start DENIED, and come first in <head>, because a
+//     tag that loads before them reads no consent state;
+//   - our own banner is suppressed for the EEA/UK/CH, where Google's CMP has to
+//     be the only prompt, and its answer is mirrored back for the rest;
+//   - a withdrawal route exists, because GDPR art. 7(3) requires that a choice
+//     be as easy to change as it was to make.
 //
 // Run:  node --test tests/adsense.test.mjs
 
@@ -41,17 +46,16 @@ const TAG = read("src/components/AdSenseScript.tsx");
 const TAG_CODE = code(TAG);
 const LAYOUT = read("src/app/layout.tsx");
 const PROXY = read("src/proxy.ts");
+const CONSENT_MODE = read("src/components/ConsentModeDefault.tsx");
+const SETTINGS_LINK = read("src/components/CookieSettingsLink.tsx");
+const REGIONS = read("src/lib/consentRegions.ts");
 
 const CLIENT = "ca-pub-4903728316211815";
 
 /**
- * Every page allowed to render the loader, as a repo-relative POSIX path.
- *
- * The four "main" pages:
- *   /            /games (src/app/casino)   /classement   /battlepass
- *
- * The game LOBBIES — one per game that keeps its board on a separate match
- * route, plus the Hex Duel and Uno multiplayer waiting rooms.
+ * Every page allowed to render the loader, as a repo-relative POSIX path: the
+ * four "main" pages, plus one LOBBY per game that keeps its board on a
+ * separate match route.
  */
 const ALLOWED = [
   // main pages
@@ -105,9 +109,6 @@ test("the loader is Google's snippet, for the right publisher", () => {
     TAG_CODE.includes(`export const ADSENSE_CLIENT = "${CLIENT}";`),
     "the publisher ID must be the one AdSense issued for this property",
   );
-  // Verbatim parts of the snippet: the async loader, the ?client= query and
-  // the crossorigin attribute. Dropping crossorigin breaks ad serving on
-  // origins that require a CORS-clean request.
   assert.ok(
     TAG_CODE.includes(
       'src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}',
@@ -118,33 +119,69 @@ test("the loader is Google's snippet, for the right publisher", () => {
   assert.match(TAG_CODE, /^\s*async$/m, "the tag must be async");
 });
 
-test("the loader is a client component on the afterInteractive path", () => {
-  assert.ok(TAG.trimStart().startsWith('"use client";'), "must be a client component");
-  // afterInteractive keeps the third-party loader off the critical path, so it
-  // can never compete with hydration.
-  assert.match(TAG_CODE, /strategy="afterInteractive"/, "must not block hydration");
+test("the tag is server-rendered, never gated behind a consent click", () => {
+  // This is the load-bearing property. A client-gated tag is absent from the
+  // HTML we serve, which breaks two things at once: Google's site review reads
+  // that HTML for adsbygoogle.js, and Google's certified CMP is DELIVERED by
+  // the tag — so no tag means no consent message in the EEA/UK/CH at all.
+  assert.ok(
+    !TAG_CODE.includes('"use client"'),
+    "the loader must be a server component: the tag has to be in the initial HTML",
+  );
+  assert.ok(
+    !/getCookieConsent|useState|useEffect/.test(TAG_CODE),
+    "the loader must not gate on client consent state — Consent Mode governs serving instead",
+  );
 });
 
-test("it stays behind the cookie-consent gate", () => {
+test("Consent Mode defaults deny every signal, before any Google tag", () => {
+  for (const signal of ["ad_storage", "ad_user_data", "ad_personalization", "analytics_storage"]) {
+    assert.match(
+      code(CONSENT_MODE),
+      new RegExp(`${signal}: 'denied'`),
+      `${signal} must default to denied — nothing may be granted before the visitor answers`,
+    );
+  }
+  // Half a second for a consent source to arrive before tags fire in the
+  // denied state; without it a returning visitor who already consented would
+  // be measured as anonymous.
+  assert.match(code(CONSENT_MODE), /wait_for_update: 500/);
+  // Redact ad click identifiers while ad_storage is denied.
+  assert.match(code(CONSENT_MODE), /ads_data_redaction/);
   assert.ok(
-    TAG_CODE.includes('import { COOKIE_CONSENT_EVENT, getCookieConsent } from "../lib/cookieConsent";'),
-    "consent must come from the one shared helper the banner also writes",
+    !/url_passthrough/.test(code(CONSENT_MODE)),
+    "url_passthrough is for Google Ads conversion tracking, which this property does not run",
   );
-  assert.ok(TAG_CODE.includes('getCookieConsent() === "accepted"'), "gate on an explicit accept");
-  // The gate has to be a render guard, not just a flag: nothing may be mounted
-  // (or fetched) while consent is missing or declined.
-  assert.ok(TAG_CODE.includes("if (!accepted) return null;"), "must render nothing without consent");
-  // Accepting in the banner must enable ads in the same session, without a
-  // reload; another tab's choice syncs through `storage`.
-  assert.ok(TAG_CODE.includes("window.addEventListener(COOKIE_CONSENT_EVENT, sync);"));
-  assert.ok(TAG_CODE.includes('window.addEventListener("storage", sync);'));
-  assert.ok(TAG_CODE.includes("window.removeEventListener(COOKIE_CONSENT_EVENT, sync);"));
-  assert.ok(TAG_CODE.includes('window.removeEventListener("storage", sync);'));
-  // Consent is read, never re-implemented — the banner stays the single source
-  // of truth for the shared key.
+});
+
+test("the consent default is declared first in the layout's <head>", () => {
+  // Declared-first, not served-first: React hoists the ad tag's `async` script
+  // above this one in the emitted HTML (verified against the running server),
+  // which is precisely what wait_for_update absorbs. That is why the two
+  // assertions below belong together — moving the tag or dropping the wait
+  // would reopen the gap between them.
   assert.ok(
-    !/localStorage|grynd_cookie_consent/.test(TAG_CODE),
-    "consent must be read through lib/cookieConsent, never re-implemented",
+    LAYOUT.includes('import ConsentModeDefault from "../components/ConsentModeDefault";'),
+    "the layout must render the consent default",
+  );
+  assert.match(
+    code(CONSENT_MODE),
+    /wait_for_update: 500/,
+    "wait_for_update is what covers React hoisting the ad tag ahead of this script",
+  );
+  const head = LAYOUT.match(/<head>[\s\S]*?<\/head>/);
+  assert.ok(head, "the layout must keep an explicit <head>");
+  // Strip the opening tag and any JSX comment (the explanatory comment below
+  // mentions "<head>" in prose, which would otherwise be matched as a tag),
+  // then take the first element actually rendered inside.
+  const headInner = head[0]
+    .replace(/^<head>/, "")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+  const firstTag = headInner.match(/<(\w+|ConsentModeDefault)[\s/>]/);
+  assert.equal(
+    firstTag?.[1],
+    "ConsentModeDefault",
+    "the consent default must be the first thing in <head>, or a Google tag can load before it",
   );
 });
 
@@ -167,8 +204,8 @@ test("no match page ever carries the ad tag", () => {
 
 test("games whose lobby and board are one page stay ad-free", () => {
   // Dice Flush and Odds are played start-to-finish on their lobby URL, so any
-  // tag there would sit on the board itself. Keno (solo), Poker's combined
-  // table page and the Neon Flush reskins are excluded the same way.
+  // tag there would sit on the board itself. Keno, Poker's combined table page
+  // and the Neon Flush reskins are excluded the same way.
   const combined = pagesRenderingTag().filter((p) =>
     /dice-flush|odds|keno|poker|neon-flush/.test(p),
   );
@@ -176,8 +213,6 @@ test("games whose lobby and board are one page stay ad-free", () => {
 });
 
 test("the ad tag is never global", () => {
-  // A single render site in the root layout would put ads on every match page
-  // too. Scoping is the whole point of this component.
   assert.ok(
     !/AdSenseScript/.test(LAYOUT),
     "the loader must not be mounted in src/app/layout.tsx — it is per-page by design",
@@ -194,12 +229,17 @@ test("each allowed page renders the tag exactly once", () => {
 test("the CSP lets AdSense's ad frames through", () => {
   // script-src, img-src and connect-src already allow all of `https:`, so the
   // only directive that needs naming is frame-src — each ad unit renders in a
-  // cross-origin iframe. Without these the loader downloads and then silently
-  // paints nothing.
+  // cross-origin iframe, and Google's consent message is served from its own
+  // host. Without these the loader downloads and then silently paints nothing.
   const frameSrc = PROXY.match(/frame-src [^;]+;/);
   assert.ok(frameSrc, "the CSP must keep an explicit frame-src directive");
   assert.match(frameSrc[0], /googlesyndication\.com/, "ad frames come from googlesyndication.com");
   assert.match(frameSrc[0], /doubleclick\.net/, "ad frames come from doubleclick.net");
+  assert.match(
+    frameSrc[0],
+    /fundingchoicesmessages\.google\.com/,
+    "the consent message is served from fundingchoicesmessages.google.com",
+  );
 });
 
 test("public/ads.txt authorises this exact publisher as a direct seller", () => {
@@ -221,6 +261,62 @@ test("public/ads.txt authorises this exact publisher as a direct seller", () => 
   assert.ok(
     dataLines.includes(`google.com, ${publisher}, DIRECT, f08c47fec0942fa0`),
     "ads.txt must list our publisher as a DIRECT seller under Google's CA ID",
+  );
+});
+
+test("EEA, UK and Swiss visitors get Google's CMP instead of our banner", () => {
+  // The single prompt rule: Google requires its own certified CMP in these
+  // regions, and running ours on top would be two prompts over two consent
+  // records that can disagree.
+  assert.ok(
+    LAYOUT.includes("requiresGoogleCmp(countryFromHeaders(requestHeaders))"),
+    "the layout must decide the region on the server from the request headers",
+  );
+  assert.match(
+    LAYOUT,
+    /<CookieConsentBanner suppressForCmp=\{requiresCmp\} \/>/,
+    "our banner must stand aside where Google's CMP applies",
+  );
+  assert.match(
+    LAYOUT,
+    /<CmpConsentBridge enabled=\{requiresCmp\} \/>/,
+    "the CMP decision must be mirrored back for the local consent record",
+  );
+
+  // Spot-check both ends of the region list.
+  for (const country of ["DE", "FR", "ES", "IT", "PL", "SE", "NO", "IS", "LI", "GB", "CH"]) {
+    assert.ok(REGIONS.includes(`"${country}"`), `${country} must be treated as an EEA/UK/CH region`);
+  }
+  assert.ok(
+    REGIONS.includes('"x-vercel-ip-country"'),
+    "the country must come from the edge header Vercel sets",
+  );
+});
+
+test("a withdrawal route exists, and it reopens whichever prompt owns the visitor", () => {
+  // GDPR art. 7(3): withdrawing must be as easy as consenting. The link has to
+  // route to Google's CMP where that is the prompt, and to our banner otherwise.
+  assert.match(
+    SETTINGS_LINK,
+    /callbackQueue\.push\(\{/,
+    "Google's docs require every Privacy & messaging call to go through the callback queue",
+  );
+  assert.match(SETTINGS_LINK, /showRevocationMessage/, "the CMP route is showRevocationMessage()");
+  assert.match(SETTINGS_LINK, /CONSENT_DATA_READY/, "the callback queue key must be CONSENT_DATA_READY");
+  assert.match(
+    SETTINGS_LINK,
+    /new Event\(OPEN_CONSENT_BANNER_EVENT\)/,
+    "the fallback must reopen our own banner",
+  );
+  assert.ok(
+    read("src/components/Footer.tsx").includes("<CookieSettingsLink"),
+    "the footer is where visitors look for it",
+  );
+  assert.ok(
+    read("src/components/CookieConsentBanner.tsx").includes(
+      "window.addEventListener(OPEN_CONSENT_BANNER_EVENT, reopen)",
+    ),
+    "the banner must listen for the reopen request it is sent",
   );
 });
 

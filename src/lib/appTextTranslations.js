@@ -1258,7 +1258,7 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     cookieBanner: {
       title: "Cookies & privacy",
-      text: "We use essential cookies to keep the platform secure and working, plus analytics cookies to understand how it is used. By accepting, you agree to our use of cookies as described in our Privacy Policy.",
+      text: "We use essential cookies to keep the platform secure and working, plus analytics and advertising cookies — including Google AdSense — to understand how the platform is used and to keep it free with ads. By accepting, you agree to our use of cookies as described in our Privacy Policy.",
       privacyLink: "Privacy Policy",
       accept: "Accept",
       decline: "Decline",
@@ -2691,7 +2691,7 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     cookieBanner: {
       title: "Témoins et confidentialité",
-      text: "Nous utilisons des témoins (cookies) essentiels pour sécuriser et faire fonctionner la plateforme, ainsi que des témoins d'analyse pour comprendre son utilisation. En acceptant, vous consentez à notre utilisation des témoins telle que décrite dans notre Politique de confidentialité.",
+      text: "Nous utilisons des témoins (cookies) essentiels pour sécuriser et faire fonctionner la plateforme, ainsi que des témoins d'analyse et de publicité — dont Google AdSense — pour comprendre son utilisation et la garder gratuite grâce aux annonces. En acceptant, vous consentez à notre utilisation des témoins telle que décrite dans notre Politique de confidentialité.",
       privacyLink: "Politique de confidentialité",
       accept: "Accepter",
       decline: "Refuser",
@@ -4103,7 +4103,7 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     cookieBanner: {
       title: "Cookies y privacidad",
-      text: "Usamos cookies esenciales para mantener la plataforma segura y en funcionamiento, además de cookies de análisis para entender su uso. Al aceptar, consientes nuestro uso de cookies tal como se describe en nuestra Política de privacidad.",
+      text: "Usamos cookies esenciales para mantener la plataforma segura y en funcionamiento, además de cookies de análisis y publicidad — incluido Google AdSense — para entender su uso y mantenerla gratuita con anuncios. Al aceptar, consientes nuestro uso de cookies tal como se describe en nuestra Política de privacidad.",
       privacyLink: "Política de privacidad",
       accept: "Aceptar",
       decline: "Rechazar",

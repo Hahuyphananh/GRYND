@@ -355,7 +355,12 @@ function applySecurityHeaders(response: NextResponse) {
       // Without these the loader still downloads and then silently fails to
       // paint a single ad. Only the pages in src/components/AdSenseScript.tsx
       // ever request them (see the page allow-list in tests/adsense.test.mjs).
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://www.google.com; " +
+      //
+      // fundingchoicesmessages.google.com serves Google's certified consent
+      // message (Privacy & messaging) shown to EEA/UK/Swiss visitors — see
+      // src/lib/consentRegions.ts. Blocking it would leave those visitors
+      // unable to consent at all, which is a revenue loss, not a privacy win.
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

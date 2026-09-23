@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import LogoSmiley from "../images/logo1.png";
 import SocialLinks, { REDDIT_COMMUNITY } from "./SocialLinks";
+import CookieSettingsLink from "./CookieSettingsLink";
 
 export default function Footer() {
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -189,6 +190,11 @@ export default function Footer() {
               <Link href="/faq" className={linkClass}>
                 FAQ
               </Link>
+
+              {/* Withdrawal entrypoint — GDPR art. 7(3) requires that a
+                  choice be as easy to change as it was to make. Reopens
+                  Google's CMP or our banner, whichever owns the visitor. */}
+              <CookieSettingsLink className={linkClass} />
             </div>
           </div>
         </div>
