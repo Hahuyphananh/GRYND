@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
+import AdSenseScript from "../../../components/AdSenseScript";
 
 export const metadata: Metadata = {
   title: "Plinko | GRYND",
@@ -10,5 +11,10 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <PageClient />;
+  return (
+    <>
+      <AdSenseScript />
+      <PageClient />
+    </>
+  );
 }

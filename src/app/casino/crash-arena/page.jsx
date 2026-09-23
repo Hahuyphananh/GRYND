@@ -1,5 +1,6 @@
 import { ogImageUrl } from "../../../lib/ogImages";
 import PageClient from "./PageClient";
+import AdSenseScript from "../../../components/AdSenseScript";
 
 export const metadata = {
   title: "Crash Arena | GRYND",
@@ -9,5 +10,10 @@ export const metadata = {
 };
 
 export default function Page() {
-  return <PageClient />;
+  return (
+    <>
+      <AdSenseScript />
+      <PageClient />
+    </>
+  );
 }

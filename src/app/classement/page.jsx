@@ -1,4 +1,5 @@
 import PageClient from "./PageClient";
+import AdSenseScript from "../../components/AdSenseScript";
 
 export const metadata = {
   title: "Leaderboard | GRYND",
@@ -7,5 +8,10 @@ export const metadata = {
 };
 
 export default function Page() {
-  return <PageClient />;
+  return (
+    <>
+      <AdSenseScript />
+      <PageClient />
+    </>
+  );
 }

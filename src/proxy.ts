@@ -347,7 +347,15 @@ function applySecurityHeaders(response: NextResponse) {
       "img-src 'self' data: blob: https:; " +
       "font-src 'self' data: https://fonts.gstatic.com https://*.tawk.to; " +
       "connect-src 'self' https: wss:; " +
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to https://js.stripe.com https://checkout.stripe.com https://*.stripe.com; " +
+      // AdSense serves each ad unit in a cross-origin iframe, so `frame-src`
+      // — the one directive that is NOT wildcarded above — has to name its
+      // hosts explicitly: googleads.g.doubleclick.net and the
+      // safeframe/tpc.googlesyndication.com frames the ad units render in.
+      // (script-src, img-src and connect-src already allow all of `https:`.)
+      // Without these the loader still downloads and then silently fails to
+      // paint a single ad. Only the pages in src/components/AdSenseScript.tsx
+      // ever request them (see the page allow-list in tests/adsense.test.mjs).
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://www.google.com; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

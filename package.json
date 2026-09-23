@@ -47,6 +47,7 @@
     "verify:hex-turn": "node qa/hex-duel-turn-check.mjs",
     "verify:google-analytics": "node qa/google-analytics-check.mjs",
     "test:analytics": "node --test tests/google-analytics.test.mjs",
+    "test:adsense": "node --test tests/adsense.test.mjs",
     "verify:ai-search": "node qa/ai-search-raw-html.mjs",
     "test:ai-search": "node --import tsx --test tests/ai-search-readiness.test.mjs",
     "verify:game-sounds": "node scripts/verify-game-sounds.mjs",

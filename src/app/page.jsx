@@ -1,4 +1,5 @@
 import PageClient from "./PageClient";
+import AdSenseScript from "../components/AdSenseScript";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 import { getReviewAggregate } from "../lib/reviews";
 import { buildAppJsonLd } from "../lib/reviewJsonLd";
@@ -54,6 +55,8 @@ export default async function Page() {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(ratingJsonLd) }}
         />
       )}
+      {/* Ads on the home page only after consent — see the component. */}
+      <AdSenseScript />
       <PageClient />
     </>
   );
