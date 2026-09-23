@@ -40,13 +40,18 @@ export const COSMETIC_REWARD_TYPES = new Set([
   "cosmetic",
 ]);
 
-// Reward rarity colors (matches the title rarity ladder).
+// Reward rarity colors. The title ladder (Common → Overlord) plus the two
+// item-shop rarities the cosmetic battlepass rewards reuse (Rare / Epic — see
+// src/lib/shopItems.js). Every rarity the track references must have a color
+// here, or the track's dot/accent falls back to a flat grey.
 export const REWARD_RARITIES = {
   Common: "#9ca3af",
   Bronze: "#cd7f32",
   Silver: "#c0c0c0",
+  Rare: "#60a5fa",
   Gold: "#f5c542",
   Elite: "#a78bfa",
+  Epic: "#e879f9",
   Mythic: "#f472b6",
   Overlord: "#f59e0b",
 };

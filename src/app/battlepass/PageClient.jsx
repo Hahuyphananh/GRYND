@@ -258,8 +258,15 @@ export default function BattlepassPageClient() {
             </div>
           }
         >
-          <>
-            {/* Current status — Level-100 players see the permanent Prestige track */}
+          {/* Guard the whole track on `pass`. AsyncState only decides WHAT to
+              render — this JSX is evaluated EAGERLY while PageClient renders,
+              so an unguarded `pass.prestigeUnlocked` below would be read even
+              when AsyncState is showing the skeleton (or an error/offline
+              state) and `pass` is still null, throwing the route into
+              src/app/error.tsx on the first render. */}
+          {pass ? (
+            <>
+              {/* Current status — Level-100 players see the permanent Prestige track */}
             {pass.prestigeUnlocked ? (
               <div className="rounded-xl border border-violet-400/40 bg-[#0b224f]/85 p-6 shadow-[0_0_24px_rgba(139,92,246,0.25)]">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -677,7 +684,8 @@ export default function BattlepassPageClient() {
                 </div>
               </div>
             </div>
-          </>
+            </>
+          ) : null}
         </AsyncState>
       </main>
 

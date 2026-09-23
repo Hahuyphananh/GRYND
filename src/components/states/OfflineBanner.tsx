@@ -12,6 +12,22 @@ import { withReducedMotion } from "../../lib/animations";
 const BACK_ONLINE_MS = 2600;
 
 /**
+ * Revalidate every SWR key from whatever is already in the cache.
+ *
+ * Deliberately NO data argument. Passing an explicit `undefined` as mutate's
+ * second argument makes it a cache WRITE: SWR sets every matched entry's
+ * `data` to `undefined` before the refetch restarts, so screens that were
+ * happily rendering cached content blank for a tick — and any page whose
+ * children dereference a payload (the /battlepass track reads
+ * `pass.prestigeUnlocked`) threw on the null model and dropped into the route
+ * error boundary. The filter-only form takes SWR's revalidate-only path and
+ * leaves each entry's data untouched until fresh data lands.
+ */
+function revalidateAll() {
+  return mutate(() => true);
+}
+
+/**
  * Global connectivity banner, mounted once for the whole app.
  *
  * While offline every screen keeps rendering whatever it has cached; this
@@ -43,7 +59,7 @@ export default function OfflineBanner() {
     wasOffline.current = false;
 
     // Connection is back: refresh everything we can reach.
-    void mutate(() => true, undefined, { revalidate: true });
+    void revalidateAll();
     try {
       router.refresh();
     } catch {
@@ -89,7 +105,7 @@ export default function OfflineBanner() {
               <button
                 type="button"
                 onClick={() => {
-                  void mutate(() => true, undefined, { revalidate: true });
+                  void revalidateAll();
                   try {
                     router.refresh();
                   } catch {

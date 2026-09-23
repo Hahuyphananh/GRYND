@@ -12,7 +12,10 @@ import {
 import { TITLE_MILESTONES } from "../src/lib/titles.ts";
 import {
   BATTLEPASS_REWARDS,
+  COSMETIC_REWARD_TYPES,
   RESERVED_LEVELS,
+  REWARD_RARITIES,
+  REWARD_TYPES,
   rewardsForLevel,
 } from "../src/lib/battlepassRewards.js";
 
@@ -112,21 +115,22 @@ test("reward track covers exactly levels 1-100 with reserved slots", () => {
 });
 
 test("rewards contain valid fields and only official owned types", () => {
+  // Derive the allowed set from the catalogs the page/track actually use, so
+  // adding a supported type (e.g. tokens or a cosmetic kind) can never drift
+  // out of sync with a hand-maintained list here.
   const supportedTypes = new Set([
-    "color",
-    "title",
-    "xp_boost",
-    "quest_boost",
-    "shield",
-    "refund",
-    "grynd",
-    "emote",
+    ...Object.keys(REWARD_TYPES),
+    ...COSMETIC_REWARD_TYPES,
   ]);
   for (const entry of BATTLEPASS_REWARDS) {
     for (const reward of entry.rewards) {
       assert.ok(supportedTypes.has(reward.type), `unsupported reward at level ${entry.level}`);
       assert.ok(reward.type && reward.name && reward.desc, `incomplete reward at level ${entry.level}`);
       assert.ok(reward.rarity, `missing rarity at level ${entry.level}`);
+      assert.ok(
+        Object.prototype.hasOwnProperty.call(REWARD_RARITIES, reward.rarity),
+        `unknown rarity "${reward.rarity}" at level ${entry.level} (add it to REWARD_RARITIES)`,
+      );
       if (reward.type === "emote") {
         assert.equal(typeof reward.key, "string");
         assert.match(reward.key, /^[a-z0-9][a-z0-9._-]{0,119}$/);
@@ -153,14 +157,18 @@ test("level 3 contains the Daily Streak Shield reward", () => {
 });
 
 test("rewards escalate: no high rarity in early levels, capstone at 100", () => {
+  // Common → Overlord, with the item-shop rarities (Rare / Epic) the cosmetic
+  // rewards reuse slotted in. Must stay monotonic with REWARD_RARITIES.
   const rank = {
     Common: 0,
     Bronze: 1,
     Silver: 2,
-    Gold: 3,
-    Elite: 4,
-    Mythic: 5,
-    Overlord: 6,
+    Rare: 3,
+    Gold: 4,
+    Elite: 5,
+    Epic: 6,
+    Mythic: 7,
+    Overlord: 8,
   };
   for (const entry of BATTLEPASS_REWARDS) {
     for (const reward of entry.rewards) {

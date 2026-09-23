@@ -32,6 +32,14 @@ type Action = { label: string; href?: string; onClick?: () => void };
  * or *slow* refresh never blanks a screen that already has data — the player
  * keeps reading what we have while we retry underneath.
  *
+ * Children are *only* rendered once `hasData` is true. A screen with no
+ * payload must never render its data-bound children: a transient window with
+ * no data, no error and nothing reported in-flight (e.g. the global
+ * `mutate(() => true, undefined)` that OfflineBanner fires on reconnect
+ * clears every cache entry before the refetch restarts) used to fall through
+ * to `children`, so a page like /battlepass dereferenced a null model and
+ * crashed the whole route into the error screen.
+ *
  * Retry is automatic on reconnect; the manual button is a shortcut for when
  * the connection came back but the browser hasn't fired `online` (captive
  * portals, flaky Wi-Fi).
@@ -108,7 +116,11 @@ export default function AsyncState({
     );
   }
 
-  // 2 — no data at all and the request failed.
+  // 2 — no data at all. Never fall through to `children` from here: they
+  // assume a payload and dereferencing a null model throws. Offline and
+  // failed states get their own screen; the remaining window (no data, no
+  // error, nothing reported in-flight — a cache cleared by a global
+  // revalidate) shows the skeleton until the refetch lands.
   if (!hasData) {
     if (offline) {
       return (
@@ -128,6 +140,11 @@ export default function AsyncState({
         />
       );
     }
+    return (
+      <div className={className}>
+        {skeleton ?? <DefaultSkeleton />}
+      </div>
+    );
   }
 
   // 6 — loaded, but there is nothing to show.
