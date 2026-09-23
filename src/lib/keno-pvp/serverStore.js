@@ -63,13 +63,13 @@ import {
   round2,
 } from "./constants";
 import {
-  applyBothMissToLives,
-  applyClaimToLives,
+  applyMissesToLives,
   capTileLog,
   chooseAiClaim,
   decideSurvivalResult,
   isClaimInWindow,
   pickLiveTile,
+  TILE_OUTCOME,
   tileLogEntry,
   tileWindowMs,
 } from "./engine";
@@ -533,6 +533,35 @@ function hasLiveTile(match) {
   return Number.isInteger(tile) && tile >= 1 && tile <= KENO_POOL_SIZE;
 }
 
+// ── Who tapped the tile that is currently lit ─────────────────────────
+//
+// Per-tile scratch state, reset every time a tile lights. `p1`/`p2` are
+// whether that seat tapped before the window closed; the `*Ms` values are
+// their reactions from `liveStartedAt` (null while they have not tapped).
+// A seat still false when the tile resolves has MISSED it, which is now
+// the only way to lose a life.
+function numOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : null;
+}
+
+function liveTapOf(match) {
+  return {
+    p1: Boolean(match?.p1ClaimedLive),
+    p2: Boolean(match?.p2ClaimedLive),
+    p1Ms: numOrNull(match?.p1ClaimedMs),
+    p2Ms: numOrNull(match?.p2ClaimedMs),
+  };
+}
+
+// The cleared tap state, spread into every write that ends a tile.
+const NO_LIVE_TAPS = Object.freeze({
+  p1ClaimedLive: false,
+  p2ClaimedLive: false,
+  p1ClaimedMs: null,
+  p2ClaimedMs: null,
+});
+
 // Stable server-side seed for the tile draw + the bot plan. Never sent to
 // a client.
 function runSeed(match) {
@@ -577,36 +606,34 @@ function aiPlanFor(match) {
   return { ...plan, windowMs };
 }
 
-// ── Apply the bot's claim for the live tile ───────────────────────────
+// ── Record one player's tap on the live tile ──────────────────────────
 //
-// Must run BEFORE the human's tap and before the both-miss: the bot's
-// instant is inside the window, so a tile it went for can never resolve as
-// a miss. The log entry carries the plan's own reaction (never the moment
-// this happened to run).
-async function applyAiClaim(tx, match, { now = Date.now(), plan }) {
-  const lives = applyClaimToLives({
-    claimantSeat: "player2",
-    p1Lives: match.p1Lives,
-    p2Lives: match.p2Lives,
-  });
-  const logEntry = tileLogEntry({
-    tile: match.liveTile,
-    index: match.liveTileIndex,
-    outcome: "player2",
-    at: now,
-    p1Lives: lives.p1Lives,
-    p2Lives: lives.p2Lives,
-    windowMs: plan.windowMs,
-    reactionMs: plan.reactionMs,
-  });
+// A tap no longer ends the tile — the tile stays lit for its whole window
+// so the slower player still has time to save their own life. This only
+// writes down that the seat tapped, and (for whoever tapped first) the
+// tile credit.
+//
+// `credit` is decided by the CALLER because being first is a question of
+// instants, not of request order: the bot taps on a schedule and the human
+// taps on a request, so the caller compares the two reactions and says who
+// won. A tap that arrives second is still recorded — it is what keeps that
+// player from missing.
+async function persistTap(tx, match, { seat, reactionMs, credit = false }) {
+  const patch =
+    seat === "player1"
+      ? { p1ClaimedLive: true, p1ClaimedMs: reactionMs }
+      : { p2ClaimedLive: true, p2ClaimedMs: reactionMs };
+  if (credit) {
+    if (seat === "player1") patch.p1Tiles = Math.max(0, intOr(match.p1Tiles)) + 1;
+    else patch.p2Tiles = Math.max(0, intOr(match.p2Tiles)) + 1;
+  }
 
-  return await applyResolution(tx, match, {
-    now,
-    ...lives,
-    p1Tiles: Math.max(0, intOr(match.p1Tiles)),
-    p2Tiles: Math.max(0, intOr(match.p2Tiles)) + 1,
-    logEntry,
-  });
+  const [updated] = await tx
+    .update(kenoPvpMatches)
+    .set(patch)
+    .where(eq(kenoPvpMatches.id, match.id))
+    .returning();
+  return updated || match;
 }
 
 // ── Light the next tile ───────────────────────────────────────────────
@@ -665,6 +692,8 @@ async function lightNextTile(tx, match, { now = Date.now(), reset = false } = {}
       liveTileIndex: index,
       liveStartedAt: new Date(now),
       roundDeadline: new Date(now + windowMs),
+      // A fresh tile starts with nobody having tapped it.
+      ...NO_LIVE_TAPS,
     })
     .where(eq(kenoPvpMatches.id, match.id))
     .returning();
@@ -687,6 +716,8 @@ async function persistRunState(tx, match, { p1Lives, p2Lives, p1Tiles, p2Tiles, 
       liveTileIndex: index,
       liveStartedAt: live == null ? null : match.liveStartedAt,
       roundDeadline: null,
+      // The tile is gone, so nobody's tap on it survives.
+      ...NO_LIVE_TAPS,
     })
     .where(eq(kenoPvpMatches.id, match.id))
     .returning();
@@ -772,6 +803,8 @@ async function applyResolution(tx, match, {
       liveTileIndex: nextIndex,
       liveStartedAt: new Date(now),
       roundDeadline: new Date(now + windowMs),
+      // A fresh tile starts with nobody having tapped it.
+      ...NO_LIVE_TAPS,
     })
     .where(eq(kenoPvpMatches.id, match.id))
     .returning();
@@ -901,41 +934,78 @@ async function recordPvPResult(tx, match, winnerId, result) {
   }).catch(() => {});
 }
 
-// ── The both-miss ─────────────────────────────────────────────────────
+// ── Resolve the live tile ─────────────────────────────────────────────
 //
-// The live tile's window (plus the hidden network grace) elapsed with
-// nobody claiming it: both players lose a life, and the run continues —
-// or ends if that took someone's last life.
-async function resolveExpiredLiveTile(tx, match, { now = Date.now() } = {}) {
+// The ONLY place a tile ends. It ends when its window (plus the hidden
+// network grace) has closed, or — from a caller that knows both players
+// have already tapped and nothing left can change — immediately.
+//
+// Whoever did not tap loses a life. Tapping SECOND still counts as tapping,
+// so beating someone to the tile costs them nothing; the tile credit was
+// already written by the first tap (see `persistTap`).
+async function resolveLiveTile(tx, match, { now = Date.now() } = {}) {
   if (!LIVE_STATES.has(match.status) || !hasLiveTile(match)) return match;
 
-  // The bot tapped BEFORE this tile expired (its due instant is inside the
-  // window by construction), so the tile is the bot's — not a both-miss.
-  const aiPlan = aiPlanFor(match);
-  if (aiPlan && aiPlan.dueAtMs <= now) {
-    return await applyAiClaim(tx, match, { now, plan: aiPlan });
+  // The bot taps on an INSTANT, not a request (see `aiPlanFor`): if its
+  // instant for this tile has passed, that tap happened, whether or not a
+  // read arrived in between. It is graded the same as a human — it kept its
+  // own life by tapping, and it takes the tile credit only if it got there
+  // before the human did.
+  let current = match;
+  const before = liveTapOf(current);
+  if (!before.p2 && isFreeAiMatch(current) && current.player2Id === KENO_AI_PLAYER_ID) {
+    const plan = aiPlanFor(current);
+    if (plan && plan.dueAtMs <= now) {
+      const humanWasFirst =
+        before.p1 && before.p1Ms != null && before.p1Ms <= plan.reactionMs;
+      current = await persistTap(tx, current, {
+        seat: "player2",
+        reactionMs: plan.reactionMs,
+        credit: !humanWasFirst,
+      });
+    }
   }
 
-  const windowMs = currentWindowMs(match);
-  const lives = applyBothMissToLives({
-    p1Lives: match.p1Lives,
-    p2Lives: match.p2Lives,
+  const taps = liveTapOf(current);
+  const lives = applyMissesToLives({
+    p1Lives: current.p1Lives,
+    p2Lives: current.p2Lives,
+    p1Missed: !taps.p1,
+    p2Missed: !taps.p2,
   });
+  const windowMs = currentWindowMs(current);
+  const outcome =
+    taps.p1 && taps.p2
+      ? TILE_OUTCOME.BOTH_CLAIM
+      : taps.p1
+        ? TILE_OUTCOME.PLAYER1
+        : taps.p2
+          ? TILE_OUTCOME.PLAYER2
+          : TILE_OUTCOME.BOTH_MISS;
+
+  // The log's single `reactionMs` is the fastest tap on the tile — null
+  // when nobody tapped at all. Both players' reactions ride alongside it.
+  const reactions = [taps.p1Ms, taps.p2Ms].filter((v) => v != null);
   const logEntry = tileLogEntry({
-    tile: match.liveTile,
-    index: match.liveTileIndex,
-    outcome: "both_miss",
+    tile: current.liveTile,
+    index: current.liveTileIndex,
+    outcome,
     at: now,
     p1Lives: lives.p1Lives,
     p2Lives: lives.p2Lives,
     windowMs,
+    reactionMs: reactions.length ? Math.min(...reactions) : null,
+    p1Claimed: taps.p1,
+    p2Claimed: taps.p2,
+    p1ReactionMs: taps.p1Ms,
+    p2ReactionMs: taps.p2Ms,
   });
 
-  return await applyResolution(tx, match, {
+  return await applyResolution(tx, current, {
     now,
     ...lives,
-    p1Tiles: Math.max(0, intOr(match.p1Tiles)),
-    p2Tiles: Math.max(0, intOr(match.p2Tiles)),
+    p1Tiles: Math.max(0, intOr(current.p1Tiles)),
+    p2Tiles: Math.max(0, intOr(current.p2Tiles)),
     logEntry,
   });
 }
@@ -991,7 +1061,7 @@ export async function claimTile({ userId, matchId, tile }) {
       // closed, resolve that miss here so a stale board cannot stall the
       // match; either way this tap is not a claim.
       if (deadlineMs > 0 && now > deadlineMs + TAP_GRACE_MS) {
-        const advanced = await resolveExpiredLiveTile(tx, match, { now });
+        const advanced = await resolveLiveTile(tx, match, { now });
         return { error: "That tile is no longer live", status: 409, match: advanced };
       }
       return { error: "That tile is not live", status: 409 };
@@ -1001,64 +1071,78 @@ export async function claimTile({ userId, matchId, tile }) {
       return { error: "Tile is not live yet", status: 400 };
     }
 
-    // The bot's tap is an instant, not a request: if its scheduled instant
-    // for this tile precedes this tap, the tile is already the bot's. A
-    // human who is genuinely faster (their tap arrives first) still wins the
-    // tile — only a tap that came second loses it.
-    const aiPlan = aiPlanFor(match);
-    if (aiPlan && aiPlan.dueAtMs <= now) {
-      const advanced = await applyAiClaim(tx, match, { now, plan: aiPlan });
-      return {
-        error: "GRYND AI was faster",
-        status: 409,
-        match: advanced,
-        aiClaimed: true,
-      };
-    }
-
     if (!isClaimInWindow({ atMs: now, startedMs, deadlineMs })) {
-      // The window closed before this tap arrived. The tap is not a
-      // claim — and the tile counts as a both-miss, so resolve it.
-      const advanced = await resolveExpiredLiveTile(tx, match, { now });
+      // The window closed before this tap arrived, so it is not a tap at
+      // all: this player missed the tile, loses a life for it, and the tile
+      // is resolved right here so a stale board cannot stall the match.
+      const advanced = await resolveLiveTile(tx, match, { now });
       return { error: "Too slow — the tile expired", status: 409, match: advanced };
     }
 
     const seat = seatForUser(match, userId);
-    const lives = applyClaimToLives({
-      claimantSeat: seat,
-      p1Lives: match.p1Lives,
-      p2Lives: match.p2Lives,
-    });
     const reactionMs = Math.max(0, now - startedMs);
-    const logEntry = tileLogEntry({
-      tile: tileNumber,
-      index: match.liveTileIndex,
-      outcome: seat,
-      at: now,
-      p1Lives: lives.p1Lives,
-      p2Lives: lives.p2Lives,
-      windowMs,
-      reactionMs,
-    });
 
-    const updated = await applyResolution(tx, match, {
-      now,
-      ...lives,
-      p1Tiles: Math.max(0, intOr(match.p1Tiles)) + (seat === "player1" ? 1 : 0),
-      p2Tiles: Math.max(0, intOr(match.p2Tiles)) + (seat === "player2" ? 1 : 0),
-      logEntry,
-    });
+    // Idempotent: a retried request for a tile this player already tapped
+    // must not be recorded twice (and must not double a life).
+    const priorTaps = liveTapOf(match);
+    if (seat === "player1" ? priorTaps.p1 : priorTaps.p2) {
+      return { error: "You already tapped this tile", status: 409, match };
+    }
+
+    // The bot's tap is an instant, not a request: if its scheduled instant
+    // for this tile precedes this tap, the bot tapped FIRST and takes the
+    // tile credit. That no longer costs the human anything — the tap below
+    // still lands, so they keep their life and lose only the credit.
+    let current = match;
+    const aiPlan = aiPlanFor(current);
+    const aiGotThereFirst = Boolean(!priorTaps.p2 && aiPlan && aiPlan.dueAtMs <= now);
+    if (aiGotThereFirst) {
+      current = await persistTap(tx, current, {
+        seat: "player2",
+        reactionMs: aiPlan.reactionMs,
+        credit: true,
+      });
+    }
+
+    const tapsNow = liveTapOf(current);
+    const mine = seat === "player1" ? tapsNow.p1 : tapsNow.p2;
+    const theirs = seat === "player1" ? tapsNow.p2 : tapsNow.p1;
+    const credited = !mine && !theirs;
+
+    current = await persistTap(tx, current, { seat, reactionMs, credit: credited });
+
+    // Both players have tapped. Nothing left can change, so resolve the tile
+    // now rather than making them sit out the rest of the window.
+    const after = liveTapOf(current);
+    if (after.p1 && after.p2) {
+      const resolved = await resolveLiveTile(tx, current, { now });
+      return {
+        match: resolved,
+        claim: {
+          tile: tileNumber,
+          seat,
+          reactionMs,
+          windowMs,
+          credited,
+          aiClaimed: aiGotThereFirst,
+          complete: true,
+        },
+        finished: resolved?.status === MATCH_STATUS.FINISHED,
+      };
+    }
 
     return {
-      match: updated,
+      match: current,
       claim: {
         tile: tileNumber,
         seat,
         reactionMs,
         windowMs,
-        at: logEntry.at,
+        credited,
+        aiClaimed: aiGotThereFirst,
+        complete: false,
       },
-      finished: updated?.status === MATCH_STATUS.FINISHED,
+      finished: false,
     };
   });
 }
@@ -1082,18 +1166,34 @@ async function playAiTurnInTransaction(tx, match) {
 
   // No deadline guard here: the bot's due instant is inside the window by
   // construction, so a read that arrives late (a backgrounded tab, a slow
-  // request) must still credit the claim the bot had already earned rather
-  // than letting the tile fall through to a both-miss. The tile is only ever
-  // resolved once, so this cannot double-resolve a tile that a human already
-  // took.
+  // request) must still record the tap the bot had already made — otherwise
+  // the bot would be marked as having missed a tile it actually tapped, and
+  // would lose a life for the server being read late. The tap is only ever
+  // recorded once (`taps.p2` guard), so a second read cannot double it.
   const plan = aiPlanFor(match);
   if (!plan) return { match, actions: 0, alreadyPlayed: true };
 
   const now = Date.now();
   if (now < plan.dueAtMs) return { match, actions: 0, alreadyPlayed: false };
 
-  const updated = await applyAiClaim(tx, match, { now, plan });
-  return { match: updated, actions: 1, alreadyPlayed: false };
+  const taps = liveTapOf(match);
+  if (taps.p2) return { match, actions: 0, alreadyPlayed: true };
+
+  // The bot keeps its own life by tapping, and takes the tile credit only
+  // when the human has not already taken it.
+  let current = await persistTap(tx, match, {
+    seat: "player2",
+    reactionMs: plan.reactionMs,
+    credit: !taps.p1,
+  });
+
+  // The human has already tapped too, so the tile is decided: resolve it now
+  // rather than leaving it to expire.
+  if (liveTapOf(current).p1) {
+    current = await resolveLiveTile(tx, current, { now });
+  }
+
+  return { match: current, actions: 1, alreadyPlayed: false };
 }
 
 export async function playAiTurn({ userId, matchId }) {
@@ -1113,8 +1213,9 @@ export async function playAiTurn({ userId, matchId }) {
 // of forward progress):
 //   1. `ready` deadline elapsed → light the first tile.
 //   2. a live run with no tile on the board (defensive) → light one.
-//   3. free AI match → run the bot's due claim.
-//   4. the live tile's window (plus grace) elapsed → both-miss.
+//   3. free AI match → record the bot's due tap.
+//   4. the live tile's window (plus grace) elapsed → resolve the tile,
+//      charging a life to whichever player never tapped it.
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
@@ -1139,18 +1240,21 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       current = await lightNextTile(tx, current, { reset: false });
     }
 
-    // 3) The bot's due claim (free matches only). Runs before the expiry
-    //    check so a due tap beats the both-miss.
+    // 3) The bot's due tap (free matches only). Runs before the expiry check
+    //    so a tap the bot had already earned is recorded before the tile is
+    //    graded — otherwise the bot would be charged a life for a tile it
+    //    tapped.
     if (isFreeAiMatch(current) && LIVE_STATES.has(current.status)) {
       const aiResult = await playAiTurnInTransaction(tx, current);
       current = aiResult.match || current;
     }
 
-    // 4) Window elapsed → the tile is a both-miss.
+    // 4) Window elapsed → the tile is resolved, and every player who never
+    //    tapped it loses a life.
     if (LIVE_STATES.has(current.status) && hasLiveTile(current)) {
       const deadlineMs = liveDeadlineMs(current);
       if (deadlineMs > 0 && Date.now() > deadlineMs + TAP_GRACE_MS) {
-        current = await resolveExpiredLiveTile(tx, current, { now: Date.now() });
+        current = await resolveLiveTile(tx, current, { now: Date.now() });
       }
     }
 

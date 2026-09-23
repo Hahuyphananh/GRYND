@@ -49,8 +49,16 @@ function claimedTilesFromLog(log) {
   for (const entry of log) {
     const tile = Number(entry?.tile);
     if (!Number.isInteger(tile)) continue;
-    if (entry.outcome === "player1") p1.push(tile);
-    else if (entry.outcome === "player2") p2.push(tile);
+    // BOTH players can tap the same tile now, so paint from the per-player
+    // flags rather than the single `outcome` (which only names whoever was
+    // credited the tile). Entries written before the own-miss rules carry
+    // no flags — fall back to their outcome so old matches still replay.
+    const p1Claimed =
+      entry.p1Claimed ?? (entry.outcome === "player1" || entry.outcome === "both_claim");
+    const p2Claimed =
+      entry.p2Claimed ?? (entry.outcome === "player2" || entry.outcome === "both_claim");
+    if (p1Claimed) p1.push(tile);
+    if (p2Claimed) p2.push(tile);
   }
   return { p1, p2 };
 }
@@ -101,11 +109,33 @@ function normaliseMatch(match, viewerUserId) {
     liveTileIndex: Math.max(0, intOr(match.liveTileIndex)),
     liveStartedAt: match.liveStartedAt ?? null,
     liveDeadline: isLive ? liveDeadline : null,
+    // The get-ready countdown. Only meaningful while the match is in the
+    // `ready` state, where `roundDeadline` IS the ready deadline — the
+    // waiting room renders the real remaining seconds from the server
+    // clock so neither player has to guess when the first tile lights.
+    readyDeadline:
+      match.status === MATCH_STATUS.READY ? (match.roundDeadline ?? null) : null,
     windowMs,
     // How long after `liveDeadline` a tap is still honoured as a claim
     // (hidden network cushion — the client never renders it as time, it
     // only uses it to avoid calling a fresh tap "too late").
     tapGraceMs: TAP_GRACE_MS,
+    // Who has already tapped the tile that is lit RIGHT NOW. The tile does
+    // not resolve until its window closes (or until both have tapped), so
+    // these let the board show a tap landing immediately — and they are
+    // what tells the viewer whether they are still exposed to a miss.
+    p1ClaimedLive: Boolean(match.p1ClaimedLive),
+    p2ClaimedLive: Boolean(match.p2ClaimedLive),
+    myClaimedLive: viewerIsPlayer1
+      ? Boolean(match.p1ClaimedLive)
+      : viewerIsPlayer2
+        ? Boolean(match.p2ClaimedLive)
+        : false,
+    opponentClaimedLive: viewerIsPlayer1
+      ? Boolean(match.p2ClaimedLive)
+      : viewerIsPlayer2
+        ? Boolean(match.p1ClaimedLive)
+        : false,
     usedCount: Array.isArray(match.usedTiles) ? match.usedTiles.length : 0,
     boardSize: KENO_POOL_SIZE,
     // Per-seat claimed tiles + the public per-tile feed.

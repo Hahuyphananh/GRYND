@@ -5,12 +5,14 @@
 // Live 1v1 Keno SURVIVAL DUEL match view.
 //
 // Both players start with 3 lives. ONE tile is lit at a time on the 1–40
-// board and both players race for it: the first to tap it claims the tile
-// and the opponent loses a life. A tile nobody claims in time is a
-// BOTH-MISS — both players lose a life. The claim window starts at 1.6s
-// and tightens 100ms for every claimed tile (floor 0.4s), so the match
-// turns into a pure reaction test. Lose all your lives and the match is
-// over (both eliminated on the same both-miss → draw).
+// board and both players have the SAME window to tap it — claiming it
+// first costs the opponent nothing. A life is lost only for your OWN
+// miss: if you do not tap the lit tile before its window closes, you (and
+// only you) lose a life, whether the opponent took the tile or nobody
+// did. The claim window starts at 3s and tightens 100ms for every claimed
+// tile (floor 0.5s), so the match turns into a pure reaction test. A 5s
+// get-ready countdown runs before the first tile lights. Lose all your
+// lives and the match is over (both eliminated on the same tile → draw).
 //
 // The client renders the live tile + its window from the SERVER's clock
 // and the public per-tile log; the SERVER decides every outcome with its
@@ -63,6 +65,7 @@ import {
 import {
   KENO_POOL_SIZE,
   MIN_WINDOW_MS,
+  READY_WINDOW_MS,
   STARTING_LIVES,
   START_WINDOW_MS,
 } from "../../../../lib/keno-pvp/constants";
@@ -94,9 +97,6 @@ const MISS_TEXT = {
   "No tile is live yet": "Wait for the next tile",
   "Match is not live": "Match over",
   "Tile is not live yet": "Not live yet",
-  // Free AI match: the bot's scheduled tap preceded this one, so the tile was
-  // already the bot's (the store grades the bot's tap at its own instant).
-  "GRYND AI was faster": "GRYND AI was faster",
 };
 const MISS_TEXT_FALLBACK = "Too slow";
 
@@ -109,7 +109,6 @@ const TAP_MISS_REASONS = new Set([
   "Too slow — the tile expired",
   "Match is not live",
   "No tile is live yet",
-  "GRYND AI was faster",
 ]);
 
 function missTextFor(reason) {
@@ -124,35 +123,48 @@ function missTextFor(reason) {
 
 function feedLineFor(entry, viewerIsPlayer1, oppName) {
   if (!entry) return null;
-  const mine = viewerIsPlayer1 ? "player1" : "player2";
-  const outcome = entry.outcome;
-  if (outcome === "both_miss") {
+  const name = oppName || "Your opponent";
+  // Each seat's tap is read from its own flag, so a tile BOTH players
+  // tapped no longer masquerades as a one-sided claim. The legacy
+  // `outcome` strings are the fallback for log entries written before the
+  // per-player flags existed (and for the pure-logic tests).
+  const iClaimed =
+    Boolean(entry[viewerIsPlayer1 ? "p1Claimed" : "p2Claimed"]) ||
+    (!("p1Claimed" in entry) &&
+      (entry.outcome === (viewerIsPlayer1 ? "player1" : "player2") ||
+        entry.outcome === "both_claim"));
+  const theyClaimed =
+    Boolean(entry[viewerIsPlayer1 ? "p2Claimed" : "p1Claimed"]) ||
+    (!("p2Claimed" in entry) &&
+      (entry.outcome === (viewerIsPlayer1 ? "player2" : "player1") ||
+        entry.outcome === "both_claim"));
+  const myMs = entry[viewerIsPlayer1 ? "p1ReactionMs" : "p2ReactionMs"];
+
+  // Only YOUR miss costs you a life — the opponent's claim never does.
+  if (!iClaimed) {
     return {
       tone: "miss",
-      text: `Nobody claimed tile ${entry.tile} — both lost a life`,
-    };
-  }
-  const name = oppName || "Your opponent";
-  if (outcome === mine) {
-    return {
-      tone: "mine",
-      text: `You claimed tile ${entry.tile}${
-        entry.reactionMs != null ? ` · ${entry.reactionMs}ms` : ""
-      }`,
+      text: theyClaimed
+        ? `${name} claimed tile ${entry.tile} — you missed it and lost a life`
+        : `Tile ${entry.tile} went unclaimed — you lost a life`,
     };
   }
   return {
-    tone: "opp",
-    text: `${name} claimed tile ${entry.tile} first — you lost a life`,
+    tone: "mine",
+    text:
+      `You claimed tile ${entry.tile}` +
+      (myMs != null ? ` · ${myMs}ms` : "") +
+      (theyClaimed ? ` — ${name} got it too, nobody lost a life` : ""),
   };
 }
 
 // The one-line instruction above the board.
-function liveStatusText({ isLive, hasLiveTile, remainingMs, viewerCanClaim }) {
+function liveStatusText({ isLive, hasLiveTile, remainingMs, viewerCanClaim, savedByMe }) {
   if (!isLive) return null;
   if (!hasLiveTile) return "Lighting the next tile…";
   if (remainingMs <= 0) return "Tile expired — resolving…";
   if (!viewerCanClaim) return "Waiting for the match…";
+  if (savedByMe) return "Tile tapped — your life is safe on this one";
   return "Tap the lit tile before the window closes";
 }
 
@@ -187,6 +199,7 @@ function LivesPips({ lives, total = STARTING_LIVES, tone = "cyan" }) {
 const KenoTile = memo(function KenoTile({
   num,
   isLive,
+  savedByMe,
   liveRemainingRatio,
   claimedByMe,
   claimedByOpp,
@@ -195,15 +208,28 @@ const KenoTile = memo(function KenoTile({
   onClaim,
 }) {
   let cls = "bg-[#0b224f] border border-[#00e5ff]/20 text-white/40 cursor-default";
-  if (missed) cls = "bg-red-900/40 border border-red-500/40 text-red-300/70 cursor-default";
-  if (claimedByOpp) cls = "bg-[#FFD700]/30 border border-[#FFD700]/60 text-[#FFD700] cursor-default";
-  if (claimedByMe) cls = "bg-[#00ffa6] border border-[#00ffa6]/70 text-[#001933] font-black cursor-default";
-  if (isLive) {
+  // `missed` means THIS viewer did not tap the tile — that is the only
+  // thing that costs a life, so it drives the tile red even when the
+  // opponent took it (the gold border marks that case).
+  if (missed && claimedByOpp)
+    cls = "bg-red-900/40 border border-[#FFD700]/60 text-red-300/70 cursor-default";
+  else if (missed) cls = "bg-red-900/40 border border-red-500/40 text-red-300/70 cursor-default";
+  else if (claimedByMe)
+    cls = "bg-[#00ffa6] border border-[#00ffa6]/70 text-[#001933] font-black cursor-default";
+  else if (claimedByOpp)
+    cls = "bg-[#FFD700]/30 border border-[#FFD700]/60 text-[#FFD700] cursor-default";
+  if (isLive && savedByMe) {
+    // Tapped already: the tile stays lit for the rest of its window (so the
+    // other player can still save themselves), but it is no longer a target.
+    cls =
+      "bg-[#00ffa6] border border-[#00ffa6]/80 text-[#001933] font-black scale-110 " +
+      "ring-2 ring-[#00ffa6]/70 shadow-[0_0_22px_rgba(0,255,166,0.75)] cursor-default";
+  } else if (isLive) {
     cls =
       "bg-[#00e5ff] border border-white/70 text-[#001933] font-black scale-110 " +
       "ring-2 ring-white/80 shadow-[0_0_22px_rgba(0,229,255,0.9)] cursor-pointer animate-pulse";
   }
-  const disabled = frozen || !isLive;
+  const disabled = frozen || !isLive || savedByMe;
   return (
     <button
       type="button"
@@ -212,19 +238,38 @@ const KenoTile = memo(function KenoTile({
         if (!disabled) onClaim(num);
       }}
       aria-label={
-        isLive
-          ? `Live tile ${num} — tap to claim`
+        isLive && savedByMe
+          ? `Live tile ${num} — you tapped it, your life is safe`
+          : isLive
+            ? `Live tile ${num} — tap to claim`
           : claimedByMe
-            ? `Tile ${num} claimed by you`
-            : claimedByOpp
-              ? `Tile ${num} claimed by your opponent`
-              : missed
-                ? `Tile ${num} went unclaimed`
+            ? `Tile ${num} claimed by you${
+                claimedByOpp ? " and your opponent" : ""
+              }`
+            : missed
+              ? claimedByOpp
+                ? `Tile ${num} claimed by your opponent — you lost a life`
+                : `Tile ${num} went unclaimed — you lost a life`
+              : claimedByOpp
+                ? `Tile ${num} claimed by your opponent`
                 : `Tile ${num}`
       }
       className={`relative w-full aspect-square overflow-hidden flex items-center justify-center rounded-lg text-sm font-bold transition-all duration-200 touch-manipulation select-none active:scale-90 ${cls}`}
     >
       {num}
+      {isLive && savedByMe && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-1 bg-white/85 transition-[width] duration-100 ease-linear"
+          style={{ width: `${Math.max(0, Math.min(1, liveRemainingRatio)) * 100}%` }}
+        />
+      )}
+      {!isLive && claimedByMe && claimedByOpp && (
+        <span
+          aria-hidden="true"
+          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[#FFD700]"
+        />
+      )}
       {isLive && (
         <span
           aria-hidden="true"
@@ -614,6 +659,19 @@ export default function KenoPvpMatchPage({ params }) {
     : 0;
   const remainingSec = remainingMs / 1000;
   const remainingRatio = windowMs > 0 ? remainingMs / windowMs : 0;
+  // This viewer has already tapped the tile that is lit RIGHT NOW. The tile
+  // stays lit for the rest of its window — the other player may still save
+  // themselves — so the board has to say so instead of looking stuck.
+  const iAmSafeOnLiveTile = Boolean(liveTile != null && match?.myClaimedLive);
+
+  // Get-ready countdown — the real remaining seconds until the server
+  // lights the first tile, read off the server clock like the tile window.
+  const readyDeadlineMs = match?.readyDeadline
+    ? new Date(match.readyDeadline).getTime()
+    : 0;
+  const readyRemainingMs = readyDeadlineMs
+    ? Math.max(0, readyDeadlineMs - serverNow)
+    : 0;
 
   // Audio tick once per newly lit tile.
   useEffect(() => {
@@ -634,9 +692,24 @@ export default function KenoPvpMatchPage({ params }) {
     for (const entry of Array.isArray(match?.tileLog) ? match.tileLog : []) {
       const tile = Number(entry?.tile);
       if (!Number.isInteger(tile)) continue;
-      if (entry.outcome === "both_miss") missed.add(tile);
-      else if (entry.outcome === viewerSeat) mine.add(tile);
-      else opp.add(tile);
+      const myKey = viewerSeat === "player1" ? "p1Claimed" : "p2Claimed";
+      const theirKey = viewerSeat === "player1" ? "p2Claimed" : "p1Claimed";
+      const outcome = entry.outcome;
+      // Per-player flags first (a tile can be claimed by BOTH players now).
+      // The legacy outcome strings are the fallback for old log entries.
+      const iClaimed =
+        myKey in entry
+          ? Boolean(entry[myKey])
+          : outcome === viewerSeat || outcome === "both_claim";
+      const theyClaimed =
+        theirKey in entry
+          ? Boolean(entry[theirKey])
+          : outcome === (viewerSeat === "player1" ? "player2" : "player1") ||
+            outcome === "both_claim";
+      if (iClaimed) mine.add(tile);
+      if (theyClaimed) opp.add(tile);
+      // A life is lost only for your own miss.
+      if (!iClaimed) missed.add(tile);
     }
     return { myClaimedSet: mine, oppClaimedSet: opp, missedSet: missed };
   }, [match?.tileLog, match?.viewerIsPlayer1]);
@@ -832,6 +905,7 @@ export default function KenoPvpMatchPage({ params }) {
         mySeatSummary={mySeatSummary}
         oppSeatSummary={oppSeatSummary}
         selfReady={selfReady}
+        readyRemainingMs={readyDeadlineMs ? readyRemainingMs : null}
         onReadyClick={() => setSelfReady(true)}
         onCancel={isWaiting && match.viewerCanCancel ? cancelMatch : null}
         cancelling={leaving}
@@ -842,6 +916,7 @@ export default function KenoPvpMatchPage({ params }) {
     isLive,
     hasLiveTile: liveTile != null,
     remainingMs,
+    savedByMe: iAmSafeOnLiveTile,
     viewerCanClaim: match.viewerCanClaim,
   });
 
@@ -926,15 +1001,27 @@ export default function KenoPvpMatchPage({ params }) {
       ) : (
         <>
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">
-            {remainingSec <= 0 ? "Window closed" : "Tap the lit tile"}
+            {remainingSec <= 0
+              ? "Window closed"
+              : iAmSafeOnLiveTile
+                ? "You tapped it — your life is safe"
+                : "Tap the lit tile"}
           </p>
-          <p className="mt-1 text-4xl font-black tabular-nums text-[#00e5ff] sm:text-5xl">
+          <p
+            className={
+              "mt-1 text-4xl font-black tabular-nums sm:text-5xl " +
+              (iAmSafeOnLiveTile ? "text-[#00ffa6]" : "text-[#00e5ff]")
+            }
+          >
             {Math.max(0, remainingSec).toFixed(1)}s
           </p>
           <p className="mt-1 text-xs font-semibold text-white/60">
             Tile{" "}
             <span className="font-black text-white">{liveTile}</span> · window{" "}
-            {windowMs / 1000}s · claim it before {oppName} does
+            {windowMs / 1000}s ·{" "}
+            {iAmSafeOnLiveTile
+              ? `${oppName} can still tap it until the window closes`
+              : "tap it before your window closes"}
           </p>
           {/* Window bar — a pure data read-out (no animation), so it stays
               readable with motion reduced. */}
@@ -1043,6 +1130,7 @@ export default function KenoPvpMatchPage({ params }) {
             num={num}
             isLive={isLive && liveTile === num && remainingMs > 0}
             liveRemainingRatio={remainingRatio}
+            savedByMe={iAmSafeOnLiveTile && liveTile === num}
             claimedByMe={myClaimedSet.has(num)}
             claimedByOpp={oppClaimedSet.has(num)}
             missed={missedSet.has(num)}
@@ -1052,11 +1140,13 @@ export default function KenoPvpMatchPage({ params }) {
         ))}
       </div>
       <p className="mt-3 text-[11px] text-white/40">
-        <span className="text-[#00ffa6]">Green</span> = you claimed it ·{" "}
-        <span className="text-[#FFD700]">gold</span> = {oppName} claimed it ·{" "}
-        <span className="text-red-300">red</span> = nobody claimed it (both lost a
-        life). Untouched tiles all look the same — the board never reveals what
-        is coming.
+        <span className="text-[#00e5ff]">Cyan</span> = the live tile, waiting for
+        you · <span className="text-[#00ffa6]">green</span> = you tapped it, so
+        your life is safe ·{" "}
+        <span className="text-[#FFD700]">gold dot</span> = {oppName} tapped it
+        too · <span className="text-red-300">red</span> = you missed it and lost
+        a life (a gold border means {oppName} took that tile). Untouched tiles
+        all look the same — the board never reveals what is coming.
       </p>
       {recentFeed.length > 0 && (
         <div className="mt-3 space-y-1 border-t border-[#00e5ff]/20 pt-3">
@@ -1314,7 +1404,7 @@ function RulesModal({ onClose }) {
         </div>
 
         <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider text-[#00ffa6]">
-          <IconTarget size={15} /> Win the race for the lit tile
+          <IconTarget size={15} /> Claim tiles, never miss your own
         </h3>
         <ul className="mb-5 space-y-1.5 text-xs text-white/70">
           <li>
@@ -1323,20 +1413,32 @@ function RulesModal({ onClose }) {
           </li>
           <li>
             <span className="font-semibold text-[#00e5ff]">One tile</span> from the 1–40
-            board is lit for both players at the same time.
+            board is lit for both players at the same time, and both players have
+            the{" "}
+            <span className="font-semibold text-white">same window</span> to tap it.
           </li>
           <li>
-            Tap it first →{" "}
-            <span className="font-semibold text-[#00ffa6]">you claim the tile</span> and
-            your opponent loses a life.
+            Tap it inside that window →{" "}
+            <span className="font-semibold text-[#00ffa6]">you claim the tile</span>{" "}
+            <span className="font-semibold text-white">
+              and lose nothing. Tapping after your opponent costs you nothing
+              either
+            </span>{" "}
+            — even if they were faster, you can still claim it.
           </li>
           <li>
-            Nobody taps in time →{" "}
+            You lose a life{" "}
+            <span className="font-semibold text-red-300">only if YOU miss</span> — i.e.
+            you don't tap the lit tile before its window closes. It makes no
+            difference whether your opponent took it.
+          </li>
+          <li>
+            If neither player taps in time,{" "}
             <span className="font-semibold text-red-300">both players lose a life</span>.
           </li>
           <li>
             Lose all {STARTING_LIVES} lives → you are eliminated and the opponent takes the
-            pot. If a both-miss takes both players' last life, the match is a draw
+            pot. If the same tile takes both players' last life, the match is a draw
             (stake refunded).
           </li>
         </ul>
@@ -1346,7 +1448,14 @@ function RulesModal({ onClose }) {
         </h3>
         <ul className="mb-5 space-y-1.5 text-xs text-white/70">
           <li>
-            The first tile gives you{" "}
+            Before the first tile, a{" "}
+            <span className="font-semibold text-white">
+              {READY_WINDOW_MS / 1000}s countdown
+            </span>{" "}
+            gives both players time to get ready to click.
+          </li>
+          <li>
+            The first tile then gives you{" "}
             <span className="font-semibold text-white">{START_WINDOW_MS / 1000}s</span> to
             react.
           </li>

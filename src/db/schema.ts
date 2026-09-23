@@ -3490,15 +3490,24 @@ export const kenoPvpMatches = pgTable(
     // True for free human-vs-AI matches. The bot occupies player2Id
     // but is not a real user and must never receive token/stat updates.
     isAi: boolean("is_ai").notNull().default(false),
-    // Survival lives. Start at 3; a lost tile (the opponent claimed the
-    // live tile first, or a both-miss) costs one. 0 = eliminated.
+    // Survival lives. Start at 3; only your OWN miss costs one — you did
+    // not tap the live tile before its window closed. Beating you to the
+    // tile costs you nothing. 0 = eliminated.
     p1Lives: integer("p1_lives").notNull().default(3),
     p2Lives: integer("p2_lives").notNull().default(3),
     // Tiles each player claimed first this match. Feeds the shrinking
-    // claim window (1.6s − 100ms per claim, floor 0.4s) and the
+    // claim window (3s − 100ms per claim, floor 0.5s) and the
     // board-exhausted tiebreak.
     p1Tiles: integer("p1_tiles").notNull().default(0),
     p2Tiles: integer("p2_tiles").notNull().default(0),
+    // Per-tile scratch state for the tile CURRENTLY lit: whether each
+    // player tapped it while its window was open, and their reaction. A
+    // false at resolution is a miss and costs that player a life. Reset
+    // whenever the next tile lights.
+    p1ClaimedLive: boolean("p1_claimed_live").notNull().default(false),
+    p2ClaimedLive: boolean("p2_claimed_live").notNull().default(false),
+    p1ClaimedMs: integer("p1_claimed_ms"),
+    p2ClaimedMs: integer("p2_claimed_ms"),
     // The tile currently lit for BOTH players (1..40), or NULL when no
     // tile is live. `roundDeadline` is its expiry and `liveStartedAt`
     // when it lit up.

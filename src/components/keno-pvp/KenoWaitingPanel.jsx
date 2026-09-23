@@ -4,8 +4,8 @@
 //
 // The in-page waiting room for a Keno PvP match: shown in place of the board
 // while the match is filling up (`waiting` — no opponent yet) and during the
-// server's 3s get-ready banner (`ready` — both seats in, first tile about to
-// light).
+// server's 5s get-ready countdown (`ready` — both seats in, first tile about
+// to light).
 //
 // Modelled on src/components/precision/PrecisionReadyRoom.tsx: a bordered
 // panel, one card per seat showing the real player name, and the actions the
@@ -99,7 +99,7 @@ function SeatCard({ label, accent, occupant, name, isMe, readyLabel, emptyHint }
 
 export default function KenoWaitingPanel({
   matchId,
-  /** "waiting" (no opponent yet) | "ready" (both seats in, 3s banner). */
+  /** "waiting" (no opponent yet) | "ready" (both seats in, 5s countdown). */
   state = "waiting",
   isAi = false,
   stakeAmount = 0,
@@ -109,6 +109,12 @@ export default function KenoWaitingPanel({
   oppSeatSummary = null,
   /** Local, optimistic — the server's banner starts the match either way. */
   selfReady = false,
+  /**
+   * Remaining ms until the server lights the first tile, derived from the
+   * server clock. `null` when the countdown is not available (the waiting
+   * room then falls back to copy rather than inventing a number).
+   */
+  readyRemainingMs = null,
   onReadyClick = null,
   /** Host only, and only while the match is still waiting for an opponent. */
   onCancel = null,
@@ -118,6 +124,13 @@ export default function KenoWaitingPanel({
   const isReady = state === "ready";
   const stake = Number(stakeAmount) || 0;
   const seated = isReady; // both seats are occupied exactly when ready
+
+  // The get-ready countdown. Rendered only when the server gave us a
+  // deadline; ceil so it reads 5 → 1 and never shows a stale "0".
+  const hasCountdown = isReady && readyRemainingMs != null;
+  const countdownSec = hasCountdown
+    ? Math.max(0, Math.ceil(readyRemainingMs / 1000))
+    : 0;
 
   const subtitle = isReady
     ? isAi
@@ -146,6 +159,26 @@ export default function KenoWaitingPanel({
       </h2>
       <p className="mt-1 text-sm text-cyan-100/90">{subtitle}</p>
 
+      {hasCountdown && (
+        <div
+          className="mt-4 flex items-center justify-center gap-3 rounded-xl border border-[#facc15]/40 bg-[#facc15]/10 px-4 py-3"
+          role="timer"
+          aria-live="off"
+        >
+          <span
+            className="text-3xl font-black leading-none tabular-nums text-[#ffe98a] sm:text-4xl"
+            aria-label={`${countdownSec} seconds until the first tile`}
+          >
+            {countdownSec}s
+          </span>
+          <span className="text-left text-[11px] font-semibold uppercase leading-tight tracking-wider text-[#ffe98a]/80">
+            {countdownSec > 0
+              ? `First tile in ${countdownSec} second${countdownSec === 1 ? "" : "s"}`
+              : "First tile lighting now…"}
+          </span>
+        </div>
+      )}
+
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <SeatCard
           label="You"
@@ -172,7 +205,7 @@ export default function KenoWaitingPanel({
           <p className="text-xs text-white/50">
             {selfReady
               ? "You're set — the first tile lights in a moment."
-              : "Both seats are in. Ready up before the first tile lights."}
+              : "Both seats are in. A tile lights for both players at the same time — miss your own and you lose a life."}
           </p>
         ) : (
           <p className="text-xs text-white/50">

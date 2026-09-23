@@ -3,8 +3,13 @@
  *
  * The bot races for the SAME lit tile as a human and is graded by the same
  * server clock. Its plan is deterministic per (seed, tile index, tile) and
- * it can never tap faster than AI_MIN_REACTION_MS — which is what makes the
- * late, 0.4s-window tiles genuinely winnable.
+ * it can never tap faster than AI_MIN_REACTION_MS.
+ *
+ * Under the own-miss rules, SKIPPING a tile is the bot's survival leak
+ * (it loses a life for it), so the bot goes for ~90% of tiles instead of
+ * the ~55% it used to race for. Its reaction band (200–420ms) stays under
+ * the 0.5s floor window, so late tiles are a fair race rather than a coin
+ * flip.
  *
  * Run:  node --import tsx --test tests/keno-pvp-ai.test.mjs
  */
@@ -49,12 +54,13 @@ test("the bot's reaction is always slower than the human's floor — and inside 
     );
     assert.equal(plan.dueAtMs, STARTED_MS + plan.reactionMs);
   }
-  // The bot neither ignores every tile nor wins every one.
+  // The bot neither ignores every tile nor claims every one: the skips
+  // are what cost it lives.
   assert.ok(claims > 0, "the bot never went for a tile");
-  assert.ok(skipped > 0, "the bot never missed a tile");
+  assert.ok(skipped > 0, "the bot never skipped a tile");
 });
 
-test("the rate is ~55% of tiles over a full board", () => {
+test("the bot goes for ~90% of tiles (its own misses are how it loses lives)", () => {
   let claims = 0;
   for (let index = 0; index < 400; index += 1) {
     const plan = chooseAiClaim({
@@ -67,12 +73,12 @@ test("the rate is ~55% of tiles over a full board", () => {
     if (plan.claims) claims += 1;
   }
   const rate = claims / 400;
-  assert.ok(rate > 0.4 && rate < 0.7, `bot claim rate was ${rate}`);
+  assert.ok(rate > 0.8 && rate <= 1, `bot claim rate was ${rate}`);
 });
 
-test("on the 0.4s floor the bot can only claim what it can physically reach", () => {
+test("the reaction band always fits the 0.5s floor window", () => {
   let reachable = 0;
-  let unreachable = 0;
+  let skipped = 0;
   for (let index = 0; index < 200; index += 1) {
     const plan = chooseAiClaim({
       seed: `${SEED}:floor:${index}`,
@@ -83,13 +89,20 @@ test("on the 0.4s floor the bot can only claim what it can physically reach", ()
     });
     if (plan.claims) {
       reachable += 1;
-      assert.ok(plan.reactionMs <= MIN_WINDOW_MS);
-    } else if (plan.reactionMs != null && plan.reactionMs > MIN_WINDOW_MS) {
-      unreachable += 1;
+      assert.ok(plan.reactionMs >= 200, `reaction ${plan.reactionMs} is too fast`);
+      assert.ok(
+        plan.reactionMs <= MIN_WINDOW_MS,
+        `reaction ${plan.reactionMs}ms cannot fit a ${MIN_WINDOW_MS}ms window`,
+      );
+    } else {
+      skipped += 1;
     }
   }
+  // The band (200–420ms) sits under the floor, so a floor-window tile is
+  // always physically reachable — the bot only ever skips by CHOICE, and
+  // that choice is what leaks a life.
   assert.ok(reachable > 0, "the bot never claimed a floor-window tile");
-  assert.ok(unreachable > 0, "no tile was ever out of the bot's reach");
+  assert.ok(skipped < 40, `the bot skipped ${skipped}/200 floor-window tiles`);
 });
 
 test("a malformed tile/window yields no plan at all", () => {

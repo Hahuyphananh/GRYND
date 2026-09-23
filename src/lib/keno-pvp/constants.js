@@ -10,16 +10,20 @@
 //   * Both players start with STARTING_LIVES (3) lives.
 //   * ONE tile at a time is lit for both players: the live tile, drawn
 //     from the 1..40 board and never repeated during a match.
-//   * The first player to tap the live tile CLAIMS it. Claiming costs the
-//     opponent a life, and the next tile lights up immediately.
-//   * A tile that nobody claims before its window closes is a
-//     BOTH-MISS: both players lose a life.
+//   * The tile stays lit for its WHOLE window and both players may tap
+//     it. You lose a life for YOUR OWN miss — that is, if you did not tap
+//     the tile before its window closed. Tapping it never costs your
+//     opponent anything: beating them to the tile earns you the tile
+//     (p1Tiles/p2Tiles, which is also the exhausted-board tiebreak), it
+//     does not take one of their lives.
+//   * So: both tap → nobody loses a life. One taps → only the silent
+//     player does. Neither taps → both do (the BOTH-MISS).
 //   * Your lives hit 0 → you are eliminated and the opponent takes the
 //     pot. If a both-miss eliminates both players at once the match ends
 //     as a DRAW (full refund, no rake).
-//   * The window starts at START_WINDOW_MS (1.6s) and tightens by
+//   * The window starts at START_WINDOW_MS (3s) and tightens by
 //     WINDOW_STEP_MS (100ms) for every tile either player has claimed,
-//     down to MIN_WINDOW_MS (0.4s) — later tiles are pure reaction time.
+//     down to MIN_WINDOW_MS (0.5s) — later tiles are pure reaction time.
 //   * If the board is exhausted before anyone is eliminated, the player
 //     with more lives wins (equal lives → DRAW).
 //
@@ -137,31 +141,30 @@ export const TERMINAL_STATES = new Set([
 // Survival rules
 // ──────────────────────────────────────────────────────────────────────
 
-// Lives each player starts the match with. Every tile you LOSE costs one
-// life: your opponent claims the live tile first, or nobody claims it in
-// time (a both-miss costs both players a life). Lose all of them and the
-// match is over.
+// Lives each player starts the match with. A life is only ever lost to
+// your OWN miss: you did not tap the live tile before its window closed.
+// Your opponent tapping it first costs you nothing. Lose all of them and
+// the match is over.
 export const STARTING_LIVES = 3;
 
-// How long the live tile stays claimable on the FIRST tile of a match.
-// Deliberately slower than the old 0.8s glow: a window you can read, not
-// a twitch test — the pace ramps as the match goes on.
-export const START_WINDOW_MS = 1600;
+// How long the live tile stays tappable on the FIRST tile of a match —
+// long enough to read the board and settle in, before the pace ramps up.
+export const START_WINDOW_MS = 3000;
 
 // How much the window tightens for every tile either player has CLAIMED
-// (both-misses do not speed the game up). After 12 claims the window sits
-// on its floor.
+// (unclaimed tiles do not speed the game up). After 25 claims the window
+// sits on its floor.
 export const WINDOW_STEP_MS = 100;
 
 // Fastest the window ever gets.
-export const MIN_WINDOW_MS = 400;
+export const MIN_WINDOW_MS = 500;
 
-// Network cushion: a claim that reaches the server this long AFTER the
-// window closed is still honoured as a claim. The tap was made while the
+// Network cushion: a tap that reaches the server this long AFTER the
+// window closed is still honoured as a tap. The player tapped while the
 // tile was visibly lit — the request just took a moment to arrive, and on
-// a slow connection that would otherwise turn a winning tap into a
-// both-miss for BOTH players. Invisible to players (the ring always ends
-// at the window) and server-clocked, so it cannot be exploited.
+// a slow connection that would otherwise cost them a life they had earned.
+// Invisible to players (the ring always ends at the window) and
+// server-clocked, so it cannot be exploited.
 export const TAP_GRACE_MS = 120;
 
 // Keno board size (mirror src/lib/kenoMultipliers.ts).
@@ -172,8 +175,10 @@ export const KENO_POOL_SIZE = 40;
 export const TILE_LOG_LIMIT = KENO_POOL_SIZE;
 
 // Auto-advance window between player2 joining and the run starting
-// (server-authoritative "Get ready" banner).
-export const READY_WINDOW_MS = 3000;
+// (server-authoritative "Get ready" banner). Long enough to read the rules
+// and get a finger over the board — the first tile lights the instant this
+// expires, so a player who is not ready loses a life to their own miss.
+export const READY_WINDOW_MS = 5000;
 
 // Window between FINISHED and the client being allowed to navigate back
 // to the lobby.

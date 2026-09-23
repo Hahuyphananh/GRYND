@@ -551,7 +551,7 @@ export const APP_TEXT_TRANSLATIONS = {
       crash_arena_desc:
         "Join a table, post the blinds, and hold against the crash curve. Last player standing takes the pot.",
       chess_desc: "Outthink your opponent move by move.",
-      keno_desc: "1v1 Keno Survival Duel. 3 lives each and one lit tile: tap it before your rival or lose a life. The window tightens every claim — take the pot.",
+      keno_desc: "1v1 Keno Survival Duel. 3 lives each, one lit tile and the same window for both: tap it in time and you keep your life — beat your rival to it and it costs them nothing. Miss it and the life is yours to lose. Take the pot.",
       uno_desc:
         "Fast card duels. Match colors and numbers to outplay your rival — online or vs the AI.",
       rps_desc:
@@ -2337,7 +2337,7 @@ export const APP_TEXT_TRANSLATIONS = {
       crash_arena_desc:
         "Rejoignez une table, postez les blinds et tenez face à la courbe du crash. Le dernier joueur en lice remporte le pot.",
       chess_desc: "Dépasse ton adversaire coup par coup.",
-      keno_desc: "Duel de survie Keno 1v1. 3 vies chacun et une seule case allumée : touchez-la avant votre rival ou perdez une vie. La fenêtre se resserre à chaque case prise — empochez le pot.",
+      keno_desc: "Duel de survie Keno 1v1. 3 vies chacun, une seule case allumée et la même fenêtre pour les deux : touchez-la à temps et vous gardez votre vie — la prendre avant votre rival ne lui coûte rien. Ratez-la et la vie est pour vous. Empochez le pot.",
       uno_desc:
         "Duel de cartes rapide. Assortis couleurs et numéros pour battre ton rival — en ligne ou contre l'IA.",
       rps_desc:
@@ -3750,7 +3750,7 @@ export const APP_TEXT_TRANSLATIONS = {
       crash_arena_desc:
         "Únete a una mesa, publica las ciegas y aguanta contra la curva del crash. El último jugador en pie se lleva el bote.",
       chess_desc: "Supera a tu oponente jugada a jugada.",
-      keno_desc: "Duelo de supervivencia de Keno 1v1. 3 vidas cada uno y una sola casilla encendida: púlsala antes que tu rival o pierdes una vida. La ventana se estrecha con cada acierto — llévate el bote.",
+      keno_desc: "Duelo de supervivencia de Keno 1v1. 3 vidas cada uno, una sola casilla encendida y la misma ventana para ambos: púlsala a tiempo y conservas tu vida — adelantarte a tu rival no le cuesta nada. Si la fallas, la vida es tuya. Llévate el bote.",
       uno_desc:
         "Duelos de cartas rápidos. Iguala colores y números para superar a tu rival — en línea o contra la IA.",
       rps_desc:

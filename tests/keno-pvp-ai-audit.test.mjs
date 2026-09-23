@@ -5,8 +5,14 @@
  * / `claimTile` store functions against a fake database and a virtual clock,
  * simulating the client's actual request cadence (the 5s status poll, the
  * deadline nudge, and the ai-turn probe burst), and asserts the bot really
- * plays: its plan is materialised as claims, it never taps outside the tile's
+ * plays: its plan is materialised as taps, it never taps outside the tile's
  * window, and a full match reaches a terminal result.
+ *
+ * Under the own-miss rules a tap saves the tapper's life and never costs the
+ * opponent one, so the counts below separate TAPS (who touched the tile, and
+ * therefore kept their life) from CREDITS (the one tile per round that is
+ * scored). A human who taps every tile is unbeatable; a human who does not is
+ * beaten by their own misses — both shapes are asserted.
  *
  * Run:  npm run test:keno-ai-audit -- [--experimental-test-module-mocks]
  * (module mocking needs --experimental-test-module-mocks; without the flag the
@@ -400,13 +406,29 @@ async function runScenario(
   return run;
 }
 
+/** Who was CREDITED a tile: the named seat, or the faster tap on a tie. */
+const creditedSeat = (e) => {
+  if (e.outcome === "player1" || e.outcome === "player2") return e.outcome;
+  if (e.outcome !== "both_claim") return null;
+  const a = e.p1ReactionMs;
+  const b = e.p2ReactionMs;
+  if (a == null) return "player2";
+  if (b == null) return "player1";
+  return a <= b ? "player1" : "player2";
+};
+
 const outcomeCounts = (row) => {
   const entries = row.tileLog || [];
   return {
     entries,
-    bot: entries.filter((e) => e.outcome === "player2"),
-    human: entries.filter((e) => e.outcome === "player1"),
-    miss: entries.filter((e) => e.outcome === "both_miss"),
+    // Taps: touching the tile is what keeps that player's life.
+    botTaps: entries.filter((e) => e.p2Claimed === true),
+    humanTaps: entries.filter((e) => e.p1Claimed === true),
+    // Credits: exactly one per resolved tile (zero on a both-miss).
+    bot: entries.filter((e) => creditedSeat(e) === "player2"),
+    human: entries.filter((e) => creditedSeat(e) === "player1"),
+    // Neither player touched the tile — the only way BOTH lose a life.
+    miss: entries.filter((e) => e.p1Claimed === false && e.p2Claimed === false),
   };
 };
 
@@ -423,39 +445,49 @@ const planForEntry = (matchId, entry) =>
 /**
  * The invariants the bot must satisfy over a whole match:
  *
- *   1. every tile it claimed was a tile its plan went for, and the graded
+ *   1. every tile the bot TAPPED was a tile its plan went for, and the graded
  *      reaction is the plan's own reaction — inside the tile's window;
- *   2. a both-miss only ever happens on a tile the bot's plan DECLINED. A
+ *   2. the bot's tap is what keeps its OWN life: it never loses a life on a
+ *      tile it tapped, and it loses exactly one on every tile it did not;
+ *   3. a both-miss only ever happens on a tile the bot's plan DECLINED. A
  *      tile the bot went for can never be a both-miss: that is exactly the
  *      "the AI is not playing" failure.
  */
 function assertBotInvariants(run) {
+  let expectedP2Lives = STARTING_LIVES;
   for (const entry of run.finalRow.tileLog || []) {
     const plan = planForEntry(run.matchId, entry);
-    if (entry.outcome === "player2") {
+    if (entry.p2Claimed) {
       assert.equal(
         plan.claims,
         true,
-        `the bot claimed tile ${entry.tile} without a plan for it ` +
+        `the bot tapped tile ${entry.tile} without a plan for it ` +
           `match=${run.matchId} entry=${JSON.stringify(entry)} plan=${JSON.stringify(plan)}`,
       );
       assert.equal(
-        entry.reactionMs,
+        entry.p2ReactionMs,
         plan.reactionMs,
         `bot reaction on tile ${entry.tile} is not the plan's reaction`,
       );
       assert.ok(
-        entry.reactionMs >= 200 && entry.reactionMs <= entry.windowMs,
-        `bot reaction ${entry.reactionMs}ms outside its window (${entry.windowMs}ms)`,
+        entry.p2ReactionMs >= 200 && entry.p2ReactionMs <= entry.windowMs,
+        `bot reaction ${entry.p2ReactionMs}ms outside its window (${entry.windowMs}ms)`,
       );
-    } else if (entry.outcome === "both_miss") {
+    } else {
+      // No tap is the bot's own miss — the only thing that costs it a life.
+      expectedP2Lives -= 1;
       assert.equal(
         plan.claims,
         false,
-        `AUDIT FAILED: tile ${entry.tile} both-missed although the bot's plan went for it ` +
+        `AUDIT FAILED: tile ${entry.tile} was a miss for the bot although its plan went for it ` +
           `(reaction ${plan.reactionMs}ms, window ${entry.windowMs}ms)`,
       );
     }
+    assert.equal(
+      entry.p2Lives,
+      Math.max(0, expectedP2Lives),
+      `the bot's lives after tile ${entry.tile} do not match its own taps`,
+    );
   }
 }
 
@@ -475,20 +507,22 @@ test("AUDIT: createAiMatch makes a free human-vs-bot match ready to race", { ski
 test("AUDIT: a passive human loses every tile the bot goes for", { skip: SKIP_REASON }, async (t) => {
   const session = await createSession(t);
   const run = await runScenario(session, () => null);
-  const { entries, bot, human, miss } = outcomeCounts(run.finalRow);
+  const { entries, botTaps, humanTaps, miss } = outcomeCounts(run.finalRow);
 
-  assert.equal(human.length, 0, "the passive human somehow claimed a tile");
-  assert.ok(bot.length > 0, "AUDIT FAILED: the bot never claimed a single tile");
-  assert.equal(run.stats.botClaims, bot.length, "every bot claim reported must be in the public log");
-  assert.equal(entries.length, bot.length + miss.length, "no tile resolved without a log entry");
+  assert.equal(humanTaps.length, 0, "the passive human somehow tapped a tile");
+  assert.ok(botTaps.length > 0, "AUDIT FAILED: the bot never tapped a single tile");
+  assert.equal(run.stats.botClaims, botTaps.length, "every bot tap reported must be in the public log");
+  assert.equal(entries.length, botTaps.length + miss.length, "no tile resolved without a log entry");
   assertBotInvariants(run);
 
   assert.equal(run.finalRow.status, MATCH_STATUS.FINISHED, "the match must settle");
   assert.equal(run.finalRow.result, RESULT.PLAYER2);
+  // The passive human never taps, so every tile is THEIR miss: three tiles
+  // and their life bar is gone. The bot's own misses are the only thing that
+  // ever costs the bot a life.
   assert.equal(run.finalRow.p1Lives, 0);
-  // A both-miss costs BOTH players a life — so the bot's remaining lives are
-  // exactly the tiles its own plan declined.
   assert.equal(run.finalRow.p2Lives, STARTING_LIVES - miss.length);
+  assert.equal(entries.length, STARTING_LIVES, "the passive run ends after 3 misses");
 });
 
 test("AUDIT: real network lag must not stop the bot from playing", { skip: SKIP_REASON }, async (t) => {
@@ -496,8 +530,8 @@ test("AUDIT: real network lag must not stop the bot from playing", { skip: SKIP_
   for (const networkLagMs of [0, 60, 150, 300]) {
     const run = await runScenario(session, () => null, { networkLagMs });
     assert.ok(
-      outcomeCounts(run.finalRow).bot.length > 0,
-      `with ${networkLagMs}ms of lag the bot never claimed a tile`,
+      outcomeCounts(run.finalRow).botTaps.length > 0,
+      `with ${networkLagMs}ms of lag the bot never tapped a tile`,
     );
     assertBotInvariants(run);
     assert.equal(run.finalRow.status, MATCH_STATUS.FINISHED, `lag ${networkLagMs}ms never settled`);
@@ -507,14 +541,16 @@ test("AUDIT: real network lag must not stop the bot from playing", { skip: SKIP_
 test("AUDIT: a human who taps slower than the bot does not steal its tiles", { skip: SKIP_REASON }, async (t) => {
   // The human watches the tile light and taps 150ms AFTER the bot's own
   // scheduled reaction — the bot's tap instant is earlier, so the tile is the
-  // bot's. A slower human taking it is what makes the AI look absent.
+  // bot's. The slower human still keeps their life (that is the point of the
+  // own-miss rules) but must never take the tile credit.
   const session = await createSession(t);
   const run = await runScenario(session, ({ tile, plan }) => {
     if (!tile || !plan?.claims) return null;
     return plan.reactionMs + 150;
   });
-  const { bot, human } = outcomeCounts(run.finalRow);
+  const { bot, human, humanTaps } = outcomeCounts(run.finalRow);
   assert.ok(bot.length > 0, "the bot never claimed a tile at all");
+  assert.ok(humanTaps.length > 0, "the slower human never tapped at all");
   assert.equal(
     human.length,
     0,
@@ -523,7 +559,7 @@ test("AUDIT: a human who taps slower than the bot does not steal its tiles", { s
   assertBotInvariants(run);
 });
 
-test("AUDIT: a human tap that arrives after the bot's instant loses the tile", { skip: SKIP_REASON }, async (t) => {
+test("AUDIT: a human tap that arrives after the bot's instant loses the TILE but not a life", { skip: SKIP_REASON }, async (t) => {
   const session = await createSession(t);
   const { store, world, fake } = session;
   world.clock = 1_700_000_000_000;
@@ -566,66 +602,85 @@ test("AUDIT: a human tap that arrives after the bot's instant loses the tile", {
   world.clock = startedMs + plan.reactionMs + 1;
   const result = await store.claimTile({ userId: HUMAN, matchId, tile });
 
-  assert.ok(result.error, "the human tap should not be accepted");
-  assert.equal(result.error, "GRYND AI was faster");
-  assert.equal(result.aiClaimed, true);
+  // The tap LANDS — losing the race no longer rejects it, because losing the
+  // race must not cost the human a life. It only loses the tile credit.
+  assert.ok(!result.error, `the human tap should be accepted, got ${result.error}`);
+  assert.equal(result.claim.aiClaimed, true, "the bot got there first");
+  assert.equal(result.claim.credited, false, "the credit is the bot's");
+  assert.equal(result.claim.complete, true, "both players have now tapped");
   const entry = result.match.tileLog.at(-1);
   assert.equal(entry.tile, tile);
-  assert.equal(entry.outcome, "player2", "the tile is the bot's — it tapped first");
-  assert.equal(entry.reactionMs, plan.reactionMs, "the log carries the bot's own reaction");
-  assert.equal(result.match.p1Lives, p1LivesBefore - 1, "losing the race costs the human a life");
-  assert.equal(result.match.p2Tiles, 1);
+  assert.equal(entry.outcome, "both_claim", "both tapped — the tile is a shared claim");
+  assert.equal(entry.p1Claimed, true, "the human's tap is on the record");
+  assert.equal(entry.p2Claimed, true);
+  assert.equal(entry.p2ReactionMs, plan.reactionMs, "the log carries the bot's own reaction");
+  assert.equal(result.match.p1Lives, p1LivesBefore, "losing the race must not cost the human a life");
+  assert.equal(result.match.p2Tiles, 1, "the bot took the tile credit");
 });
 
 test("AUDIT: over many matches the bot is a real opponent, not a bystander", { skip: SKIP_REASON }, async (t) => {
   const session = await createSession(t);
   const summary = [];
-  for (const humanMs of [250, 350, 450]) {
+  // Two human profiles. Under the own-miss rules a life is lost ONLY for
+  // your own miss, so a human who never misses cannot be eliminated — the
+  // win column belongs to whoever misses. The sloppy profile shows the bot
+  // taking matches; the perfect one shows the bot is still beatable.
+  const PROFILES = {
+    perfect: ({ tile }) => (tile ? 350 : null),
+    // Misses roughly one tile in fifteen — close enough to the bot's own ~10%
+    // skip rate that either side can run out of lives first.
+    sloppy: ({ tile, index }) => (tile ? (index % 15 === 0 ? null : 350) : null),
+  };
+  for (const [name, humanDelayMs] of Object.entries(PROFILES)) {
     let botTiles = 0;
     let humanTiles = 0;
     let matchesWithBotClaim = 0;
     let botWins = 0;
+    let humanWins = 0;
     const matches = 24;
     for (let seed = 1; seed <= matches; seed += 1) {
-      const run = await runScenario(session, () => humanMs, { seed });
+      const run = await runScenario(session, humanDelayMs, { seed });
       const { bot, human } = outcomeCounts(run.finalRow);
       botTiles += bot.length;
       humanTiles += human.length;
       if (bot.length > 0) matchesWithBotClaim += 1;
       if (run.finalRow.result === RESULT.PLAYER2) botWins += 1;
+      if (run.finalRow.result === RESULT.PLAYER1) humanWins += 1;
     }
-    summary.push({ humanMs, botTiles, humanTiles, matchesWithBotClaim, botWins, matches });
+    summary.push({ name, botTiles, humanTiles, matchesWithBotClaim, botWins, humanWins, matches });
     if (TRACE) {
       console.log(
-        `human ${humanMs}ms over ${matches} matches → bot tiles ${botTiles}, human tiles ${humanTiles}, ` +
-          `matches where the bot claimed: ${matchesWithBotClaim}, bot wins: ${botWins}`,
+        `${name} human over ${matches} matches → bot tiles ${botTiles}, human tiles ${humanTiles}, ` +
+          `matches where the bot was credited: ${matchesWithBotClaim}, bot wins: ${botWins}, ` +
+          `human wins: ${humanWins}`,
       );
     }
   }
-  // The bot must be a genuine opponent: it claims tiles in a large share of
-  // matches, and it takes some matches outright.
+  const perfect = summary.find((s) => s.name === "perfect");
+  const sloppy = summary.find((s) => s.name === "sloppy");
+
+  // Whatever the human's profile, the bot must actually show up.
   for (const s of summary) {
-    // Whatever the human's speed, the bot must actually show up.
     assert.ok(
       s.botTiles > 0,
-      `a ${s.humanMs}ms human: the bot never claimed a tile in ${s.matches} matches`,
+      `a ${s.name} human: the bot never won a tile in ${s.matches} matches`,
     );
-    // …and whatever the human's speed, the bot must stay beatable.
     assert.ok(
-      s.matches - s.botWins > 0,
-      `a ${s.humanMs}ms human: the bot won every one of ${s.matches} matches — unbeatable`,
+      s.matchesWithBotClaim >= Math.ceil(s.matches / 2),
+      `a ${s.name} human: the bot was credited a tile in only ` +
+        `${s.matchesWithBotClaim}/${s.matches} matches`,
     );
-    // Against a NORMAL human reaction (the 200–420ms band the bot lives in)
-    // it is a real opponent, not an occasional bystander.
-    if (s.humanMs >= 350) {
-      assert.ok(
-        s.matchesWithBotClaim >= Math.ceil(s.matches / 2),
-        `a ${s.humanMs}ms human: the bot claimed a tile in only ` +
-          `${s.matchesWithBotClaim}/${s.matches} matches`,
-      );
-      assert.ok(s.botWins > 0, `a ${s.humanMs}ms human: the bot never won a match`);
-    }
   }
+
+  // A human who taps every tile never loses a life, so they take every match:
+  // the bot can only win by capitalising on a human's OWN misses.
+  assert.equal(perfect.botWins, 0, "a perfect human lost a match the bot could not have won");
+  assert.equal(perfect.humanWins, perfect.matches);
+
+  // A human who misses hands the bot matches…
+  assert.ok(sloppy.botWins > 0, "a human who skips tiles never lost to the bot");
+  // …but the bot is never unbeatable.
+  assert.ok(sloppy.humanWins > 0, `the bot won all ${sloppy.matches} matches against a sloppy human`);
 });
 
 test("AUDIT: the bot's play does not depend on the client's probe cadence", { skip: SKIP_REASON }, async (t) => {

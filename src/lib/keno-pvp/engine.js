@@ -6,11 +6,15 @@
 // ring/timer always agrees with the server's grading.
 //
 // The skill model: ONE tile is lit at a time and BOTH players race for
-// it. Tap it first → you claim the tile and your opponent loses a life.
-// Nobody taps in time → both players lose a life. The window tightens
-// with every claimed tile, so the match ends as a pure reaction test.
-// Lose all your lives and the match is over (both eliminated on the same
-// both-miss at once → DRAW).
+// it, but the race is for the TILE, not for your opponent's life. You
+// lose a life for your OWN miss only — you did not tap the tile before
+// its window closed. Beating your opponent to it credits you the tile
+// (which is also the exhausted-board tiebreak) and costs them nothing,
+// so a faster opponent can no longer bleed you dry; a slower one still
+// can. The window tightens with every claimed tile, so the match ends as
+// a pure test of whether you can keep tapping in time. Lose all your
+// lives and the match is over (both eliminated on the same both-miss at
+// once → DRAW).
 
 import {
   KENO_POOL_SIZE,
@@ -132,23 +136,29 @@ export function isClaimInWindow({
 // ── Outcome resolution ────────────────────────────────────────────────
 
 /**
- * Lives after a claim: the claimant keeps everything, the opponent loses
- * one life.
+ * Lives after a resolved tile: every player who MISSED it loses one.
+ *
+ * A miss is personal — it means that player never tapped the tile while
+ * its window was open. Tapping it, even a fraction after the opponent
+ * did, is not a miss and costs nothing. So the two flags move
+ * independently and the three possible outcomes fall out of them:
+ *
+ *   both tapped   → nobody loses a life
+ *   one tapped    → only the other loses one
+ *   neither tapped → both lose one
  */
-export function applyClaimToLives({ claimantSeat, p1Lives, p2Lives }) {
+export function applyMissesToLives({ p1Lives, p2Lives, p1Missed, p2Missed }) {
   const p1 = lifeOr(p1Lives);
   const p2 = lifeOr(p2Lives);
-  if (claimantSeat === "player1") return { p1Lives: p1, p2Lives: Math.max(0, p2 - 1) };
-  if (claimantSeat === "player2") return { p1Lives: Math.max(0, p1 - 1), p2Lives: p2 };
-  return { p1Lives: p1, p2Lives: p2 };
+  return {
+    p1Lives: p1Missed ? Math.max(0, p1 - 1) : p1,
+    p2Lives: p2Missed ? Math.max(0, p2 - 1) : p2,
+  };
 }
 
-/** Lives after a both-miss: every player still in the match loses one. */
+/** Lives after a both-miss: neither player tapped, so both lose one. */
 export function applyBothMissToLives({ p1Lives, p2Lives }) {
-  return {
-    p1Lives: Math.max(0, lifeOr(p1Lives) - 1),
-    p2Lives: Math.max(0, lifeOr(p2Lives) - 1),
-  };
+  return applyMissesToLives({ p1Lives, p2Lives, p1Missed: true, p2Missed: true });
 }
 
 /**
@@ -194,12 +204,20 @@ export function decideSurvivalResult({
 export const TILE_OUTCOME = Object.freeze({
   PLAYER1: "player1",
   PLAYER2: "player2",
+  // Both players tapped in time: the faster one is credited the tile (and
+  // `outcome` names them), but NEITHER loses a life.
+  BOTH_CLAIM: "both_claim",
   BOTH_MISS: "both_miss",
 });
 
 /**
- * Build one log entry. `livesAfter` is the post-resolution life pair, so
+ * Build one log entry. `p1Lives`/`p2Lives` are the post-resolution pair, so
  * a client replaying the log never has to recompute the rules.
+ *
+ * `p1Claimed`/`p2Claimed` record who tapped, which is what the board and
+ * the feed paint from — with two players able to claim the same tile, the
+ * single `outcome` string is not enough on its own. `reactionMs` stays as
+ * the credited claimant's reaction; the per-player reactions carry both.
  */
 export function tileLogEntry({
   tile,
@@ -210,7 +228,25 @@ export function tileLogEntry({
   p2Lives,
   windowMs,
   reactionMs = null,
+  p1Claimed = null,
+  p2Claimed = null,
+  p1ReactionMs = null,
+  p2ReactionMs = null,
 }) {
+  const msOrNull = (value) =>
+    value == null || !Number.isFinite(Number(value))
+      ? null
+      : Math.max(0, Math.trunc(Number(value)));
+
+  // Entries written before the own-miss rules carry no per-player flags.
+  // Derive them from the legacy outcome so replaying an old match still
+  // paints each board identically.
+  const claimedFromOutcome = (seat) => {
+    if (outcome === TILE_OUTCOME.BOTH_MISS) return false;
+    if (outcome === TILE_OUTCOME.BOTH_CLAIM) return true;
+    return outcome === seat;
+  };
+
   return {
     tile: Number(tile),
     index: Math.max(0, Math.trunc(Number(index) || 0)),
@@ -219,10 +255,11 @@ export function tileLogEntry({
     p1Lives: Math.max(0, Math.trunc(Number(p1Lives) || 0)),
     p2Lives: Math.max(0, Math.trunc(Number(p2Lives) || 0)),
     windowMs: Math.max(0, Math.trunc(Number(windowMs) || 0)),
-    reactionMs:
-      reactionMs == null || !Number.isFinite(Number(reactionMs))
-        ? null
-        : Math.max(0, Math.trunc(Number(reactionMs))),
+    reactionMs: msOrNull(reactionMs),
+    p1Claimed: p1Claimed == null ? claimedFromOutcome("player1") : Boolean(p1Claimed),
+    p2Claimed: p2Claimed == null ? claimedFromOutcome("player2") : Boolean(p2Claimed),
+    p1ReactionMs: msOrNull(p1ReactionMs),
+    p2ReactionMs: msOrNull(p2ReactionMs),
   };
 }
 
@@ -241,13 +278,18 @@ export function capTileLog(log, limit = KENO_POOL_SIZE) {
 // slower than the current window is a physical miss — the bot simply
 // cannot tap in time — which is what makes late tiles winnable.
 
-// Share of tiles the bot goes for. Steamrolled by a fast human on the
-// opening (1.6s) tiles; genuinely competitive once the window tightens.
-const AI_CLAIM_RATE = 0.55;
+// Share of tiles the bot goes for. Under the own-miss rules this IS the
+// bot's survival leak: skipping a tile is a miss, and a miss costs it a
+// life, so the 45% skip rate it used to run would have eliminated it on
+// the seventh tile. At 90% it drops about one life per ten tiles — enough
+// to lose a long match to a player who never misses, without ever being a
+// pushover.
+const AI_CLAIM_RATE = 0.9;
 
-// Reaction band, in ms. The floor keeps the bot beatable on the 400ms
-// floor window; the ceiling is under the opening window so a human who
-// is not looking still loses the first tiles.
+// Reaction band, in ms. This decides who is CREDITED each tile the bot
+// goes for, not who loses a life — the bot either taps inside the window
+// or it does not. The ceiling stays under the 0.5s floor window, so late
+// tiles are a fair race rather than a coin flip.
 const AI_MIN_REACTION_MS = 200;
 const AI_REACTION_JITTER_MS = 220;
 
@@ -266,6 +308,12 @@ export function chooseAiClaim({
   startedMs = 0,
 } = {}) {
   const n = Math.trunc(Number(index) || 0);
+  // `Number(null)`/`Number("")` are 0 and finite, so a missing tile would
+  // otherwise sail past the numeric guard and produce a plan for tile 0.
+  // Reject a raw null/undefined/empty tile or window up front.
+  if (tile == null || tile === "" || windowMs == null || windowMs === "") {
+    return { claims: false, reactionMs: null, dueAtMs: null };
+  }
   const tileNumber = Number(tile);
   const window = Number(windowMs);
   if (!Number.isFinite(tileNumber) || !Number.isFinite(window) || window <= 0) {

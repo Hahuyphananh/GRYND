@@ -281,12 +281,15 @@ export default function KenoLobbyPage() {
       subtitle={
         <>
           1v1 <b>Keno Survival Duel</b>. Both players start with{" "}
-          <b>3 lives</b> and race for the <b>same lit tile</b>. Tap it
-          first to claim it and take a life off your opponent — if
-          nobody taps in time, <b>both</b> lose a life. The window starts
-          at <b>1.6s</b> and tightens <b>100ms per claimed tile</b> (floor
-          0.4s), so the endgame is pure reaction time. First to strip all
-          3 lives takes the pot <b>1.9× their stake</b>, house takes 0.1×.
+          <b>3 lives</b> and share the <b>same lit tile</b> and the same
+          window. Tap it in time and you keep your life — claiming it
+          before your opponent costs them nothing. You lose a life only
+          when <b>you</b> miss: if you don't tap before the window closes,
+          it is yours to lose (a tile neither of you taps costs you both).
+          A <b>5s</b> countdown gets you ready, then the window starts at{" "}
+          <b>3s</b> and tightens <b>100ms per claimed tile</b> (floor
+          <b>0.5s</b>). First to strip all 3 lives takes the pot{" "}
+          <b>1.9× their stake</b>, house takes 0.1×.
         </>
       }
       icon={
@@ -297,13 +300,16 @@ export default function KenoLobbyPage() {
         title: "How to Play",
         sections: [
           {
-            heading: "Race for the lit tile",
+            heading: "Race for the same lit tile",
             body: (
               <>
                 <b>One tile</b> from the 1–40 board is lit for both
-                players. Tap it first to <b>claim</b> it and take a life
-                off your opponent. If nobody taps before the window
-                closes, <b>both</b> players lose a life.
+                players at the same time, and both of you have the same
+                window to tap it. Tapping it <b>saves your life</b> — it
+                does not take one off your opponent, and tapping after
+                them costs you nothing. You lose a life only if you
+                don't tap it in time. If neither player taps, <b>both</b>{" "}
+                lose a life.
               </>
             ),
           },
@@ -322,11 +328,12 @@ export default function KenoLobbyPage() {
             heading: "The window tightens",
             body: (
               <>
-                The first tile gives you <b>1.6s</b>. Every tile either
-                player claims shaves <b>100ms</b> off the next window,
-                down to a <b>0.4s</b> floor — later tiles are won on
-                reaction alone. Winner takes 1.9× their stake; the house
-                keeps 0.1×.
+                A <b>5-second</b> countdown runs before the first tile so
+                you are ready to click. The first tile then gives you{" "}
+                <b>3s</b>. Every tile either player claims shaves{" "}
+                <b>100ms</b> off the next window, down to a <b>0.5s</b>{" "}
+                floor — later tiles are won on reaction alone. Winner
+                takes 1.9× their stake; the house keeps 0.1×.
               </>
             ),
           },

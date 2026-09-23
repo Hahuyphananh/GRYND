@@ -1023,6 +1023,13 @@
       "when": 1800000008000,
       "tag": "0164_keno_survival_duel",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1800000009000,
+      "tag": "0165_keno_own_miss",
+      "breakpoints": true
     }
   ]
 }
