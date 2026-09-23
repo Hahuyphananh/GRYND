@@ -60,6 +60,7 @@ import {
   MATCH_FINISHED_TTL_MS,
   MAX_STOP_MS,
   MIN_STOP_MS,
+  ROUND_RESULT_REVEAL_MS,
 } from "./constants";
 import type {
   PlayerSeat,
@@ -316,9 +317,14 @@ function toWrite(row: PrecisionMatchRow, now: number): MatchWrite {
 // ── Arm + reveal ─────────────────────────────────────────────────────────
 
 /** Arm a round in the write view: stamp the countdown, roll the round's
- *  target into the SERVER-ONLY slot, and reset the per-round state. */
-function armRound(write: MatchWrite, now: number): void {
-  armRoundState(write.state, generateRoundNonce(), now);
+ *  target into the SERVER-ONLY slot, and reset the per-round state.
+ *
+ *  `revealMs` is the round-result cooldown the countdown waits behind — see
+ *  `armRoundState`. Every round that FOLLOWS a decision passes it; the first
+ *  round (both seats just readied) passes nothing, because there is no result
+ *  on screen to protect. */
+function armRound(write: MatchWrite, now: number, revealMs = 0): void {
+  armRoundState(write.state, generateRoundNonce(), now, revealMs);
   write.serverTargetMs = rollRandomTarget();
   write.aiStopAt = null;
   write.pendingStops = {};
@@ -458,7 +464,11 @@ function applyRoundResolutionIfReady(write: MatchWrite, now: number): boolean {
   if (result.roundWinnerSeat !== null) {
     state.currentRound += 1;
   }
-  armRound(write, now);
+  // Hold the next countdown behind the round-result cooldown: both players
+  // are still looking at the result overlay, so the round must not open (and
+  // its timer must not start) until that window has passed. The round-result
+  // overlay and this gate read the SAME constant, so they cannot drift.
+  armRound(write, now, ROUND_RESULT_REVEAL_MS);
   return true;
 }
 

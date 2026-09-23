@@ -130,6 +130,15 @@ export async function GET(req: NextRequest) {
   // more (throttled internally, best-effort).
   void sweepPrecisionGamesIfDue();
 
+  // Our own wall clock, read ONCE for the response. The client pairs it with
+  // its own request timestamps to estimate the device→server clock offset
+  // (`estimateServerClockOffset`) and express the server's GO instant in the
+  // clock it displays. WITHOUT it the client can only bridge through its raw
+  // device clock, so a skewed device shows a round timer that disagrees with
+  // the server-measured numbers on the round-result panel — the player stops on
+  // the value they were shown and is graded somewhere else entirely.
+  const serverNowMs = Date.now();
+
   // ── Self-healing transitions, now the ONLY path ────────────────────────
   // There are no timers any more. The arming countdown and the bot's stop are
   // stored INSTANTS, so `readMatch` performs whichever transition has come due
@@ -141,6 +150,7 @@ export async function GET(req: NextRequest) {
     const match = row.state;
     return NextResponse.json({
       success: true,
+      now: serverNowMs,
       match: {
         ...match,
         players: await decoratePlayerBadges(match.players ?? []),
@@ -190,8 +200,8 @@ export async function GET(req: NextRequest) {
       lastRoundStops: null,
       version: 0,
     };
-    return NextResponse.json({ success: true, match: waitingState });
+    return NextResponse.json({ success: true, now: serverNowMs, match: waitingState });
   }
 
-  return NextResponse.json({ success: true, match: null });
+  return NextResponse.json({ success: true, now: serverNowMs, match: null });
 }

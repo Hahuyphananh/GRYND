@@ -22,7 +22,7 @@
 //
 // Purely presentational. It never measures, scores, or mutates anything.
 
-import React, { useMemo } from "react";
+import React, { useMemo, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { IconRocket } from "@tabler/icons-react";
 
@@ -63,6 +63,16 @@ export interface PrecisionRocketRaceProps {
    *  Omit it in static hosts (result panel / popup) — they run their own
    *  entrance and there is no flight to launch. */
   roundKey?: string | number;
+  /** The round's primary control (the STOP button), rendered INSIDE the board
+   *  directly under the centre elapsed readout. The live round mounts it here
+   *  so the control the player has to hit sits with the clock they are timing
+   *  against, instead of in a panel below the board.
+   *
+   *  The slot is INSIDE the centre column, so whatever is passed must fit that
+   *  column's width (`w-24 sm:w-32`) — it is deliberately not allowed to widen
+   *  into either lane. Omitted by every static host (arming recap, round-result
+   *  panel, end-of-match popup): they have no round to stop. */
+  action?: ReactNode;
 }
 
 const LANE_PALETTE: Record<
@@ -191,6 +201,7 @@ export default function PrecisionRocketRace({
   countdownMs = null,
   compact = false,
   roundKey,
+  action,
 }: PrecisionRocketRaceProps) {
   const { t } = useTranslation();
   const maxMs = useMemo(() => computeAxisMaxMs(targetMs), [targetMs]);
@@ -357,6 +368,17 @@ export default function PrecisionRocketRace({
                     {Math.round(centreMs).toLocaleString()}
                     {t("games.precision.ms_suffix")}
                   </p>
+                )}
+                {/* Primary round control (STOP) — under the clock it is timed
+                    against, on the board itself. Kept to the column width by
+                    `w-full` so it can never reach into a lane. */}
+                {!isArming && action && (
+                  <div
+                    className="mt-2 w-full px-0.5"
+                    data-testid="precision-race-action"
+                  >
+                    {action}
+                  </div>
                 )}
               </div>
               )}

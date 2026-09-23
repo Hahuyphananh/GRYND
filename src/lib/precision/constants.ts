@@ -207,6 +207,30 @@ export const PRECISION_ANOMALY_LEDGER_MAX_PER_MATCH = 64;
 // MAX_TARGET_MS] is still unknown until the timer starts.
 export const ROUND_COUNTDOWN_MS = 5_000;
 
+// ── Round-result cooldown (the reveal window) ────────────────────────────
+//
+// After a round is decided, both players get the round-result overlay before
+// the next round's countdown starts. This constant is BOTH the overlay's
+// display window and the server's "dead time" gate in front of the countdown
+// (`armRoundState` stamps `countdownEndsAt = now + ROUND_RESULT_REVEAL_MS +
+// ROUND_COUNTDOWN_MS`), which is what keeps the two SEQUENTIAL: the countdown
+// used to start the instant the round was decided, so a client that learned of
+// the decision one poll late had the overlay still on screen when the round
+// opened — the timer was already running behind it and the player lost time
+// they never saw.
+//
+// The gate is measured from the DECISION, so the guarantee is "the round opens
+// at least `ROUND_RESULT_REVEAL_MS + ROUND_COUNTDOWN_MS` after the round was
+// decided" — comfortably longer than the overlay, which lasts
+// `ROUND_RESULT_REVEAL_MS` from the moment the client OBSERVED the decision
+// (up to one poll late). A client whose observation is delayed by more than
+// `ROUND_RESULT_REVEAL_MS` + the poll cadence can still see the overlay overlap
+// the tail of the countdown; it can never have the round open behind it.
+//
+// The overlay and the countdown share this number, so they can never drift
+// apart: `PrecisionRoundResultPanel` re-exports it for the reveal hook.
+export const ROUND_RESULT_REVEAL_MS = 3_000;
+
 // Visual sizing for the eventual game board. The exact dimensions will
 // be tuned in a future change; this is the canonical reference so any
 // placeholder UIs (waiting room, results popup) can size correctly.

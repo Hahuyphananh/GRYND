@@ -127,10 +127,20 @@ export function generateRoundNonce(): string {
 
 /** Transition a match into the `arming` phase, in place.
  *
- *  Stamps the fixed `ROUND_COUNTDOWN_MS` window (`armingStartedAt` +
- *  `countdownEndsAt` — clients render the live countdown from the absolute
- *  end instant so both screens stay in sync), bumps the monotonic
- *  `roundSequence`, and stamps a fresh `roundId` / `roundNonce` envelope.
+ *  Stamps the countdown window (`armingStartedAt` + `countdownEndsAt` —
+ *  clients render the live countdown from the absolute end instant so both
+ *  screens stay in sync), bumps the monotonic `roundSequence`, and stamps a
+ *  fresh `roundId` / `roundNonce` envelope.
+ *
+ *  `revealMs` is the round-result cooldown the countdown must WAIT BEHIND
+ *  (0 for the first round, `ROUND_RESULT_REVEAL_MS` for every round that
+ *  follows a decision). It is folded into `countdownEndsAt` rather than stored
+ *  separately: the round opens at one absolute instant, and both sides can
+ *  order the two windows from it alone (`countdownEndsAt - ROUND_COUNTDOWN_MS`
+ *  is the instant the countdown itself begins). Without the gate the countdown
+ *  started while the round-result overlay was still up, so the round could
+ *  open behind it — the timer was already running when the player got their
+ *  screen back.
  *
  *  `state.targetMs` is deliberately set to null: the rolled target stays in
  *  the server-only column until the reveal, so a client cannot pre-read it
@@ -142,10 +152,12 @@ export function armRoundState(
   state: PrecisionState,
   nonce: string,
   nowMs: number = Date.now(),
+  revealMs: number = 0,
 ): void {
+  const reveal = Number.isFinite(revealMs) ? Math.max(0, Math.floor(revealMs)) : 0;
   state.phase = "arming";
   state.armingStartedAt = nowMs;
-  state.countdownEndsAt = nowMs + ROUND_COUNTDOWN_MS;
+  state.countdownEndsAt = nowMs + reveal + ROUND_COUNTDOWN_MS;
   state.targetMs = null;
   // The previous round's bot stop (AI practice only) belongs to the round
   // that just ended — clear it so the new round starts with both rockets

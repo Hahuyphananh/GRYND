@@ -146,11 +146,15 @@ export interface PrecisionState {
    *  if desired. null when not arming. */
   armingStartedAt: number | null;
   /** Server-stamped timestamp (ms) when the current `arming` countdown
-   *  ENDS — `armingStartedAt + ROUND_COUNTDOWN_MS` (fixed 5s). Both
-   *  clients render the live countdown from this absolute instant so
-   *  they stay in sync, and the server's own timer fires at the same
-   *  moment to flip `phase` → "active" (stamping `roundGoInstant`).
-   *  Display-only — the client never influences when the timer starts.
+   *  ENDS — `armingStartedAt + ROUND_COUNTDOWN_MS`, plus the round-result
+   *  cooldown (`ROUND_RESULT_REVEAL_MS`) when this round followed a decision,
+   *  so the round can never open while the previous round's result overlay is
+   *  still on screen. Both clients render the live countdown from this
+   *  absolute instant so they stay in sync, and the server's own timer fires
+   *  at the same moment to flip `phase` → "active" (stamping
+   *  `roundGoInstant`). The countdown the player sees is clamped to
+   *  `ROUND_COUNTDOWN_MS`, so the cooldown reads as a hold rather than extra
+   *  ticks. Display-only — the client never influences when the timer starts.
    *  null when not arming. */
   countdownEndsAt: number | null;
   /** Server-stamped instant (ms epoch) when the current round's

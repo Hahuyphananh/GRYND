@@ -184,15 +184,28 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     }
   }, []);
 
-  const { state, stateRef, lookup, applySnapshot, refreshState } = usePrecisionMatchState({
-    matchId,
-    socket,
-    onRoundResult: handleRoundResult,
-    onReadySnapshot: handleReadySnapshot,
-  });
+  const { state, stateRef, serverClockOffsetMs, lookup, applySnapshot, refreshState } =
+    usePrecisionMatchState({
+      matchId,
+      socket,
+      onRoundResult: handleRoundResult,
+      onReadySnapshot: handleReadySnapshot,
+    });
 
-  const { timerMs, countdownMs, selfFrozenElapsedMs, freezeTimer, releaseFreeze } =
-    usePrecisionRoundClock({ state, refreshState });
+  // `serverClockOffsetMs` MUST be forwarded: it is the device→server wall-clock
+  // offset the poll estimated from the response's own round trip. The display
+  // clock bridges to the server's GO instant THROUGH the device wall clock, so
+  // dropping it anchors the round on the device's skew — the number on the
+  // board then disagrees with the server-stamped times the round-result panel
+  // prints (and with the times the server grades the stop at).
+  const {
+    timerMs,
+    countdownMs,
+    selfFrozenElapsedMs,
+    freezeTimer,
+    releaseFreeze,
+    resumeTimer,
+  } = usePrecisionRoundClock({ state, refreshState, serverClockOffsetMs });
 
   const { reveal, dismissReveal } = usePrecisionRoundReveal({ state, localSeat });
 
@@ -286,8 +299,14 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     [state, players, localSeat, selfFrozenElapsedMs, t]
   );
 
-  const awaitingOpponentStop =
-    selfStopPending && state?.phase === "active" && state?.lastRoundWinnerSeat === null;
+  // "I have stopped and this round is still live" — i.e. we are waiting on the
+  // other seat. Deliberately NOT gated on `lastRoundWinnerSeat === null`:
+  // that field carries the PREVIOUS round's winner and is never cleared by the
+  // next arm, so from round 2 onward the clause was permanently false and the
+  // scoreboard's awaiting-opponent hint never appeared again. `selfStopPending`
+  // is already scoped to the live round — the round-resolution effect clears it
+  // whenever the phase leaves `active` or a winner lands.
+  const awaitingOpponentStop = selfStopPending && state?.phase === "active";
 
   // ── Reset the single-click STOP lock between rounds ─────────────
   // The page-wide race-proof single-click lock is reset whenever the
@@ -487,6 +506,14 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
           // can try again on the next round.
           stopLockedThisRoundRef.current = false;
           setSelfStopPending(false);
+          // The click did NOT count, so the round this seat is timing is still
+          // live: drop the freeze and put the display clock back on the air,
+          // otherwise the board stays parked on a stop the server never
+          // recorded (and the player could never take a real one). Guarded on
+          // the phase so a refusal that arrives after the round has already
+          // resolved cannot restart a clock for a finished round.
+          releaseFreeze();
+          if (stateRef.current?.phase === "active") resumeTimer();
           setError((ack && ack.error) || t("games.precision.stop_rejected"));
           posthog?.capture("precision_round_stop_rejected", {
             matchId,
@@ -495,7 +522,18 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
         }
       }
     );
-  }, [matchId, stopSubmitting, selfStopPending, socket, posthog, freezeTimer, stateRef, t]);
+  }, [
+    matchId,
+    stopSubmitting,
+    selfStopPending,
+    socket,
+    posthog,
+    freezeTimer,
+    releaseFreeze,
+    resumeTimer,
+    stateRef,
+    t,
+  ]);
 
   const handleReturnToLobby = useCallback(() => {
     requestReturn();

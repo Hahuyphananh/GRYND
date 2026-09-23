@@ -84,5 +84,18 @@ load-test/tokens.csv
 # Database backups (contain real user data — never commit them)
 /backups/
 
+# --- QA run artifacts ---
+# The qa/*-check.mjs scripts write Playwright captures into qa/reports/ on
+# every run. They are diagnostics, not source: committing them left ~117
+# screenshots of drifting UI in the repo, and the QA agent workflow's
+# `git add -A` swept a fresh set in each time. Ignored by extension rather
+# than by directory so the machine-readable reports in the same folder stay
+# tracked — .github/qa-agent.mjs reads qa/reports/qa-report.json.
+qa/reports/**/*.png
+qa/reports/**/*.jpg
+qa/reports/**/*.jpeg
+qa/reports/**/*.webp
+qa/reports/**/*.gif
+
 # Added by ggshield
 .cache_ggshield

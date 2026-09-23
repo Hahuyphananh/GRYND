@@ -105,8 +105,15 @@ function makeSocket() {
     emit(event, payload, ack) {
       // The realtime server ACKs a stop immediately; the round state still
       // arrives via polling, exactly like production.
+      //
+      // `emitStop` calls `socket.timeout(…).emit(event, packet, cb)`, and
+      // Socket.IO delivers that callback as `(err, ack)` — `err` is null on a
+      // healthy ACK. Calling the callback with the ack payload in the FIRST
+      // slot made every stop look like an ACK timeout, which silently pushed
+      // the check down the HTTPS-fallback path (and would hide a real
+      // "stop accepted" from the page).
       if (event === "precision:stop" && typeof ack === "function") {
-        setTimeout(() => ack({ success: true }), 0);
+        setTimeout(() => ack(null, { success: true }), 0);
       }
     },
     on(event, handler) {

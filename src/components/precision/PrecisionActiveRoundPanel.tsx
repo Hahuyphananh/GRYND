@@ -3,8 +3,10 @@
 // ── Precision: the live round ────────────────────────────────────────────
 //
 // The whole of a round in flight: scoreboard, the two-lane vertical rocket
-// race, the target to stop on, the live rank preview, the last-round snapshot
-// strip, the STOP button and the emote picker.
+// race with the STOP control mounted INSIDE its centre slot (directly under the
+// elapsed clock the player is timing against), and a slim strip underneath for
+// the round's read-only context — the target, the live rank preview, the last
+// round's snapshot — plus the secondary controls (resign, emote picker).
 //
 // Purely presentational with respect to GAMEPLAY: it never measures time and
 // never decides anything. `timerMs` is the parent's display clock, `boardStops`
@@ -96,86 +98,35 @@ export default function PrecisionActiveRoundPanel({
 
         {/* Two-lane vertical rocket race — you | opponent. Your rocket
             and the centre timer freeze the instant you hit STOP; the
-            bot's rocket freezes the moment its published stop lands. */}
+            bot's rocket freezes the moment its published stop lands. The
+            STOP control is mounted INSIDE the board, under that clock. */}
         <PrecisionRocketRace
           phase="active"
           roundKey={state.roundSequence}
           targetMs={state.targetMs}
           liveElapsedMs={timerMs}
           lanes={raceLanes(false)}
-        />
-
-        <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 p-5 text-center sm:p-8">
-          <h2 className="text-xl font-black text-fuchsia-300">
-            <IconTarget size={20} className="mr-1.5 inline align-text-bottom" />
-            {t("games.precision.round_label", { round: currentRound })}
-          </h2>
-
-          <p className="mt-3 text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-            {t("games.precision.target")}
-          </p>
-          <p
-            data-testid="precision-round-target"
-            className="mt-1 text-4xl font-black text-yellow-300 sm:text-5xl"
-          >
-            {liveTargetMs !== null
-              ? `${liveTargetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`
-              : "-"}
-          </p>
-
-          {previewRank && (
-            <p className={`mt-3 text-lg font-bold ${previewRank.color}`}>
-              <PrecisionRankIcon label={previewRank.label} size={16} className="mr-1 inline" />{" "}
-              {previewRank.label}{" "}
-              <span className="text-sm font-normal text-cyan-100/70">
-                (
-                {t("games.precision.ms_off_format", {
-                  ms: Math.abs(Math.round(timerMs - (liveTargetMs ?? 0))).toLocaleString(),
-                })}
-                )
-              </span>
-            </p>
-          )}
-          {boardStops && (
-            <div
-              data-testid="precision-last-round-stops"
-              className="mt-5 rounded-2xl border border-cyan-400/40 bg-black/30 px-4 py-2 text-xs text-cyan-100"
-            >
-              <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-200/80">
-                {t("games.precision.previous_round_snapshot")}
-              </p>
-              <p className="mt-1 font-mono">
-                {t("games.precision.you_label_short")}{" "}
-                <span className="font-bold text-yellow-300">
-                  {(localSeat === 1 ? boardStops.seat1 : boardStops.seat2).elapsedMs}{" "}
-                  {t("games.precision.ms_suffix")}
-                </span>{" "}
-                · {t("games.precision.opponent_label_short")}{" "}
-                <span className="font-bold text-fuchsia-300">
-                  {(localSeat === 1 ? boardStops.seat2 : boardStops.seat1).elapsedMs}{" "}
-                  {t("games.precision.ms_suffix")}
-                </span>
-              </p>
-              <p className="mt-1 text-[10px] text-cyan-100/70">
-                {t("games.precision.snapshot_hint")}
-              </p>
-            </div>
-          )}
-          <p className="mt-4 text-sm text-cyan-100/90 sm:text-base">
-            {t("games.precision.stop_hint")}
-          </p>
-          <div className="mx-auto mt-5 flex max-w-md flex-col gap-3">
+          action={
             <button
               type="button"
               onClick={onStopClick}
               disabled={selfStopPending || stopSubmitting || awaitingOpponentStop}
               data-testid="precision-stop-button"
-              className={
+              aria-label={
                 selfStopPending
-                  ? "w-full cursor-default rounded-2xl border-2 border-emerald-300/40 bg-emerald-400/20 px-6 py-6 text-3xl font-black tracking-widest text-emerald-100"
+                  ? t("games.precision.stop_sent")
                   : stopSubmitting
-                    ? "w-full cursor-wait rounded-2xl border-2 border-yellow-300/40 bg-yellow-400/20 px-6 py-6 text-3xl font-black tracking-widest text-yellow-100"
-                    : "w-full rounded-2xl border-2 border-red-400/60 bg-gradient-to-b from-red-500 to-red-600 px-6 py-6 text-3xl font-black tracking-widest text-white shadow-[0_0_30px_rgba(239,68,68,0.65)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
+                    ? t("games.precision.submitting")
+                    : t("games.precision.stop_button")
+              }
+              className={
+                // Sized to the centre column (`w-full`): the slot must never
+                // widen into a lane. Labels wrap rather than overflow.
+                selfStopPending
+                  ? "w-full cursor-default rounded-lg border-2 border-emerald-300/50 bg-emerald-400/20 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-emerald-100"
+                  : stopSubmitting
+                    ? "w-full cursor-wait rounded-lg border-2 border-yellow-300/50 bg-yellow-400/20 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-yellow-100"
+                    : "w-full rounded-lg border-2 border-red-400/70 bg-gradient-to-b from-red-500 to-red-600 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-white shadow-[0_0_18px_rgba(239,68,68,0.6)] transition active:scale-95 hover:from-red-400 hover:to-red-500 animate-pulse"
               }
             >
               {selfStopPending
@@ -184,15 +135,72 @@ export default function PrecisionActiveRoundPanel({
                   ? t("games.precision.submitting")
                   : t("games.precision.stop_button")}
             </button>
-          </div>
-          <button
-            onClick={onResign}
-            className="mt-6 rounded bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-500"
-          >
-            {t("games.precision.resign")}
-          </button>
+          }
+        />
 
-          <div className="mt-6 flex justify-center">
+        {/* Slim round strip — read-only context + the secondary controls.
+            Everything the player ACTS on lives on the board above. */}
+        <div className="rounded-2xl border border-fuchsia-400/40 bg-[#0a0420]/80 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+            <h2 className="inline-flex items-center gap-1.5 text-sm font-black text-fuchsia-300">
+              <IconTarget size={16} aria-hidden="true" />
+              {t("games.precision.round_label", { round: currentRound })}
+            </h2>
+            <span className="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80">
+              {t("games.precision.target")}
+            </span>
+            <span
+              data-testid="precision-round-target"
+              className="text-2xl font-black leading-none text-yellow-300"
+            >
+              {liveTargetMs !== null
+                ? `${liveTargetMs.toLocaleString()} ${t("games.precision.ms_suffix")}`
+                : "-"}
+            </span>
+            {previewRank && (
+              <span className={`inline-flex items-center gap-1 text-sm font-bold ${previewRank.color}`}>
+                <PrecisionRankIcon label={previewRank.label} size={14} />
+                {previewRank.label}
+                <span className="text-xs font-normal text-cyan-100/70">
+                  (
+                  {t("games.precision.ms_off_format", {
+                    ms: Math.abs(Math.round(timerMs - (liveTargetMs ?? 0))).toLocaleString(),
+                  })}
+                  )
+                </span>
+              </span>
+            )}
+          </div>
+
+          {boardStops && (
+            <p
+              data-testid="precision-last-round-stops"
+              className="mt-2 text-center font-mono text-[11px] text-cyan-100/90"
+            >
+              <span className="text-[10px] uppercase tracking-[0.3em] text-cyan-200/70">
+                {t("games.precision.previous_round_snapshot")}{" "}
+              </span>
+              {t("games.precision.you_label_short")}{" "}
+              <span className="font-bold text-yellow-300">
+                {(localSeat === 1 ? boardStops.seat1 : boardStops.seat2).elapsedMs}{" "}
+                {t("games.precision.ms_suffix")}
+              </span>{" "}
+              · {t("games.precision.opponent_label_short")}{" "}
+              <span className="font-bold text-fuchsia-300">
+                {(localSeat === 1 ? boardStops.seat2 : boardStops.seat1).elapsedMs}{" "}
+                {t("games.precision.ms_suffix")}
+              </span>
+            </p>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={onResign}
+              className="rounded-lg bg-red-600/90 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-red-500"
+            >
+              {t("games.precision.resign")}
+            </button>
             <EmotePicker
               compact
               incomingEmote={incomingEmote}

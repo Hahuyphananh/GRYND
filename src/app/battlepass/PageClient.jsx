@@ -55,7 +55,15 @@ export default function BattlepassPageClient() {
   // Cache-first: the pass renders instantly from the persisted cache and
   // refreshes in the background (and on reconnect).
   const resource = useApiResource("/api/battlepass");
-  const [pass, setPass] = useState(null);
+  // Local mirror of the pass so the in-place claim updates below (setPass)
+  // keep working without a refetch. It is layered ON TOP of the fetched
+  // payload rather than replacing it: `pass` has to be non-null the moment
+  // the payload arrives. The effect that copies the payload into state only
+  // runs after the render that received it, and the track below reads
+  // `pass.levels` — so a one-render lag rendered children with `pass === null`
+  // and crashed the whole route into the error screen.
+  const [claimedPass, setClaimedPass] = useState(null);
+  const pass = claimedPass ?? resource.data?.pass ?? null;
   const loading = resource.isLoading && !pass;
   const [failedEmoteRewards, setFailedEmoteRewards] = useState({});
   // Prestige tier that just unlocked and is being celebrated (null = none).
@@ -65,10 +73,10 @@ export default function BattlepassPageClient() {
   const [claimingKey, setClaimingKey] = useState(null);
   const [claimError, setClaimError] = useState(null);
 
-  // Mirror the fetched pass into local state so the in-place claim updates
-  // below (setPass) keep working without a refetch.
+  // A fresh payload is authoritative — drop the local claim mirror so a
+  // background refresh always wins.
   useEffect(() => {
-    if (resource.data?.pass) setPass(resource.data.pass);
+    if (resource.data?.pass) setClaimedPass(resource.data.pass);
   }, [resource.data]);
 
   const claimReward = async (reward, level) => {
@@ -116,16 +124,19 @@ export default function BattlepassPageClient() {
       // mirror the claimed state locally. Already-claimed responses are a
       // no-op (double-click guard).
       if (!data.alreadyClaimed) {
-        setPass((prev) => {
-          if (!prev) return prev;
+        setClaimedPass((prev) => {
+          // Fall back to the fetched payload when the mirror hasn't been
+          // seeded yet, so the first claim still updates in place.
+          const base = prev ?? resource.data?.pass ?? null;
+          if (!base) return prev;
           const matches = (r) =>
             r.type === reward.type &&
             (isFunctional || r.key === reward.key);
-          const wasClaimable = prev.levels.some(
+          const wasClaimable = base.levels.some(
             (entry) => entry.level === level &&
               entry.rewards.some((r) => matches(r) && r.claimable),
           );
-          const levels = prev.levels.map((entry) =>
+          const levels = base.levels.map((entry) =>
             entry.level !== level
               ? entry
               : {
@@ -136,11 +147,11 @@ export default function BattlepassPageClient() {
                 },
           );
           return {
-            ...prev,
+            ...base,
             levels,
             unclaimedCount: wasClaimable
-              ? Math.max(0, (prev.unclaimedCount || 0) - 1)
-              : prev.unclaimedCount,
+              ? Math.max(0, (base.unclaimedCount || 0) - 1)
+              : base.unclaimedCount,
           };
         });
       }

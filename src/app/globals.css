@@ -116,17 +116,29 @@ body {
 }
 
 /* ── Mines Duel / Memory Grid: same one-screen rule ────────────────────
-   Both games draw a SQUARE board full-width inside a centred column, so on
-   desktop the board took more height than the space left under the page's
-   chrome — the title / stake line / seat cards / turn indicator / legend
-   (Mines) and the title / round tracker / scoreboard / phase banner (Memory
-   Grid) — and the bottom rows needed a scroll to see. Capping the WIDTH caps
-   the HEIGHT on a square, so each board gets a viewport-derived width cap,
-   with the budget set to that page's measured chrome above the board
-   (qa/board-fit-check.mjs prints both numbers):
+   Both games draw a SQUARE board inside a column, so on desktop the board
+   took more height than the space left under the page's chrome — the title /
+   stake line / seat cards / turn indicator / legend (Mines) and the title /
+   round tracker / scoreboard / phase banner (Memory Grid) — and the bottom
+   rows needed a scroll to see. Capping the WIDTH caps the HEIGHT on a
+   square, so each board gets a viewport-derived width cap, with the budget
+   set to that page's measured chrome (qa/board-fit-check.mjs prints the
+   measured `top=`, i.e. everything above the board):
 
-     • Mines Duel  — 34rem (~544px) of chrome above the board
+     • Mines Duel  — 27.5rem (~440px) = 391px of chrome above the board
+                     + the 30px legend BELOW it + 19px of slack
      • Memory Grid — 32rem (~512px) of chrome above the board
+
+   The Mines budget covers the legend below the board, which the previous
+   34rem figure did not: it accounted only for the chrome above, so the
+   legend always spilled ~34px past the fold and the page scrolled even when
+   the board itself fitted. Reclaiming that chrome (the three control blocks
+   are now one desktop row — see the page) let the board grow from 260px to
+   360px at 1280×800 while the whole stack now ends above the fold.
+
+   The `.mines-board-frame` wrapper also carries `mx-auto`: a `w-full`
+   element with a `max-width` is a block, so without it the capped board
+   hugged the LEFT edge of its centred column and sat visibly off-centre.
 
    The floor keeps the board usable (and the tiles thumb-sized) in a very
    short window instead of collapsing it. Desktop only, and released inside
@@ -134,7 +146,7 @@ body {
    `vh` cap there would shrink a recorded clip's board. */
 @media (min-width: 1024px) {
   .mines-board-frame {
-    max-width: max(260px, calc(100vh - 34rem));
+    max-width: max(260px, calc(100vh - 27.5rem));
   }
 
   .memory-board-frame {

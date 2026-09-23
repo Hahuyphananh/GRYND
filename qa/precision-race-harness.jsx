@@ -50,6 +50,20 @@ const Shell = ({ children }) => (
   </div>
 );
 
+// The live round mounts its STOP control INSIDE the board's centre column
+// (`action`), directly under the elapsed clock. `withStopAction` mirrors that
+// arrangement so the check can measure the real slot: the button is sized to
+// the column (`w-full`) and must never reach into a lane.
+const stopAction = (
+  <button
+    type="button"
+    data-testid="precision-race-action-button"
+    className="w-full rounded-lg border-2 border-red-400/70 bg-gradient-to-b from-red-500 to-red-600 px-1 py-3 text-[11px] font-black leading-tight tracking-widest text-white"
+  >
+    STOP
+  </button>
+);
+
 window.renderRace = (p) =>
   root.render(
     <Shell>
@@ -60,6 +74,7 @@ window.renderRace = (p) =>
         liveElapsedMs={p.liveElapsedMs}
         countdownMs={p.countdownMs ?? null}
         lanes={buildLanes(p)}
+        action={p.withStopAction ? stopAction : undefined}
       />
     </Shell>
   );

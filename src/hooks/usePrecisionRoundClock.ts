@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ARMING_FAST_POLL_INTERVAL_MS,
   ARMING_FAST_POLL_MAX_ATTEMPTS,
+  ROUND_COUNTDOWN_MS,
 } from "../lib/precision/constants";
 import {
   elapsedSince,
@@ -59,6 +60,10 @@ export interface UsePrecisionRoundClockResult {
   freezeTimer: () => number;
   /** Release the freeze so the next `active` round starts flying from zero. */
   releaseFreeze: () => void;
+  /** Restart the display loop from the SAME anchor after a rejected STOP. The
+   *  round is still live, so the clock has to keep matching the server's —
+   *  `freezeTimer` stopped the loop, and a rejected click is not a stop. */
+  resumeTimer: () => void;
 }
 
 export function usePrecisionRoundClock({
@@ -124,6 +129,14 @@ export function usePrecisionRoundClock({
 
   const releaseFreeze = useCallback(() => setSelfFrozenElapsedMs(null), []);
 
+  const resumeTimer = useCallback(() => {
+    // Only meaningful while a round is anchored (i.e. the round we were
+    // flying is still the live one). `startTimer` is idempotent — it cancels
+    // any running frame loop before scheduling the next one.
+    if (anchorLocalRef.current === null) return;
+    startTimer(anchorLocalRef.current);
+  }, [startTimer]);
+
   // ── Pair the scheduled GO while the round arms ─────────────────────
   // `countdownEndsAt` is the server's SCHEDULED "round opens" instant. Read
   // alongside `Date.now()` from the same response it becomes that instant in
@@ -144,7 +157,11 @@ export function usePrecisionRoundClock({
       localNowMs: performance.now(),
       deviceNowMs: serverClockNow(Date.now(), offsetRef.current),
     });
-  }, [state?.phase, state?.countdownEndsAt, state?.roundSequence]);
+    // `serverClockOffsetMs` is a dependency (not just a ref read): the first
+    // poll that carries the server's clock refines the offset, and the pairing
+    // has to be RE-DERIVED with it. A pairing made on the uncorrected device
+    // clock would anchor the whole round on the device's skew.
+  }, [state?.phase, state?.countdownEndsAt, state?.roundSequence, serverClockOffsetMs]);
 
   // ── Start / stop the local running timer based on phase ────────
   // When the round flips to `active`, the display clock starts from the
@@ -174,9 +191,9 @@ export function usePrecisionRoundClock({
     return () => stopTimer();
   }, [state?.phase, state?.roundGoInstant, state?.roundSequence, startTimer, stopTimer]);
 
-  // ── Pre-round countdown ticker ─────────────────────────────────
-  // During `arming`, the server stamps `countdownEndsAt`
-  // (`armingStartedAt + ROUND_COUNTDOWN_MS`). We tick every 100ms and
+  // ── Pre-round countdown ticker ─────────────────────────────────  // During `arming`, the server stamps `countdownEndsAt` — the countdown PLUS
+  // the round-result cooldown held in front of it (see
+  // `ROUND_RESULT_REVEAL_MS`). We tick every 100ms and
   // display ceil(remaining/1000) so both clients show the same
   // 5…4…3…2…1 from the same server timestamp. The server's own transition
   // fires at that exact instant and flips the phase to "active", so the
@@ -190,7 +207,13 @@ export function usePrecisionRoundClock({
     // `endsAt` is a SERVER instant, so it is compared against the aligned
     // clock — a skewed device must not see (or act on) a countdown that is
     // seconds away from the server's.
-    const tick = () => setCountdownMs(Math.max(0, endsAt - serverNow()));
+    // Clamped to the countdown's own length: the stamped window also carries
+    // the round-result cooldown (the server holds the countdown BEHIND it), and
+    // without the clamp the board would count 8…1 instead of holding at 5 until
+    // the cooldown is over — the reachable ceiling is what the player is told,
+    // however long the gate in front of it is.
+    const tick = () =>
+      setCountdownMs(Math.min(ROUND_COUNTDOWN_MS, Math.max(0, endsAt - serverNow())));
     tick();
     const id = setInterval(tick, 100);
     return () => clearInterval(id);
@@ -237,5 +260,6 @@ export function usePrecisionRoundClock({
     selfFrozenElapsedMs,
     freezeTimer,
     releaseFreeze,
+    resumeTimer,
   };
 }

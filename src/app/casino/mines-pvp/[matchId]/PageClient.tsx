@@ -1816,7 +1816,7 @@ export default function MinesPvpMatchPage({
 
   // Match info strip
   const infoNode = (
-    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60">
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60 lg:mt-2">
       <span className="inline-flex items-center gap-1">
         {isAi ? "Free vs AI" : "Stake:"}
         {!isAi && (
@@ -1882,7 +1882,7 @@ export default function MinesPvpMatchPage({
   // Player seats — stacks on narrow screens, two-up once there's room
   // (normal mobile gets single cards, desktop + creator frames get 2-up).
   const seatsNode = (
-    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:mt-3">
       <PlayerSeat
         isMe
         name={myDisplayName}
@@ -1918,12 +1918,17 @@ export default function MinesPvpMatchPage({
   );
 
   // Resign (mid-match only)
+  //
+  // `lg:mt-0`: on desktop the three control blocks below are laid out as ONE
+  // row, which owns the spacing between itself and the turn indicator, so each
+  // block drops its own top margin there. Below `lg` this is `mt-3` exactly as
+  // before — mobile spacing is untouched.
   const resignNode =
     match.status !== MATCH_STATUS.FINISHED &&
     match.status !== MATCH_STATUS.CANCELLED &&
     match.status !== MATCH_STATUS.WAITING &&
     match.status !== MATCH_STATUS.READY ? (
-      <div className="mt-3 flex justify-center">
+      <div className="mt-3 flex justify-center lg:mt-0">
         <button
           onClick={handleResign}
           disabled={resigning}
@@ -1940,7 +1945,7 @@ export default function MinesPvpMatchPage({
     isMyTurn &&
     match.status !== MATCH_STATUS.FINISHED &&
     match.status !== MATCH_STATUS.CANCELLED ? (
-      <div className="mt-3 flex flex-col items-center gap-1.5">
+      <div className="mt-3 flex flex-col items-center gap-1.5 lg:mt-0">
         <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
           <button
             onClick={() => setFlagMode(false)}
@@ -1974,7 +1979,7 @@ export default function MinesPvpMatchPage({
 
   // Emote picker
   const emoteNode = (
-    <div className="mt-3 flex justify-center">
+    <div className="mt-3 flex justify-center lg:mt-0">
       <EmotePicker
         compact
         hideBubbles
@@ -1993,6 +1998,29 @@ export default function MinesPvpMatchPage({
     </div>
   ) : null;
 
+  // ── The single desktop control row ───────────────────────────────────
+  //
+  // Resign / pick-flag / emote used to be three stacked blocks, each with its
+  // own `mt-3`, costing ~138px of the column above the board (34 + 40 + 40 plus
+  // three gaps). The board is a SQUARE capped by its width, so every pixel of
+  // that stack came straight off the board's height — on a 1280×800 desktop it
+  // left 260px of board with 517px of chrome above it.
+  //
+  // From `lg` up they become ONE row: a single 40px line and a single gap, so
+  // the board gains ~86px of height. Below `lg` this stays a plain column whose
+  // children keep their own `mt-3`, i.e. the original stack, pixel for pixel —
+  // the row is desktop-only because that is the only place the board is capped.
+  // It renders nothing when no block is present (finished / cancelled matches),
+  // so it never leaves an empty 12px gap behind.
+  const actionsNode =
+    resignNode || pickToggleNode || emoteNode ? (
+      <div className="flex flex-col items-center lg:mt-3 lg:flex-row lg:items-center lg:justify-center lg:gap-4">
+        {resignNode}
+        {pickToggleNode}
+        {emoteNode}
+      </div>
+    ) : null;
+
   // ── The 5×5 gameboard (reused from solo mines) — padding/gaps shrink
   // on small screens so the cells stay big and thumb-friendly.
   //
@@ -2002,7 +2030,7 @@ export default function MinesPvpMatchPage({
   // the turn indicator / seats / legend stack. ──────────────────────
   const boardNode = (
     <div
-      className="mines-board-frame mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6"
+      className="mines-board-frame mx-auto mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6 lg:mt-4"
     >
       <div className="grid grid-cols-5 gap-2 sm:gap-3">
         {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
@@ -2080,10 +2108,8 @@ export default function MinesPvpMatchPage({
       {titleNode}
       {infoNode}
       {seatsNode}
-      <div className="mt-4">{renderTurnIndicator()}</div>
-      {resignNode}
-      {pickToggleNode}
-      {emoteNode}
+      <div className="mt-4 lg:mt-3">{renderTurnIndicator()}</div>
+      {actionsNode}
       {errorNode}
       {boardNode}
       {legendNode}
@@ -2222,7 +2248,7 @@ export default function MinesPvpMatchPage({
           outside the shared CreatorModeHost recording viewport.
           Recording auto-starts when the match leaves waiting and stops
           when it finishes/cancels. */}
-      <div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+      <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-6">
         <CreatorModeHost
           autoStart={
             Boolean(match) &&

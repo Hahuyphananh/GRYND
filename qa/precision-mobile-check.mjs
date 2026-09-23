@@ -18,12 +18,15 @@
 //     readable.
 //  6. The board keeps a phone-friendly height clamp so the STOP controls can
 //     never be pushed off the fold.
-//  7. The per-round result overlay fits the viewport, scrolls internally, and
+//  7. The round's STOP control is mounted INSIDE the board, under the centre
+//     clock: sized to the centre column (never reaching into a lane) and never
+//     clipped by the board's own frame.
+//  8. The per-round result overlay fits the viewport, scrolls internally, and
 //     its embedded (compact) board reports the SAME per-seat stops as the
 //     numeric rows below it — the spatial view can never disagree.
-//  8. The end-of-match popup renders the frozen last-round board and does not
+//  9. The end-of-match popup renders the frozen last-round board and does not
 //     overflow sideways.
-//  9. Desktop (1280 px) is untouched: the taller board and the wide centre
+// 10. Desktop (1280 px) is untouched: the taller board and the wide centre
 //     column are still applied.
 //
 // Screenshots (full page + a crop of the board) land in
@@ -163,6 +166,9 @@ const NAMES = { seat1Name: "PlayerOne", seat2Name: "GRYND AI", localSeat: 1 };co
   stopped: { ...NAMES, phase: "active", roundKey: "r3", targetMs: TARGET, liveElapsedMs: 6_200, seat1Frozen: SELF_STOP, seat2Frozen: BOT_STOP },
   // Arming recap of the round that just ended, countdown in the centre.
   arming: { ...NAMES, phase: "arming", roundKey: "r4", targetMs: TARGET, liveElapsedMs: 0, countdownMs: 3_200, seat1Frozen: SELF_STOP, seat2Frozen: BOT_STOP },
+  // Live round with the real layout's STOP control mounted inside the board's
+  // centre column (under the elapsed clock).
+  stopAction: { ...NAMES, phase: "active", roundKey: "r3", targetMs: TARGET, liveElapsedMs: 2_050, seat1Frozen: null, seat2Frozen: null, withStopAction: true },
   // A long (but legal) username: the name must ellipsise, never push the YOU
   // chip or the neighbouring lane around.
   longname: { ...NAMES, seat1Name: "PlayerOneTwo3", phase: "active", roundKey: "r3", targetMs: TARGET, liveElapsedMs: 2_050, seat1Frozen: null, seat2Frozen: null },
@@ -307,6 +313,24 @@ const snapshot = (names) =>
             clientWidth: centre.clientWidth,
           }
         : null,
+      // The centre column itself (the timer `<p>`'s parent) — the box the
+      // in-board control has to live inside.
+      centreColumn: (() => {
+        const el = centre?.parentElement ?? null;
+        return el ? { box: boardP(el) } : null;
+      })(),
+      // The in-board round control (the STOP button) and its slot.
+      action: (() => {
+        const slot = document.querySelector('[data-testid="precision-race-action"]');
+        const button = document.querySelector('[data-testid="precision-race-action-button"]');
+        if (!slot || !button) return null;
+        return {
+          slotBox: boardP(slot),
+          buttonBox: boardP(button),
+          text: txt(button),
+          overflowX: button.scrollWidth > button.clientWidth + 1,
+        };
+      })(),
       threshold: thresholdWrap
         ? { box: boardP(thresholdWrap), labelText: txt(thresholdLabel), labelBox: boardP(thresholdLabel) }
         : null,
@@ -447,6 +471,40 @@ const raceChecks = (label, s, opts) => {
       ? `line at ${px(s.threshold.box.top)}, label "${s.threshold.labelText}"`
       : "no threshold",
   );
+  // The round control lives in the centre column: inside the board, directly
+  // under the clock, and narrower than the column so it can never reach a lane.
+  if (s.action) {
+    const centreBox = s.centre?.box ?? null;
+    const columnBox = s.centreColumn?.box ?? null;
+    check(
+      `${label}: the STOP control sits inside the board's centre column`,
+      !!columnBox &&
+        s.action.buttonBox.left >= columnBox.left - 2 &&
+        s.action.buttonBox.right <= columnBox.right + 2,
+      `button ${px(s.action.buttonBox.left)}..${px(s.action.buttonBox.right)}, column ${px(columnBox?.left)}..${px(columnBox?.right)}`,
+    );
+    check(
+      `${label}: the STOP control sits below the elapsed clock`,
+      s.action.buttonBox.top >= centreBox.top - 1,
+      `button top ${px(s.action.buttonBox.top)} vs clock top ${px(centreBox?.top)}`,
+    );
+    check(
+      `${label}: the STOP control never reaches into a lane`,
+      lane(1) &&
+        lane(2) &&
+        s.action.buttonBox.right <= lane(2).box.left + 1 &&
+        s.action.buttonBox.left >= lane(1).box.right - 1,
+      `button ${px(s.action.buttonBox.left)}..${px(s.action.buttonBox.right)}, lanes ${px(lane(1)?.box.right)} / ${px(lane(2)?.box.left)}`,
+    );
+    check(
+      `${label}: the STOP control stays inside the board, label not clipped`,
+      s.action.buttonBox.top >= -1 &&
+        s.action.buttonBox.bottom <= s.board.h + 1 &&
+        s.action.overflowX === false,
+      `button ${px(s.action.buttonBox.top)}..${px(s.action.buttonBox.bottom)} of ${px(s.board.h)}, overflowX ${s.action.overflowX}`,
+    );
+  }
+
   check(
     `${label}: both rockets exist, one per lane`,
     !!lane(1)?.rocketBox && !!lane(2)?.rocketBox,
@@ -530,7 +588,8 @@ const mount = async (vp) => {
 const render = async (kind, payload, waitFor) => {
   await page.evaluate(
     ([k, pl]) => {
-      if (["flying", "live", "stopped", "arming", "longname"].includes(k)) window.renderRace(pl);
+      if (["flying", "live", "stopped", "arming", "longname", "stopAction"].includes(k))
+        window.renderRace(pl);
       else if (k === "roundResult") window.renderRoundResult(pl);
       else if (k === "popup") window.renderPopup(pl);
       else throw new Error(`unknown scenario ${k}`);
@@ -625,6 +684,27 @@ try {
       `opponent ${px(s.lanes[1].rocketBox.bottom)} vs you ${px(s.lanes[0].rocketBox.bottom)}`,
     );
     await capture(`${vp.label}-stopped`);
+
+    // ── The STOP control, mounted inside the board under the clock ────────
+    await render("stopAction", SCENARIOS.stopAction, '[data-testid="precision-race-action-button"]');
+    s = await snapshot(NAMES);
+    raceChecks(`${vp.label} stop-control`, s, {
+      minLane: vp.minLane,
+      maxBoardH: vp.maxBoardH,
+    });
+    check(
+      `${vp.label} stop-control: the control is really on the board (not in a panel below)`,
+      !!s.action && inside(s.action.buttonBox, {
+        top: 0,
+        bottom: s.board.h,
+        left: 0,
+        right: s.board.w,
+      }),
+      s.action
+        ? `button ${px(s.action.buttonBox.left)}..${px(s.action.buttonBox.right)} / ${px(s.action.buttonBox.top)}..${px(s.action.buttonBox.bottom)} of board ${px(s.board.w)}×${px(s.board.h)}`
+        : "no in-board control",
+    );
+    await capture(`${vp.label}-stop-control`);
 
     // ── Arming recap: countdown in the centre, both rockets frozen ─────────
     await render("arming", SCENARIOS.arming, '[data-testid="precision-race-center"]');

@@ -20,6 +20,14 @@
 //   5. creator frame     — the cap is RELEASED (a recording frame is not the
 //                          browser viewport, so a vh cap would shrink a clip)
 //   6. no console / page errors
+//   7. MINES only        — the board is CENTRED in its column. It used to hug
+//                          the left edge: a `w-full` block with a `max-width`
+//                          does not centre itself, so a 260px board sat at the
+//                          left of a 768px column, ~256px off-centre on screen.
+//   8. MINES only        — the board actually USES the height its compacted
+//                          chrome freed: the cap is `100vh - 27.5rem`, so the
+//                          board lands within a few px of that budget, and it
+//                          must beat the old `100vh - 34rem` cap it sat at.
 //
 // Run: node qa/board-fit-check.mjs
 //
@@ -283,6 +291,45 @@ for (const [game, label] of [
       structuralErrors([...consoleErrors, ...pageErrors]).length === 0,
       structuralErrors([...consoleErrors, ...pageErrors]).slice(0, 3).join(" | "),
     );
+
+    // ── Mines-only: centring + the height the compaction bought ─────────
+    if (game === "mines") {
+      const geo = await page.evaluate((s) => {
+        const el = document.querySelector(s);
+        const parent = el?.parentElement;
+        if (!el || !parent) return null;
+        const b = el.getBoundingClientRect();
+        const p = parent.getBoundingClientRect();
+        return {
+          boardCentre: Math.round((b.left + b.width / 2) * 10) / 10,
+          columnCentre: Math.round((p.left + p.width / 2) * 10) / 10,
+          columnWidth: Math.round(p.width),
+        };
+      }, sel);
+
+      check(
+        `${tag}: the board is centred in its column`,
+        geo !== null && Math.abs(geo.boardCentre - geo.columnCentre) <= 2,
+        `board centre=${geo?.boardCentre} column centre=${geo?.columnCentre} (column ${geo?.columnWidth}px)`,
+      );
+
+      // The cap is `100vh - 27.5rem` = viewport - 440px. If the board comes in
+      // well under that, chrome crept back in above it and the growth was lost.
+      const budget = viewport.height - 440;
+      check(
+        `${tag}: the board fills the height the compact chrome freed`,
+        Math.abs(m.height - budget) <= 6,
+        `board=${m.height} budget≈${budget}`,
+      );
+
+      // The regression this guards: the old `100vh - 34rem` cap, which left the
+      // board at 260px here (its floor) — the size the change set out to fix.
+      check(
+        `${tag}: the board beat the old cap`,
+        m.height > viewport.height - 544,
+        `board=${m.height} old cap=${viewport.height - 544}`,
+      );
+    }
 
     await page.screenshot({ path: join(REPORTS, `board-fit-${game}-desktop.png`) });
     await context.close();

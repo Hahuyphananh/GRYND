@@ -31,15 +31,18 @@ import { AnimatePresence, motion } from "framer-motion";
 import { gameOverModal } from "../../lib/animations";
 import { IconHeartHandshake, IconMedal2, IconTrophy } from "@tabler/icons-react";
 import { diffToRank } from "../../lib/precision/utils";
+import { ROUND_RESULT_REVEAL_MS } from "../../lib/precision/constants";
 import { PrecisionRankIcon } from "./PrecisionRankIcon";
 import PrecisionRocketRace from "./PrecisionRocketRace";
 import type { PlayerSeat } from "../../lib/precision/types";
 import { useTranslation } from "../../hooks/useTranslation";
 
 /** Auto-dismiss delay (ms) before the panel returns control to the
- *  underlying page. 3 seconds — matches the spec: results are visible
- *  for three seconds, then the next round starts. */
-export const ROUND_RESULT_REVEAL_MS = 3_000;
+ *  underlying page — re-exported from the shared constants because the SERVER
+ *  reads the same number: it holds the next round's countdown behind this
+ *  window so the round can never open while the results are still on screen.
+ *  See `ROUND_RESULT_REVEAL_MS` in `lib/precision/constants.ts`. */
+export { ROUND_RESULT_REVEAL_MS } from "../../lib/precision/constants";
 
 export interface PrecisionRoundResultPanelProps {
   /** The round's revealed target time in ms. Server-stamped: the panel

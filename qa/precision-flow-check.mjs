@@ -82,9 +82,26 @@ const STUBS = {
     export const CreatorModeLayoutProvider = ({ children }) => children ?? null;
   `,
   "components/ReportModal": `export default function ReportModal() { return null; }`,
+  // The scoreboard's own subtree (avatars, round markers) is stubbed out, but
+  // the ONE thing the page has to get right is passed straight through here:
+  // `awaitingOpponentStop`. The stub mirrors the real component's decisive
+  // branch (banner = `waiting_opponent_stop` when the flag is set) and uses the
+  // same translation key, so the check asserts BOTH the flag the page derived
+  // and the copy the player would read.
   "components/precision/PrecisionScoreboard": `
     import React from "react";
-    export default function Scoreboard() { return React.createElement("div", { "data-testid": "scoreboard" }); }
+    import { useTranslation } from "./src/hooks/useTranslation";
+    export default function Scoreboard({ awaitingOpponentStop }) {
+      const { t } = useTranslation();
+      return React.createElement(
+        "div",
+        {
+          "data-testid": "scoreboard",
+          "data-awaiting-opponent": awaitingOpponentStop ? "true" : "false",
+        },
+        awaitingOpponentStop ? t("games.precision.waiting_opponent_stop") : null,
+      );
+    }
   `,
   "components/precision/PrecisionResultPopup": `export default function Popup() { return null; }`,
   "components/precision/PrecisionReadyRoom": `
@@ -358,6 +375,31 @@ check(
   "the live round does NOT re-show the previous round's result (stale reveal)",
   round2.reveals === 0,
   `panels=${round2.reveals}`
+);
+
+// 6b. Round 2 is the regression case for the awaiting-opponent hint: a previous
+//     round already has a winner, and `lastRoundWinnerSeat` is never cleared by
+//     the next arm. The old condition ANDed on it being null, so from round 2
+//     onward the scoreboard silently never told the player it was waiting on
+//     the opponent's stop (selfStopPending is what scopes it to the live round).
+await page.click('[data-testid="precision-stop-button"]');
+await page.waitForSelector('[data-testid="precision-race-stop-1"]', {
+  timeout: 4000,
+  state: "attached",
+});
+const awaitingFlag = await page.evaluate(
+  () => document.querySelector('[data-testid="scoreboard"]')?.getAttribute("data-awaiting-opponent") ?? null
+);
+const awaitingText = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+check(
+  "round 2: the scoreboard is told we are waiting on the opponent's stop",
+  awaitingFlag === "true",
+  `awaitingOpponentStop=${awaitingFlag}`
+);
+check(
+  "round 2: and the player can read that hint",
+  /Waiting for opponent to stop/i.test(awaitingText),
+  awaitingText.slice(0, 160)
 );
 
 // 7. A client that never saw the live round (fresh mount / reload straight into
