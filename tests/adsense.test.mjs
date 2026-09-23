@@ -202,6 +202,28 @@ test("the CSP lets AdSense's ad frames through", () => {
   assert.match(frameSrc[0], /doubleclick\.net/, "ad frames come from doubleclick.net");
 });
 
+test("public/ads.txt authorises this exact publisher as a direct seller", () => {
+  // The publisher ID lives in two places — the page source and ads.txt — and
+  // only one of them is visible in the browser. Deriving the expected line from
+  // the component means a change to ADSENSE_CLIENT can't silently leave ads.txt
+  // authorising a different (or no) seller, which AdSense reports as "Earnings
+  // at risk" long after the fact.
+  const adsTxt = read("public/ads.txt");
+  const publisher = CLIENT.replace(/^ca-/, "");
+  assert.notEqual(publisher, CLIENT, "the ca- prefix must be stripped for ads.txt");
+
+  // Comments (leading #) are allowed by the IAB spec; the data line is not.
+  const dataLines = adsTxt
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  assert.ok(dataLines.length > 0, "ads.txt must contain at least one data line");
+  assert.ok(
+    dataLines.includes(`google.com, ${publisher}, DIRECT, f08c47fec0942fa0`),
+    "ads.txt must list our publisher as a DIRECT seller under Google's CA ID",
+  );
+});
+
 test("the alias routes inherit the tag by rendering, not by importing it", () => {
   // /uno and /games/neon-flush re-export the Uno pages, so they pick the loader
   // up for free. They must keep doing that rather than importing the component

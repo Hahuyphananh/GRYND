@@ -1,0 +1,18 @@
+# ads.txt — IAB authorised digital sellers for this domain.
+#
+# Served verbatim from the site root (https://www.grynd.dedyn.io/ads.txt).
+# Crawlers — Google's included — read it to check which sellers are allowed to
+# sell this site's ad inventory. Listing our own AdSense publisher as a DIRECT
+# seller is what lets the whole of our inventory be bid on; with no ads.txt, or
+# with a publisher ID that doesn't match the AdSense client in the page source,
+# demand-side platforms can't verify the seller and we only earn a share of the
+# revenue (AdSense surfaces that as "Earnings at risk").
+#
+# Format:  <ad system domain>, <publisher ID>, <DIRECT|RESELLER>, <certification authority ID>
+# The CA ID f08c47fec0942fa0 is Google's fixed TAG certification authority ID.
+#
+# Keep the publisher ID below in step with ADSENSE_CLIENT in
+# src/components/AdSenseScript.tsx — tests/adsense.test.mjs fails if the two
+# drift apart, because a mismatch is silent everywhere except the revenue
+# report.
+google.com, pub-4903728316211815, DIRECT, f08c47fec0942fa0
