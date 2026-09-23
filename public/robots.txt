@@ -1,5 +1,5 @@
 # GRYND robots.txt
-# https://www.grynd.mywire.org/robots.txt
+# https://www.grynd.dedyn.io/robots.txt
 
 User-agent: *
 Allow: /
@@ -20,4 +20,4 @@ Disallow: /casino/poker/multi/
 Disallow: /casino/crash-arena/table/
 Disallow: /casino/chess/ai
 
-Sitemap: https://www.grynd.mywire.org/sitemap.xml
+Sitemap: https://www.grynd.dedyn.io/sitemap.xml

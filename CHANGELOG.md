@@ -17,7 +17,7 @@ All notable changes to GRYND. Format follows [Keep a Changelog](https://keepacha
 - **Docs** — launch checklist, Neon backup/restore runbook, native build guide, App Store / Play privacy answers, privacy manifest.
 
 ### Changed
-- **Domain** — all fallbacks and runtime env moved to `grynd.mywire.org` via `NEXT_PUBLIC_BASE_URL` (single source of truth): sitemap, OG images, email templates, robots.txt, llms.txt, Capacitor configs.
+- **Domain** — all fallbacks and runtime env moved to `grynd.dedyn.io` via `NEXT_PUBLIC_BASE_URL` (single source of truth): sitemap, OG images, email templates, robots.txt, llms.txt, Capacitor configs.
 - **Native app identity** — `com.example.app` / "create-project" replaced with `com.grynd.app` / "GRYND" across Capacitor config, Android manifest/gradle/strings/package, and iOS bundle id / display name.
 - **Sentry consent-gated** — client capture (including session replay and PII) is blocked until the cookie-consent banner is accepted; server PII capture disabled by default.
 - **Age verification** — the signup birthdate is now persisted to Clerk public metadata (previously discarded), matching the privacy policy and unblocking `useAgeVerification`.
