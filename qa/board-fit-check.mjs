@@ -25,9 +25,10 @@
 //                          does not centre itself, so a 260px board sat at the
 //                          left of a 768px column, ~256px off-centre on screen.
 //   8. MINES only        — the board actually USES the height its compacted
-//                          chrome freed: the cap is `100vh - 27.5rem`, so the
-//                          board lands within a few px of that budget, and it
-//                          must beat the old `100vh - 34rem` cap it sat at.
+//                          chrome freed: the cap is `100vh - 12.5rem`, so the
+//                          board lands within a few px of that budget (or of
+//                          its column width, whichever binds), and it must
+//                          beat the old `100vh - 34rem` cap it sat at.
 //
 // Run: node qa/board-fit-check.mjs
 //
@@ -313,13 +314,18 @@ for (const [game, label] of [
         `board centre=${geo?.boardCentre} column centre=${geo?.columnCentre} (column ${geo?.columnWidth}px)`,
       );
 
-      // The cap is `100vh - 27.5rem` = viewport - 440px. If the board comes in
-      // well under that, chrome crept back in above it and the growth was lost.
-      const budget = viewport.height - 440;
+      // The cap is `100vh - 12.5rem` = viewport - 200px, but the board is also
+      // bounded by the width of its column (the seats / turn indicator /
+      // controls now sit in a rail BESIDE it, so the board column is 1fr of a
+      // two-column grid). The board must fill whichever bound is smaller — if
+      // it comes in under both, chrome crept back in above it and the growth
+      // was lost.
+      const budget = viewport.height - 200;
+      const expected = Math.min(budget, geo?.columnWidth ?? budget);
       check(
         `${tag}: the board fills the height the compact chrome freed`,
-        Math.abs(m.height - budget) <= 6,
-        `board=${m.height} budget≈${budget}`,
+        Math.abs(m.height - expected) <= 6,
+        `board=${m.height} expected≈${expected} (budget=${budget}, column=${geo?.columnWidth})`,
       );
 
       // The regression this guards: the old `100vh - 34rem` cap, which left the

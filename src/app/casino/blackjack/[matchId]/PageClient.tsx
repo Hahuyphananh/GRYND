@@ -44,18 +44,11 @@ import {
   withReducedMotion,
 } from "../../../../lib/animations";
 import NavigationBar from "../../../../components/navigation-bar";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually begins
-// (leaves the waiting room), auto-stops when it finishes or the user
-// quits. The waiting/matchmaking takeover stays OUTSIDE so nothing is
-// recorded until real gameplay starts.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellMain,
-  CreatorPhoneFrame,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import FrameAvatar, {
   type ProfileFramePayload,
@@ -1252,13 +1245,9 @@ export default function BlackjackPvpMatchPage({
     );
   }
 
-  // ── Creator-mode layout nodes ─────────────────────────────────────
-  // The game content is split into reusable nodes so the normal page
-  // (non-creator) renders byte-for-byte the same, while Creator Mode
-  // gets a bespoke arrangement: portrait = phone-style (compact header,
-  // the table filling the middle, controls pinned at the bottom);
-  // landscape/square = the table fills the frame height with controls
-  // in a right rail.
+  // ── Layout nodes ──────────────────────────────────────────────────
+  // The game content is split into reusable nodes (header, table,
+  // controls, history) that the page composes into its sections.
 
   // Header — title, stake chip, report + leave/resign (desktop layout).
   const headerNode = (
@@ -1284,8 +1273,7 @@ export default function BlackjackPvpMatchPage({
       )}
 
       {/* Leave / Resign — kept in the top header so it stays
-          reachable even when the portrait creator frame crops the
-          tall content column. PvP matches resign (stake forfeit)
+          reachable at the top of the tall content column. PvP matches resign (stake forfeit)
           via the resign API; free vs-AI matches just leave —
           nothing is at stake. Hidden while waiting (owner uses
           Cancel) and once the match reaches a terminal state. */}
@@ -1314,55 +1302,6 @@ export default function BlackjackPvpMatchPage({
     </div>
   );
 
-  // Compact header for the creator frames — same actions, tighter
-  // typography so the table gets the vertical space.
-  const creatorHeaderNode = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h1 className="text-lg font-bold text-[#FFD700] drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]">
-        <span className="inline-flex items-center gap-2"><IconCards size={20} className="text-[#FFD700]" /> {t("blackjackPvp.title", "Blackjack PvP")}</span>
-      </h1>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="px-2.5 py-1 bg-[#FFD700]/15 border border-[#FFD700]/40 text-[#fffec7] rounded-full font-extrabold text-[11px] shadow-[0_0_10px_rgba(255,215,0,0.3)]">
-          {match?.isAi
-            ? t("blackjackPvp.freeMatch", "Free AI match")
-            : t("blackjackPvp.stake", "Mise : {amount}").replace(
-                "{amount}",
-                Number(match?.stakeAmount ?? 0).toLocaleString(),
-              )}
-        </span>
-        {!match?.isAi && opponentClerkId && (
-          <button
-            onClick={() => setShowReportModal(true)}
-            className="px-2.5 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-[11px] font-extrabold text-red-400 transition-all hover:bg-red-500/20"
-          >
-            <span className="inline-flex items-center gap-1"><IconFlag size={11} /> Report</span>
-          </button>
-        )}
-        {match &&
-          match.status !== "waiting" &&
-          match.status !== "finished" &&
-          match.status !== "cancelled" && (
-            <button
-              onClick={() =>
-                match.isAi
-                  ? setShowAiLeave(true)
-                  : setShowResignConfirm(true)
-              }
-              disabled={resigning}
-              className={`px-2.5 py-1 rounded-full border text-[11px] font-extrabold transition-all hover:shadow-[0_0_10px_rgba(239,68,68,0.3)] disabled:opacity-40 ${
-                match.isAi
-                  ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20"
-                  : "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
-              }`}
-            >
-              {match.isAi
-                ? t("blackjackPvp.leave.button", "Leave match")
-                : t("blackjackPvp.resign.button", "Resign")}
-            </button>
-          )}
-      </div>
-    </div>
-  );
 
   const errorNode = errorMsg ? (
     <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 p-2 rounded text-sm text-center">
@@ -1789,7 +1728,7 @@ export default function BlackjackPvpMatchPage({
     </>
   );
 
-  // Normal (non-creator) page — byte-for-byte the original stack.
+  // The page content — the original stack.
   const normalView = (
     <>
       <div className="mx-auto max-w-5xl px-3 py-2 sm:px-4 sm:py-4">
@@ -1803,51 +1742,6 @@ export default function BlackjackPvpMatchPage({
       </div>
       {modalsNode}
     </>
-  );
-
-  // The game renders inside a phone-width viewport (390px) that is
-  // `zoom`ed up to fill the frame — exactly how <CreatorResponsiveLayout>
-  // makes the generic games look like a real phone. Blackjack's cards and
-  // buttons are fixed-size (80×112px cards, ~36px buttons), so rendered
-  // directly in the wide frame they read as tiny; at phone width they are
-  // the real mobile sizes, then zoomed 2.77× (portrait) / 1.56×
-  // (landscape) → big and readable. Layout stays: compact header, table
-  // filling the middle (scrolls), controls + history pinned below.
-  const creatorGameNode = (
-    <>
-      <div className="shrink-0">{creatorHeaderNode}</div>
-      {errorNode}
-      <div className="mt-2 flex-1 min-h-0 overflow-y-auto rounded-2xl border border-[#FFD700]/25 bg-gradient-to-br from-[#001933]/90 via-[#00111f]/90 to-[#000814]/90 shadow-[0_0_30px_rgba(255,215,0,0.12)] p-3">
-        {tableNode}
-      </div>
-      <div className="mt-2 shrink-0 space-y-2">
-        {controlsNode}
-        {historyNode && (
-          <div className="max-h-[110px] overflow-y-auto">{historyNode}</div>
-        )}
-      </div>
-    </>
-  );
-
-  // Portrait (9:16) — phone screen filling the frame edge-to-edge.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
-      </ShellMain>
-      {modalsNode}
-    </CreatorModeShell>
-  );
-
-  // Landscape (16:9) / square (1:1) — the same phone screen, fitted and
-  // centered inside the frame (ShellMain centers its children).
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
-      </ShellMain>
-      {modalsNode}
-    </CreatorModeShell>
   );
 
   // ── Main render ───────────────────────────────────────────────────
@@ -1899,27 +1793,22 @@ export default function BlackjackPvpMatchPage({
       <NavigationBar currentPath="/casino" />
       {/* Only the actual game content is recorded — the matchmaking
           takeover above and the modals below sit outside the shared
-          CreatorModeHost recording viewport. Recording auto-starts when
+          GameSessionHost recording viewport. Recording auto-starts when
           the match leaves waiting and stops when it finishes/cancels. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={Boolean(match) && match.status !== "waiting"}
         autoStop={
           match?.status === "finished" || match?.status === "cancelled"
         }
         gameLabel="blackjack"
-        backToLobbyHref="/casino/blackjack"
       >
-      <CreatorView
-        normal={normalView}
-        portrait={portraitContent}
-        landscape={landscapeContent}
-      />
+      {normalView}
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          P3-3). Mounted INSIDE GameSessionHost so it appears in the
           recording; compact styling keeps it sized for the phone frame. */}
       {renderMatchEnd()}
-      </CreatorModeHost>
+      </GameSessionHost>
 
       {/* Resign confirmation modal — warns the player their stake is
           forfeited before hitting the resign API. */}

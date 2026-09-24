@@ -34,15 +34,9 @@ import NavigationBar from "../../../../components/navigation-bar";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
-// Shared creator-mode presentation layer (admin-only).
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
-import {
-  CreatorView,
-  CreatorModeShell,
-  CreatorPhoneFrame,
-  ShellMain,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+import GameSessionHost from "../../../../components/GameSessionHost";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+
 
 const HUMAN_PLAYER = 1 as const;
 const AI_PLAYER = 2 as const;
@@ -74,10 +68,10 @@ const FALL_MAX_SECONDS = 0.34;
 /**
  * Pixel fall distance + duration for a disc landing at (row, col), measured
  * from the LIVE board so the fall works at every board size (desktop, tablet,
- * mobile and the zoomed creator frame) instead of a hard-coded row height.
+ * mobile) instead of a hard-coded row height.
  * `offsetTop`/`offsetHeight` are CSS px inside the board's own coordinate
- * space — the same space framer-motion animates in — so a zoomed creator frame
- * scales the measured distance and the rendered fall together.
+ * space — the same space framer-motion animates in — so a scaled board keeps
+ * the measured distance and the rendered fall together.
  */
 function measureDropDistance(
   board: HTMLElement | null,
@@ -107,32 +101,6 @@ function countPieces(board: FourInARowBoard): number {
   for (const row of board) for (const cell of row) if (cell !== 0) pieces += 1;
   return pieces;
 }
-
-/**
- * Creator-mode board stage. A full-width column inside the creator phone
- * frame: the frame lays the game out at a real phone width (390px) and
- * `zoom`s it up to fill the recording frame, so the stage only has to fill
- * that phone width.
- *
- * The `four-in-a-row-creator-stage` class opts the board and the drop
- * controls into the creator sizing in globals.css — the board spans the
- * frame edge-to-edge and the drop buttons become full touch targets —
- * instead of the browser-viewport (svh/vw) sizing the normal page uses.
- */
-function CreatorBoardStage({
-  className = "",
-  children,
-}: {
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={`four-in-a-row-creator-stage ${className}`}>
-      {children}
-    </div>
-  );
-}
-
 
 function Disc({
   value,
@@ -321,7 +289,7 @@ export default function FourInARowVsAiPage() {
   // React re-render, the AI's turn scheduling, or a New Game reset can never
   // replay a sound. All sound goes through lib/fourInARowAudio, which routes to
   // the shared AudioContext and is therefore already silenced by the app's
-  // global mute setting and captured by Creator Mode automatically.
+  // global mute setting.
   const lastLandSoundRef = useRef<number | null>(null);
   const resultSoundedRef = useRef<string | null>(null);
   // The drop currently in flight, remembered past its own state being cleared
@@ -544,7 +512,7 @@ export default function FourInARowVsAiPage() {
     if (!canPlay) setHoverCol(null);
   }, [canPlay]);
 
-  // Creator mode signals
+  // Live-game signals
   const isGameActive = status === "playing";
   const isGameEnded = status !== "playing";
 
@@ -644,8 +612,8 @@ export default function FourInARowVsAiPage() {
     </p>
   ) : null;
 
-  /* Creator Mode bespoke 9:16 portrait: board large, status on top, controls below. */
-  const creatorStatus = (
+  /* AI page sections: the status strip, then the board and controls. */
+  const statusNode = (
     <>
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
@@ -711,7 +679,7 @@ export default function FourInARowVsAiPage() {
     </>
   );
 
-  const creatorBoard = (
+  const boardNode = (
     <>
       <div className="four-in-a-row-panel border p-3 sm:p-4">
         {aiTurnLineNode}
@@ -901,7 +869,7 @@ export default function FourInARowVsAiPage() {
     </>
   );
 
-  const creatorControls = (
+  const controlsNode = (
     <>
       <div className="space-y-3">
         <div className="flex items-center gap-3 text-xs">
@@ -939,29 +907,6 @@ export default function FourInARowVsAiPage() {
     </>
   );
 
-  // Creator Mode shell: the game renders inside a phone-width viewport
-  // (390px) that is `zoom`ed up to fill the recording frame — exactly how
-  // <CreatorResponsiveLayout> makes the generic games look like a real
-  // phone. Laid out directly at the frame's logical size (1080×1920) the
-  // status text read as unreadable and the drop buttons were too small to
-  // tap in the live preview; at phone width they are the real mobile sizes,
-  // zoomed 2.77× (portrait) / 1.56× (landscape), so the board fills the
-  // frame width and the controls are full touch targets. Same shell in every
-  // ratio, so the capture always reads as a phone screen.
-  const creatorShell = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame className="px-3 pb-3 pt-2">
-          <div className="shrink-0">{creatorStatus}</div>
-          <CreatorBoardStage className="flex min-h-0 w-full flex-1 flex-col items-center justify-start gap-3 overflow-y-auto py-2">
-            <div className="w-full shrink-0">{creatorBoard}</div>
-          </CreatorBoardStage>
-          <div className="shrink-0">{creatorControls}</div>
-        </CreatorPhoneFrame>
-      </ShellMain>
-    </CreatorModeShell>
-  );
-
   const desktopContent = (
     <>
       <motion.div
@@ -978,19 +923,15 @@ export default function FourInARowVsAiPage() {
         <span className="text-sky-300 font-semibold">Blue</span>, AI plays as{" "}
         <span className="text-purple-300 font-semibold">Purple</span>.
       </p>
-      {creatorStatus}
-      {creatorBoard}
-      {creatorControls}
+      {statusNode}
+      {boardNode}
+      {controlsNode}
     </>
   );
 
-  // End-of-match result screen. Mounted inside <CreatorModeHost> (below), NOT
-  // in `desktopContent`: <CreatorView> replaces the whole normal view with the
-  // creator shell, so a result screen left inside `desktopContent` would never
-  // render while recording — the clip ended on the board instead of the
-  // WIN/LOSS popup. Recording auto-stops 2s after the game ends, so this is
-  // the last thing the capture shows. <CreatorResultOverlay> picks the
-  // sizing from the creator-mode flag (compact only while recording).
+  // End-of-match result screen, mounted as a sibling of the game content so
+  // the WIN/LOSS popup is never hidden behind the board. <PvpResultScreen>
+  // owns its own sizing.
   // The deciding line itself, drawn with the game's own <Disc> in the winner's
   // real colours — passed through the result panel's supported "here is how it
   // ended" slot, so the winning four stay readable after the board dims behind
@@ -1015,7 +956,7 @@ export default function FourInARowVsAiPage() {
   ) : null;
 
   const resultPanel = (
-    <CreatorResultOverlay
+    <PvpResultScreen
       open
       extraContent={winStrip}
       outcome={status === "won" ? "win" : status === "draw" ? "draw" : "loss"}
@@ -1064,25 +1005,17 @@ export default function FourInARowVsAiPage() {
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
       <div className="four-in-a-row-viewport mx-auto mt-2 max-w-3xl sm:mt-3 pb-4">
-        <CreatorModeHost
+        <GameSessionHost
           autoStart={isGameActive}
           autoStop={isGameEnded}
-          autoStopDelayMs={2000}
           gameLabel="four-in-a-row-ai"
-          backToLobbyHref="/casino/four-in-a-row"
         >
-          <CreatorView
-            normal={desktopContent}
-            portrait={creatorShell}
-            landscape={creatorShell}
-          />
+          {desktopContent}
 
-          {/* Result screen — inside the CreatorModeHost recording frame so the
-              WIN/LOSS popup is captured too (exactly like the multiplayer
-              four-in-a-row page). With creator mode off the host renders
-              children directly, so normal play keeps its full-size overlay. */}
+          {/* Result screen — inside GameSessionHost so the WIN/LOSS popup
+              sits above the board (same as the multiplayer page). */}
           {resultScreen}
-        </CreatorModeHost>
+        </GameSessionHost>
       </div>
 
       {/* The falling-disc motion is a framer-motion drop + Towers-style trail

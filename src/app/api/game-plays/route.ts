@@ -7,7 +7,7 @@
 // POST /api/game-plays  → increments a game's play count. Body:
 //                        { gameLabel: string }. Fired from the same
 //                        client-side edge that records "Recently played"
-//                        (a REAL game session start via CreatorModeHost's
+//                        (a REAL game session start via GameSessionHost's
 //                        autoStart), so a play means "a player started the
 //                        game", never a page view. Public + best-effort:
 //                        the increment is idempotent-per-event and can't

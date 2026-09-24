@@ -235,13 +235,6 @@ test("the desktop cap saves the vertical space the page chrome needs", () => {
     /@media \(min-width: 1024px\) \{\s*\.chess-board-frame \{\s*max-width: max\(340px, calc\(100vh - 22rem\)\);\s*\}/,
     "desktop must cap the board by the viewport height, with a floor",
   );
-  // A `vh` cap is meaningless inside the creator phone frame (the frame is not
-  // the browser viewport), so the recording must keep the full frame width.
-  assert.match(
-    css,
-    /\[data-creator-layout\] \.chess-board-frame \{\s*max-width: none;\s*\}/,
-    "the creator frame must be exempt from the desktop cap",
-  );
   // The floor keeps the board usable in a very short window instead of
   // collapsing it to nothing.
   assert.ok(

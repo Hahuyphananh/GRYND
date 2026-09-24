@@ -53,7 +53,7 @@ test("Four-In-A-Row: the result panel is handed off through its own exit, once",
   // ONE result system per page — no duplicate banners/second panel. (Count the
   // rendered elements only; the doc comments also mention the components.)
   assert.equal((GAME.match(/<PvpResultScreen\s*\n\s*open/g) || []).length, 1);
-  assert.equal((AI.match(/<CreatorResultOverlay\s*\n\s*open/g) || []).length, 1);
+  assert.equal((AI.match(/<PvpResultScreen\s*\n\s*open/g) || []).length, 1);
 });
 
 test("Four-In-A-Row: the reveal hold is derived, so the panel can never flash", () => {

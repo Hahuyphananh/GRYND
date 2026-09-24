@@ -44,7 +44,7 @@ const MIGRATION = "src/db/migrations/0159_game_presence.sql";
 const SCHEMA = "src/db/schema.ts";
 const KEYS = "src/lib/redis/keys.ts";
 const LOBBY = "src/app/casino/PageClient.jsx";
-const SESSION_HOST = "src/components/creator-mode/CreatorModeHost.jsx";
+const SESSION_HOST = "src/components/GameSessionHost.jsx";
 
 const source = (relPath) =>
   fs.readFileSync(path.join(process.cwd(), relPath), "utf8").replace(/\r\n/g, "\n");
@@ -544,7 +544,7 @@ test("the existing presence systems and game behavior are untouched", () => {
 //
 //   • src/lib/gamePresenceClient.js — beat/leave transport + per-tab id
 //   • src/hooks/useActiveGamePresence.js — the ONE shared hook
-//   • <CreatorModeHost> — one wiring point for 21 game mounts
+//   • <GameSessionHost> — one wiring point for 21 game mounts
 //   • the 4 pages that never mounted the host — wired next to their play edge
 //   • the spectator guard — watching is not playing
 
@@ -751,7 +751,7 @@ test("the shared host is the single wiring point, and every game feeds it", () =
   // be counted forever (finished matches). `precision-test` is the developer
   // harness route that resolveGameId deliberately rejects.
   // The tag must open a line (a prose mention in a comment is not a mount).
-  const pages = walk("src/app").filter((file) => /^\s*<CreatorModeHost/m.test(source(file)));
+  const pages = walk("src/app").filter((file) => /^\s*<GameSessionHost/m.test(source(file)));
   assert.ok(pages.length >= 21, `expected >= 21 game surfaces, found ${pages.length}`);
   for (const file of pages) {
     const src = source(file);
@@ -805,7 +805,7 @@ test("a spectator on a live game is never counted as playing", () => {
 
   // Tower Arena's version of the same state: a player eliminated mid-match
   // stays on the live page, and the page itself calls them out of the running.
-  // Presence opts out (Creator Mode keeps recording the match as before).
+  // Presence opts out for a player who is no longer in the match.
   const towerArena = source("src/app/casino/tower-arena/game/[matchId]/PageClient.tsx");
   assert.match(towerArena, /presenceEnabled=\{!iAmEliminated\}/);
   assert.match(towerArena, /const iAmEliminated = Boolean\(isActive && me\?\.status === "eliminated"\);/);
@@ -935,7 +935,7 @@ test("counts map by the lobby's own game id, and never print a lie", () => {
   assert.doesNotMatch(pipelineBlock, /activePlayers/);
   assert.match(lobby, /const filteredGames = games\.filter\(/);
   assert.match(pipelineBlock, /displayedGames\.sort\(/);
-  assert.match(lobby, /buildCreatorHref\(game\.href, creatorModeEnabled\)/);
+  assert.match(lobby, /href=\{game\.href\}/);
 });
 
 test("the count is readable text, not a colour, and is not swallowed by the link", () => {

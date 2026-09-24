@@ -21,11 +21,11 @@
 // specific sounds without recomputing the rank from diffMs.
 
 import { diffToRank } from "./precision/utils";
-import { getSharedAudioContext, getSharedOutputNode } from "./creator-mode/audioTap";
+import { getSharedAudioContext, getSharedOutputNode } from "./audioContext";
 
-// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
-// game's sounds route through it so Creator Mode recordings capture the
-// audio. Mute gating lives in getSharedAudioContext.
+// Single page-wide AudioContext (see audioContext.ts) — every
+// game's sounds route through it. Mute gating lives in
+// getSharedAudioContext.
 function getCtx(): AudioContext | null {
   return getSharedAudioContext();
 }

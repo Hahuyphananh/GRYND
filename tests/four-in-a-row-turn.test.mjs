@@ -53,13 +53,13 @@ test("Four-In-A-Row (multiplayer) marks only the player on the clock as active",
   // to a plain card once the game is no longer in progress.
   assert.match(GAME, /activeSeat === "host"[\s\S]{0,120}four-in-a-row-player--active/);
   assert.match(GAME, /activeSeat === "guest"[\s\S]{0,120}four-in-a-row-player--active/);
-  // Both seats fall back to the idle cue — in the creator shell AND the normal
-  // view — and only while the game is in progress, so a finished match leaves
+  // Both seats fall back to the idle cue — and only while the game is in
+  // progress, so a finished match leaves
   // no card emphasised.
   const idle = GAME.match(
     /activeSeat === "(host|guest)"[^\n]*\n\s*\? "four-in-a-row-player--active[^"`]*"[\s\S]{0,80}?inProgress[\s\S]{0,60}?"four-in-a-row-player--idle[^"]*"[\s\S]{0,30}?\s*:\s*"[^"]*"/g,
   ) || [];
-  assert.equal(idle.length, 4, "each seat in each view falls back to idle");
+  assert.equal(idle.length, 2, "each seat falls back to idle");
   assert.match(GAME, /data-active=\{activeSeat === "host" \? "1" : undefined\}/);
   assert.match(GAME, /data-active=\{activeSeat === "guest" \? "1" : undefined\}/);
 });

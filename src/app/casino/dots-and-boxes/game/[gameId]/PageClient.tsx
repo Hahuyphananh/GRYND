@@ -3,19 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the actual game begins
-// (in_progress), auto-stops when it finishes or the user quits. The
-// waiting takeover stays OUTSIDE so nothing is recorded until real
-// gameplay starts.
-import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../../components/GameSessionHost";
+
 import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
@@ -690,11 +682,9 @@ const prefersReducedMotion = useReducedMotion();
     />
   );
 
-  // Creator Mode bespoke portrait/landscape shell (shared recorder)
-  // Board-centric 9:16 presentation: compact header keeps the turn timer
-  // and both scores readable, the board fills the main area, and the
-  // status/details stay pinned below. Same shell adapts to landscape /
-  // square via the shared layout primitives. Gameplay untouched.
+  // Board-centric presentation: a compact header keeps the turn timer and
+  // both scores readable, the board fills the main area, and the
+  // status/details stay pinned below.
   const dbBoardNode = (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -728,68 +718,6 @@ const prefersReducedMotion = useReducedMotion();
       {boardLegend}
     </motion.div>
   );
-const dbShell = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Dots & Boxes</p>
-            <p className="truncate text-xs text-white/70">
-              {game?.hostName || "Host"} vs {game?.guestName || "Guest"}
-            </p>
-          </div>
-          {!isAiGame && (
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
-                timerUrgent ? "bg-red-500/20 text-red-300" : "bg-emerald-500/15 text-emerald-300"
-              }`}
-            >
-              ⏱ {remainingSeconds}s
-            </span>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 text-center text-[11px]">
-          {/* Same mark + name as the legend and scoreboard, so a face and a
-              color always agree across the page. */}
-          <span className="flex items-center justify-center gap-1.5 rounded-md bg-black/30 px-2 py-1 font-bold text-amber-300">
-            {seatMark("host", "h-4 w-4")}
-            <span className="truncate">{hostSeatName}</span> · {scores.host}
-          </span>
-          <span className="flex items-center justify-center gap-1.5 rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
-            {seatMark("guest", "h-4 w-4")}
-            <span className="truncate">{guestSeatName}</span> · {scores.guest}
-          </span>
-        </div>
-      </ShellHeader>
-
-      <ShellMain className="flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 w-full min-h-0 overflow-hidden">
-          {dbBoardNode}
-        </div>
-      </ShellMain>
-
-      <ShellAside>
-        <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-white/50">
-          Status · {statusText}
-        </p>
-        <p className="mb-2 text-xs text-white/70">
-          {isMyTurn
-            ? t("games.dots_and_boxes.your_turn")
-            : timerExpired
-              ? t("games.dots_and_boxes.time_expired")
-              : t("games.dots_and_boxes.opponent_thinking")}
-        </p>
-        <p className="text-[10px] uppercase tracking-widest text-white/40">
-          {game?.role === "host"
-            ? t("games.dots_and_boxes.role_host")
-            : game?.role === "guest"
-              ? t("games.dots_and_boxes.role_guest")
-              : ""}
-        </p>
-      </ShellAside>
-    </CreatorModeShell>
-  );
-
   return (
     <>
       {/* Unified full-screen takeover — matchmaking, then the brief
@@ -860,19 +788,18 @@ const dbShell = (
       )}
 
       {/* Only the actual game content is recorded — the waiting takeover
-          above stays outside the shared CreatorModeHost recording
+          above stays outside the shared GameSessionHost recording
           viewport. Recording auto-starts when the game goes in_progress
           and stops when it finishes/cancels or the user quits. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={game?.status === "in_progress"}
         autoStop={game?.status === "finished" || game?.status === "cancelled"}
         gameLabel="dots-and-boxes"
         // The server marks a viewer who is not a seat as a spectator, and a
         // spectator on a live game must never be counted as playing.
         presenceEnabled={game?.role !== "spectator"}
-        backToLobbyHref="/casino/dots-and-boxes"
       >
-      <CreatorView normal={<motion.div
+      <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
@@ -1366,16 +1293,13 @@ const dbShell = (
         reportedPlayerName={opponentName}
         gameType="Dots & Boxes"
       />
-      </motion.div>}
-        portrait={dbShell}
-        landscape={dbShell}
-      />
+      </motion.div>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          P3-3). Mounted INSIDE GameSessionHost so it appears in the
           recording; compact styling keeps it sized for the phone frame. */}
       {renderResult()}
-      </CreatorModeHost>
+      </GameSessionHost>
     </>
   );
 }

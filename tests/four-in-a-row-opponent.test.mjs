@@ -53,12 +53,12 @@ test("Four-In-A-Row (multiplayer) renders the cue on both seats in both views", 
   assert.match(GAME, /data-testid="fiar-opponent-cue"/);
   assert.match(GAME, /aria-hidden="true"[\s\S]{0,200}fiar-opponent-cue/);
   assert.match(GAME, /className="four-in-a-row-opponent-cue"/);
-  // The creator shell's mini row AND the normal cards, one per seat.
+  // One cue node per seat.
   const builtIn = GAME.match(/\{cueSeat === "(host|guest)" && opponentCueNode\}/g) || [];
-  assert.equal(builtIn.length, 4, "both seats in both views");
+  assert.equal(builtIn.length, 2, "both seats");
   // Cards must be positioned so the overlay covers them.
   const relative = GAME.match(/four-in-a-row-player relative /g) || [];
-  assert.equal(relative.length, 4);
+  assert.equal(relative.length, 2);
 });
 
 test("Four-In-A-Row opponent cue borrows each seat's existing colour", () => {

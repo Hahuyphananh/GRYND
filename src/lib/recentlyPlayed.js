@@ -2,7 +2,7 @@
 //
 // Client-side "Recently played" tracking for the casino lobby (UX plan
 // P1-1). Games record a play when their real game session starts — either
-// through the shared <CreatorModeHost /> autoStart or, for game pages that
+// through the shared <GameSessionHost /> autoStart or, for game pages that
 // don't mount it, directly via the useRecordPlayedGame hook — and the
 // lobby renders the most recent ones as a "Play again" strip.
 //

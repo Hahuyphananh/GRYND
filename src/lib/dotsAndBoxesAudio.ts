@@ -20,11 +20,11 @@
 
 // ── Singleton AudioContext (lazy, shared across page) ──────────────────
 
-import { getSharedAudioContext, getSharedOutputNode } from "./creator-mode/audioTap";
+import { getSharedAudioContext, getSharedOutputNode } from "./audioContext";
 
-// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
-// game's sounds route through it so Creator Mode recordings capture the
-// audio. Mute gating + the resume-on-gesture handler live in
+// Single page-wide AudioContext (see audioContext.ts) — every
+// game's sounds route through it. Mute gating + the resume-on-gesture
+// handler live in
 // getSharedAudioContext.
 function getCtx(): AudioContext | null {
   return getSharedAudioContext();

@@ -9,7 +9,6 @@ import { useSocket } from "../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
 import NavigationBar from "../../../components/navigation-bar";
-import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 import MatchWaiting from "../../../components/lobby/MatchWaiting";
 import Footer from "../../../components/Footer";
 import ReportModal from "../../../components/ReportModal";
@@ -34,13 +33,11 @@ import {
   IconSparkles,
   IconBook,
 } from "@tabler/icons-react";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay, auto-starts when the dice game actually begins
-// (`game.state === "playing"` — both players in) and auto-stops once the
-// finished result overlay is captured. The create/join lobby and modals
-// stay outside the shared CreatorModeHost recording viewport.
-import CreatorModeHost from "../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../components/GameSessionHost";
+
 
 
 type LobbyRoom = { id: string; wager: number; status: string };
@@ -799,10 +796,6 @@ export default function DiceFlushPage() {
       )}
 
       <div className="min-h-screen bg-gradient-to-b from-[#030817] via-[#081a3d] to-[#003b8e] px-3 pb-24 pt-20 text-white"><NavigationBar currentPath="/casino" />
-        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-        <div className="mt-3 flex justify-center">
-          <CreatorModeLobby />
-        </div>
     <div className="mx-auto mt-4 max-w-5xl">
       {/* ────── TITLE ────── */}
       <motion.div
@@ -940,16 +933,14 @@ export default function DiceFlushPage() {
 
       {/* Only the actual dice game is recorded — the create/join lobby
           above and the report modal / footer below sit outside the
-          shared CreatorModeHost recording viewport. Recording starts
+          shared GameSessionHost recording viewport. Recording starts
           once the game is actually playing and stops after the finished
           result overlay has been captured. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={Boolean(game) && game.state === "playing"}
         autoStop={Boolean(game) && game.state === "finished"}
         gameLabel="dice-flush"
-        backToLobbyHref="/casino/dice-flush"
       >
-      <CreatorResponsiveLayout>
       {game && (<div data-df="panel" className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24]/70 p-4 backdrop-blur">
         <div data-df="topbar" className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1395,8 +1386,7 @@ export default function DiceFlushPage() {
           />
         )}
       </div>)}
-      </CreatorResponsiveLayout>
-      </CreatorModeHost>
+      </GameSessionHost>
     </div>
       <ReportModal
         isOpen={showReportModal && !!opponent && !opponent.isAI}

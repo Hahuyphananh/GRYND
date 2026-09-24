@@ -11,10 +11,8 @@
 // is absent simply hides.
 
 import React from "react";
-// Creator-mode aware wrapper: renders the shared panel, `compact` only while
-// the recording frame is live. Precision mounts this popup INSIDE
-// <CreatorModeHost>, so the hook below reads the real flag.
-import CreatorResultOverlay from "../creator-mode/CreatorResultOverlay";
+// Shared end-of-match panel (PvpResultScreen adapter).
+import PvpResultScreen from "../result/PvpResultScreen";
 import PrecisionRocketRace, {
   type RocketLane,
 } from "./PrecisionRocketRace";
@@ -112,7 +110,7 @@ function PrecisionResultPopupImpl({
   }`;
 
   return (
-    <CreatorResultOverlay
+    <PvpResultScreen
       open
       outcome={outcome}
       headline={headline}

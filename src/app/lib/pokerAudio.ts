@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { getSharedAudioContext, getSharedOutputNode } from "../../lib/creator-mode/audioTap";
+import { getSharedAudioContext, getSharedOutputNode } from "../../lib/audioContext";
 
-// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
-// game's sounds route through it so Creator Mode recordings capture the
-// audio. Mute gating lives in getSharedAudioContext.
+// Single page-wide AudioContext (see audioContext.ts) — every
+// game's sounds route through it. Mute gating lives in
+// getSharedAudioContext.
 function getCtx(): AudioContext | null {
   return getSharedAudioContext();
 }

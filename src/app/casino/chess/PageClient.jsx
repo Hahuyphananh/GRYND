@@ -1,7 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../components/navigation-bar";
-import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 import Footer from "../../../components/Footer";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
 import { useEffect, useRef, useState } from "react";
@@ -302,10 +301,6 @@ export default function ChessLobby() {
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-center text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
-      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-      <div className="mt-4 flex justify-center">
-        <CreatorModeLobby />
-      </div>
       <h1 className="mb-4 mt-4 text-3xl font-bold text-[#FFD700] drop-shadow-[0_0_12px_rgba(255,215,0,0.55)] sm:text-4xl">
         <span className="inline-flex items-center gap-2"><IconChess size={28} /> Chess Arena: Challenge Players</span>
       </h1>

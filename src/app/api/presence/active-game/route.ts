@@ -9,7 +9,7 @@
 // row simply ages out of the activity window.
 //
 // Body: { gameLabel: string, sessionId?: string }
-//   gameLabel is the value the page already passes to <CreatorModeHost> /
+//   gameLabel is the value the page already passes to <GameSessionHost> /
 //   useRecordPlayedGame ("mines-duel", "rock-paper-scissors", …). It is
 //   resolved to a CANONICAL game id here, server-side, through
 //   src/lib/gamePresence.js — an unknown label is a 400, so a crafted request

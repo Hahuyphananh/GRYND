@@ -21,9 +21,9 @@ const AUDIO = fs.readFileSync("src/lib/fourInARowAudio.ts", "utf8");
 
 test("Four-In-A-Row audio: it reuses the shared audio infrastructure", () => {
   // No new library and no audio files: the module is Web Audio, routed through
-  // the page-wide context so the global mute gate and Creator Mode capture both
-  // work without per-game code.
-  assert.match(AUDIO, /import \{ getSharedAudioContext, getSharedOutputNode \} from "\.\/creator-mode\/audioTap";/);
+  // the page-wide context so the global mute gate
+  // works without per-game code.
+  assert.match(AUDIO, /import \{ getSharedAudioContext, getSharedOutputNode \} from "\.\/audioContext";/);
   assert.match(AUDIO, /function getCtx\(\): AudioContext \| null \{\s*\n\s*return getSharedAudioContext\(\);/);
   assert.match(AUDIO, /getSharedOutputNode\(\) \|\| ctx\.destination/);
   assert.doesNotMatch(AUDIO, /from "(howler|tone|soundjs|@?use-sound)"/);

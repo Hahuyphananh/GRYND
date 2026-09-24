@@ -122,7 +122,7 @@ export default function DotsAndBoxesLegend({
   return (
     <div
       data-testid="dnb-color-legend"
-      // One compact row: the 9:16 creator shell has no vertical room to spare,
+      // One compact row: there is no vertical room to spare here,
       // so this must fit under the board without stealing board space.
       className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[11px] font-semibold"
     >

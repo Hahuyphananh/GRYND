@@ -4,18 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the real hand begins, auto-stops
-// once the end popup shows. The create/join table lobby stays OUTSIDE so
-// nothing is recorded during matchmaking. No gameplay logic touched.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import UnoCard, { UNO_PALETTE } from "../../../../components/UnoCard";
 import UnoBack from "../../../../components/UnoBack";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -872,52 +865,10 @@ const sitAsHuman = async (seatIndex: number) => {
     );
   };
 
-  // ── Creator-mode layout nodes ─────────────────────────────────────
-  // The game content is split into reusable nodes so the normal page
-  // (non-creator) renders byte-for-byte the same, while Creator Mode
-  // gets a bespoke arrangement: portrait = phone-style (compact header,
-  // the table circle filling the middle, controls pinned at the
-  // bottom); landscape/square = the table fills the frame height with
-  // controls in a right rail.
+  // ── Layout nodes ──────────────────────────────────────────────────
+  // The game content is split into reusable nodes that the page composes
+  // into its sections.
 
-  // Compact header for the creator frames — title + tokens + the
-  // resign/report/lobby actions as inline buttons (the desktop page
-  // floats them fixed at the top; inside a recording frame they must
-  // live in the shell header instead).
-  const creatorHeaderNode = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex min-w-0 flex-col">
-        <h1 className="truncate text-lg font-bold">{t("neonFlush.tableTitle")}</h1>
-        {tokens && (
-          <p className="text-yellow-300 text-xs font-semibold">
-            {t("neonFlush.tokens")} : {tokens.balance}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {humanOpponent && (
-          <button
-            onClick={() => setShowReportModal(true)}
-            className="rounded-lg border border-red-500/40 bg-red-500/20 px-2.5 py-1.5 text-[11px] font-bold text-red-300 transition-all hover:bg-red-500/30"
-          >
-            <span className="inline-flex items-center gap-1"><IconFlag size={11} /> Report</span>
-          </button>
-        )}
-        <button
-          onClick={resignGame}
-          className="rounded-lg border-2 border-[#FF2D9B]/70 bg-[#FF2D9B]/15 px-2.5 py-1.5 font-black uppercase tracking-wider text-[#ff7ac2] text-[11px] shadow-[0_0_14px_rgba(255,45,155,0.3)] transition-all hover:bg-[#FF2D9B]/25"
-        >
-          {t("neonFlush.resign")}
-        </button>
-        <button
-          onClick={resetUnoMultiplayerLobby}
-          className="rounded-lg border-2 border-[#FFD700]/70 bg-[#FFD700]/15 px-2.5 py-1.5 font-black uppercase tracking-wider text-[#FFE066] text-[11px] shadow-[0_0_14px_rgba(255,215,0,0.3)] transition-all hover:bg-[#FFD700]/25"
-        >
-          {t("neonFlush.lobby")}
-        </button>
-      </div>
-    </div>
-  );
 
   // The round table — deck + current card + seats + emotes.
   const tableCircleInnerNode = (
@@ -1117,8 +1068,7 @@ const sitAsHuman = async (seatIndex: number) => {
       </div>
     ) : null;
 
-  // Move history inner content (shared by the desktop aside and the
-  // creator rails).
+  // Move history inner content.
   const historyInnerNode = (
     <>
       <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#00e5ff]">
@@ -1160,8 +1110,8 @@ const sitAsHuman = async (seatIndex: number) => {
     </aside>
   );
 
-  // Normal (non-creator) game view — byte-for-byte the original board
-  // row (fixed action buttons + table circle + controls + history).
+  // The game view — the original board row (fixed action buttons +
+  // table circle + controls + history).
   const normalView = (
     <div className="mb-16 flex w-full max-w-6xl items-stretch gap-4">
       {/* Board — compact, shifted left so the history panel has room */}
@@ -1204,51 +1154,10 @@ const sitAsHuman = async (seatIndex: number) => {
   );
 
   // Portrait (9:16) — phone-style: compact header, the table circle
-  // filling the frame width (1:1 circle fills 9/16 of height), controls + history pinned at the bottom.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        {creatorHeaderNode}
-      </ShellHeader>
-      <ShellMain className="flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 w-full min-h-0 overflow-hidden relative flex items-center justify-center px-2 py-2">
-          <div className="relative w-full aspect-square rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]" style={{ maxWidth: "100%" }}>
-            {tableCircleInnerNode}
-            {colorPickerNode}
-            {opponentsStripNode}
-          </div>
-        </div>
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        {controlsNode}
-        <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
-          {historyInnerNode}
-        </div>
-      </ShellAside>
-    </CreatorModeShell>
-  );
+  // filling the frame width (1:1 circle fills 9/16 of height), controls + history pinned at the bottom.
 
   // Landscape (16:9) / square (1:1) — table circle fills the frame
-  // height, controls + history in a right rail.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <div className="relative flex h-full w-full flex-col items-center justify-center gap-2 p-4">
-          <div className="relative h-full max-h-full w-full rounded-full border-8 border-[#0B1226] bg-gradient-to-br from-[#00111f] via-[#000a16] to-[#00060d]" style={{ aspectRatio: "1 / 1", maxWidth: "min(100%, 100vh)" }}>
-            {tableCircleInnerNode}
-            {colorPickerNode}
-            {opponentsStripNode}
-          </div>
-        </div>
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        {controlsNode}
-        <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
-          {historyInnerNode}
-        </div>
-      </ShellAside>
-    </CreatorModeShell>
-  );
+  // height, controls + history in a right rail.
 
   return (
     <motion.div
@@ -1555,24 +1464,18 @@ const sitAsHuman = async (seatIndex: number) => {
           {unoMultiMessage && <p className="mt-4 text-yellow-200 text-sm">{unoMultiMessage}</p>}
         </div>
       ) : (
-        <CreatorModeHost
+        <GameSessionHost
           autoStart={Boolean(game)}
           autoStop={Boolean(endPopup)}
-          autoStopOnIdle
           gameLabel="uno-multiplayer"
-          backToLobbyHref="/uno/multiplayer"
         >
-        <CreatorView
-          normal={normalView}
-          portrait={portraitContent}
-          landscape={landscapeContent}
-        />
+        {normalView}
 
         {/* Post-match result screen — shared PvpResultScreen (UX plan
-            P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+            P3-3). Mounted INSIDE GameSessionHost so it appears in the
             recording; compact styling keeps it sized for the phone frame. */}
         {renderResult()}
-        </CreatorModeHost>
+        </GameSessionHost>
       )}
 
       <ReportModal

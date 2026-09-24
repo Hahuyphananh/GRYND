@@ -9,7 +9,7 @@
 //
 //   useActiveGamePresence(gameLabel, active, { enabled, terminal })
 //
-//   gameLabel  the label the page already passes to <CreatorModeHost
+//   gameLabel  the label the page already passes to <GameSessionHost
 //              gameLabel> / useRecordPlayedGame ("mines-duel", "chess-ai", …).
 //              Resolved server-side (src/lib/gamePresence.js); a label that
 //              resolves to nothing (e.g. the "precision-test" dev harness, or

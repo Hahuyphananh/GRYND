@@ -700,12 +700,8 @@ export default function ArenaTable({
           players are committed and ride the curve). Fold anytime: your
           ante stays in the pot as dead money and your fold rank decides
           your share. ═══ */}
-      {/* crash-arena-fold-first: in the creator phone frame this moves the
-          fold action up, directly under the curve canvas (see globals.css) —
-          the one button you click during the round stays on screen next to
-          the rocket. */}
       {isRunning && youInHand && !youAllIn && !hintActive && (
-        <div className="crash-arena-fold-first flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FFD700]/30 bg-[#0a1a2e]/90 p-3 backdrop-blur-md shadow-[0_0_20px_rgba(255,215,0,0.15)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#FFD700]/30 bg-[#0a1a2e]/90 p-3 backdrop-blur-md shadow-[0_0_20px_rgba(255,215,0,0.15)]">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs uppercase tracking-wider text-[#9dd8ff]/70 font-black">
               You&apos;re in — fold anytime to bank your rank
@@ -740,14 +736,7 @@ export default function ArenaTable({
       )}
 
       {/* ═══ Game area — centered, square-ish 4:3 canvas + side panel ═══ */}
-      {/* data-creator-stack: in the portrait (9:16) creator frame this stays
-          the phone-style stacked column (canvas first, sidebar below) via the
-          shared portrait-stacking CSS. Desktop + landscape/square unchanged. */}
-      {/* crash-arena-board-first: in the creator phone frame the whole game
-          area moves to the TOP of the stacked column (above the status bars)
-          so the recorded clip leads with the curve — the rocket is clearly
-          visible instead of being pushed below the fold by the header HUD. */}
-      <div data-creator-stack className="crash-arena-board-first flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
+      <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
         {/* Main game canvas — hosts CrashEngine. The 4:3 ratio matches
             CrashGraph's internal 800×600 coordinate space, so the canvas
             scales uniformly and stays centered on every screen size. On
@@ -908,7 +897,7 @@ export default function ArenaTable({
       )}
 
       {/* ═══ Player list + wait list ═══ */}
-      <div data-creator-stack className="flex flex-col lg:flex-row gap-4">
+      <div className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1 px-4 py-3 rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 backdrop-blur-sm">
           <h3 className="text-xs uppercase tracking-wider text-[#ff4fd8]/70 mb-3 text-center">
             Players &bull; {seatedCount}/{maxPlayers}

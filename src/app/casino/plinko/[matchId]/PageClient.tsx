@@ -49,17 +49,11 @@ import ReportModal from "../../../../components/ReportModal";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually begins,
-// auto-stops when it ends or the user quits. No gameplay logic touched.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorModeShell,
-  CreatorView,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import { IconLock, IconFlag } from "@tabler/icons-react";
 import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
@@ -3076,25 +3070,8 @@ export default function PlinkoPvpMatchPage({
 
   // ── Main layout ──────────────────────────────────────────────────
   // Only the actual game content (title, status, board, panels, result
-  // overlays) sits inside the shared CreatorModeHost recording viewport
-  // — the nav bar, footer, and modals stay outside so recordings capture
-  // just the game.
-  //
-  // Creator Mode lifecycle (driven by the game's REAL match state, never
-  // page load): recording starts when the match leaves the waiting room
-  // (ready/launchable). When it finishes or is cancelled, recording keeps
-  // running for a short grace period so the result/winner animation is
-  // captured, then stops. Leaving the page stops immediately. The overlay
-  // then shows the download UI.
-  //
-  // Creator Mode shared visual layout (see
-  // src/components/creator-mode/CreatorModeLayout.jsx): the SAME
-  // gameplay components below are only REARRANGED to fit the selected
-  // recording aspect ratio — game logic, controls, and rules are
-  // untouched. Portrait 9:16 prioritises the board, keeps branding + info
-  // in a compact header, and pins the controls below. Landscape / square
-  // reuse the standard grid. Normal mode (creator off) renders `pageBody`
-  // exactly as before.
+  // overlays) sits inside the shared GameSessionHost — the nav bar,
+  // footer, and modals stay outside.
 
   const boardNode = (
     <PlinkoBoard
@@ -3316,80 +3293,17 @@ export default function PlinkoPvpMatchPage({
     </div>
   );
 
-  // Portrait 9:16 creator arrangement — gameplay (board) on top and
-  // filling most of the height, branding + status + totals in a compact
-  // header, controls pinned at the bottom.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex flex-col items-stretch gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <PlinkoIcon className="w-6 h-6 shrink-0 text-cyan-300 drop-shadow-[0_0_10px_rgba(0,229,255,0.6)]" />
-            <h1 className="truncate text-base font-black tracking-tight">
-              Plinko Duel · #{matchId ?? "?"}
-            </h1>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 text-[11px] font-bold tabular-nums">
-            <span className="rounded-full bg-white/5 px-2 py-0.5 text-white/70">
-              {isTiebreakerBall ? "Tiebreaker" : `R ${displayBall}/${REQUIRED_BALLS}`}
-            </span>
-            <span className="text-cyan-300">{match.p1Score}</span>
-            <span className="text-fuchsia-300">{match.p2Score}</span>
-          </div>
-        </div>
-        <div>{renderStatusBanner()}</div>
-      </ShellHeader>
-
-      <ShellMain className="flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 w-full min-h-0 overflow-hidden px-3 py-2">
-          {boardNode}
-        </div>
-        <div className="shrink-0 px-3 py-2 space-y-2">
-          {centerChrome}
-        </div>
-      </ShellMain>
-
-      <ShellAside>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div>{p1Node}</div>
-          <div>{p2Node}</div>
-        </div>
-      </ShellAside>
-
-      {overlaysNode}
-    </CreatorModeShell>
-  );
-
-  // Landscape (16:9) / square (1:1) creator arrangement — reuse the
-  // standard layout inside the frame shell so it adapts responsively.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="items-start justify-start overflow-y-auto">
-        {pageBody}
-      </ShellMain>
-    </CreatorModeShell>
-  );
-
   return (
     <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={isReady || isLaunchable}
         autoStop={isFinished || isCancelled}
         gameLabel="plinko-duel"
-        backToLobbyHref="/casino/plinko"
       >
-        <CreatorView
-          // Normal mode: the desktop game renders completely unchanged.
-          normal={pageBody}
-          // Creator Mode on: arrange the SAME gameplay components inside
-          // the shared recording-frame shell, optimised for the selected
-          // aspect ratio (portrait 9:16 / landscape / square).
-          portrait={portraitContent}
-          landscape={landscapeContent}
-        />
-      </CreatorModeHost>
+        {pageBody}
+      </GameSessionHost>
 
       {/* Report modal */}
       <ReportModal

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, evaluateHand } from "../../../lib/handEval";
 import { computePayouts } from "../../../lib/pokerPots";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -19,24 +19,12 @@ import { useSocket } from "../../../../context/SocketProvider";
 import useGamePresence from "../../../../hooks/useGamePresence";
 import { usePokerAudio } from "../../../lib/pokerAudio";
 import NavigationBar from "../../../../components/navigation-bar";
-import CreatorModeLobby from "../../../../components/creator-mode/CreatorModeLobby";
 import Footer from "../../../../components/Footer";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the real hand actually begins
-// (host clicked Start Game → `game.waiting` flips false), auto-stops
-// when the hand reaches its result (showdown + winner) or the user
-// quits. The build/join lobby render (the `!game` branch below) and the
-// report modal / footer stay OUTSIDE so nothing is recorded until
-// real gameplay starts.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-  useCreatorModeLayout,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import ReportModal from "../../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../../components/lobby/PvpLobby";
 import confetti from "canvas-confetti";
@@ -177,28 +165,6 @@ function nextActiveFrom(currentIndex: number, players: Player[]): number {
   return active[(pos + 1) % active.length];
 }
 
-// Creator-mode table stage: poker's table + seats are laid out in a
-// 900×600-style wrapper (seats %-positioned, ellipse centered inside).
-// In creator frames we size that wrapper from the frame dimensions so the
-// felt fills the recording; seats stay glued to the ellipse in any ratio
-// (9:16 / 16:9 / 1:1). Reads the shell's layout context, so it must be
-// rendered inside <CreatorModeShell />.
-function PokerCreatorTableStage({ children }: { children: ReactNode }) {
-  const { width, height, isPortrait } = useCreatorModeLayout();
-  // Reserve room for the compact header (and bottom strip in portrait).
-  const availW = width - (isPortrait ? 24 : 72);
-  const availH = height - (isPortrait ? 170 : 120);
-  const stageW = Math.min(availW, availH * 1.5);
-  const stageH = stageW / 1.5;
-  return (
-    <div
-      className="relative flex items-center justify-center overflow-visible"
-      style={{ width: Math.max(280, stageW), height: Math.max(190, stageH) }}
-    >
-      {children}
-    </div>
-  );
-}
 
 export default function PokerPage() {
   const { user } = useUser();
@@ -710,7 +676,7 @@ export default function PokerPage() {
   // so the table reads as a single deal instead of six independent
   // pop-ins. The offset is a direction cue (unit vector × a fixed distance)
   // rather than a literal path, so it needs no measurement of the table
-  // box — which also keeps it correct in creator-mode frames.
+  // box.
   const CARD_SHOE = { left: 40, top: 24 };
   const DEAL_DISTANCE = 88; // px a hole card travels
   // A percentage step in `left` is a bigger pixel step than the same step
@@ -1881,10 +1847,6 @@ export default function PokerPage() {
         />
 
         <NavigationBar currentPath="/casino" />
-        {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-        <div className="mt-3 flex justify-center">
-          <CreatorModeLobby />
-        </div>
 
         <div className="relative z-10 mx-auto max-w-5xl">
           <motion.div
@@ -2196,9 +2158,7 @@ export default function PokerPage() {
   }
 
 
-  // ── Creator-mode node extraction (poker) ──────────────────────────
-  // Real mobile portrait browsers only — never inside a creator frame
-  // (the creator chose the frame's aspect ratio, so the table shows).
+  // ── Rotate-device overlay (real mobile portrait browsers only) ─────
   const rotateOverlayNode = (
     <>
       {isPortrait && (
@@ -2221,9 +2181,7 @@ export default function PokerPage() {
     />
   );
 
-  // The three top-bar items (Return / title / sound) — wrapped differently
-  // per view: absolute overlay on the normal page, compact header row in
-  // creator frames.
+  // The three top-bar items (Return / title / sound).
   const topBarInnerNode = (
     <>
       <button
@@ -2384,8 +2342,8 @@ export default function PokerPage() {
   );
 
   // The full scalable table (felt + overlays + seats + chips + modals).
-  // `fill` adapts the wrapper/felt to the creator frame (the felt fills the
-  // stage sized by PokerCreatorTableStage) instead of the window-based
+  // `fill` sizes the wrapper/felt to its container instead of the
+  // window-based
   // 75vh / 85vmin sizing used on the normal page.
   const tableBlockNode = (fill: boolean) => (
     <>
@@ -2851,9 +2809,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
   top: `${pos.top}%`,
   // Centring and the ring scale in a single transform. Scaling about the
   // box's own centre leaves every seat exactly on its ring position, so a
-  // card can never drift off its seat. Creator frames size the felt from
-  // the recording frame instead of the window, so they keep the unscaled
-  // ring (see `seatScale` above).
+  // card can never drift off its seat.
   transform: `translate(-50%, -50%) scale(${fill ? 1 : seatScale})`,
   zIndex: 30,
 }}
@@ -3662,23 +3618,10 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
   );
 
   // The desktop + mobile action docks (Fold / Check-Call / Bet / Raise).
-  // They are `fixed`, so inside a creator frame they pin to the FRAME
-  // (the recording root is a transformed containing block), keeping the
-  // game controls reachable in every orientation.
-  // Creator-mode poker action dock: the same actions, but in creator mode
-  // the buttons should feel punchy/large and sit closer to the table.
-  // We keep the same action behavior and only change presentation/sizing in
-  // the creator frame so existing mobile/desktop docking behavior stays intact.
-  const isCreatorMode = false; // set by creator shell context if/when needed
-  const creatorCloser = 8;    // smaller cliff gap when in creator mode
-  const creatorScale = 1.0;   // optional extra scale in creator mode
-  const dockGap = isCreatorMode ? 0.25 : 0.5;   // em
-  const dockMargin = isCreatorMode ? 10 : 20;   // px from frame bottom
-  const buttonH = isCreatorMode ? 44 : 42;       // px touch target
-  const buttonTextBase = isCreatorMode ? "text-base" : "text-sm";
-  const raiseH = isCreatorMode ? 48 : 44;        // primary action slightly taller
-  const raiseTextBase = isCreatorMode ? "text-lg" : "text-base";
-  const iconSize = isCreatorMode ? 16 : 14;
+  // They are `fixed`, so they stay pinned to the viewport and the game
+  // controls stay reachable in every orientation.
+  const dockMargin = 20; // px from the bottom edge
+  const iconSize = 14;
   const actionDockNode = (() => {
     return (
       <>
@@ -3704,7 +3647,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       <div className={`hidden lg:flex fixed left-1/2 -translate-x-1/2 bottom-[${dockMargin}px] z-50`}>
         <div className="flex items-center justify-center gap-2.5 rounded-2xl border border-[#ff00cc]/25 bg-[#050510]/90 px-3 py-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(255,0,204,0.2)] backdrop-blur-xl">
 
-          {/* Fold — bigger and more visible in creator mode */}
+          {/* Fold */}
           <button
             onClick={() => performAction("fold")}
             aria-label="Fold"
@@ -3716,7 +3659,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             hover:shadow-[0_0_18px_rgba(255,0,0,0.35)]
             transition duration-100 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/60
-            ${isCreatorMode ? `h-[${buttonH}px] text-base` : ``}`}
+            `}
           >
             <span className="inline-flex items-center gap-1.5"><IconX size={iconSize} /> Fold</span>
           </button>
@@ -3734,7 +3677,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
               transition duration-100 active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
-              ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
+              `}
             >
               <span className="inline-flex items-center gap-1.5"><IconCheck size={iconSize} /> Check</span>
             </button>
@@ -3750,7 +3693,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               hover:shadow-[0_0_25px_rgba(0,229,255,0.45)]
               transition duration-100 active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60
-              ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
+              `}
             >
               <span className="inline-flex items-center gap-1.5"><IconPhone size={iconSize} /> Call {toCall}</span>
             </button>
@@ -3769,7 +3712,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
               hover:shadow-[0_0_25px_rgba(255,215,0,0.5)]
               transition duration-100 active:scale-95
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300/60
-              ${isCreatorMode ? `h-[${buttonH}px] ${buttonTextBase}` : ``}`}
+              `}
             >
               <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Bet 20</span>
             </button>
@@ -3792,7 +3735,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
             hover:shadow-[0_0_38px_rgba(255,0,204,0.75)]
             transition duration-100 active:scale-95
             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-300/70
-            ${isCreatorMode ? `h-[${raiseH}px] ${raiseTextBase}` : ``}`}
+            `}
           >
             <span className="inline-flex items-center gap-1.5"><IconArrowUp size={iconSize} /> Raise</span>
           </button>
@@ -3803,7 +3746,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
       {/* ───────────────────────────── */}
       {/* MOBILE ACTION DOCK */}
       {/* ───────────────────────────── */}
-      <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-[80] px-2 pb-[max(env(safe-area-inset-bottom),${isCreatorMode ? 6 : 8}px)]`}>
+      <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-[80] px-2 pb-[max(env(safe-area-inset-bottom),8px)]`}>
         
         <div
           className="
@@ -3817,11 +3760,11 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         >
           {/* Turn Header */}
           <div className="flex items-center justify-between mb-3 px-1">
-            <div className={`uppercase tracking-widest text-[#b0b0ff]/60 ${isCreatorMode ? `text-sm` : ``}`}>
+            <div className={`uppercase tracking-widest text-[#b0b0ff]/60 `}>
               Your Turn
             </div>
 
-            <div className={`font-bold text-[#00e5ff] ${isCreatorMode ? `text-base` : `text-sm`}`}>
+            <div className={`font-bold text-[#00e5ff] text-sm`}>
               {canCheck ? "Check Available" : `Call $${toCall}`}
             </div>
           </div>
@@ -3837,7 +3780,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 text-red-200
                 font-bold text-sm
                 active:scale-95 transition duration-100
-                ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
+                h-14
               `}
             >
               Fold
@@ -3853,7 +3796,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   text-[#00e5ff]
                   font-bold text-sm
                   active:scale-95 transition duration-100
-                  ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
+                  h-14
                 `}
               >
                 Check
@@ -3868,7 +3811,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   text-[#00e5ff]
                   font-bold text-sm
                   active:scale-95 transition duration-100
-                  ${isCreatorMode ? `h-[${buttonH}px]` : `h-14`}
+                  h-14
                 `}
               >
                 Call
@@ -3888,7 +3831,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 text-[#ff00cc]
                 font-bold text-sm
                 active:scale-95 transition duration-100
-                ${isCreatorMode ? `h-[${raiseH}px]` : `h-14`}
+                h-14
               `}
             >
               Raise
@@ -3897,7 +3840,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
           {/* Quick Action Row */}
           {canUseBetShortcut && (
-            <div className={`mt-2 ${isCreatorMode ? `mt-3` : ``}`}>
+            <div className={`mt-2 `}>
               <button
                 onClick={() => performAction("bet20")}
                 className={`
@@ -3907,7 +3850,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   text-yellow-200
                   font-semibold text-sm
                   active:scale-95 transition duration-100
-                  ${isCreatorMode ? `h-[${buttonH}px]` : `h-11`}
+                  h-11
                 `}
               >
                 <span className="inline-flex items-center gap-1.5"><IconCoins size={iconSize} /> Quick Bet 20</span>
@@ -4013,61 +3956,21 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
 
   // Portrait (9:16) — compact header, the felt filling the middle, and
   // controls + recent actions pinned at the bottom. No rotate overlay.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          {topBarInnerNode}
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {controlsInnerNode}
-        </div>
-      </ShellHeader>
-      <ShellMain className="overflow-hidden">
-        <PokerCreatorTableStage>{tableBlockNode(true)}</PokerCreatorTableStage>
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        {actionLogNode}
-      </ShellAside>
-      {actionDockNode}
-      {waitingPanelNode}
-      {scanlinesNode}
-    </CreatorModeShell>
-  );
 
   // Landscape (16:9) / square (1:1) — felt fills the height with
   // controls + recent actions in a right rail.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex items-center justify-between gap-2 px-1">
-        {topBarInnerNode}
-      </ShellHeader>
-      <ShellMain className="overflow-hidden">
-        <PokerCreatorTableStage>{tableBlockNode(true)}</PokerCreatorTableStage>
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {controlsInnerNode}
-        </div>
-        {actionLogNode}
-      </ShellAside>
-      {actionDockNode}
-      {waitingPanelNode}
-      {scanlinesNode}
-    </CreatorModeShell>
-  );
 
   // main UI when game exists
   return (
     <div className="min-h-screen pb-36 lg:pb-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] text-white overflow-hidden relative">
       {/* Only the actual hand table is recorded — the build/join lobby
           (the `!game` early-return above) and the report modal / footer
-          below sit outside the shared CreatorModeHost recording viewport.
+          below sit outside the shared GameSessionHost recording viewport.
           Recording auto-starts when the host starts the real hand
           (`game.waiting` flips false = cards dealt) and auto-stops once
           the hand reaches its result (showdown + winner) so the winner
           animation is captured, then the grace period elapses. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={Boolean(game) && !game.waiting}
         autoStop={
           Boolean(game) &&
@@ -4078,13 +3981,8 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
         // A spectator watching a shared table is on a live hand too, so
         // watching must never be counted as playing.
         presenceEnabled={!isSpectator}
-        backToLobbyHref="/casino/poker"
-      >      <CreatorView
-        normal={normalView}
-        portrait={portraitContent}
-        landscape={landscapeContent}
-      />
-      </CreatorModeHost>
+      >      {normalView}
+      </GameSessionHost>
       <ReportModal
         isOpen={showReportModal && game != null && game.players.some((p: Player) => !p.isAI && p.id !== myId)}
         onClose={() => setShowReportModal(false)}

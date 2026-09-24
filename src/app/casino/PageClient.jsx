@@ -30,8 +30,8 @@ import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
 import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
-import CreatorModeLobby from "../../components/creator-mode/CreatorModeLobby";
-import { buildCreatorHref } from "../../lib/creator-mode/client";
+
+
 import { clearPlayedGames, getPlayedGames } from "../../lib/recentlyPlayed";
 import {
   QUESTIONNAIRE_INVITE_SESSION_KEY,
@@ -122,9 +122,6 @@ function MainComponent() {
   // component is not remounted).
   const [forYouRefresh, setForYouRefresh] = useState(0);
 
-  // Creator Mode (admin-only): when enabled, game links carry ?creator=1
-  // so the shared CreatorModeProvider inside each game picks it up.
-  const [creatorModeEnabled, setCreatorModeEnabled] = useState(false);
   // Active players per game — the "N playing" line on every card.
   //
   // `status` is "loading" until the first answer lands, "ready" with the real
@@ -158,8 +155,8 @@ function MainComponent() {
   }, [sortOrder]);
 
   // Recently played (UX plan P1-1): read once on mount. Games record a
-  // play through <CreatorModeHost /> (autoStart edge), so returning to
-  // the lobby shows a "Play again" strip of the last sessions.
+  // play when a real session starts, so returning to the lobby shows a
+  // "Play again" strip of the last sessions.
   useEffect(() => {
     setRecentGames(getPlayedGames());
   }, []);
@@ -315,7 +312,7 @@ function MainComponent() {
     }
   };
 
-  // playsKey = the gameLabel the game page passes to <CreatorModeHost />
+  // playsKey = the gameLabel the game page passes to <GameSessionHost />
   // (the exact key the play counter is stored under). Matches the real
   // values across src/app/casino/* — verified against every gameLabel="…"
   // in the codebase; the play-count sort only works if these line up.
@@ -784,7 +781,7 @@ function MainComponent() {
   const GameCard = ({ game, recommended = false }) => (
     <div className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-[#00e5ff]/60 hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] focus-within:ring-2 focus-within:ring-[#00e5ff] focus-within:ring-offset-2 focus-within:ring-offset-[#040d24]">
       <Link
-        href={buildCreatorHref(game.href, creatorModeEnabled)}
+        href={game.href}
         className="block cursor-pointer focus-visible:outline-none"
         aria-label={`Play ${game.nameKey ? t(game.nameKey) : game.name}`}
       >
@@ -1113,14 +1110,6 @@ function MainComponent() {
           </div>
         </div>
 
-        {/* Admin-only Creator Mode entry — normal users never see it
-            (the shared access hook hides it and the server never grants
-            access). Opens the settings modal; game links carry ?creator=1
-            only while enabled. Rendered above the game grid. */}
-        <div className="mb-8 flex justify-center">
-          <CreatorModeLobby onChange={setCreatorModeEnabled} />
-        </div>
-
         {/* FOR YOU (personalization engine) — the highest-scoring games for
             this player's questionnaire answers, above All Games. Rendered with
             the SAME GameCard as the grid below (one card system, one request),
@@ -1152,8 +1141,7 @@ function MainComponent() {
             actually started this session, newest first. Shown only on the
             unfiltered view: once the player searches or picks a filter,
             the grid below is what they asked for and the strip would just
-            compete with it. Games record a play via <CreatorModeHost />'s
-            autoStart edge, so this is per-user and per-session. */}
+            compete with it. Plays are recorded per user and per session. */}
         {search.trim().length === 0 &&
           activeFilter === "all" &&
           recentGames.length > 0 && (
@@ -1180,7 +1168,7 @@ function MainComponent() {
                   return (
                     <Link
                       key={label}
-                      href={buildCreatorHref(game.href, creatorModeEnabled)}
+                      href={game.href}
                       className="group w-40 shrink-0 overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_24px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
                       aria-label={`${t("home.casino_lobby.play_again")}: ${game.nameKey ? t(game.nameKey) : game.name}`}
                     >
@@ -1293,7 +1281,7 @@ function MainComponent() {
         }
       `}</style>
       <Footer />
-      <StickyMobileCta playHref={buildCreatorHref("/casino/roulette", creatorModeEnabled)} />
+      <StickyMobileCta playHref="/casino/roulette" />
     </div>
   );
 }

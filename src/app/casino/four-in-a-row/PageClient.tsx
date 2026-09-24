@@ -9,7 +9,6 @@ import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRobot, IconGridDots } from "@tabler/icons-react";
-import CreatorModeLobby from "../../../components/creator-mode/CreatorModeLobby";
 
 const BET_OPTIONS = [10, 25, 50, 100, 250];
 const TIMER_OPTIONS = [
@@ -258,10 +257,6 @@ export default function FourInARowLobbyPage() {
         onRefresh={fetchGames}
         error={error}
       />
-      {/* Creator Mode toggle (admin-only — renders nothing for other users). */}
-      <div className="mb-4 flex justify-center">
-        <CreatorModeLobby />
-      </div>
     </>
   );
 }

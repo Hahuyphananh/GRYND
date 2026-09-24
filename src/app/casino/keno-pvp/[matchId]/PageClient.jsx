@@ -26,25 +26,19 @@ import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
 import KenoWaitingPanel from "../../../../components/keno-pvp/KenoWaitingPanel";
-import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay, auto-starts when the run is live and auto-stops
-// once it finishes/cancels. The matchmaking takeover and nav stay outside
-// the shared CreatorModeHost recording viewport.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellMain,
-  CreatorPhoneFrame,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import {
   getSharedAudioContext,
   getSharedOutputNode,
-} from "../../../../lib/creator-mode/audioTap";
-// Shared game SFX. gameAudio imports the same creator-mode/audioTap
+} from "../../../../lib/audioContext";
+// Shared game SFX. gameAudio imports the same audioContext
 // singleton as the inline tick in this page, so every Keno sound routes
 // through ONE page-wide audio context / output node — Creator Mode keeps
 // capturing it, and the global mute gate keeps silencing all of it.
@@ -1191,78 +1185,20 @@ export default function KenoPvpMatchPage({ params }) {
       </div>
     ) : null;
 
-  // ── Creator Mode arrangement ───────────────────────────────────────
-  // The SAME game content composes the normal page and the creator frames
-  // (portrait phone-style + landscape/square rail). Layout only.
-  const creatorGameNode = (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 px-3 pb-1.5 pt-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <PoolBallIcon size={18} className="shrink-0 text-[#00e5ff]" />
-            <h1 className="truncate text-base font-extrabold tracking-tight text-cyan-100">
-              Keno Survival Duel
-            </h1>
-            <button
-              onClick={() => setShowRules(true)}
-              className="h-6 w-6 shrink-0 rounded-full border border-[#00e5ff]/40 bg-[#0b224f]/70 text-xs font-bold text-[#7cefff] transition hover:border-[#00e5ff]/80 hover:text-white"
-              aria-label="How to play"
-              title="How to play"
-            >
-              ?
-            </button>
-          </div>
-          <span className="shrink-0 rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white/60">
-            first to {STARTING_LIVES} tiles lost
-          </span>
-        </div>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
-        {waitingPanelNode || (
-          <>
-            {livesNode}
-            <div className="w-full">{windowNode}</div>
-            <div className="mt-3 w-full">{boardNode}</div>
-            {leaveNode && <div className="mt-3 w-full">{leaveNode}</div>}
-          </>
-        )}
-      </div>
-    </div>
-  );
-
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
-      </ShellMain>
-    </CreatorModeShell>
-  );
-
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame>{creatorGameNode}</CreatorPhoneFrame>
-      </ShellMain>
-    </CreatorModeShell>
-  );
-
   return (
     <>
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         {/* Only the actual match content is recorded — the matchmaking
-            takeover and nav sit outside the shared CreatorModeHost
+            takeover and nav sit outside the shared GameSessionHost
             recording viewport. */}
-        <CreatorModeHost
+        <GameSessionHost
           autoStart={isLive}
           autoStop={isFinished || isCancelled}
           gameLabel="keno"
-          backToLobbyHref="/casino/keno"
         >
-          <CreatorView
-            normal={
-              <>
+          {<>
                 <div className="mx-auto mt-4 max-w-5xl">
                   {/* Header */}
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3 sm:mb-4">
@@ -1335,14 +1271,10 @@ export default function KenoPvpMatchPage({ params }) {
 
                   <Footer />
                 </div>
-              </>
-            }
-            portrait={portraitContent}
-            landscape={landscapeContent}
-          />
+              </>}
 
           {/* ── FINISHED: end-of-match result screen ──────────────────
-              Mounted INSIDE CreatorModeHost as a sibling of <CreatorView>,
+              Mounted INSIDE GameSessionHost as a sibling of the game view,
               so the WIN/LOSS panel is part of the recording. showResult
               lands 1.2s after the finish, inside the auto-stop grace
               period, so it is captured. */}
@@ -1360,7 +1292,7 @@ export default function KenoPvpMatchPage({ params }) {
               onLobby={goToLobby}
             />
           )}
-        </CreatorModeHost>
+        </GameSessionHost>
       </div>
     </>
   );
@@ -1492,7 +1424,7 @@ function RulesModal({ onClose }) {
   );
 }
 
-// ── Result screen — shared CreatorResultOverlay ──────────────────────
+// ── Result screen — shared PvpResultScreen ──────────────────────
 // End-of-match adapter: maps the real match result / payout / survival
 // fields onto the shared result screen. No invented values.
 function ResultModal({
@@ -1528,7 +1460,7 @@ function ResultModal({
     : { p1: oppName, p2: myName };
 
   return (
-    <CreatorResultOverlay
+    <PvpResultScreen
       open
       outcome={outcome}
       headline={drew ? "Both eliminated — stake refunded" : `${myTiles} – ${oppTiles} tiles claimed`}

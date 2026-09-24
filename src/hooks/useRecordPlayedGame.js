@@ -4,9 +4,9 @@
 //
 // Record a real game session into the casino lobby's "Recently played"
 // strip (and the server-side "Most Played" counter) exactly once per start
-// edge. This is the behaviour <CreatorModeHost autoStart> used to provide
-// for every game page; game pages that no longer mount that host call
-// this directly with their own real game-start signal.
+// edge. This is the behaviour <GameSessionHost autoStart> used to provide
+// for every game page; game pages that do not mount that host call this
+// directly with their own real game-start signal.
 
 import { useEffect, useRef } from "react";
 import { recordPlayedGame } from "../lib/recentlyPlayed";

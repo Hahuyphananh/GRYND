@@ -80,13 +80,11 @@ import {
 } from "../../../../components/roulette-pvp/RouletteIcons";
 import { IconFlag } from "@tabler/icons-react";
 import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually begins
-// (leaves the waiting room / is playable), auto-stops when it ends or
-// the user quits. The unified matchmaking takeover (MatchWaiting) stays
-// OUTSIDE so nothing is recorded until real gameplay starts.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { playVictory, playDefeat, playTick, playCardPlace } from "../../../../lib/gameAudio";
@@ -1944,9 +1942,9 @@ export default function RoulettePvpGamePage({ params }) {
 
       {/* Only the actual game content is recorded — the matchmaking
           takeover above and the nav/modal below sit outside the shared
-          CreatorModeHost recording viewport. Recording auto-starts when
+          GameSessionHost recording viewport. Recording auto-starts when
           the match is actually playable and stops on finish/cancel. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={
           BETTABLE.has(match?.status) ||
           match?.status === MATCH_STATUS.READY
@@ -1956,15 +1954,8 @@ export default function RoulettePvpGamePage({ params }) {
           match?.status === MATCH_STATUS.CANCELLED
         }
         gameLabel="roulette"
-        backToLobbyHref="/casino/roulette"
       >
-      <CreatorResponsiveLayout>
-      {/* data-creator-stack-swap: inside the creator phone viewport
-          (every recording ratio) this flips to the phone-style stacked
-          column (wheel + board first, controls below) via the shared
-          phone-stacking CSS. Desktop / non-creator rendering is
-          unchanged. */}
-      <div data-creator-stack data-creator-stack-swap className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
+      <div className="mx-auto mt-2 flex w-full max-w-[1300px] flex-col gap-4 px-3 sm:mt-6 sm:flex-row sm:gap-8 sm:p-6">
         {/* ── Left sidebar: PvP state + controls ─────────────────── */}
         <div className="flex w-full flex-shrink-0 flex-col items-start gap-3 sm:w-[280px] sm:gap-4">
           <h1 className="mt-2 w-full text-center text-2xl font-bold text-[#FFFF33] drop-shadow-[0_0_12px_rgba(255,255,51,0.6)] sm:text-3xl inline-flex items-center justify-center gap-2">
@@ -2854,13 +2845,12 @@ export default function RoulettePvpGamePage({ params }) {
           </div>
         </div>
       </div>
-      </CreatorResponsiveLayout>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          P3-3). Mounted INSIDE GameSessionHost so it appears in the
           recording; compact styling keeps it sized for the phone frame. */}
       {renderMatchEnd()}
-      </CreatorModeHost>
+      </GameSessionHost>
 
       {/* Animations */}
       <style jsx>{`

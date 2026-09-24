@@ -23,30 +23,20 @@
 // turn indicator + 20 s countdown + a post-match result screen
 // that reveals the full board + payout breakdown.
 
-import { useCallback, useEffect, useMemo, useRef, useState, use, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually begins
-// (leaves the waiting room), auto-stops when it finishes or the user
-// quits. The waiting/matchmaking takeover and Footer stay OUTSIDE so
-// nothing is recorded until real gameplay starts.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-  useCreatorModeLayout,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Shared session host: tracks active-player presence and the
+// recently-played strip from the real match lifecycle. The
+// waiting/matchmaking takeover and Footer stay OUTSIDE it.
+import GameSessionHost from "../../../../components/GameSessionHost";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
-import CreatorResultOverlay from "../../../../components/creator-mode/CreatorResultOverlay";
+import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
@@ -287,7 +277,7 @@ function PlayerSeat({
       : `${settled}${livePhase ? " opacity-70" : ""}`;
   return (
     <div
-      className={`relative rounded-xl border px-3 py-2.5 transition-all ${card}`}
+      className={`relative rounded-xl border px-3 py-2.5 lg:py-2 transition-all ${card}`}
     >
       {/* Turn emphasis — one flash on the seat whose turn just started, keyed
           by the turn so a poll/socket re-render (same key) reuses the element
@@ -414,27 +404,6 @@ function AlertIcon({ className = "" }: { className?: string }) {
       <line x1="12" y1="10" x2="12" y2="15" />
       <circle cx="12" cy="17.5" r="0.8" fill="currentColor" stroke="none" />
     </svg>
-  );
-}
-
-// Creator-mode board sizer: the 5×5 board is square, so cap it to the
-// smaller frame dimension (minus shell chrome/padding) — it then fills
-// the frame without overflowing in ANY orientation (9:16 / 16:9 / 1:1 /
-// custom). Reads the shell's layout context (useCreatorModeLayout), so it
-// must be rendered inside <CreatorModeShell />.
-function CreatorBoardStage({ children }: { children: ReactNode }) {
-  const { width, height, isPortrait } = useCreatorModeLayout();
-  const cap = Math.max(
-    280,
-    Math.min(width, height) * (isPortrait ? 0.94 : 0.88) - (isPortrait ? 32 : 96),
-  );
-  return (
-    <div
-      className="flex w-full flex-col items-center justify-center"
-      style={{ maxWidth: cap }}
-    >
-      {children}
-    </div>
   );
 }
 
@@ -1527,7 +1496,7 @@ export default function MinesPvpMatchPage({
       return (
         <div
           key="my-turn"
-          className={`animate-state-in flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
+          className={`animate-state-in flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 lg:py-2 ${
             urgent
               ? "border-red-400/60 bg-red-900/30 text-red-200 animate-pulse"
               : warning
@@ -1562,7 +1531,7 @@ export default function MinesPvpMatchPage({
     return (
       <div
         key="their-turn"
-        className={`animate-state-in relative flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 ${
+        className={`animate-state-in relative flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 lg:py-2 ${
           urgent
             ? "border-red-400/50 bg-red-900/25 text-red-200"
             : warning
@@ -1665,7 +1634,7 @@ export default function MinesPvpMatchPage({
     const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
 
     return (
-      <CreatorResultOverlay
+      <PvpResultScreen
         open
         outcome={outcome}
         headline={headline}
@@ -1788,11 +1757,9 @@ export default function MinesPvpMatchPage({
     Boolean(oppSeatClerkId);
   const wagerLabel = isAi ? "Free play" : `${stake.toLocaleString()} tokens`;
 
-  // ── Creator Mode arrangement ──────────────────────────────────────
+  // ── Page arrangement ──────────────────────────────────────
   // The game content is extracted into nodes so the SAME pieces compose
-  // the normal page, the portrait (9:16) phone frame, and the
-  // landscape/square frame — mirroring Tower Arena's creator shell.
-  // No game logic or state is touched, only layout.
+  // the page. No game logic or state is touched, only layout.
 
   // Title
   const titleNode = (
@@ -1816,7 +1783,7 @@ export default function MinesPvpMatchPage({
 
   // Match info strip
   const infoNode = (
-    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60 lg:mt-2">
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60 lg:mt-1">
       <span className="inline-flex items-center gap-1">
         {isAi ? "Free vs AI" : "Stake:"}
         {!isAi && (
@@ -1882,7 +1849,7 @@ export default function MinesPvpMatchPage({
   // Player seats — stacks on narrow screens, two-up once there's room
   // (normal mobile gets single cards, desktop + creator frames get 2-up).
   const seatsNode = (
-    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:mt-3">
+    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:mt-0 lg:grid-cols-1">
       <PlayerSeat
         isMe
         name={myDisplayName}
@@ -1928,7 +1895,7 @@ export default function MinesPvpMatchPage({
     match.status !== MATCH_STATUS.CANCELLED &&
     match.status !== MATCH_STATUS.WAITING &&
     match.status !== MATCH_STATUS.READY ? (
-      <div className="mt-3 flex justify-center lg:mt-0">
+      <div className="flex justify-center">
         <button
           onClick={handleResign}
           disabled={resigning}
@@ -1945,7 +1912,7 @@ export default function MinesPvpMatchPage({
     isMyTurn &&
     match.status !== MATCH_STATUS.FINISHED &&
     match.status !== MATCH_STATUS.CANCELLED ? (
-      <div className="mt-3 flex flex-col items-center gap-1.5 lg:mt-0">
+      <div className="flex flex-col items-center gap-1.5">
         <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
           <button
             onClick={() => setFlagMode(false)}
@@ -1979,7 +1946,7 @@ export default function MinesPvpMatchPage({
 
   // Emote picker
   const emoteNode = (
-    <div className="mt-3 flex justify-center lg:mt-0">
+    <div className="flex justify-center">
       <EmotePicker
         compact
         hideBubbles
@@ -1998,23 +1965,17 @@ export default function MinesPvpMatchPage({
     </div>
   ) : null;
 
-  // ── The single desktop control row ───────────────────────────────────
+  // ── Resign / pick-flag / emote ────────────────────────────────────
   //
-  // Resign / pick-flag / emote used to be three stacked blocks, each with its
-  // own `mt-3`, costing ~138px of the column above the board (34 + 40 + 40 plus
-  // three gaps). The board is a SQUARE capped by its width, so every pixel of
-  // that stack came straight off the board's height — on a 1280×800 desktop it
-  // left 260px of board with 517px of chrome above it.
-  //
-  // From `lg` up they become ONE row: a single 40px line and a single gap, so
-  // the board gains ~86px of height. Below `lg` this stays a plain column whose
-  // children keep their own `mt-3`, i.e. the original stack, pixel for pixel —
-  // the row is desktop-only because that is the only place the board is capped.
-  // It renders nothing when no block is present (finished / cancelled matches),
-  // so it never leaves an empty 12px gap behind.
+  // Below `lg` these are the stacked blocks that used to sit ABOVE the board,
+  // each with its own `mt-3` (now one `gap-3` on the wrapper, pixel-for-pixel
+  // the same 12px rhythm). From `lg` up they move into the desktop side rail
+  // next to the board, where they stay stacked — a 17rem rail cannot hold the
+  // three of them side by side. It renders nothing when no block is present
+  // (finished / cancelled matches), so it never leaves an empty gap behind.
   const actionsNode =
     resignNode || pickToggleNode || emoteNode ? (
-      <div className="flex flex-col items-center lg:mt-3 lg:flex-row lg:items-center lg:justify-center lg:gap-4">
+      <div className="flex flex-col items-center gap-3 lg:mt-0">
         {resignNode}
         {pickToggleNode}
         {emoteNode}
@@ -2025,12 +1986,13 @@ export default function MinesPvpMatchPage({
   // on small screens so the cells stay big and thumb-friendly.
   //
   // `mines-board-frame` opts the board into the shared desktop sizing rule in
-  // globals.css: the board is square, so capping its WIDTH caps its height,
-  // which is what keeps all 25 cells above the fold instead of spilling past
-  // the turn indicator / seats / legend stack. ──────────────────────
+  // globals.css: the board is square, so capping its WIDTH caps its height.
+  // On desktop the seats / turn indicator / controls move into the side rail
+  // (see `normalView`), which is what lets the board be much larger while
+  // still ending above the fold. ───────────────────────────────────
   const boardNode = (
     <div
-      className="mines-board-frame mx-auto mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6 lg:mt-4"
+      className="mines-board-frame mx-auto mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6 lg:mt-2"
     >
       <div className="grid grid-cols-5 gap-2 sm:gap-3">
         {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
@@ -2056,7 +2018,7 @@ export default function MinesPvpMatchPage({
               // `group` lets the press response live on the inner span, so it
               // can be a short transform-only beat while the tile's own
               // colour/border state transition keeps its existing 300ms.
-              className={`group w-full aspect-square rounded-xl flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
+              className={`group w-full aspect-square rounded-none flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
                 cellIndex,
               )} ${mineHitCell === cellIndex ? "animate-mine-hit" : ""} ${
                 !isMyTurnClickable ? "cursor-not-allowed" : ""
@@ -2102,94 +2064,33 @@ export default function MinesPvpMatchPage({
     </div>
   ) : null;
 
-  // Normal (non-creator) page — identical stack as before.
+  // Normal (non-creator) page.
+  //
+  // Below `lg` this is the familiar single column (seats / turn / controls /
+  // error above the board, legend below). From `lg` up the page becomes two
+  // columns: the board (with its legend) on the left and a side rail holding
+  // the seats, turn indicator and controls on the right. Moving that chrome
+  // out from ABOVE the board is what lets the square board grow to most of the
+  // viewport height while its bottom still stays above the fold. The board
+  // mounts once — the rail is reordered with grid placement, not a second copy.
   const normalView = (
     <>
       {titleNode}
       {infoNode}
-      {seatsNode}
-      <div className="mt-4 lg:mt-3">{renderTurnIndicator()}</div>
-      {actionsNode}
-      {errorNode}
-      {boardNode}
-      {legendNode}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6">
+        <div className="lg:order-2 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-3">
+          {seatsNode}
+          <div className="mt-4 lg:mt-0">{renderTurnIndicator()}</div>
+          {actionsNode}
+          {errorNode}
+        </div>
+        <div className="lg:order-1 lg:col-start-1 lg:row-start-1">
+          {boardNode}
+          {legendNode}
+        </div>
+      </div>
       {cancelNode}
     </>
-  );
-
-  // Portrait (9:16) — phone-style: compact status header, the board
-  // filling the middle, and turn/controls/seats pinned below.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <MineIcon className="h-5 w-5 shrink-0 text-cyan-300" />
-            <h1 className="truncate text-base font-extrabold tracking-tight text-cyan-100">
-              Mines Duel
-            </h1>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold">
-            <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 px-2 py-0.5 text-fuchsia-200">
-              <MineIcon className="h-3 w-3" /> {match.minesCount}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/15 px-2 py-0.5 text-cyan-200">
-              <IconDiamondFilled size={12} /> {match.safeTilesRemaining} safe
-            </span>
-            <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-white/70">
-              Seat {mySeat}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
-          <span className="truncate text-cyan-200">
-            {isAi ? "Free vs AI — no tokens at stake" : `${stake.toLocaleString()} tokens at stake`}
-          </span>
-          <span className="shrink-0 text-white/50">Match #{matchId}</span>
-        </div>
-      </ShellHeader>
-
-      <ShellMain className="flex-col overflow-hidden">
-        <div className="flex h-full w-full flex-col items-center justify-center px-3 py-2">
-          <CreatorBoardStage>
-            {boardNode}
-            {legendNode}
-          </CreatorBoardStage>
-        </div>
-      </ShellMain>
-
-      <ShellAside className="space-y-2">
-        {renderTurnIndicator()}
-        {seatsNode}
-        {pickToggleNode}
-        {emoteNode}
-        {resignNode}
-        {errorNode}
-      </ShellAside>
-    </CreatorModeShell>
-  );
-
-  // Landscape (16:9) / square (1:1) — board fills the height with the
-  // turn/controls/seats in a right rail.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#001933] to-[#000d1a]">
-      <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col items-center justify-center p-4">
-          <CreatorBoardStage>
-            {boardNode}
-            {legendNode}
-          </CreatorBoardStage>
-        </div>
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        {renderTurnIndicator()}
-        {seatsNode}
-        {pickToggleNode}
-        {emoteNode}
-        {resignNode}
-        {errorNode}
-      </ShellAside>
-    </CreatorModeShell>
   );
 
   return (
@@ -2243,13 +2144,12 @@ export default function MinesPvpMatchPage({
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      {/* Only the actual game content is recorded — the matchmaking
-          takeover / NavBar above and the Footer + modals below sit
-          outside the shared CreatorModeHost recording viewport.
-          Recording auto-starts when the match leaves waiting and stops
-          when it finishes/cancels. */}
-      <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-6">
-        <CreatorModeHost
+      {/* The matchmaking takeover / NavBar above and the Footer + modals
+          below stay outside the session host. Presence and the
+          recently-played strip track the match from the moment it leaves
+          the waiting room. */}
+      <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-4 lg:max-w-5xl">
+        <GameSessionHost
           autoStart={
             Boolean(match) &&
             match.status !== MATCH_STATUS.WAITING &&
@@ -2261,26 +2161,18 @@ export default function MinesPvpMatchPage({
             match?.status === MATCH_STATUS.CANCELLED
           }
           gameLabel="mines-duel"
-          backToLobbyHref="/casino/mines-pvp"
         >
-        <CreatorView
-          normal={normalView}
-          portrait={portraitContent}
-          landscape={landscapeContent}
-        />
+        {normalView}
 
         {/* Post-match result screen — rendered as a fixed overlay
             (mirrors the chess game's `showResultPopup` pattern), so
             the win/lose panel sits on top of the board instead of
-            below it. Mounted INSIDE CreatorModeHost, as a sibling of
-            <CreatorView>: it used to sit after the host, i.e. outside
-            the recording frame, so a creator clip ended on the revealed
-            board with no WIN/LOSS panel. The fixed inset-0 backdrop
-            covers the frame without needing its own portal, and
-            `renderResult()` short-circuits to `null` for any status
-            other than MATCH_STATUS.FINISHED. */}
+            below it. The fixed inset-0 backdrop covers the frame
+            without needing its own portal, and `renderResult()`
+            short-circuits to `null` for any status other than
+            MATCH_STATUS.FINISHED. */}
         {renderResult()}
-        </CreatorModeHost>
+        </GameSessionHost>
 
         <Footer />
       </div>

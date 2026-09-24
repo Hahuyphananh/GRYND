@@ -61,11 +61,8 @@ export default function PlayerSidebar({
     return { label: "Waiting", cls: "text-[#9dd8ff]/70", icon: <IconArmchair size={13} className="inline" /> };
   };
 
-  // crash-arena-player-sidebar: in the creator phone frame the sidebar is
-  // capped short (see globals.css) so the players list never pushes the
-  // curve canvas / Fold control below the fold of the recording.
   return (
-    <div className="crash-arena-player-sidebar flex w-full max-h-[70vh] lg:w-60 lg:max-h-[560px] shrink-0 flex-col gap-2 overflow-y-auto rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 p-3 backdrop-blur-sm">
+    <div className="flex w-full max-h-[70vh] lg:w-60 lg:max-h-[560px] shrink-0 flex-col gap-2 overflow-y-auto rounded-2xl border border-[#ff4fd8]/25 bg-[#040d24]/60 p-3 backdrop-blur-sm">
       <h3 className="flex items-center justify-center gap-1.5 text-xs uppercase tracking-wider text-[#ff4fd8]/70">
         <IconUsers size={14} className="mr-1" /> Players
         <span className="rounded-full border border-[#ff4fd8]/30 bg-[#ff4fd8]/10 px-1.5 py-0.5 text-[10px] font-black text-[#ff4fd8]">

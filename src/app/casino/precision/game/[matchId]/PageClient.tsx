@@ -41,18 +41,11 @@ import { usePostHog } from "posthog-js/react";
 
 import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually begins
-// (leaves the waiting room), auto-stops when it finishes or the user
-// quits. The waiting room and Footer/modals stay OUTSIDE so nothing is
-// recorded until real gameplay starts.
-import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-} from "../../../../../components/creator-mode/CreatorModeLayout";
+// Shared session host: active-player presence + recently-played, driven
+// by the real match lifecycle. The waiting room and Footer/modals stay
+// OUTSIDE it.
+import GameSessionHost from "../../../../../components/GameSessionHost";
+
 import ReportModal from "../../../../../components/ReportModal";
 import { useTranslation } from "../../../../../hooks/useTranslation";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
@@ -60,7 +53,6 @@ import PrecisionResultPopup from "../../../../../components/precision/PrecisionR
 import PrecisionRoundResultPanel from "../../../../../components/precision/PrecisionRoundResultPanel";
 import PrecisionMatchErrorBoundary from "../../../../../components/precision/PrecisionMatchErrorBoundary";
 import {
-  PrecisionCreatorHeader,
   PrecisionMatchHeader,
   PrecisionMatchStatus,
 } from "../../../../../components/precision/PrecisionMatchHeader";
@@ -566,26 +558,12 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [state?.phase, matchId]);
 
-  // ── Creator-mode layout nodes ─────────────────────────────────────
-  // The game content is split into reusable nodes so the normal page
-  // (non-creator) renders byte-for-byte the same, while Creator Mode
-  // gets a bespoke arrangement: portrait = phone-style (compact header
-  // on top, the game panels filling the middle); landscape/square =
-  // the panels fill the frame height.
+  // ── Layout nodes ──────────────────────────────────────────────
+  // The game content is split into reusable nodes so the page composes
+  // cleanly. No game logic or state is touched, only layout.
 
   const headerNode = (
     <PrecisionMatchHeader
-      matchId={matchId}
-      state={state}
-      canReport={canReport}
-      onReport={() => setShowReportModal(true)}
-      onLeave={handleLeave}
-      onResign={handleResign}
-    />
-  );
-
-  const creatorHeaderNode = (
-    <PrecisionCreatorHeader
       matchId={matchId}
       state={state}
       canReport={canReport}
@@ -634,38 +612,6 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     </div>
   );
 
-  // Portrait (9:16) — phone-style: compact header, the game panels
-  // filling the middle.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-b from-[#06120f] to-[#050816]">
-      <ShellHeader className="flex flex-col gap-1.5">{creatorHeaderNode}</ShellHeader>
-      <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col px-3 py-2">
-          {statusNode}
-          <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-cyan-500/40 bg-black/30 p-4">
-            {bodyNode}
-          </div>
-        </div>
-      </ShellMain>
-    </CreatorModeShell>
-  );
-
-  // Landscape (16:9) / square (1:1) — the game panels fill the frame
-  // height.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-b from-[#06120f] to-[#050816]">
-      <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col gap-2 p-4">
-          {creatorHeaderNode}
-          {statusNode}
-          <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-cyan-500/40 bg-black/30 p-4">
-            {bodyNode}
-          </div>
-        </div>
-      </ShellMain>
-    </CreatorModeShell>
-  );
-
   return (
     // Render-error containment lives in the DEFAULT EXPORT wrapper above — a
     // boundary has to be the page's PARENT to catch throws from this render
@@ -674,24 +620,17 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#06120f] to-[#050816] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      {/* Only the actual game content is recorded — the waiting room +
-          NavBar above and the Footer/modals below sit outside the shared
-          CreatorModeHost recording viewport. Recording auto-starts when
-          the match leaves the waiting room and stops when it finishes. */}
-      <CreatorModeHost
+      {/* The waiting room + NavBar above and the Footer/modals below stay
+          outside the session host. Presence + recently-played track the
+          match from the moment it leaves the waiting room. */}
+      <GameSessionHost
         autoStart={Boolean(state) && state.phase !== "waiting" && state.phase !== "finished"}
         autoStop={state?.phase === "finished"}
         gameLabel="precision"
-        backToLobbyHref="/casino/precision"
       >
-        <CreatorView normal={normalView} portrait={portraitContent} landscape={landscapeContent} />
+        {normalView}
 
-        {/* End-of-round reveal + end-of-match result — mounted INSIDE
-            CreatorModeHost (as siblings of <CreatorView>) so both are part of
-            the recording. They used to sit after the host, i.e. outside the
-            recording frame, so a creator clip ended mid-duel with no round
-            result and no WIN/LOSS panel. The popup picks its own sizing from
-            the creator-mode flag (see PrecisionResultPopup). */}
+        {/* End-of-round reveal + end-of-match result overlays. */}
         {reveal && (
           <PrecisionRoundResultPanel
             targetMs={reveal.targetMs}
@@ -726,7 +665,7 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
               : null
           }
         />
-      </CreatorModeHost>
+      </GameSessionHost>
 
       {/* Report modal */}
       <ReportModal

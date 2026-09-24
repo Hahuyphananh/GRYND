@@ -26,14 +26,8 @@ import {
   playCardPlace,
   playCardDraw,
 } from "../../../../../lib/gameAudio";
-import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-  CreatorView,
-} from "../../../../../components/creator-mode/CreatorModeLayout";
+import GameSessionHost from "../../../../../components/GameSessionHost";
+
 import {
   IconRobot,
   IconUser,
@@ -1032,29 +1026,6 @@ export default function UnoGamePage() {
       </div>
     </>
   );
-  const creatorHeaderNode = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h1 className="text-lg font-bold">
-        {gameMode === "online" ? t("neonFlush.onlineTitle") : t("neonFlush.vsAiTitle")}
-      </h1>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {tokens && (
-          <span className="text-yellow-300 text-xs font-bold">
-            {t("neonFlush.tokens")}
-            {": "}
-            {tokens.balance}
-          </span>
-        )}
-        <button
-          onClick={() => setShowRules(true)}
-          className="inline-flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-all hover:bg-amber-500/20"
-        >
-          <IconPalette size={13} />
-          {" How to Play"}
-        </button>
-      </div>
-    </div>
-  );
   const opponentHandNode = (
     <div className="w-full">
       <div className="mb-1.5 flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#9dd8ff]/80">
@@ -1288,60 +1259,6 @@ export default function UnoGamePage() {
       )}
     </>
   );
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-b from-[#0a0118] to-[#061b3d]">
-      <ShellHeader className="flex flex-col gap-1.5">{creatorHeaderNode}</ShellHeader>
-      <ShellMain className="overflow-hidden">
-        {!game ? null : (
-          <div className="flex h-full w-full flex-col px-3 py-2">
-            <div className="flex-1 min-h-0 overflow-y-auto rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
-              <div className="relative flex min-h-full flex-col items-center justify-between">
-                {tableNode}
-              </div>
-            </div>
-          </div>
-        )}
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        {!game ? null : (
-          <>
-            {controlsNode}
-            <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
-              {historyInnerNode}
-            </div>
-          </>
-        )}
-      </ShellAside>
-      {modalsNode}
-    </CreatorModeShell>
-  );
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-b from-[#0a0118] to-[#061b3d]">
-      <ShellMain className="overflow-hidden">
-        {!game ? null : (
-          <div className="flex h-full w-full flex-col p-4">
-            {creatorHeaderNode}
-            <div className="flex-1 min-h-0 overflow-y-auto rounded-3xl border-2 border-[#00e5ff]/30 bg-gradient-to-br from-[#001a33] via-[#000d1f] to-[#000814] p-3 shadow-[0_0_35px_rgba(0,229,255,0.15)]">
-              <div className="relative flex min-h-full flex-col items-center justify-between">
-                {tableNode}
-              </div>
-            </div>
-          </div>
-        )}
-      </ShellMain>
-      <ShellAside className="space-y-2">
-        {!game ? null : (
-          <>
-            {controlsNode}
-            <div className="flex w-full flex-col rounded-3xl border border-[#00e5ff]/30 bg-[#040d24]/70 p-3 backdrop-blur">
-              {historyInnerNode}
-            </div>
-          </>
-        )}
-      </ShellAside>
-      {modalsNode}
-    </CreatorModeShell>
-  );
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />
@@ -1355,19 +1272,13 @@ export default function UnoGamePage() {
           />
         )}
       </AnimatePresence>
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={Boolean(game)}
         autoStop={Boolean(endPopup)}
-        autoStopOnIdle
         gameLabel="neon-flush"
-        backToLobbyHref="/casino/uno"
       >
-        <CreatorView
-          normal={normalView}
-          portrait={!game ? normalView : portraitContent}
-          landscape={!game ? normalView : landscapeContent}
-        />
-      </CreatorModeHost>
+        {normalView}
+      </GameSessionHost>
       <Footer />
     </div>
   );

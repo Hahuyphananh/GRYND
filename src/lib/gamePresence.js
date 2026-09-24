@@ -9,7 +9,7 @@
 //      and /casino/classement already links with). Nothing here invents a new
 //      id: GAME_CATALOG is reused directly.
 //   2. The map from the label each game page already passes to
-//      <CreatorModeHost gameLabel="…"> / useRecordPlayedGame("…") onto that
+//      <GameSessionHost gameLabel="…"> / useRecordPlayedGame("…") onto that
 //      canonical id. Game pages never need to change for this feature, and a
 //      label that is not in this map is rejected by the API, so no request can
 //      ever create a presence row for a game that does not exist.

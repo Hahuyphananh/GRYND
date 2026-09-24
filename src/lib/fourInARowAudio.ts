@@ -10,11 +10,10 @@
 // sound can play.
 //
 // Every sound routes through the page-wide AudioContext in
-// creator-mode/audioTap.ts, which means:
+// audioContext.ts, which means:
 //   • the global mute gate (lib/audioSettings) silences all of it at once —
 //     getSharedAudioContext() returns null while muted, so these functions
 //     become no-ops and never even create a context;
-//   • Creator Mode recordings capture the effects with no per-game code;
 //   • autoplay policy is respected: the context is created lazily and only
 //     ever triggered from a real interaction (a click / a landed move), and
 //     the first click or key press resumes it.
@@ -35,11 +34,11 @@
 // module intentionally keeps no global throttle so a genuine second event is
 // never swallowed.
 
-import { getSharedAudioContext, getSharedOutputNode } from "./creator-mode/audioTap";
+import { getSharedAudioContext, getSharedOutputNode } from "./audioContext";
 
-// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
-// game's sounds route through it so Creator Mode recordings capture the
-// audio, and mute gating lives in getSharedAudioContext.
+// Single page-wide AudioContext (see audioContext.ts) — every
+// game's sounds route through it, and mute gating lives in
+// getSharedAudioContext.
 function getCtx(): AudioContext | null {
   return getSharedAudioContext();
 }

@@ -60,18 +60,11 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually begins
-// (leaves the waiting room), auto-stops when it finishes or the user
-// quits. The waiting/matchmaking takeover and Footer stay OUTSIDE so
-// nothing is recorded until real gameplay starts.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellMain,
-  CreatorPhoneFrame,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import FrameAvatar from "../../../../components/FrameAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -873,13 +866,9 @@ export default function MemoryGridMatchPage({
   // elapses — the client just renders; the deadline countdown comes
   // from the same authoritative `phaseDeadline` as the other phases.
   //
-  // IMPORTANT (creator-mode continuous recording): the round-result
-  // view is rendered INSIDE the same <CreatorModeHost> as gameplay —
-  // NOT as a separate early-return full page. A separate return would
-  // unmount the host (and the viewport recorder) every round, so each
-  // round would be captured as its own clip (the "stops recording every
-  // round" bug). Folding it in keeps ONE continuous capture across all
-  // rounds until the creator clicks Stop & save / Download.
+  // IMPORTANT: the round-result view is rendered INSIDE the same
+  // <GameSessionHost> as gameplay — NOT as a separate early-return full
+  // page, which would unmount the host every round.
   const mgRoundResultBody = (
     <>
       {/* Round header */}
@@ -977,58 +966,6 @@ export default function MemoryGridMatchPage({
   // Round-result view — same phone-frame treatment as the gameplay
   // shell (compact header + the three grids scrolling at real phone
   // width) so the recorded clip stays consistent.
-  const mgRoundResultShell = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame>
-          <div className="shrink-0 px-3 pb-1 pt-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
-                <p className="text-xs text-white/70">Round {roundResult?.roundNumber}/{match?.roundsPerMatch ?? 5} · Result</p>
-              </div>
-              <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
-                {msLeft !== null && msLeft > 0 ? `Next in ${Math.ceil(msLeft / 1000)}s` : "…"}
-              </span>
-            </div>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-center text-[11px]">
-              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
-                {myName} · {myTotal ?? 0} pts
-              </span>
-              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
-                {oppName} · {oppTotal ?? 0} pts
-              </span>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-          <RoundResultGrid
-            title="Correct Pattern"
-            pattern={roundResult?.boardSnapshot ?? null}
-            picks={roundResult?.boardSnapshot?.active ?? []}
-            highlight="pattern"
-            badge="answer key"
-          />
-          <RoundResultGrid
-            title="Your Reconstruction"
-            pattern={roundResult?.boardSnapshot ?? null}
-            picks={viewerFlip?.picks ?? []}
-            highlight="picks"
-            flip={viewerFlip}
-            badge="you"
-          />
-          <RoundResultGrid
-            title={`${oppName}: Reconstruction`}
-            pattern={roundResult?.boardSnapshot ?? null}
-            picks={opponentFlip?.picks ?? []}
-            highlight="picks"
-            flip={opponentFlip}
-            badge="opponent"
-          />
-          </div>
-        </CreatorPhoneFrame>
-      </ShellMain>
-    </CreatorModeShell>
-  );
 
 
   if (loading && !match) {
@@ -1067,72 +1004,6 @@ export default function MemoryGridMatchPage({
         : `${Math.ceil(msLeft / 1000)}s`
       : null;
 
-  // ── Creator Mode board (rendered inside the phone-frame shell) ────
-  // Creator mode uses the full phone width inside the frame so the
-  // recorded board looks big/large, but we still cap width slightly
-  // so the controls underneath stay visible (not pushed off-screen).
-  // Buttons themselves are not resized.
-  // Both board mounts (this one, used by the creator phone frame, and the
-  // normal-view copy further down) carry `memory-board-frame`, the shared
-  // desktop sizing hook defined in globals.css. The grid is square, so
-  // capping its width caps its height — that is what keeps the whole grid,
-  // plus the controls under it, on one screen.
-  const mgBoardNode = (
-    <div
-      className="memory-board-frame mx-auto grid w-full max-w-lg gap-3"
-      style={{
-        gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
-      }}
-    >
-      {Array.from({ length: totalTiles }, (_, tileIndex) => {
-        const isActive = activeSet.has(tileIndex);
-        const isSelected = selected.includes(tileIndex);
-        const faceUp = patternVisible && isActive;
-        const revealActive = isFinished && activeSet.has(tileIndex);
-        const clickable = canPick && !isFinished;
-        const showFace = faceUp || isSelected || revealActive;
-        return (
-          <motion.button
-            key={tileIndex}
-            type="button"
-            onClick={() => handleTileClick(tileIndex)}
-            disabled={!clickable}
-            whileTap={clickable ? { scale: 0.92 } : undefined}
-            aria-label={`Tile ${tileIndex + 1}`}
-            className={`relative aspect-square select-none overflow-hidden rounded-xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
-              revealActive
-                ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
-                : faceUp
-                  ? "border-amber-400/80 bg-gradient-to-br from-amber-400/80 to-yellow-500/70 shadow-[0_0_18px_rgba(251,191,36,0.6)]"
-                  : isSelected
-                    ? "border-cyan-300 bg-cyan-500/25"
-                    : clickable
-                      ? "cursor-pointer border-cyan-600/40 bg-[#08142f] hover:border-cyan-400/70 hover:bg-[#0b224f]"
-                      : "border-white/10 bg-[#08142f]"
-            }`}
-          >
-            <motion.div
-              className="absolute inset-0 [transform-style:preserve-3d]"
-              initial={false}
-              animate={{ rotateY: showFace ? 180 : 0 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-            >
-              <span className="absolute inset-0 [backface-visibility:hidden]" />
-              <span className="absolute inset-0 flex items-center justify-center p-1 sm:p-2 [backface-visibility:hidden] [transform:rotateY(180deg)]">
-                <Image
-                  src={LogoSmiley}
-                  alt=""
-                  width={64}
-                  height={64}
-                  className="h-full w-full object-contain drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
-                />
-              </span>
-            </motion.div>
-          </motion.button>
-        );
-      })}
-    </div>
-  );
   const mgControlsNode = (
     <div className="mx-auto flex w-full max-w-lg flex-wrap items-center justify-between gap-3">
       <button
@@ -1164,53 +1035,6 @@ export default function MemoryGridMatchPage({
         <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
       </div>
     </div>
-  );
-  // ── Creator Mode phone-frame shell (same treatment as Blackjack) ──
-  // The game renders inside <CreatorPhoneFrame>: a real 390px phone
-  // layout `zoom`ed up to fill the recording frame, so the recorded
-  // clip looks exactly like the mobile app — a big full-width board
-  // with the controls directly underneath, instead of a shrunken
-  // desktop layout with the buttons detached in a bottom strip.
-  const mgShell = (
-    <CreatorModeShell className="bg-gradient-to-br from-[#0a0118] to-[#061b3d]">
-      <ShellMain className="overflow-hidden">
-        <CreatorPhoneFrame>
-          {/* Compact header — round, grid size, timer, both scores. */}
-          <div className="shrink-0 px-3 pb-1 pt-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Memory Grid</p>
-                <p className="text-xs text-white/70">
-                  Round {match?.roundNumber ?? 1}/{match?.roundsPerMatch ?? 5} · {gridSize}×{gridSize}
-                </p>
-              </div>
-              <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs font-bold text-amber-200">
-                ⏱ {countdownLabel ?? "—"}
-              </span>
-            </div>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-center text-[11px]">
-              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-yellow-300">
-                {myName} · {myTotal ?? 0} pts
-                <EmoteBubble emote={myEmote} side="mine" />
-              </span>
-              <span className="relative block truncate rounded-md bg-black/30 px-2 py-1 font-bold text-cyan-300">
-                {oppName} · {oppTotal ?? 0} pts
-                <EmoteBubble emote={incomingEmote} />
-              </span>
-            </div>
-          </div>
-          {/* Board fills the phone-width middle — same sizing as mobile. */}
-          <div className="flex min-h-0 flex-1 items-center justify-center px-3 py-2">
-            {mgBoardNode}
-          </div>
-          {/* Controls directly under the board — mobile touch targets,
-              same mgControlsNode as the normal (non-creator) view. */}
-          <div className="shrink-0 w-full px-3 pb-3">
-            {canPick && mgControlsNode}
-          </div>
-        </CreatorPhoneFrame>
-      </ShellMain>
-    </CreatorModeShell>
   );
 
   // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
@@ -1400,10 +1224,10 @@ export default function MemoryGridMatchPage({
       <NavigationBar currentPath="/casino" />
       {/* Only the actual game content is recorded — the matchmaking
           takeover / NavBar above and the Footer + modals below sit
-          outside the shared CreatorModeHost recording viewport.
+          outside the shared GameSessionHost recording viewport.
           Recording auto-starts when the match leaves waiting and stops
           when it finishes/cancels. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={
           Boolean(match) &&
           match.status !== MATCH_STATUS.WAITING &&
@@ -1416,14 +1240,11 @@ export default function MemoryGridMatchPage({
         // the recording automatically.
         autoStop={match?.status === MATCH_STATUS.CANCELLED}
         gameLabel="memory-grid"
-        backToLobbyHref="/casino/memory-grid"
       >
-      <CreatorView
-        normal={
-          isRoundResult && roundResult ? (
+      {isRoundResult && roundResult ? (
             mgRoundResultNode
           ) : (
-            <><div className="mx-auto mt-4 max-w-3xl sm:mt-8">
+            <><div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:max-w-5xl">
         {/* Header — game title (same amber gradient treatment as the
             other casino games) + a compact stake line + the round
             indicator (ROUND X/5). */}
@@ -1462,6 +1283,14 @@ export default function MemoryGridMatchPage({
           </div>
         </div>
 
+        {/* Desktop side rail — the round tracker + scoreboard move BESIDE the
+            board from `lg` up (same treatment as Mines Duel). Freeing the
+            height they used to occupy above the grid is what lets the square
+            board grow to most of the viewport. Below `lg` the rail is just the
+            same stacked block it always was, so the mobile layout is
+            unchanged. */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6">
+          <div className="lg:order-2 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-3">
         {/* Round tracker — blue = rounds you won, red = rounds the
             opponent won (shared best-of marker, brawl-stars style). */}
         <div className="mb-3 flex justify-center rounded-2xl border border-cyan-700/30 bg-black/30 px-4 py-3">
@@ -1539,6 +1368,10 @@ export default function MemoryGridMatchPage({
             </p>
           </div>
         </div>
+
+          </div>
+          {/* Board column — status, feedback, the grid and its controls. */}
+          <div className="lg:order-1 lg:col-start-1 lg:row-start-1">
 
         {/* Waiting-state card — open lobby: escrow notice + cancel /
             copy-invite actions (mirrors the other PvP games' waiting
@@ -1680,7 +1513,10 @@ export default function MemoryGridMatchPage({
         {/* The grid — full-width inside the shell so the board looks big, but
             capped slightly so the controls underneath stay visible. Buttons are
             not resized here. On desktop `memory-board-frame` tightens that cap
-            to the viewport height, so the whole grid fits without scrolling. */}
+            to the viewport height, so the whole grid fits without scrolling.
+            `max-w-lg` keeps the mobile/tablet cap; on desktop the
+            `memory-board-frame` rule wins over it, so the side rail's freed
+            height — not a width cap — governs the board there. */}
         <div
           className="memory-board-frame mx-auto grid w-full max-w-lg gap-3"
           style={{
@@ -1713,7 +1549,7 @@ export default function MemoryGridMatchPage({
                 disabled={!clickable}
                 whileTap={clickable ? { scale: 0.92 } : undefined}
                 aria-label={`Tile ${tileIndex + 1}`}
-                className={`relative aspect-square select-none overflow-hidden rounded-xl border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
+                className={`relative aspect-square select-none overflow-hidden rounded-none border transition-colors [transform-style:preserve-3d] [perspective:600px] ${
                   revealActive
                     ? "border-emerald-400/60 bg-gradient-to-br from-emerald-500/50 to-teal-600/40 shadow-[0_0_16px_rgba(52,211,153,0.45)]"
                     : faceUp
@@ -1760,22 +1596,20 @@ export default function MemoryGridMatchPage({
 
         {/* Reconstruct controls — free modification + explicit Submit */}
         {canPick && mgControlsNode}
+          </div>
+        </div>
 
       </div>
 
 
-      </>)
-        }
-        portrait={isRoundResult && roundResult ? mgRoundResultShell : mgShell}
-        landscape={isRoundResult && roundResult ? mgRoundResultShell : mgShell}
-      />
+      </>)}
 
       {/* Post-match result screen — shared PvpResultScreen overlay
-          (UX plan P3-3). Mounted INSIDE CreatorModeHost so it appears
+          (UX plan P3-3). Mounted INSIDE GameSessionHost so it appears
           in the recording; compact styling keeps it sized for the
           phone frame. */}
       {renderResult()}
-      </CreatorModeHost>
+      </GameSessionHost>
 
       <Footer />
       </div>

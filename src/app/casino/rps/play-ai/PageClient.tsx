@@ -23,12 +23,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import { motion, AnimatePresence } from "framer-motion";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the player makes their first
-// throw, auto-stops when the match is over. No gameplay logic touched.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
-import { useCreatorMode } from "../../../../lib/creator-mode/CreatorModeProvider";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
+
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
@@ -51,76 +51,19 @@ const CHOICES = ["rock", "paper", "scissors"] as const;
 const ROUNDS_TO_WIN = 4;
 const TOTAL_ROUNDS = 7;
 
-// ── Creator Mode: round-outcome hold ──────────────────────────────────
-// The in-page recorder composites DOM frames at a low rate and, from the
-// first throw, only starts capturing after a 3→2→1 countdown. A round
-// outcome that can be advanced the instant it lands can therefore pass
-// in one or two recorded frames — and on round 1 the whole reveal lands
-// while the countdown is still running, so it can be gone before the
-// camera even starts. While Creator Mode is on these two constants hold
-// the Next Round / See Result control until every outcome (win/lose/tie)
-// has been on screen long enough for the recording to actually capture
-// it. Normal play keeps the instant control.
-const CREATOR_REVEAL_HOLD_MS = 1000;
-// Safety: if a capture never comes up (unsupported browser / silent
-// failure), never soft-lock the round — let the player advance.
-const CREATOR_RECORDER_FALLBACK_MS = 6000;
-
-/**
- * The round-advance control, creator-mode aware. Rendered only while a
- * round result is showing (inside <CreatorModeHost />, so the Creator
- * Mode context below is the real one). Each mount is a fresh reveal, so
- * the hold re-arms every round:
- *
- *   • Normal play / creator off → the button is enabled immediately.
- *   • Creator on → the button stays disabled for a short reveal beat,
- *     and — while the recorder is still in its pre-capture state
- *     ("idle": armed/countdown in progress) — until it actually starts
- *     recording. This is what keeps round 1's reveal (which lands mid-
- *     countdown) from being skipped in the video.
- */
-function CreatorRoundAdvance({
+// ── Round-advance control ─────────────────────────────────
+function RoundAdvance({
   label,
   onClick,
 }: {
   label: string;
   onClick: () => void;
 }) {
-  const { isCreatorMode, state } = useCreatorMode();
-  const [revealHeld, setRevealHeld] = useState(false);
-  const [recorderFallback, setRecorderFallback] = useState(false);
-
-  // Beat hold: the control (re)mounts per round reveal, so this timer
-  // re-arms every round. Nothing to do outside Creator Mode.
-  useEffect(() => {
-    if (!isCreatorMode) return;
-    setRevealHeld(false);
-    const t = setTimeout(() => setRevealHeld(true), CREATOR_REVEAL_HOLD_MS);
-    return () => clearTimeout(t);
-  }, [isCreatorMode]);
-
-  // Recorder fallback: release the hold if capture never comes up.
-  useEffect(() => {
-    if (!isCreatorMode) return;
-    const t = setTimeout(
-      () => setRecorderFallback(true),
-      CREATOR_RECORDER_FALLBACK_MS,
-    );
-    return () => clearTimeout(t);
-  }, [isCreatorMode]);
-
-  const waitingForRecorder =
-    isCreatorMode && state === "idle" && !recorderFallback;
-  const disabled = isCreatorMode && (!revealHeld || waitingForRecorder);
-
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      className={`border-b-4 border-amber-700 bg-amber-500 text-black px-6 py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(251,191,36,0.4)] hover:brightness-110 transition ${
-        disabled ? "cursor-not-allowed opacity-50 saturate-50" : ""
-      }`}
+      className="border-b-4 border-amber-700 bg-amber-500 text-black px-6 py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(251,191,36,0.4)] hover:brightness-110 transition"
     >
       {label}
     </button>
@@ -355,18 +298,12 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">
       <NavigationBar currentPath="/casino" />
 
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={phase !== "picking"}
         autoStop={matchOver}
         gameLabel="rock-paper-scissors-ai"
-        backToLobbyHref="/casino/rps"
       >
-      <CreatorResponsiveLayout>
-      {/* data-creator-stack-swap: in the portrait (9:16) creator frame this
-          flips to the phone-style stacked column (the duel first, rounds
-          history below) via the shared portrait-stacking CSS. Desktop and
-          landscape/square creator rendering are unchanged. */}
-      <div data-creator-stack data-creator-stack-swap className="flex flex-col md:flex-row">
+      <div className="flex flex-col md:flex-row">
       {/* ── Left sidebar: rounds history ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
         <div className="rounded-2xl border border-amber-700/60 bg-black/40 p-4 backdrop-blur-xl shadow-[0_0_25px_rgba(251,191,36,0.12)]">
@@ -619,7 +556,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
               </div>
             ) : (
               !aiThinking && (
-                <CreatorRoundAdvance
+                <RoundAdvance
                   label={
                     myWins >= ROUNDS_TO_WIN || aiWins >= ROUNDS_TO_WIN
                       ? "See Result"
@@ -643,8 +580,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
         )}
       </motion.main>
       </div>
-      </CreatorResponsiveLayout>
-      </CreatorModeHost>
+      </GameSessionHost>
       <Footer />
     </div>
   );

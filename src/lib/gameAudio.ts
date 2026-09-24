@@ -2,11 +2,11 @@
 
 // ── Singleton AudioContext (lazy, shared across page) ──────────────────
 
-import { getSharedAudioContext, getSharedOutputNode } from "./creator-mode/audioTap";
+import { getSharedAudioContext, getSharedOutputNode } from "./audioContext";
 
-// Single page-wide AudioContext (see creator-mode/audioTap.ts) — every
-// game's sounds route through it so Creator Mode recordings capture the
-// audio. Mute gating lives in getSharedAudioContext.
+// Single page-wide AudioContext (see audioContext.ts) — every
+// game's sounds route through it. Mute gating lives in
+// getSharedAudioContext.
 function getCtx(): AudioContext | null {
   return getSharedAudioContext();
 }
@@ -211,8 +211,8 @@ export function playBank() {
 // for your own.
 //
 // Mute is handled once, centrally: getSharedAudioContext() returns null
-// while the global audio gate is on, so these are silenced (and dropped
-// from Creator Mode recordings) exactly like every other game sound.
+// while the global audio gate is on, so these are silenced exactly like
+// every other game sound.
 
 /** Opponent survived a tile / called a row correctly (soft rising pair) */
 export function playOpponentPick() {

@@ -9,7 +9,7 @@
 //      spectator on a live match stay uncounted?
 //
 // It reads the same sources the app does (the lobby's game array, the game
-// catalog, every <CreatorModeHost> mount, every direct useActiveGamePresence /
+// catalog, every <GameSessionHost> mount, every direct useActiveGamePresence /
 // useRecordPlayedGame call), so a new game added to the lobby — or a game that
 // forgets `autoStop` — fails here instead of silently mis-reporting players.
 //
@@ -36,7 +36,7 @@ const source = (relPath) =>
 
 /**
  * Source with comments removed, so a JSDoc usage example
- * (`<CreatorModeHost gameLabel="...">`) is never mistaken for a real wiring.
+ * (`<GameSessionHost gameLabel="...">`) is never mistaken for a real wiring.
  * The `//` pass may eat a `//` inside a string (a URL) — harmless here: no prop
  * this script reads ever holds one.
  */
@@ -131,11 +131,11 @@ const directCalls = [];
 const recordLabels = new Map(); // file → [labels]
 
 for (const file of files) {
-  // Comments are stripped: a doc block that names <CreatorModeHost> or
+  // Comments are stripped: a doc block that names <GameSessionHost> or
   // useActiveGamePresence(...) is documentation, not a wiring.
   const text = code(file);
 
-  for (const match of text.matchAll(/<\s*CreatorModeHost\b/g)) {
+  for (const match of text.matchAll(/<\s*GameSessionHost\b/g)) {
     const element = readElement(text, match.index);
     hostMounts.push({
       file,
@@ -189,7 +189,7 @@ for (const game of GAME_CATALOG) {
   if (!card) fail(`${game.id}: no lobby card in ${LOBBY}`);
   else if (!card.playsKey) fail(`${game.id}: lobby card has no playsKey`);
   if (hosts.length === 0 && directs.length === 0) {
-    fail(`${game.id}: NOT WIRED — no CreatorModeHost mount and no useActiveGamePresence call`);
+    fail(`${game.id}: NOT WIRED — no GameSessionHost mount and no useActiveGamePresence call`);
   }
 
   const rows = [

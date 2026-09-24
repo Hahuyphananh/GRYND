@@ -10,15 +10,8 @@ import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import EmotePicker, { EmoteArtwork } from "../../../../components/game/EmotePicker";
-// Self-contained Creator Mode (admin-only) presentation layer.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 
 import { turnBanner as turnBannerAnim } from "../../../../lib/animations";
 import { playCardDraw, playVictory, playDefeat } from "../../../../lib/gameAudio";
@@ -749,9 +742,8 @@ export default function ChessGamePage() {
   const oppCaptured = activeColor === "white" ? capturedPieces.black : capturedPieces.white;
 
 
-  /* Creator Mode bespoke 9:16 portrait: board + both players' info
-     (names, captured pieces, clocks) large, move history & actions below. */
-  const creatorHeader = (
+  /* Match header — title, game id and who you are playing as. */
+  const headerNode = (
     <><div className="text-center mb-8">
           <h1 className="text-3xl font-black tracking-widest text-cyan-400 drop-shadow-[0_0_20px_#00ffff]">
             CHESS ARENA
@@ -764,7 +756,7 @@ export default function ChessGamePage() {
         </div>
     </>
   );
-  const creatorBoard = (
+  const boardNode = (
     <><div className="w-full max-w-[660px]">
               {/* OPPONENT */}
               <div className="relative mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 flex justify-between items-center backdrop-blur-md">
@@ -879,7 +871,7 @@ export default function ChessGamePage() {
             </div>
     </>
   );
-  const creatorSidebar = (
+  const sidebarNode = (
     <><div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
             <h2 className="text-2xl font-bold text-cyan-400 mb-4">
               Move History
@@ -1108,23 +1100,15 @@ export default function ChessGamePage() {
   const desktopContent = (
     <>
       <div className="max-w-7xl mx-auto">
-        {creatorHeader}
+        {headerNode}
         <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
           <div className="flex justify-center">
-            {creatorBoard}
+            {boardNode}
           </div>
-          {creatorSidebar}
+          {sidebarNode}
         </div>
       </div>
     </>
-  );
-
-  const portraitContent = (
-    <CreatorModeShell className="bg-[#050816]">
-      <ShellHeader>{creatorHeader}</ShellHeader>
-      <ShellMain className="h-full items-center">{creatorBoard}</ShellMain>
-      <ShellAside className="space-y-3">{creatorSidebar}</ShellAside>
-    </CreatorModeShell>
   );
 
   return (
@@ -1220,26 +1204,21 @@ export default function ChessGamePage() {
       </AnimatePresence>
 
       <div className="min-h-screen bg-[#050816] text-white px-4 py-8 overflow-x-hidden">
-        <CreatorModeHost
+        <GameSessionHost
         autoStart={Boolean(gameData && gameData.status === "in_progress")}
         autoStop={Boolean(gameData && (gameData.status === "finished" || gameData.status === "expired"))}
         gameLabel="chess"
         // A spectator watching a shared link is on a live match too, so
         // watching must never be counted as playing.
         presenceEnabled={!isSpectator}
-        backToLobbyHref="/casino/chess"
       >
-        <CreatorView
-          normal={desktopContent}
-          portrait={portraitContent}
-          landscape={desktopContent}
-        />
+        {desktopContent}
 
         {/* Post-match result screen — shared PvpResultScreen (UX plan
-            P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+            P3-3). Mounted INSIDE GameSessionHost so it appears in the
             recording; compact styling keeps it sized for the phone frame. */}
         {renderResult()}
-      </CreatorModeHost>
+      </GameSessionHost>
 {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}

@@ -113,7 +113,7 @@ async function postPresence(url, body) {
 /**
  * One heartbeat: mark the caller active in `gameLabel`.
  * `gameLabel` is the label the game page already uses for
- * <CreatorModeHost gameLabel> / useRecordPlayedGame; the server resolves it to
+ * <GameSessionHost gameLabel> / useRecordPlayedGame; the server resolves it to
  * a canonical game id (src/lib/gamePresence.js) and rejects anything unknown.
  */
 export function sendPresenceBeat(gameLabel, sessionId = null) {

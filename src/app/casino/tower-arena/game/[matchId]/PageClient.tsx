@@ -8,25 +8,17 @@ import {
   useReducedMotion,
 } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the match actually starts,
-// auto-stops when it ends or the user quits. Portrait 9:16 renders the
-// phone-style stacked arrangement; landscape/square reuse the desktop
-// grid. No gameplay logic touched.
-import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorModeShell,
-  CreatorView,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../../components/GameSessionHost";
+
 import NavigationBar from "../../../../../components/navigation-bar";
 import Footer from "../../../../../components/Footer";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { useSocket } from "../../../../../context/SocketProvider";
 import { CoinIcon } from "../../../../../components/lobby/PvpLobby";
-import CreatorResultOverlay from "../../../../../components/creator-mode/CreatorResultOverlay";
+import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import {
   IconBuildingSkyscraper,
   IconX,
@@ -1567,31 +1559,6 @@ export default function TowerArenaMatchPage() {
     }
   };
 
-  // Creator Mode "Stop & save": the creator manually ended the capture
-  // (grynd:creator-manual-stop, dispatched only by the Stop & Save button)
-  // — pause the free-play match so the tower and turn timer freeze while
-  // they review the clip. Best effort: the pause API is human-vs-AI only,
-  // so PvP matches are unaffected.
-  useEffect(() => {
-    const onManualStop = () => {
-      if (pauseBusy || !match?.isAi || !isActive || isPaused) return;
-      setPauseBusy(true);
-      fetch("/api/tower-arena/pause", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId, paused: true }),
-      })
-        .catch(() => {})
-        .finally(() => {
-          setPauseBusy(false);
-          loadRef.current();
-        });
-    };
-    window.addEventListener("grynd:creator-manual-stop", onManualStop);
-    return () => window.removeEventListener("grynd:creator-manual-stop", onManualStop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, match?.isAi, isActive, isPaused, pauseBusy]);
-
   // ── Handlers ─────────────────────────────────────────────────────
 
   const clampX = (shape: BlockShape, rot: number, x: number) => {
@@ -1918,16 +1885,15 @@ export default function TowerArenaMatchPage() {
 
   // ── Results ──────────────────────────────────────────────────────
   // Deliberately NOT an early return any more. Returning here unmounted
-  // <CreatorModeHost>, which tore the recording frame down before the
-  // standings screen or the placement popup could appear — a creator clip
-  // ended on the live board with no result at all. The finished state now
-  // renders INSIDE the still-mounted host (see the main return below):
-  // the game content is swapped for <ResultsView> and the popup stays a
-  // sibling of it, so the 2.4s auto-stop grace period records both.
+  // <GameSessionHost>, which tore the recording frame down before the
+  // standings screen or the placement popup could appear. The finished
+  // state renders INSIDE the still-mounted host (see the main return
+  // below): the game content is swapped for <ResultsView> and the popup
+  // stays a sibling of it.
   const showingResults = isFinished && showResults;
   const finalPlacementPopup =
     !resultPopupDismissed && myFinalResult ? (
-      <CreatorResultOverlay
+      <PvpResultScreen
         open
         outcome={myFinalResult.isWinner ? "win" : "loss"}
         headline={`${ordinal(myFinalResult.placement)} place`}
@@ -2324,84 +2290,12 @@ export default function TowerArenaMatchPage() {
   );
 
   // Portrait 9:16 creator arrangement — tower on stage filling most of
-  // the height, compact status header, controls + players pinned below.
-  const portraitContent = (
-    <CreatorModeShell className="bg-[#050512]">
-      <ShellHeader className="flex flex-col items-stretch gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <IconBuildingSkyscraper className="h-6 w-6 shrink-0 text-cyan-400" />
-            <div className="min-w-0">
-              <h1 className="truncate text-base font-black tracking-tight text-cyan-100">
-                Tower Arena
-              </h1>
-              <p className="truncate text-[10px] uppercase tracking-widest text-white/50">
-                {match?.isAi ? "Free Play" : "PvP"} · Cycle {match?.resourceCycle} · Turn #{match?.turnNumber}
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {isFinalDuel ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-300">
-                <IconTrophy size={12} /> Final Duel
-              </span>
-            ) : null}
-            {match?.isAi && isActive ? (
-              <PauseChip paused={isPaused} busy={pauseBusy} onToggle={togglePause} />
-            ) : null}
-            {/* Free vs-AI matches are untimed — hide the countdown timer. */}
-            {!match?.isAi && (
-              <Timer countdown={countdown} urgent={countdownUrgent} isActive={Boolean(isActive)} paused={isPaused} />
-            )}
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
-          <span className="truncate text-cyan-200">
-            {`${currentTurnName} dropping…`}
-          </span>
-          <span className="shrink-0 text-white/60">
-            {activePlayers.length} / {match?.maxPlayers} players
-          </span>
-        </div>
-      </ShellHeader>
-
-      <ShellMain className="flex-col overflow-hidden">
-        <div className="h-full w-full px-3 py-2">
-          <div className="flex h-full flex-col rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
-            {towerStageNode(true)}
-          </div>
-        </div>
-      </ShellMain>
-
-      <ShellAside className="space-y-2">
-        {turnControlsNode}
-        {compactPlayersNode}
-      </ShellAside>
-    </CreatorModeShell>
-  );
+  // the height, compact status header, controls + players pinned below.
 
   // Landscape (16:9) / square (1:1) creator arrangement — the tower fills
   // the frame's height with controls + players in a right rail, so the
   // game adapts to any landscape/square ratio instead of scrolling a
-  // desktop-sized column.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-[#050512]">
-      <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col p-4">
-          {topBarNode}
-          <div className="grid min-h-0 flex-1 auto-rows-fr gap-4 lg:grid-cols-[1fr_300px]">
-            <div className="flex min-h-0 flex-col rounded-2xl border border-cyan-800 bg-gradient-to-b from-[#040d24] to-[#071626] p-4">
-              {towerStageNode(true)}
-            </div>
-            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
-              {turnControlsNode}
-              {leaderboardNode}
-            </div>
-          </div>
-        </div>
-      </ShellMain>
-    </CreatorModeShell>
-  );
+  // desktop-sized column.
 
   return (
     <div
@@ -2417,19 +2311,16 @@ export default function TowerArenaMatchPage() {
           exactly as they always did. */}
       {!showingResults && <NavigationBar currentPath="/casino" />}
       <div className={showingResults ? "" : "mx-auto mt-4 max-w-6xl"}>
-        <CreatorModeHost
+        <GameSessionHost
           autoStart={isActive}
           autoStop={isFinished}
           // Active-player presence (lobby "N playing"): an eliminated player
           // stays on the live match page (match.status is still "active")
           // watching the survivors, and this page calls that state "out of the
           // running" — so they stop counting the moment they are knocked out,
-          // exactly like a spectator on the other games. Creator Mode is
-          // deliberately NOT gated here: the recording still covers the whole
-          // match, it is only presence that opts out.
+          // exactly like a spectator on the other games.
           presenceEnabled={!iAmEliminated}
           gameLabel="tower-arena"
-          backToLobbyHref="/casino/tower-arena"
         >
           {showingResults ? (
             <ResultsView
@@ -2439,11 +2330,7 @@ export default function TowerArenaMatchPage() {
               onBack={() => router.replace("/casino/tower-arena")}
             />
           ) : (
-            <CreatorView
-              normal={pageBody}
-              portrait={portraitContent}
-              landscape={landscapeContent}
-            />
+            {pageBody}
           )}
 
           {/* Final placement popup (built above) — inside the host, i.e.
@@ -2455,7 +2342,7 @@ export default function TowerArenaMatchPage() {
               once the finished state takes over, exactly as before (the
               placement popup replaces it). */}
           {!showingResults && resignResult && (
-            <CreatorResultOverlay
+            <PvpResultScreen
               open
               outcome={resignResult.isWinner ? "win" : "loss"}
               headline={
@@ -2524,7 +2411,7 @@ export default function TowerArenaMatchPage() {
               dismissLabel="Watch game"
             />
           )}
-        </CreatorModeHost>
+        </GameSessionHost>
       </div>
       {!showingResults && <Footer />}
     </div>

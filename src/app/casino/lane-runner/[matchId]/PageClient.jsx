@@ -21,7 +21,7 @@
 //
 // REUSE, not reinvention: the 5s safety poll + Socket.IO nudge, the
 // idempotent action submit (`actionId`), reconnection resync, the shared
-// waiting/result screens and the creator-mode frame all come from the
+// waiting/result screens all come from the
 // existing architecture.
 
 import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
@@ -32,14 +32,8 @@ import { motion, useReducedMotion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import FrameAvatar from "../../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-  ShellAside,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
@@ -432,8 +426,8 @@ function GlassBreak({ tileRect, delay = 0.5 }) {
 /**
  * Where `el` sits inside `root`, in LAYOUT pixels — the sum of the offset chain
  * up to `root`. Unlike `getBoundingClientRect` this ignores every ancestor
- * TRANSFORM, so a board that is still arriving (a spring on `y`/`scale`) or a
- * scaled creator frame cannot skew it: the token is a child of the same
+ * TRANSFORM, so a board that is still arriving (a spring on `y`/`scale`) cannot
+ * skew it: the token is a child of the same
  * container, so layout coordinates are exactly where it belongs. Returns null
  * if `root` is not in the element's offset chain (the caller falls back to
  * viewport rects).
@@ -455,7 +449,7 @@ function offsetWithin(el, root) {
  * they are standing on, centred on that tile's glass — never beside the row.
  *
  * The tile is MEASURED rather than guessed, so the token stays centred on the
- * glass at every breakpoint and inside the creator-mode portrait frame.
+ * glass at every breakpoint.
  * Travelling between tiles is the jump overlay's job (it arcs from the previous
  * tile onto the clicked one); this is only the resting position, and it is
  * derived from the server's own history. The seat is hidden while its own jump
@@ -1971,20 +1965,6 @@ export default function LaneRushDuelMatchPage({ params }) {
     </div>
   );
 
-  const portraitContent = (
-    <CreatorModeShell className="bg-[#070b1e] bg-[radial-gradient(circle_at_top,#1b2150_0%,#080b1f_35%,#03040d_100%)]">
-      <ShellHeader className="space-y-2">{players}</ShellHeader>
-      <ShellMain className="h-full items-start space-y-2 overflow-y-auto px-2">
-        {turnBanner}
-        <div className="relative w-full rounded-[24px] border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] p-1.5 shadow-[0_36px_80px_-40px_rgba(34,211,238,0.5)] backdrop-blur-md">
-          {board}
-        </div>
-      </ShellMain>
-      <ShellAside className="space-y-3">{controls}</ShellAside>
-      {matchEndPopupCompact}
-    </CreatorModeShell>
-  );
-
   return (
     <>
       {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
@@ -2143,18 +2123,13 @@ export default function LaneRushDuelMatchPage({ params }) {
 
           {/* ── Active game ────────────────────────────────────────── */}
           {(livePhase || finished) && (
-            <CreatorModeHost
+            <GameSessionHost
               autoStart={Boolean(match && match.status === "active")}
               autoStop={Boolean(finished || cancelled)}
               gameLabel="lane-rush-duel"
-              backToLobbyHref="/casino/lane-runner"
             >
-              <CreatorView
-                normal={desktopContent}
-                portrait={portraitContent}
-                landscape={desktopContent}
-              />
-            </CreatorModeHost>
+              {desktopContent}
+            </GameSessionHost>
           )}
 
           {!loading && !match && (

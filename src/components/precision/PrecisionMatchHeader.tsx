@@ -2,12 +2,10 @@
 
 // ── Match header for the Precision match page ────────────────────────────
 //
-// Three small presentational pieces, split out of the match page so the page
+// Two small presentational pieces, split out of the match page so the page
 // itself is only orchestration:
 //
 //   * <PrecisionMatchHeader>    — match label, title, wager, report/leave/resign,
-//   * <PrecisionCreatorHeader>  — the same actions in the creator-mode frame's
-//                                 tighter typography,
 //   * <PrecisionMatchStatus>    — the turn banner + error line under the header.
 //
 // No state, no data fetching: everything is passed in.
@@ -74,65 +72,6 @@ export function PrecisionMatchHeader({
           <button
             onClick={onResign}
             className="rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-500"
-          >
-            {t("games.precision.resign")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Compact header used inside the creator-mode (9:16 / 16:9) frames. */
-export function PrecisionCreatorHeader({
-  matchId,
-  state,
-  canReport,
-  onReport,
-  onLeave,
-  onResign,
-}: PrecisionMatchHeaderProps) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/80">
-          {t("games.precision.match_label", { id: matchId.slice(0, 6) })}
-        </p>
-        <h1 className="truncate text-lg font-black text-fuchsia-300">
-          {state?.phase === "active"
-            ? t("games.precision.duel_in_progress")
-            : t("games.precision.setting_up")}
-        </h1>
-        {state && (
-          <p className="text-xs text-cyan-100/90">
-            {t("games.precision.wager_tokens", {
-              wager: formatTokens(state.wager),
-            })}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {canReport && (
-          <button
-            onClick={onReport}
-            className="rounded border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold text-red-300 transition hover:bg-red-500/25"
-          >
-            <span className="inline-flex items-center gap-1">
-              <IconFlag size={11} /> Report
-            </span>
-          </button>
-        )}
-        <button
-          onClick={onLeave}
-          className="rounded bg-[#f5ff3b] px-2.5 py-1 text-[11px] font-bold text-black"
-        >
-          {t("games.precision.lobby_button")}
-        </button>
-        {state?.phase === "active" && (
-          <button
-            onClick={onResign}
-            className="rounded bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-red-500"
           >
             {t("games.precision.resign")}
           </button>

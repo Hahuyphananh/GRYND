@@ -12,12 +12,11 @@ import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../
 import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the actual RPS game begins
-// (matched/active), auto-stops when it finishes or the user quits.
-// NavBar / Footer stay OUTSIDE so nothing is recorded until gameplay.
-import CreatorModeHost from "../../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../../components/GameSessionHost";
+
 import Footer from "../../../../../components/Footer";
 import RoundMarkers from "../../../../../components/casino/RoundMarkers";
 import ReportModal from "../../../../../components/ReportModal";
@@ -455,21 +454,15 @@ export default function RPSPvpGamePage() {
       <NavigationBar currentPath="/casino" />
 
       {/* Only the actual game content is recorded — NavBar / Footer stay
-          outside the shared CreatorModeHost recording viewport. Recording
+          outside the shared GameSessionHost recording viewport. Recording
           auto-starts when the game is matched/active and stops when it
           finishes or the user quits. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={status === "matched" || status === "active"}
         autoStop={status === "finished" || status === "cancelled"}
         gameLabel="rock-paper-scissors"
-        backToLobbyHref="/casino/rps"
       >
-      <CreatorResponsiveLayout>
-      {/* data-creator-stack-swap: in the portrait (9:16) creator frame this
-          flips to the phone-style stacked column (the duel first, rounds
-          history below) via the shared portrait-stacking CSS. Desktop and
-          landscape/square creator rendering are unchanged. */}
-      <div data-creator-stack data-creator-stack-swap className="flex flex-col md:flex-row">
+      <div className="flex flex-col md:flex-row">
       {/* ── Left sidebar: rounds history (replaces the old lobby/bet panel) ── */}
       <aside className="w-[95%] sm:w-full max-w-[420px] md:max-w-[340px] mx-auto md:mx-0 mb-6 md:mb-0 md:ml-4 md:self-start md:sticky md:top-20">
         <div className="rounded-2xl border border-amber-700/60 bg-black/40 p-4 backdrop-blur-xl shadow-[0_0_25px_rgba(251,191,36,0.12)]">
@@ -687,13 +680,12 @@ export default function RPSPvpGamePage() {
         gameType="Rock Paper Scissors"
       />
       </div>
-      </CreatorResponsiveLayout>
 
       {/* Post-match result screen — shared PvpResultScreen (UX plan
-          P3-3). Mounted INSIDE CreatorModeHost so it appears in the
+          P3-3). Mounted INSIDE GameSessionHost so it appears in the
           recording; compact styling keeps it sized for the phone frame. */}
       {renderResult()}
-      </CreatorModeHost>
+      </GameSessionHost>
 
       <Footer />
     </div>

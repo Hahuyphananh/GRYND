@@ -58,7 +58,7 @@ test("Four-In-A-Row: the strip is passed through the shared panel, never a secon
   assert.match(AI, /data-testid="fiar-result-win-line"/);
   // Still exactly one result system per page.
   assert.equal((GAME.match(/<PvpResultScreen\s*\n\s*open/g) || []).length, 1);
-  assert.equal((AI.match(/<CreatorResultOverlay\s*\n\s*open/g) || []).length, 1);
+  assert.equal((AI.match(/<PvpResultScreen\s*\n\s*open/g) || []).length, 1);
   // No second WIN/LOSS/DRAW banner invented on the pages.
   assert.doesNotMatch(GAME, /data-testid="fiar-result-win-line"[\s\S]{0,400}WIN[\s\S]{0,40}LOSS/);
 });

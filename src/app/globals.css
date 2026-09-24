@@ -20,80 +20,6 @@ body {
   }
 }
 
-/* ── Creator Mode phone stacking ─────────────────────────────────────
-   Games whose normal layout is side-by-side on desktop (roulette's
-   controls + wheel, rps's history + duel, crash-arena's table + sidebar)
-   render the phone-style stacked column inside the creator phone
-   viewport. Scoped to the phone wrapper ([data-creator-phone], rendered
-   by <CreatorResponsiveLayout> in EVERY recording ratio), so normal
-   rendering stays byte-for-byte unchanged.
-
-   • [data-creator-stack]      → force column + phone-width centred
-   • [data-creator-stack-swap] → additionally put gameplay first
-     (last child on top) so the recorded video leads with the board. */
-[data-creator-phone] [data-creator-stack] {
-  flex-direction: column !important;
-  /* Grid-based desktop layouts (e.g. chess's board + sidebar grid) stack
-     to a single column too — harmless on flex layouts, where it is
-     ignored. Inside the phone-width frame (390px) `max-width: 460px`
-     simply resolves to the full frame width, so the column fills the
-     frame edge-to-edge. */
-  grid-template-columns: minmax(0, 1fr) !important;
-  width: 100% !important;
-  max-width: 460px !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-  align-items: center !important;
-}
-[data-creator-phone] [data-creator-stack] > * {
-  width: 100% !important;
-  max-width: 100% !important;
-  flex-shrink: 1 !important;
-}
-[data-creator-phone] [data-creator-stack-swap] > :first-child {
-  order: 2 !important;
-}
-[data-creator-phone] [data-creator-stack-swap] > :last-child {
-  order: 1 !important;
-}
-
-/* Crash Arena creator phone-frame: the curve canvas is the star of the
-   recording, so inside the phone viewport the game area (canvas + players
-   sidebar) and the fold control move ABOVE the status bars. Without this
-   the header HUD (status/timer/risk/pot bars) pushed the 4:3 canvas to
-   the bottom edge of the phone viewport — the rocket flew below the fold
-   and was cut off in the recorded clip. Now the recording leads with the
-   curve (rocket clearly visible in the top of the frame) and the Fold
-   button sits directly underneath, both still full-size and clickable.
-   Scoped to the phone wrapper — desktop + normal mobile unchanged. */
-[data-creator-phone] .crash-arena-board-first {
-  order: -2 !important;
-}
-[data-creator-phone] .crash-arena-fold-first {
-  order: -1 !important;
-}
-/* The players sidebar under the canvas is secondary to the curve in the
-   phone frame — cap it short (it scrolls internally) so a full table of
-   six players never pushes the Fold control below the recording fold. */
-[data-creator-phone] .crash-arena-player-sidebar {
-  max-height: 9rem !important;
-}
-
-/* Creator frame: hide ephemeral per-turn feedback that covers the board
-   (chess AI's "Your Turn" / "AI's Turn" popup, the "CHECK!" popup and
-   the red capture flash) plus the board-shake animation. They are cues
-   for the live player; in a recorded creator clip they block the view
-   and distract viewers. Scoped to the creator shell, so normal
-   (non-creator) play keeps every one of them. */
-[data-creator-layout] .chess-turn-banner,
-[data-creator-layout] .chess-check-banner,
-[data-creator-layout] .chess-capture-flash {
-  display: none !important;
-}
-[data-creator-layout] .chess-board-wrap.animate-board-shake {
-  animation: none !important;
-}
-
 /* ── Chess: keep the WHOLE board on one screen (desktop) ───────────────
    The board is a SQUARE, so capping its width caps its height. On desktop
    the old `90vh` cap was always beaten by the 660px board column, which left
@@ -102,16 +28,10 @@ body {
    (minus a conservative header + player-bar budget) keeps every rank visible
    at once, and the 340px floor stops it collapsing in a very short window.
 
-   Desktop only, and explicitly released inside the creator phone frame: the
-   recording frame is NOT the browser viewport, so a `vh` cap would shrink a
-   recorded clip's board. */
+   Desktop only. */
 @media (min-width: 1024px) {
   .chess-board-frame {
     max-width: max(340px, calc(100vh - 22rem));
-  }
-
-  [data-creator-layout] .chess-board-frame {
-    max-width: none;
   }
 }
 
@@ -125,188 +45,38 @@ body {
    set to that page's measured chrome (qa/board-fit-check.mjs prints the
    measured `top=`, i.e. everything above the board):
 
-     • Mines Duel  — 27.5rem (~440px) = 391px of chrome above the board
-                     + the 30px legend BELOW it + 19px of slack
-     • Memory Grid — 32rem (~512px) of chrome above the board
+     • Mines Duel  — 12.5rem (~200px) = 166px of chrome above the board
+                     (title + stake line only; the seats / turn indicator /
+                     controls moved into a desktop SIDE RAIL next to the
+                     board) + the 30px legend BELOW it + a little slack
+     • Memory Grid — 20rem (~320px) = 260px of chrome above the grid
+                     (round tracker + scoreboard moved into the desktop side
+                     rail, same as Mines) + the controls below it
 
-   The Mines budget covers the legend below the board, which the previous
-   34rem figure did not: it accounted only for the chrome above, so the
-   legend always spilled ~34px past the fold and the page scrolled even when
-   the board itself fitted. Reclaiming that chrome (the three control blocks
-   are now one desktop row — see the page) let the board grow from 260px to
-   360px at 1280×800 while the whole stack now ends above the fold.
+   The Mines budget covers the legend below the board, which the earlier
+   budgets did not account for. The chrome above the board has shrunk three
+   times over: 517px (everything stacked) → 391px (controls in one row) →
+   343px (margins tightened) → 166px (seats / turn indicator / controls
+   beside the board). With the side rail the square board can finally take
+   most of the viewport: 608px at 1280×800 and 708px at 1440×900, all 25
+   tiles and the legend still above the fold. The board column is 1fr and
+   17rem is the rail; the board stays square and `mx-auto`-centred inside
+   its column.
 
    The `.mines-board-frame` wrapper also carries `mx-auto`: a `w-full`
    element with a `max-width` is a block, so without it the capped board
    hugged the LEFT edge of its centred column and sat visibly off-centre.
 
    The floor keeps the board usable (and the tiles thumb-sized) in a very
-   short window instead of collapsing it. Desktop only, and released inside
-   the creator frame: the recording frame is NOT the browser viewport, so a
-   `vh` cap there would shrink a recorded clip's board. */
+   short window instead of collapsing it. Desktop only. */
 @media (min-width: 1024px) {
   .mines-board-frame {
-    max-width: max(260px, calc(100vh - 27.5rem));
+    max-width: max(260px, calc(100vh - 12.5rem));
   }
 
   .memory-board-frame {
-    max-width: max(260px, calc(100vh - 32rem));
+    max-width: max(260px, calc(100vh - 20rem));
   }
-
-  [data-creator-layout] .mines-board-frame,
-  [data-creator-layout] .memory-board-frame {
-    max-width: none;
-  }
-}
-
-/* ── Creator Mode frame fill ─────────────────────────────────────────
-   <CreatorResponsiveLayout> drops the game page straight into the
-   recording frame. These rules make the game's page root fill the frame
-   edge-to-edge instead of keeping its desktop max-width + centering
-   (which left the game as a small centred strip inside a much bigger
-   frame). The root also stretches to the frame height so a page that is
-   shorter than one screenful still occupies the whole capture area.
-   Games marked [data-creator-stack] are exempt — they keep their
-   deliberate phone-width portrait column laid out by the rules above —
-   and so are position:fixed overlays/banners (turn chips, end-of-game
-   modals, toasts) so they keep their own compact sizing instead of being
-   stretched full-frame. Scoped to the creator shell, so normal rendering
-   is untouched. */
-[data-creator-layout]
-  [data-creator-fill]
-  > *:not([data-creator-stack]):not(.fixed) {
-  width: 100% !important;
-  max-width: 100% !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  min-height: 100% !important;
-}
-
-/* The landscape/square frame is a horizontal shell: the fill container
-   already grows to take all leftover space, but make sure the page root
-   inside it actually stretches to the frame's full height rather than
-   keeping its natural (often shorter) desktop height. */
-[data-creator-layout="landscape"] [data-creator-fill],
-[data-creator-layout="square"] [data-creator-fill] {
-  height: 100%;
-}
-
-/* ── Dice Flush creator portrait ───────────────────────────────────────
-   (data-df markers are set in src/app/casino/dice-flush/PageClient.tsx.)
-   The 12-category sheet is the subject of a Dice Flush recording, but the
-   game's column (turn bar → shot clock → opponent strip → last-move recap
-   → sheet → call chips → ROLL / Confirm → your dice) is far taller than
-   one phone screen, so the capture scrolled straight past most of the
-   sheet.
-
-   In portrait creator mode the panel becomes a fixed-height flex column
-   and the sheet claims every spare pixel: all 15 rows share the leftover
-   height, so the WHOLE scorecard is on screen — filling the recording
-   frame — with the call chips, controls and your dice still below it.
-   Live-play-only chrome (the last-move recap, the move-history log and the
-   shot clock's coaching line) is dropped so the sheet gets that space.
-   Scoped to the creator shell, so normal rendering is untouched. */
-[data-creator-layout="portrait"] [data-df="panel"] {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  margin-top: 0;
-  padding: 0.25rem;
-  width: 100%;
-}
-[data-creator-layout="portrait"] [data-df="topbar"] {
-  margin-bottom: 0.25rem;
-}
-[data-creator-layout="portrait"] [data-df="board"] {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-  margin-bottom: 0;
-}
-[data-creator-layout="portrait"] [data-df="center"] {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-  /* Horizontal too: the desktop px-3 on each side is ~6% of the frame
-     width, which the sheet gets instead. */
-  padding: 0.25rem;
-}
-[data-creator-layout="portrait"] [data-df="sheet"] {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-}
-/* Every sheet row (column header, the 12 categories, bonus, total) shares
-   the leftover height, so the whole card stays fully on screen instead of
-   scrolling out of the recording. */
-[data-creator-layout="portrait"] [data-df="sheet"] > * {
-  flex: 1 1 auto;
-  min-height: 1.25rem;
-  align-items: center;
-  padding-block: 0.125rem;
-}
-[data-creator-layout="portrait"] [data-df="clock"],
-[data-creator-layout="portrait"] [data-df="opponent"],
-[data-creator-layout="portrait"] [data-df="call"],
-[data-creator-layout="portrait"] [data-df="controls"],
-[data-creator-layout="portrait"] [data-df="turn"],
-[data-creator-layout="portrait"] [data-df="player"],
-[data-creator-layout="portrait"] [data-df="history"] {
-  flex: 0 0 auto;
-}
-[data-creator-layout="portrait"] [data-df="last-move"],
-[data-creator-layout="portrait"] [data-df="history"],
-[data-creator-layout="portrait"] [data-df="turn"],
-[data-creator-layout="portrait"] [data-df="clock"] > p {
-  display: none;
-}
-[data-creator-layout="portrait"] [data-df="clock"],
-[data-creator-layout="portrait"] [data-df="opponent"],
-[data-creator-layout="portrait"] [data-df="player"] {
-  padding-block: 0.125rem;
-}
-/* The name/total/progress chips (opponent) and the YOU/total chips (player)
-   are one line each — remove the desktop gap above them. */
-[data-creator-layout="portrait"] [data-df="opponent"] > :first-child,
-[data-creator-layout="portrait"] [data-df="player"] > :first-child {
-  margin-bottom: 0.25rem;
-}
-/* ROLL / Confirm are the only buttons in the capture — trim their vertical
-   padding so the control row costs as little of the frame as possible. */
-[data-creator-layout="portrait"] [data-df="controls"] button {
-  padding-block: 0.375rem;
-}
-/* Five 64px dice plus their gaps are wider than the 390px phone viewport,
-   so each die row wrapped onto a second line and cost the sheet ~76px of
-   frame height. In portrait the dice are 52px and the rows never wrap, so
-   the opponent's roll and the player's turn each stay on one line. */
-[data-creator-layout="portrait"] [data-df="die"] {
-  height: 3.25rem;
-  width: 3.25rem;
-}
-[data-creator-layout="portrait"] [data-df="player-dice"] {
-  flex-wrap: nowrap;
-  gap: 0.5rem;
-}
-[data-creator-layout="portrait"] [data-df="opponent-dice"] {
-  gap: 0.5rem;
-}
-[data-creator-layout="portrait"] [data-df="call"] {
-  margin-top: 0.25rem;
-  padding-block: 0.25rem;
-}
-/* ROLL / Confirm and the emote button sit on ONE row so the controls cost a
-   single button height instead of three stacked rows — that height goes to
-   the sheet. */
-[data-creator-layout="portrait"] [data-df="controls"] {
-  align-items: center;
-  flex-direction: row;
-  justify-content: center;
-  margin-top: 0.25rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1588,32 +1358,6 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 @media (max-height: 700px) and (min-width: 1024px) {
   .four-in-a-row-board,
   .four-in-a-row-drop-controls { width: min(100%, calc((100svh - 13rem) * 1.166)); }
-}
-
-/* Creator Mode: the board is laid out inside the FIXED recording frame (the
-   game renders at the frame's logical size — e.g. 1080×1920 — and is CSS
-   -scaled to fit the screen), so its size must come from that frame, never
-   from the browser viewport. The svh/vw rules above target the normal page
-   and left the recorded board tiny.
-
-   <CreatorBoardStage> sets the frame-relative max-width inline; these two
-   -class selectors (higher specificity than the single-class rules above,
-   including their media queries) let the board fill that stage edge-to-edge
-   and scale the drop controls up with it so the capture reads as a real
-   phone-sized layout. */
-.four-in-a-row-creator-stage {
-  width: 100%;
-  margin-inline: auto;
-}
-.four-in-a-row-creator-stage .four-in-a-row-board,
-.four-in-a-row-creator-stage .four-in-a-row-drop-controls {
-  width: 100%;
-  max-width: 100%;
-  margin-inline: 0;
-}
-.four-in-a-row-creator-stage .four-in-a-row-drop-button {
-  height: 3.25rem;
-  font-size: 1.35rem;
 }
 
 @keyframes unoDrawPop {

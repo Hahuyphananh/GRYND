@@ -34,16 +34,11 @@ import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { AnimatePresence, motion } from "framer-motion";
 
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the player starts the test,
-// auto-stops once the summary shows. No gameplay logic touched.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import {
-  CreatorView,
-  CreatorModeShell,
-  ShellHeader,
-  ShellMain,
-} from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import NavigationBar from "../../../../components/navigation-bar";
 import { useTranslation } from "../../../../hooks/useTranslation";
 import Footer from "../../../../components/Footer";
@@ -390,7 +385,7 @@ useEffect(() => {
     savePersonalBest(newPb);
   }
 }, [phase, summary]);
-  // ── Creator-mode layout nodes ─────────────────────────────────────
+  // ── Layout nodes ─────────────────────────────────────
   // The practice content is split into reusable nodes so the normal
   // page (non-creator) renders byte-for-byte the same, while Creator
   // Mode gets a bespoke arrangement: portrait = phone-style (compact
@@ -437,45 +432,6 @@ useEffect(() => {
     </div>
   );
 
-  // Compact header for the creator frames — tighter typography.
-  const creatorHeaderNode = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-[0.35em] text-fuchsia-300/80">
-          {t("games.precision.test_solo_label")}
-        </p>
-        <h1 className="truncate text-lg font-black text-fuchsia-300">
-          {phase === "idle"
-            ? t("games.precision.practice_mode_title")
-            : phase === "finished"
-              ? t("games.precision.test_complete_title")
-              : t("games.precision.test_round_label_of", { current: currentRound, total: MAX_ROUNDS })}
-        </h1>
-        <p className="truncate text-xs text-cyan-100/90">
-          {phase === "idle"
-            ? t("games.precision.test_idle_intro")
-            : t("games.precision.test_active_intro")}
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          data-testid="precision-test-back-to-lobby"
-          onClick={handleLeave}
-          className="rounded bg-[#f5ff3b] px-2.5 py-1 text-[11px] font-bold text-black"
-        >
-          {t("games.precision.lobby_button")}
-        </button>
-        {phase !== "idle" && phase !== "finished" && (
-          <button
-            onClick={handleRestart}
-            className="rounded bg-cyan-400 px-2.5 py-1 text-[11px] font-bold text-black"
-          >
-            {t("games.precision.restart")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   // The practice panels — idle / arming / active / round-done / done.
   const bodyNode = (
@@ -535,7 +491,7 @@ useEffect(() => {
     </AnimatePresence>
   );
 
-  // Normal (non-creator) page — byte-for-byte the original stack.
+  // The page content — the original stack.
   const normalView = (
     <div className="mx-auto mt-4 max-w-6xl rounded-2xl border border-fuchsia-500/40 bg-black/30 p-4 sm:mt-8 sm:p-5">
       {headerNode}
@@ -544,35 +500,9 @@ useEffect(() => {
   );
 
   // Portrait (9:16) — phone-style: compact header, the panels filling
-  // the middle.
-  const portraitContent = (
-    <CreatorModeShell className="bg-gradient-to-b from-[#06120f] to-[#050816]">
-      <ShellHeader className="flex flex-col gap-1.5">
-        {creatorHeaderNode}
-      </ShellHeader>
-      <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col px-3 py-2">
-          <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-fuchsia-500/40 bg-black/30 p-4">
-            {bodyNode}
-          </div>
-        </div>
-      </ShellMain>
-    </CreatorModeShell>
-  );
+  // the middle.
 
-  // Landscape (16:9) / square (1:1) — the panels fill the frame height.
-  const landscapeContent = (
-    <CreatorModeShell className="bg-gradient-to-b from-[#06120f] to-[#050816]">
-      <ShellMain className="overflow-hidden">
-        <div className="flex h-full w-full flex-col gap-2 p-4">
-          {creatorHeaderNode}
-          <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-fuchsia-500/40 bg-black/30 p-4">
-            {bodyNode}
-          </div>
-        </div>
-      </ShellMain>
-    </CreatorModeShell>
-  );
+  // Landscape (16:9) / square (1:1) — the panels fill the frame height.
 
   return (
     <div
@@ -582,21 +512,16 @@ useEffect(() => {
       <NavigationBar currentPath="/casino" />
 
       {/* Only the actual practice game is recorded — nav/footer sit
-          outside the shared CreatorModeHost recording viewport. Recording
+          outside the shared GameSessionHost recording viewport. Recording
           auto-starts when the player starts the test and stops once the
           summary shows. No gameplay logic touched. */}
-      <CreatorModeHost
+      <GameSessionHost
         autoStart={phase !== "idle"}
         autoStop={phase === "finished"}
         gameLabel="precision-test"
-        backToLobbyHref="/casino/precision/test"
       >
-      <CreatorView
-        normal={normalView}
-        portrait={portraitContent}
-        landscape={landscapeContent}
-      />
-      </CreatorModeHost>
+      {normalView}
+      </GameSessionHost>
 
       <Footer />
     </div>

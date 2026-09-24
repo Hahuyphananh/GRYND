@@ -13,12 +13,11 @@
  *   1. both pages carry the hook, and the boards stay square;
  *   2. the cap lives in a `min-width: 1024px` query (mobile sizing untouched);
  *   3. each cap keeps a floor so a short window can't collapse the board;
- *   4. the creator frame is explicitly exempt (a recording frame is not the
- *      browser viewport, so a `vh` cap there would shrink a recorded clip);
- *   5. the budgets still cover the chrome they were measured against — and the
+ *   4. the budgets still cover the chrome they were measured against — and the
  *      Mines budget ALSO covers the legend that sits below its board;
- *   6. the Mines board is centred in its column, and its chrome is compacted
- *      into a single desktop row (what freed the height the board now uses).
+ *   5. the Mines board is centred in its column, and its seats / turn
+ *      indicator / controls are moved into a desktop side rail BESIDE the
+ *      board (what freed the height the board now uses).
  *
  * Run:  node --test tests/board-fit-desktop.test.mjs
  */
@@ -40,9 +39,13 @@ const pkg = JSON.parse(read("package.json"));
 // chrome, which is the whole bug being fixed.
 //
 // Mines went 517px → 391px when its three control blocks (resign / pick-flag /
-// emote) were compacted into one desktop row; the board grew 260px → 360px at
-// 1280×800 with it. Memory Grid is unchanged.
-const MEASURED_CHROME_PX = { mines: 391, memory: 462 };
+// emote) were compacted into one desktop row, → 343px when the remaining
+// desktop margins were tightened, then → 166px when the seats / turn
+// indicator / controls moved into a SIDE RAIL beside the board. The board grew
+// 260px → 360px → 416px → 600px at 1280×800 with it. Memory Grid got the
+// same side-rail treatment for its round tracker + scoreboard: 462px → 260px
+// of chrome, so its board grew 288px → 480px at 1280×800.
+const MEASURED_CHROME_PX = { mines: 166, memory: 260 };
 
 // The Mines legend sits BELOW its board (Memory Grid has no legend). The
 // budget must cover it as well as the chrome above: the old 34rem figure
@@ -81,17 +84,15 @@ test("the Mines board opts into the shared desktop sizing hook", () => {
   );
 });
 
-test("BOTH Memory Grid board mounts opt into the hook", () => {
-  // The grid is rendered twice — once as `mgBoardNode` (the creator phone
-  // frame) and once inline in the normal view. Sizing only one of them would
-  // leave the other scrolling on desktop.
+test("The Memory Grid board opts into the hook", () => {
+  // The grid is rendered inline in the normal view.
   // Match the quoted class token only, so the prose in the surrounding
   // comments (which names the hook) doesn't inflate the count.
   const hits = memory.match(/"memory-board-frame/g) ?? [];
   assert.equal(
     hits.length,
-    2,
-    `both memory grid mounts must carry memory-board-frame (found ${hits.length})`,
+    1,
+    `the memory grid board must carry memory-board-frame (found ${hits.length})`,
   );
   assert.ok(
     memory.includes("aspect-square"),
@@ -130,12 +131,12 @@ test("the caps live in the desktop media query, not globally", () => {
 test("each cap derives from the viewport height and keeps a floor", () => {
   assert.match(
     desktopQuery,
-    /\.mines-board-frame \{\s*max-width: max\(260px, calc\(100vh - 27\.5rem\)\);\s*\}/,
+    /\.mines-board-frame \{\s*max-width: max\(260px, calc\(100vh - 12\.5rem\)\);\s*\}/,
     "the Mines cap must be viewport-height derived, with a 260px floor",
   );
   assert.match(
     desktopQuery,
-    /\.memory-board-frame \{\s*max-width: max\(260px, calc\(100vh - 32rem\)\);\s*\}/,
+    /\.memory-board-frame \{\s*max-width: max\(260px, calc\(100vh - 20rem\)\);\s*\}/,
     "the Memory cap must be viewport-height derived, with a 260px floor",
   );
 });
@@ -145,8 +146,8 @@ test("the budgets still cover the chrome measured above each board", () => {
   // spill past the fold again; this is the arithmetic behind the numbers.
   const budgetPx = (rem) => rem * 16;
   for (const [game, rem] of [
-    ["mines", 27.5],
-    ["memory", 32],
+    ["mines", 12.5],
+    ["memory", 20],
   ]) {
     assert.ok(
       budgetPx(rem) >= MEASURED_CHROME_PX[game],
@@ -155,20 +156,20 @@ test("the budgets still cover the chrome measured above each board", () => {
   }
   // …and the Mines budget must clear the legend below the board too.
   assert.ok(
-    budgetPx(27.5) >= MEASURED_CHROME_PX.mines + LEGEND_BELOW_BOARD_PX,
-    `mines: 27.5rem (${budgetPx(27.5)}px) must cover both the ${MEASURED_CHROME_PX.mines}px of chrome ABOVE the board and the ${LEGEND_BELOW_BOARD_PX}px legend BELOW it`,
+    budgetPx(12.5) >= MEASURED_CHROME_PX.mines + LEGEND_BELOW_BOARD_PX,
+    `mines: 12.5rem (${budgetPx(12.5)}px) must cover both the ${MEASURED_CHROME_PX.mines}px of chrome ABOVE the board and the ${LEGEND_BELOW_BOARD_PX}px legend BELOW it`,
   );
   // The point of the change: the board is materially bigger than it was. Under
-  // the old 34rem budget a 1280×800 desktop got 260px (the floor); the compact
-  // chrome must keep it well clear of that.
-  const boardAt800 = 800 - budgetPx(27.5);
+  // the old 34rem budget a 1280×800 desktop got 260px (the floor); the side
+  // rail buys another ~184px over the previous 24rem figure.
+  const boardAt800 = 800 - budgetPx(12.5);
   assert.ok(
-    boardAt800 >= 340,
-    `a 1280×800 desktop must get a board of at least 340px (27.5rem leaves ${boardAt800}px)`,
+    boardAt800 >= 580,
+    `a 1280×800 desktop must get a board of at least 580px (12.5rem leaves ${boardAt800}px)`,
   );
   // And the floor must keep the tiles usable rather than collapsing the board.
   assert.ok(
-    budgetPx(27.5) + 260 <= 900,
+    budgetPx(12.5) + 260 <= 900,
     "a 900px-tall desktop must show the whole Mines board above the fold",
   );
 });
@@ -188,49 +189,55 @@ test("the Mines board is centred in its column, not left-aligned", () => {
   );
 });
 
-test("the three control blocks are one row on desktop", () => {
-  // Resign / pick-flag / emote used to be three stacked blocks costing ~138px
-  // of the column above the board. That stack was the reason the board could
-  // not be made bigger, so it is pinned here.
+test("the desktop layout puts the seats and controls BESIDE the board", () => {
+  // The board is a square capped by the viewport height, so every pixel of
+  // chrome ABOVE it came straight off the board. Moving the seats / turn
+  // indicator / controls into a right-hand rail is what unlocks the much
+  // larger board, so the two-column grid is pinned here.
   assert.ok(
-    mines.includes("lg:flex-row lg:items-center lg:justify-center lg:gap-4"),
-    "the control row must lay its blocks out horizontally on desktop",
+    mines.includes("lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6"),
+    "the normal view must become a two-column grid on desktop",
   );
-  // Each block keeps its own `mt-3` for the mobile stack and drops it from `lg`
-  // up, where the row owns the spacing — otherwise the margins stack inside the
-  // row and the compaction is silently undone.
-  const dropped = mines.match(/lg:mt-0/g) ?? [];
+  // The rail is grid-placed in column 2 and the board in column 1, so the DOM
+  // order can stay the mobile stack (seats first) without a second board copy.
   assert.ok(
-    dropped.length >= 3,
-    `all three control blocks must drop their own top margin on desktop (found ${dropped.length})`,
+    mines.includes("lg:order-2 lg:col-start-2 lg:row-start-1"),
+    "the seats / turn / controls rail must be the right-hand grid column",
   );
-  // The row must not render when it has nothing to put in it (finished /
-  // cancelled matches), or it leaves an empty 12px gap behind.
+  assert.ok(
+    mines.includes("lg:order-1 lg:col-start-1 lg:row-start-1"),
+    "the board must be the left-hand grid column",
+  );
+  // The page column must widen past the old 3xl so board + rail both fit.
+  assert.ok(
+    mines.includes("lg:max-w-5xl"),
+    "the game column must widen on desktop to hold the board and its rail",
+  );
+  // A 17rem rail cannot hold the three controls side by side, so they stay
+  // stacked — and the seat cards drop to a single column to fit the rail.
+  assert.ok(
+    mines.includes("flex flex-col items-center gap-3 lg:mt-0"),
+    "the controls must stay a stacked column on desktop",
+  );
+  assert.ok(
+    mines.includes("lg:mt-0 lg:grid-cols-1"),
+    "the seat cards must stack in the narrow desktop rail",
+  );
+  // The old single desktop control row must be gone, and the group must still
+  // collapse to null when all three blocks are absent (finished / cancelled).
+  assert.ok(
+    !mines.includes("lg:flex-row lg:items-center lg:justify-center lg:gap-4"),
+    "the old single control row must be gone",
+  );
   assert.match(
     mines,
     /resignNode \|\| pickToggleNode \|\| emoteNode \? \(/,
-    "the control row must collapse to null when all three blocks are absent",
+    "the control group must collapse to null when all three blocks are absent",
   );
 });
 
 // ════════════════════════════════════════════════════════════════════
-// 4. The creator frame is exempt
-// ════════════════════════════════════════════════════════════════════
-
-test("the creator frame releases both caps", () => {
-  assert.match(
-    desktopQuery,
-    /\[data-creator-layout\] \.mines-board-frame,\s*\[data-creator-layout\] \.memory-board-frame \{\s*max-width: none;\s*\}/,
-    "both caps must be released inside [data-creator-layout] (a recording frame is not the viewport)",
-  );
-  assert.ok(
-    /\[data-creator-layout\] \.chess-board-frame \{\s*max-width: none;\s*\}/.test(css),
-    "the pre-existing chess exemption must stay intact",
-  );
-});
-
-// ════════════════════════════════════════════════════════════════════
-// 5. The wiring exists
+// 4. The wiring exists
 // ════════════════════════════════════════════════════════════════════
 
 test("the browser check is wired up", () => {

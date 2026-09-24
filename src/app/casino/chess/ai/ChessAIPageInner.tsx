@@ -5,11 +5,11 @@ import { Chess } from "chess.js";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
-// Shared Creator Mode foundation (admin-only): mounts the viewport
-// recorder + overlay and auto-starts when the AI battle is live, stops
-// once the game-over popup has been captured. No gameplay logic touched.
-import CreatorModeHost from "../../../../components/creator-mode/CreatorModeHost";
-import { CreatorResponsiveLayout } from "../../../../components/creator-mode/CreatorModeLayout";
+// Page-level session host: records "recently played" and beats
+// active-player presence, driven by the game's REAL lifecycle
+// (autoStart/autoStop) — never by page load.
+import GameSessionHost from "../../../../components/GameSessionHost";
+
 import NavigationBar from "../../../../components/navigation-bar";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../components/FrameAvatar";
@@ -942,14 +942,12 @@ export default function ChessAIPageInner() {
       <NavigationBar currentPath="/casino" />
 
       {/* Only the actual chess game (incl. the game-over popup) is
-          recorded — nav stays outside the shared CreatorModeHost
+          recorded — nav stays outside the shared GameSessionHost
           recording viewport. Recording auto-starts when the battle is
           live and stops once the result popup has been captured. */}
-      <CreatorModeHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai" backToLobbyHref="/casino/chess">
-      <CreatorResponsiveLayout>
+      <GameSessionHost autoStart={!gameOver} autoStop={gameOver} gameLabel="chess-ai">
 
-      {/* Turn Banner — chess-turn-banner: hidden in creator mode (see
-          globals.css) since the popup covers the board in recorded clips. */}
+      {/* Turn Banner — chess-turn-banner. */}
       <AnimatePresence>
         {turnBanner && (
           <motion.div
@@ -979,8 +977,7 @@ export default function ChessAIPageInner() {
         )}
       </AnimatePresence>
 
-      {/* Check Banner — chess-check-banner: hidden in creator mode (see
-          globals.css) — same reason as the turn banner. */}
+      {/* Check Banner — chess-check-banner. */}
       <AnimatePresence>
         {isInCheck && !gameOver && (
           <motion.div
@@ -1026,10 +1023,7 @@ export default function ChessAIPageInner() {
         </div>
 
         {/* MAIN */}
-        {/* data-creator-stack: in the portrait (9:16) creator phone frame
-            this board + sidebar grid collapses to a single column so the
-            board keeps the full frame width. */}
-        <div data-creator-stack className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
+        <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
           {/* BOARD AREA */}
           <div className="flex justify-center">
             <div className="w-full max-w-[660px]">
@@ -1065,11 +1059,9 @@ export default function ChessAIPageInner() {
                 </div>
               </div>
 
-              {/* BOARD — chess-board-wrap: the shake effect is disabled in
-                  creator mode (see globals.css); the board itself is kept. */}
+              {/* BOARD — chess-board-wrap. */}
               <div className={`chess-board-wrap chess-board-frame relative p-[2px] rounded-2xl bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 shadow-[0_0_35px rgba(0,255,255,0.35)] w-full aspect-square mx-auto ${boardShake ? "animate-board-shake" : ""}`}>
-                {/* chess-capture-flash: hidden in creator mode (see
-                    globals.css) so recorded clips don't flash the board. */}
+                {/* chess-capture-flash. */}
                 <AnimatePresence>
                   {captureFlash && (
                     <motion.div
@@ -1271,8 +1263,7 @@ export default function ChessAIPageInner() {
           </div>
         </div>
       </div>
-      </CreatorResponsiveLayout>
-      </CreatorModeHost>
+      </GameSessionHost>
     </div>
   );
 }
