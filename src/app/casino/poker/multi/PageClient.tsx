@@ -27,6 +27,10 @@ import GameSessionHost from "../../../../components/GameSessionHost";
 
 import ReportModal from "../../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../../components/lobby/PvpLobby";
+import {
+  AI_DIFFICULTY_LABELS,
+  coerceAiDifficulty,
+} from "../../../../lib/aiDifficulty";
 import confetti from "canvas-confetti";
 import {
   IconCoins,
@@ -1617,6 +1621,10 @@ export default function PokerPage() {
     if (occupied) return alert("Seat already taken.");
 
     setSelectedSeat(seatIndex);
+    // Open on the tier chosen in the lobby rather than resetting to the middle
+    // one: the lobby choice is what every seat the host does not override plays,
+    // so it is the sensible default for a new seat too.
+    setAiDifficultyInput(aiDifficulty);
     setSeatModalOpen(true);
   }
 
@@ -2018,9 +2026,9 @@ export default function PokerPage() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {(
                   [
-                    { key: "easy", icon: <IconEgg size={18} className="text-green-400" />, label: "Easy", desc: "Beginner bots" },
-                    { key: "medium", icon: <IconScale size={18} className="text-amber-300" />, label: "Medium", desc: "Balanced play" },
-                    { key: "hard", icon: <IconFlame size={18} className="text-red-400" />, label: "Hard", desc: "Tough opponents" },
+                    { key: "easy", icon: <IconEgg size={18} className="text-green-400" />, label: AI_DIFFICULTY_LABELS.easy, desc: "Beginner bots" },
+                    { key: "medium", icon: <IconScale size={18} className="text-amber-300" />, label: AI_DIFFICULTY_LABELS.normal, desc: "Balanced play" },
+                    { key: "hard", icon: <IconFlame size={18} className="text-red-400" />, label: AI_DIFFICULTY_LABELS.hard, desc: "Tough opponents" },
                   ] as const
                 ).map((d) => (
                   <button
@@ -2864,7 +2872,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                       >
                         {occupant.name}
                       </span>
-                      {occupant.isAI && <> <span title={`AI Difficulty: ${(occupant.difficulty || aiDifficulty).charAt(0).toUpperCase() + (occupant.difficulty || aiDifficulty).slice(1)}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}
+                      {occupant.isAI && <> <span title={`AI Difficulty: ${AI_DIFFICULTY_LABELS[coerceAiDifficulty(occupant.difficulty || aiDifficulty)]}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}
                       {isPlayer ? (
                         <EmoteBubble emote={myEmote} side="mine" />
                       ) : occupant.id === incomingSenderId ? (
@@ -3287,9 +3295,9 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                   onChange={(e) => setAiDifficultyInput(e.target.value as "easy" | "medium" | "hard")}
                   className="w-full p-2 rounded text-black mb-2"
                 >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
+                  <option value="easy">{AI_DIFFICULTY_LABELS.easy}</option>
+                  <option value="medium">{AI_DIFFICULTY_LABELS.normal}</option>
+                  <option value="hard">{AI_DIFFICULTY_LABELS.hard}</option>
                 </select>
 
                 <label className="block text-sm mb-1">AI Stack</label>

@@ -28,6 +28,11 @@ import CrashArenaRulesModal from "./CrashArenaRulesModal";
 import CrashRiskMeter from "./CrashRiskMeter";
 import { AnimatePresence, useReducedMotion } from "framer-motion";
 import { playCrash, playVictory, playDefeat } from "../../lib/gameAudio";
+import {
+  CRASH_AI_DIFFICULTIES,
+  crashAiDifficultyLabel,
+  toCrashAiDifficulty,
+} from "../../lib/crash-arena/botStrategy";
 
 const ROUND_START_COUNTDOWN = 8; // seconds between rounds / after ready votes
 const READY_VOTES_NEEDED = 2;
@@ -89,6 +94,9 @@ export default function ArenaTable({
   onAddAi,
   onRemoveAi,
   onRenameAi,
+  // Tier the host picked in the lobby (`?aiDifficulty=`), used to open the
+  // add-AI modal on their choice instead of the middle tier.
+  initialAiDifficulty = null,
   // Invite code for PRIVATE tables — from the shared URL (?code=) or the
   // host's own table row. Players without it are prompted before joining.
   inviteCode = null,
@@ -197,7 +205,12 @@ export default function ArenaTable({
   const [resultDismissed, setResultDismissed] = useState(false);
   // ── Add-AI modal (private tables, host only) ─────────────────────────
   const [showAddAi, setShowAddAi] = useState(false);
-  const [aiDifficulty, setAiDifficulty] = useState("medium");
+  // Defaults to the tier the host picked in the lobby (carried in the URL as
+  // `?aiDifficulty=`), so the add-AI modal opens on the choice they made rather
+  // than silently resetting to the middle tier.
+  const [aiDifficulty, setAiDifficulty] = useState(() =>
+    toCrashAiDifficulty(initialAiDifficulty),
+  );
   const [aiStackInput, setAiStackInput] = useState("");
   const [addingAi, setAddingAi] = useState(false);
   const [addAiError, setAddAiError] = useState(null);
@@ -510,7 +523,7 @@ export default function ArenaTable({
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-[#00e5ff]/40 bg-[#00e5ff]/15 text-[#00e5ff]">
                 AI Practice{/* Difficulty picked in the lobby (defaults to
                     medium for pre-difficulty practice tables). */}
-                {table?.aiDifficulty ? ` · ${table.aiDifficulty}` : " · medium"}
+                {` · ${crashAiDifficultyLabel(table?.aiDifficulty)}`}
               </span>
             )}
           </div>
@@ -1089,18 +1102,18 @@ export default function ArenaTable({
               AI Difficulty
             </label>
             <div className="flex gap-1.5 mb-4">
-              {["easy", "medium", "hard"].map((d) => (
+              {CRASH_AI_DIFFICULTIES.map((d) => (
                 <button
                   key={d}
                   type="button"
                   onClick={() => setAiDifficulty(d)}
-                  className={`flex-1 rounded-full border px-3 py-1.5 text-xs font-bold capitalize transition-all duration-200 ${
+                  className={`flex-1 rounded-full border px-3 py-1.5 text-xs font-bold transition-all duration-200 ${
                     aiDifficulty === d
                       ? "border-[#ff4fd8] bg-[#ff4fd8]/20 text-[#ff4fd8] shadow-[0_0_10px_rgba(255,79,216,0.35)]"
                       : "border-gray-600/50 bg-gray-800/40 text-gray-400 hover:border-[#ff4fd8]/60 hover:text-[#ff4fd8]/80"
                   }`}
                 >
-                  {d}
+                  {crashAiDifficultyLabel(d)}
                 </button>
               ))}
             </div>

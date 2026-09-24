@@ -6,6 +6,8 @@ import TableList from "./TableList";
 import WagerSection from "./WagerSection";
 import BuyInModal from "./BuyInModal";
 import CrashArenaRulesModal from "./CrashArenaRulesModal";
+import AiDifficultyPicker from "../lobby/AiDifficultyPicker";
+import { readStoredAiDifficulty } from "../../lib/aiDifficulty";
 import { CRASH_MIN_WAGER } from "../../lib/games/crash/constants";
 import { useSocket } from "../../context/SocketProvider";
 import {
@@ -42,6 +44,13 @@ export default function ArenaLobby({
   // Private tables are hidden from the public grid — the creator plays
   // there with invited friends (and can add AI seats, poker-style).
   const [isPrivate, setIsPrivate] = useState(false);
+
+  // The tier every AI seat added at this table starts on. Crash Arena's seats
+  // store their own tier, so this is the DEFAULT the host's add-AI modal opens
+  // with — carried to the table page in the URL.
+  const [aiDifficulty, setAiDifficulty] = useState(() =>
+    readStoredAiDifficulty("crash-arena"),
+  );
 
   const [creating, setCreating] = useState(false);
   const [joinTarget, setJoinTarget] = useState(null); // table awaiting buy-in (join)
@@ -113,13 +122,15 @@ export default function ArenaLobby({
         throw new Error(data.error || "Unable to create table");
       }
       emitLobbyUpdate({ created: true, wager: wagerAmount });
-      router.push(`/casino/crash-arena/table/${data.data.tableId}`);
+      router.push(
+        `/casino/crash-arena/table/${data.data.tableId}?aiDifficulty=${aiDifficulty}`,
+      );
     } catch (err) {
       fail(err.message || "Unable to create table");
     } finally {
       setCreating(false);
     }
-  }, [isSignedIn, fail, emitLobbyUpdate, router, isPrivate]);
+  }, [isSignedIn, fail, emitLobbyUpdate, router, isPrivate, aiDifficulty]);
 
   // ── Join a private game by invite code ──────────────────────────────
   // Resolves the code to its table, then lands on the table page with the
@@ -246,6 +257,22 @@ export default function ArenaLobby({
             onCreate={handleCreate}
             userBalance={userBalance}
           />
+
+          {/* AI seats are only addable at a private table, so the tier is picked
+              here and carried to the table the host lands on. */}
+          {isPrivate && (
+            <AiDifficultyPicker
+              gameKey="crash-arena"
+              value={aiDifficulty}
+              onChange={setAiDifficulty}
+              className="mt-3"
+              hint={{
+                easy: "Bots fold early and rarely take the pot.",
+                normal: "Bots fold around the middle of the curve.",
+                hard: "Bots ride deep into the danger zone before folding.",
+              }}
+            />
+          )}
         </div>
 
         {/* Join a private game with the host's invite code (poker-style) */}

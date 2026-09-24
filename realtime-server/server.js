@@ -696,6 +696,177 @@ function scheduleDisconnectGraceTimer(
   disconnectGraceTimers.set(key, { timer });
 }
 
+// ── Precision due-transition scheduler (the bot's stop as an EVENT) ──────
+// The arming countdown and the bot's stop are stored INSTANTS, and the only
+// thing that used to turn an instant into a transition was a READ: the round
+// opened, the bot stopped, and the round resolved whenever a client happened
+// to poll `get-match` next. Worse, a resolution a read performed was never
+// announced to anyone — the read path has no socket access, and
+// `precision:roundResult` was only ever emitted from the stop handler, in
+// reply to a player's own packet. So a round decided by the bot's deadline
+// reached the players only when one of them happened to poll, and reached
+// nobody else at all.
+//
+// This scheduler gives those instants a caller that arrives ON TIME. One timer
+// per match: it fires at the stored instant, asks Next.js to apply whatever is
+// due (`/api/precision/resolve-due`), broadcasts what happened into the match
+// room, and re-arms from the next instant the server reports. A match with
+// nothing pending arms nothing, so this costs one timer per live round.
+//
+// It is an ACCELERATOR, never a source of truth: the deadline lives in the
+// database and the lazy transition still runs on every read, so a restart, a
+// dropped call, or an unreachable Next.js falls back to exactly the previous
+// self-healing behaviour instead of stranding a round.
+//
+// Kicked by: a socket joining the match room (someone is watching), and the
+// ready / matchStart broadcast that arms the first round. Every later round
+// re-arms itself from the resolution it just broadcast.
+const PRECISION_DUE_ROOM_PREFIX = "precision:match:";
+/** Slack added to a due instant so a timer that fires a hair early (clock skew
+ *  between this process and the route) still finds the transition due. When it
+ *  genuinely is not due yet the route returns the SAME instant and we simply
+ *  re-arm for the remainder, so this is a floor and never a drift. */
+const PRECISION_DUE_EPSILON_MS = 80;
+/** Shortest delay we will ever arm, so a stale instant cannot spin the loop. */
+const PRECISION_DUE_MIN_DELAY_MS = 25;
+/** One retry after a failed resolve call, before leaving it to the poll path. */
+const PRECISION_DUE_RETRY_MS = 500;
+/** Bound on the resolve call, mirroring the stop proxy's own forward bound. */
+const PRECISION_DUE_HTTP_TIMEOUT_MS = 4000;
+
+if (!global.__precisionDueTimers) {
+  global.__precisionDueTimers = new Map();
+}
+const precisionDueTimers = global.__precisionDueTimers;
+
+function cancelPrecisionDue(matchId) {
+  const handle = precisionDueTimers.get(matchId);
+  if (handle) {
+    clearTimeout(handle.timer);
+    precisionDueTimers.delete(matchId);
+  }
+}
+
+/** True when no socket is in this match room. The scheduler exists to give
+ *  PRESENT players an on-time resolution; with nobody watching there is nothing
+ *  to announce, and the lazy read path stays the backstop. */
+function precisionMatchRoomIsEmpty(matchId) {
+  const participants = global.__precisionRoomParticipants;
+  const set = participants && participants.get(matchId);
+  return !set || set.size === 0;
+}
+
+function schedulePrecisionDue(matchId, atMs, { retried = false } = {}) {
+  if (!matchId) return;
+  cancelPrecisionDue(matchId);
+  const instant = Number(atMs);
+  const delay = Number.isFinite(instant)
+    ? Math.max(PRECISION_DUE_MIN_DELAY_MS, instant - Date.now() + PRECISION_DUE_EPSILON_MS)
+    : PRECISION_DUE_MIN_DELAY_MS;
+  const timer = setTimeout(() => {
+    precisionDueTimers.delete(matchId);
+    void runPrecisionDue(matchId, { retried });
+  }, delay);
+  precisionDueTimers.set(matchId, { timer });
+}
+
+/** Publish a due transition to the match room, reusing the exact event shapes
+ *  the stop handler already emits so every client listener stays as it was. */
+function broadcastPrecisionDue(matchId, report) {
+  const roomId = `${PRECISION_DUE_ROOM_PREFIX}${matchId}`;
+  if (report.decided) {
+    io.to(roomId).emit("precision:roundResult", {
+      matchId,
+      match: report.match,
+      bothStopped: true,
+      roundWinnerSeat: report.roundWinnerSeat ?? null,
+      matchFinished: report.matchFinished === true,
+    });
+  }
+  if (report.matchFinished) {
+    io.to(roomId).emit("precision:matchFinished", { matchId, match: report.match });
+    cancelPrecisionDue(matchId);
+    return;
+  }
+  if (report.decided || report.revealed) {
+    // A decision re-arms the next round (countdown running), and a reveal opens
+    // the held round. Both mean "re-read now", which is exactly what the
+    // existing `precision:roundArmStart` listener does.
+    io.to(roomId).emit("precision:roundArmStart", { matchId, match: report.match });
+  }
+}
+
+async function runPrecisionDue(matchId, { retried = false } = {}) {
+  if (!matchId) return;
+  if (precisionMatchRoomIsEmpty(matchId)) {
+    cancelPrecisionDue(matchId);
+    return;
+  }
+  try {
+    const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+    const headers = { "Content-Type": "application/json" };
+    if (process.env.REALTIME_INTERNAL_SECRET) {
+      headers["x-internal-secret"] = process.env.REALTIME_INTERNAL_SECRET;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PRECISION_DUE_HTTP_TIMEOUT_MS);
+    let payload = null;
+    try {
+      const res = await fetch(`${baseUrl}/api/precision/resolve-due`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ matchId }),
+        signal: controller.signal,
+      });
+      payload = await res.json().catch(() => null);
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!payload || payload.success !== true || !payload.data) {
+      if (!retried) {
+        schedulePrecisionDue(matchId, Date.now() + PRECISION_DUE_RETRY_MS, { retried: true });
+      }
+      return;
+    }
+
+    const report = payload.data;
+    if (report.changed) {
+      broadcastPrecisionDue(matchId, report);
+      logThrottled(
+        "precision:due:fire",
+        "[precision] due transition applied: matchId=",
+        matchId,
+        "revealed=",
+        report.revealed,
+        "aiStop=",
+        report.aiStopApplied,
+        "decided=",
+        report.decided,
+        "finished=",
+        report.matchFinished,
+      );
+    }
+    if (report.nextDueAtMs !== null && report.nextDueAtMs !== undefined) {
+      schedulePrecisionDue(matchId, report.nextDueAtMs);
+      return;
+    }
+    if (!report.match) return;
+    // Nothing left to wake up for: the match is over, or it is a human duel
+    // whose remaining transitions arrive as the players' own stop packets.
+    cancelPrecisionDue(matchId);
+  } catch (err) {
+    console.warn(
+      "[precision] due transition failed: matchId=",
+      matchId,
+      "error=",
+      err && err.message ? err.message : err,
+    );
+    if (!retried) {
+      schedulePrecisionDue(matchId, Date.now() + PRECISION_DUE_RETRY_MS, { retried: true });
+    }
+  }
+}
+
 io.on("connection", (socket) => {
   socket.emit("server:hello", {
     userId: socket.data.userId,
@@ -725,6 +896,9 @@ io.on("connection", (socket) => {
       precisionRoomParticipants.set(matchId, new Set());
     }
     precisionRoomParticipants.get(matchId).add(userId);
+    // Someone is watching this match now, so give its stored instants a timer:
+    // the scheduler reads whatever is due and arms for the next one.
+    schedulePrecisionDue(matchId, Date.now());
     // A (re)joining socket means the player is present again — cancel
     // any pending disconnect forfeit timer for this match.
     cancelDisconnectGraceTimer(`precision:${matchId}:${userId}`);
@@ -738,7 +912,12 @@ io.on("connection", (socket) => {
     const set = precisionRoomParticipants.get(matchId);
     if (!set) return;
     set.delete(userId);
-    if (set.size === 0) precisionRoomParticipants.delete(matchId);
+    if (set.size === 0) {
+      precisionRoomParticipants.delete(matchId);
+      // Nobody is watching this match any more, so stop waking up for it. The
+      // lazy read path still completes any stored transition on the next read.
+      cancelPrecisionDue(matchId);
+    }
   }
 
   // ── Plinko PvP room-participant tracking ───────────────────────
@@ -1061,7 +1240,18 @@ io.on("connection", (socket) => {
     trackTowerArenaLeave(String(roomId), socket.data.userId);
   });
 
+  // The first round is armed by an HTTP ready call, and this broadcast is the
+  // only signal a live client gives that a stored instant now exists — so it is
+  // what arms the scheduler for the opening countdown and, through it, for the
+  // bot's first stop.
+  const PRECISION_ARMING_EVENTS = new Set(["precision:playerReady", "precision:matchStart"]);
   socket.on("room_event", ({ roomId, event, payload }) => {
+    if (PRECISION_ARMING_EVENTS.has(String(event))) {
+      const room = String(roomId || "");
+      if (room.startsWith(PRECISION_DUE_ROOM_PREFIX)) {
+        schedulePrecisionDue(room.slice(PRECISION_DUE_ROOM_PREFIX.length), Date.now());
+      }
+    }
     if (!roomId || !event) return;
     socket.to(String(roomId)).emit(String(event), {
       ...(payload && typeof payload === "object" ? payload : {}),

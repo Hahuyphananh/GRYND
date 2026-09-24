@@ -8,7 +8,15 @@ export type Scorecard = Partial<Record<DiceFlushCategory, number>>;
 export type DiceFlushGameState = {
   id: string;
   game: "yahtzee";
-  players: Array<{ userId: string; name: string; isAI?: boolean; difficulty?: "easy"|"medium"|"hard" }>;
+  // `difficulty` carries the canonical tier (`easy | normal | hard`, see
+  // `src/lib/aiDifficulty.ts`). The legacy `medium` is still accepted so rooms
+  // created before the shared scale existed keep loading.
+  players: Array<{
+    userId: string;
+    name: string;
+    isAI?: boolean;
+    difficulty?: "easy" | "normal" | "hard" | "medium";
+  }>;
   ai: boolean;
   wager: number;
   pot: number;

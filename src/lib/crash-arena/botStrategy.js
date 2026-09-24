@@ -41,13 +41,47 @@ const DIFFICULTY_CONFIG = {
 };
 
 /**
+ * The tier a seat is stored AS. Crash Arena's seats and rows already hold
+ * `medium` from before the shared difficulty scale existed, so the stored
+ * vocabulary stays `easy | medium | hard` and `normal` is accepted as an alias
+ * for it. Renaming the column would need a data migration for existing rows,
+ * which is not worth a label; `crashAiDifficultyLabel` renders the canonical
+ * wording instead so the player never sees two names for one tier.
+ *
+ * @param {unknown} value anything a lobby, route or stored row hands over
+ * @returns {"easy" | "medium" | "hard"}
+ */
+export function toCrashAiDifficulty(value) {
+  if (CRASH_AI_DIFFICULTIES.includes(value)) return value;
+  // The canonical scale's names, plus the spellings the shared module coerces.
+  if (value === "normal" || value === "medium") return "medium";
+  if (value === "hard" || value === "expert" || value === "pro") return "hard";
+  if (value === "easy" || value === "casual" || value === "beginner") return "easy";
+  return "medium";
+}
+
+/**
+ * The label to SHOW for a tier — the canonical Easy / Normal / Hard wording, so
+ * a player who picked "Normal" in the lobby does not then see "medium" on the
+ * table. Display only; the stored value is unchanged.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function crashAiDifficultyLabel(value) {
+  const key = toCrashAiDifficulty(value);
+  return key === "easy" ? "Easy" : key === "hard" ? "Hard" : "Normal";
+}
+
+/**
  * Pick the multiplier the bot commits to folding at for a hand.
  *
- * @param {string} [difficulty] "easy" | "medium" | "hard" (defaults to "medium")
+ * @param {string} [difficulty] canonical `easy | normal | hard`, or this game's
+ *   stored `easy | medium | hard` (defaults to the `medium`/`normal` band)
  * @returns {number} the bot's fold target multiplier, rounded to 2 decimals
  */
 export function getCrashBotFoldTarget(difficulty = "medium") {
-  const cfg = DIFFICULTY_CONFIG[difficulty] || DIFFICULTY_CONFIG.medium;
+  const cfg = DIFFICULTY_CONFIG[toCrashAiDifficulty(difficulty)] || DIFFICULTY_CONFIG.medium;
   const [lo, hi] = cfg.foldRange;
   const target = CRASH_MIN + (lo + Math.random() * (hi - lo)) * (CRASH_MAX - CRASH_MIN);
   return Number(Math.min(CRASH_MAX, Math.max(CRASH_MIN, target)).toFixed(2));

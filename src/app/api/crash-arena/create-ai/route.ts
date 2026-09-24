@@ -19,7 +19,7 @@ import {
   CRASH_ARENA_AI_NAME,
   getOrCreateCrashArenaAiBot,
 } from "../../../../lib/crash-arena/aiBot";
-import { CRASH_AI_DIFFICULTIES } from "../../../../lib/crash-arena/botStrategy";
+import { toCrashAiDifficulty } from "../../../../lib/crash-arena/botStrategy";
 
 /** Free practice stack the human starts with (chips are virtual). */
 const AI_PRACTICE_STACK_MULTIPLIER = 20; // 20× wager — ~20 rounds of practice
@@ -62,9 +62,9 @@ export async function POST(req: Request) {
 
     // Difficulty mirrors the poker AI seats — fall back to medium for
     // anything unexpected.
-    const aiDifficulty = CRASH_AI_DIFFICULTIES.includes(difficulty)
-      ? difficulty
-      : "medium";
+    // Accepts the canonical `easy | normal | hard` the shared lobby picker
+    // sends, and this game's stored `medium`, as the same middle tier.
+    const aiDifficulty = toCrashAiDifficulty(difficulty);
 
     // ── Get the caller's internal user id ──────────────────────────────────
     const [userRow] = await db

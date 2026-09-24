@@ -2,17 +2,19 @@ import { NextResponse } from "next/server";
 import { calculateScore, rollDice } from "../../../../../game-engine/diceFlushEngine";
 import { appendAction, db, eq, loadRoom, nextTurn, requireUser, resolveExpiredTurn, settleIfEnded, validateMove, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { chooseAiOption, coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 const ALL_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"];
 
 // AI picks from the SHARED sheet — only categories nobody has claimed yet.
-function pickAiCategory(state) {
+// The tier decides how often it settles for a weaker category instead of the
+// best-scoring open one (see `chooseAiOption` in the shared AI scale).
+function pickAiCategory(state, difficulty) {
   const options = ALL_CATEGORIES
     .filter((c) => state.scorecards[c] === undefined)
     .map((category) => ({ category, score: calculateScore(state.dice, category) }));
-  if (options.length === 0) return null;
-  options.sort((a,b)=>b.score-a.score);
-  return options[Math.min(options.length - 1, Math.floor(Math.random() < 0.15 ? Math.random() * Math.min(options.length, 3) : 0))].category;
+  const picked = chooseAiOption(difficulty, options, (option) => option.score);
+  return picked ? picked.category : null;
 }
 
 export async function POST(req) {
@@ -56,7 +58,7 @@ export async function POST(req) {
       }
 
       // Pick best category from the shared sheet
-      const category = pickAiCategory(state);
+      const category = pickAiCategory(state, coerceAiDifficulty(aiPlayer.difficulty));
       if (!category) throw new Error("No categories left");
       const score = calculateScore(state.dice, category);
       state = nextTurn(state, aiPlayer.userId, category);

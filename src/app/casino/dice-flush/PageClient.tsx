@@ -16,6 +16,8 @@ import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
 import {
@@ -355,6 +357,11 @@ export default function DiceFlushPage() {
   const { isSignedIn, user } = useUser();
   const [wager, setWager] = useDefaultWager("dice-flush", 100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"pvp" | "ai">("pvp");
+  // The tier this practice match's bot plays at. Remembered per game by the
+  // picker, and sent with the start-ai request so the AI seat carries it.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("dice-flush"),
+  );
   const [joiningId, setJoiningId] = useState<string | null>(null); const [availableGames, setAvailableGames] = useState<LobbyRoom[]>([]);
   const [showRules, setShowRules] = useState(false);
   const firstVisitRules = useFirstVisitRules("dice-flush");
@@ -709,7 +716,7 @@ export default function DiceFlushPage() {
   // Free play vs AI — no stake is ever sent. The match is created with a 0
   // wager (and a 0 pot server-side), so no tokens are risked and nothing is
   // credited on the result screen.
-  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager: 0, difficulty: "medium" }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0 }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const playAI = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/start-ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager: 0, difficulty: aiDifficulty }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable"); setRoomId(d.roomId); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "ai", wager: 0, difficulty: aiDifficulty }); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
   const joinGame = async (id: string) => { setLoading(true); setJoiningId(id); try { const res = await fetch("/api/dice-flush/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId: id }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to join"); setRoomId(id); setGame(d.state); posthog?.capture("dice_flush_game_started", { mode: "pvp", wager: (d.state as any)?.wager || 0, game_id: id }); if (socket) { socket.emit("join_room", { roomId: id }); socket.emit("room_event", { roomId: id, event: "game_state_update" }); }} finally { setLoading(false); setJoiningId(null);} };
   const emitRoomEvent = () => {
     if (!socket || !roomId) return;
@@ -926,6 +933,17 @@ export default function DiceFlushPage() {
               <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#f5ff3b]"><IconDeviceGamepad2 size={14} /> Free Play</p>
               <p className="text-[10px] text-[#f5ff3b]/70 mt-1">No tokens are staked. Playing vs AI is free.</p>
             </div>
+            <AiDifficultyPicker
+              gameKey="dice-flush"
+              value={aiDifficulty}
+              onChange={setAiDifficulty}
+              className="mt-3"
+              hint={{
+                easy: "The bot calls poorly and usually settles for a weak category.",
+                normal: "The bot plays the sheet well, with the occasional slip.",
+                hard: "The bot always takes the best-scoring open category.",
+              }}
+            />
             <button onClick={playAI} className="mt-3 w-full rounded-lg bg-[#f5ff3b] px-4 py-2 font-bold text-black hover:bg-[#f5ff3b]/80 transition">Play vs AI</button>
           </>
         )}

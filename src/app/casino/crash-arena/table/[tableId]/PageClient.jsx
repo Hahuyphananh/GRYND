@@ -36,6 +36,12 @@ export default function TableRoomPage() {
     typeof searchParams?.get === "function"
       ? (searchParams.get("code") ?? null)
       : null;
+  // Tier the host picked in the lobby, carried here so the add-AI modal opens
+  // on their choice. Coerced by ArenaTable; an absent value plays the default.
+  const urlAiDifficulty =
+    typeof searchParams?.get === "function"
+      ? (searchParams.get("aiDifficulty") ?? null)
+      : null;
   const rawId = typeof params.tableId === "string" ? Number(params.tableId) : NaN;
   const tableId = Number.isFinite(rawId) ? rawId : null;
   const playerName = "You";
@@ -445,6 +451,7 @@ export default function TableRoomPage() {
         )}
 
         <ArenaTable
+          initialAiDifficulty={urlAiDifficulty}
           table={table}
           roundState={roundState}
           crashEngineRef={crashEngineRef}

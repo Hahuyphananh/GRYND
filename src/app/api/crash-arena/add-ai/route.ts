@@ -7,7 +7,7 @@ import {
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
-import { CRASH_AI_DIFFICULTIES } from "../../../../lib/crash-arena/botStrategy";
+import { toCrashAiDifficulty } from "../../../../lib/crash-arena/botStrategy";
 import {
   getOrCreateCrashArenaAiBot,
   resolveCrashArenaAiBotIds,
@@ -79,9 +79,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Only the host can add AIs" }, { status: 403 });
     }
 
-    const aiDifficulty = CRASH_AI_DIFFICULTIES.includes(difficulty)
-      ? difficulty
-      : "medium";
+    // Accepts the canonical `easy | normal | hard` the shared lobby picker
+    // sends, and this game's stored `medium`, as the same middle tier.
+    const aiDifficulty = toCrashAiDifficulty(difficulty);
 
     // Optional custom name for this AI seat (stored on the seat, never the
     // shared users row). Empty / too long → default name.

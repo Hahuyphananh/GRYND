@@ -346,13 +346,56 @@ function armRound(write: MatchWrite, now: number, revealMs = 0): void {
  *      this round → record the bot's stop (server-stamped) and, if the human
  *      has already stopped, decide the round. Same reasoning: the bot is an
  *      instant, not a process.
+ *
+ * Reports WHAT it did, not just whether anything changed: the realtime server's
+ * scheduler has to announce the result, and a boolean cannot tell a TIE apart
+ * from a no-op — see `resolveDueTransitions` below.
  */
+
+/** What one call to `applyDueTransitions` actually did. */
+interface DueTransitionResult {
+  /** Something changed, so the caller must persist the write view. */
+  changed: boolean;
+  /** The held round was revealed (`arming` → `active`). */
+  revealed: boolean;
+  /** The bot's stop was recorded by this call. */
+  aiStopApplied: boolean;
+  /** A round was graded by this call — a win OR a tie. */
+  decided: boolean;
+  /** Winner of the round graded here (null on a tie). */
+  roundWinnerSeat: PlayerSeat | null;
+  /** The MATCH reached its win condition on this call. */
+  matchFinished: boolean;
+  /** A fresh round was armed as a result, so a countdown is now running. */
+  nextRoundArmed: boolean;
+}
+
+/** What one round resolution did. */
+interface RoundResolutionResult {
+  /** Both seats had a stop and the round was graded. */
+  resolved: boolean;
+  /** Winner of the graded round (null on a tie). */
+  roundWinnerSeat: PlayerSeat | null;
+  /** The MATCH reached its win condition. */
+  matchFinished: boolean;
+  /** A fresh round was armed (always true when resolved and not finished). */
+  nextRoundArmed: boolean;
+}
+
 function applyDueTransitions(
   write: MatchWrite,
   now: number,
   options: { isAiGame: boolean },
-): boolean {
-  let changed = false;
+): DueTransitionResult {
+  const outcome: DueTransitionResult = {
+    changed: false,
+    revealed: false,
+    aiStopApplied: false,
+    decided: false,
+    roundWinnerSeat: null,
+    matchFinished: false,
+    nextRoundArmed: false,
+  };
 
   if (isArmedRoundDue(write.state, now)) {
     const target =
@@ -364,7 +407,8 @@ function applyDueTransitions(
       // human-looking error, exactly like the old `setTimeout` delay.
       write.aiStopAt = new Date(now + Math.max(100, target + rollBotReactionError()));
     }
-    changed = true;
+    outcome.changed = true;
+    outcome.revealed = true;
   }
 
   if (
@@ -390,27 +434,46 @@ function applyDueTransitions(
       elapsedMs: telemetry.elapsedMs,
     };
     write.aiStopAt = null;
-    changed = true;
-    // If the human already stopped, the round is now decidable.
-    changed = applyRoundResolutionIfReady(write, now) || changed;
+    outcome.changed = true;
+    outcome.aiStopApplied = true;
+    // If the human already stopped, the round is decidable — and this call
+    // grades it right here, so the same call both stops the bot and decides
+    // the round.
+    const resolution = applyRoundResolutionIfReady(write, now);
+    if (resolution.resolved) {
+      outcome.changed = true;
+      outcome.decided = true;
+      outcome.roundWinnerSeat = resolution.roundWinnerSeat;
+      outcome.matchFinished = resolution.matchFinished;
+      outcome.nextRoundArmed = resolution.nextRoundArmed;
+    }
   }
 
-  return changed;
+  return outcome;
 }
 
 /** Both seats have a stop for this round → grade it, apply the outcome, and
- *  either finish the match or arm the next round. Returns true when it did
- *  something. */
-function applyRoundResolutionIfReady(write: MatchWrite, now: number): boolean {
+ *  either finish the match or arm the next round.
+ *
+ *  Reports what it did, so a caller that has to ANNOUNCE the decision (the
+ *  realtime server's scheduler) can tell a graded round from a no-op without
+ *  re-deriving the rules. */
+function applyRoundResolutionIfReady(write: MatchWrite, now: number): RoundResolutionResult {
+  const nothing: RoundResolutionResult = {
+    resolved: false,
+    roundWinnerSeat: null,
+    matchFinished: false,
+    nextRoundArmed: false,
+  };
   const state = write.state;
-  if (state.phase !== "active") return false;
+  if (state.phase !== "active") return nothing;
   const seat1 = state.players.find((p) => p.seat === 1);
   const seat2 = state.players.find((p) => p.seat === 2);
-  if (!seat1 || !seat2) return false;
+  if (!seat1 || !seat2) return nothing;
   const stop1 = write.pendingStops[seat1.userId];
   const stop2 = write.pendingStops[seat2.userId];
-  if (!stop1 || !stop2) return false;
-  if (state.targetMs === null) return false;
+  if (!stop1 || !stop2) return nothing;
+  if (state.targetMs === null) return nothing;
 
   const result = evaluateRound({
     score: state.score,
@@ -456,7 +519,12 @@ function applyRoundResolutionIfReady(write: MatchWrite, now: number): boolean {
       status: "completed",
       playerCount: state.players.length,
     });
-    return true;
+    return {
+      resolved: true,
+      roundWinnerSeat: result.roundWinnerSeat,
+      matchFinished: true,
+      nextRoundArmed: false,
+    };
   }
 
   // Round decided (or tied → the SAME currentRound replays with a fresh
@@ -469,7 +537,12 @@ function applyRoundResolutionIfReady(write: MatchWrite, now: number): boolean {
   // its timer must not start) until that window has passed. The round-result
   // overlay and this gate read the SAME constant, so they cannot drift.
   armRound(write, now, ROUND_RESULT_REVEAL_MS);
-  return true;
+  return {
+    resolved: true,
+    roundWinnerSeat: result.roundWinnerSeat,
+    matchFinished: false,
+    nextRoundArmed: true,
+  };
 }
 
 // ── Reads ────────────────────────────────────────────────────────────────
@@ -493,8 +566,8 @@ export async function readMatch(
 
   const now = Date.now();
   const write = toWrite(row, now);
-  const changed = applyDueTransitions(write, now, { isAiGame: row.isAiGame });
-  if (changed && options.persist !== false) {
+  const outcome = applyDueTransitions(write, now, { isAiGame: row.isAiGame });
+  if (outcome.changed && options.persist !== false) {
     await persistMatch(db, matchId, write);
     row.state = write.state;
     row.pendingStops = write.pendingStops;
@@ -506,6 +579,135 @@ export async function readMatch(
     row.touchedAt = write.touchedAt.getTime();
   }
   return row;
+}
+
+// ── Due transitions as a CALLABLE (the bot's stop as an event) ────────────
+//
+// `applyDueTransitions` above is the transition, but it only ran as a side
+// effect of a read — so the moment a stored instant came due was decided by
+// whenever a client happened to poll, and a resolution it performed was never
+// announced to anyone (nothing on a read path can broadcast). The bot's stop
+// was therefore noticed up to a full poll interval late, and only by the client
+// that made the poll.
+//
+// `resolveDueTransitions` gives the realtime server a caller that arrives ON
+// TIME and gets back everything it needs to ANNOUNCE what happened:
+//
+//   * `nextDueAtMs` — the next stored instant worth waking up for, so the
+//     scheduler can arm one timer and stop. It is handed to the realtime
+//     server only; the bot's stop instant is never published to a CLIENT, and
+//     the public snapshot still carries no deadline (the bot's stop shows up
+//     once, as `state.aiStop`, the moment it is recorded).
+//   * `revealed` / `aiStopApplied` / `decided` / `matchFinished` /
+//     `nextRoundArmed` — the shape of the broadcast, derived HERE so the
+//     realtime layer never has to interpret game state.
+//
+// The lazy read path is untouched and stays the backstop: this is an extra
+// caller, not a replacement. A restarted or frozen scheduler therefore degrades
+// to exactly the old self-healing behaviour instead of stranding a round.
+
+export interface PrecisionDueReport {
+  /** Match id, echoed so a caller can't confuse two in-flight reports. */
+  matchId: string;
+  /** Public state after the call, or null when the id holds nothing. */
+  match: PrecisionState | null;
+  /** True when a transition was applied AND persisted. */
+  changed: boolean;
+  /** The round was revealed by this call (`arming` → `active`). */
+  revealed: boolean;
+  /** The bot's stop was recorded by this call. */
+  aiStopApplied: boolean;
+  /** A round was graded by this call — a win OR a tie. */
+  decided: boolean;
+  /** Winner of the round graded by this call (null on a tie). */
+  roundWinnerSeat: PlayerSeat | null;
+  /** The MATCH finished on this call. */
+  matchFinished: boolean;
+  /** A fresh round was armed by this call, so a countdown is now running. */
+  nextRoundArmed: boolean;
+  /** Server instant the NEXT transition is due, or null when nothing is
+   *  pending (a human duel mid-round, a finished match, an id with no match). */
+  nextDueAtMs: number | null;
+}
+
+/** The server instant the NEXT stored transition is due, or null when this
+ *  match has nothing left that a timer could perform.
+ *
+ *  Ordered so the answer is always "the transition that ends the current
+ *  phase": the arming countdown while a round is held, then the bot's stop once
+ *  the round is open. Terminating by construction — whenever this returns an
+ *  instant, `applyDueTransitions` applies it on the next call, because
+ *  `isArmedRoundDue` and the bot's guard test exactly these values. */
+function nextDueAtMsOf(write: MatchWrite, isAiGame: boolean): number | null {
+  const state = write.state;
+  if (state.phase === "finished" || state.winnerSeat !== null) return null;
+  if (state.phase === "arming") {
+    return typeof state.countdownEndsAt === "number" ? state.countdownEndsAt : null;
+  }
+  if (isAiGame && state.phase === "active" && write.aiStopAt !== null) {
+    return write.aiStopAt.getTime();
+  }
+  return null;
+}
+
+/**
+ * Perform whatever transition has come due RIGHT NOW and report it.
+ *
+ * The realtime server's per-match scheduler calls this the instant an armed
+ * countdown or the bot's stop deadline elapses, so the round opens and the bot
+ * stops ON TIME and both are broadcast to the match room — instead of being
+ * discovered by whichever poll happened to land next.
+ *
+ * Runs in one transaction under the match row lock, exactly like
+ * `recordRoundStop`, so a stop packet and this call can never both grade the
+ * same round: whoever holds the lock first applies the transition, and the
+ * other sees an already-advanced phase.
+ */
+export async function resolveDueTransitions(matchId: string): Promise<PrecisionDueReport> {
+  const empty: PrecisionDueReport = {
+    matchId,
+    match: null,
+    changed: false,
+    revealed: false,
+    aiStopApplied: false,
+    decided: false,
+    roundWinnerSeat: null,
+    matchFinished: false,
+    nextRoundArmed: false,
+    nextDueAtMs: null,
+  };
+  if (!matchId) return empty;
+
+  return db.transaction(async (tx) => {
+    const [raw] = await tx
+      .select(MATCH_COLUMNS)
+      .from(precisionMatches)
+      .where(eq(precisionMatches.id, matchId))
+      .for("update")
+      .limit(1);
+    if (!raw) return empty;
+    const row = mapMatchRow(raw as Record<string, unknown>);
+    if (!row) return empty;
+
+    const now = Date.now();
+    const write = toWrite(row, now);
+
+    const outcome = applyDueTransitions(write, now, { isAiGame: row.isAiGame });
+    if (outcome.changed) await persistMatch(tx, matchId, write);
+
+    return {
+      matchId,
+      match: write.state,
+      changed: outcome.changed,
+      revealed: outcome.revealed,
+      aiStopApplied: outcome.aiStopApplied,
+      decided: outcome.decided,
+      roundWinnerSeat: outcome.roundWinnerSeat,
+      matchFinished: outcome.matchFinished,
+      nextRoundArmed: outcome.nextRoundArmed,
+      nextDueAtMs: nextDueAtMsOf(write, row.isAiGame),
+    };
+  });
 }
 
 /** The public snapshot for a match id (or null when the id holds nothing).
@@ -1015,7 +1217,7 @@ export async function recordRoundStop(
     write.pendingStops[userId] = telemetry;
 
     // Not both seats in yet — persist the bot's progress (if any) and wait.
-    if (!applyRoundResolutionIfReady(write, stopInstantMs)) {
+    if (!applyRoundResolutionIfReady(write, stopInstantMs).resolved) {
       await persistMatch(tx, matchId, write);
       return stopResult(state, { bothStopped: false });
     }

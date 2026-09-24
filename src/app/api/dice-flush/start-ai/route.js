@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { db, getDisplayName, initialState, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 export async function POST(req) {
   try {
     const gate = await requireAgeVerifiedUser();
     if (gate.response) return gate.response;
     const userId = await requireUser();
-    const { wager, difficulty = "medium" } = await req.json();
+    const { wager, difficulty: rawDifficulty } = await req.json();
+    // Canonical `easy | normal | hard`: an older client's `medium`, or a lobby
+    // that never sent one, lands on the shared default rather than storing a
+    // spelling the shared skill table does not know.
+    const difficulty = coerceAiDifficulty(rawDifficulty);
     const amount = Number(wager);
     // An AI match is FREE PLAY: the client sends no stake (0), which is the
     // normal case here — not an invalid wager. Reject only malformed input

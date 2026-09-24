@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconTarget } from "@tabler/icons-react";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
 const WAGER_OPTIONS = [10, 25, 50, 100];
 
@@ -16,6 +18,9 @@ export default function PoolLobbyPage() {
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createdLobbyId, setCreatedLobbyId] = useState<string | null>(null);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("pool-masters")
+  );
 
   const load = async () => {
     try {
@@ -104,7 +109,7 @@ export default function PoolLobbyPage() {
         return;
       }
       router.push(
-        `/casino/pool-masters/game/${data.matchId}?ai=1&turn=${data.firstTurnSeat ?? 1}`,
+        `/casino/pool-masters/game/${data.matchId}?ai=1&turn=${data.firstTurnSeat ?? 1}&difficulty=${aiDifficulty}`,
       );
     } finally {
       setLoading(false);
@@ -165,6 +170,18 @@ export default function PoolLobbyPage() {
         busy: loading,
         onClick: createAI,
       }}
+      children={
+        <AiDifficultyPicker
+          gameKey="pool-masters"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot misses badly and often shoots the wrong ball.",
+            normal: "The bot aims well by default, with the occasional slip.",
+            hard: "The bot always takes the nearest ball and barely misses.",
+          }}
+        />
+      }
       escrowNote="We pair you with another player of the exact same wager. If no one is waiting, your wager is escrowed in a private lobby until someone joins or you cancel."
       lobbies={lobbies}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."

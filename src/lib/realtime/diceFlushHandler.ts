@@ -1,4 +1,5 @@
 import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove, TURN_TIME_LIMIT_MS, type DiceFlushCategory, type DiceFlushGameState } from "../../../game-engine/diceFlushEngine";
+import { chooseAiOption, coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
 
 type SocketLike = { emit: (event: string, payload: any) => void; to?: (room: string) => { emit: (event:string, payload:any)=>void } };
 
@@ -13,10 +14,19 @@ const rakeRate = 0.05;
 const OPEN_CATEGORIES = ["ones","twos","threes","fours","fives","sixes","threeOfKind","fourOfKind","fullHouse","smallStraight","largeStraight","fiveKind"] as DiceFlushCategory[];
 
 // AI picks from the SHARED sheet — only categories nobody has claimed yet.
-function pickAiCategory(state: DiceFlushGameState): DiceFlushCategory {
+//
+// The tier decides how often it settles for a weaker category instead of the
+// best-scoring open one (see `chooseAiOption`): `hard` always takes the best,
+// `normal` keeps the ~12% fudge this game shipped with, and `easy` blunders
+// nearly half the time. Before the shared scale existed the difficulty was
+// stored on the AI seat and never read, so every tier played identically.
+function pickAiCategory(
+  state: DiceFlushGameState,
+  difficulty: AiDifficulty,
+): DiceFlushCategory {
   const options = OPEN_CATEGORIES.filter((c) => state.scorecards[c] === undefined).map((category) => ({ category, score: require("../../../game-engine/diceFlushEngine").calculateScore(state.dice, category) }));
-  options.sort((a,b)=>b.score-a.score);
-  return options[Math.min(options.length - 1, Math.floor(Math.random() < 0.15 ? Math.random() * Math.min(options.length, 3) : 0))].category;
+  const picked = chooseAiOption(difficulty, options, (option) => option.score);
+  return picked ? picked.category : options[0].category;
 }
 
 export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; username: string; wallet: { lockWager: Function; payoutWinner: Function } }) {
@@ -44,7 +54,10 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
       socket.emit("room_updated", room);
       socket.emit("game_state_update", room);
     },
-    start_ai_match: ({ wager, difficulty = "medium" }: { wager: number; difficulty?: "easy"|"medium"|"hard" }) => {
+    start_ai_match: ({ wager, difficulty: rawDifficulty }: { wager: number; difficulty?: unknown }) => {
+      // Canonical tier so the seat always carries a value the shared skill
+      // table knows — this is what the AI now actually reads.
+      const difficulty = coerceAiDifficulty(rawDifficulty);
       const aiId = `ai:${difficulty}`;
       // AI mode is free play — skip `lockWager` (no token deduction) and
       // keep `pot` at 0 so the eventual match_ended payout can't credit
@@ -77,7 +90,7 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
             if (open.length > 0) aiState.currentCall = open[Math.floor(Math.random() * open.length)];
           }
           for (let i=0;i<3;i++) aiState = rollDice(aiState);
-          const aiCategory = pickAiCategory(aiState);
+          const aiCategory = pickAiCategory(aiState, coerceAiDifficulty(ai.difficulty));
           next = nextTurn(aiState, ai.userId, aiCategory);
           socket.emit("ai_action", { roomId, action: "choose_category", category: aiCategory });
         }

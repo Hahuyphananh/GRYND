@@ -13,6 +13,13 @@ import { applyShotPower, isMoving, tickPhysics } from "../../../../../lib/pool/p
 import { evaluateRules } from "../../../../../lib/pool/rules";
 import { drawAimGuide, drawBalls, drawBankPreview, drawShotPreview, drawTable } from "../../../../../lib/pool/render";
 import { isNewerVersion, pushPoolState } from "../../../../../lib/pool/multiplayer";
+import { DEFAULT_AI_DIFFICULTY, poolAiAimSpreadRad } from "../../../../../lib/pool/ai";
+import {
+  chooseAiOption,
+  coerceAiDifficulty,
+  readStoredAiDifficulty,
+  type AiDifficulty,
+} from "../../../../../lib/aiDifficulty";
 import { Ball, PlayerTurn, ShotLifecycle, ShotMeta, Team } from "../../../../../lib/pool/types";
 import { useUser } from "@clerk/nextjs";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
@@ -172,7 +179,12 @@ function FitStage({
   );
 }
 
-function planAiShot(balls: Ball[], aiTeam: Team, openTable: boolean) {
+function planAiShot(
+  balls: Ball[],
+  aiTeam: Team,
+  openTable: boolean,
+  difficulty: AiDifficulty = DEFAULT_AI_DIFFICULTY
+) {
   const cue = balls.find((b) => b.number === 0 && !b.pocketed);
   if (!cue) return null;
 
@@ -185,14 +197,16 @@ function planAiShot(balls: Ball[], aiTeam: Team, openTable: boolean) {
   const targets = legalTargets.length ? legalTargets : objectBalls.filter((b) => b.number !== 8);
   if (!targets.length) return null;
 
-  const target = [...targets].sort(
-    (a, b) => Math.hypot(a.x - cue.x, a.y - cue.y) - Math.hypot(b.x - cue.x, b.y - cue.y)
-  )[0];
+  // Easier tiers sometimes take a farther ball than the nearest one, which is
+  // the second axis of weakness on top of the aim jitter below: `normal` keeps
+  // the shipped ~12% fudge, `hard` always takes the nearest.
+  const target =
+    chooseAiOption(difficulty, targets, (b) => -Math.hypot(b.x - cue.x, b.y - cue.y)) ?? targets[0];
   const distance = Math.hypot(target.x - cue.x, target.y - cue.y);
   const angle = Math.atan2(target.y - cue.y, target.x - cue.x);
 
   return {
-    angle: angle + (Math.random() - 0.5) * 0.035,
+    angle: angle + (Math.random() - 0.5) * poolAiAimSpreadRad(difficulty),
     power: Math.min(MAX_PULL, Math.max(72, distance / 5.4)),
   };
 }
@@ -204,6 +218,13 @@ export default function Page() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const aiMode = searchParams.get("ai") === "1";
+  // The tier the lobby picked. Prefer the URL, fall back to the remembered
+  // preference (a direct link to a practice match carries no tier), and coerce
+  // either way so a legacy or missing value plays the default rather than
+  // silently weakening the bot.
+  const aiDifficulty = coerceAiDifficulty(
+    searchParams.get("difficulty") ?? readStoredAiDifficulty("pool-masters")
+  );
   const initialTurn: PlayerTurn = searchParams.get("turn") === "2" ? 2 : 1;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ballsRef = useRef<Ball[]>([]);
@@ -1188,7 +1209,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     }
     if (aiShotLock.current) return;
 
-    const shot = planAiShot(ballsRef.current, oppTeam, openTable);
+    const shot = planAiShot(ballsRef.current, oppTeam, openTable, aiDifficulty);
     if (!shot) return;
 
     aiShotLock.current = true;
@@ -1210,7 +1231,7 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
       aiShotLock.current = false;
       setShowOpponentVisor(false);
     }, 1200);
-  }, [aiMode, turn, canShoot, winner, oppTeam, openTable]);
+  }, [aiMode, turn, canShoot, winner, oppTeam, openTable, aiDifficulty]);
 
   const syncMatch = async () => {
     // Skip polling when the local player just fired a shot — prevents stale DB

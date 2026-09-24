@@ -9,6 +9,7 @@ import {
 import { applyShotPower, isMoving, tickPhysics } from "./physics";
 import { evaluateRules } from "./rules";
 import { Ball, PlayerTurn, ShotMeta, Team } from "./types";
+import { coerceAiDifficulty } from "../aiDifficulty";
 
 /**
  * Pool Masters AI shot planning.
@@ -74,11 +75,28 @@ type DifficultyTier = {
   caution: number;
 };
 
+/** The aim jitter the in-match planner shipped with (±0.035 rad). */
+export const BASE_AI_AIM_SPREAD_RAD = 0.035;
+
 export const AI_DIFFICULTY: Record<AiDifficulty, DifficultyTier> = {
   easy: { aimError: 1.5, maxSimulations: 4, caution: 0.15 },
   normal: { aimError: 0.85, maxSimulations: 8, caution: 0.55 },
   hard: { aimError: 0.3, maxSimulations: 12, caution: 0.9 },
 };
+
+/**
+ * The angle jitter the lightweight client-side planner adds to its aim, in
+ * radians, for a tier.
+ *
+ * `normal` reproduces the flat ±0.035 the in-match planner shipped with, so the
+ * default tier still plays exactly as it always has; the other tiers scale off
+ * the same `aimError` table the full engine planner uses, so both planners
+ * agree on how badly a tier executes a shot.
+ */
+export function poolAiAimSpreadRad(difficulty: unknown): number {
+  const tier = AI_DIFFICULTY[coerceAiDifficulty(difficulty)];
+  return BASE_AI_AIM_SPREAD_RAD * (tier.aimError / AI_DIFFICULTY[DEFAULT_AI_DIFFICULTY].aimError);
+}
 
 /** Ghost-ball cuts thinner than this are not worth planning. */
 const MIN_CUT_COS = 0.35;
