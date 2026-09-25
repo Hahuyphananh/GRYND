@@ -12,6 +12,7 @@ import { cosmeticEffectClass } from "../../lib/profileCosmetics";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useApiResource } from "../../hooks/useApiResource";
 import AsyncState from "../../components/states/AsyncState";
+import UpgradeProButton from "../../components/UpgradeProButton";
 
 const TABS = ["all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
 
@@ -266,7 +267,9 @@ function rankStatus(rank, t) {
   return t("leaderboard.spots_from_top_10", { n: rank - 10 });
 }
 
-export default function LeaderboardPage() {
+// `adSlot` is the server-rendered <AdSlot placement="leaderboard" /> from
+// app/classement/page.jsx — above the footer, after the boards.
+export default function LeaderboardPage({ adSlot = null }) {
   const { t } = useTranslation();
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
   const [tab, setTab] = useState("all-time");
@@ -341,6 +344,11 @@ export default function LeaderboardPage() {
             {t("leaderboard.subtitle")}
           </p>
         </header>
+
+        {/* GRYND PRO — a browsing page, so the upgrade CTA is allowed here. */}
+        <div className="mb-6 flex justify-center">
+          <UpgradeProButton variant="compact" />
+        </div>
 
         {/* Tab bar — scrolls horizontally on mobile instead of wrapping. */}
         <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
@@ -674,6 +682,7 @@ export default function LeaderboardPage() {
         )}
       </div>
       <div className="relative z-10">
+        {adSlot}
         <Footer />
       </div>
     </div>

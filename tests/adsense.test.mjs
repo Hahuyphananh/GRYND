@@ -20,6 +20,9 @@
 //
 //   - the tag is SERVER-RENDERED, because Google's site review reads the served
 //     HTML for it and Google's certified CMP is delivered by that same tag;
+//   - the tag is CONFIGURATION-DRIVEN (lib/ads.ts) and ENTITLEMENT-GATED: a
+//     GRYND PRO member's response contains no ad tag at all, and no publisher
+//     or slot id is ever invented in code;
 //   - Consent Mode defaults start DENIED, and come first in <head>, because a
 //     tag that loads before them reads no consent state;
 //   - our own banner is suppressed for the EEA/UK/CH, where Google's CMP has to
@@ -44,12 +47,16 @@ const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "");
 
 const TAG = read("src/components/AdSenseScript.tsx");
 const TAG_CODE = code(TAG);
+const ADS_CONFIG = read("src/lib/ads.ts");
+const ENTRYPOINT = read("src/lib/adEntitlement.ts");
 const LAYOUT = read("src/app/layout.tsx");
 const PROXY = read("src/proxy.ts");
 const CONSENT_MODE = read("src/components/ConsentModeDefault.tsx");
 const SETTINGS_LINK = read("src/components/CookieSettingsLink.tsx");
 const REGIONS = read("src/lib/consentRegions.ts");
 
+// The publisher this property is authorised under. It is asserted against
+// BOTH the config module and ads.txt, so the two can never disagree.
 const CLIENT = "ca-pub-4903728316211815";
 
 /**
@@ -63,6 +70,7 @@ const ALLOWED = [
   "src/app/casino/page.jsx",
   "src/app/classement/page.jsx",
   "src/app/battlepass/page.jsx",
+  "src/app/profil/page.jsx",
   // game lobbies (lobby route only — the board lives elsewhere)
   "src/app/casino/blackjack/page.tsx",
   "src/app/casino/chess/page.jsx",
@@ -105,18 +113,55 @@ function pagesRenderingTag() {
 }
 
 test("the loader is Google's snippet, for the right publisher", () => {
+  // The publisher id lives in the config module (env-overridable, with the
+  // authorised id as the documented fallback) — never inline in the tag.
   assert.ok(
-    TAG_CODE.includes(`export const ADSENSE_CLIENT = "${CLIENT}";`),
+    ADS_CONFIG.includes(`DEFAULT_ADSENSE_PUBLISHER_ID = "${CLIENT}"`),
     "the publisher ID must be the one AdSense issued for this property",
+  );
+  assert.match(
+    ADS_CONFIG,
+    /process\.env\.NEXT_PUBLIC_ADSENSE_CLIENT/,
+    "the publisher id must come from the environment",
   );
   assert.ok(
     TAG_CODE.includes(
-      'src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}',
+      "src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${client}`}",
     ),
     "the tag must load adsbygoogle.js?client= from pagead2.googlesyndication.com",
   );
   assert.match(TAG_CODE, /crossOrigin="anonymous"/, "the tag must be crossorigin=anonymous");
   assert.match(TAG_CODE, /^\s*async$/m, "the tag must be async");
+});
+
+test("a GRYND PRO member receives no ad tag at all", () => {
+  // Server-authoritative: the tag is decided from the caller's own subscription
+  // row, so a member's HTML contains no ad code and makes no ad request.
+  assert.match(TAG_CODE, /isAdFreeViewer\(\)/, "the loader must check entitlement server-side");
+  assert.match(
+    code(ENTRYPOINT),
+    /getMembershipTier\(userId\)/,
+    "entitlement must come from the membership record, not a client flag",
+  );
+  assert.ok(
+    !/premium/i.test(TAG_CODE),
+    "the loader takes no caller-supplied premium flag",
+  );
+});
+
+test("the tag is switched off by configuration, never by fake ids", () => {
+  assert.match(TAG_CODE, /adsEnabled\(\)/);
+  assert.match(TAG_CODE, /normalizePublisherId\(/, "a malformed publisher id must not emit a tag");
+  assert.match(
+    code(ADS_CONFIG),
+    /NEXT_PUBLIC_ADSENSE_ENABLED/,
+    "ads must be switchable off from the environment",
+  );
+  // No invented ad-unit ids: every placement id is read from its env var.
+  assert.ok(
+    !/\bdata-ad-slot="\d/.test(ADS_CONFIG + TAG_CODE),
+    "no slot id may be hardcoded in source",
+  );
 });
 
 test("the tag is server-rendered, never gated behind a consent click", () => {

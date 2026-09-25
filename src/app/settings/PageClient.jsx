@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconShoppingBag, IconUser, IconVolume, IconWand } from "@tabler/icons-react";
+import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconUser, IconVolume, IconWand } from "@tabler/icons-react";
 import NavigationBar from "../../components/navigation-bar";
 import SoundToggle from "../../components/SoundToggle";
+import UpgradeProButton from "../../components/UpgradeProButton";
 import { useToast } from "../../components/toast/ToastProvider";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -761,13 +762,12 @@ export default function SettingsPageClient() {
                     Battlepass →
                   </Link>
                 </li>
-                <li>
-                  <Link
-                    href="/shop"
-                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
-                  >
-                    <IconShoppingBag size={15} /> Shop →
-                  </Link>
+                <li className="pt-1">
+                  {/* GRYND PRO replaced the Shop entry point. The button reads
+                      the caller's entitlement from the server, so it shows
+                      "Manage Subscription" to members and the upgrade CTA to
+                      everyone else. */}
+                  <UpgradeProButton variant="compact" />
                 </li>
               </ul>
             </div>

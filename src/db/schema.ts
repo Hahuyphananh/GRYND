@@ -154,8 +154,9 @@ export const quickQueueRequests = pgTable(
     region: varchar("region", { length: 80 }),
     playerCount: integer("player_count").notNull().default(2),
     maxWaitMs: integer("max_wait_ms"),
-    // Grynd+ members: their queued request is paired first (priority
-    // matchmaking) by the quick-queue matcher.
+    // LEGACY priority-matchmaking flag. Always false now — GRYND PRO grants no
+    // matchmaking advantage, so membership can never affect who you're paired
+    // with. Kept for backward-compatible reads.
     premium: boolean("premium").notNull().default(false),
     minesStakeAmount: numeric("mines_stake_amount", { precision: 14, scale: 2 }),
     minesCount: integer("mines_count"),
@@ -327,10 +328,10 @@ export const users = pgTable("users", {
   highestTitle: text("highest_title").default(null),
   selectedSpecialTitle: text("selected_special_title").default(null),
   selectedStreakType: varchar("selected_streak_type", { length: 10 }).default(null),
-  // Custom chat name color (Grynd+ perk). Only settable by active members —
+  // Custom chat name color (GRYND PRO perk). Only settable by active members —
   // enforced in /api/user/chat-color. Null = default color.
   chatColor: varchar("chat_color", { length: 7 }),
-  // Grynd+ profile accent.
+  // GRYND PRO profile accent.
   // Only writable by active members — enforced in
   // /api/user/profile-customization. Null = default styling.
   profileAccent: varchar("profile_accent", { length: 7 }),
@@ -779,7 +780,7 @@ export const userIcons = pgTable(
 // Mirrors the icons ownership pattern: a catalog table (each row is a fixed
 // named color), a per-user ownership join table, and an equipped-item column
 // on `users` (selected_glow). The equipped glow's hex renders on the user's
-// name in chat, outranking the Grynd+ free-form chat_color when both are
+// name in chat, outranking the GRYND PRO free-form chat_color when both are
 // set. `price_tokens` is reserved for a future token shop (NULL = not for
 // sale).
 export const glows = pgTable("glows", {
@@ -3729,7 +3730,7 @@ export const stripeCheckoutSessions = pgTable(
   })
 );
 
-// GRYND+ TOKEN SUBSCRIPTIONS
+// GRYND PRO MEMBERSHIP SUBSCRIPTIONS
 // ==============================================================================
 // Recurring monthly token grants backed by Stripe Billing. Three tables back
 // the flow (same server-authoritative rules as the one-time economy):
@@ -3739,13 +3740,15 @@ export const stripeCheckoutSessions = pgTable(
 //   * token_subscriptions        — one row per Stripe subscription with its
 //     lifecycle status. `stripe_subscription_id` is UNIQUE so webhook replays
 //     can never create duplicates.
-//   * token_subscription_credits — per-invoice grant ledger; `stripe_invoice_id`
-//     is UNIQUE so a replayed `invoice.paid` webhook can never double-credit
-//     a month. Tokens are granted per paid invoice (including the first),
-//     never at checkout time.
+//   * token_subscription_credits — LEGACY per-invoice grant ledger. GRYND no
+//     longer grants tokens on any invoice, so nothing writes here any more.
+//     The table is kept (and its UNIQUE `stripe_invoice_id`) for historical
+//     rows so past grants stay auditable.
 
-// Catalog of subscription offers (Grynd+ membership). Mirrors token_packages:
-// server-resolved price -> monthly token grant.
+// Catalog of membership offers. GRYND has a SINGLE paid plan, GRYND PRO
+// (`grynd-pro`); the legacy `grynd-plus` / `grynd-high-roller` rows are kept
+// but disabled (migration 0168). Monthly token grants were removed with the
+// token currency — `monthly_tokens` is 0 for every row.
 export const tokenSubscriptionPlans = pgTable(
   "token_subscription_plans",
   {
@@ -3753,7 +3756,9 @@ export const tokenSubscriptionPlans = pgTable(
     // Stable slug used in URLs, session metadata and admin tooling.
     key: varchar("key", { length: 120 }).notNull().unique(),
     name: varchar("name", { length: 255 }).notNull(),
-    // Monthly token grant, credited once per paid invoice (webhook).
+    // LEGACY. Pre-token-removal monthly grant. Always 0 now — membership
+    // grants no tokens or currency of any kind (belt-and-braces guard against
+    // any leftover code path crediting the old amount).
     monthlyTokens: bigint("monthly_tokens", { mode: "number" }).notNull(),
     priceCents: integer("price_cents").notNull(),
     // Real Stripe Product + recurring Price ids backing this plan. Populated
@@ -3762,8 +3767,10 @@ export const tokenSubscriptionPlans = pgTable(
     stripeProductId: varchar("stripe_product_id", { length: 255 }),
     stripePriceId: varchar("stripe_price_id", { length: 255 }),
     badge: varchar("badge", { length: 40 }),
-    // Benefit list rendered on the Shop membership card (sales copy; each
-    // perk is implemented behind the active-subscription check).
+    // Benefit list rendered on the Shop membership card (sales copy). GRYND
+    // PRO perks are non-competitive only: ad-free, advanced statistics /
+    // analytics, detailed match history, profile cosmetics, priority support.
+    // No tokens, no XP/quest/prestige multipliers, no matchmaking advantages.
     perks: text("perks").array().notNull().default([]),
     enabled: boolean("enabled").notNull().default(true),
     // Marketing flag to highlight the recommended plan. Cosmetic only.

@@ -15,14 +15,11 @@ import {
 import { sanitizeString } from "../../../../lib/security/validation";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
-import { ACTIVE_SUBSCRIPTION_STATUSES, getMembershipTier, TIER_BY_PLAN_KEY } from "../../../../lib/stripe/subscriptions";
+import { ACTIVE_SUBSCRIPTION_STATUSES, isPremiumMember } from "../../../../lib/stripe/subscriptions";
 
-// Membership title shown next to members' names in chat, by tier.
-const MEMBERSHIP_TITLES = {
-  grynd_plus: "GRYND+ Elite",
-  pro: "GRYND PRO",
-  high_roller: "GRYND HIGH ROLLER",
-};
+// Membership badge shown next to members' names in chat. GRYND has a single
+// paid plan (GRYND PRO) — there are no tiers.
+const MEMBERSHIP_TITLE = "GRYND PRO";
 
 const ALLOWED_ROOM_TYPES = new Set(["global", "game"]);
 const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -174,13 +171,10 @@ export async function GET(req) {
         showPrestigeBadge: msg.showPrestigeBadge,
       });
       const primaryTitle = prestigeBadge || specialTitle || regularTitle || null;
-      // Tier from the joined subscription row: an active plan key maps to a
-      // known tier; unknown keys still count as the base membership (never
-      // silently downgrade a paying user).
-      const tier = msg.planKey
-        ? TIER_BY_PLAN_KEY[msg.planKey] || "grynd_plus"
-        : null;
-      const premium = tier !== null;
+      // Membership from the joined subscription row: ANY active subscription
+      // is GRYND PRO (legacy plan keys included), so a paying member is never
+      // silently downgraded. There are no tiers.
+      const premium = Boolean(msg.planKey);
 
       // Remove extra fields we added for computation
       const {
@@ -205,10 +199,10 @@ export async function GET(req) {
         equippedTitle: primaryTitle,
         streakTitle: streakTitle || null,
         premium,
-        tier,
-        premiumTitle: premium ? MEMBERSHIP_TITLES[tier] || null : null,
+        tier: premium ? "pro" : null,
+        premiumTitle: premium ? MEMBERSHIP_TITLE : null,
         // Name color precedence: an equipped battlepass glow (any member,
-        // catalog hex) outranks the Grynd+ free-form chat color. The custom
+        // catalog hex) outranks the GRYND PRO free-form chat color. The custom
         // chat color stays a membership perk — only surfaced for members
         // (the column is only ever set through the premium-gated API, but
         // defense in depth: never leak it for non-members).
@@ -276,8 +270,7 @@ export async function POST(req) {
       .where(eq(users.clerkId, userId))
       .limit(1);
 
-    const tier = await getMembershipTier(userId);
-    const premium = tier !== null;
+    const premium = await isPremiumMember(userId);
     const displayName = appUser?.name?.trim() || "Player";
     // Official Grynd icon only. A malformed/legacy value can never reach a
     // live <img> — fall back to the official default key.
@@ -347,9 +340,8 @@ export async function POST(req) {
           equippedTitle,
           streakTitle,
           premium,
-          tier,
-          premiumTitle:
-            premium && tier ? MEMBERSHIP_TITLES[tier] || null : null,
+          tier: premium ? "pro" : null,
+          premiumTitle: premium ? MEMBERSHIP_TITLE : null,
           // Glow outranks the free-form membership chat color (see GET).
           chatColor:
             appUser?.glowColor || (premium ? (appUser?.chatColor || null) : null),

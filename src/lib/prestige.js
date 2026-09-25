@@ -68,9 +68,10 @@ export function prestigeRequirementForLevel(prestigeLevel) {
  *  - outcome "draw" never changes state.
  *  - ineligible (below Level 100) players never change state.
  *  - a loss can never reduce level; net wins floor at 0.
- *  - `requirementMultiplier` (membership Prestige perk, 1 by default) lowers
- *    the effective net-wins requirement: effReq = ceil(req / multiplier).
- *    High Rollers progress ~20% faster — progression, never gameplay odds.
+ *  - `requirementMultiplier` lowers the effective net-wins requirement:
+ *    effReq = ceil(req / multiplier). It is always 1 in production (membership
+ *    grants no Prestige advantage); the parameter exists as a pure knob for
+ *    tests / future non-membership tuning.
  */
 export function computePrestigeTransition({
   prestigeLevel = 0,
@@ -219,21 +220,15 @@ export async function applyPrestigeResult({ clerkId, outcome, source, sourceId, 
     if (!user) return { applied: false, reason: "user-not-found", delta: 0 };
 
     const eligible = getBattlepassProgress(Number(user.xp) || 0).level >= 100;
-    // High Roller membership perk: faster prestige progression (pure
-    // progression — never gameplay odds). Resolved here so the transition math
-    // and the journal row both reflect the correct requirement.
-    const { getPrestigeMultiplierByClerkId } = await import(
-      "./stripe/subscriptions"
-    );
-    const requirementMultiplier = eligible
-      ? await getPrestigeMultiplierByClerkId(clerkId)
-      : 1;
+    // Membership grants NO Prestige advantage — GRYND PRO is non-competitive,
+    // so the requirement multiplier is always 1 (free and PRO players advance
+    // at exactly the same rate).
     const next = computePrestigeTransition({
       prestigeLevel: Number(user.prestigeLevel) || 0,
       prestigeNetWins: Number(user.prestigeNetWins) || 0,
       outcome,
       eligible,
-      requirementMultiplier,
+      requirementMultiplier: 1,
     });
 
     // Claim the event BEFORE mutating state. If another settlement for this

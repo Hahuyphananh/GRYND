@@ -1,5 +1,6 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../components/AdSenseScript";
+import AdSlot from "../components/AdSlot";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 import { getReviewAggregate } from "../lib/reviews";
 import { buildAppJsonLd } from "../lib/reviewJsonLd";
@@ -55,9 +56,13 @@ export default async function Page() {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(ratingJsonLd) }}
         />
       )}
-      {/* Ads on the home page only after consent — see the component. */}
+      {/* Ad capability on the home page (a browsing surface, never gameplay).
+          The loader and the slot both decide server-side whether this viewer
+          gets ads at all: GRYND PRO members receive neither. */}
       <AdSenseScript />
-      <PageClient />
+      {/* Passed as a child so the slot lands in the page's own content column,
+          above the footer — never over the hero, nav or a control. */}
+      <PageClient adSlot={<AdSlot placement="home" />} />
     </>
   );
 }

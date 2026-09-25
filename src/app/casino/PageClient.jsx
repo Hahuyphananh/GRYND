@@ -28,6 +28,7 @@ import ImgMemoryGrid from "../../images/memorygridimage.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslation } from "../../hooks/useTranslation";
+import UpgradeProButton from "../../components/UpgradeProButton";
 import { IconClock, IconSparkles } from "@tabler/icons-react";
 import StickyMobileCta from "../../components/StickyMobileCta";
 
@@ -74,7 +75,10 @@ function readStored(key, fallback) {
   }
 }
 
-function MainComponent() {
+// `adSlot` is the server-rendered <AdSlot placement="hub" /> from
+// app/casino/page.jsx. This is the games HUB, not a game — the slot carries its
+// own server-side entitlement check and sits above the footer.
+function MainComponent({ adSlot = null }) {
   const { user } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
   const [error, setError] = useState(null);
@@ -929,6 +933,12 @@ function MainComponent() {
           {user && <></>}
         </section>
 
+        {/* GRYND PRO — the games HUB (never an active match) is a legitimate
+            non-gameplay surface for the upgrade CTA. */}
+        <div className="mb-8 flex justify-center">
+          <UpgradeProButton variant="compact" />
+        </div>
+
         {/* First battle — only for accounts that abandoned onboarding */}
         {firstBattle && (
           <div className="mb-8">
@@ -1280,6 +1290,7 @@ function MainComponent() {
           animation-delay: calc(0.08s * var(--i));
         }
       `}</style>
+      {adSlot}
       <Footer />
       <StickyMobileCta playHref="/casino/roulette" />
     </div>

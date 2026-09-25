@@ -69,7 +69,6 @@ export async function GET() {
           reward.type === "quest_boost" ||
           reward.type === "shield" ||
           reward.type === "grynd" ||
-          reward.type === "tokens" ||
           reward.type === "battlepass_xp" ||
           reward.type === "quest_reroll";
         const owned =

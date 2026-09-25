@@ -1,19 +1,20 @@
 // src/app/api/stripe/subscribe/route.ts
 //
-// POST — start a Stripe Checkout Session for a Grynd+ token subscription.
+// POST — start a Stripe Checkout Session for the GRYND PRO subscription.
 //
 // Server-authoritative only (mirrors /api/stripe/checkout):
 //   * authenticates the caller (Clerk),
 //   * resolves the plan from the `token_subscription_plans` catalog on the
-//     server (the client can only pass a `planKey`),
+//     server (the client can only pass a `planKey`), and only the single
+//     canonical GRYND PRO plan is purchasable,
 //   * enforces ONE active subscription per user,
 //   * persists a `stripe_checkout_sessions` ledger row BEFORE redirecting so
-//     the return-to-shop confirmation (/api/stripe/session-status) has a
-//     target, and the audit trail is complete,
+//     the return-to-/upgrade-pro confirmation (/api/stripe/session-status) has
+//     a target, and the audit trail is complete,
 //   * returns the Stripe-hosted Checkout URL.
 //
-// Tokens are NEVER granted at checkout: each paid invoice (starting with the
-// first) is credited monthly by the webhook, idempotent on the invoice id.
+// NO TOKENS: GRYND has no token currency and GRYND PRO grants no monthly
+// tokens — the webhook only records the membership lifecycle.
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -22,6 +23,7 @@ import { db } from "../../../../db";
 import { tokenSubscriptionPlans, stripeCheckoutSessions } from "../../../../db/schema";
 import { getStripe, getBaseUrl } from "../../../../lib/stripe";
 import {
+  CANONICAL_MEMBERSHIP_PLAN_KEY,
   ensureSubscriptionPlanStripe,
   findActiveSubscription,
 } from "../../../../lib/stripe/subscriptions";
@@ -67,7 +69,10 @@ export async function POST(req: NextRequest) {
     .limit(1)
     .then((rows) => rows[0]);
 
-  if (!plan || !plan.enabled) {
+  // Only the single canonical GRYND PRO plan is purchasable. Legacy plan keys
+  // (grynd-plus / grynd-high-roller) are disabled in the catalog; this check
+  // is belt-and-braces so a stale client can never start a legacy checkout.
+  if (!plan || !plan.enabled || plan.key !== CANONICAL_MEMBERSHIP_PLAN_KEY) {
     return NextResponse.json(
       { success: false, error: "Unknown or disabled plan" },
       { status: 404 }
@@ -126,8 +131,8 @@ export async function POST(req: NextRequest) {
     // Carried onto the Subscription object so the webhook can map every paid
     // invoice back to the plan (and user) without trusting the payload.
     subscription_data: { metadata: { clerkId, planKey: plan.key } },
-    success_url: `${baseUrl}/shop?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/shop?checkout=cancelled`,
+    success_url: `${baseUrl}/upgrade-pro?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseUrl}/upgrade-pro?checkout=cancelled`,
     allow_promotion_codes: true,
     // Managed Payments is enabled by default on the account and is the
     // merchant of record for Grynd subscriptions too (plans are created via

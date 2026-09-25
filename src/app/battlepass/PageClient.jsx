@@ -37,7 +37,6 @@ const CLAIMABLE_UI_TYPES = new Set([
   "xp_boost",
   "quest_boost",
   "shield",
-  "tokens",
   "battlepass_xp",
   "quest_reroll",
   "badge",
@@ -50,7 +49,9 @@ const CLAIMABLE_UI_TYPES = new Set([
   "cosmetic",
 ]);
 
-export default function BattlepassPageClient() {
+// `adSlot` is the server-rendered <AdSlot placement="battlepass" /> from
+// app/battlepass/page.jsx — above the footer, below the whole reward track.
+export default function BattlepassPageClient({ adSlot = null }) {
   const { t } = useTranslation();
   // Cache-first: the pass renders instantly from the persisted cache and
   // refreshes in the background (and on reconnect).
@@ -81,16 +82,15 @@ export default function BattlepassPageClient() {
 
   const claimReward = async (reward, level) => {
     if (claimingKey) return;
-    // Functional rewards (xp_boost / quest_boost / shield / tokens /
-    // battlepass_xp / quest_reroll / grynd) have no key — they're
-    // disambiguated by their track level, so include it in the claim payload
-    // so each identical entry is claimed exactly once.
+    // Functional rewards (xp_boost / quest_boost / shield / battlepass_xp /
+    // quest_reroll / grynd) have no key — they're disambiguated by their track
+    // level, so include it in the claim payload so each identical entry is
+    // claimed exactly once.
     const isFunctional =
       reward.type === "xp_boost" ||
       reward.type === "quest_boost" ||
       reward.type === "shield" ||
       reward.type === "grynd" ||
-      reward.type === "tokens" ||
       reward.type === "battlepass_xp" ||
       reward.type === "quest_reroll";
     const key = `${reward.type}:${reward.key ?? `lvl${level}`}`;
@@ -240,9 +240,10 @@ export default function BattlepassPageClient() {
             Battlepass
           </h1>
           <p className="mt-2 text-sm text-[#9dd8ff]">
-            Earn XP by wagering tokens and completing quests to climb 100
-            levels and unlock rewards — from name glows and titles to XP
-            boosts and Grynd+ days.
+            Earn XP by playing and completing quests to climb 100 levels and
+            unlock rewards — from name glows, emotes and profile frames to
+            titles, XP boosts, cosmetics and free GRYND PRO days. No currency
+            required.
           </p>
         </div>
 
@@ -401,10 +402,10 @@ export default function BattlepassPageClient() {
                     🎲
                   </div>
                   <div>
-                    <div className="font-medium text-white">Stake tokens</div>
+                    <div className="font-medium text-white">Play games</div>
                     <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      Earn 1 XP per 10 tokens staked on any game. The bigger
-                      the stake, the faster you level up.
+                      Earn 1 XP per 10 staked on any game. The bigger the
+                      stake, the faster you level up.
                     </div>
                   </div>
                 </div>
@@ -415,8 +416,8 @@ export default function BattlepassPageClient() {
                   <div>
                     <div className="font-medium text-white">Complete quests</div>
                     <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      Claiming daily and weekly quests grants bonus XP on top
-                      of their token rewards.
+                      Completing and claiming daily and weekly quests grants
+                      Battle Pass XP — weekly quests pay more.
                     </div>
                   </div>
                 </div>
@@ -440,7 +441,7 @@ export default function BattlepassPageClient() {
                     </div>
                     <div>
                       <div className="text-sm font-bold text-[#a78bfa]">
-                        Unlock premium rewards with Grynd+
+                        Unlock premium rewards with GRYND PRO
                       </div>
                       <div className="mt-0.5 text-xs text-[#9dd8ff]/70">
                         The 4 rare animated emotes on this track are exclusive to
@@ -449,10 +450,10 @@ export default function BattlepassPageClient() {
                     </div>
                   </div>
                   <Link
-                    href="/shop"
+                    href="/upgrade-pro"
                     className="rounded-xl bg-[#a78bfa] px-4 py-2 text-sm font-bold text-[#050b1e] transition hover:bg-[#c4b5fd]"
                   >
-                    Get Grynd+ →
+                    Get GRYND PRO →
                   </Link>
                 </div>
               </div>
@@ -612,10 +613,10 @@ export default function BattlepassPageClient() {
                                 {reward.premium && reward.locked && (
                                   <div className="mt-1 rounded-md border border-[#a78bfa]/50 bg-[#a78bfa]/10 px-1.5 py-1">
                                     <div className="flex items-center justify-center gap-1 text-[9px] font-bold text-[#a78bfa]">
-                                      <span aria-hidden>🔒</span> Grynd+ Premium
+                                      <span aria-hidden>🔒</span> GRYND PRO
                                     </div>
                                     <Link
-                                      href="/shop"
+                                      href="/upgrade-pro"
                                       className="mt-1 block w-full rounded-md bg-[#a78bfa] px-2 py-1 text-center text-[9px] font-bold text-[#050b1e] transition hover:bg-[#c4b5fd]"
                                     >
                                       Subscribe
@@ -624,7 +625,7 @@ export default function BattlepassPageClient() {
                                 )}
                                 {reward.premium && !reward.locked && !reward.claimed && (
                                   <div className="mt-1 rounded-md border border-[#a78bfa]/40 bg-[#a78bfa]/5 px-1.5 py-0.5 text-center text-[9px] font-bold text-[#a78bfa]">
-                                    ✦ Grynd+ Premium
+                                    ✦ GRYND PRO
                                   </div>
                                 )}
                                 {CLAIMABLE_UI_TYPES.has(reward.type) &&
@@ -728,6 +729,7 @@ export default function BattlepassPageClient() {
         </div>
       )}
 
+      {adSlot}
       <Footer />
     </div>
   );

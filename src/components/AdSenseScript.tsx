@@ -1,10 +1,10 @@
 /**
  * Google AdSense loader, for the pages we monetise: the home page, the game
- * hub, the leaderboard, the battlepass and the game lobbies.
+ * hub, the leaderboard, the profile, the battlepass and the game lobbies.
  *
  * Deliberately NOT in the root layout. AdSense pays for impressions on the
  * pages a player browses *between* games, and an ad on a live board is both an
- * intrusion and a distraction from a wager in progress. So this is rendered
+ * intrusion and a distraction from a match in progress. So this is rendered
  * per page instead, and it is absent from:
  *
  *   - every match page (the `[matchId]` / `game/[gameId]` / `table/[tableId]`
@@ -13,10 +13,24 @@
  *     today — because there is no lobby route to put it on that isn't also the
  *     board.
  *
- * The snippet is Google's, verbatim:
+ * TWO SERVER-SIDE GATES (never a client flag):
+ *
+ *   1. CONFIGURATION. The publisher id comes from NEXT_PUBLIC_ADSENSE_CLIENT
+ *      (see lib/ads.ts), falling back to the id this property is already
+ *      authorised under in public/ads.txt. If the value isn't a well-formed
+ *      `ca-pub-…` id the tag is not emitted at all — no fake publisher ids.
+ *      NEXT_PUBLIC_ADSENSE_ENABLED=false switches the tag off entirely.
+ *
+ *   2. ENTITLEMENT. GRYND PRO is ad-free, so a member does not receive the tag
+ *      in the response: no ad code, no ad requests, and nothing for AdSense
+ *      Auto Ads to hook into. The membership answer is read from the caller's
+ *      own subscription row (lib/adEntitlement.ts) — the client cannot ask for
+ *      it or fake it.
+ *
+ * The snippet itself is Google's, verbatim:
  *
  *   <script async
- *     src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4903728316211815"
+ *     src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-…"
  *     crossorigin="anonymous"></script>
  *
  * WHY THIS IS NOT GATED ON OUR OWN BANNER ANY MORE. It used to be: the tag was
@@ -44,15 +58,25 @@
  * into <head>, deduplicated, so rendering it here lands it where Google
  * expects while still keeping it off the match pages.
  */
-export const ADSENSE_CLIENT = "ca-pub-4903728316211815";
+import { adsEnabled, adsensePublisherId, normalizePublisherId } from "../lib/ads";
+import { isAdFreeViewer } from "../lib/adEntitlement";
 
-export default function AdSenseScript() {
+export default async function AdSenseScript() {
+  if (!adsEnabled()) return null;
+
+  // Only ever emit a real, well-formed publisher id.
+  const client = normalizePublisherId(adsensePublisherId());
+  if (!client) return null;
+
+  // GRYND PRO members are ad-free: no tag, no ad code, no ad requests.
+  if (await isAdFreeViewer()) return null;
+
   return (
     <script
       id="adsbygoogle-init"
       async
       crossOrigin="anonymous"
-      src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
+      src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${client}`}
     />
   );
 }

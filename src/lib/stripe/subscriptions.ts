@@ -1,37 +1,39 @@
 // src/lib/stripe/subscriptions.ts
 //
-// Grynd+ token subscriptions — recurring monthly token grants backed by
-// Stripe Billing. Mirrors src/lib/stripe/packages.ts but for recurring
-// prices: plans live in `token_subscription_plans`, and grants are credited
-// per paid invoice by the webhook (idempotent on the invoice id).
+// GRYND membership — ONE paid plan (GRYND PRO) backed by Stripe Billing.
+// Mirrors src/lib/stripe/packages.ts but for a recurring monthly price: the
+// plan lives in `token_subscription_plans` (a legacy table name kept for
+// migration compatibility) and the subscription itself lives in
+// `token_subscriptions`.
+//
+// The membership model is exactly two states: `free` and `pro`.
 //
 //   * ensureSubscriptionPlanStripe(plan) — lazily creates a Product + recurring
-//     (monthly) Price for one plan (idempotent: reuses persisted ids). Used by
+//     (monthly) Price for the plan (idempotent: reuses persisted ids). Used by
 //     the subscribe route on first checkout.
 //   * syncAllSubscriptionPlansToStripe() — ensures every enabled plan; used by
 //     the admin sync route to precreate prices without waiting for a sale.
 //   * resolveSubscriptionPlanPriceCents(plan) — authoritative display price,
 //     preferring the product's active recurring Stripe price.
-//   * findActiveSubscription(clerkId) — the user's current subscription.
-//   * getMembershipTier(clerkId) — the user's tier (free | grynd_plus | pro |
-//     high_roller) resolved from the active subscription's plan key. Higher
-//     tiers also earn monthly perk grants (see TIER_MONTHLY_GRANTS) credited
-//     by the webhook alongside the token grant.
+//   * findActiveSubscription(clerkId) — the user's current subscription, or
+//     null. This is the single server-authoritative membership check.
+//   * getMembershipTier(clerkId) — `pro` when a subscription is active,
+//     otherwise `free`.
+//
+// NO TOKENS: subscribing grants no tokens and no monthly currency. Paid
+// invoices are acknowledged + audited, never credited (see the Stripe
+// webhook). GRYND PRO sells ad-free/analytics/support perks only.
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
-import {
-  tokenSubscriptionCredits,
-  tokenSubscriptionPlans,
-  tokenSubscriptions,
-  tokenTransactions,
-  userItemEffects,
-  userItems,
-  users,
-} from "../../db/schema";
+import { tokenSubscriptionPlans, tokenSubscriptions } from "../../db/schema";
 import { getStripe } from "../stripe";
 import { MANAGED_PAYMENTS_TAX_CODE } from "./packages";
-import { creditUserBalance } from "../tokens/creditTokens";
+import {
+  PRO_PLAN_FALLBACK_PERKS,
+  formatUsdFromCents,
+  type ProPlanDisplay,
+} from "../membershipDisplay";
 
 export type SubscriptionPlanBundle = {
   id: number;
@@ -46,144 +48,55 @@ export type SubscriptionPlanBundle = {
 /** Statuses that count as "the user currently has an active subscription". */
 export const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"];
 
-/** Membership tiers, ordered low → high. */
-export type MembershipTier = "grynd_plus" | "pro" | "high_roller";
+/**
+ * The two membership states GRYND supports: `free` and `pro`.
+ *
+ * Every active Stripe subscription resolves to `pro`, whatever plan key it was
+ * created under. Legacy plans (grynd-plus / grynd-high-roller) are disabled for
+ * new checkouts (migration 0168) but an existing PAID subscription is never
+ * silently downgraded — it simply becomes GRYND PRO.
+ */
+export type MembershipTier = "free" | "pro";
+
+/** The single purchasable membership plan (see migration 0168). */
+export const CANONICAL_MEMBERSHIP_PLAN_KEY = "grynd-pro";
+
+/** Legacy plan keys. Not purchasable; still resolve to `pro` while active. */
+export const LEGACY_MEMBERSHIP_PLAN_KEYS = [
+  "grynd-plus",
+  "grynd-high-roller",
+] as const;
 
 /**
- * Tier resolution: subscription plan key → membership tier. Unknown/legacy
- * plan keys keep behaving as the base tier so an active paid membership is
- * never silently downgraded to "no perks".
+ * Catalog fallback price for GRYND PRO, used only when the plan row (or its
+ * bound Stripe price) can't be read. The real price always comes from the plan
+ * catalog / Stripe — this constant exists so the upgrade surface still renders
+ * an honest number on a cold/failed read instead of a blank CTA.
  */
-export const TIER_BY_PLAN_KEY: Record<string, MembershipTier> = {
-  "grynd-plus": "grynd_plus",
-  "grynd-pro": "pro",
-  "grynd-high-roller": "high_roller",
-};
+export const FALLBACK_PRO_PRICE_CENTS = 999;
 
-/**
- * The `perks` advertised on the higher-tier Shop cards that are granted
- * mechanically per paid invoice (besides the token grant): Daily Streak
- * Shields + a 3× XP boost window. Credited inside the same transaction as the
- * monthly token grant so a given paid invoice always delivers the full
- * reward exactly once (idempotent on the invoice id).
- */
-export const TIER_MONTHLY_GRANTS: Record<
-  string,
-  { streakShields: number; xpBoost3xHours: number }
-> = {
-  "grynd-pro": { streakShields: 3, xpBoost3xHours: 48 },
-  "grynd-high-roller": { streakShields: 5, xpBoost3xHours: 96 },
-};
-
-/** The user's current membership tier, or null when they have no active plan. */
+/** The user's current membership state — server-authoritative. */
 export async function getMembershipTier(
   clerkId: string
-): Promise<MembershipTier | null> {
-  const sub = await findActiveSubscription(clerkId);
-  if (!sub) return null;
-  return TIER_BY_PLAN_KEY[sub.planKey] ?? "grynd_plus";
+): Promise<MembershipTier> {
+  return (await findActiveSubscription(clerkId)) ? "pro" : "free";
 }
 
-// ── Tier benefit config (pure data; consumed by the XP / quest / prestige /
-//    daily-claim chokepoints below and by game hooks) ─────────────────────────
-// Membership is convenience/progression, never pay-to-win: XP boosts, extra
-// quest slots, prestige progress and small daily claims never affect RNG,
-// odds, matchmaking fairness or token cash value.
-
-/** Multiplier applied to ALL battlepass XP for a tier (free = 1). */
-export const TIER_XP_MULTIPLIER: Record<MembershipTier | "free", number> = {
-  free: 1,
-  grynd_plus: 1.15,
-  pro: 1.35,
-  high_roller: 1.7,
-};
-
-/** Extra daily quest slots over the base 3 (weekly always stays at 2). */
-export const TIER_DAILY_QUEST_SLOT_BONUS: Record<MembershipTier, number> = {
-  grynd_plus: 0,
-  pro: 1,
-  high_roller: 2,
-};
-
-/** Prestige progression multiplier (reduces the net-wins requirement). */
-export const TIER_PRESTIGE_MULTIPLIER: Record<MembershipTier, number> = {
-  grynd_plus: 1,
-  pro: 1,
-  high_roller: 1.2,
-};
-
-/** Small daily token bonus added on top of the login reward per tier. */
-export const TIER_DAILY_TOKEN_BONUS: Record<MembershipTier, number> = {
-  grynd_plus: 0,
-  pro: 50,
-  high_roller: 100,
-};
-
-export function membershipXpMultiplier(tier: MembershipTier | null): number {
-  return TIER_XP_MULTIPLIER[tier ?? "free"] ?? 1;
-}
-
-export function dailyQuestSlotBonus(tier: MembershipTier | null): number {
-  return tier ? TIER_DAILY_QUEST_SLOT_BONUS[tier] ?? 0 : 0;
-}
-
-export function prestigeMultiplier(tier: MembershipTier | null): number {
-  return tier ? TIER_PRESTIGE_MULTIPLIER[tier] ?? 1 : 1;
-}
-
-export function dailyTokenBonus(tier: MembershipTier | null): number {
-  return tier ? TIER_DAILY_TOKEN_BONUS[tier] ?? 0 : 0;
-}
-
-/**
- * The membership XP multiplier for a Clerk id (1 when the user has no active
- * membership). Used by XP-grant chokepoints that only have the Clerk id.
- */
-export async function getMembershipXpMultiplierByClerkId(
-  clerkId: string
-): Promise<number> {
-  return membershipXpMultiplier(await getMembershipTier(clerkId));
-}
-
-/**
- * The membership XP multiplier for a local user id (1 when free). Efficient
- * single-query resolution — used by the user id XP path (addExp).
- */
-export async function getMembershipXpMultiplierByUserId(
-  userId: number
-): Promise<number> {
-  const [row] = await db
-    .select({ clerkId: users.clerkId })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!row) return 1;
-  return membershipXpMultiplier(await getMembershipTier(row.clerkId));
-}
-
-/**
- * Daily quest slot count for a user id — the base 3 plus the tier bonus
- * (weekly slots are NOT tier-dependent and stay at 2). Server-authoritative.
- */
-export async function dailyQuestSlotsForUser(userId: number): Promise<number> {
-  const [row] = await db
-    .select({ clerkId: users.clerkId })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!row) return 3;
-  return 3 + dailyQuestSlotBonus(await getMembershipTier(row.clerkId));
-}
-
-/**
- * The High Roller prestige progression multiplier for a Clerk id (1 for
- * everyone else). Consumed by src/lib/prestige.js.
- */
-export async function getPrestigeMultiplierByClerkId(
-  clerkId: string
-): Promise<number> {
-  return prestigeMultiplier(await getMembershipTier(clerkId));
-}
+// ── Membership perks (GRYND PRO) ───────────────────────────────────────────
+// GRYND PRO is deliberately non-competitive. It sells ad-free browsing,
+// advanced statistics / performance analytics, detailed match history, the
+// profile-customization cosmetics (custom chat color, profile accent) and a
+// priority-support flag. It NEVER grants:
+//
+//   * tokens or any other currency,
+//   * XP multipliers,
+//   * extra quest slots,
+//   * faster Prestige progression,
+//   * priority matchmaking or any other gameplay / competitive advantage.
+//
+// Free players get the complete game: all games, ranked play, Elo,
+// leaderboards, free tournaments, profiles, match history, progression,
+// quests, the Battle Pass and cosmetic rewards.
 
 /**
  * Guarantee the plan has a Stripe Product + recurring monthly Price, creating
@@ -242,7 +155,8 @@ export async function ensureSubscriptionPlanStripe(
   if (!productId) {
     const product = await stripe.products.create({
       name: `${plan.name} — Grynd Subscription`,
-      description: "Monthly Grynd+ membership. Virtual tokens; no cash value; non-refundable.",
+      description:
+        "Monthly GRYND PRO membership — ad-free browsing, advanced statistics and analytics, detailed match history. No tokens or in-game currency are included.",
       // Same Managed Payments-eligible tax code as packages.ts (txcd_10103100).
       tax_code: MANAGED_PAYMENTS_TAX_CODE,
       metadata: { planKey: plan.key },
@@ -330,6 +244,80 @@ export async function resolveSubscriptionPlanPriceCents(
   return plan.priceCents ?? 0;
 }
 
+/**
+ * The single purchasable plan's display data (name, price, perks), resolved
+ * server-side. This is THE source of the price for every upgrade surface —
+ * UpgradeProButton, UpgradeProModal and the /upgrade-pro page all read it
+ * (directly or via /api/membership/status), so the advertised price can never
+ * drift from what Stripe charges.
+ *
+ * Never throws: on a Stripe/DB failure it falls back to the catalog price (or
+ * the static defaults) so the upgrade surface still renders.
+ */
+export async function getProPlanDisplay(): Promise<ProPlanDisplay> {
+  const fallback: ProPlanDisplay = {
+    key: CANONICAL_MEMBERSHIP_PLAN_KEY,
+    name: "GRYND PRO",
+    priceCents: FALLBACK_PRO_PRICE_CENTS,
+    priceUsd: formatUsdFromCents(FALLBACK_PRO_PRICE_CENTS),
+    badge: "Pro",
+    perks: [...PRO_PLAN_FALLBACK_PERKS],
+  };
+
+  const rows = await db
+    .select({
+      id: tokenSubscriptionPlans.id,
+      key: tokenSubscriptionPlans.key,
+      name: tokenSubscriptionPlans.name,
+      monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
+      priceCents: tokenSubscriptionPlans.priceCents,
+      badge: tokenSubscriptionPlans.badge,
+      perks: tokenSubscriptionPlans.perks,
+      stripeProductId: tokenSubscriptionPlans.stripeProductId,
+      stripePriceId: tokenSubscriptionPlans.stripePriceId,
+    })
+    .from(tokenSubscriptionPlans)
+    .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
+    .limit(1)
+    .catch((err) => {
+      // A cold/unreadable database must not blank the upgrade surface — the
+      // catalog fallback is an honest display price for the same plan.
+      console.error("[subscriptions] Failed to read the PRO plan:", err);
+      return null;
+    });
+
+  const row = rows?.[0];
+  if (!row) return fallback;
+
+  let priceCents = Number(row.priceCents ?? fallback.priceCents);
+  try {
+    priceCents = await resolveSubscriptionPlanPriceCents({
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      monthlyTokens: Number(row.monthlyTokens ?? 0),
+      priceCents,
+      stripeProductId: row.stripeProductId,
+      stripePriceId: row.stripePriceId,
+    });
+  } catch {
+    // Keep the catalog price — the upgrade surface must always render.
+  }
+
+  const perks = Array.isArray(row.perks)
+    ? row.perks.filter((p): p is string => Boolean(p && String(p).trim()))
+    : [];
+
+  return {
+    key: row.key,
+    name: row.name || fallback.name,
+    priceCents,
+    priceUsd: formatUsdFromCents(priceCents),
+    badge: row.badge ?? null,
+    perks: perks.length > 0 ? perks : fallback.perks,
+  };
+}
+
 /** Ensure a real Stripe Product + recurring Price exists for every enabled plan. */
 export async function syncAllSubscriptionPlansToStripe(): Promise<{
   count: number;
@@ -355,7 +343,7 @@ export async function syncAllSubscriptionPlansToStripe(): Promise<{
   return { count: rows.length, results };
 }
 
-/** True when the user currently holds an active Grynd+ membership. */
+/** True when the user currently holds an active GRYND PRO membership. */
 export async function isPremiumMember(clerkId: string): Promise<boolean> {
   return (await findActiveSubscription(clerkId)) !== null;
 }
@@ -376,105 +364,3 @@ export async function findActiveSubscription(clerkId: string) {
   return rows[0] ?? null;
 }
 
-/**
- * Grant one month's tokens for a paid subscription invoice, atomically and
- * idempotently. The unique `stripe_invoice_id` in `token_subscription_credits`
- * is the durable key: the credit row is inserted first (only one concurrent
- * webhook delivery wins), then the balance credit + transaction history row
- * happen in the SAME transaction. Replays are no-ops.
- */
-export async function grantSubscriptionInvoiceTokens(params: {
-  clerkId: string;
-  planKey: string;
-  invoiceId: string;
-  amount: number;
-  periodStart?: Date | null;
-  periodEnd?: Date | null;
-}): Promise<boolean> {
-  const { clerkId, planKey, invoiceId, amount, periodStart, periodEnd } = params;
-
-  return db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(tokenSubscriptionCredits)
-      .values({
-        clerkId,
-        planKey,
-        stripeInvoiceId: invoiceId,
-        amount,
-        periodStart: periodStart ?? null,
-        periodEnd: periodEnd ?? null,
-      })
-      .onConflictDoNothing({ target: tokenSubscriptionCredits.stripeInvoiceId })
-      .returning({ id: tokenSubscriptionCredits.id });
-
-    if (!inserted[0]) {
-      // Already granted for this invoice — idempotent replay.
-      return false;
-    }
-
-    await creditUserBalance(clerkId, amount, tx as never);
-
-    // Durable, auditable transaction record — written in the SAME transaction
-    // as the balance credit, so balance and history can never diverge.
-    await tx.insert(tokenTransactions).values({
-      clerkId,
-      type: "purchase",
-      amount,
-      referenceType: "stripe_invoice",
-      referenceId: invoiceId,
-      note: `Subscription ${planKey}`,
-    });
-
-    // Higher tiers also grant monthly consumable perks inside the same
-    // transaction (sales copy lives in the plan's `perks` column). Uses the
-    // same write shapes as the shop/battlepass (user_items upsert +
-    // user_item_effects extend-or-activate), so exempted monthly shields/XP
-    // boost never add a second, unaccounted source of inventory writes.
-    const tierGrant = TIER_MONTHLY_GRANTS[planKey];
-    if (tierGrant) {
-      const [appUser] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.clerkId, clerkId))
-        .limit(1);
-      if (appUser) {
-        if (tierGrant.streakShields > 0) {
-          await tx
-            .insert(userItems)
-            .values({
-              userId: appUser.id,
-              itemKey: "streak_shield",
-              qty: tierGrant.streakShields,
-            })
-            .onConflictDoUpdate({
-              target: [userItems.userId, userItems.itemKey],
-              set: {
-                qty: sql`${userItems.qty} + ${tierGrant.streakShields}`,
-                updatedAt: new Date(),
-              },
-            });
-        }
-        if (tierGrant.xpBoost3xHours > 0) {
-          await tx
-            .insert(userItemEffects)
-            .values({
-              userId: appUser.id,
-              effectKey: "xp_boost_3x_48h",
-              expiresAt: new Date(
-                Date.now() + tierGrant.xpBoost3xHours * 3600 * 1000
-              ),
-            })
-            .onConflictDoUpdate({
-              target: [userItemEffects.userId, userItemEffects.effectKey],
-              set: {
-                expiresAt: sql`GREATEST(${userItemEffects.expiresAt}, now()) + make_interval(hours => ${tierGrant.xpBoost3xHours})`,
-                updatedAt: new Date(),
-              },
-            });
-        }
-      }
-    }
-
-    return true;
-  });
-}

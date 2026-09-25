@@ -60,6 +60,17 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // The GRYND Shop is gone — there is no token currency and no catalogue.
+      // The only paid product is the GRYND PRO membership, so the legacy Shop
+      // URL permanently redirects to its new upgrade experience (old emails,
+      // bookmarks and Stripe return URLs included). Config-level 308, per the
+      // legacy-game-URL precedent above: a page-level redirect() would answer
+      // 200 with a soft client redirect that crawlers re-fetch forever.
+      {
+        source: "/shop",
+        destination: "/upgrade-pro",
+        permanent: true,
+      },
       // Legacy solo Crash URLs. The old page-level redirect() only fired at
       // render time, so /games/crash (rewritten to /casino/crash) answered
       // 200 "Crash | GRYND" and client-navigated away — a soft redirect that

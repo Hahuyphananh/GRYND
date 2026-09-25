@@ -195,7 +195,7 @@ function summariseUsers(rows, decorationByClerkId) {
       iconKey: r.iconKey || "default",
       // Equipped profile frame (server-resolved catalog visual), or null.
       profileFrame: decorationByClerkId?.get(r.clerkId) || null,
-      // Equipped name color — battlepass glow wins; the Grynd+ chat
+      // Equipped name color — battlepass glow wins; the GRYND PRO chat
       // color only surfaces for active members (chat-route precedence).
       nameColor:
         r.glowColor ||

@@ -1,51 +1,42 @@
 // src/app/api/stripe/webhook/route.ts
 //
-// POST — Stripe webhook that fulfils token purchases and Grynd+ subscription
-// grants.
+// POST — Stripe webhook for GRYND PRO membership lifecycle.
 //
-// One-time fulfilment rules (never fulfil on the success page — customers may
-// not reload it):
-//   * `checkout.session.completed` and `checkout.session.async_payment_succeeded`
-//     both trigger a credit — but ONLY when `payment_status !== 'unpaid'`
-//     (delayed-notification methods reach `completed` while still unpaid, and
-//     fulfilling then grants tokens to a payment that later fails).
-//   * `checkout.session.async_payment_failed` marks the session failed.
+// NO TOKENS ARE EVER GRANTED HERE. GRYND has no token currency, and
+// membership buys ad-free/analytics/support perks only. Paid invoices are
+// acknowledged and audited, never credited — there is no balance write and no
+// token-transaction write anywhere in this file.
 //
-// Subscription fulfilment:
+// Handled events:
 //   * `checkout.session.completed` (mode=subscription) records the new
-//     subscription row — tokens are NOT granted at checkout.
-//   * `invoice.paid` grants the plan's monthly token amount, idempotent on the
-//     Stripe invoice id (the first invoice pays at checkout, so the first
-//     month lands immediately; renewals credit each following month).
-//   * `customer.subscription.created/updated/deleted` keep the subscription
-//     row's lifecycle status in sync; `invoice.payment_failed` flags past_due.
+//     subscription row from our own checkout metadata.
+//   * `customer.subscription.created/updated` sync the subscription row's
+//     status + billing period; `customer.subscription.deleted` records the
+//     cancellation (which drops the user back to the `free` state, since
+//     membership is derived from the ACTIVE subscription only).
+//   * `invoice.paid` is audited only — a paid invoice means the membership
+//     renewed; nothing is credited.
+//   * `invoice.payment_failed` flags the subscription `past_due`, which still
+//     counts as active while Stripe retries, then `deleted` cancels it.
+//   * `checkout.session.async_payment_*` keep the checkout ledger row's status
+//     in sync for the Shop's return-to-site polling.
 //
 // Signature is verified with the Stripe SDK; the secret lives in
 // STRIPE_WEBHOOK_SECRET. A bad/missing signature is rejected before any state
-// changes. Idempotency is database-level for both flows:
-//   * one-time: `stripe_checkout_sessions.session_id` is UNIQUE and `fulfilled`
-//     flips exactly once, inside the same transaction as the atomic credit;
-//   * subscriptions: `token_subscription_credits.stripe_invoice_id` is UNIQUE
-//     and the grant runs in the same transaction as the atomic credit.
-// Token amounts always come from OUR rows (server-resolved), never from the
-// webhook payload.
+// changes. Idempotency is database-level: `token_subscriptions.stripe_
+// subscription_id` is UNIQUE and every write is an upsert on it, so replayed
+// or concurrent deliveries converge on the same row.
 
 import { NextResponse } from "next/server";
 import { db } from "../../../../db";
 import {
   stripeCheckoutSessions,
-  tokenSubscriptionPlans,
   tokenSubscriptions,
-  tokenTransactions,
-  users,
 } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getStripe, getStripeWebhookSecret } from "../../../../lib/stripe";
-import { creditUserBalance } from "../../../../lib/tokens/creditTokens";
-import { grantSubscriptionInvoiceTokens } from "../../../../lib/stripe/subscriptions";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
-import { sendDepositProcessingEmail, sendDepositSuccessEmail, sendWithdrawalRequestedEmail, sendWithdrawalDelayEmail } from "../../../../lib/emails/payments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,12 +99,14 @@ export async function POST(req: Request) {
           break;
         }
         if (session.mode === "subscription") {
-          // Record the subscription — monthly tokens are granted per paid
-          // invoice, never at checkout.
+          // Record the subscription from our own checkout metadata. Nothing is
+          // credited — GRYND PRO grants no tokens.
           await recordSubscriptionFromCheckout(session);
           break;
         }
-        await fulfill(session);
+        // Token top-up packs no longer exist, so a non-subscription checkout
+        // session can never grant anything. Acknowledge + audit it.
+        auditLog("stripe_checkout_session_ignored", { sessionId: session.id });
         break;
       }
       case "checkout.session.async_payment_failed": {
@@ -124,11 +117,13 @@ export async function POST(req: Request) {
       }
       case "invoice.paid": {
         const invoice = event.data.object as unknown as StripeInvoiceObject;
-        if (!invoice.subscription) {
-          // A one-time (non-subscription) invoice — nothing to grant.
-          break;
-        }
-        await grantSubscriptionTokens(invoice);
+        // GRYND PRO grants no tokens: a paid invoice only confirms the
+        // membership is active/renewed. Audit it and move on — there is no
+        // balance credit and no token transaction.
+        auditLog("stripe_subscription_invoice_paid", {
+          invoiceId: invoice.id,
+          subscriptionId: invoice.subscription ?? null,
+        });
         break;
       }
       case "invoice.payment_failed": {
@@ -187,102 +182,6 @@ async function updateStatus(sessionId: string, paymentStatus: string) {
 }
 
 /**
- * Connect a paid one-time session to tokens, atomically and idempotently.
- *
- * Runs inside a transaction: reads the ledger row, and if it hasn't been
- * fulfilled yet, marks it fulfilled AND credits `users.balance` in one atomic
- * step. If a retry re-delivers the same event, `fulfilled` is already true and
- * the credit is skipped.
- */
-async function fulfill(session: StripeSession) {
-  let rowData: { clerkId: string; tokenAmount: number; packageKey: string | null; amountCents: number } | null = null;
-
-  await db.transaction(async (tx) => {
-    const row = await tx
-      .select()
-      .from(stripeCheckoutSessions)
-      .where(eq(stripeCheckoutSessions.sessionId, session.id))
-      .limit(1)
-      .then((r) => r[0]);
-
-    if (!row) {
-      // A session we never created (or already cleaned up) — do not credit.
-      auditLog("stripe_webhook_unknown_session", { sessionId: session.id });
-      return;
-    }
-
-    if (row.fulfilled) {
-      // Already credited for this session — idempotent replay, skip.
-      return;
-    }
-
-    // Capture data for post-transaction use
-    rowData = {
-      clerkId: row.clerkId,
-      tokenAmount: Number(row.tokenAmount),
-      packageKey: row.packageKey,
-      amountCents: row.amountCents,
-    };
-
-    // Credit the server-resolved token amount, then mark fulfilled inside
-    // the same transaction so a crash can't credit without marking.
-    await creditUserBalance(row.clerkId, Number(row.tokenAmount), tx as never);
-
-    // Durable, auditable transaction record — written in the SAME transaction
-    // as the balance credit, so balance and history can never diverge.
-    await tx.insert(tokenTransactions).values({
-      clerkId: row.clerkId,
-      type: "purchase",
-      amount: Number(row.tokenAmount),
-      referenceType: "stripe_session",
-      referenceId: session.id,
-      note: row.packageKey ? `Token package: ${row.packageKey}` : null,
-    });
-
-    await tx
-      .update(stripeCheckoutSessions)
-      .set({
-        fulfilled: true,
-        paymentStatus: session.payment_status ?? "paid",
-        paymentIntentId: session.payment_intent ?? null,
-        customerId: session.customer ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(stripeCheckoutSessions.sessionId, session.id));
-  });
-
-  // Send deposit success email (outside transaction, fire-and-forget)
-  if (rowData && session.metadata?.clerkId) {
-    try {
-      const userRow = await db
-        .select({ email: users.email, name: users.name })
-        .from(users)
-        .where(eq(users.clerkId, session.metadata.clerkId))
-        .limit(1);
-      if (userRow[0]?.email) {
-        await sendDepositSuccessEmail(
-          { clerkId: session.metadata.clerkId, email: userRow[0].email, name: userRow[0].name },
-          rowData.tokenAmount
-        );
-      }
-    } catch (err) {
-      console.error("[stripe webhook] Deposit success email failed:", err);
-    }
-  }
-
-  // Audit log (fire-and-forget)
-  if (rowData) {
-    auditLog("stripe_payment_completed", {
-      userId: rowData.clerkId,
-      packageKey: rowData.packageKey,
-      sessionId: session.id,
-      tokenAmount: rowData.tokenAmount,
-      amountCents: rowData.amountCents,
-    });
-  }
-}
-
-/**
  * Insert or refresh the subscription row for a Stripe subscription. Idempotent
  * via the UNIQUE `stripe_subscription_id`. Subscriptions not started through
  * our checkout (no clerkId/planKey metadata) are ignored — we only track and
@@ -319,7 +218,8 @@ async function recordSubscription(sub: StripeSubscriptionObject) {
 /**
  * The checkout.session.completed path for subscription sessions: record the
  * subscription row (fetching the Stripe subscription for the current period /
- * status). Grants still happen via invoice.paid — never here.
+ * status). This is the ONLY thing checkout does — nothing is granted here (or
+ * on any other event).
  */
 async function recordSubscriptionFromCheckout(session: StripeSession) {
   if (!session.subscription) {
@@ -346,94 +246,3 @@ async function recordSubscriptionFromCheckout(session: StripeSession) {
   await recordSubscription(sub);
 }
 
-/**
- * Grant one month of tokens for a paid subscription invoice. The plan key is
- * read from the subscription's metadata (set at checkout), never from the
- * invoice payload; the grant itself is idempotent per invoice id.
- */
-async function grantSubscriptionTokens(invoice: StripeInvoiceObject) {
-  if (!invoice.subscription) {
-    return;
-  }
-
-  // Paid-token gate: only grant the membership token award on invoices that
-  // actually paid. A $0 invoice (e.g. a free-trial period starts with a $0
-  // "paid" invoice) must not print tokens — the first real charge grants on
-  // its own paid invoice, and the credit is still idempotent per invoice id.
-  if (typeof invoice.amount_paid === "number" && !(invoice.amount_paid > 0)) {
-    auditLog("stripe_subscription_no_payment_skip", {
-      invoiceId: invoice.id,
-      amountPaid: invoice.amount_paid,
-    });
-    return;
-  }
-
-  let sub: StripeSubscriptionObject | null = null;
-  try {
-    sub = (await getStripe().subscriptions.retrieve(
-      invoice.subscription
-    )) as unknown as StripeSubscriptionObject;
-  } catch {
-    // Unknown subscription — cannot map to a plan; nothing to grant.
-  }
-
-  const clerkId = sub?.metadata?.clerkId ?? "";
-  const planKey = sub?.metadata?.planKey ?? "";
-  if (!sub || !clerkId || !planKey) {
-    auditLog("stripe_subscription_unknown_plan", {
-      subscriptionId: invoice.subscription,
-      invoiceId: invoice.id,
-    });
-    return;
-  }
-
-  const plan = await db
-    .select({
-      monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
-      name: tokenSubscriptionPlans.name,
-    })
-    .from(tokenSubscriptionPlans)
-    .where(eq(tokenSubscriptionPlans.key, planKey))
-    .limit(1)
-    .then((r) => r[0]);
-
-  if (!plan) {
-    auditLog("stripe_subscription_unknown_plan", { planKey, invoiceId: invoice.id });
-    return;
-  }
-
-  const granted = await grantSubscriptionInvoiceTokens({
-    clerkId,
-    planKey,
-    invoiceId: invoice.id,
-    amount: Number(plan.monthlyTokens),
-    periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
-    periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
-  });
-
-  if (granted) {
-    auditLog("stripe_subscription_credit", {
-      userId: clerkId,
-      planKey,
-      invoiceId: invoice.id,
-      tokenAmount: Number(plan.monthlyTokens),
-    });
-
-    // Send subscription deposit success email (fire-and-forget)
-    try {
-      const userRow = await db
-        .select({ email: users.email, name: users.name })
-        .from(users)
-        .where(eq(users.clerkId, clerkId))
-        .limit(1);
-      if (userRow[0]?.email) {
-        await sendDepositSuccessEmail(
-          { clerkId, email: userRow[0].email, name: userRow[0].name },
-          Number(plan.monthlyTokens)
-        );
-      }
-    } catch (err) {
-      console.error("[stripe webhook] Subscription deposit email failed:", err);
-    }
-  }
-}

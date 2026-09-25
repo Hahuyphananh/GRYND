@@ -11,7 +11,7 @@ export const sendLossStreakEmail = (user: any) =>
     subject: "Comeback reward unlocked",
     html: renderTemplate(
       "Tough streak?",
-      "<p>You lost 3 in a row. Here are bonus tokens for your comeback.</p>",
+      "<p>You lost 3 in a row. Reset, regroup, and climb back up the Battle Pass.</p>",
     ),
   });
 export const sendBigWinEmail = (user: any, amount: number) =>

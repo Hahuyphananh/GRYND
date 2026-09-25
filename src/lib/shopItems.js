@@ -28,7 +28,7 @@
 //     because the doubled XP rides along.
 //
 //   * quest_xp_boost_3 — like quest_boost_3 but doubles the quest XP (not
-//     the token reward): EV is soft progression-only, priced at 1,200.
+//     the quest reward value): EV is soft progression-only, priced at 1,200.
 //
 //   * quest_reroll — swap one daily quest for a fresh one (progress resets).
 //     EV is close to zero in tokens; priced at 1,500 for the convenience.
@@ -41,12 +41,12 @@
 // the single XP multiplier path (getActiveXpMultiplier*) reads them all.
 //
 // ── Membership XP integration ──────────────────────────────────────────────
-// Membership tiers add a flat XP multiplier (Grynd+ ×1.15 / Pro ×1.35 /
-// High Roller ×1.70, see src/lib/stripe/subscriptions.ts). It is applied
-// HERE, inside the same chokepoints the timed boosts use, so every XP source
-// (settled wagers, quest claims, onboarding) honors it without each caller
-// resolving the tier. This is pure progression — membership never touches
-// RNG, odds or win payouts.
+// Membership adds NO XP multiplier (GRYND PRO is non-competitive — see
+// src/lib/stripe/subscriptions.ts). Only timed boosts from the item inventory
+// multiply XP, and they are applied HERE so every XP source (settled wagers,
+// quest claims, onboarding, Battle Pass claims) honors them without each
+// caller doing its own resolution. This is pure progression — boosts never
+// touch RNG, odds or win payouts.
 
 export const SHOP_ITEMS = [
   {
@@ -230,15 +230,14 @@ export function xpBoostMultiplierFromKey(effectKey) {
 
 /**
  * Returns the highest XP multiplier among the user's active timed boosts
- * (2 for a 2× boost, 3 for a 3× boost, 1 when none is active), compounded
- * with the membership tier's flat multiplier (Grynd+ ×1.15 / Pro ×1.35 /
- * High Roller ×1.70). Checks by local user id.
+ * (2 for a 2× boost, 3 for a 3× boost, 1 when none is active). Membership
+ * grants NO XP multiplier — GRYND PRO is non-competitive, so only the timed
+ * boosts from the Battle Pass / item inventory count. Checks by local user id.
  */
 export async function getActiveXpMultiplier(userId) {
   const { db } = await import("../db");
   const { eq, sql } = await import("drizzle-orm");
   const { userItemEffects, users } = await import("../db/schema");
-  const { getMembershipXpMultiplierByUserId } = await import("./stripe/subscriptions");
 
   const rows = await db
     .select({ effectKey: userItemEffects.effectKey })
@@ -252,21 +251,18 @@ export async function getActiveXpMultiplier(userId) {
     multiplier = Math.max(multiplier, xpBoostMultiplierFromKey(row.effectKey));
   }
 
-  // Membership tier is a flat multiplier on top of any timed boost.
-  return Math.round(multiplier * (await getMembershipXpMultiplierByUserId(userId)) * 100) / 100;
+  return multiplier;
 }
 
 /**
- * Returns the active XP multiplier (timed boost × membership tier) for a
- * user looked up by Clerk id (used by the wager-XP settlement path, which
- * only has the Clerk id). Returns 1 when no boost is active and no
- * membership is held.
+ * Returns the active XP multiplier (timed boosts only) for a user looked up by
+ * Clerk id (used by the wager-XP settlement path, which only has the Clerk
+ * id). Returns 1 when no boost is active.
  */
 export async function getActiveXpMultiplierByClerkId(clerkId) {
   const { db } = await import("../db");
   const { sql } = await import("drizzle-orm");
   const { userItemEffects, users } = await import("../db/schema");
-  const { getMembershipXpMultiplierByClerkId } = await import("./stripe/subscriptions");
 
   const rows = await db
     .select({ effectKey: userItemEffects.effectKey })
@@ -281,7 +277,7 @@ export async function getActiveXpMultiplierByClerkId(clerkId) {
     multiplier = Math.max(multiplier, xpBoostMultiplierFromKey(row.effectKey));
   }
 
-  return Math.round(multiplier * (await getMembershipXpMultiplierByClerkId(clerkId)) * 100) / 100;
+  return multiplier;
 }
 
 /**

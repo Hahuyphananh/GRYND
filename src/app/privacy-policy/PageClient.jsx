@@ -43,7 +43,8 @@ const sections = [
   {
     title: "Advertising",
     content: [
-      "We keep GRYND free to play in part with advertising served by Google AdSense. Ads appear only on browsing pages \u2014 the home page, the games hub, the leaderboard, the battlepass and the game lobbies. They never appear on a live match page, so a game in progress is never interrupted by advertising.",
+      "We keep GRYND free to play in part with advertising served by Google AdSense. Ads appear only on browsing pages \u2014 the home page, the games hub, the leaderboard, the profile, the battlepass and the game lobbies. They never appear on a live match page, so a game in progress is never interrupted by advertising.",
+      "Subscribers to GRYND PRO do not receive advertising: their membership includes an ad-free experience, so no ad code is loaded and no ad requests are made on their behalf.",
       "Google and its advertising partners may set cookies or read device identifiers in order to serve and measure ads and to limit how often you see the same ad. Where your consent is required, ads are non-personalised until you consent, and ad click identifiers are redacted from ad requests.",
       "Visitors in the European Economic Area, the United Kingdom and Switzerland are shown a consent message from Google's certified consent management platform, which records your choices and lets you refuse as easily as you accept; that choice is also passed to our advertising partners as an industry-standard consent signal. Visitors elsewhere are shown our own cookie banner.",
       "You can change or withdraw your advertising consent at any time with the \u201cManage cookies\u201d link in the footer of every page. We do not sell your personal information.",

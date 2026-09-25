@@ -26,7 +26,7 @@ function prestigeBadgeForUser(user) {
 }
 
 /** Resolve a users row's official Grynd icon key + equipped name color
- *  (battlepass glow wins; the Grynd+ chat color only surfaces for active
+ *  (battlepass glow wins; the GRYND PRO chat color only surfaces for active
  *  members). Raw columns never leave the server — only the resolved
  *  values are stamped onto the in-memory player object. Best-effort:
  *  a lookup failure returns defaults so seat rendering never breaks. */

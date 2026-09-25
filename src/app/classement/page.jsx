@@ -1,5 +1,6 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
+import AdSlot from "../../components/AdSlot";
 
 export const metadata = {
   title: "Leaderboard | GRYND",
@@ -11,7 +12,7 @@ export default function Page() {
   return (
     <>
       <AdSenseScript />
-      <PageClient />
+      <PageClient adSlot={<AdSlot placement="leaderboard" />} />
     </>
   );
 }

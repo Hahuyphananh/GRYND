@@ -4,7 +4,7 @@
 // null / "none" / ""). Server-authoritative: the glow must resolve through
 // the official `glows` catalog (enabled) AND be owned by the user. Arbitrary
 // hex colors / user-supplied values are never accepted — the free-form
-// surface is the Grynd+ chat-color picker, glows are fixed catalog entries.
+// surface is the GRYND PRO chat-color picker, glows are fixed catalog entries.
 // Mirrors the icon equip endpoint (src/app/api/user/icon/select/route.ts).
 
 import { NextResponse } from "next/server";

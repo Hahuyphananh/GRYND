@@ -1496,7 +1496,7 @@ export async function enrichMatchWithPlayers(match) {
           iconKey: r.iconKey || "default",
           profileFrame: decorationByClerkId.get(r.clerkId) || null,
           // Equipped name color — same precedence as the chat route:
-          // battlepass glow wins; the Grynd+ chat color only surfaces
+          // battlepass glow wins; the GRYND PRO chat color only surfaces
           // for active members.
           nameColor:
             r.glowColor ||

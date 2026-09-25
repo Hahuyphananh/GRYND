@@ -63,7 +63,7 @@ async function enrichRoomPlayers(room) {
       }),
     );
     iconByUser.set(String(row.clerkId), row.iconKey || "default");
-    // Equipped name color — battlepass glow wins; the Grynd+ chat
+    // Equipped name color — battlepass glow wins; the GRYND PRO chat
     // color only surfaces for active members (chat-route precedence).
     colorByUser.set(
       String(row.clerkId),

@@ -17,8 +17,8 @@ import { getActiveXpMultiplier } from "./shopItems";
 export const MAX_LEVEL = 100;
 
 // EXP sources.
-export const WAGER_EXP_DIVISOR = 10; // 1 XP per 10 tokens wagered
-export const QUEST_EXP_MULTIPLIER = 2; // quest XP = token reward × 2
+export const WAGER_EXP_DIVISOR = 10; // 1 XP per 10 staked
+export const QUEST_EXP_MULTIPLIER = 2; // quest XP = quest reward value × 2
 // One-time onboarding bonus for finishing the first Free Play vs AI match
 // (migration 0143). Free-play matches otherwise award no XP (expForWager(0)
 // = 0); this is the single explicit exception, granted once server-side by
@@ -75,7 +75,7 @@ export function expForWager(betAmount = 0) {
   return Math.floor(bet / WAGER_EXP_DIVISOR);
 }
 
-// XP granted for claiming a quest with the given token reward.
+// XP granted for claiming a quest with the given reward value.
 export function expForQuest(reward = 0) {
   return Math.max(0, Math.floor(Number(reward) || 0)) * QUEST_EXP_MULTIPLIER;
 }

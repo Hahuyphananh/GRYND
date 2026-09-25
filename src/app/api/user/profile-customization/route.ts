@@ -1,6 +1,6 @@
 // src/app/api/user/profile-customization/route.ts
 //
-// POST — set the caller's Grynd+ profile customization (accent color).
+// POST — set the caller's GRYND PRO profile customization (accent color).
 //
 // Security:
 //   * auth-required,
@@ -29,7 +29,10 @@ export async function POST(req: Request) {
 
   if (!(await isPremiumMember(userId))) {
     return NextResponse.json(
-      { success: false, error: "This perk requires an active Grynd+ membership." },
+      {
+        success: false,
+        error: "This perk requires an active GRYND PRO membership.",
+      },
       { status: 403 }
     );
   }

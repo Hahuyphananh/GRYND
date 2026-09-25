@@ -67,9 +67,10 @@ test("every profile key the page uses exists in EN, FR and ES", () => {
 test("the French-only and English-only labels are all in the bundle now", () => {
   // One representative per section, EN + FR + ES. If a section loses its
   // translations this fails with the section name.
+  // NOTE: the token-balance section was removed from /profil along with the
+  // token currency, so there is no `balance` entry here any more.
   const sections = {
     "personal info": ["info.title", "info.settings", "info.memberSince", "info.unknownUser"],
-    balance: ["balance.title", "balance.amount"],
     battlepass: ["battlepass.title", "battlepass.level", "battlepass.earn"],
     "grynd+": ["membership.title", "membership.active", "membership.resetDone"],
     customization: ["customization.title", "customization.accent"],

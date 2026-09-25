@@ -28,7 +28,6 @@ import { db } from "../../../../db";
 import {
   tokenSubscriptionPlans,
   stripeCheckoutSessions,
-  tokenTransactions,
 } from "../../../../db/schema";
 import { unlockEmote } from "../../../../lib/emotes";
 import { unlockTitle } from "../../../../lib/specialTitles";
@@ -40,13 +39,13 @@ import {
   isPremiumMember,
   ensureSubscriptionPlanStripe,
   findActiveSubscription,
+  CANONICAL_MEMBERSHIP_PLAN_KEY,
 } from "../../../../lib/stripe/subscriptions";
 import {
   activateTimedEffect,
   grantItem,
 } from "../../../../lib/shopItems";
 import { grantCosmetic } from "../../../../lib/cosmetics";
-import { creditUserBalance } from "../../../../lib/tokens/creditTokens";
 
 // Reward types that can be granted. The functional types carry no key —
 // they're disambiguated by the track level in the request.
@@ -58,7 +57,6 @@ const CLAIMABLE_TYPES = new Set([
   "xp_boost",
   "quest_boost",
   "shield",
-  "tokens",
   "battlepass_xp",
   "quest_reroll",
   ...COSMETIC_REWARD_TYPES,
@@ -123,7 +121,6 @@ export async function POST(req) {
     const isFunctional =
       type in FUNCTIONAL_GRANTS ||
       type === "grynd" ||
-      type === "tokens" ||
       type === "battlepass_xp";
     if (isFunctional) {
       if (!Number.isInteger(levelParam) || levelParam < 1 || levelParam > level) {
@@ -216,7 +213,7 @@ export async function POST(req) {
     // ── Premium gate (only for new claims) ──
     if (reward?.premium === true && !(await isPremiumMember(userId))) {
       return Response.json(
-        { success: false, error: "Grynd+ membership required for this reward" },
+        { success: false, error: "GRYND PRO membership required for this reward" },
         { status: 403 },
       );
     }
@@ -229,12 +226,13 @@ export async function POST(req) {
     } else if (type === "color") {
       await unlockGlow(dbUserId, key);
     } else if (type === "grynd") {
-      // Membership-trial reward ("X Days of Grynd+"): send the player to a
+      // Membership-trial reward ("X Days of membership"): send the player to a
       // Stripe subscription checkout with a FREE trial of `days` days. The
       // card is set up during checkout but nothing is charged until the
       // trial ends. The trial subscription (status "trialing") counts as an
-      // active membership — badges/tier work immediately; the first monthly
-      // tokens are granted by the webhook on the first PAID invoice.
+      // active GRYND PRO membership — badges work immediately. No tokens are
+      // granted (GRYND has no token currency); the webhook only records the
+      // membership lifecycle.
       const days = Math.min(30, Math.max(1, Number(reward.value) || 7));
       const active = await findActiveSubscription(userId);
       if (active) {
@@ -251,11 +249,13 @@ export async function POST(req) {
       const plan = await db
         .select()
         .from(tokenSubscriptionPlans)
-        .where(eq(tokenSubscriptionPlans.key, "grynd-plus"))
+        .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
         .limit(1)
         .then((rows) => rows[0]);
       if (!plan || !plan.enabled) {
-        throw new Error("grynd-plus plan is missing or disabled");
+        throw new Error(
+          `${CANONICAL_MEMBERSHIP_PLAN_KEY} plan is missing or disabled`,
+        );
       }
       const resolvedPriceId = (
         await ensureSubscriptionPlanStripe({
@@ -308,27 +308,6 @@ export async function POST(req) {
         alreadyClaimed: false,
         claimed,
         checkoutUrl: session.url ?? null,
-      });
-    } else if (type === "tokens") {
-      // Token rewards: ONE atomic transaction — credit the balance (through
-      // creditUserBalance), write the `reward` ledger row (Battle Pass), and
-      // journal the per-level claim so the reward can't be claimed twice.
-      const amount = Math.min(100000, Math.max(1, Math.floor(Number(reward.value) || 0)));
-      await db.transaction(async (tx) => {
-        await creditUserBalance(userId, amount, tx);
-        await tx.insert(tokenTransactions).values({
-          clerkId: userId,
-          type: "reward",
-          amount,
-          referenceType: "battlepass",
-          referenceId: String(rewardLevel),
-          note: reward.name,
-        });
-        await sql`
-          INSERT INTO battlepass_claims (user_id, level, reward_type, reward_key)
-          VALUES (${dbUserId}, ${rewardLevel}, 'tokens', NULL)
-          ON CONFLICT DO NOTHING
-        `;
       });
     } else if (type === "battlepass_xp") {
       // Flat Battle Pass XP (already routed through addExp's boost math).

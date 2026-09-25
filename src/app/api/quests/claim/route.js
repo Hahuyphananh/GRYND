@@ -2,8 +2,8 @@
 //
 // POST /api/quests/claim  { questId }
 //
-// Validates the quest is complete + unclaimed, credits the token reward
-// to the player's balance, and marks it claimed (idempotent).
+// Validates the quest is complete + unclaimed, grants the Battle Pass XP
+// reward, and marks it claimed (idempotent).
 
 import { auth } from "@clerk/nextjs/server";
 import { claimQuest } from "../../../../lib/quests";

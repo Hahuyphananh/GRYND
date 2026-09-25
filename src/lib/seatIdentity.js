@@ -5,7 +5,7 @@
 //   * name       — the real username
 //   * iconKey    — the official Grynd icon key (users.selected_icon)
 //   * nameColor  — the equipped name color (battlepass glow takes
-//                  precedence; the Grynd+ custom chat color only surfaces
+//                  precedence; the GRYND PRO custom chat color only surfaces
 //                  for active members — mirroring the chat message route)
 //
 // Bot seats (e.g. "blackjack_ai_bot", "roulette_ai_bot", AI_BOT) have no

@@ -35,7 +35,7 @@ function normalizePlayersFromSeats(seats: Seat[]) {
 
 /** Resolve official Grynd icon keys + equipped name colors for a set of
  *  seated clerk ids (one query, same precedence as the chat route:
- *  battlepass glow wins; the Grynd+ chat color only surfaces for active
+ *  battlepass glow wins; the GRYND PRO chat color only surfaces for active
  *  members). Best-effort — never crashes the route on lookup failure. */
 async function enrichPlayersIdentity(players: any[]) {
   const humanIds = players

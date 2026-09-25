@@ -18,12 +18,13 @@ import ChooseIconModal from "../../components/ChooseIconModal";
 import ChooseGlowModal from "../../components/ChooseGlowModal";
 import ChooseFrameModal from "../../components/ChooseFrameModal";
 import ChooseEmotesModal from "../../components/ChooseEmotesModal";
+import UpgradeProButton from "../../components/UpgradeProButton";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 import { useTranslation } from "../../hooks/useTranslation";
 
-// Grynd+ chat color palette (matches the neon casino aesthetic).
+// GRYND PRO chat color palette (matches the neon casino aesthetic).
 const CHAT_COLORS = [
   "#00e5ff",
   "#f5ff3b",
@@ -37,7 +38,9 @@ const CHAT_COLORS = [
   "#e2e8f0",
 ];
 
-export default function ProfilePage() {
+// `adSlot` is the server-rendered <AdSlot placement="profile" /> from
+// app/profil/page.jsx — above the footer, never over a control.
+export default function ProfilePage({ adSlot = null }) {
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useClerk();
   // Both history panels resolve their copy through the app-wide bundle
@@ -45,7 +48,6 @@ export default function ProfilePage() {
   // the French headings and table labels used to be hardcoded here.
   const { t } = useTranslation();
 
-  const [userTokens, setUserTokens] = useState(null);
   const [profileInfo, setProfileInfo] = useState({
     name: "",
     email: "",
@@ -53,14 +55,13 @@ export default function ProfilePage() {
     profileAccent: null,
   });
   // Unsaved profile customization (accent) — saved via
-  // /api/user/profile-customization (Grynd+ perk).
+  // /api/user/profile-customization (GRYND PRO perk).
   const [cosmetics, setCosmetics] = useState({
     accent: DEFAULT_PROFILE_ACCENT,
   });
   const [cosmeticsMsg, setCosmeticsMsg] = useState(null);
   const [bets, setBets] = useState([]);
-  const [purchases, setPurchases] = useState([]);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
 
   const [stats, setStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
@@ -386,7 +387,6 @@ export default function ProfilePage() {
     const tokensData = await tokensResponse.json();
 
     if (tokensData.success && tokensData.data) {
-      setUserTokens(Number(tokensData.data.balance || 0));
       const name =
         tokensData.data.name ||
         user?.fullName ||
@@ -416,16 +416,6 @@ export default function ProfilePage() {
       setBets([]);
     }
 
-    const purchaseResponse = await fetch("/api/get-purchase-history", {
-      method: "GET",
-      credentials: "include",
-    });
-    const purchaseData = await purchaseResponse.json();
-    if (purchaseData.success && Array.isArray(purchaseData.purchases)) {
-      setPurchases(purchaseData.purchases);
-    } else {
-      setPurchases([]);
-    }
   };
 
   const loadFriends = async () => {
@@ -1259,6 +1249,13 @@ export default function ProfilePage() {
           {t("profile.title", "Your Profile")}
         </h1>
 
+        {/* GRYND PRO — shows "Manage Subscription" for subscribers and the
+            upgrade CTA for everyone else; the status is read from the server
+            (/api/membership/status), so the client can't claim PRO. */}
+        <div className="mb-6 flex justify-center">
+          <UpgradeProButton variant="compact" />
+        </div>
+
         <div className="grid gap-8 md:grid-cols-2">
           <div
             className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${profileGlowClass || ""} ${prestigeBadge.prestigeUnlocked ? "prestige-aura" : ""}`}
@@ -1338,7 +1335,7 @@ export default function ProfilePage() {
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
                       {membership.title ||
-                        t("profile.info.membershipFallback", "GRYND+ Elite")}
+                        t("profile.info.membershipFallback", "GRYND PRO")}
                     </span>
                   )}
                   {equippedCosmetics?.badge && (
@@ -1429,19 +1426,6 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          <div
-            className="bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)] text-center"
-          >
-            <h2 className="text-xl text-[#00e5ff] mb-2">
-              {t("profile.balance.title", "Token balance")}
-            </h2>
-            <p className="text-3xl font-bold">
-              {t("profile.balance.amount", { amount: userTokens ?? 0 })}
-            </p>
-            {error && <p className="mt-2 text-red-500">{error}</p>}
-          </div>
         </div>
 
         <div
@@ -1494,7 +1478,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           <div className="mt-3 text-xs text-[#7dd3fc]">
             {t(
               "profile.battlepass.earn",
-              "Earn XP by wagering tokens and completing quests.",
+              "Earn XP by playing and completing quests.",
             )}
           </div>
           <Link
@@ -1508,7 +1492,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
         <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="text-xl text-emerald-300">
-              {t("profile.membership.title", "Grynd+ Membership")}
+              {t("profile.membership.title", "GRYND PRO Membership")}
             </h2>
             {membership?.active ? (
               <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
@@ -1526,7 +1510,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               <p className="mb-3 text-sm text-gray-300">
                 {t(
                   "profile.membership.chatPerk",
-                  "Custom chat name color — Grynd+ perk.",
+                  "Custom chat name color — GRYND PRO perk.",
                 )}
               </p>
 
@@ -1610,17 +1594,17 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             <p className="text-sm text-gray-400">
               {t(
                 "profile.membership.locked",
-                "Unlock custom chat colors with a Grynd+ membership.",
+                "Unlock custom chat colors with a GRYND PRO membership.",
               )}{" "}
-              <a href="/shop" className="text-emerald-300 underline">
-                {t("profile.membership.seeShop", "See the shop")}
+              <a href="/upgrade-pro" className="text-emerald-300 underline">
+                {t("profile.membership.seePro", "See GRYND PRO")}
               </a>
               .
             </p>
           )}
         </div>
 
-        {/* Grynd+ Profile Customization */}
+        {/* GRYND PRO Profile Customization */}
         <div className="mt-8 rounded-xl border border-sky-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(56,189,248,0.15)]">
           <div className="mb-4 flex items-center justify-between gap-4">
             <h2 className="text-xl text-sky-300">
@@ -1628,7 +1612,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             </h2>
             {membership?.active && (
               <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
-                {t("profile.customization.badge", "Grynd+")}
+                {t("profile.customization.badge", "GRYND PRO")}
               </span>
             )}
           </div>
@@ -1638,7 +1622,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
               <p className="mb-4 text-sm text-gray-300">
                 {t(
                   "profile.customization.perk",
-                  "Accent color — Grynd+ perk. Shown on your profile card.",
+                  "Accent color — GRYND PRO perk. Shown on your profile card.",
                 )}
               </p>
 
@@ -1704,10 +1688,10 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
             <p className="text-sm text-gray-400">
               {t(
                 "profile.customization.locked",
-                "Customize your profile with a Grynd+ membership.",
+                "Customize your profile with a GRYND PRO membership.",
               )}{" "}
-              <a href="/shop" className="text-sky-300 underline">
-                {t("profile.customization.seeShop", "See the shop")}
+              <a href="/upgrade-pro" className="text-sky-300 underline">
+                {t("profile.customization.seePro", "See GRYND PRO")}
               </a>
               .
             </p>
@@ -2673,52 +2657,6 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 rounded-xl p-6 
 shadow-[0_0_24px_rgba(0,229,255,0.15)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">
-            {t("profile.purchaseHistory.title", "Token purchase history")}
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="border-b border-[#FFD700] text-[#00e5ff]">
-                <tr>
-                  <th className="px-4 py-2">
-                    {t("profile.purchaseHistory.date", "Date")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.purchaseHistory.pack", "Pack")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.purchaseHistory.tokens", "Tokens")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {purchases.length > 0 ? (
-                  purchases.map((purchase, idx) => (
-                    <tr key={purchase.id ?? idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">
-                        {new Date(purchase.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-2">
-                        {purchase.note ||
-                          purchase.referenceId ||
-                          t("profile.purchaseHistory.purchase", "Purchase")}
-                      </td>
-                      <td className="px-4 py-2 text-green-400">
-                        +{Number(purchase.amount ?? 0).toLocaleString()}{" "}
-                        {t("profile.tokens", "tokens")}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="3" className="text-center py-4 text-gray-400">
-                      {t("profile.purchaseHistory.empty", "No purchases found")}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </div>
 
         <div className="mt-12">
@@ -2908,10 +2846,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                       "You don't own any cosmetics yet. Visit the",
                     )}{" "}
                     <Link
-                      href="/shop"
+                      href="/battlepass"
                       className="font-semibold text-[#00e5ff] underline hover:text-[#33ebff]"
                     >
-                      {t("profile.edit.shop", "Shop")}
+                      {t("nav.battlepass")}
                     </Link>{" "}
                     {t(
                       "profile.edit.noCosmeticsTail",
@@ -3034,6 +2972,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         open={isEmotesManagerOpen}
         onClose={() => setIsEmotesManagerOpen(false)}
       />
+      {adSlot}
       <Footer />
     </div>
   );

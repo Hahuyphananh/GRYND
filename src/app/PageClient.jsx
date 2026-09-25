@@ -33,12 +33,16 @@ import {
 import { useToast } from "../components/toast/ToastProvider";
 import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
+import UpgradeProButton from "../components/UpgradeProButton";
 import {
   REWARD_RARITIES,
   REWARD_TYPES,
 } from "../lib/battlepassRewards";
 
-function MainComponent() {
+// `adSlot` is a server-rendered <AdSlot /> handed down by app/page.jsx. It is
+// rendered above the footer and carries its OWN server-side entitlement check —
+// nothing about membership is passed from here.
+function MainComponent({ adSlot = null }) {
   const router = useRouter();
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
@@ -50,10 +54,9 @@ function MainComponent() {
   const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
   const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
   const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
-  // Grynd+ membership (drives the +50% login bonus state) + the bonus amount
+  // GRYND PRO membership state for the daily-claim surfaces
   // from the last claim.
   const [membership, setMembership] = useState(null);
-  const [premiumBonus, setPremiumBonus] = useState(0);
   const [streakData, setStreakData] = useState({
     currentDay: 0,
     claimedDays: [], // array of ISO dates strings
@@ -407,7 +410,7 @@ function MainComponent() {
     fetchRewardStatus();
   }, [user, isSignedIn]);
 
-  // Fetch Grynd+ membership status so the daily reward UI can show the +50%
+  // Fetch GRYND PRO membership status for the daily-claim surfaces
   // login bonus state.
   useEffect(() => {
     if (!isSignedIn) {
@@ -469,7 +472,6 @@ function MainComponent() {
       setMilestoneTitle(data.milestoneTitle || null);
 
       setRewardPopupVisible(true);
-      setPremiumBonus(data.premiumBonus || 0);
 
       // 4) Set 24h cooldown
       const nextTime = new Date();
@@ -830,6 +832,34 @@ function MainComponent() {
           </motion.div>
         </div>
       </motion.section>
+
+      {/* GRYND PRO — the only paid membership, and the only place on the home
+          page that talks about it. Replaces the old Shop entry point; the CTA
+          is a reusable UpgradeProButton, so the price and the entitlement come
+          from the server, never from this markup. */}
+      <div className="mx-auto max-w-7xl px-4 pt-8 reveal">
+        <div className="relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 px-5 py-5 shadow-[0_0_30px_rgba(245,255,59,0.12)]">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[#00e5ff]">
+                ✦ Membership
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-[#f5ff3b] sm:text-3xl">
+                GRYND PRO
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm text-[#d8fbff]">
+                Compete without distractions: ad-free, with advanced statistics,
+                advanced performance analytics and detailed match history. Every
+                game, rank and reward stays free — PRO never changes your odds,
+                Elo or matchmaking.
+              </p>
+            </div>
+            <div className="w-full shrink-0 sm:w-auto">
+              <UpgradeProButton />
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* First-match recovery — only for accounts that abandoned onboarding */}
       {firstMatchNudge && (
@@ -1678,24 +1708,15 @@ function MainComponent() {
                   {t("home.rewards.claimed")}!
                 </p>
 
-                {/* Grynd+ +50% login bonus state */}
-                {(membership?.active || premiumBonus > 0) && (
-                  <p className="-mt-4 mb-6 text-sm font-semibold text-emerald-300">
-                    {premiumBonus > 0
-                      ? `+${premiumBonus.toLocaleString()} — ${t("home.rewards.premium_bonus_earned")}`
-                      : t("home.rewards.premium_active")}
-                  </p>
-                )}
-
                 {/* 14 DAY GRID */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 mb-6">
                   {Array.from({ length: streakData.maxDay || 14 }).map(
                     (_, i) => {
                       const day = i + 1;
-                      // Must mirror /api/claim-login-reward (50 tokens per
+                      // Must mirror /api/claim-login-reward (25 XP per
                       // streak day — linear escalation).
                       const baseReward = 25 * day; // must match LOGIN_REWARD_PER_DAY in claim-login-reward
-                      // Grynd+ members earn +50% on the daily login reward.
+                      // Membership grants no login bonus (see the API route).
                       const reward = Math.round(
                         baseReward * (membership?.active ? 1.5 : 1),
                       );
@@ -1736,7 +1757,7 @@ function MainComponent() {
                           </div>
 
                           <div className="text-xs text-[#FFD700]">
-                            {reward.toLocaleString()}
+                            {reward.toLocaleString()} XP
                           </div>
 
                           {isToday && membership?.active && (
@@ -1776,7 +1797,7 @@ function MainComponent() {
                       {milestoneTitle}
                     </p>
                     <p className="text-lg mt-1">
-                      <span className="text-amber-300 font-bold">+{milestoneBonus.toLocaleString()} bonus tokens!</span>
+                      <span className="text-amber-300 font-bold">+{milestoneBonus.toLocaleString()} bonus XP!</span>
                     </p>
                   </div>
                 )}
@@ -1906,6 +1927,9 @@ function MainComponent() {
           </UIPro17ModalBackdrop>
         )}
       </AnimatePresence>
+      {/* Advertising for free accounts — last block before the footer, clear of
+          the hero, navigation and every control. */}
+      {adSlot}
       <Footer />
       <StickyMobileCta />
     </div>

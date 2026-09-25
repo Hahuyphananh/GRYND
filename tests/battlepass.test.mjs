@@ -82,7 +82,7 @@ test("closed-form level matches brute-force level across the whole track", () =>
   }
 });
 
-test("expForWager grants 1 XP per 10 tokens, 0 for fun-mode bets", () => {
+test("expForWager grants 1 XP per 10 staked, 0 for fun-mode bets", () => {
   assert.equal(expForWager(0), 0);
   assert.equal(expForWager(9), 0);
   assert.equal(expForWager(10), 1);
@@ -91,7 +91,7 @@ test("expForWager grants 1 XP per 10 tokens, 0 for fun-mode bets", () => {
   assert.equal(expForWager("1000"), 100);
 });
 
-test("expForQuest scales with the token reward", () => {
+test("expForQuest scales with the quest reward value", () => {
   assert.equal(expForQuest(0), 0);
   assert.equal(expForQuest(60), 120);
   assert.equal(expForQuest(130), 260);
@@ -141,6 +141,43 @@ test("rewards contain valid fields and only official owned types", () => {
       }
     }
   }
+});
+
+test("the track carries no token rewards and no currency-typed entries", () => {
+  // GRYND has no token currency, so the Battle Pass must not pay one and
+  // must not reference a `tokens` reward type at all.
+  assert.ok(!Object.keys(REWARD_TYPES).includes("tokens"));
+  for (const entry of BATTLEPASS_REWARDS) {
+    for (const reward of entry.rewards) {
+      assert.notEqual(reward.type, "tokens", `token reward at level ${entry.level}`);
+      assert.ok(
+        !("tokens" in reward),
+        `reward at level ${entry.level} carries a token amount`,
+      );
+    }
+  }
+});
+
+test("every level 1-100 carries at least one reward", () => {
+  for (let level = 1; level <= 100; level++) {
+    assert.ok(
+      rewardsForLevel(level).length >= 1,
+      `level ${level} has no reward (fill it with battlepass_xp or an existing cosmetic)`,
+    );
+  }
+});
+
+test("battlepass_xp rewards carry a positive flat XP value", () => {
+  let count = 0;
+  for (const entry of BATTLEPASS_REWARDS) {
+    for (const reward of entry.rewards) {
+      if (reward.type !== "battlepass_xp") continue;
+      count += 1;
+      assert.equal(typeof reward.value, "number", `XP reward at level ${entry.level} must be numeric`);
+      assert.ok(reward.value > 0, `XP reward at level ${entry.level} must be positive`);
+    }
+  }
+  assert.ok(count > 0, "the track should use battlepass_xp as its filler reward");
 });
 
 test("level 3 contains the Daily Streak Shield reward", () => {

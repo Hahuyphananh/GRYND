@@ -136,6 +136,11 @@ const isPublicRoute = createRouteMatcher([
   "/contact",
   "/reviews",
   "/faq",
+  // GRYND PRO upgrade landing page — public so signed-out visitors can see the
+  // offer and are routed through sign-up by the CTA.
+  "/upgrade-pro",
+  // Legacy Shop URL: now a redirect to /upgrade-pro, kept public so old links
+  // (emails, bookmarks, Stripe returns) don't bounce through sign-in first.
   "/shop",
   "/battlepass",
 ]);

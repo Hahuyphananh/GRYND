@@ -63,7 +63,7 @@ export default function TawkProvider() {
     window.Tawk_API.onLoad = function () {
       window.Tawk_API.hideWidget?.();
 
-      // Flag Grynd+ members for support agents (priority support perk):
+      // Flag GRYND PRO members for support agents (priority support perk):
       // custom attributes are visible to agents on the Tawk dashboard.
       fetch("/api/membership/status", { credentials: "include" })
         .then((response) => response.json().catch(() => ({})))
@@ -72,13 +72,7 @@ export default function TawkProvider() {
           window.Tawk_API.setAttributes?.(
             {
               premium: active,
-              premiumTier: active
-                ? data?.tier === "high_roller"
-                  ? "high-roller"
-                  : data?.tier === "pro"
-                    ? "pro"
-                    : "grynd+"
-                : null,
+              premiumTier: active ? "pro" : null,
             },
             () => {},
           );

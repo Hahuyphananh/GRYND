@@ -4,7 +4,6 @@ import { useUser } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
-import AddFundsModal from "./AddFundsModal";
 import Link from "next/link";
 import { useTheme } from "../context/ThemeContext";
 import { useTranslation } from "../hooks/useTranslation";
@@ -13,7 +12,7 @@ import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import BattlepassClaimBadge from "./BattlepassClaimBadge";
-import { IconCoins, IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconShoppingBag, IconStar, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
@@ -43,10 +42,8 @@ function NavigationBar({ currentPath = "" }) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const shouldReduceMotion = useReducedMotion();
-  const [balance, setBalance] = useState(null);
-  // Today's net (responsible-play) — powers the home-page chip next to the
-  // balance. Only rendered on the home page so it never duplicates the
-  // fixed lobby chip (DailyLossGuard).
+  // Today's net (responsible-play) chip — rendered on the home page (mobile
+  // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
   const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState({
     name: "",
@@ -67,10 +64,9 @@ function NavigationBar({ currentPath = "" }) {
     prestige: 0,
     prestigeUnlocked: false,
   });
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
   // Prestige tier being celebrated by the global in-app notice (null = none).
   const [prestigeNotice, setPrestigeNotice] = useState(null);
-  const [showAddFunds, setShowAddFunds] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [level, setLevel] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -149,20 +145,12 @@ function NavigationBar({ currentPath = "" }) {
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
     const titleHandler = () => refreshTitleMeta();
-    const balanceHandler = (event) => {
-      const nextBalance = Number(event?.detail?.balance);
-      if (Number.isFinite(nextBalance)) {
-        setBalance(nextBalance.toFixed(2));
-      }
-    };
 
     window.addEventListener("profileUpdated", handler);
     window.addEventListener("titleUpdated", titleHandler);
-    window.addEventListener("balanceUpdated", balanceHandler);
     return () => {
       window.removeEventListener("profileUpdated", handler);
       window.removeEventListener("titleUpdated", titleHandler);
-      window.removeEventListener("balanceUpdated", balanceHandler);
     };
   }, []);
 
@@ -192,7 +180,7 @@ function NavigationBar({ currentPath = "" }) {
       if (response.status === 403) return setError(t("nav.invalid_token"));
 
       if (data.success) {
-        setBalance(data.data.balance);          setProfile((prev) => ({
+        setProfile((prev) => ({
             ...prev,
             name: data.data.name || "",
             selectedIcon: data.data.selectedIcon || "",
@@ -214,7 +202,7 @@ function NavigationBar({ currentPath = "" }) {
             // Equipped NAME GLOW hex, resolved server-side in this same payload
             // (the glow's catalog `color`, left-joined on `selectedGlow`). It
             // is deliberately NOT `nameColor`: that one falls back to the
-            // Grynd+ chat colour, which must not paint the display name.
+            // GRYND PRO chat colour, which must not paint the display name.
             glowColor: data.data.glowColor || null,
             streakTitle: data.data.streakTitle || null,
           }));
@@ -323,16 +311,6 @@ function NavigationBar({ currentPath = "" }) {
             } catch {}
           }
         }
-      } else if (data.shouldInitialize) {
-        const initResponse = await fetch("/api/tokens/initialize", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        });
-        if (initResponse.ok) fetchBalance();
-        else setError(t("nav.init_failed"));
       } else {
         setError(data.error || t("nav.unknown_error"));
       }
@@ -513,8 +491,11 @@ function NavigationBar({ currentPath = "" }) {
                   </span>
                 </Link>
               </motion.div>
+              {/* GRYND PRO — replaced the old token Shop link. This is a link
+                  (not the UpgradeProButton) so the navbar stays a pure
+                  navigation surface; the upgrade CTA lives on the pages. */}
               <motion.div
-                key="/shop"
+                key="/upgrade-pro"
                 className="hidden 2xl:flex"
                 initial={itemVariant.initial}
                 animate={itemVariant.animate}
@@ -522,11 +503,11 @@ function NavigationBar({ currentPath = "" }) {
                 whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
               >
                 <Link
-                  href="/shop"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/shop" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                  href="/upgrade-pro"
+                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/upgrade-pro" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                 >
                   <span className="inline-flex items-center gap-1.5">
-                    <IconShoppingBag size={15} className="shrink-0" /> Shop
+                    <IconStar size={15} className="shrink-0" /> GRYND PRO
                   </span>
                 </Link>
               </motion.div>
@@ -588,43 +569,6 @@ function NavigationBar({ currentPath = "" }) {
                         </span>
                       </div>
                     </Link>
-                    {/* Compact balance chip on laptop widths (lg–2xl) — the
-                        full Tokens chip only fit at 2xl+, leaving signed-in
-                        players on laptops with no visible balance. The
-                        compact chip shows just the coin icon + amount so the
-                        right cluster stays on screen, and the full chip takes
-                        over on very wide screens. */}
-                    <div className="hidden lg:flex 2xl:hidden items-center gap-1.5 rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-2.5 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
-                      <IconCoins size={14} className="shrink-0 text-[#f5ff3b]" aria-hidden="true" />
-                      <span className="font-mono text-sm font-semibold text-[#67f9ff] drop-shadow-[0_0_8px_rgba(0,229,255,0.65)]">
-                        {error
-                          ? "—"
-                          : balance !== null
-                            ? Number(balance).toLocaleString(undefined, {
-                                maximumFractionDigits: 2,
-                              })
-                            : t("nav.loading")}
-                      </span>
-                    </div>
-                    {/* Tokens chip only on very wide screens — the full
-                        labelled chip (plus the profile cluster) only fits
-                        comfortably at 2xl+; laptop widths use the compact
-                        chip above. */}
-                    <div className="hidden 2xl:flex rounded-md border border-[#00e5ff]/50 bg-gradient-to-r from-[#091737] to-[#0e1f4d] px-3 py-1 shadow-[0_0_12px_rgba(0,229,255,0.35)]">
-                      <span className="mr-1 text-[10px] uppercase tracking-[0.2em] text-[#7dd3fc]">
-                        Tokens
-                      </span>
-                      <span className="font-mono text-sm font-semibold text-[#67f9ff] drop-shadow-[0_0_8px_rgba(0,229,255,0.65)]">
-                        {error
-                          ? `${t("nav.error")}: ${error}`
-                          : balance !== null
-                            ? Number(balance).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })
-                            : t("nav.loading")}
-                      </span>
-                    </div>
                   </div>
                   <button
                     onClick={() => setMobileMenuOpen((v) => !v)}
@@ -716,24 +660,18 @@ function NavigationBar({ currentPath = "" }) {
                 </Link>
               )}
 
-              {/* TOKENS */}
-              {isSignedIn && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="rounded-lg border border-[#00e5ff]/30 bg-[#091737] p-3 text-sm text-[#67f9ff]">
-                    <IconCoins size={16} className="mb-0.5 mr-1 inline" /> Tokens: {balance !== null ? Number(balance).toFixed(2) : "Loading..."}
+              {/* Responsible-play daily net chip (home only) */}
+              {isSignedIn &&
+                currentPath === "/" &&
+                dailyLossLoaded &&
+                dailyLoss > DAILY_LOSS_CHIP_THRESHOLD && (
+                  <div
+                    className="rounded-lg border border-amber-400/40 bg-black/60 px-3 py-2 text-sm font-bold text-amber-300"
+                    title="Your net loss today — take it easy"
+                  >
+                    ▼ {dailyLoss.toLocaleString()} today
                   </div>
-                  {currentPath === "/" &&
-                    dailyLossLoaded &&
-                    dailyLoss > DAILY_LOSS_CHIP_THRESHOLD && (
-                      <div
-                        className="rounded-lg border border-amber-400/40 bg-black/60 px-3 py-2 text-sm font-bold text-amber-300"
-                        title="Your net loss today — take it easy"
-                      >
-                        ▼ {dailyLoss.toLocaleString()} today
-                      </div>
-                    )}
-                </div>
-              )}
+                )}
 
               {/* NAV LINKS */}
               <div className="space-y-2">
@@ -757,12 +695,12 @@ function NavigationBar({ currentPath = "" }) {
                     </span>
                   </Link>
                   <Link
-                    href="/shop"
+                    href="/upgrade-pro"
                     onClick={() => setMobileMenuOpen(false)}
                     className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
                   >
                     <span className="inline-flex items-center gap-1.5">
-                      <IconShoppingBag size={15} className="shrink-0" /> Shop
+                      <IconStar size={15} className="shrink-0" /> GRYND PRO
                     </span>
                   </Link>
             </div>
@@ -802,12 +740,6 @@ function NavigationBar({ currentPath = "" }) {
           </div>
         )}
       </motion.nav>
-
-      <AddFundsModal
-        isOpen={showAddFunds}
-        onClose={() => setShowAddFunds(false)}
-        onSuccess={setBalance}
-      />
 
       {/* Global "Prestige unlocked" notice — dismissed once per tier-up. */}
       {prestigeNotice !== null && (

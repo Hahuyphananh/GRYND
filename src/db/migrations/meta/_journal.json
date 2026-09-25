@@ -1037,6 +1037,27 @@
       "when": 1800000010000,
       "tag": "0166_ai_match_difficulty",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1800000011000,
+      "tag": "0167_battlepass_title_no_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1800000012000,
+      "tag": "0168_membership_single_pro",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1800000013000,
+      "tag": "0169_battlepass_title_apex",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,11 @@
 // src/lib/profileCosmetics.ts
 //
-// Shared definitions for the Grynd+ profile customization suite.
+// Shared definitions for the GRYND PRO profile customization suite.
 //
 //   * ACCENT_COLORS — the profile accent palette (also accepts any #RRGGBB
 //     via the picker). Stored on `users.profile_accent`.
 //
-// Only writable by active Grynd+ members (enforced in
+// Only writable by active GRYND PRO members (enforced in
 // /api/user/profile-customization).
 
 /** Default profile accent (matches the site's primary neon cyan). */

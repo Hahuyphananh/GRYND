@@ -28,8 +28,6 @@ export interface QuickQueueRequest {
   region: string | null;
   playerCount: number;
   maxWaitMs: number | null;
-  // Grynd+ members are matched first (priority matchmaking).
-  premium?: boolean;
 }
 
 export interface QuickQueueCandidate {
@@ -41,7 +39,6 @@ export interface QuickQueueCandidate {
   playerCount: number;
   queuedAt: number;
   available: boolean;
-  premium?: boolean;
 }
 
 export function normalizeQuickQueueRequest(input: unknown): QuickQueueRequest {
@@ -94,10 +91,8 @@ export function findCompatibleQuickQueueCandidate(
   });
 
   return [...eligible].sort((a, b) => {
-    // Priority matchmaking: premium (Grynd+) candidates first, then game
-    // preference, then FIFO.
-    const premiumDiff = Number(Boolean(b.premium)) - Number(Boolean(a.premium));
-    if (premiumDiff !== 0) return premiumDiff;
+    // Matching is fair for everyone: game preference first, then FIFO.
+    // Membership NEVER affects matchmaking (no priority queue).
     const gamePriority = request.preferredGames.indexOf(a.gameKey) - request.preferredGames.indexOf(b.gameKey);
     if (gamePriority !== 0) return gamePriority;
     return a.queuedAt - b.queuedAt;
@@ -124,7 +119,6 @@ export function findCompatibleQuickQueuePair(
           playerCount: source.playerCount,
           queuedAt: candidate.queuedAt,
           available: candidate.userId !== source.userId && (source.maxWaitMs === null || now - candidate.queuedAt <= source.maxWaitMs) && (candidate.maxWaitMs === null || now - source.queuedAt <= candidate.maxWaitMs),
-          premium: candidate.premium,
         })),
     );
     const candidate = findCompatibleQuickQueueCandidate(source, candidates, now);

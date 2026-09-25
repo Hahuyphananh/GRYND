@@ -2,26 +2,21 @@
 
 import { NextResponse } from "next/server";
 import { db } from "../../../db";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { userLoginRewards, users } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../lib/security/idempotency";
-import { getMembershipTier, dailyTokenBonus } from "../../../lib/stripe/subscriptions";
+import { addExp } from "../../../lib/battlepass";
 import { checkUnlocks } from "../../../lib/specialTitles";
 import { updateDailyStreak } from "../../../lib/dailyStreak";
 import { hasItem } from "../../../lib/shopItems";
 import { getAllStreakTitles, getStreakTitle, getNextStreakMilestone } from "../../../lib/streakTitles";
 import { logError } from "../../../lib/logError";
 
-// Tokens per streak day — linear escalation (50 × day). The old exponential
-// curve (100 × 2^(day-1)) topped out at 819,200 tokens on day 14 (~$820 at
-// the 1,000 tokens/$ economy rate) and paid ~1.64M tokens per perfect cycle —
-// it made every other token source pointless. The economy is now anchored at
-// ~1,000 tokens/$ (packs + Grynd+ grant): 50 × day keeps the escalating
-// daily hook while a perfect 14-day cycle is worth ~5,250 tokens (~$5).
-// Economy rebalance: free logins are worth ~$5/mo (≈ the Grynd+ 5,000-token
-// monthly grant) instead of ~$10.50/mo — the subscription stays the premium
-// path. (Was 50/day; audit finding #4 — trim faucets.)
+// Battle Pass XP per streak day — linear escalation (25 × day). GRYND has no
+// token currency and membership grants no login bonus, so this is a flat,
+// identical curve for free and PRO players: a perfect 14-day cycle pays
+// 2,625 XP (sum of 25…350), which is roughly two early Battle Pass levels.
 const LOGIN_REWARD_PER_DAY = 25;
 const MAX_DAY = 14;
 const STREAK_RESET_DAYS = 1;
@@ -142,28 +137,20 @@ export async function POST(req) {
       }
     }
 
-    //  Calculate reward AFTER reset logic. Members earn a bonus on the daily
-    //  login reward scaled by tier: Grynd+ +50%, Grynd Pro +75%, Grynd High
-    //  Roller +100% (perk: login bonus multiplier).
-    const tier = await getMembershipTier(userId);
+    //  Calculate reward AFTER reset logic. GRYND PRO no longer scales the
+    //  daily login reward: membership is non-competitive and grants no
+    //  XP/currency perks, so free and PRO players earn exactly the same
+    //  escalating XP (25 × streak day).
     const baseReward = LOGIN_REWARD_PER_DAY * rewardData.currentDay;
-    const tierMultiplier =
-      tier === "high_roller" ? 2 : tier === "pro" ? 1.75 : tier === "grynd_plus" ? 1.5 : 1;
-    const reward = Math.round(baseReward * tierMultiplier);
-    const premiumBonus = reward - baseReward;
+    const reward = baseReward;
+    // Kept in the response shape at 0 for existing clients.
+    const premiumBonus = 0;
+    const membershipDailyBonus = 0;
 
-    // Pro / High Roller daily token drop — a small flat bonus on top of the
-    // login reward (50 Pro, 100 High Roller). Pure economy perk; never tied
-    // to wagering, matchmaking or payouts.
-    const membershipDailyBonus = dailyTokenBonus(tier);
-    const totalReward = reward + membershipDailyBonus;
-
-    await db
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${totalReward}`,
-      })
-      .where(eq(users.id, uid));
+    // GRYND has no token currency: the daily login reward is granted as
+    // Battle Pass XP (routed through addExp so any active XP boost applies).
+    // No balance is credited.
+    await addExp(uid, reward);
 
     const nextDay =
       rewardData.currentDay >= MAX_DAY ? 1 : rewardData.currentDay + 1;
@@ -176,9 +163,8 @@ export async function POST(req) {
       })
       .where(eq(userLoginRewards.userId, uid));
 
-    const updatedBalance = Number(dbUser.balance || 0) + totalReward;
     const unlockedSpecialTitles = await checkUnlocks(userId, "login_claim", {
-      balanceAfter: updatedBalance,
+      balanceAfter: Number(dbUser.balance || 0),
     });
 
     // Update daily & weekly streaks on the users + userStats tables
@@ -220,12 +206,8 @@ export async function POST(req) {
     // Award milestone bonus if any
     if (milestoneBonus > 0) {
       try {
-        await db
-          .update(users)
-          .set({
-            balance: sql`${users.balance} + ${milestoneBonus}`,
-          })
-          .where(eq(users.id, uid));
+        // Streak milestone bonuses are granted as Battle Pass XP (no tokens).
+        await addExp(uid, milestoneBonus);
       } catch (bonusErr) {
         console.error("[CLAIM_LOGIN_REWARD] milestone bonus award failed:", bonusErr);
         await logError({
@@ -243,7 +225,6 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       reward,
-      premium: tier !== null,
       premiumBonus,
       membershipDailyBonus,
       claimedDay: rewardData.currentDay,

@@ -224,9 +224,9 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
             </div>
           ) : owned.length === 0 ? (
             <div className="rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-6 text-center text-sm text-[#9dd8ff]">
-              You don&apos;t own any cosmetics yet. Visit the{" "}
-              <a href="/shop" className="font-semibold text-[#00e5ff] underline">
-                Shop
+              You don&apos;t own any cosmetics yet. Earn them on the{" "}
+              <a href="/battlepass" className="font-semibold text-[#00e5ff] underline">
+                Battle Pass
               </a>{" "}
               to unlock a frame, badge or effect.
             </div>

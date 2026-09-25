@@ -145,7 +145,7 @@ export async function POST(req: Request) {
           selectedIcon,
           // Equipped name color for the client-only (vs-AI) game seats —
           // same precedence as the chat route: an equipped battlepass glow
-          // wins; the Grynd+ custom chat color only surfaces for active
+          // wins; the GRYND PRO custom chat color only surfaces for active
           // members.
           nameColor:
             user.glowColor ||
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
           // The equipped BATTLE PASS name glow on its own — the catalog hex of
           // `users.selectedGlow` (already left-joined below), or null when
           // nothing is equipped. `nameColor` above cannot be used for this: it
-          // deliberately falls back to the Grynd+ chat colour, which is a chat
+          // deliberately falls back to the GRYND PRO chat colour, which is a chat
           // and in-game-seat colour, not a name glow. The navbar styles the
           // display name with this, so it must be the glow and only the glow.
           glowColor: user.glowColor || null,

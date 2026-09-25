@@ -9,7 +9,7 @@
 //   * the portal session is created for the caller's OWN customer id (looked
 //     up from their subscription row) — one user can never open another's
 //     billing portal,
-//   * the user returns to /shop after managing.
+//   * the user returns to /upgrade-pro after managing.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -50,7 +50,7 @@ export async function POST() {
   try {
     const session = await getStripe().billingPortal.sessions.create({
       customer: subscription.customerId,
-      return_url: `${baseUrl}/shop`,
+      return_url: `${baseUrl}/upgrade-pro`,
     });
     return NextResponse.json({ success: true, url: session.url ?? null });
   } catch (err) {

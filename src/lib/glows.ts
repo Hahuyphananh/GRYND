@@ -11,7 +11,7 @@
 //   * There is no implicit default glow — NULL selected_glow = no glow
 //     (glows are battlepass-earned, never granted by default).
 //   * Arbitrary hex colors / user-supplied values are NEVER accepted as a
-//     glow (the Grynd+ `chat_color` picker is the free-form surface; glows
+//     glow (the GRYND PRO `chat_color` picker is the free-form surface; glows
 //     are fixed catalog entries).
 //
 // The server is the only writer of `users.selected_glow` (through
@@ -119,7 +119,7 @@ export type SelectGlowResult =
 /**
  * Server-authoritative equip. Validates, in order:
  *   1. key is well-formed or the explicit "none" sentinel (never accept
- *      arbitrary input — the free-form surface is the Grynd+ chat-color
+ *      arbitrary input — the free-form surface is the GRYND PRO chat-color
  *      picker, not glows),
  *   2. glow exists in the official catalog AND is enabled,
  *   3. user owns the glow.

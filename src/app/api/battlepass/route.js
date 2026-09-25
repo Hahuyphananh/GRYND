@@ -3,8 +3,9 @@
 // GET /api/battlepass
 //
 // Returns the player's battlepass progress (level, XP, progress to next
-// level) plus the full 100-level track with thresholds and title
-// milestones. No rewards yet — the track's reward slots are placeholders.
+// level) plus the full 100-level track with thresholds, title milestones and
+// every reward's owned / locked / claimable state. Rewards are NEVER
+// auto-granted — this only reports what the player can claim.
 
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
@@ -15,7 +16,10 @@ import {
   getBattlepassProgress,
 } from "../../../lib/battlepass";
 import { TITLE_MILESTONES } from "../../../lib/titles";
-import { rewardsForLevel } from "../../../lib/battlepassRewards";
+import {
+  rewardsForLevel,
+  COSMETIC_REWARD_TYPES,
+} from "../../../lib/battlepassRewards";
 import { getPrestigeStatus } from "../../../lib/prestige";
 import { isPremiumMember } from "../../../lib/stripe/subscriptions";
 
@@ -32,8 +36,10 @@ export async function GET() {
     let ownedEmoteKeys = new Set();
     let ownedTitleKeys = new Set();
     let ownedGlowKeys = new Set();
+    let ownedCosmeticKeys = new Set();
     // Per-level functional claims: "level:type" keys (xp_boost, quest_boost,
-    // shield) — each identical track entry is claimable exactly once.
+    // shield, battlepass_xp) — each identical track entry is claimable exactly
+    // once.
     let functionalClaims = new Set();
     // Premium-track gating: non-members see premium rewards locked (unless
     // already owned — ownership is always honored first, so grandfathered
@@ -72,6 +78,12 @@ export async function GET() {
           SELECT glow_key FROM user_glows WHERE user_id = ${dbUserId}
         `;
         ownedGlowKeys = new Set(ownedGlowRows.map((row) => row.glow_key));
+        const ownedCosmeticRows = await sql`
+          SELECT cosmetic_key FROM user_cosmetics WHERE user_id = ${dbUserId}
+        `;
+        ownedCosmeticKeys = new Set(
+          ownedCosmeticRows.map((row) => row.cosmetic_key),
+        );
         const claimRows = await sql`
           SELECT level, reward_type FROM battlepass_claims WHERE user_id = ${dbUserId}
         `;
@@ -102,11 +114,14 @@ export async function GET() {
         const isEmote = reward.type === "emote";
         const isTitle = reward.type === "title";
         const isGlow = reward.type === "color";
+        const isCosmetic = COSMETIC_REWARD_TYPES.has(reward.type);
         const isFunctional =
           reward.type === "xp_boost" ||
           reward.type === "quest_boost" ||
           reward.type === "shield" ||
-          reward.type === "grynd";
+          reward.type === "grynd" ||
+          reward.type === "battlepass_xp" ||
+          reward.type === "quest_reroll";
         const owned =
           isEmote && dbUserId
             ? ownedEmoteKeys.has(reward.key)
@@ -114,9 +129,11 @@ export async function GET() {
               ? ownedTitleKeys.has(reward.key)
               : isGlow && dbUserId
                 ? ownedGlowKeys.has(reward.key)
-                : isFunctional && dbUserId
-                  ? functionalClaims.has(`${level}:${reward.type}`)
-                  : false;
+                : isCosmetic && dbUserId
+                  ? ownedCosmeticKeys.has(reward.key)
+                  : isFunctional && dbUserId
+                    ? functionalClaims.has(`${level}:${reward.type}`)
+                    : false;
         // Premium rewards are locked for non-members UNLESS already owned
         // (grandfathered owners keep their rewards visible + unlocked).
         const premium = reward.premium === true;
@@ -128,7 +145,7 @@ export async function GET() {
           !owned &&
           !locked &&
           reached &&
-          (isEmote || isTitle || isGlow || isFunctional);
+          (isEmote || isTitle || isGlow || isCosmetic || isFunctional);
         if (claimable) unclaimedCount += 1;
         return { ...reward, premium, locked, claimed: owned, claimable };
       });
@@ -148,9 +165,9 @@ export async function GET() {
         ...progress,
         ...prestigeStatus,
         levels,
-        // Number of emote/title/glow/functional rewards the player has
-        // reached but not yet claimed — drives the navbar nudge + "rewards
-        // ready" chip.
+        // Number of emote/title/glow/cosmetic/functional rewards the player
+        // has reached but not yet claimed — drives the navbar nudge +
+        // "rewards ready" chip.
         unclaimedCount,
         // True when the viewer holds an active Grynd+ membership — lets the
         // page render the premium track's lock state and subscribe CTA.

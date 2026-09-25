@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
         clerkId: users.clerkId,
         name: users.name,
         selectedIcon: users.selectedIcon,
-        // Grynd+ accent — public by design (that's the point of showing it
+        // GRYND PRO accent — public by design (that's the point of showing it
         // off). Cosmetic display data only.
         profileAccent: users.profileAccent,
         // Equipped cosmetics map (category → key). Only the profile frame is

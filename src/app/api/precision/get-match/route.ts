@@ -23,7 +23,7 @@ import type { PrecisionState } from "../../../../lib/precision/types";
 /**
  * Server-authoritative seat-identity decoration for the players in a
  * precision state payload: prestige badge + official Grynd icon key +
- * equipped name color (battlepass glow wins; the Grynd+ chat color only
+ * equipped name color (battlepass glow wins; the GRYND PRO chat color only
  * surfaces for active members). Only the resolved labels leave the
  * server; raw columns never reach the client. Non-user ids (the AI
  * sentinel "AI_BOT") keep nulls so the client falls back to its label.

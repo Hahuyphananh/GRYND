@@ -313,13 +313,9 @@ export async function ensureQuestsForPeriod(clerkId, userId, periodType, periodK
   const rand = createQuestRng(clerkId, periodType, periodKey);
   const weights = await skillTierWeights(userId);
   const recent = await recentSignatures(userId, periodType);
-  // Daily quest slots scale with membership tier (base 3 + tier bonus);
-  // weekly slots are always the flat 2.
-  let slots = questSlots(periodType);
-  if (periodType === "daily") {
-    const { dailyQuestSlotsForUser } = await import("./stripe/subscriptions");
-    slots = await dailyQuestSlotsForUser(userId);
-  }
+  // Quest slots are identical for everyone — membership no longer grants
+  // extra daily slots (GRYND PRO is non-competitive): daily 3, weekly 2.
+  const slots = questSlots(periodType);
   const rolled = [];
 
   for (let slot = 0; slot < slots; slot++) {
@@ -466,8 +462,8 @@ export async function claimQuest(clerkId, questId) {
   let reward = Number(q.reward || 0);
 
   // Quest Boost (consumable shop item): the next claims pay DOUBLE. One
-  // charge is consumed per claim and both the token reward and the quest XP
-  // are doubled (they scale together). The consume is atomic (qty > 0
+  // charge is consumed per claim and both the quest reward value and the
+  // quest XP are doubled (they scale together). The consume is atomic (qty > 0
   // guard) so a concurrent claim can never double-spend a charge.
   const boosted = await consumeItem(userId, "quest_boost_3", 1);
   if (boosted) reward = reward * 2;
@@ -475,19 +471,15 @@ export async function claimQuest(clerkId, questId) {
   let xp = expForQuest(reward);
 
   // Quest XP Boost (separate consumable): doubles ONLY the quest XP on this
-  // claim — the token reward is untouched. One charge per claim.
+  // claim — the quest reward value is untouched. One charge per claim.
   const xpBoosted = await consumeItem(userId, "quest_xp_boost_3", 1);
   if (xpBoosted) xp = xp * 2;
 
   await getSql()`
     UPDATE user_quests SET claimed = true WHERE id = ${q.id}
   `;
-  if (reward > 0) {
-    await getSql()`
-      UPDATE users SET balance = balance + ${reward} WHERE id = ${userId}
-    `;
-  }
-  // Battlepass EXP on claim (in addition to the token reward).
+  // GRYND has no token currency — a quest claim grants Battle Pass XP only
+  // (the former token reward now feeds the XP formula above).
   if (xp > 0) {
     await addExp(userId, xp);
   }

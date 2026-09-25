@@ -1,6 +1,6 @@
 // src/app/api/user/chat-color/route.ts
 //
-// POST { color } — set the caller's custom chat name color (a Grynd+ perk).
+// POST { color } — set the caller's custom chat name color (a GRYND PRO perk).
 //
 // Security:
 //   * auth-required,
@@ -29,7 +29,10 @@ export async function POST(req: Request) {
 
   if (!(await isPremiumMember(userId))) {
     return NextResponse.json(
-      { success: false, error: "This perk requires an active Grynd+ membership." },
+      {
+        success: false,
+        error: "This perk requires an active GRYND PRO membership.",
+      },
       { status: 403 }
     );
   }
