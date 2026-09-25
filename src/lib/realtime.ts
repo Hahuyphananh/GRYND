@@ -23,8 +23,8 @@
  *
  * ⚠️ Security: this app authenticates with Clerk, not Supabase Auth, and RLS
  * is off. Realtime streams FULL rows to anyone holding the anon key, so only
- * publish tables with non-sensitive data (big_wins, chat_messages). NEVER
- * publish `users` (email / password hash / balance) or other PII tables.
+ * publish tables with non-sensitive data (chat_messages). NEVER publish
+ * `users` (email / password hash / balance) or other PII tables.
  */
 
 import {
@@ -34,9 +34,6 @@ import {
   type RealtimePostgresChangesPayload,
   type SupabaseClient,
 } from "@supabase/supabase-js";
-
-/** Wins below this are not surfaced in the Big Wins feed (mirrors the API). */
-const MIN_BIG_WIN_AMOUNT = 1_000_000;
 
 let client: SupabaseClient | null = null;
 let channelSeq = 0;
@@ -109,49 +106,6 @@ export function subscribeToPostgresChanges<T extends Record<string, unknown>>(op
   return () => {
     supabase.removeChannel(channel);
   };
-}
-
-/** Big win row as rendered by the ChatWidget (camelCase, matches /api/chat/big-wins). */
-export interface BigWinRow {
-  id: string;
-  userId: string;
-  username: string;
-  game: string;
-  betAmount: number;
-  winAmount: number;
-  multiplier: number;
-  createdAt: string;
-}
-
-/**
- * Live big-wins feed: fires whenever the backend inserts a new qualifying
- * big win. The win amount threshold is enforced client-side to match the
- * feed API (server-side row filters can't be applied to the whole table
- * cheaply, and qualifying wins are rare).
- */
-export function subscribeToBigWins(handler: (win: BigWinRow) => void): () => void {
-  return subscribeToPostgresChanges<Record<string, unknown>>({
-    table: "big_wins",
-    event: "INSERT",
-    handler: (payload) => {
-      const row = payload.new;
-      if (!row) return;
-
-      const winAmount = Number(row.win_amount);
-      if (!Number.isFinite(winAmount) || winAmount < MIN_BIG_WIN_AMOUNT) return;
-
-      handler({
-        id: String(row.id ?? ""),
-        userId: String(row.user_id ?? ""),
-        username: String(row.username ?? ""),
-        game: String(row.game ?? ""),
-        betAmount: Number(row.bet_amount ?? 0),
-        winAmount,
-        multiplier: Number(row.multiplier ?? 0),
-        createdAt: String(row.created_at ?? new Date().toISOString()),
-      });
-    },
-  });
 }
 
 /** Chat message row (camelCase, mirrors /api/chat/messages output). */

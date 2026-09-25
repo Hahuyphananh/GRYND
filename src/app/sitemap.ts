@@ -3,7 +3,6 @@ import { max } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { db } from "../db";
 import {
-  bigWins,
   blackjackGames,
   chessGames,
   fourInARowGames,
@@ -126,7 +125,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   };
 
   const queries: Promise<void>[] = [
-    record("/", latestOf(bigWins, bigWins.createdAt)),
+    record("/", latestOf(userStats, userStats.updatedAt)),
     record("/classement", latestOf(userStats, userStats.updatedAt)),
   ];
 

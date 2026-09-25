@@ -1365,6 +1365,17 @@ export default function ProfilePage({ adSlot = null }) {
                         titleMeta.selectedTitle}
                     </span>
                   )}
+                  {/* Overall Elo badge — the server-computed cross-game
+                      aggregate, shown only once the player qualifies (an
+                      established rating in enough different games). */}
+                  {Number(stats?.overallElo) > 0 && (
+                    <span
+                      className="rounded-full border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs font-semibold text-[#f5ff3b]"
+                      title={`Overall Elo across ${Number(stats?.overallEligibleGames || 0)} games`}
+                    >
+                      Overall {Number(stats.overallElo).toLocaleString()} Elo
+                    </span>
+                  )}
                 </div>
                 <p>
                   {t("profile.info.email", "Email")}:{" "}
@@ -2558,7 +2569,14 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
           {/* Tabbed stat panel — mirrors the /classement leaderboard
               (record / weekly / streaks) instead of a flat grid. */}
-          <UserStatsTabs record={stats?.record} />
+          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
+              every request, outside its stats cache) and render as the
+              "Game Ratings" tab. */}
+          <UserStatsTabs
+            record={stats?.record}
+            ratings={stats?.ratings}
+            overall={stats}
+          />
         </div>
 
         <div

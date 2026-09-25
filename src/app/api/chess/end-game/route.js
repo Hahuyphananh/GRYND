@@ -3,9 +3,9 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { recordBigWinIfNeeded } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../../lib/prestige";
+import { applyRatingResult } from "../../../../lib/rating";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -159,24 +159,18 @@ export async function POST(req) {
           sourceId: String(gameId),
         }).catch(() => {});
 
+        // Per-game Elo — a competitive forfeit. The winner is the player who
+        // STAYED (derived server-side above from the game's seat columns and
+        // the caller's identity), so a caller can never award themselves the
+        // win by calling this route. AI games are excluded above.
+        applyRatingResult({
+          gameKey: "chess",
+          matchId: String(gameId),
+          winnerClerkId: opponentId,
+          loserClerkId: userId,
+        }).catch(() => {});
+
         // Record big win if winnerPayout >= 1 million tokens
-        if (winnerPayout >= 1000000) {
-          const winnerUser = await tx
-            .select()
-            .from(users)
-            .where(eq(users.clerkId, opponentId))
-            .limit(1);
-          if (winnerUser.length > 0) {
-            recordBigWinIfNeeded({
-              userId: opponentId,
-              username: winnerUser[0]?.name || "Player",
-              game: "Chess",
-              betAmount: Number(lockedGame.betAmount),
-              winAmount: winnerPayout,
-              multiplier: 2, // Winner takes pot minus house fee (roughly 2x)
-            }).catch(() => {}); // Fire and forget
-          }
-        }
         return;
       }
 

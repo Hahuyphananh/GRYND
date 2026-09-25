@@ -3,7 +3,6 @@ import { auth } from "@clerk/nextjs/server";
 import {
   invalidateAllLeaderboards,
   invalidateRecentGames,
-  invalidateBigWins,
 } from "../../../../lib/redis/invalidation";
 import { cacheDeletePattern, resetCacheStats } from "../../../../lib/redis/cache";
 import { adminAuditLog } from "../../../../lib/security/adminAuditLog";
@@ -15,15 +14,13 @@ type FlushScope =
   | "all"
   | "leaderboards"
   | "user-stats"
-  | "recent-games"
-  | "big-wins";
+  | "recent-games";
 
 const ALL_SCOPES: FlushScope[] = [
   "all",
   "leaderboards",
   "user-stats",
   "recent-games",
-  "big-wins",
 ];
 
 // ── Handler ──────────────────────────────────────────────────────
@@ -84,11 +81,6 @@ export async function POST(req: NextRequest) {
     if (scope === "all" || scope === "recent-games") {
       await invalidateRecentGames();
       flushed.push("recent-games");
-    }
-
-    if (scope === "all" || scope === "big-wins") {
-      await invalidateBigWins();
-      flushed.push("big-wins");
     }
 
     // Reset in-memory stats so hit-rate numbers align post-flush

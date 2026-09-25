@@ -5,6 +5,7 @@ import { users, diceFlushActions, diceFlushPlayers, diceFlushRooms } from "../..
 import { autoBankIfExpired, checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../lib/prestige";
+import { applyRatingResult } from "../../../lib/rating";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
   return {
@@ -150,6 +151,23 @@ export async function settleIfEnded(tx, roomRow, state) {
           }).catch(() => {});
         }
       }
+    }
+
+    // Per-game Elo — Dice Flush is 1v1, so rate the winner against the single
+    // human opponent. Runs on the same claim-guarded path as the prestige
+    // calls above (only the transaction that claimed the settlement reaches
+    // here) and the journal keeps it idempotent.
+    const humanLoser = state.players?.find(
+      (p) => p.userId !== ended.winnerId && !p.isAI,
+    );
+    if (humanLoser) {
+      await applyRatingResult({
+        tx,
+        gameKey: "dice-flush",
+        matchId: String(roomRow.id),
+        winnerClerkId: ended.winnerId,
+        loserClerkId: humanLoser.userId,
+      }).catch(() => {});
     }
   }
 

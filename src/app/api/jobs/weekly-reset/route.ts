@@ -86,13 +86,6 @@ export async function GET(request: Request) {
        OR COALESCE(weekly_streak_current, 0) <> 0
   `;
 
-  // Purge big-wins feed entries older than 7 days so the
-  // big-wins chat feed doesn't show stale wins after reset
-  await sql`
-    DELETE FROM big_wins
-    WHERE created_at < NOW() - INTERVAL '7 days'
-  `;
-
   // Invalidate all leaderboard caches so the next request fetches
   // fresh (post-reset) data instead of serving stale cached rows
   invalidateAllLeaderboards().catch((err) =>

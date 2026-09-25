@@ -25,7 +25,6 @@ function _extractDomain(key: string): string {
   // grynd:lb:all-time:...  → "lb"
   // grynd:user:stats:...   → "user"
   // grynd:recent-games:... → "recent-games"
-  // grynd:big-wins:...     → "big-wins"
   const parts = key.split(":");
   return parts.length >= 3 ? parts[1] : parts[0] || "unknown";
 }

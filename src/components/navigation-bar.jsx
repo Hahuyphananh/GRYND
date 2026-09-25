@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "./SignOutButton";
@@ -12,7 +12,7 @@ import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import BattlepassClaimBadge from "./BattlepassClaimBadge";
-import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconSwords, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
@@ -45,25 +45,58 @@ function NavigationBar({ currentPath = "" }) {
   // Today's net (responsible-play) chip — rendered on the home page (mobile
   // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
   const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
-  const [profile, setProfile] = useState({
-    name: "",
-    selectedIcon: "",
-    // Equipped profile frame (token-shop `profile_frame`), or null.
-    profileFrame: null,
-    usernameEffect: null,
-    // Equipped NAME GLOW (a Battle Pass reward) — the catalog hex this display
-    // name is coloured + haloed with, or null for none. Comes from the
-    // `glowColor` field of /api/get-user-tokens (the glow row joined on
-    // `users.selectedGlow`), not from `nameColor`.
-    glowColor: null,
-    selectedTitle: "",
-    streakTitle: null,
-    // Server-resolved prestige badge (null unless equipped + earned) plus
-    // the raw prestige tier for the global unlock notice.
-    prestigeBadge: null,
-    prestige: 0,
-    prestigeUnlocked: false,
+  const [profile, setProfile] = useState(() => {
+    // Seed the Overall Elo display from the last known value so a fresh mount
+    // (the navbar remounts on every navigation) does NOT replay the change
+    // animation when nothing actually moved. Only a real change animates.
+    let overallElo = null;
+    let overallEligibleGames = 0;
+    let overallMinGames = 3;
+    try {
+      const raw = sessionStorage.getItem("nav-elo");
+      if (raw) {
+        const cached = JSON.parse(raw);
+        const elo = Number(cached?.overallElo);
+        overallElo = Number.isFinite(elo) && elo > 0 ? elo : null;
+        overallEligibleGames = Number(cached?.overallEligibleGames) || 0;
+        overallMinGames = Number(cached?.overallMinGames) || 3;
+      }
+    } catch {
+      // sessionStorage unavailable (SSR / private mode) — start unrated.
+    }
+    return {
+      name: "",
+      selectedIcon: "",
+      // Equipped profile frame (token-shop `profile_frame`), or null.
+      profileFrame: null,
+      usernameEffect: null,
+      // Equipped NAME GLOW (a Battle Pass reward) — the catalog hex this
+      // display name is coloured + haloed with, or null for none. Comes from
+      // the `glowColor` field of /api/get-user-tokens (the glow row joined on
+      // `users.selectedGlow`), not from `nameColor`.
+      glowColor: null,
+      selectedTitle: "",
+      streakTitle: null,
+      // Server-resolved prestige badge (null unless equipped + earned) plus
+      // the raw prestige tier for the global unlock notice.
+      prestigeBadge: null,
+      prestige: 0,
+      prestigeUnlocked: false,
+      // Overall Elo — the server-computed aggregate of the player's
+      // established per-game ratings (see src/lib/rating.js). Null until they
+      // qualify, in which case the navbar shows an "Unrated" placeholder where
+      // the token balance used to sit. Never derived on the client.
+      overallElo,
+      overallEligibleGames,
+      overallMinGames,
+    };
   });
+  // Whether the chip has finished its first paint. The first render must not
+  // animate (it is just the cached/initial value); only later changes do.
+  const eloFirstPaint = useRef(true);
+  useEffect(() => {
+    eloFirstPaint.current = false;
+  }, []);
   const [, setError] = useState(null);
   // Prestige tier being celebrated by the global in-app notice (null = none).
   const [prestigeNotice, setPrestigeNotice] = useState(null);
@@ -205,7 +238,28 @@ function NavigationBar({ currentPath = "" }) {
             // GRYND PRO chat colour, which must not paint the display name.
             glowColor: data.data.glowColor || null,
             streakTitle: data.data.streakTitle || null,
+            // Overall Elo display values (server-computed). A null means the
+            // player has not yet established enough different games.
+            overallElo:
+              Number.isFinite(Number(data.data.overallElo)) &&
+              Number(data.data.overallElo) > 0
+                ? Number(data.data.overallElo)
+                : null,
+            overallEligibleGames: Number(data.data.overallEligibleGames) || 0,
+            overallMinGames: Number(data.data.overallMinGames) || 3,
           }));
+        // Remember the last known Elo so the next mount starts from it and the
+        // chip only animates on a real change (see the state initializer).
+        try {
+          sessionStorage.setItem(
+            "nav-elo",
+            JSON.stringify({
+              overallElo: data.data.overallElo ?? null,
+              overallEligibleGames: Number(data.data.overallEligibleGames) || 0,
+              overallMinGames: Number(data.data.overallMinGames) || 3,
+            }),
+          );
+        } catch {}
         if (includeMeta) {
           // Cache level + equipped title in sessionStorage (short TTL) so a
           // hard reload does not re-fire the two heaviest nav meta calls
@@ -527,6 +581,60 @@ function NavigationBar({ currentPath = "" }) {
               )}
               {isLoaded && isSignedIn ? (
                 <>
+                  {/* Overall Elo — sits where the token balance used to be.
+                      Server-computed aggregate; shows "Unrated" until the
+                      player has established ratings in enough games. */}
+                  <Link
+                    href="/profil"
+                    data-testid="nav-elo"
+                    className={
+                      "hidden items-center gap-1.5 rounded-lg border px-3 py-1.5 transition-colors lg:flex " +
+                      (profile?.overallElo != null
+                        ? "border-[#f5ff3b]/40 bg-[#f5ff3b]/10 hover:bg-[#f5ff3b]/20"
+                        : "border-[#7dd3fc]/30 bg-[#7dd3fc]/10 hover:bg-[#7dd3fc]/20")
+                    }
+                    title={
+                      profile?.overallElo != null
+                        ? `Overall Elo across ${profile.overallEligibleGames} games`
+                        : `Earn an established rating in ${profile?.overallMinGames ?? 3} different games to unlock Overall Elo`
+                    }
+                  >
+                    <IconSwords
+                      size={15}
+                      className={
+                        profile?.overallElo != null
+                          ? "text-[#f5ff3b]"
+                          : "text-[#7dd3fc]"
+                      }
+                    />
+                    {profile?.overallElo != null ? (
+                      <>
+                        {/* keyed on the rating so a change remounts the span
+                            and replays the pop-in; the ref suppresses the very
+                            first paint so cached values don't animate. */}
+                        <motion.span
+                          key={profile.overallElo}
+                          initial={
+                            eloFirstPaint.current || shouldReduceMotion
+                              ? false
+                              : { opacity: 0, y: -4, scale: 0.9 }
+                          }
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ duration: 0.3, ease: "easeOut" }}
+                          className="text-sm font-semibold text-[#f5ff3b]"
+                        >
+                          {profile.overallElo.toLocaleString()}
+                        </motion.span>
+                        <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
+                          Elo
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-xs font-medium text-[#7dd3fc]">
+                        Unrated
+                      </span>
+                    )}
+                  </Link>
                   <div className="hidden items-center space-x-4 lg:flex">
                     <Link href="/profil" className="group flex items-center space-x-2">
                       <FrameAvatar
@@ -656,6 +764,12 @@ function NavigationBar({ currentPath = "" }) {
                         <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                       </div>
                     )}
+                    <div className="text-xs text-[#f5ff3b]" data-testid="nav-elo-mobile">
+                      <IconSwords size={12} className="mb-0.5 mr-0.5 inline" />{" "}
+                      {profile?.overallElo != null
+                        ? `Overall ${profile.overallElo.toLocaleString()} Elo`
+                        : "Unrated"}
+                    </div>
                   </div>
                 </Link>
               )}

@@ -9,6 +9,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
 import { applyPrestigeResult } from "../../../../lib/prestige";
+import { applyRatingResult } from "../../../../lib/rating";
 
 const HOUSE_EDGE_PERCENT = 10;
 
@@ -169,6 +170,20 @@ export async function POST(req) {
               outcome: "loss",
               source: "chess",
               sourceId: String(normalizedGameId),
+            }).catch(() => {});
+          }
+
+          // Per-game Elo — the same guarded single-execution path as Prestige
+          // above (the game row only reaches a terminal state once), and the
+          // rating_events journal makes a replay a no-op. The winner comes
+          // from the server-side chess.js result, never the client.
+          if (prestigeLoserId) {
+            await applyRatingResult({
+              tx,
+              gameKey: "chess",
+              matchId: String(normalizedGameId),
+              winnerClerkId: winnerId,
+              loserClerkId: prestigeLoserId,
             }).catch(() => {});
           }
         }

@@ -3,7 +3,7 @@
 // POST — SECURITY HARDENED: direct client-driven stat updates are DISABLED.
 // This endpoint previously let any authenticated user self-report an
 // arbitrary betAmount/payout, which forged leaderboard stats (total_wagered,
-// total_won, biggest_win, streaks, big_wins entries, XP/level) with no
+// total_won, biggest_win, streaks, XP/level) with no
 // server-side verification at all.
 //
 // Stats can only be updated server-side by game-settlement code that derives

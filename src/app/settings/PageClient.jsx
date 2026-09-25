@@ -648,7 +648,7 @@ export default function SettingsPageClient() {
                   { key: "promotions", label: "Offers & promos", desc: "New games, bonuses, comeback offers." },
                   { key: "daily", label: "Daily reward reminders", desc: "Nudge when your daily bonus is ready." },
                   { key: "summary", label: "Weekly summaries", desc: "Your wins, losses and net for the week." },
-                  { key: "progress", label: "Progress updates", desc: "Level-ups, big wins, streak encouragement." },
+                  { key: "progress", label: "Progress updates", desc: "Level-ups and streak encouragement." },
 
                 ].map((opt) => (
                   <label

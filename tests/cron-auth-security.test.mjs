@@ -24,7 +24,6 @@ import path from "path";
 const CRON_JOB_ROUTES = [
   "src/app/api/jobs/weekly-reset/route.ts",
   "src/app/api/jobs/daily-reset/route.ts",
-  "src/app/api/jobs/big-wins-cleanup/route.ts",
   "src/app/api/jobs/cache-stats-log/route.ts",
   "src/app/api/jobs/inactivity-check/route.ts",
   "src/app/api/jobs/retention/route.ts",

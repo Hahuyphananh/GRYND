@@ -4,7 +4,6 @@ import { and, eq, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
 import { hexDuelGames, users } from "../../../../../db/schema";
-import { recordBigWinIfNeeded } from "../../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../../../lib/prestige";
 import { logError } from "../../../../../lib/logError";
@@ -175,23 +174,6 @@ export async function POST(req: Request) {
           endedAt,
         })
         .where(eq(hexDuelGames.id, game.id));
-
-      // Record big win if needed
-      if (callerWon && payout >= 1_000_000) {
-        const userRow = await tx
-          .select({ name: users.name })
-          .from(users)
-          .where(eq(users.clerkId, clerkId))
-          .limit(1);
-        recordBigWinIfNeeded({
-          userId: clerkId,
-          username: userRow?.[0]?.name || "Player",
-          game: "Hex Duel",
-          betAmount: wagerAmount,
-          winAmount: payout,
-          multiplier: PAYOUT_MULTIPLIER,
-        }).catch(() => {});
-      }
 
       // Permanent Prestige — competitive PvP finish. Both seats settle
       // here so the win/loss pair is recorded exactly once regardless of

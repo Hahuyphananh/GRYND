@@ -25,13 +25,6 @@ export const CacheKeys = {
       `${PREFIX}:lb:weekly:${category}:${limit}:${offset}`,
 
     /**
-     * Pattern for wins leaderboard keys.
-     * grynd:lb:wins:{limit}:{offset}
-     */
-    wins: (limit: number, offset: number) =>
-      `${PREFIX}:lb:wins:${limit}:${offset}`,
-
-    /**
      * Pattern for daily streak leaderboard keys.
      * grynd:lb:daily-streak:{type}:{limit}:{offset}
      */
@@ -39,25 +32,16 @@ export const CacheKeys = {
       `${PREFIX}:lb:daily-streak:${type}:${limit}:${offset}`,
 
     /**
-     * Pattern for per-game leaderboard keys.
-     * grynd:lb:game:{game}:{limit}:{offset}
-     */
-    game: (game: string, limit: number, offset: number) =>
-      `${PREFIX}:lb:game:${game}:${limit}:${offset}`,
-
-    /**
      * Patterns for the ranking boards every settlement can affect
-     * (all-time, weekly, wins, daily-streak). Per-game boards are
-     * deliberately NOT included — a board for game X only changes when
-     * game X is played, so the debounced settlement purge leaves them to
-     * their read TTL instead of forcing full-table recomputes on
-     * unrelated traffic. `all` (below) still wipes everything for the
+     * (all-time, weekly, daily-streak). The per-game boards are NOT here:
+     * they are the Elo boards under `rating` below, and they are purged
+     * eagerly by that game's own settlement instead of by a debounced
+     * full-table purge. `all` (below) still wipes everything for the
      * weekly reset / admin flush.
      */
     rankingPatterns: [
       `${PREFIX}:lb:all-time:*`,
       `${PREFIX}:lb:weekly:*`,
-      `${PREFIX}:lb:wins:*`,
       `${PREFIX}:lb:daily-streak:*`,
     ],
 
@@ -71,6 +55,33 @@ export const CacheKeys = {
      * volume (avoiding a cache stampede of full-table sorts).
      */
     debounce: `${PREFIX}:lb:debounce`,
+  },
+
+  // ── Per-game Elo rating boards ─────────────────────────────────
+  // Kept in their own namespace (not under `lb:`) so the debounced
+  // settlement purge and the leaderboard patterns never touch them; a rating
+  // board's own read TTL is short (see CacheTTL.rating) and a rated match
+  // purges just its own game's pages.
+  rating: {
+    /** grynd:rating:{game}:{limit}:{offset} */
+    board: (game: string, limit: number, offset: number) =>
+      `${PREFIX}:rating:${game}:${limit}:${offset}`,
+
+    /** Every page of a single game's rating board. */
+    gameAll: (game: string) => `${PREFIX}:rating:${game}:*`,
+
+    /**
+     * grynd:rating:overall:{limit}:{offset}
+     *
+     * The cross-game aggregate board. It depends on EVERY game's ratings, so
+     * any settlement (or the weekly/admin flush) purges it alongside the
+     * per-game pages via `all`.
+     */
+    overall: (limit: number, offset: number) =>
+      `${PREFIX}:rating:overall:${limit}:${offset}`,
+
+    /** Wildcard pattern for eviction of ALL rating boards. */
+    all: `${PREFIX}:rating:*`,
   },
 
   // ── User Stats ───────────────────────────────────────────────
@@ -110,10 +121,6 @@ export const CacheKeys = {
   recentGames: (page: number, limit: number) =>
     `${PREFIX}:recent-games:${page}:${limit}`,
   recentGamesAll: `${PREFIX}:recent-games:*`,
-
-  // ── Big Wins ─────────────────────────────────────────────────
-  bigWins: () => `${PREFIX}:big-wins:latest`,
-  bigWinsAll: `${PREFIX}:big-wins:*`,
 
   // ── Bet history ──────────────────────────────────────────────
   // Per-user bet history (the profile's recent-bets list). Append-only per
@@ -156,6 +163,11 @@ export const CacheTTL = {
   /** Leaderboard queries: 5 min backup TTL */
   leaderboard: 5 * 60,
 
+  /** Elo rating boards: 60s. A rating board is small (only rated players),
+      moves only when its own game is played, and is patched eagerly by the
+      settlement that caused the change — so a short safety TTL is plenty. */
+  rating: 60,
+
   /** Individual user stats: 3 min backup TTL */
   userStats: 3 * 60,
 
@@ -178,9 +190,6 @@ export const CacheTTL = {
 
   /** Recent games feed: 60s backup TTL */
   recentGames: 60,
-
-  /** Big wins feed: 60s backup TTL */
-  bigWins: 60,
 
   /** Special titles map: 5 min — titles rarely change. */
   specialTitles: 5 * 60,

@@ -11,6 +11,11 @@ import {
   getPrestigeStatus,
   resolvePrestigeBadge,
 } from "../../../../lib/prestige";
+import {
+  getRatingsForUser,
+  overallEloFromRatingsMap,
+} from "../../../../lib/rating";
+import { OVERALL_MIN_GAMES } from "../../../../lib/elo";
 
 export async function GET(req: NextRequest) {
   try {
@@ -161,6 +166,17 @@ export async function GET(req: NextRequest) {
       resolveEquippedCosmetic("profile_glow", user.equippedCosmetics),
     ]);
 
+    // Per-game Elo ratings (read-only). Only games the player has actually
+    // been rated in appear — an unplayed game is simply absent and the UI
+    // renders "Unrated". Each rating is independent; Overall Elo is a
+    // separate aggregate value derived from the established ones.
+    const ratings = await getRatingsForUser(clerkId);
+    // Overall Elo — server-derived aggregate of the established ratings
+    // above. Null until at least OVERALL_MIN_GAMES different games are
+    // established; provisional games never count. Never stored, never
+    // accepted from a client.
+    const overall = overallEloFromRatingsMap(ratings);
+
     return NextResponse.json({
       success: true,
       user: {
@@ -177,6 +193,13 @@ export async function GET(req: NextRequest) {
         prestigeProgressPercent: prestige.prestigeProgressPercent,
         prestigeUnlocked: prestige.prestigeUnlocked,
         prestigeBadge,
+        // gameKey → { rating, peakRating, gamesRated, wins, losses, draws,
+        // lastDelta, lastRatedAt, provisional }. Server-derived only.
+        ratings,
+        overallElo: overall.overallElo,
+        overallEligibleGames: overall.eligibleGames,
+        overallEligible: overall.eligible,
+        overallMinGames: OVERALL_MIN_GAMES,
       },
     });
   } catch (error: any) {

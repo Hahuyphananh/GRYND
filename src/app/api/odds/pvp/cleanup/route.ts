@@ -7,6 +7,7 @@ import { eq, and, sql } from "drizzle-orm";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../../../lib/prestige";
+import { applyRatingResult } from "../../../../../lib/rating";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -155,6 +156,15 @@ async function forfeitPlayer(
       outcome: "loss",
       source: "odds-pvp",
       sourceId: String(gameId),
+    }).catch(() => {});
+
+    // Per-game Elo — inactivity forfeit: the opponent wins, the idle player
+    // records the loss. Both sides come from the game row, never the client.
+    applyRatingResult({
+      gameKey: "odds-pvp",
+      matchId: String(gameId),
+      winnerClerkId: winnerId,
+      loserClerkId: forfeiterId,
     }).catch(() => {});
   });
 }

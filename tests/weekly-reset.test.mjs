@@ -249,20 +249,13 @@ test("user_stats table: updated_at is set to NOW()", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Big wins cleanup
+// Big wins cleanup — removed
 // ═══════════════════════════════════════════════════════════════
 
-test("big_wins entries older than 7 days are purged", () => {
-  assert.match(
-    source,
-    /DELETE FROM big_wins/,
-    "big_wins cleanup must be present"
-  );
-  assert.match(
-    source,
-    /INTERVAL\s+'7\s*days'/,
-    "must purge entries older than 7 days"
-  );
+test("weekly reset no longer touches the removed big_wins table", () => {
+  // Big Wins Chat was removed from GRYND and the table is dropped by
+  // migration 0172. The reset must not reference the dead table.
+  assert.doesNotMatch(source, /big_wins/);
 });
 
 // ═══════════════════════════════════════════════════════════════

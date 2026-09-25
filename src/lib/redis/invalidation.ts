@@ -90,21 +90,27 @@ export async function invalidateUserStats(clerkId: string): Promise<void> {
 }
 
 /**
+ * Invalidate the cached per-game Elo rating boards.
+ *
+ * Rating boards are small (only players who have completed a rated match in
+ * that game) and change only when a rated match settles, so they are purged
+ * eagerly rather than debounced. Pass a game key to purge just that game's
+ * pages; omit it to purge every rating board (used by the weekly reset and
+ * admin cache flush).
+ */
+export async function invalidateRatingBoards(gameKey?: string): Promise<void> {
+  await cacheDeletePattern(
+    gameKey ? CacheKeys.rating.gameAll(gameKey) : CacheKeys.rating.all,
+  );
+}
+
+/**
  * Invalidate the recent games feed.
  *
  * Call this after any new game is recorded.
  */
 export async function invalidateRecentGames(): Promise<void> {
   await cacheDeletePattern(CacheKeys.recentGamesAll);
-}
-
-/**
- * Invalidate the big wins feed.
- *
- * Call this after a new big win (10x+ multiplier) is recorded.
- */
-export async function invalidateBigWins(): Promise<void> {
-  await cacheDeletePattern(CacheKeys.bigWinsAll);
 }
 
 /**
@@ -125,6 +131,10 @@ export async function invalidateOnGameSettlement(
     // stampede). The weekly reset / admin flush still invalidate
     // leaderboards immediately via invalidateAllLeaderboards.
     debouncedInvalidateLeaderboards(),
+    // Elo rating boards are tiny (rated players only, one game per board),
+    // so they can be purged eagerly on every settlement — a just-finished
+    // rated match should show its new ranking immediately.
+    invalidateRatingBoards(),
     invalidateRecentGames(),
     clerkId ? invalidateUserStats(clerkId) : Promise.resolve(),
   ]);

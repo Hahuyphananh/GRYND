@@ -1,6 +1,36 @@
 import { getNeonSql } from "../db/neon";
 import { resolvePrestigeBadge } from "./prestige";
 import { getFrameDecorations } from "./cosmetics";
+import { OVERALL_MIN_GAMES, PROVISIONAL_GAMES } from "./elo";
+
+// Reusable SQL for the Overall Elo badge shown next to a player's name on
+// every board. It is the SAME aggregate the Overall leaderboard ranks by —
+// the mean of a player's ESTABLISHED game ratings, present only with at least
+// OVERALL_MIN_GAMES different established games — so the badge and the board
+// can never disagree. Derived on read; nothing is stored.
+const OVERALL_ELO_JOIN = `
+  LEFT JOIN (
+    SELECT r.user_id,
+           ROUND(AVG(r.rating))::int AS overall_elo,
+           COUNT(*)::int AS overall_games
+    FROM player_ratings r
+    WHERE r.games_rated >= ${PROVISIONAL_GAMES}
+    GROUP BY r.user_id
+    HAVING COUNT(*) >= ${OVERALL_MIN_GAMES}
+  ) o ON o.user_id = s.user_id
+`;
+
+/**
+ * Attach the Overall Elo badge to a board row. Raw snake_case columns never
+ * leave the server: a row without an aggregate simply omits `overallElo`.
+ */
+function decorateOverallElo(item) {
+  if (!item) return item;
+  const { overall_elo, overall_games, ...rest } = item;
+  const elo = Number(overall_elo);
+  if (!Number.isFinite(elo) || elo <= 0) return rest;
+  return { ...rest, overallElo: elo, overallGames: Number(overall_games) || 0 };
+}
 
 let _sql = null;
 function getSql() {
@@ -14,11 +44,16 @@ function getSql() {
   return _sql;
 }
 
-// Game-result categories the leaderboards rank by. Tokens (total_wagered)
-// and levels are intentionally absent — the boards rank skill: wins, win
-// rate, games played, streaks, PvP wins and win/loss shape. `pvp_wins` is
-// all-time only (there is no weekly PvP counter), so the weekly board uses
-// WEEKLY_CATEGORIES below.
+// Game-result categories the leaderboards rank by. Every token-derived
+// metric (total_wagered, total_won, biggest_win) and levels are deliberately
+// absent — the boards rank skill: wins, win rate, games played, streaks, PvP
+// wins and win/loss shape. `pvp_wins` is all-time only (there is no weekly
+// PvP counter), so the weekly board uses WEEKLY_CATEGORIES below.
+//
+// GAME-SPECIFIC boards are NOT in this list. Each rated game has its own Elo
+// board (fetchRatingLeaderboard in src/lib/rating.js) sorted by that game's
+// current rating — see how the previous wins/payout-based per-game boards
+// were replaced in migration-era commit history and the note further down.
 export const LEADERBOARD_CATEGORIES = [
   "wins",
   "win_rate",
@@ -28,7 +63,6 @@ export const LEADERBOARD_CATEGORIES = [
   "net_wins",
   "win_loss_ratio",
   "current_streak",
-  "biggest_win",
 ];
 
 /** Categories the weekly board supports (no all-time-only pvp_wins). */
@@ -175,10 +209,6 @@ function buildAllTimeConfig(category, columns) {
     defaultValue: "0",
     cast: "int",
   });
-  const biggestWin = userStatsMetric(columns, "biggest_win", {
-    userFallback: "biggest_win",
-    defaultValue: "0",
-  });
   const pvpWins = userStatsMetric(columns, "pvp_wins", {
     userFallback: "pvp_wins",
     defaultValue: "0",
@@ -239,10 +269,6 @@ function buildAllTimeConfig(category, columns) {
       fields: miniStats,
       orderBy: `${currentStreak} DESC, s.user_id ASC`,
     },
-    biggest_win: {
-      fields: `${miniStats}, ${biggestWin} AS biggest_win`,
-      orderBy: `${biggestWin} DESC, s.user_id ASC`,
-    },
   };
 
   return configs[category];
@@ -268,11 +294,6 @@ function buildWeeklyConfig(category, columns) {
     defaultValue: "0",
     cast: "int",
   });
-  const weeklyBiggestWin = userStatsMetric(columns, "weekly_biggest_win", {
-    userFallback: "weekly_won",
-    defaultValue: "0",
-  });
-
   const netWins = `(${weeklyWins}::int - ${weeklyLosses}::int)`;
   const winLossRatio = `
     CASE
@@ -321,10 +342,6 @@ function buildWeeklyConfig(category, columns) {
     current_streak: {
       fields: miniStats,
       orderBy: `${weeklyCurrentStreak} DESC, s.user_id ASC`,
-    },
-    biggest_win: {
-      fields: `${miniStats}, ${weeklyBiggestWin} AS weekly_biggest_win`,
-      orderBy: `${weeklyBiggestWin} DESC, s.user_id ASC`,
     },
   };
 
@@ -429,6 +446,8 @@ async function fetchRankedRows({
           ${prestigeLevelField} AS prestige_level,
           ${showPrestigeBadgeField} AS show_prestige_badge,
           ${equippedField} AS equipped_cosmetics,
+          o.overall_elo AS overall_elo,
+          COALESCE(o.overall_games, 0) AS overall_games,
           json_build_object(
             'name', ${nameField},
             'icon_key', ${iconKeyField}
@@ -436,6 +455,7 @@ async function fetchRankedRows({
           ${fields}
         FROM user_stats s
         INNER JOIN users u ON u.id = s.user_id
+        ${OVERALL_ELO_JOIN}
         ${whereClause ? `WHERE ${whereClause}` : ""}
       ),
       paged AS (
@@ -454,10 +474,9 @@ async function fetchRankedRows({
 
   const row = result?.[0];
 
-  const items = Array.isArray(row?.items)
-    ? row.items.map(decoratePrestigeBadge)
-    : [];
-  const me = row?.me ? decoratePrestigeBadge(row.me) : null;
+  const decorate = (item) => decoratePrestigeBadge(decorateOverallElo(item));
+  const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
+  const me = row?.me ? decorate(row.me) : null;
 
   return {
     items: await attachProfileFrames(items),
@@ -493,296 +512,27 @@ export async function fetchWeeklyLeaderboard({
   return fetchRankedRows({ ...config, limit, offset, clerkId });
 }
 
-export async function fetchWinsLeaderboard({ limit, offset, clerkId }) {
-  const columns = await getLeaderboardColumns();
-  const totalWon = userStatsMetric(columns, "total_won", {
-    userFallback: "total_won",
-  });
-  const wins = userStatsMetric(columns, "wins", {
-    defaultValue: "0",
-    cast: "numeric",
-  });
+// NOTE: the old `fetchWinsLeaderboard` (a cross-game board ordered by
+// `total_won` — tokens won) was removed with the token economy. There is no
+// "overall" Elo board to replace it with by design: every competitive board
+// is per game (see fetchRatingLeaderboard in src/lib/rating.js).
 
-  return fetchRankedRows({
-    fields: `${totalWon} AS total_won, ${wins}::int AS wins`,
-    orderBy: `${totalWon} DESC, ${wins} DESC, s.user_id ASC`,
-    limit,
-    offset,
-    clerkId,
-  });
-}
+// ── Game-specific boards ────────────────────────────────────────────
+// There is deliberately NO wins/payout-based per-game board in this module
+// any more. The boards that used to live here were either solo wager games
+// (win = `payout > bet`, a token metric) or PvP games ranked by a raw win
+// count that ignored opponent strength.
+//
+// Each RATED game now has its own GAME-SPECIFIC ELO board, sorted by the
+// player's current rating in that game and served by
+//   GET /api/leaderboard/game?game=<key>
+// implemented with fetchRatingLeaderboard in src/lib/rating.js, so the
+// ratings and their leaderboards share exactly one source of truth.
+// Provisional players are returned with `provisional: true` plus their
+// completed/remaining placement matches so the board can label them.
+// There is no combined / "overall" Elo board by design.
 
-// ── Per-game leaderboards ───────────────────────────────────────────
-// "Best player per game", computed directly from the game tables. Each
-// game contributes a `playedSql` snippet producing (clerk_id, wins,
-// losses) using the same win/loss definition the platform's stats use:
-// solo games win when payout > bet; PvP matches win/lose by the match's
-// winner column (draws count as neither). Wins/losses per player are then
-// ranked + joined to `users` by fetchGameBoard().
 
-function soloIntGameSql(table, payoutExpr = "g.payout", betExpr = "g.bet_amount") {
-  return `
-    SELECT u.clerk_id AS clerk_id,
-      COUNT(*) FILTER (WHERE ${payoutExpr} > ${betExpr})::int AS wins,
-      COUNT(*) FILTER (WHERE ${payoutExpr} < ${betExpr})::int AS losses
-    FROM ${table} g
-    INNER JOIN users u ON u.id = g.user_id
-    GROUP BY u.clerk_id
-  `;
-}
-
-function soloClerkGameSql(table, payoutExpr = "g.payout", betExpr = "g.bet_amount") {
-  return `
-    SELECT u.clerk_id AS clerk_id,
-      COUNT(*) FILTER (WHERE ${payoutExpr} > ${betExpr})::int AS wins,
-      COUNT(*) FILTER (WHERE ${payoutExpr} < ${betExpr})::int AS losses
-    FROM ${table} g
-    INNER JOIN users u ON u.clerk_id = g.user_id
-    GROUP BY u.clerk_id
-  `;
-}
-
-function pvpWinnerIdSql(table, p1, p2, winner) {
-  return `
-    SELECT player AS clerk_id,
-      COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
-      COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
-    FROM (
-      SELECT ${p1} AS player,
-        CASE WHEN ${winner} = ${p1} THEN 'win'
-             WHEN ${winner} IS NOT NULL AND ${winner} <> ${p1} THEN 'loss'
-        END AS outcome
-      FROM ${table}
-      UNION ALL
-      SELECT ${p2},
-        CASE WHEN ${winner} = ${p2} THEN 'win'
-             WHEN ${winner} IS NOT NULL AND ${winner} <> ${p2} THEN 'loss'
-        END
-      FROM ${table}
-    ) plays
-    WHERE player IS NOT NULL AND outcome IS NOT NULL
-    GROUP BY player
-  `;
-}
-
-function pvpSideWinnerSql(table, p1, p2, winner, extraWhere = "") {
-  const where = extraWhere ? ` WHERE ${extraWhere}` : "";
-  return `
-    SELECT player AS clerk_id,
-      COUNT(*) FILTER (WHERE outcome = 'win')::int AS wins,
-      COUNT(*) FILTER (WHERE outcome = 'loss')::int AS losses
-    FROM (
-      SELECT ${p1} AS player,
-        CASE WHEN ${winner} = 'player1' THEN 'win'
-             WHEN ${winner} = 'player2' THEN 'loss'
-        END AS outcome
-      FROM ${table}${where}
-      UNION ALL
-      SELECT ${p2},
-        CASE WHEN ${winner} = 'player2' THEN 'win'
-             WHEN ${winner} = 'player1' THEN 'loss'
-        END
-      FROM ${table}${where}
-    ) plays
-    WHERE player IS NOT NULL AND outcome IS NOT NULL
-    GROUP BY player
-  `;
-}
-
-/** Ordered list of games with a per-game leaderboard (first = default). */
-export const GAME_LEADERBOARD_KEYS = [
-  "chess",
-  "four-in-a-row",
-  "plinko",
-  "roulette",
-  "blackjack",
-  "mines",
-  "rps",
-  "uno",
-  "keno",
-  "crash",
-  "keno-duel",
-  "mines-pvp",
-  "lane-rush",
-  "memory-grid",
-  "dice",
-  "pool",
-  "hex-duel",
-  "odds",
-];
-
-const GAME_LEADERBOARDS = {
-  chess: {
-    label: "Chess",
-    playedSql: pvpWinnerIdSql(
-      "chess_games",
-      "player_white_id",
-      "player_black_id",
-      "winner_id",
-    ),
-  },
-  "four-in-a-row": {
-    label: "Four In A Row",
-    playedSql: pvpWinnerIdSql(
-      "four_in_a_row_games",
-      "host_clerk_id",
-      "guest_clerk_id",
-      "winner_clerk_id",
-    ),
-  },
-  plinko: { label: "Plinko", playedSql: soloClerkGameSql("plinko_games") },
-  roulette: { label: "Roulette", playedSql: soloIntGameSql("roulette_games") },
-  blackjack: { label: "Blackjack", playedSql: soloIntGameSql("blackjack_games") },
-  mines: { label: "Mines", playedSql: soloIntGameSql("mines_games") },
-  rps: { label: "RPS", playedSql: soloClerkGameSql("rps_games") },
-  // UNO stores bet/payout as text — cast to compare numerically.
-  uno: {
-    label: "UNO",
-    playedSql: soloIntGameSql(
-      "uno_games",
-      "g.payout::numeric",
-      "g.bet_amount::numeric",
-    ),
-  },
-  keno: { label: "Keno", playedSql: soloIntGameSql("keno_games") },
-  crash: { label: "Crash", playedSql: soloIntGameSql("crash_games") },
-  "keno-duel": {
-    label: "Keno Duel",
-    playedSql: pvpWinnerIdSql("keno_pvp_matches", "player1_id", "player2_id", "winner_id"),
-  },
-  "mines-pvp": {
-    label: "Mines PvP",
-    playedSql: pvpWinnerIdSql("mines_pvp_matches", "player1_id", "player2_id", "winner_id"),
-  },
-  "lane-rush": {
-    label: "Lane Rush Duel",
-    playedSql: pvpWinnerIdSql("lane_rush_duel_matches", "player1_id", "player2_id", "winner_id"),
-  },
-  "memory-grid": {
-    label: "Memory Grid",
-    playedSql: pvpWinnerIdSql("memory_grid_matches", "player1_id", "player2_id", "winner_id"),
-  },
-  dice: {
-    label: "Dice",
-    playedSql: pvpWinnerIdSql("dice_matches", "player1_id", "player2_id", "winner_id"),
-  },
-  pool: {
-    label: "Pool Masters",
-    playedSql: pvpWinnerIdSql("pool_matches", "player1_id", "player2_id", "winner_id"),
-  },
-  // Hex Duel uses a 'player1'/'player2' winner string; fun mode moves no
-  // tokens and is excluded (mirrors the profile-stats route).
-  "hex-duel": {
-    label: "Hex Duel",
-    playedSql: pvpSideWinnerSql(
-      "hex_duel_games",
-      "player1_id",
-      "player2_id",
-      "winner",
-      "is_fun_mode = false",
-    ),
-  },
-  odds: {
-    label: "Odds",
-    playedSql: pvpSideWinnerSql("odds_games", "player1_id", "player2_id", "winner"),
-  },
-};
-
-/** Display label for a game leaderboard key (falls back to "Game"). */
-export function getGameLeaderboardLabel(game) {
-  return GAME_LEADERBOARDS[game]?.label ?? "Game";
-}
-
-/** Coerce a ?game= value to a known game key (defaults to the first). */
-export function normalizeGameKey(value) {
-  return GAME_LEADERBOARD_KEYS.includes(value)
-    ? value
-    : GAME_LEADERBOARD_KEYS[0];
-}
-
-/**
- * Rank players by wins in a single game (computed from the game tables).
- * Returns the same { items, me } shape as the other boards, with a
- * per-game W/L record (wins, losses, win_rate, games) per row.
- */
-export async function fetchGameLeaderboard({ game, limit, offset, clerkId }) {
-  const key = normalizeGameKey(game);
-  const config = GAME_LEADERBOARDS[key];
-  const columns = await getLeaderboardColumns();
-  const nameField = userIdentityField(columns, "name", "'Unknown'");
-  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
-  const xpField = userIdentityField(columns, "xp", "0");
-  const prestigeLevelField = userIdentityField(
-    columns,
-    "prestige_level",
-    "0",
-  );
-  const showPrestigeBadgeField = userIdentityField(
-    columns,
-    "show_prestige_badge",
-    "false",
-  );
-  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
-  const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
-  const meClause =
-    clerkId && hasColumn(columns, "users", "clerk_id")
-      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
-      : "NULL AS me";
-
-  const result = await getSql().query(
-    `
-      WITH played AS (
-        ${config.playedSql}
-      ),
-      ranked AS (
-        SELECT
-          ROW_NUMBER() OVER (ORDER BY played.wins DESC, played.losses ASC, played.clerk_id ASC)::int AS rank,
-          played.clerk_id,
-          ${nameField} AS name,
-          ${iconKeyField} AS icon_key,
-          ${xpField} AS xp,
-          ${prestigeLevelField} AS prestige_level,
-          ${showPrestigeBadgeField} AS show_prestige_badge,
-          ${equippedField} AS equipped_cosmetics,
-          json_build_object(
-            'name', ${nameField},
-            'icon_key', ${iconKeyField}
-          ) AS "user",
-          played.wins,
-          played.losses,
-          CASE
-            WHEN (played.wins + played.losses) > 0
-              THEN ROUND((played.wins::numeric / (played.wins + played.losses)) * 100, 2)
-            ELSE 0
-          END AS win_rate,
-          (played.wins + played.losses) AS games
-        FROM played
-        INNER JOIN users u ON u.clerk_id = played.clerk_id
-      ),
-      paged AS (
-        SELECT *
-        FROM ranked
-        ORDER BY rank ASC
-        LIMIT $1 OFFSET $2
-      )
-      SELECT
-        COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
-        ${meClause}
-      FROM paged
-    `,
-    params,
-  );
-
-  const row = result?.[0];
-  const items = Array.isArray(row?.items)
-    ? row.items.map(decoratePrestigeBadge)
-    : [];
-  const me = row?.me ? decoratePrestigeBadge(row.me) : null;
-  return {
-    items: await attachProfileFrames(items),
-    me: me ? (await attachProfileFrames([me]))[0] : null,
-  };
-}
 
 /**
  * Fetch daily streak leaderboard.

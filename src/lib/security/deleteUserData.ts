@@ -2,7 +2,6 @@ import { eq, inArray, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
-  bigWins,
   blackjackGames,
   blackjackPvpMatches,
   chatMessages,
@@ -95,6 +94,15 @@ async function getExistingTables(): Promise<Set<string>> {
  * than deleted because the same game can legitimately contain players
  * who were never deleted.
  *
+ * Ratings: `player_ratings` / `rating_events` are keyed by `users.id`
+ * and cascade with the account, so they ARE erased here. The anti-reset
+ * ladder `rating_identities` (migration 0171) is deliberately NOT touched:
+ * it is keyed by a hash of the account's normalized email rather than by
+ * user id, holds no directly identifying data, and exists precisely so a
+ * deleted-and-recreated account cannot reset its per-game Elo rating or
+ * restart its provisional match window. Deleting it would reopen that
+ * abuse — do not add it to this purge.
+ *
  * Moderation records are handled deliberately:
  *  - player_reports the user FILED are deleted — the complaint text is
  *    their own personal data.
@@ -126,7 +134,6 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     await tx.delete(userAutomationState).where(eq(userAutomationState.clerkId, clerkId));
     await tx.delete(dicePlayerStats).where(eq(dicePlayerStats.userId, clerkId));
     await tx.delete(poolPlayerStats).where(eq(poolPlayerStats.userId, clerkId));
-    await tx.delete(bigWins).where(eq(bigWins.userId, clerkId));
 
     // Stripe checkout-session ledger (keyed by Clerk id) — a deleted account's
     // purchase history is personal data. Guarded because the table only exists
@@ -298,7 +305,9 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
       .where(eq(playerReports.reportedClerkId, clerkId));
     // No cascade on this FK — must be removed before users.
     await tx.delete(userLoginRewards).where(eq(userLoginRewards.userId, localUserId));
-    // Cascades handle every remaining integer-FK table.
+    // Cascades handle every remaining integer-FK table — including
+    // player_ratings / rating_events (migration 0170). rating_identities is
+    // intentionally absent here; see the doc comment above.
     await tx.delete(users).where(eq(users.id, localUserId));
   });
 

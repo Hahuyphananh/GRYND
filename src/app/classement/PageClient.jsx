@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
@@ -14,34 +14,41 @@ import { useApiResource } from "../../hooks/useApiResource";
 import AsyncState from "../../components/states/AsyncState";
 import UpgradeProButton from "../../components/UpgradeProButton";
 
-const TABS = ["all-time", "per-game", "daily-current", "daily-best", "weekly-streak", "weekly-best"];
-
-// Per-game leaderboards (mirrors GAME_LEADERBOARD_KEYS in
-// src/lib/leaderboardQueries.js).
-const GAMES = [
-  { key: "chess", label: "Chess" },
-  { key: "four-in-a-row", label: "Four In A Row" },
-  { key: "plinko", label: "Plinko" },
-  { key: "roulette", label: "Roulette" },
-  { key: "blackjack", label: "Blackjack" },
-  { key: "mines", label: "Mines" },
-  { key: "rps", label: "RPS" },
-  { key: "uno", label: "UNO" },
-  { key: "keno", label: "Keno" },
-  { key: "crash", label: "Crash" },
-  { key: "keno-duel", label: "Keno Duel" },
-  { key: "mines-pvp", label: "Mines PvP" },
-  { key: "lane-rush", label: "Lane Rush Duel" },
-  { key: "memory-grid", label: "Memory Grid" },
-  { key: "dice", label: "Dice" },
-  { key: "pool", label: "Pool Masters" },
-  { key: "hex-duel", label: "Hex Duel" },
-  { key: "odds", label: "Odds" },
+const TABS = [
+  "all-time",
+  "overall",
+  "per-game",
+  "daily-current",
+  "daily-best",
+  "weekly-streak",
+  "weekly-best",
 ];
 
-// Game-result categories the weekly/all-time boards rank by — tokens
-// (wagered) and levels are intentionally dropped; the boards rank skill:
-// games won/lost, win rate, volume, streaks and PvP wins.
+// Per-game leaderboards: one ELO board per rated game, sorted by that game's
+// current rating. This is the first-paint mirror of RATED_GAMES in
+// src/lib/rating.js; once the board loads, the authoritative list comes from
+// the API response (`games`), so the tabs can never drift from the server.
+const RATED_GAMES_FALLBACK = [
+  { key: "chess", label: "Chess" },
+  { key: "four-in-a-row", label: "Four In A Row" },
+  { key: "dots-and-boxes", label: "Dots & Boxes" },
+  { key: "pool", label: "Pool Masters" },
+  { key: "memory-grid", label: "Memory Grid" },
+  { key: "precision", label: "Precision" },
+  { key: "mines-pvp", label: "Mines Duel" },
+  { key: "keno-pvp", label: "Keno Duel" },
+  { key: "plinko-pvp", label: "Plinko Duel" },
+  { key: "lane-rush-duel", label: "Lane Rush Duel" },
+  { key: "blackjack-pvp", label: "Blackjack" },
+  { key: "dice-flush", label: "Dice Flush" },
+  { key: "rps-pvp", label: "Rock Paper Scissors" },
+  { key: "odds-pvp", label: "Odds" },
+];
+
+// Game-result categories the weekly/all-time boards rank by. Every
+// token-derived metric (wagered, won, biggest win) and level is intentionally
+// absent — those boards rank skill: games won/lost, win rate, volume, streaks
+// and PvP wins. The game-specific boards below are Elo, not category-based.
 const ALL_TIME_CATEGORIES = [
   "wins",
   "win_rate",
@@ -51,7 +58,6 @@ const ALL_TIME_CATEGORIES = [
   "net_wins",
   "win_loss_ratio",
   "current_streak",
-  "biggest_win",
 ];
 
 const CATEGORY_LABELS = {
@@ -63,11 +69,72 @@ const CATEGORY_LABELS = {
   net_wins: "Net Wins",
   win_loss_ratio: "W/L Ratio",
   current_streak: "Current Streak",
-  biggest_win: "Biggest Win",
 };
+
+/**
+ * The casino lobby links here with its canonical `leaderboardKey`. Some of
+ * those ids are not rated games at all (solo wager games have no Elo board),
+ * and a few differ from the rating key, so they are mapped explicitly.
+ */
+const LOBBY_GAME_ALIASES = {
+  "pool-masters": "pool",
+  "lane-runner": "lane-rush-duel",
+  rps: "rps-pvp",
+  odds: "odds-pvp",
+  yahtzee: "dice-flush",
+};
+
+/**
+ * Resolve a `?game=` deep-link value to a rated game key, or null when that
+ * game has no Elo board (the page then keeps its default board instead of
+ * showing an invented one).
+ */
+function ratedGameFromParam(value) {
+  if (!value) return null;
+  const alias = LOBBY_GAME_ALIASES[value] || value;
+  return RATED_GAMES_FALLBACK.some((g) => g.key === alias) ? alias : null;
+}
+
+/**
+ * Clearly marks a rating that is still inside its placement window. A
+ * provisional player is ranked by their real current Elo, but is labelled so
+ * an unsettled rating is never mistaken for a settled one.
+ */
+function ProvisionalChip({ item, className = "" }) {
+  if (!item?.provisional) return null;
+  const done = Number(item.provisionalGamesCompleted || 0);
+  const total = Number(item.provisionalGamesTotal || 0);
+  return (
+    <span
+      className={`ml-1.5 inline-block rounded-full border border-amber-400/60 bg-amber-400/10 px-1.5 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wider text-amber-300 ${className}`}
+      title={`Provisional — ${done} of ${total} placement matches completed`}
+    >
+      Provisional {done}/{total}
+    </span>
+  );
+}
 
 function formatNumber(n) {
   return Number(n || 0).toLocaleString();
+}
+
+/**
+ * The Overall Elo badge shown next to a player's name. It is the cross-game
+ * aggregate the server attaches to every board row — hidden unless the player
+ * has enough different established games, and omitted on the Overall tab
+ * itself (where it is already the metric, to avoid showing it twice).
+ */
+function OverallEloBadge({ item, className = "" }) {
+  const elo = Number(item?.overallElo);
+  if (!Number.isFinite(elo) || elo <= 0) return null;
+  return (
+    <span
+      className={`ml-1.5 inline-block rounded-full border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-1.5 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wider text-[#f5ff3b] ${className}`}
+      title={`Overall Elo ${formatNumber(elo)} across ${formatNumber(item.overallGames || 0)} games`}
+    >
+      Overall {formatNumber(elo)}
+    </span>
+  );
 }
 
 function isStreakTab(tab) {
@@ -81,6 +148,12 @@ function isStreakTab(tab) {
 
 function isPerGameTab(tab) {
   return tab === "per-game";
+}
+
+// The cross-game OVERALL ELO board: an aggregate of each player's established
+// game ratings, only for players with at least OVERALL_MIN_GAMES games.
+function isOverallTab(tab) {
+  return tab === "overall";
 }
 
 function getMetricValue(item, tab, category) {
@@ -99,6 +172,17 @@ function getMetricValue(item, tab, category) {
   const field = (name) => item[name];
 
   switch (category) {
+    case "rating":
+      // Game-specific Elo, exactly as the server ranked it. Never derived
+      // from, or mixed with, any other game's rating.
+      return formatNumber(field("rating"));
+    case "overall": {
+      // The aggregate Elo and how many different games qualified for it —
+      // both server-computed, never a token/winnings metric.
+      const elo = formatNumber(item.overallElo ?? item.overall_elo);
+      const games = formatNumber(item.eligibleGames ?? item.eligible_games);
+      return `${elo} Elo · ${games} games`;
+    }
     case "win_rate":
       return `${Number(field("win_rate") || 0).toFixed(2)}%`;
     case "wins":
@@ -121,8 +205,6 @@ function getMetricValue(item, tab, category) {
     }
     case "current_streak":
       return formatNumber(field("current_streak"));
-    case "biggest_win":
-      return formatNumber(field("biggest_win"));
     default:
       return formatNumber(item[category]);
   }
@@ -190,10 +272,12 @@ function Podium({ items, myClerkId, tab, category }) {
   if (!items || items.length === 0) return null;
   const order = items.length === 1 ? [0] : items.length === 2 ? [1, 0] : [1, 0, 2];
   const metricLabel = isPerGameTab(tab)
-    ? "Wins"
-    : isStreakTab(tab)
-      ? "Days"
-      : CATEGORY_LABELS[category];
+    ? "Elo"
+    : isOverallTab(tab)
+      ? "Overall Elo"
+      : isStreakTab(tab)
+        ? "Days"
+        : CATEGORY_LABELS[category];
 
   return (
     <div className="mb-6 grid grid-cols-3 gap-2 sm:gap-3">
@@ -237,6 +321,10 @@ function Podium({ items, myClerkId, tab, category }) {
             >
               {item.user?.name || item.name}
             </span>
+            <ProvisionalChip item={item} className="mt-0.5" />
+            {!isOverallTab(tab) && (
+              <OverallEloBadge item={item} className="mt-0.5" />
+            )}
             {isMe && (
               <span className="mt-0.5 rounded-full bg-[#00e5ff] px-1.5 py-px text-[9px] font-black uppercase tracking-wider text-[#001933]">
                 You
@@ -276,17 +364,39 @@ export default function LeaderboardPage({ adSlot = null }) {
   const [category, setCategory] = useState("wins");
   const [game, setGame] = useState("chess");
 
+  // Deep link: the casino lobby's per-game shortcut
+  // (/classement?game=<leaderboardKey>) opens that game's Elo board directly.
+  // Ids without an Elo board are ignored, so a solo game's link never lands
+  // on a fabricated board.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requested = new URLSearchParams(window.location.search).get("game");
+    const key = ratedGameFromParam(requested);
+    if (!key) return;
+    setGame(key);
+    setTab("per-game");
+  }, []);
+
   const selectTab = (next) => {
     setTab(next);
     // pvp_wins is all-time only — fall back to the headline metric on the
     // other tabs (which have no categories).
     if (next !== "all-time" && category === "pvp_wins") setCategory("wins");
   };
-  // Per-game boards always rank by wins.
-  const displayCategory = isPerGameTab(tab) ? "wins" : category;
+  // Per-game boards always rank by that game's current Elo; the Overall tab
+  // ranks by the cross-game aggregate.
+  const displayCategory = isPerGameTab(tab)
+    ? "rating"
+    : isOverallTab(tab)
+      ? "overall"
+      : category;
   const myClerkId = isSignedIn ? user?.id : null;
 
   const endpoint = useMemo(() => {
+    // The cross-game Overall Elo board — an aggregate of established game
+    // ratings, restricted to players with enough different games.
+    if (tab === "overall") return `/api/leaderboard/overall?limit=50`;
+    // The game-specific Elo board — one independent ladder per game.
     if (tab === "per-game")
       return `/api/leaderboard/game?game=${game}&limit=50`;
     if (tab === "daily-current")
@@ -307,6 +417,13 @@ export default function LeaderboardPage({ adSlot = null }) {
 
   const items = Array.isArray(board.data?.items) ? board.data.items : [];
   const me = board.data?.me || null;
+  // Authoritative game list from the API (falls back to the first-paint
+  // mirror before the board loads), so the tabs can never drift from
+  // RATED_GAMES on the server.
+  const games =
+    Array.isArray(board.data?.games) && board.data.games.length > 0
+      ? board.data.games
+      : RATED_GAMES_FALLBACK;
   const myStats = statsResource.data?.userStats || null;
   const loading = board.isLoading;
   const error = board.error
@@ -362,7 +479,11 @@ export default function LeaderboardPage({ adSlot = null }) {
               >
                 {x === "all-time"
                   ? "All-Time"
-                  : x === "daily-current"
+                  : x === "overall"
+                    ? "Overall Elo"
+                    : x === "per-game"
+                      ? "Per-Game Elo"
+                      : x === "daily-current"
                     ? <span>Daily Streak <svg className="w-4 h-4 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg></span>
                       : x === "daily-best"
                         ? <span>Best Streak <svg className="w-4 h-4 inline text-[#f5ff3b]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg></span>
@@ -377,7 +498,7 @@ export default function LeaderboardPage({ adSlot = null }) {
         {isPerGameTab(tab) ? (
           <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
             <div className="flex w-max min-w-full gap-2 sm:flex-wrap sm:justify-center">
-              {GAMES.map((g) => (
+              {games.map((g) => (
                 <button
                   key={g.key}
                   onClick={() => setGame(g.key)}
@@ -390,7 +511,8 @@ export default function LeaderboardPage({ adSlot = null }) {
             </div>
           </div>
         ) : (
-          !isStreakTab(tab) && (
+          !isStreakTab(tab) &&
+          !isOverallTab(tab) && (
             <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
               <div className="flex w-max min-w-full gap-2 sm:flex-wrap sm:justify-center">
                 {ALL_TIME_CATEGORIES.map((x) => (
@@ -408,7 +530,32 @@ export default function LeaderboardPage({ adSlot = null }) {
           )
         )}
 
-        {!isStreakTab(tab) && !isPerGameTab(tab) && category === "win_rate" && (
+        {isPerGameTab(tab) && (
+          <p className="mb-4 text-center text-xs text-cyan-200/70">
+            Ranked by current{" "}
+            <span className="font-bold text-[#f5ff3b]">Elo for this game only</span>{" "}
+            — every game has its own independent rating. Players still in
+            placement are marked{" "}
+            <span className="font-bold text-amber-300">Provisional</span>.
+          </p>
+        )}
+
+        {isOverallTab(tab) && (
+          <p className="mb-4 text-center text-xs text-cyan-200/70">
+            The average of each player&apos;s{" "}
+            <span className="font-bold text-[#f5ff3b]">established game ratings</span>{" "}
+            across at least{" "}
+            <span className="font-bold text-[#f5ff3b]">
+              {Number(board.data?.minGames || 3)} different games
+            </span>
+            . Provisional ratings never count.
+          </p>
+        )}
+
+        {!isStreakTab(tab) &&
+          !isPerGameTab(tab) &&
+          !isOverallTab(tab) &&
+          category === "win_rate" && (
           <p className="mb-4 text-center text-xs text-cyan-200/70">
             Win-rate board — players with at least{" "}
             <span className="font-bold text-[#f5ff3b]">10 games</span>{" "}
@@ -446,8 +593,27 @@ export default function LeaderboardPage({ adSlot = null }) {
                   )}
                 </p>
                 {/* Real board record (weekly/all-time/per-game/streak rows all
-                    return it) */}
-                <RecordLine item={me} />
+                    return it). The Overall tab shows the aggregate instead —
+                    its rows carry no per-game win/loss record. */}
+                {isOverallTab(tab) ? (
+                  <p className="mt-0.5 text-sm text-cyan-200/80">
+                    <span className="font-bold text-[#f5ff3b]">
+                      {formatNumber(me.overallElo)} Overall Elo
+                    </span>
+                    {" · "}
+                    {formatNumber(me.eligibleGames)}{" "}
+                    {Number(me.eligibleGames) === 1 ? "game" : "games"}
+                  </p>
+                ) : (
+                  <RecordLine item={me} />
+                )}
+                {isPerGameTab(tab) && me.provisional && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Provisional — {Number(me.provisionalGamesCompleted || 0)} of{" "}
+                    {Number(me.provisionalGamesTotal || 0)} placement matches{" "}
+                    completed in this game.
+                  </p>
+                )}
                 {statusLine && (
                   <p className="mt-2 inline-flex rounded-md border border-[#00e5ff]/40 bg-[#08142f] px-3 py-1.5 text-xs font-semibold text-[#00e5ff]">
                     {statusLine}
@@ -516,12 +682,22 @@ export default function LeaderboardPage({ adSlot = null }) {
                     <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Favorite game</div>
                   </div>
                 </div>
-                {Number(myStats.biggestWin || 0) > 0 && (
+                {isPerGameTab(tab) && me && (
                   <p className="mt-3 text-center text-xs text-cyan-200/80">
-                    Biggest win:{" "}
-                    <span className="font-bold text-green-300">
-                      {formatNumber(myStats.biggestWin)} tokens
+                    Your {board.data?.label || "game"} rating:{" "}
+                    <span className="font-bold text-[#f5ff3b]">
+                      {formatNumber(me.rating)} Elo
                     </span>
+                    <ProvisionalChip item={me} />
+                  </p>
+                )}
+                {isOverallTab(tab) && me && (
+                  <p className="mt-3 text-center text-xs text-cyan-200/80">
+                    Your Overall Elo:{" "}
+                    <span className="font-bold text-[#f5ff3b]">
+                      {formatNumber(me.overallElo)}
+                    </span>{" "}
+                    across {formatNumber(me.eligibleGames)} games.
                   </p>
                 )}
               </>
@@ -593,8 +769,10 @@ export default function LeaderboardPage({ adSlot = null }) {
                       {isStreakTab(tab)
                         ? "Days"
                         : isPerGameTab(tab)
-                          ? "Wins"
-                          : CATEGORY_LABELS[category]}
+                          ? "Elo"
+                          : isOverallTab(tab)
+                            ? "Overall Elo"
+                            : CATEGORY_LABELS[category]}
                     </th>
                   </tr>
                 </thead>
@@ -638,6 +816,10 @@ export default function LeaderboardPage({ adSlot = null }) {
                                     <span className="ml-1.5 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">
                                       {item.prestigeBadge}
                                     </span>
+                                  )}
+                                  <ProvisionalChip item={item} />
+                                  {!isOverallTab(tab) && (
+                                    <OverallEloBadge item={item} />
                                   )}
                                 </span>
                                 <RecordLine item={item} />

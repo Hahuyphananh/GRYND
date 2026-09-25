@@ -8,8 +8,6 @@
 //   * Calls `applyLeaderboardCounters({ game: "Precision", ... })` so
 //     weekly / monthly leaderboards stay consistent with how every
 //     other PvP game (Uno, Hex Duel, Pool, Chess) contributes.
-//   * Records a big-win entry if the payout crosses the 1M token
-//     threshold via `recordBigWinIfNeeded`.
 //
 // Idempotency: anchored on the match row's `payout_processed_at` column,
 // claimed under `SELECT ... FOR UPDATE` (see `claimPayout` in serverStore),
@@ -41,8 +39,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
-import { recordBigWinIfNeeded } from "../bigWins";
 import { applyPrestigeResult } from "../prestige";
+import { applyRatingResult } from "../rating";
 import { claimPayout, readMatch, releasePayoutClaim } from "./serverStore";
 import type { PlayerSeat } from "./types";
 
@@ -335,18 +333,19 @@ export async function processMatchFinishedPayout(
     console.error("[precision] prestige (loser) failed:", err);
   });
 
-  if (payout >= 1_000_000) {
-    recordBigWinIfNeeded({
-      userId: winnerPlayer.userId,
-      username: winnerPlayer.name || "Player",
-      game: "Precision",
-      betAmount: resolvedWager,
-      winAmount: payout,
-      multiplier: PRECISION_PAYOUT_MULTIPLIER,
-    }).catch((err) => {
-      console.error("[precision] big-win record failed:", err);
-    });
-  }
+  // Per-game Elo — both seats come from the canonical match row and the
+  // winner from `winnerSeat` (never a client value). This runs on the same
+  // claim-guarded path as everything else above, so a retry from the other
+  // client cannot move a rating twice; the rating_events journal backs that
+  // up independently.
+  applyRatingResult({
+    gameKey: "precision",
+    matchId,
+    winnerClerkId: winnerPlayer.userId,
+    loserClerkId: loserPlayer.userId,
+  }).catch((err) => {
+    console.error("[precision] rating update failed:", err);
+  });
 
   return {
     success: true,

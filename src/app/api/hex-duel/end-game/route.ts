@@ -1,10 +1,9 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { recordBigWinIfNeeded, MINIMUM_BIG_WIN_AMOUNT } from "../../../../lib/bigWins";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { CacheKeys } from "../../../../lib/redis/keys";
 import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
@@ -282,22 +281,6 @@ export async function POST(req: Request) {
         { success: false, error: "User not found" },
         { status: 404 }
       );
-    }
-
-    // Record big win if payout >= 1M tokens
-    if (payout >= MINIMUM_BIG_WIN_AMOUNT) {
-      const clerkUser = await currentUser();
-      recordBigWinIfNeeded({
-        userId: clerkId,
-        username:
-          clerkUser?.firstName
-            ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-            : "Player",
-        game: "Hex Duel",
-        betAmount: wagerAmount,
-        winAmount: payout,
-        multiplier: PAYOUT_MULTIPLIER,
-      }).catch(() => {});
     }
 
     // Fire-and-forget history insert for win path

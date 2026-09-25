@@ -13,6 +13,7 @@ import {
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../../../lib/prestige";
+import { applyRatingResult } from "../../../../../lib/rating";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -136,6 +137,15 @@ export async function POST(req: Request) {
           outcome: "loss",
           source: "odds-pvp",
           sourceId: String(gameId),
+        }).catch(() => {});
+
+        // Per-game Elo — timeout forfeit: the opponent wins, resolved
+        // server-side from the game row's seat columns.
+        applyRatingResult({
+          gameKey: "odds-pvp",
+          matchId: String(gameId),
+          winnerClerkId: winnerId,
+          loserClerkId: forfeiterId,
         }).catch(() => {});
 
         return {
@@ -308,6 +318,15 @@ export async function POST(req: Request) {
             source: "odds-pvp",
             sourceId: String(gameId),
           }).catch(() => {});
+
+          // Per-game Elo — the round winner comes from the server-side Odds
+          // engine (pickResult.updatedState.winner), never a client value.
+          applyRatingResult({
+            gameKey: "odds-pvp",
+            matchId: String(gameId),
+            winnerClerkId: winnerId!,
+            loserClerkId: loserId!,
+          }).catch(() => {});
         } else {
           // Exact tie after all rounds — refund BOTH stakes, no winner.
           await tx
@@ -330,6 +349,17 @@ export async function POST(req: Request) {
               endedAt: new Date(),
             })
             .where(eq(oddsGames.id, gameId));
+
+          // Per-game Elo — an exact tie after every round is a DRAW: both
+          // ratings move by K × (0.5 − expected), so neither side is punished
+          // by the seating order.
+          applyRatingResult({
+            gameKey: "odds-pvp",
+            matchId: String(gameId),
+            winnerClerkId: String(game.player1Id),
+            loserClerkId: String(game.player2Id),
+            result: "draw",
+          }).catch(() => {});
         }
 
         return {

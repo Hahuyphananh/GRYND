@@ -33,6 +33,7 @@
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { applyPrestigeResult } from "../prestige";
+import { applyRatingResult } from "../rating";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { getFrameDecorations } from "../cosmetics";
 import {
@@ -1239,6 +1240,17 @@ async function recordPvPResult(tx, match, winnerId, result) {
     outcome: "loss",
     source: "mines-pvp",
     sourceId: String(match.id),
+  }).catch(() => {});
+
+  // Per-game Elo — same guarded single-execution path as Prestige above, so
+  // only ONE settlement of this match can ever move a rating. The
+  // rating_events journal keyed by (user, game, match) makes it idempotent.
+  await applyRatingResult({
+    tx,
+    gameKey: "mines-pvp",
+    matchId: String(match.id),
+    winnerClerkId: winnerId,
+    loserClerkId: loserId,
   }).catch(() => {});
 }
 

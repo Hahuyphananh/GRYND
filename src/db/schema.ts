@@ -925,6 +925,163 @@ export const prestigeResults = pgTable("prestige_results", {
   userPrestigeIdx: index("prestige_results_user_idx").on(table.userId, table.createdAt),
 }));
 
+// PER-GAME ELO RATINGS
+// ==============================================================================
+// One independent Elo rating per (player, game). A Chess rating and a
+// Precision rating are separate rows and are never combined — there is
+// deliberately no "overall" rating column anywhere.
+//
+// The row is created LAZILY, the first time the player completes an eligible
+// ranked match in that game (src/lib/rating.js), so an unplayed game reads as
+// "Unrated" instead of a fabricated starting rating. Every player therefore
+// starts at STARTING_RATING (1000, src/lib/elo.js) on their first rated match.
+//
+// Written ONLY from server-side match settlement via applyRatingResult under
+// SELECT ... FOR UPDATE in ascending user_id order. No client input is ever
+// accepted for a rating, a delta or an outcome.
+//
+// NOTE: this table is intentionally NOT a child of the token economy. Ratings
+// are never affected by balance, winnings, XP, Battle Pass or cosmetics.
+export const playerRatings = pgTable(
+  "player_ratings",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Rated game key — identical vocabulary to the Prestige `source` keys
+    // (see RATED_GAMES in src/lib/rating.js).
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    // Current Elo for this game. Starts at STARTING_RATING and is clamped to
+    // the legal band (see clampRating in src/lib/elo.js).
+    rating: integer("rating").notNull().default(1000),
+    // Highest rating ever reached — monotonic, so a bad run can never erase
+    // a peak. Useful for profile display and future tier badges.
+    peakRating: integer("peak_rating").notNull().default(1000),
+    // Rated matches completed in this game. Drives the provisional K-factor
+    // and the "provisional" flag in the UI.
+    gamesRated: integer("games_rated").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    draws: integer("draws").notNull().default(0),
+    // The delta applied by the player's most recent rated match, so result
+    // screens can show "+16 / -16" without a second lookup. NOT the source of
+    // truth — the journal row is.
+    lastDelta: integer("last_delta").notNull().default(0),
+    lastRatedAt: timestamp("last_rated_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqPlayerGame: unique("player_ratings_user_game_unique").on(
+      table.userId,
+      table.gameKey,
+    ),
+    // Board ordering: rating DESC within one game.
+    boardIdx: index("player_ratings_game_rating_idx").on(
+      table.gameKey,
+      desc(table.rating),
+    ),
+    userIdx: index("player_ratings_user_idx").on(table.userId),
+  }),
+);
+
+// RATING EVENT JOURNAL — IDEMPOTENCY + PER-MATCH RATING HISTORY
+// ==============================================================================
+// One row per player per rated match (two rows per match), keyed uniquely by
+// (user_id, game_key, match_id). The unique key is what makes a duplicate,
+// replayed, retried or concurrent settlement of the same match a guaranteed
+// no-op — and the same rows double as the match rating history (opponent,
+// both ratings, delta, K), without touching any game's own tables.
+//
+// Inserted only from src/lib/rating.js, inside the caller's settlement
+// transaction, so the journal commits atomically with the rating update.
+export const ratingEvents = pgTable(
+  "rating_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    // Authoritative match id in that game's own table.
+    matchId: varchar("match_id", { length: 128 }).notNull(),
+    opponentId: integer("opponent_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Authoritative outcome for THIS user: "win" | "loss" | "draw".
+    outcome: varchar("outcome", { length: 8 }).notNull(),
+    ratingBefore: integer("rating_before").notNull(),
+    ratingAfter: integer("rating_after").notNull(),
+    delta: integer("delta").notNull(),
+    // The K-factor actually used (each side may differ: provisional vs
+    // established). Stored for auditability. Never accepted from a client.
+    kFactor: integer("k_factor").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqRatingEvent: unique("rating_events_unique_event").on(
+      table.userId,
+      table.gameKey,
+      table.matchId,
+    ),
+    userIdx: index("rating_events_user_idx").on(
+      table.userId,
+      table.gameKey,
+      table.createdAt,
+    ),
+    matchIdx: index("rating_events_match_idx").on(table.matchId),
+  }),
+);
+
+// RATING IDENTITY LEDGER — ANTI-RESET FOR PROVISIONAL STATUS + ELO
+// ==============================================================================
+// A snapshot of one player's per-game Elo progress, keyed by a HASH OF THEIR
+// NORMALIZED EMAIL (see identityHashForEmail in src/lib/rating.js) instead of
+// by user id. Two consequences, both deliberate:
+//
+//   1. It carries NO foreign key to `users`, so it SURVIVES account deletion.
+//      Deleting an account cascades away `player_ratings`, but the identity
+//      snapshot remains — so "play 10 placement matches → delete account →
+//      re-register with the same email" restores the rating and the
+//      provisional window instead of resetting them to 1000 / 0. Without
+//      this, a player could re-roll their provisional status indefinitely.
+//   2. It is refreshed on every rated match from the just-updated
+//      `player_ratings` row, so it always mirrors current progress for the
+//      account's current email (an email change simply starts a new key).
+//
+// The email itself is never stored — only a domain-separated sha256 hex digest
+// — so the ledger is not directly identifying.
+//
+// NOT part of the token economy: no balance, winnings, XP, Battle Pass,
+// Prestige or cosmetic value is stored or derived here.
+export const ratingIdentities = pgTable(
+  "rating_identities",
+  {
+    id: serial("id").primaryKey(),
+    // sha256 hex of "grynd:rating-identity:" + lower(trim(email)).
+    identityHash: varchar("identity_hash", { length: 64 }).notNull(),
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    rating: integer("rating").notNull().default(1000),
+    peakRating: integer("peak_rating").notNull().default(1000),
+    gamesRated: integer("games_rated").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    draws: integer("draws").notNull().default(0),
+    lastDelta: integer("last_delta").notNull().default(0),
+    lastRatedAt: timestamp("last_rated_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqIdentityGame: unique("rating_identities_identity_game_unique").on(
+      table.identityHash,
+      table.gameKey,
+    ),
+    identityIdx: index("rating_identities_identity_idx").on(table.identityHash),
+  }),
+);
+
 export const chatRoomTypeEnum = pgEnum("chat_room_type", ["global", "game"]);
 
 export const chatMessages = pgTable(
@@ -2127,24 +2284,6 @@ export const contactMessageReplies = pgTable(
   },
   (table) => ({
     messageIdx: index("idx_contact_message_replies_message").on(table.messageId),
-  })
-);
-
-export const bigWins = pgTable(
-  "big_wins",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id").notNull(),
-    username: text("username").notNull(),
-    game: text("game").notNull(),
-    betAmount: integer("bet_amount").notNull(),
-    winAmount: integer("win_amount").notNull(),
-    multiplier: numeric("multiplier", { precision: 10, scale: 4 }).notNull(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    createdAtIdx: index("idx_big_wins_created_at").on(table.createdAt),
-    multiplierIdx: index("idx_big_wins_multiplier").on(table.multiplier),
   })
 );
 

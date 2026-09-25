@@ -6,6 +6,7 @@ import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../../../lib/prestige";
+import { applyRatingResult } from "../../../../../lib/rating";
 
 export async function POST(req: Request) {
   try {
@@ -109,6 +110,16 @@ export async function POST(req: Request) {
         outcome: "loss",
         source: "odds-pvp",
         sourceId: String(gameId),
+      }).catch(() => {});
+
+      // Per-game Elo — the forfeiter loses, the opponent (winnerId, resolved
+      // server-side from the game row) gains. The caller's own id can only
+      // ever be the loser here.
+      applyRatingResult({
+        gameKey: "odds-pvp",
+        matchId: String(gameId),
+        winnerClerkId: winnerId,
+        loserClerkId: userId,
       }).catch(() => {});
 
       return { winner, payout, winnerId };

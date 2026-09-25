@@ -1058,6 +1058,27 @@
       "when": 1800000013000,
       "tag": "0169_battlepass_title_apex",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1800000014000,
+      "tag": "0170_player_ratings",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1800000015000,
+      "tag": "0171_rating_identities",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1800000016000,
+      "tag": "0172_drop_big_wins",
+      "breakpoints": true
     }
   ]
 }

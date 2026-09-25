@@ -10,6 +10,8 @@ import {
 } from "../../../lib/iconAssets";
 import { getIconByKey } from "../../../lib/icons";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions";
+import { getOverallEloForUser } from "../../../lib/rating";
+import { OVERALL_MIN_GAMES } from "../../../lib/elo";
 
 export async function POST(req: Request) {
   try {
@@ -40,6 +42,12 @@ export async function POST(req: Request) {
           dailyStreakCurrent: 0,
           dailyStreakBest: 0,
           equippedCosmetics: {},
+          // Ratings need a database — without one there is no Overall Elo to
+          // show, so the navbar simply hides the badge.
+          overallElo: null,
+          overallEligibleGames: 0,
+          overallEligible: false,
+          overallMinGames: OVERALL_MIN_GAMES,
         },
       });
     }
@@ -105,6 +113,16 @@ export async function POST(req: Request) {
       dailyStreakBest: user.dailyStreakBest,
     });
 
+    // Overall Elo — the server-computed aggregate of the player's established
+    // per-game ratings. Read-only display value; never derived on the client.
+    // A failure here must not break the navbar, so it degrades to "no badge".
+    let overall = { overallElo: null, eligibleGames: 0, eligible: false };
+    try {
+      overall = await getOverallEloForUser(clerkId);
+    } catch (error) {
+      console.error(" Error computing Overall Elo in /api/get-user-tokens:", error);
+    }
+
     // Equipped cosmetics (category → catalog metadata + visual payload) so the
     // client can render profile frames / badges / effects. Server-written only
     // (src/lib/cosmetics.ts); disabled or missing keys are dropped here.
@@ -163,6 +181,13 @@ export async function POST(req: Request) {
           dailyStreakCurrent: user.dailyStreakCurrent,
           dailyStreakBest: user.dailyStreakBest,
           equippedCosmetics,
+          // Overall Elo — null until the player has an established rating in
+          // OVERALL_MIN_GAMES different games. The navbar renders it in the
+          // space the token balance used to occupy.
+          overallElo: overall.overallElo,
+          overallEligibleGames: overall.eligibleGames,
+          overallEligible: overall.eligible,
+          overallMinGames: OVERALL_MIN_GAMES,
         },
       },
       { status: 200 },

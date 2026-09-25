@@ -3,8 +3,8 @@
 // POST — SECURITY HARDENED: direct client-driven game-result recording is
 // DISABLED. This endpoint previously let any authenticated user submit an
 // arbitrary totalBet / multipliers / totalPayout, which forged game history
-// (plinko_games rows), leaderboard counters, and big-wins entries with no
-// server-side verification. The current plinko page plays through
+// (plinko_games rows) and leaderboard counters with no server-side
+// verification. The current plinko page plays through
 // /api/plinko-pvp/* (server-authoritative) and solo play through
 // /api/play-plinko, so nothing in the app depends on this route.
 //

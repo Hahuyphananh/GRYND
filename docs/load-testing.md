@@ -16,7 +16,7 @@ a **staging environment** with a production-like dataset.
   `src/db/schema.ts`. Wallets and every persisted game row live here.
 - **Upstash Redis** — live game state, match-lifecycle outbox, and *response
   caching* for the read-heavy feeds (leaderboards 5 min TTL, per-user stats
-  3 min, recent-games/big-wins 60 s), with event-driven invalidation
+  3 min, recent-games 60 s), with event-driven invalidation
   (`src/lib/redis/invalidation.ts`).
 - **Next.js API routes** (`src/app/api/**`) — all wagering/settlement HTTP
   endpoints; server-authoritative, auth via Clerk (`auth()`).
@@ -44,7 +44,6 @@ Load-test surfaces:
 | Leaderboards (reads) | `users`/`user_stats` + per-game tables | `fetchRankedRows` / `fetchGameLeaderboard` (`src/lib/leaderboardQueries.js`) — full-table window/aggregate when cache misses | **Medium-high on cache miss.** Cached 5 min with debounced (60 s) purge on settlement → under heavy settle load the full-table sorts recompute up to once/minute. |
 | `token_transactions` | Money-movement audit | Insert on purchase/spend/refund | Low; append-only, indexed `(clerk_id, created_at)`. |
 | Solo game tables (`crash_games`, `plinko_games`, `mines_games`, `roulette_games`, `blackjack_games`, `keno_games`, `uno_games`, `lane_runner_games`, `rps_games`) | Historical game rows | Insert on play; read in `GET /api/get-bet-history` | **Medium.** Per-user reads are unindexed seq scans (see §4) and grow forever. |
-| `big_wins` | Feed | Rare insert (≥100k win or ≥10×) | Low; Redis-cached feed, indexes present. |
 
 **The two money-movement invariants to protect under load:**
 1. Balance changes are atomic conditional `UPDATE … RETURNING` — never
@@ -117,8 +116,8 @@ production-ish row counts before trusting the mitigations.
    an `user_stats` upsert lock on **every settled wager** — it is the write
    hotspot, not a slow query per se. Watch lock waits under settlement load.
 5. Chat reads are fine (`chat_messages_room_idx` covers
-   `(room_type, room_id, created_at)`); `big_wins` feed is cached+indexed.
-   `users` lookup by `clerk_id` uses the unique index.
+   `(room_type, room_id, created_at)`). `users` lookup by `clerk_id` uses the
+   unique index.
 
 ### 4.2 Missing / suggested indexes
 
@@ -130,7 +129,6 @@ Verified against index declarations in `src/db/schema.ts`:
 | `user_stats` | Only PK on `user_id` | For the most-viewed boards, targeted partial indexes help some categories (e.g. `(wins DESC)` where losses tracked); for the rest prefer §4.3 snapshot |
 | Per-game boards | full-scan aggregate | Prefer a **materialized snapshot** (§4.3) over indexes — you cannot index a `GROUP BY clerk_id` over a growing fact table cheaply |
 | `users.search_name` | none | Confirm the search-player query uses it; if it ILIKEs `name`, note that an index only helps with `pg_trgm` |
-| `big_wins.user_id` | none | Only if you add per-user big-win pages (feed is cached today) |
 
 ### 4.3 Recommended structural fix (do before scale)
 

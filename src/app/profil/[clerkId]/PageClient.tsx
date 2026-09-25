@@ -75,6 +75,42 @@ type PublicUser = {
     weeklyStreakCurrent: number;
     weeklyStreakBest: number;
   };
+  // Per-game Elo ratings, keyed by game key. Only games the player has
+  // actually been rated in appear — an unplayed game is omitted, never
+  // shown as a placeholder 1000. Ratings are per game and never combined;
+  // the provisional* fields say whether that game's rating is still being
+  // placed.
+  ratings:
+    | Record<
+        string,
+        {
+          gameKey: string;
+          label: string;
+          rating: number;
+          peakRating: number;
+          gamesRated: number;
+          wins: number;
+          losses: number;
+          draws: number;
+          lastDelta: number;
+          lastRatedAt: string | null;
+          provisional: boolean;
+          provisionalStage: "placement" | "provisional" | "established";
+          provisionalGamesCompleted: number;
+          provisionalGamesRemaining: number;
+          provisionalGamesTotal: number;
+          provisionalProgressPercent: number;
+          kFactor: number;
+        }
+      >
+    | null;
+  // Overall Elo — a server-computed aggregate of the established ratings
+  // above. Null until the player has enough different established games;
+  // it is never stored and never accepted from a client.
+  overallElo: number | null;
+  overallEligibleGames: number;
+  overallEligible: boolean;
+  overallMinGames: number;
 };
 
 export default function PublicProfilePage() {
@@ -259,6 +295,16 @@ export default function PublicProfilePage() {
                       profile.selectedTitle}
                   </span>
                 )}
+                {/* Overall Elo badge — the server-computed cross-game
+                    aggregate, present only once the player qualifies. */}
+                {Number(profile.overallElo) > 0 && (
+                  <span
+                    className="rounded-full border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs font-semibold text-[#f5ff3b]"
+                    title={`Overall Elo across ${Number(profile.overallEligibleGames || 0)} games`}
+                  >
+                    Overall {Number(profile.overallElo).toLocaleString()} Elo
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-400 mt-1">
                 Level {profile.level} · {Number(profile.xp).toLocaleString()} XP
@@ -301,7 +347,11 @@ export default function PublicProfilePage() {
           <h2 className="text-xl text-[#00e5ff] mb-4">Stats</h2>
           {/* Tabbed stat panel — mirrors the /classement leaderboard
               (record / weekly / streaks) instead of a flat grid. */}
-          <UserStatsTabs record={profile.record} />
+          <UserStatsTabs
+            record={profile.record}
+            ratings={profile.ratings}
+            overall={profile}
+          />
         </motion.div>
 
         {/* ── BET HISTORY ── */}

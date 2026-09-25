@@ -4,7 +4,6 @@ import { getCacheStats, resetCacheStats, cacheDeletePattern } from "../../../../
 import {
   invalidateAllLeaderboards,
   invalidateRecentGames,
-  invalidateBigWins,
 } from "../../../../lib/redis/invalidation";
 import { adminAuditLog } from "../../../../lib/security/adminAuditLog";
 import { isAdmin } from "../../../../lib/auth/isAdmin";
@@ -15,7 +14,6 @@ const DOMAIN_LABELS: Record<string, string> = {
   lb: "leaderboards",
   user: "user-stats",
   "recent-games": "recent-games",
-  "big-wins": "big-wins",
 };
 
 // ── GET: read stats ──────────────────────────────────────────────
@@ -114,8 +112,6 @@ export async function DELETE(req: NextRequest) {
       flushed.push("user-stats");
       await invalidateRecentGames();
       flushed.push("recent-games");
-      await invalidateBigWins();
-      flushed.push("big-wins");
     }
 
     resetCacheStats();

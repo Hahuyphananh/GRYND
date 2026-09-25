@@ -4,6 +4,8 @@ import { getBattlepassProgress, getLevelFromXp } from "../../../lib/battlepass";
 import { getHighestTitle } from "../../../lib/titles";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
+import { getRatingsForUser, overallEloFromRatingsMap } from "../../../lib/rating";
+import { OVERALL_MIN_GAMES } from "../../../lib/elo";
 
 import { db } from "../../../db";
 import { and, count, eq, or, sql as drizzleSql } from "drizzle-orm";
@@ -364,10 +366,38 @@ export async function GET() {
       };
     });
 
+    // ── Per-game Elo ratings ──────────────────────────────────────────
+    // Read OUTSIDE the cached block: a rating moves the instant a rated
+    // match settles, so the profile must never serve a stale Elo for the
+    // length of the stats TTL. Only games the player has actually been rated
+    // in appear — an unplayed game is simply absent, and the Ratings tab
+    // omits it rather than inventing a 1000. Each entry carries the
+    // provisional fields (completed / remaining / stage) so the UI can mark
+    // a still-unplaced rating. Ratings are per game and never combined.
+    let ratings = {};
+    try {
+      ratings = await getRatingsForUser(clerkId);
+    } catch (ratingErr) {
+      console.error("[user-stats] Failed to load ratings:", ratingErr);
+    }
+
+    // Overall Elo — an aggregate of the established ratings above, derived on
+    // read from the same rows. Null until the player has an established
+    // rating in at least OVERALL_MIN_GAMES different games; provisional game
+    // ratings never count. Not stored anywhere and never client-supplied.
+    const overall = overallEloFromRatingsMap(ratings);
+
     return new Response(
       JSON.stringify({
         success: true,
-        stats,
+        stats: {
+          ...stats,
+          ratings,
+          overallElo: overall.overallElo,
+          overallEligibleGames: overall.eligibleGames,
+          overallEligible: overall.eligible,
+          overallMinGames: OVERALL_MIN_GAMES,
+        },
       }),
       { status: 200, headers: { "Cache-Control": "private, s-maxage=120, stale-while-revalidate=60" } },
     );

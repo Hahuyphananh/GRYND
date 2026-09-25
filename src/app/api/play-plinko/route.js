@@ -1,9 +1,8 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { recordBigWinIfNeeded, MINIMUM_BIG_WIN_AMOUNT } from "../../../lib/bigWins";
 
 export async function POST(req) {
   try {
@@ -63,19 +62,6 @@ export async function POST(req) {
         balance: sql`${users.balance} - ${betAmount} + ${winAmount}`,
       })
       .where(eq(users.clerkId, clerkId));
-
-    // Record big win if winAmount >= 1 million tokens
-    if (winAmount >= MINIMUM_BIG_WIN_AMOUNT) {
-      const clerkUser = await currentUser();
-      recordBigWinIfNeeded({
-        userId: clerkId,
-        username: clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Player",
-        game: "Plinko",
-        betAmount: betAmount,
-        winAmount: winAmount,
-        multiplier: multiplier,
-      }).catch(() => {}); // Fire and forget
-    }
 
     return NextResponse.json({
       success: true,

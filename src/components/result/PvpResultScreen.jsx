@@ -170,6 +170,17 @@ export default function PvpResultScreen({
   onReturnToLobby = null,
   onDismiss = null,
   dismissLabel = "View Match Results",
+  // Optional rated game key for this match. When passed, the Overall Elo
+  // movement is only shown if the player's most recent rated match was THIS
+  // game — so an AI / unrated result screen never inherits a previous
+  // ranked match's movement. Omit for the freshness-only behaviour.
+  gameKey = null,
+  // Explicit Overall Elo movement override, shaped like the derived object
+  // ({ previousOverallElo, overallElo, overallDelta, eligibleGames }).
+  // When passed, the live fetch is skipped. Games rarely need this — the
+  // server derivation is authoritative — but it exists for parity with the
+  // streak/rank/xp overrides.
+  overallElo = null,
   // Compact creator-frame mode (UX: the shared result screen mounted
   // INSIDE the Creator Mode recording viewport). The recording frame is
   // a 390px-wide phone viewport zoomed to fill the output, so the panel
@@ -236,6 +247,7 @@ export default function PvpResultScreen({
   const [liveRank, setLiveRank] = useState(null);
   const [liveRankDelta, setLiveRankDelta] = useState(null);
   const [liveXp, setLiveXp] = useState(null);
+  const [liveOverall, setLiveOverall] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -245,6 +257,7 @@ export default function PvpResultScreen({
     setLiveRank(null);
     setLiveRankDelta(null);
     setLiveXp(null);
+    setLiveOverall(null);
 
     // Current win streak + XP granted by the most recent settled match,
     // both from the platform's own stats endpoint. Streak is only
@@ -278,6 +291,40 @@ export default function PvpResultScreen({
               setLiveXp(earned);
             }
           }
+          // Overall Elo movement across the most recent rated match. Derived
+          // server-side from the rating journal; gated by a freshness window
+          // so a stale match is never shown as this one's change. When this
+          // screen knows its game key, the movement must match it — an AI
+          // result can never inherit a previous ranked match's movement.
+          if (overallElo === null) {
+            const currentElo = Number(stats.overallElo);
+            const at = stats.overallEloAt
+              ? new Date(stats.overallEloAt).getTime()
+              : null;
+            const sameGame =
+              !gameKey || String(stats.overallEloGameKey || "") === String(gameKey);
+            if (
+              Number.isFinite(currentElo) &&
+              at !== null &&
+              Date.now() - at < 3 * 60 * 1000 &&
+              sameGame
+            ) {
+              const prev = stats.overallEloPrevious;
+              const delta = stats.overallEloDelta;
+              setLiveOverall({
+                overallElo: currentElo,
+                previousOverallElo: prev === null || prev === undefined ? null : Number(prev),
+                overallDelta:
+                  delta === null || delta === undefined ? null : Number(delta),
+                eligibleGames: Number(stats.overallEligibleGames || 0),
+              });
+            }
+          }
+          // Nudge the navbar's Overall Elo chip to refetch, so a just-settled
+          // rated match animates the new value without a full navigation.
+          try {
+            window.dispatchEvent(new Event("profileUpdated"));
+          } catch {}
         })
         .catch(() => {});
 
@@ -285,7 +332,7 @@ export default function PvpResultScreen({
     // One retry: some settle paths apply the counters fire-and-forget, so
     // the result can reach the client a moment before the XP write lands.
     const retry = setTimeout(() => {
-      if (xp === null) fetchStats();
+      if (xp === null || overallElo === null) fetchStats();
     }, 1200);
 
     // True weekly rank + the movement caused by the most recent settled
@@ -314,12 +361,13 @@ export default function PvpResultScreen({
       clearTimeout(retry);
       controller.abort();
     };
-  }, [open, outcome, streak, rank, xp]);
+  }, [open, outcome, streak, rank, xp, overallElo, gameKey]);
 
   const displayStreak = streak ?? (outcome === "win" ? liveStreak : null);
   const displayRank = rank ?? liveRank;
   const displayRankDelta = rankDelta ?? liveRankDelta;
   const displayXp = xp ?? liveXp;
+  const displayOverall = overallElo ?? liveOverall;
   // A 1-win streak is not a streak worth celebrating — start at 2.
   const showStreak = displayStreak !== null && Number(displayStreak) >= 2;
   const showRank =
@@ -328,6 +376,7 @@ export default function PvpResultScreen({
   const hasRewards =
     tokenDelta !== null ||
     displayXp !== null ||
+    displayOverall !== null ||
     (Array.isArray(progress) && progress.length > 0);
 
   const rows = [
@@ -639,6 +688,51 @@ export default function PvpResultScreen({
                       +{formatTokens(displayXp)}
                       <IconStar size={18} className="text-[#00e5ff]" aria-hidden="true" />
                     </span>
+                  </div>
+                )}
+                {displayOverall !== null && (
+                  <div className="rounded-xl border border-[#f5ff3b]/30 bg-black/25 px-4 py-2.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-white/85">Overall Elo</span>
+                      <span className="font-black text-white">
+                        {displayOverall.previousOverallElo !== null &&
+                        displayOverall.previousOverallElo !== undefined ? (
+                          <>
+                            {formatNumber(displayOverall.previousOverallElo)}{" "}
+                            <span className="text-white/40">{"\u2192"}</span>{" "}
+                            <span className="text-[#f5ff3b]">
+                              {formatNumber(displayOverall.overallElo)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-[#f5ff3b]">
+                            {formatNumber(displayOverall.overallElo)}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-white/50">
+                      <span>
+                        {formatNumber(displayOverall.eligibleGames)} eligible{" "}
+                        {Number(displayOverall.eligibleGames) === 1
+                          ? "game"
+                          : "games"}
+                      </span>
+                      {displayOverall.overallDelta !== null &&
+                        displayOverall.overallDelta !== undefined &&
+                        Number(displayOverall.overallDelta) !== 0 && (
+                          <span
+                            className={
+                              Number(displayOverall.overallDelta) > 0
+                                ? "font-black text-emerald-300"
+                                : "font-black text-red-300"
+                            }
+                          >
+                            {Number(displayOverall.overallDelta) > 0 ? "+" : ""}
+                            {formatNumber(displayOverall.overallDelta)}
+                          </span>
+                        )}
+                    </div>
                   </div>
                 )}
                 {progress.map((p) => (

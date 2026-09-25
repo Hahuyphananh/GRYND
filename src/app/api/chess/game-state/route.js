@@ -10,6 +10,7 @@ import { chessGames, chessMoves, users } from "../../../../db/schema";import {
   applyPrestigeResult,
   resolvePrestigeBadge,
 } from "../../../../lib/prestige";
+import { applyRatingResult } from "../../../../lib/rating";
 
 
 const HOUSE_EDGE_PERCENT = 10;
@@ -216,6 +217,19 @@ async function settleTimeoutIfNeeded(game, clocks) {
             outcome: "loss",
             source: "chess",
             sourceId: String(game.id),
+          }).catch(() => {});
+        }
+
+        // Per-game Elo — server-authoritative clock timeout (the winner was
+        // resolved from the recomputed clocks above, never from the client).
+        // AI games are free play and are excluded, exactly like Prestige.
+        if (prestigeLoserId) {
+          await applyRatingResult({
+            tx,
+            gameKey: "chess",
+            matchId: String(game.id),
+            winnerClerkId: lockedWinnerId,
+            loserClerkId: prestigeLoserId,
           }).catch(() => {});
         }
       }

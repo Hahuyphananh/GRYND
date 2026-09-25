@@ -3,6 +3,7 @@ import { db } from "../db/client";
 import { fourInARowGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
 import { applyPrestigeResult } from "./prestige";
+import { applyRatingResult } from "./rating";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
 const DEFAULT_MOVE_TIME_SECONDS = 60;
@@ -91,6 +92,20 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
         })
         .where(eq(fourInARowGames.id, gameId));
 
+      // Per-game Elo — a draw moves BOTH ratings by K × (0.5 − expected),
+      // so a stalemate still separates the players over time. Both seats are
+      // known here and the journal keeps the event idempotent.
+      if (locked.hostClerkId && locked.guestClerkId) {
+        await applyRatingResult({
+          tx,
+          gameKey: "four-in-a-row",
+          matchId: String(gameId),
+          winnerClerkId: locked.hostClerkId,
+          loserClerkId: locked.guestClerkId,
+          result: "draw",
+        }).catch(() => {});
+      }
+
       return;
     }
 
@@ -143,6 +158,18 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
         outcome: "loss",
         source: "four-in-a-row",
         sourceId: String(gameId),
+      }).catch(() => {});
+    }
+
+    // Per-game Elo — same guarded single-execution path as Prestige above, so
+    // only ONE settlement of this match can ever move a rating.
+    if (prestigeLoserId) {
+      await applyRatingResult({
+        tx,
+        gameKey: "four-in-a-row",
+        matchId: String(gameId),
+        winnerClerkId,
+        loserClerkId: prestigeLoserId,
       }).catch(() => {});
     }
 

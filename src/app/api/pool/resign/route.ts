@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { poolMatches, users } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { applyPrestigeResult } from "../../../../lib/prestige";
+import { applyRatingResult } from "../../../../lib/rating";
 import { logError } from "../../../../lib/logError";
 
 export async function POST(req: Request) {
@@ -149,6 +150,18 @@ export async function POST(req: Request) {
         outcome: "loss",
         source: "pool",
         sourceId: String(matchId),
+      }).catch(() => {});
+    }
+
+    // Per-game Elo — a resign forfeit: the remaining player wins. Both seats
+    // come from the canonical match row and the winner is derived server-side
+    // (winnerId above), so a resigning client can only ever give away rating.
+    if (!isAi && winnerId && loserId) {
+      applyRatingResult({
+        gameKey: "pool",
+        matchId: String(matchId),
+        winnerClerkId: String(winnerId),
+        loserClerkId: String(loserId),
       }).catch(() => {});
     }
 

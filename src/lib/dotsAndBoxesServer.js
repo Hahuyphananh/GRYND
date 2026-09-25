@@ -3,6 +3,7 @@ import { db } from "../db/client";
 import { dotsAndBoxesGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
 import { applyPrestigeResult } from "./prestige";
+import { applyRatingResult } from "./rating";
 import {
   TURN_SECONDS as DEFAULT_MOVE_TIME_SECONDS,
   determineResult,
@@ -143,6 +144,20 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
         })
         .where(eq(dotsAndBoxesGames.id, gameId));
 
+      // Per-game Elo — a draw moves BOTH ratings by K × (0.5 − expected).
+      // The row-lock + payout guard above and the rating_events journal keep
+      // this to exactly one application per match.
+      if (locked.hostClerkId && locked.guestClerkId) {
+        await applyRatingResult({
+          tx,
+          gameKey: "dots-and-boxes",
+          matchId: String(gameId),
+          winnerClerkId: locked.hostClerkId,
+          loserClerkId: locked.guestClerkId,
+          result: "draw",
+        }).catch(() => {});
+      }
+
       return;
     }
 
@@ -196,6 +211,18 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
           outcome: "loss",
           source: "dots-and-boxes",
           sourceId: String(gameId),
+        }).catch(() => {});
+      }
+
+      // Per-game Elo — same guarded single-execution path as Prestige above,
+      // so only ONE settlement of this match can ever move a rating.
+      if (prestigeLoserId) {
+        await applyRatingResult({
+          tx,
+          gameKey: "dots-and-boxes",
+          matchId: String(gameId),
+          winnerClerkId,
+          loserClerkId: prestigeLoserId,
         }).catch(() => {});
       }
     }

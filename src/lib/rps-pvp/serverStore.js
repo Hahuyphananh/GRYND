@@ -9,6 +9,7 @@ import { db } from "../../db/client";
 import { rpsPvpGames, users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { applyPrestigeResult } from "../prestige";
+import { applyRatingResult } from "../rating";
 import { eq, sql } from "drizzle-orm";
 
 // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
@@ -111,5 +112,16 @@ export function recordForfeitStats(result) {
     outcome: "loss",
     source: "rps-pvp",
     sourceId: String(result.game.id),
+  }).catch(() => {});
+
+  // Per-game Elo — a competitive forfeit (the winner is the opponent who
+  // stayed, resolved server-side in the settle transaction above). Runs on
+  // its own transaction; the rating_events journal makes a replayed forfeit
+  // (disconnect + poll, double submit) a no-op.
+  applyRatingResult({
+    gameKey: "rps-pvp",
+    matchId: String(result.game.id),
+    winnerClerkId: result.winnerId,
+    loserClerkId: result.forfeiterId,
   }).catch(() => {});
 }

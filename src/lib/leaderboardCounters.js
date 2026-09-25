@@ -1,9 +1,9 @@
 import { getNeonSql } from "../db/neon";
-import { invalidateOnGameSettlement, invalidateBigWins } from "./redis/invalidation";
+import { invalidateOnGameSettlement } from "./redis/invalidation";
 import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
 import { getActiveXpMultiplierByClerkId } from "./shopItems";
-import { sendBigWinEmail, sendLossStreakEmail } from "./emails/behavior";
+import { sendLossStreakEmail } from "./emails/behavior";
 import { sendProgressionEmail } from "./emails/progression";
 
 let _sql = null;
@@ -171,15 +171,6 @@ export async function applyLeaderboardCounters({
       }
     }
 
-    // Big win email (10x multiplier or 1M+ tokens)
-    if (multiplier >= 10 || win >= 1_000_000) {
-      try {
-        await sendBigWinEmail({ clerkId, email: userEmail, name: userName }, win);
-      } catch (err) {
-        console.error("[applyLeaderboardCounters] Big win email failed:", err);
-      }
-    }
-
     // Loss streak email (3+ losses in a row)
     // current_streak: positive for wins, 0 after first loss, -1 after second, -2 after third, etc.
     if (!isWin && currentStreak <= -3) {
@@ -189,18 +180,6 @@ export async function applyLeaderboardCounters({
         console.error("[applyLeaderboardCounters] Loss streak email failed:", err);
       }
     }
-  }
-
-  if (multiplier >= 10) {
-    await getSql()`
-      INSERT INTO big_wins (id, user_id, username, game, bet_amount, win_amount, multiplier)
-      SELECT gen_random_uuid(), clerk_id, name, ${game}, ${bet}, ${win}, ${multiplier}
-      FROM users
-      WHERE clerk_id = ${clerkId}
-    `;
-
-    // Invalidate big-wins feed cache (new big win recorded)
-    invalidateBigWins().catch(() => {});
   }
 
   // Invalidate caches affected by this game settlement.

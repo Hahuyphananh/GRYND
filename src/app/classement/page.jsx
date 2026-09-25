@@ -5,7 +5,7 @@ import AdSlot from "../../components/AdSlot";
 export const metadata = {
   title: "Leaderboard | GRYND",
   description:
-    "See the top GRYND players. Track weekly and all-time rankings by games won, win rate, games played, streaks and PvP wins — plus daily and weekly streak boards.",
+    "See the top GRYND players. Every game has its own Elo leaderboard — Chess, Pool Masters, Precision, Memory Grid and more — plus all-time and weekly boards for wins, win rate, games played, streaks and PvP wins.",
 };
 
 export default function Page() {

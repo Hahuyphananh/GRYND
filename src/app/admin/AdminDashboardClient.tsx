@@ -47,7 +47,7 @@ interface CacheStatsResponse {
   };
 }
 
-type FlushScope = "all" | "leaderboards" | "user-stats" | "recent-games" | "big-wins";
+type FlushScope = "all" | "leaderboards" | "user-stats" | "recent-games";
 
 interface AdminUser {
   id: number;
@@ -1012,7 +1012,7 @@ export default function AdminDashboardClient({
                 Flush cache scope
               </label>
               <div className="flex flex-wrap gap-2 mb-3">
-                {(["all", "leaderboards", "user-stats", "recent-games", "big-wins"] as FlushScope[]).map(
+                {(["all", "leaderboards", "user-stats", "recent-games"] as FlushScope[]).map(
                   (s) => (
                     <button
                       key={s}
