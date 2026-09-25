@@ -119,27 +119,24 @@ export const PLAYER_STOP_INPUT_DEFAULT_MS = 5_000;
 export const MIN_STOP_MS = 50;
 export const MAX_STOP_MS = 60_000;
 
-// ── Crediting the player's own STOP instant ──────────────────────────────
+// ── Grading a STOP at the click instant ──────────────────────────────────
 //
-// The player's click is measured on the server's clock (the display clock is
-// aligned to the server's GO instant — see `roundClock.ts`), but the packet
-// still has to travel: browser → realtime server → the round-stop route. The
-// route stamps `Date.now()` when the request lands, so on its own the recorded
-// stop is the CLICK plus that whole delivery lag. In a game whose MISS tier
-// starts at 100ms, that grades an honest, dead-on click as a miss — the round
-// looks like it was never stopped.
+// The display clock is aligned to the server's GO instant (see
+// `roundClock.ts`, which also corrects for the device's clock skew), so the
+// elapsed the client freezes at the click is directly comparable with the
+// server's own measurement — it IS the number the player was watching. That
+// frozen value is what a stop is graded at (`resolveStopElapsedMs`).
 //
-// So the client also reports the elapsed it froze at (its own server-clock
-// measurement) and the server credits it back: never LATER than the server's
-// own measurement, and never more than this much EARLIER than it. The
-// allowance is deliberately small — it exists to cancel transport lag, not to
-// launder a bad stop. A multi-second delay (a dead socket falling back to
-// HTTPS) is indistinguishable from a fabricated instant, so a stop that far
-// out keeps the server's own measurement.
+// This used to be a bounded credit: the frozen value was honoured only within
+// a small allowance of the server's own measurement, and everything past that
+// allowance was charged to the player's reaction time. The packet travels
+// browser → realtime server → route, so a slow hop (a dead socket falling back
+// to HTTPS costs seconds) landed in full on the score — a dead-on click was
+// graded a miss and the wrong player was declared the winner. No allowance
+// fixes that, it only caps how wrong the result can be, so the click instant
+// is now authoritative and the delivery lag is never charged at all.
 //
-// Tunable, but treat it as a fairness/integrity dial: it is the most a client
-// can gain by lying about its click.
-export const STOP_CLIENT_SLACK_MS = 400;
+// What remains is the observational threshold below.
 
 // ── Anomaly-detection thresholds ─────────────────────────────────────────
 //
@@ -183,6 +180,15 @@ export const PRECISION_VARIANCE_MIN_SAMPLES = 3;
  *  real Precision match (max 5 rounds × 2 seats = 10 stops) would be
  *  truncated. */
 export const PRECISION_ANOMALY_LEDGER_MAX_PER_MATCH = 64;
+
+/** A stop whose credited delivery lag exceeds this is logged for operators.
+ *
+ * Observational ONLY — it never changes a grade. The credit is no longer
+ * bounded by a fixed allowance, so this is the signal that replaces one: a
+ * steady stream of warnings means the transport really is that slow for real
+ * players, while a lone spike on an otherwise fast connection is worth a look.
+ * See `resolveStopElapsedMs` / `stopDeliveryLagMs`. */
+export const STOP_LAG_ANOMALY_MS = 1_500;
 
 // ── Pre-round countdown (PvP + solo test) ────────────────────────────────
 //

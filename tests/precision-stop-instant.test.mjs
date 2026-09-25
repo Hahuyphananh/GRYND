@@ -30,8 +30,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 
-import { STOP_CLIENT_SLACK_MS } from "../src/lib/precision/constants.ts";
-
 const MODULE_MOCKING_AVAILABLE = typeof mock?.module === "function";
 const SKIP_REASON = MODULE_MOCKING_AVAILABLE
   ? false
@@ -86,137 +84,163 @@ function activeRow() {
   };
 }
 
-test("a stop is graded at the instant the request arrived, not one database round trip later", { skip: SKIP_REASON }, async (t) => {
-  // The wall clock the store sees, and the fake transaction's cost. `lockMs`
-  // models the pooled connection handshake + BEGIN + `SELECT … FOR UPDATE`
-  // (which can even wait behind a concurrent poll) — real seconds on a remote
-  // pooled database, and exactly what used to be charged to the player.
-  const world = { clock: GO, lockMs: 0, writes: [] };
+test(
+  "a stop is graded at the instant the request arrived, not one database round trip later",
+  { skip: SKIP_REASON },
+  async (t) => {
+    // The wall clock the store sees, and the fake transaction's cost. `lockMs`
+    // models the pooled connection handshake + BEGIN + `SELECT … FOR UPDATE`
+    // (which can even wait behind a concurrent poll) — real seconds on a remote
+    // pooled database, and exactly what used to be charged to the player.
+    const world = { clock: GO, lockMs: 0, writes: [] };
 
-  const tx = {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          for: () => ({
-            limit: async () => {
-              world.clock += world.lockMs;
-              return [activeRow()];
-            },
+    const tx = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({
+              limit: async () => {
+                world.clock += world.lockMs;
+                return [activeRow()];
+              },
+            }),
           }),
         }),
       }),
-    }),
-    update: () => ({
-      set: (values) => {
-        world.writes.push(values);
-        return { where: async () => {} };
-      },
-    }),
-  };
-
-  t.mock.module("../src/db/client.ts", {
-    namedExports: { db: { transaction: async (fn) => fn(tx) } },
-  });
-  // Never touch the canonical lifecycle mirror from a unit test.
-  t.mock.module("../src/lib/precision/canonicalLifecycle.ts", {
-    namedExports: {
-      mirrorPrecisionQueued: () => {},
-      mirrorPrecisionTransition: () => {},
-    },
-  });
-
-  const realDateNow = Date.now;
-  Date.now = () => world.clock;
-  t.after(() => {
-    Date.now = realDateNow;
-  });
-
-  const { recordRoundStop } = await import("../src/lib/precision/serverStore.ts");
-
-  /** Submit one STOP and return what the server recorded for that seat. */
-  const stop = async ({ arrivalMs, clientElapsedMs, lockMs = 0 }) => {
-    world.clock = arrivalMs; // the wall clock at the instant the route stamped it
-    world.lockMs = lockMs;
-    world.writes = [];
-    const result = await recordRoundStop(MATCH_ID, USER_ID, ROUND_ID, NONCE, {
-      receivedAtMs: arrivalMs,
-      clientElapsedMs,
-    });
-    return {
-      result,
-      recorded: world.writes.at(-1)?.pendingStops?.[USER_ID] ?? null,
+      update: () => ({
+        set: (values) => {
+          world.writes.push(values);
+          return { where: async () => {} };
+        },
+      }),
     };
-  };
 
-  // ── 1. The reported bug ───────────────────────────────────────────────
-  // Clicked at 7.05s (both the display and the client's frozen hint), with the
-  // transaction taking 3s to reach the row — the exact shape of the report.
-  {
-    const { result, recorded } = await stop({
-      arrivalMs: GO + 7_050,
-      clientElapsedMs: 7_050,
-      lockMs: 3_000,
+    t.mock.module("../src/db/client.ts", {
+      namedExports: { db: { transaction: async (fn) => fn(tx) } },
     });
-    assert.ok(recorded, "the stop was recorded");
-    assert.equal(
-      recorded.elapsedMs,
-      7_050,
-      `a 7.05s stop must grade at 7050ms, not at the database's own later clock (${recorded.elapsedMs})`,
-    );
-    assert.equal(recorded.diffMs, 0, "the round is not decided yet, so no diff");
-    assert.equal(result.bothStopped, false);
-    assert.equal(result.error, undefined);
-    // The persisted round is untouched apart from this seat's stop.
-    assert.equal(world.writes.at(-1).state.phase, "active");
-  }
-
-  // ── 2. No hint at all (the HTTPS fallback ships no elapsed) ───────────
-  {
-    const { recorded } = await stop({
-      arrivalMs: GO + 7_050,
-      clientElapsedMs: null,
-      lockMs: 3_000,
+    // Never touch the canonical lifecycle mirror from a unit test.
+    t.mock.module("../src/lib/precision/canonicalLifecycle.ts", {
+      namedExports: {
+        mirrorPrecisionQueued: () => {},
+        mirrorPrecisionTransition: () => {},
+      },
     });
-    assert.equal(recorded.elapsedMs, 7_050);
-  }
 
-  // ── 3. A hint LATER than our own measurement buys nothing ─────────────
-  {
-    const { recorded } = await stop({
-      arrivalMs: GO + 5_000,
-      clientElapsedMs: 8_000,
-      lockMs: 2_500,
+    const realDateNow = Date.now;
+    Date.now = () => world.clock;
+    t.after(() => {
+      Date.now = realDateNow;
     });
-    assert.equal(
-      recorded.elapsedMs,
-      5_000,
-      "a client can never move its stop later than the server's own measurement",
-    );
-  }
 
-  // ── 4. Delivery lag is credited, but only up to the bounded slack ─────
-  {
-    const { recorded } = await stop({
-      arrivalMs: GO + 7_050,
-      clientElapsedMs: 6_500,
-      lockMs: 2_500,
-    });
-    assert.equal(
-      recorded.elapsedMs,
-      7_050 - STOP_CLIENT_SLACK_MS,
-      "the click may be credited back by at most the transport allowance",
-    );
-  }
+    const { recordRoundStop } = await import("../src/lib/precision/serverStore.ts");
 
-  // ── 5. The lock delay never shows up anywhere in the grade ────────────
-  {
-    const fast = await stop({ arrivalMs: GO + 6_000, clientElapsedMs: null, lockMs: 0 });
-    const slow = await stop({ arrivalMs: GO + 6_000, clientElapsedMs: null, lockMs: 5_000 });
-    assert.equal(fast.recorded.elapsedMs, 6_000);
-    assert.equal(
-      slow.recorded.elapsedMs,
-      6_000,
-      "5s of database latency must not add 5s to the player's reaction time",
-    );
+    /** Submit one STOP and return what the server recorded for that seat. */
+    const stop = async ({ arrivalMs, clientElapsedMs, lockMs = 0 }) => {
+      world.clock = arrivalMs; // the wall clock at the instant the route stamped it
+      world.lockMs = lockMs;
+      world.writes = [];
+      const result = await recordRoundStop(MATCH_ID, USER_ID, ROUND_ID, NONCE, {
+        receivedAtMs: arrivalMs,
+        clientElapsedMs,
+      });
+      return {
+        result,
+        recorded: world.writes.at(-1)?.pendingStops?.[USER_ID] ?? null,
+      };
+    };
+
+    // ── 1. The reported bug ───────────────────────────────────────────────
+    // Clicked at 7.05s (both the display and the client's frozen hint), with the
+    // transaction taking 3s to reach the row — the exact shape of the report.
+    {
+      const { result, recorded } = await stop({
+        arrivalMs: GO + 7_050,
+        clientElapsedMs: 7_050,
+        lockMs: 3_000,
+      });
+      assert.ok(recorded, "the stop was recorded");
+      assert.equal(
+        recorded.elapsedMs,
+        7_050,
+        `a 7.05s stop must grade at 7050ms, not at the database's own later clock (${recorded.elapsedMs})`
+      );
+      assert.equal(recorded.diffMs, 0, "the round is not decided yet, so no diff");
+      assert.equal(result.bothStopped, false);
+      assert.equal(result.error, undefined);
+      // The persisted round is untouched apart from this seat's stop.
+      assert.equal(world.writes.at(-1).state.phase, "active");
+    }
+
+    // ── 2. No hint at all (the HTTPS fallback ships no elapsed) ───────────
+    {
+      const { recorded } = await stop({
+        arrivalMs: GO + 7_050,
+        clientElapsedMs: null,
+        lockMs: 3_000,
+      });
+      assert.equal(recorded.elapsedMs, 7_050);
+    }
+
+    // ── 3. A hint LATER than our own measurement buys nothing ─────────────
+    {
+      const { recorded } = await stop({
+        arrivalMs: GO + 5_000,
+        clientElapsedMs: 8_000,
+        lockMs: 2_500,
+      });
+      assert.equal(
+        recorded.elapsedMs,
+        5_000,
+        "a client can never move its stop later than the server's own measurement"
+      );
+    }
+
+    // ── 4. Delivery lag is NEVER charged to the player ────────────────────
+    // The reported failure this guards: a stop clicked at 5.00s whose packet
+    // took 5s to arrive used to be graded at `arrival - 400ms` ≈ 9.6s, because
+    // the click instant was only honoured inside a fixed allowance and the rest
+    // of the delay landed on the player's reaction time — which then handed the
+    // round to the bot. The click is now the graded value outright.
+    {
+      const { recorded } = await stop({
+        arrivalMs: GO + 7_050,
+        clientElapsedMs: 6_500,
+        lockMs: 2_500,
+      });
+      assert.equal(
+        recorded.elapsedMs,
+        6_500,
+        "the stop is graded at the click, not at the click plus the delivery"
+      );
+    }
+
+    // ── 4b. …however slow the packet was ─────────────────────────────────
+    // The concrete shape of the report: clicked at 5.00s, packet arrived at
+    // 10.00s (a dead socket falling back to HTTPS). The old bounded credit
+    // graded this at 9.6s and declared the bot the winner.
+    {
+      const { recorded } = await stop({
+        arrivalMs: GO + 10_000,
+        clientElapsedMs: 5_000,
+        lockMs: 4_000,
+      });
+      assert.equal(
+        recorded.elapsedMs,
+        5_000,
+        `a 5s click must stay 5s however late the packet lands (got ${recorded.elapsedMs})`
+      );
+    }
+
+    // ── 5. The lock delay never shows up anywhere in the grade ────────────
+    {
+      const fast = await stop({ arrivalMs: GO + 6_000, clientElapsedMs: null, lockMs: 0 });
+      const slow = await stop({ arrivalMs: GO + 6_000, clientElapsedMs: null, lockMs: 5_000 });
+      assert.equal(fast.recorded.elapsedMs, 6_000);
+      assert.equal(
+        slow.recorded.elapsedMs,
+        6_000,
+        "5s of database latency must not add 5s to the player's reaction time"
+      );
+    }
   }
-});
+);

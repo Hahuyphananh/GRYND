@@ -69,6 +69,8 @@
 //           the pot total, matching the house take on a winner).
 //           Mirrors keno-pvp's OVERTIME_DRAW_FEE_PCT.
 
+import { coerceAiDifficulty } from "../aiDifficulty";
+
 // ── Round configuration ─────────────────────────────────────────────
 // A match is exactly 5 rounds. Index by (roundNumber - 1). The grid
 // grows and the pattern gets denser every round, so memorization
@@ -655,7 +657,7 @@ function shuffledAiCopy(values, rand) {
 // then makes more misses and occasional false-positive picks as the
 // grids become denser. The returned picks go through the same
 // assessReconstruction + computeFinalRoundScore pipeline as a human.
-export function chooseAiReconstruction({ pattern, roundNumber = 1, seed = 0 } = {}) {
+export function chooseAiReconstruction({ pattern, roundNumber = 1, seed = 0, difficulty = "normal" } = {}) {
   const size = Number(pattern?.size);
   const total = Number.isInteger(size) && size > 0 ? size * size : 0;
   const active = [...new Set(pattern?.active ?? [])].filter(
@@ -664,8 +666,14 @@ export function chooseAiReconstruction({ pattern, roundNumber = 1, seed = 0 } = 
   if (total === 0 || active.length === 0) return [];
 
   const round = Math.max(1, Math.min(6, Number(roundNumber) || 1));
+  // The tier shifts the bot's recall: an easy bot remembers far less and
+  // invents more tiles, a hard bot remembers almost everything. `normal`
+  // reproduces the policy the game shipped with, so existing AI matches
+  // (no stored tier) play exactly as before.
+  const tier = coerceAiDifficulty(difficulty);
   const recallByRound = [0.94, 0.88, 0.84, 0.79, 0.75, 0.7];
-  const recall = recallByRound[round - 1];
+  const recallOffset = tier === "easy" ? -0.2 : tier === "hard" ? 0.12 : 0;
+  const recall = Math.max(0.25, Math.min(0.99, recallByRound[round - 1] + recallOffset));
   const rand = aiRandom(`${seed}:${round}:picks`);
   const shuffledActive = shuffledAiCopy(active, rand);
   const hits = Math.max(1, Math.round(active.length * recall));
@@ -677,8 +685,15 @@ export function chooseAiReconstruction({ pattern, roundNumber = 1, seed = 0 } = 
     if (!activeSetForAi.has(cell)) inactive.push(cell);
   }
   // False positives make the bot's reconstruction feel human rather
-  // than giving it a perfect answer with a few misses only.
-  const falsePositiveCount = round >= 4 ? 2 : round >= 2 ? 1 : 0;
+  // than giving it a perfect answer with a few misses only. A hard bot
+  // is stingier with them; an easy one guesses more.
+  const falsePositiveBase = round >= 4 ? 2 : round >= 2 ? 1 : 0;
+  const falsePositiveCount =
+    tier === "easy"
+      ? falsePositiveBase + 1
+      : tier === "hard"
+        ? Math.max(0, falsePositiveBase - 1)
+        : falsePositiveBase;
   picks.push(...shuffledAiCopy(inactive, rand).slice(0, falsePositiveCount));
   return [...new Set(picks)].sort((a, b) => a - b);
 }

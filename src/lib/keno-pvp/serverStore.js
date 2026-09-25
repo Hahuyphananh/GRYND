@@ -73,6 +73,7 @@ import {
   tileLogEntry,
   tileWindowMs,
 } from "./engine";
+import { aiDifficultyFromMatch, coerceAiDifficulty } from "../aiDifficulty";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -244,9 +245,12 @@ function hashStakeToInt(stake) {
 //
 // The bot occupies player2. No stake is escrowed; it races for the same
 // live tiles as the human and is graded by the same clock/window rules.
-export async function createAiMatch({ userId }) {
+export async function createAiMatch({ userId, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
 
+  // The lobby's AI tier. Stored on the row so both the polling path and the
+  // /ai-turn trigger make the bot race at the same tier.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
   return await db.transaction(async (tx) => {
     const [match] = await tx
@@ -257,6 +261,7 @@ export async function createAiMatch({ userId }) {
         stakeAmount: "0.00",
         status: MATCH_STATUS.READY,
         isAi: true,
+        aiDifficulty,
         currentRound: 1,
         p1Lives: STARTING_LIVES,
         p2Lives: STARTING_LIVES,
@@ -601,6 +606,7 @@ function aiPlanFor(match) {
     tile: match.liveTile,
     windowMs,
     startedMs: liveStartedMs(match),
+    difficulty: aiDifficultyFromMatch(match),
   });
   if (!plan.claims || plan.dueAtMs == null) return null;
   return { ...plan, windowMs };

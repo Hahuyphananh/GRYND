@@ -28,6 +28,8 @@ import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../components/FrameAvatar";
 import { cosmeticEffectClass } from "../../../lib/profileCosmetics";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 import {
   IconDeviceGamepad2,
   IconGlobe,
@@ -184,6 +186,7 @@ import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 function WagerModal({
   balance, onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onJoinMultiplayer,
   onQuickJoinMultiplayer, onRefreshGames, multiplayerGames, multiplayerLoading,
+  aiDifficulty, onAiDifficultyChange,
 }: {
   balance: number; onStartFun: () => void; onStartReal: (w: number) => void;
   loading: boolean; error: string | null; isSignedIn: boolean;
@@ -191,6 +194,8 @@ function WagerModal({
   onQuickJoinMultiplayer: () => void; onRefreshGames: () => void;
   multiplayerGames: Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>;
   multiplayerLoading: boolean;
+  aiDifficulty: AIDifficulty;
+  onAiDifficultyChange: (d: AIDifficulty) => void;
 }) {
   const [wager, setWager] = useDefaultWager("hex-duel", 50);
   const [playForFun, setPlayForFun] = useState(false);
@@ -314,6 +319,17 @@ function WagerModal({
           <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
             <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300"><IconDeviceGamepad2 size={13} /> Free Play</p>
             <p className="text-[10px] text-cyan-100/70">No tokens are staked. Playing vs AI is free.</p>
+            <AiDifficultyPicker
+              gameKey="hex-duel"
+              value={aiDifficulty}
+              onChange={onAiDifficultyChange}
+              className="mt-3 text-left"
+              hint={{
+                easy: "The bot's scores are heavily scrambled — it misses strong attacks.",
+                normal: "The bot plays well, with a small amount of noise.",
+                hard: "The bot always picks its highest-scoring move.",
+              }}
+            />
           </div>
         ) : (
           <div className="mb-4">
@@ -898,7 +914,9 @@ export default function HexDuelPage() {
 
   // ── AI state ───────────────────────────────────────────────────────
   const [aiEnabled, setAIEnabled] = useState(false);
-  const [aiDifficulty, setAIDifficulty] = useState<AIDifficulty>("medium");
+  const [aiDifficulty, setAIDifficulty] = useState<AIDifficulty>(() =>
+    readStoredAiDifficulty("hex-duel"),
+  );
   const [aiThinking, setAIThinking] = useState(false);
   const [aiAction, setAIAction] = useState<AIAction | null>(null);
 
@@ -3146,7 +3164,7 @@ export default function HexDuelPage() {
               {aiEnabled && (
                 <div className={`flex items-center gap-1.5 ${aiControlsLocked ? "invisible" : ""}`}>
                   <span className="text-[10px] text-slate-500 uppercase tracking-widest">Difficulty:</span>
-                  {(["easy", "medium"] as AIDifficulty[]).map((d) => (
+                  {(["easy", "normal", "hard"] as AIDifficulty[]).map((d) => (
                     <button
                       key={d}
                       onClick={() => handleDifficultyChange(d)}
@@ -3154,7 +3172,11 @@ export default function HexDuelPage() {
                       tabIndex={aiControlsLocked ? -1 : undefined}
                       className={`px-3 py-1 rounded-md text-[11px] font-medium duration-200 transition-[color,background-color,border-color,box-shadow,transform] border capitalize ${
                         aiDifficulty === d
-                          ? d === "easy" ? "bg-green-500/20 text-green-300 border-green-400/60" : "bg-yellow-500/20 text-yellow-300 border-yellow-400/60"
+                          ? d === "easy"
+                            ? "bg-green-500/20 text-green-300 border-green-400/60"
+                            : d === "hard"
+                              ? "bg-red-500/20 text-red-300 border-red-400/60"
+                              : "bg-yellow-500/20 text-yellow-300 border-yellow-400/60"
                           : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                       }`}
                     >{d}</button>
@@ -3248,6 +3270,8 @@ export default function HexDuelPage() {
             onRefreshGames={fetchMultiplayerGames}
             multiplayerGames={multiplayerGames}
             multiplayerLoading={multiplayerLoading}
+            aiDifficulty={aiDifficulty}
+            onAiDifficultyChange={handleDifficultyChange}
           />
         )}
 

@@ -22,13 +22,24 @@ function normaliseMatch(match) {
   };
 }
 
-export async function POST() {
+export async function POST(req) {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
 
+  // The lobby's AI-difficulty pick travels in the body. An absent/invalid
+  // value coerces to `normal` in the store, so older clients keep working.
+  let body = {};
   try {
-    const result = await createAiMatch({ userId });
+    if (req?.headers?.get("content-type")?.includes("application/json")) {
+      body = (await req.json()) || {};
+    }
+  } catch {
+    body = {};
+  }
+
+  try {
+    const result = await createAiMatch({ userId, difficulty: body?.difficulty });
     if (result.error) {
       return NextResponse.json(
         { success: false, error: result.error },

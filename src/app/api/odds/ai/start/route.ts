@@ -5,6 +5,7 @@ import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql, and } from "drizzle-orm";
 import { initInteractiveOddsGame } from "../../../../../lib/odds";
+import { coerceAiDifficulty } from "../../../../../lib/aiDifficulty";
 
 export async function POST(req: Request) {
   try {
@@ -17,6 +18,8 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const requested = Number(body.wager);
+    // The lobby's AI tier; absent/invalid coerces to `normal` in the store.
+    const aiDifficulty = coerceAiDifficulty(body?.difficulty);
 
     // An AI match is FREE PLAY: the client sends no stake (0), which is the
     // normal case here — not an invalid wager. Reject only malformed input
@@ -52,6 +55,7 @@ export async function POST(req: Request) {
           wager: 0,
           status: "playing",
           isAi: true,
+          aiDifficulty,
           gameState,
         })
         .returning();

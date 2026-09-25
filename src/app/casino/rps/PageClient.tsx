@@ -17,6 +17,11 @@ import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { RockFistIcon } from "../../../components/icons/CustomIcons";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 const BET_OPTIONS = [10, 25, 50, 100, 250];
 
@@ -32,6 +37,11 @@ export default function RPSLobbyPage() {
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The AI tier the bot plays at, chosen here and remembered per game by the
+  // picker; the free-play page reads it back when it mounts.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("rps"),
+  );
 
   const fetchBalance = async () => {
     if (!user) return;
@@ -223,6 +233,18 @@ export default function RPSLobbyPage() {
         onClick: playVsAi,
       }}
       escrowNote="We pair you with another player of the exact same bet. If no one is waiting, your bet is escrowed in a private game until someone joins or you cancel."
+      children={
+        <AiDifficultyPicker
+          gameKey="rps"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot throws completely at random.",
+            normal: "The bot counters your most common throw about half the time.",
+            hard: "The bot reads your pattern and counters it most rounds.",
+          }}
+        />
+      }
       extraActions={
         <button
           type="button"

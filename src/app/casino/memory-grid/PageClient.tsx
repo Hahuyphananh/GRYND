@@ -33,6 +33,11 @@ import {
   memoryGridMatchRoom,
 } from "../../../lib/memory-grid/rooms";
 import { STAKE_PRESETS } from "../../../lib/memory-grid/constants";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 // Type for a single open-matches list entry returned by
 // /api/memory-grid/available. `hostName`/`hostIconKey` come
@@ -94,6 +99,11 @@ export default function MemoryGridLobbyPage() {
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  // The AI tier the bot plays at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("memory-grid"),
+  );
 
   // ── Fetch helpers ────────────────────────────────────────────────
   const fetchAvailable = useCallback(async () => {
@@ -285,7 +295,7 @@ export default function MemoryGridLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -407,6 +417,18 @@ export default function MemoryGridLobbyPage() {
         disabled: !isSignedIn || busy || aiBusy,
         busy: aiBusy,
       }}
+      children={
+        <AiDifficultyPicker
+          gameKey="memory-grid"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot recalls far less of each pattern and invents more tiles.",
+            normal: "The bot remembers well early and misses more on denser grids.",
+            hard: "The bot recalls almost every lit tile in every round.",
+          }}
+        />
+      }
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

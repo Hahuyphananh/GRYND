@@ -49,7 +49,13 @@ export async function POST(req) {
   }
 
   try {
-    const result = await createAiMatch({ userId, minesCount });
+    // `difficulty` is the lobby picker's tier; the store coerces it (absent
+    // or invalid → normal), so an older client still creates a match.
+    const result = await createAiMatch({
+      userId,
+      minesCount,
+      difficulty: body?.difficulty,
+    });
     if (result.error) {
       return NextResponse.json(
         { success: false, error: result.error },

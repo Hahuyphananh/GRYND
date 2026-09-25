@@ -36,6 +36,11 @@ import {
   LOBBY_LIST_POLL_INTERVAL_MS,
 } from "../../../lib/precision/constants";
 import type { PrecisionLobby } from "../../../lib/precision/types";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 export default function PrecisionLobbyPage() {
   const router = useRouter();
@@ -49,6 +54,11 @@ export default function PrecisionLobbyPage() {
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
+  // The AI tier the bot stops at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("precision"),
+  );
 
   const fetchBalance = useCallback(async () => {
     if (!isSignedIn || !user) return;
@@ -176,7 +186,7 @@ export default function PrecisionLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data.success || !data.matchId) {
@@ -279,6 +289,18 @@ export default function PrecisionLobbyPage() {
       onPlay={handleCreatePvP}
       playLabel={t("games.precision.create_pvp_game")}
       playBusyLabel={t("games.precision.creating")}
+      children={
+        <AiDifficultyPicker
+          gameKey="precision"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot is slow and sloppy — it will usually stop well off the target.",
+            normal: "The bot's stop error is the band it always shipped with.",
+            hard: "The bot stops almost exactly on the target.",
+          }}
+        />
+      }
       extraActions={
         <div className="flex flex-col gap-2">
           <button

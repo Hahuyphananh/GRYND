@@ -37,6 +37,11 @@ import {
   plinkoPvpMatchRoom,
 } from "../../../lib/plinko-pvp/rooms";
 import { STAKE_PRESETS } from "../../../lib/plinko-pvp/constants";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 // Type for a single open-matches list entry returned by
 // /api/plinko-pvp/available. Matches the API route's normalised
@@ -101,6 +106,11 @@ export default function PlinkoPvpLobbyPage() {
   );
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // The AI tier the bot launches at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("plinko"),
+  );
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -221,7 +231,7 @@ export default function PlinkoPvpLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -402,6 +412,18 @@ export default function PlinkoPvpLobbyPage() {
         onClick: playVsAi,
         disabled: !canPlayAi,
       }}
+      children={
+        <AiDifficultyPicker
+          gameKey="plinko"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot aims straight into the low-value center trap.",
+            normal: "The bot's launches scatter across the board.",
+            hard: "The bot aims at the 140-point precision buckets with a tight angle.",
+          }}
+        />
+      }
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

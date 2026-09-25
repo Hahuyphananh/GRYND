@@ -73,7 +73,11 @@ export async function POST(req: Request) {
 
         // The AI locks in its own hidden number immediately; only the
         // sanitized view (AI's number nulled) goes back to the client.
-        const { updatedState } = submitAIPick(state, playerNumber!);
+        const { updatedState } = submitAIPick(
+          state,
+          playerNumber!,
+          game.aiDifficulty,
+        );
         await tx
           .update(oddsGames)
           .set({ gameState: updatedState })
@@ -105,6 +109,7 @@ export async function POST(req: Request) {
       const { round, updatedState: resolved } = submitAIPrediction(
         state,
         prediction!,
+        game.aiDifficulty,
       );
       const payout = game.wager * 2;
 

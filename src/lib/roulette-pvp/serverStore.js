@@ -55,6 +55,7 @@ import {
   serverEliminatedNumbers,
   sumBetAmounts,
 } from "./constants";
+import { coerceAiDifficulty } from "../aiDifficulty";
 
 const ROUND_STATUS_BY_NUMBER = {
   1: MATCH_STATUS.ROUND_1,
@@ -174,9 +175,12 @@ export async function createOrJoin({ userId, stakeAmount }) {
 
 // Create a free human-vs-AI match. The bot is a server-only second seat;
 // no user balance is escrowed and the first round opens immediately.
-export async function createAiMatch({ userId }) {
+export async function createAiMatch({ userId, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
 
+  // The lobby's AI tier, stored on the row so `chooseAiBets` reads it on
+  // every round (the client never resends it after creation).
+  const aiDifficulty = coerceAiDifficulty(difficulty);
   const starting = STARTING_POINTS.toFixed(2);
   const [match] = await db
     .insert(roulettePvpMatches)
@@ -186,6 +190,7 @@ export async function createAiMatch({ userId }) {
       stakeAmount: "0.00",
       status: MATCH_STATUS.ROUND_1,
       isAi: true,
+      aiDifficulty,
       currentRound: 1,
       startingPoints: starting,
       playerOnePoints: starting,

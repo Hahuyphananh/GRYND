@@ -11,6 +11,8 @@
 // the solo-blackjack `src/lib/handEval.ts` so we don't accidentally
 // couple the PvP state machine to legacy single-player code paths.
 
+import { coerceAiDifficulty } from "../aiDifficulty";
+
 const SUITS = ["♠", "♥", "♦", "♣"];
 const VALUES = [
   "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A",
@@ -287,6 +289,12 @@ export function chooseAiAction(match) {
   const hand = Array.isArray(match?.player2Hand) ? match.player2Hand : [];
   const state = match?.player2State || PLAYER_STATE.PLAYING;
   const score = calcHandValue(hand);
+  // The lobby's tier shapes the stand threshold: an easy bot keeps hitting
+  // to 19 (so it busts far more often), while a hard bot plays the default
+  // 17 and additionally hits a SOFT 17 — the one extra decision that
+  // separates a sharp head-to-head player from a passive one.
+  const tier = coerceAiDifficulty(match?.aiDifficulty);
+  const standThreshold = tier === "easy" ? 19 : 17;
   const swapsUsed = Number(match?.player2UsedSwap) || 0;
   const heldCard = match?.player2FrozenCard || null;
   const heldResolved = match?.player2HeldResolved || null;
@@ -318,7 +326,16 @@ export function chooseAiAction(match) {
     return { action: ACTION_TYPE.STAND, payload: {} };
   }
 
-  if (score < 17) return { action: ACTION_TYPE.HIT, payload: {} };
+  if (score < standThreshold) return { action: ACTION_TYPE.HIT, payload: {} };
+  if (
+    tier === "hard" &&
+    score === 17 &&
+    hand.some((card) => card?.value === "A")
+  ) {
+    // Soft 17 (an ace still counted as 11): hit, since drawing cannot bust
+    // the hand outright.
+    return { action: ACTION_TYPE.HIT, payload: {} };
+  }
   return { action: ACTION_TYPE.STAND, payload: {} };
 }
 

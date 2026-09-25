@@ -62,6 +62,7 @@ import {
   towerArenaEliminated,
   towerArenaFinished,
 } from "./analytics";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   relayTowerArenaLobbyUpdate,
   broadcastTowerArenaMatchEvent,
@@ -419,15 +420,20 @@ async function createLobbyTx(tx: any, userId: string, wager: number, maxPlayers:
 export async function createAiTowerArenaMatch({
   userId,
   maxPlayers = 2,
+  difficulty,
 }: {
   userId: string;
   maxPlayers?: number;
+  difficulty?: unknown;
 }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
   const m = Math.trunc(Number(maxPlayers) || 0);
   if (!Number.isInteger(m) || m < 2 || m > 6) {
     return { error: "maxPlayers must be an integer from 2 to 6", status: 400 };
   }
+  // The lobby's AI tier, stored on the row so the bot's placement policy
+  // (see safeFallbackPlacement) reads it on every turn.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
   return db.transaction(async (tx) => {
     const [match] = await tx
       .insert(towerArenaMatches)
@@ -440,6 +446,7 @@ export async function createAiTowerArenaMatch({
         // so it opens directly in the ready gate.
         phase: "ready",
         isAi: true,
+        aiDifficulty,
       })
       .returning();
 
@@ -1556,6 +1563,32 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
  * Delegates to the pure resolver so timeout and AI intents share one policy.
  */
 export function safeFallbackPlacement(match: any): { shape: BlockShape; positionX: number; rotation: number } {
+  const tier = coerceAiDifficulty(match?.aiDifficulty);
+  if (tier === "easy") {
+    // A deliberately careless bot: a random available shape dropped at a
+    // random in-bounds column, instead of the safe drop the other tiers play.
+    const snapshot = matchSnapshot(match);
+    const pool = parsePool(snapshot.resourcePool);
+    const available: BlockShape[] = [];
+    for (const piece of pool) {
+      if (!available.includes(piece.shape)) available.push(piece.shape);
+    }
+    const shape =
+      available.length > 0
+        ? available[Math.floor(Math.random() * available.length)]
+        : "short";
+    const candidates: number[] = [];
+    for (let x = 0; x <= 500; x += 5) {
+      if (dropInBounds(shape, 0, x)) candidates.push(x);
+    }
+    const positionX =
+      candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : 250;
+    return { shape, positionX, rotation: 0 };
+  }
+  // `normal` and `hard` play the same safe drop: the placement-only stacker
+  // has no stronger legal move to reach for.
   const intent = safeFallbackIntent(matchSnapshot(match));
   return { shape: intent.shape, positionX: intent.positionX, rotation: intent.rotation };
 }

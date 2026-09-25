@@ -419,12 +419,13 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
 
   // ── Round-stop submit (server owns all timing) ─────────────────
   // The client sends its replay envelope plus the elapsed it froze at when
-  // STOP was clicked, over the realtime socket. The server-side
-  // `recordRoundStop` measures the STOP at the instant the request REACHED the
-  // route and computes elapsed = `stopInstant - match.roundGoInstant`
-  // authoritatively — the client's number is a bounded HINT that can only
-  // cancel delivery lag (never buy extra time, never move the stop later). The
-  // GO instant is entirely the server's — see the "never trust the client" and
+  // STOP was clicked, over the realtime socket. That frozen value IS the
+  // graded instant — the number the player was watching when they clicked —
+  // because the packet needs a delivery to reach the route and charging that
+  // lag to their reaction time turns a dead-on stop into a miss. It is
+  // bounded by the server's own arrival measurement as a ceiling, so a stop
+  // can never be moved later than the instant the packet landed. The GO
+  // instant is entirely the server's — see the "never trust the client" and
   // "all timing on the server" invariants in the project README.
   //
   // Single-click enforcement: `stopLockedThisRoundRef` flips to `true`
@@ -462,8 +463,9 @@ function PrecisionMatchPageInner({ params }: PrecisionMatchPageProps) {
     // click. `freezeTimer` parks both on the spot.
     // The value the player is timing against — and the number the results will
     // show for them. It is measured on the server's GO clock, and it rides
-    // along with the stop packet as the bounded hint that lets the server
-    // credit the click instead of the packet's arrival (see `emitStop`).
+    // along with the stop packet as the instant the server grades the stop at,
+    // so the packet's travel time is never charged to the reaction (see
+    // `emitStop`).
     const frozenElapsedMs = freezeTimer();
     setStopSubmitting(true);
     setError(null);

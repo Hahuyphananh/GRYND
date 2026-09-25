@@ -85,6 +85,7 @@ import {
   roundWinnerFromScores,
   speedMultiplierFromCompletion,
 } from "./constants";
+import { aiDifficultyFromMatch, coerceAiDifficulty } from "../aiDifficulty";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -185,9 +186,13 @@ export async function listOpenMatches({ limit = 30 } = {}) {
 // The bot occupies player2. No stake is escrowed and the normal Memory
 // Grid phase/scoring flow is reused; the server submits the bot's
 // reconstruction once its calibrated delay has elapsed.
-export async function createAiMatch({ userId }) {
+export async function createAiMatch({ userId, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
 
+  // The tier the lobby picked (canonical easy/normal/hard). Stored on the row
+  // so both the polling auto-resolve and the explicit /ai-turn path read the
+  // same value later — the client is not trusted to resend it.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
@@ -201,6 +206,7 @@ export async function createAiMatch({ userId }) {
         stakeAmount: "0.00",
         status: MATCH_STATUS.READY,
         isAi: true,
+        aiDifficulty,
         serverSeed,
         serverSeedHash,
         phase: null,
@@ -266,6 +272,7 @@ async function playAiTurnInTransaction(tx, match) {
     pattern: match.board,
     roundNumber: match.roundNumber,
     seed: `${match.id}:${match.serverSeed}`,
+    difficulty: aiDifficultyFromMatch(match),
   });
   const outcome = await applySubmission(
     tx,

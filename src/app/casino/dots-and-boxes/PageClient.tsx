@@ -10,6 +10,11 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRuler } from "@tabler/icons-react";
 import { useTranslation } from "../../../hooks/useTranslation";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 const BET_OPTIONS = [10, 25, 50, 100, 250];
 
@@ -26,6 +31,11 @@ export default function DotsAndBoxesLobbyPage() {
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The AI tier the bot plays at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("dots-and-boxes"),
+  );
 
   const fetchBalance = async () => {
     if (!user) return;
@@ -118,7 +128,7 @@ export default function DotsAndBoxesLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -212,6 +222,18 @@ export default function DotsAndBoxesLobbyPage() {
       playLabel={t("games.dots_and_boxes.create_button")}
       playBusyLabel={t("games.dots_and_boxes.creating")}
       escrowNote={t("games.dots_and_boxes.lobby_tagline")}
+      children={
+        <AiDifficultyPicker
+          gameKey="dots-and-boxes"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot draws a random legal line and ignores boxes entirely.",
+            normal: "The bot completes boxes when it can, otherwise plays at random.",
+            hard: "The bot completes boxes and never hands you a free one.",
+          }}
+        />
+      }
       extraActions={
         <div className="flex flex-col gap-2">
           <button

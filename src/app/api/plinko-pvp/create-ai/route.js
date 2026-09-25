@@ -27,11 +27,12 @@ export async function POST(req) {
   if (gate.response) return gate.response;
   const userId = gate.userId;
 
-  // Keep this endpoint JSON-compatible with the app API proxy/content
-  // validation, even though the AI match currently needs no options.
+  // The lobby's AI-difficulty pick travels in the body; an absent or
+  // invalid value coerces to `normal` in the store.
+  let body = {};
   try {
     if (req?.headers?.get("content-type")?.includes("application/json")) {
-      await req.json();
+      body = (await req.json()) || {};
     }
   } catch {
     return NextResponse.json(
@@ -41,7 +42,7 @@ export async function POST(req) {
   }
 
   try {
-    const result = await createAiMatch({ userId });
+    const result = await createAiMatch({ userId, difficulty: body?.difficulty });
     if (result.error) {
       return NextResponse.json(
         { success: false, error: result.error },

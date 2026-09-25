@@ -17,12 +17,12 @@
 //
 // INVARIANTS (unchanged from the in-memory implementation these were
 // extracted from — the security model depends on them):
-//   * `roundGoInstant` and every stop instant are server-stamped; elapsed is
-//     derived from them. A client may report the elapsed it stopped at, but
-//     only as a HINT that the server clamps against its own measurement
-//     (`resolveStopElapsedMs`) — it can never extend the round, never reach
-//     past the server's own stamp, and never move a stop more than
-//     `STOP_CLIENT_SLACK_MS` earlier.
+//   * `roundGoInstant` is server-stamped, and the client's own frozen elapsed
+//     at the click is what a stop is GRADED at (`resolveStopElapsedMs`) — the
+//     number the player was watching, so the delivery lag between the click
+//     and the packet landing is never charged to their reaction time. The
+//     server's own measurement is the ceiling (a stop cannot have happened
+//     after we received it) and `MIN_STOP_MS` the floor.
 //   * The rolled target is never public while a round is arming. It lives
 //     in a server-only column and is copied onto `state.targetMs` only at
 //     the reveal.
@@ -36,7 +36,6 @@ import {
   MIN_STOP_MS,
   MIN_TARGET_MS,
   ROUND_COUNTDOWN_MS,
-  STOP_CLIENT_SLACK_MS,
   TARGET_WINS,
 } from "./constants";
 import type {
@@ -227,46 +226,78 @@ export function isStopElapsedInRange(elapsedMs: number): boolean {
 }
 
 /**
- * The elapsed a STOP is finally GRADED at.
+ * The elapsed a STOP is finally GRADED at — the CLICK instant.
  *
- * `serverElapsedMs` is the authoritative measurement (`stopInstant -
- * roundGoInstant`, both server-stamped). `clientElapsedMs` is the elapsed the
- * player's client froze at when they clicked — the number they timed against,
- * measured on the same clock the server scores from, but which reaches the
- * server one delivery late (browser → realtime server → route).
+ * `clientElapsedMs` is the elapsed the player's client froze the moment they
+ * hit STOP. It is measured on the server's own clock frame (`roundClock.ts`
+ * anchors the display to the server's GO instant and corrects for the device's
+ * clock skew), so it is directly comparable with the server's own measurement
+ * and is exactly the number the player was watching when they clicked.
  *
- * The hint is honoured inside a BOUNDED window only:
- *   * never later than the server's own measurement (a client cannot buy
- *     itself extra time — and a hint after the arrival stamp is ignored),
- *   * never more than `slackMs` earlier than it (the most transport lag we
- *     are willing to attribute to the network rather than to the player),
- *   * never below `MIN_STOP_MS`.
+ * It is authoritative, because anything else grades the player on a number
+ * their screen never showed them:
  *
- * Anything unusable (missing, non-finite, or a pathological 0) falls back to
- * the server's measurement, so the old behaviour is preserved whenever the
- * hint can't be trusted.
+ *   * `serverElapsedMs` is `arrival - roundGoInstant`, i.e. the click PLUS the
+ *     whole delivery (browser → realtime server → route, then any retry). That
+ *     lag is not the player's reaction time and must not be charged to it. A
+ *     bounded credit could not fix that — it only capped the damage, so any
+ *     delay past the allowance (a dead socket falling back to HTTPS costs
+ *     seconds) still landed in full on the score, turning a dead-on click into
+ *     a miss and declaring the wrong winner.
+ *
+ * Only two bounds survive, and both are physical rather than budgeted:
+ *   * never LATER than the server's own measurement — a stop cannot have
+ *     happened after we had already received it. A claim past it (a device
+ *     clock skewed high, or a fabricated value) is discarded in favour of our
+ *     measurement.
+ *   * never below `MIN_STOP_MS` — a pathological 0 is not a stop anyone made,
+ *     and the floor is what keeps a programmatic instant out of the scoring
+ *     maths. Anything unusable (missing, non-finite, below the floor) falls
+ *     back to the server's measurement, so a client that reports nothing is
+ *     graded exactly as it was before `elapsedMs` existed.
+ *
+ * The unverifiable surface is unchanged in kind from the old credit: the
+ * allowance only ever bounded how far a client could move its own stop, and
+ * the stop it moves is still one it had to wait out on a clock the server
+ * anchored. A credit larger than a fixed allowance is the price of not
+ * silently charging honest players for the network; `STOP_LAG_ANOMALY_MS`
+ * keeps an observational record of how much of it is actually being asked for.
  */
 export function resolveStopElapsedMs(input: {
   /** Server-measured elapsed: arrival instant minus the round's GO. */
   serverElapsedMs: number;
   /** The client's frozen elapsed at the click, or null/undefined. */
   clientElapsedMs?: number | null;
-  /** Overridable allowance (tests); defaults to `STOP_CLIENT_SLACK_MS`. */
-  slackMs?: number;
 }): number {
   const { serverElapsedMs, clientElapsedMs } = input;
   if (!Number.isFinite(serverElapsedMs)) return serverElapsedMs;
-  const slack = Number.isFinite(input.slackMs)
-    ? Math.max(0, Number(input.slackMs))
-    : STOP_CLIENT_SLACK_MS;
-  if (!Number.isFinite(clientElapsedMs) || Number(clientElapsedMs) < MIN_STOP_MS) {
-    return serverElapsedMs;
-  }
-  const credited = Math.max(
-    serverElapsedMs - slack,
-    Math.min(serverElapsedMs, Number(clientElapsedMs)),
-  );
-  return Math.max(MIN_STOP_MS, credited);
+  // The click instant, bounded only by "not after we received it".
+  const graded =
+    !Number.isFinite(clientElapsedMs) || Number(clientElapsedMs) < MIN_STOP_MS
+      ? serverElapsedMs
+      : Math.min(serverElapsedMs, Number(clientElapsedMs));
+  // The floor is applied LAST and never raises a below-floor arrival into a
+  // recordable stop on its own account: it keeps this function's contract
+  // (`>= MIN_STOP_MS`) identical to before, and the caller's range check is
+  // still what decides whether an out-of-bounds packet is dropped.
+  return Math.max(MIN_STOP_MS, graded);
+}
+
+/**
+ * How much delivery lag a graded stop was credited, in ms: the gap between the
+ * instant we received the packet and the instant the player actually clicked.
+ *
+ * Observational only. It exists so the store can keep a record of how much lag
+ * is really being asked for — the credit is no longer capped by a fixed
+ * allowance, so a spike here is the signal that something is wrong on the wire
+ * (rather than, as before, silently being charged to the player's score).
+ */
+export function stopDeliveryLagMs(
+  serverElapsedMs: number,
+  gradedElapsedMs: number,
+): number {
+  if (!Number.isFinite(serverElapsedMs) || !Number.isFinite(gradedElapsedMs)) return 0;
+  return Math.max(0, serverElapsedMs - gradedElapsedMs);
 }
 
 export interface EvaluateRoundInput {

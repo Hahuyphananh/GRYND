@@ -45,6 +45,7 @@ import {
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../stripe/subscriptions";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorMinesQueued, mirrorMinesTransition } from "./canonicalLifecycle";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   ACTIVE_STATES,
   GRID_CELLS,
@@ -168,8 +169,12 @@ export async function listOpenMatches({ limit = 30 } = {}) {
 //
 // The minesCount is required (host picks it). The board is
 // generated server-side just like a normal match.
-export async function createAiMatch({ userId, minesCount }) {
+export async function createAiMatch({ userId, minesCount, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
+
+  // The lobby's AI tier, stored on the row so the bot's cell policy (see
+  // `chooseAiCell`) reads the same value on every path.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
 
   const count = Number(minesCount);
   if (!Number.isInteger(count) || count < MIN_MINES || count > MAX_MINES) {
@@ -194,6 +199,7 @@ export async function createAiMatch({ userId, minesCount }) {
       minesCount: count,
       status: MATCH_STATUS.READY,
       isAi: true,
+      aiDifficulty,
       firstPlayerId,
       board: generateSolvableBoard(count),
       roundTimerSeconds: ROUND_TIMER_SECONDS,

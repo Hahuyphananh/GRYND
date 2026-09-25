@@ -46,6 +46,11 @@ import {
   blackjackPvpMatchRoom,
 } from "../../../lib/blackjack-pvp/rooms";
 import { STAKE_PRESETS } from "../../../lib/blackjack-pvp/constants";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 import { playCardDraw, playCardPlace, playBuzz } from "../../../lib/gameAudio";
 
 // ── Inline SVG icons (avoid importing poker/roulette icon set) ──────
@@ -208,6 +213,11 @@ export default function BlackjackPvpLobbyPage() {
   const [availableMatches, setAvailableMatches] = useState<{ id: number; player1Id: string; stakeAmount: number; createdAt: string }[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // The AI tier the bot plays at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("blackjack"),
+  );
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -328,7 +338,7 @@ export default function BlackjackPvpLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -351,7 +361,7 @@ export default function BlackjackPvpLobbyPage() {
     } finally {
       setBusy(false);
     }
-  }, [router, socket, t]);
+  }, [router, socket, t, aiDifficulty]);
 
   const joinSpecific = useCallback(
     async (matchId: number) => {
@@ -652,6 +662,17 @@ export default function BlackjackPvpLobbyPage() {
               )}
             </div>
           </div>
+
+          <AiDifficultyPicker
+            gameKey="blackjack"
+            value={aiDifficulty}
+            onChange={setAiDifficulty}
+            hint={{
+              easy: "The bot keeps hitting to 19 and busts far more often.",
+              normal: "The bot stands on 17 — the policy it always played.",
+              hard: "The bot stands on 17 and hits its soft 17 to improve.",
+            }}
+          />
 
           <div className="mt-4 flex justify-center">
             <button

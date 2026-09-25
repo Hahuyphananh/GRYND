@@ -46,8 +46,19 @@ export async function POST(req) {
   if (gate.response) return gate.response;
   const userId = gate.userId;
 
+  // The lobby's AI-difficulty pick travels in the body; an absent or
+  // invalid value coerces to `normal` in the store.
+  let body = {};
   try {
-    const result = await createAiMatch({ userId });
+    if (req?.headers?.get("content-type")?.includes("application/json")) {
+      body = (await req.json()) || {};
+    }
+  } catch {
+    body = {};
+  }
+
+  try {
+    const result = await createAiMatch({ userId, difficulty: body?.difficulty });
     if (result.error) {
       return NextResponse.json(
         { success: false, error: result.error },

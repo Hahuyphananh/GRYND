@@ -9,6 +9,11 @@ import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRobot, IconGridDots } from "@tabler/icons-react";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 const BET_OPTIONS = [10, 25, 50, 100, 250];
 const TIMER_OPTIONS = [
@@ -31,6 +36,11 @@ export default function FourInARowLobbyPage() {
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The AI tier the bot plays at, chosen here and remembered per game by the
+  // picker; the free-play page reads it back when it mounts.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("four-in-a-row"),
+  );
 
   const fetchBalance = async () => {
     if (!user) return;
@@ -217,6 +227,17 @@ export default function FourInARowLobbyPage() {
         }
         children={
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <AiDifficultyPicker
+              gameKey="four-in-a-row"
+              value={aiDifficulty}
+              onChange={setAiDifficulty}
+              className="sm:col-span-2"
+              hint={{
+                easy: "The bot plays mostly at random and often misses the winning or blocking move.",
+                normal: "The bot plays well, with the occasional slip.",
+                hard: "The bot always takes a win, blocks yours, and picks its strongest column.",
+              }}
+            />
             <div>
               <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
                 Turn timer

@@ -86,6 +86,7 @@
     "test:ai-difficulty": "node --import tsx --test tests/ai-difficulty.test.mjs",
     "test:precision-due": "node --import tsx --test --experimental-test-module-mocks tests/precision-due-transitions.test.mjs",
     "test:precision-stop-instant": "node --import tsx --test --experimental-test-module-mocks tests/precision-stop-instant.test.mjs",
+    "test:precision-grading": "node --import tsx --test tests/precision-stop-grading.test.mjs tests/precision-clock-sync.test.mjs",
     "test:keno-ai-audit": "node --import tsx --test --experimental-test-module-mocks tests/keno-pvp-ai-audit.test.mjs",
     "test:precision-db": "node --import tsx --env-file=.env.local --test tests/precision-persistence.test.mjs",
     "verify:precision-mobile": "node qa/precision-mobile-check.mjs",

@@ -8,6 +8,7 @@ import NavigationBar from "../../../components/navigation-bar";
 import { useRecordPlayedGame } from "../../../hooks/useRecordPlayedGame";
 import useActiveGamePresence from "../../../hooks/useActiveGamePresence";
 import { RulesModal, useFirstVisitRules } from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import ReportModal from "../../../components/ReportModal";
 import PvpResultScreen from "../../../components/result/PvpResultScreen";
 import EmotePicker from "../../../components/game/EmotePicker";
@@ -29,6 +30,10 @@ import {
   IconClock,
   IconAlarm,
 } from "@tabler/icons-react";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 import {
   TOTAL_ROUNDS,
   type InteractiveOddsState as InteractiveOddsStateType,
@@ -186,6 +191,11 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const [finalPayout, setFinalPayout] = useState(0);
   const [timeUp, setTimeUp] = useState(false);
   const [resuming, setResuming] = useState(true);
+  // The tier the bot plays at for the next match. The picker remembers it per
+  // device, so a returning player keeps their choice even before this renders.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("odds"),
+  );
 
   const gameActive = Boolean(gameId && interactiveState);
   // Record the session into "Recently played" (and the lobby's "Most
@@ -263,13 +273,18 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       const res = await fetch("/api/odds/ai/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wager: 0 }),
+        body: JSON.stringify({ wager: 0, difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to start game");
       setGameId(data.data.gameId);
       setInteractiveState(data.data.gameState);
-      posthog?.capture("odds_game_started", { mode: "ai", wager: 0, game_id: data.data.gameId });
+      posthog?.capture("odds_game_started", {
+        mode: "ai",
+        wager: 0,
+        difficulty: aiDifficulty,
+        game_id: data.data.gameId,
+      });
     } catch (err: any) {
       setError(err.message || "Error starting game");
     } finally {
@@ -488,10 +503,21 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-300"><IconDeviceGamepad2 size={14} /> Free Play</p>
             <p className="mt-1 text-[10px] text-amber-200/70">No tokens are staked. Playing vs AI is free.</p>
           </div>
+          <AiDifficultyPicker
+            gameKey="odds"
+            value={aiDifficulty}
+            onChange={setAiDifficulty}
+            disabled={loading}
+            hint={{
+              easy: "The bot guesses at random and almost never reads your habit.",
+              normal: "The bot mixes guesses with the occasional read on your pattern.",
+              hard: "The bot studies your picks and predicts your number most rounds.",
+            }}
+          />
           <button
             onClick={startGame}
             disabled={loading}
-            className="w-full rounded-xl border-b-4 border-amber-700 bg-amber-500 p-3 font-bold text-lg text-black shadow-[0_0_18px_rgba(251,191,36,0.4)] hover:brightness-110 transition active:translate-y-[2px] disabled:opacity-50"
+            className="mt-4 w-full rounded-xl border-b-4 border-amber-700 bg-amber-500 p-3 font-bold text-lg text-black shadow-[0_0_18px_rgba(251,191,36,0.4)] hover:brightness-110 transition active:translate-y-[2px] disabled:opacity-50"
           >
             {loading ? "Starting..." : <span className="inline-flex items-center gap-2"><IconDice size={18} /> Play vs AI</span>}
           </button>

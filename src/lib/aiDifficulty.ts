@@ -111,6 +111,26 @@ export function coerceAiDifficulty(value: unknown): AiDifficulty {
   return DEFAULT_AI_DIFFICULTY;
 }
 
+/** The full skill table row for a tier (defaults on anything unrecognised). */
+export function aiSkill(difficulty: unknown) {
+  const tier = coerceAiDifficulty(difficulty);
+  return { tier, ...AI_SKILL[tier] };
+}
+
+/**
+ * The tier an AI match row carries, read by the server-side game AIs.
+ *
+ * Every AI-capable match table gained an `aiDifficulty` column (see migration
+ * 0166), so a game's store/AI only has to hand its row here instead of each
+ * spelling its own fallback. Legacy rows (and PvP rows) have none, which is
+ * what the `normal` default is for.
+ */
+export function aiDifficultyFromMatch(
+  match: { aiDifficulty?: unknown } | null | undefined
+): AiDifficulty {
+  return coerceAiDifficulty(match?.aiDifficulty);
+}
+
 /** How often this tier deliberately plays a worse option (0–1). */
 export function aiMistakeRate(difficulty: AiDifficulty): number {
   return AI_SKILL[difficulty].mistakeRate;

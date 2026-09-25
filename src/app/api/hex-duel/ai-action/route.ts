@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { decideAIAction, type AIDifficulty } from "../../../../lib/hexDuelAI";
+import { decideAIAction } from "../../../../lib/hexDuelAI";
+import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const difficulty = (body?.difficulty === "easy" || body?.difficulty === "medium") ? body.difficulty as AIDifficulty : "medium";
+    // Canonical tier; legacy `medium` (and anything else) coerces to `normal`.
+    const difficulty = coerceAiDifficulty(body?.difficulty);
     const snapshot = body?.snapshot ?? {};
     const powerNodeValues = Array.isArray(snapshot.powerNodes) ? snapshot.powerNodes : [];
     const action = decideAIAction(

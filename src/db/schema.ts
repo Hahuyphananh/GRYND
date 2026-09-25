@@ -1252,6 +1252,9 @@ export const towerArenaMatches = pgTable(
     hostUserId: varchar("host_user_id", { length: 255 }).notNull(),
     // Free-play human-vs-AI matches move zero tokens.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     phase: varchar("phase", { length: 20 }).notNull().default("waiting"),
     resourceCycle: integer("resource_cycle").notNull().default(0),
     turnNumber: integer("turn_number").notNull().default(0),
@@ -1432,6 +1435,9 @@ export const unoGames = pgTable(
     currentColor: text("current_color"),
     topCard: json("top_card"),
     status: text("status").default("waiting").notNull(), // 'waiting' | 'active' | 'finished'
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     winner: text("winner").default("pending").notNull(), // 'player' / 'ai' OR 'player1' / 'player2'
@@ -2154,6 +2160,9 @@ export const oddsGames = pgTable(
     result: varchar("result", { length: 15 }),
     payout: integer("payout"),
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     gameState: jsonb("game_state"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     endedAt: timestamp("ended_at"),
@@ -2279,6 +2288,9 @@ export const roulettePvpMatches = pgTable(
     // True for free human-vs-server matches. The AI occupies player 2,
     // but never participates in user-balance or payout accounting.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     currentRound: integer("current_round").notNull().default(1),
     // Round wins (best of 3 + sudden death). Each round contributes 0
     // (draw), +1 to player1, or +1 to player2.
@@ -2454,6 +2466,9 @@ export const dotsAndBoxesGames = pgTable(
     readyDeadlineAt: timestamp("ready_deadline_at"),
     timerSeconds: integer("timer_seconds").notNull().default(20),
     isAiGame: boolean("is_ai_game").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2527,6 +2542,9 @@ export const blackjackPvpMatches = pgTable(
     // True for free human-vs-server matches. The bot occupies seat 2
     // but never participates in user-balance or payout accounting.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     roundNumber: integer("round_number").notNull().default(1),
     roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
     roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
@@ -2817,6 +2835,9 @@ export const minesPvpMatches = pgTable(
     houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
     prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2934,6 +2955,9 @@ export const memoryGridMatches = pgTable(
     // True for free human-vs-AI matches. The bot occupies player2Id
     // but is not a real user and must never receive token/stat updates.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // Which phase of the CURRENT round is live. Combined with
     // `status` (p1_turn/p2_turn = whose turn) it fully describes the
     // game: 'memorize' (pattern revealed to the active player) or
@@ -3308,6 +3332,9 @@ export const plinkoPvpMatches = pgTable(
     // Free practice match against the reserved AI seat. AI matches never
     // escrow tokens, pay out, or update PvP statistics.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     status: plinkoPvpStatusEnum("status").notNull().default("waiting"),
     // 1 / 2 / 3 — which ball the match is collecting inputs for
     // right now. Stamped at match creation and advance+stamp at
@@ -3490,6 +3517,9 @@ export const kenoPvpMatches = pgTable(
     // True for free human-vs-AI matches. The bot occupies player2Id
     // but is not a real user and must never receive token/stat updates.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // Survival lives. Start at 3; only your OWN miss costs one — you did
     // not tap the live tile before its window closed. Beating you to the
     // tile costs you nothing. 0 = eliminated.
@@ -3888,6 +3918,9 @@ export const precisionMatches = pgTable(
      *  real match starts at `active`. */
     status: varchar("status", { length: 20 }).notNull().default("waiting"),
     isAiGame: boolean("is_ai_game").notNull().default(false),
+    // AI tier the lobby picked before starting (migration 0166). NULL =
+    // nothing chosen, which reads back as the `normal` default.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     phase: varchar("phase", { length: 16 }).notNull().default("ready_up"),
     // Public PrecisionState snapshot — byte-for-byte what
     // `/api/precision/get-match` hands the client (minus the server-only

@@ -22,6 +22,12 @@ import {
   playFiarWin,
 } from "../../../../lib/fourInARowAudio";
 import {
+  aiMistakeRate,
+  coerceAiDifficulty,
+  readStoredAiDifficulty,
+  type AiDifficulty,
+} from "../../../../lib/aiDifficulty";
+import {
   checkWinner,
   cloneBoard,
   createEmptyBoard,
@@ -208,11 +214,15 @@ function countFalseThreats(board: FourInARowBoard, player: 1 | 2): number {
   return threatCells;
 }
 
-function pickAiMove(board: FourInARowBoard): number {
+function pickAiMove(
+  board: FourInARowBoard,
+  difficulty: AiDifficulty = "normal",
+): number {
   const centerOrder = [3, 2, 4, 1, 5, 0, 6];
   const valid = centerOrder.filter((c) => getDropRow(board, c) >= 0);
   if (valid.length === 0) return -1;
 
+  const tier = coerceAiDifficulty(difficulty);
   const opp = opponentOf(AI_PLAYER);
 
   // 1. Take a winning move immediately.
@@ -223,6 +233,12 @@ function pickAiMove(board: FourInARowBoard): number {
     if (checkWinner(test, r, c, AI_PLAYER)) return c;
   }
 
+  // An easy bot mostly plays at random and only sometimes notices the
+  // must-block — that is what makes it beatable.
+  if (tier === "easy" && Math.random() < 0.65) {
+    return valid[Math.floor(Math.random() * valid.length)];
+  }
+
   // 2. Block opponent's immediate winning move (must-block).
   for (const c of valid) {
     const r = getDropRow(board, c);
@@ -231,17 +247,15 @@ function pickAiMove(board: FourInARowBoard): number {
     if (checkWinner(test, r, c, opp)) return c;
   }
 
-  // 3. Score remaining candidates and pick the highest.
-  let bestCol = valid[0];
-  let bestScore = -Infinity;
-  for (const c of valid) {
-    const score = scoreColForAi(board, c, AI_PLAYER);
-    if (score > bestScore) {
-      bestScore = score;
-      bestCol = c;
-    }
+  // 3. Score remaining candidates and pick the highest, with the tier's slip
+  // rate occasionally taking a worse column.
+  const scored = valid
+    .map((c) => ({ c, score: scoreColForAi(board, c, AI_PLAYER) }))
+    .sort((a, b) => b.score - a.score);
+  if (Math.random() < aiMistakeRate(tier) && scored.length > 1) {
+    return scored[1 + Math.floor(Math.random() * (scored.length - 1))].c;
   }
-  return bestCol;
+  return scored[0].c;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────
@@ -252,6 +266,10 @@ export default function FourInARowVsAiPage() {
   // human seat (client-side game — no server match payload).
   const myIdentity = useMySeatIdentity();
   const myDisplayName = myIdentity.name || "You";
+  // The tier chosen in the lobby (remembered per game by the shared picker).
+  const [aiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("four-in-a-row"),
+  );
   const [board, setBoard] = useState<FourInARowBoard>(() => createEmptyBoard());
   const [status, setStatus] = useState<"playing" | "won" | "lost" | "draw">(
     "playing",
@@ -398,7 +416,7 @@ export default function FourInARowVsAiPage() {
         if (gameEpochRef.current !== epoch) {
           return;
         }
-        const col = pickAiMove(boardState);
+        const col = pickAiMove(boardState, aiDifficulty);
         const row = col >= 0 ? getDropRow(boardState, col) : -1;
         if (row < 0) {
           setAiThinking(false);

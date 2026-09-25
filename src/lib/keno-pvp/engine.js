@@ -25,6 +25,7 @@ import {
   TAP_GRACE_MS,
   WINDOW_STEP_MS,
 } from "./constants";
+import { coerceAiDifficulty } from "../aiDifficulty";
 
 // A lives value that is missing or malformed must never be read as "this
 // player is eliminated" (a nil column would otherwise end a live match).
@@ -294,6 +295,27 @@ const AI_MIN_REACTION_MS = 200;
 const AI_REACTION_JITTER_MS = 220;
 
 /**
+ * The per-tier claim rate and reaction band. `normal` reproduces the
+ * constants above exactly, so an AI match with no stored tier plays as it
+ * always has. An easy bot skips more tiles (each skip is a life) and reacts
+ * slower; a hard bot almost never skips and reacts near the human floor.
+ */
+function aiKenoSkill(difficulty) {
+  const tier = coerceAiDifficulty(difficulty);
+  if (tier === "easy") {
+    return { claimRate: 0.7, minReactionMs: 280, reactionJitterMs: 300 };
+  }
+  if (tier === "hard") {
+    return { claimRate: 0.98, minReactionMs: 150, reactionJitterMs: 140 };
+  }
+  return {
+    claimRate: AI_CLAIM_RATE,
+    minReactionMs: AI_MIN_REACTION_MS,
+    reactionJitterMs: AI_REACTION_JITTER_MS,
+  };
+}
+
+/**
  * The bot's plan for one live tile:
  *   { claims, reactionMs, dueAtMs | null }
  * `claims` false = the bot does not tap this tile at all (both-miss).
@@ -306,6 +328,7 @@ export function chooseAiClaim({
   tile,
   windowMs,
   startedMs = 0,
+  difficulty = "normal",
 } = {}) {
   const n = Math.trunc(Number(index) || 0);
   // `Number(null)`/`Number("")` are 0 and finite, so a missing tile would
@@ -320,13 +343,15 @@ export function chooseAiClaim({
     return { claims: false, reactionMs: null, dueAtMs: null };
   }
 
+  const skill = aiKenoSkill(difficulty);
   const roll = (hash32(`${seed}:${n}:${tileNumber}:go`) % 1000) / 1000;
-  if (roll >= AI_CLAIM_RATE) {
+  if (roll >= skill.claimRate) {
     return { claims: false, reactionMs: null, dueAtMs: null };
   }
 
   const reactionMs =
-    AI_MIN_REACTION_MS + (hash32(`${seed}:${n}:${tileNumber}:reaction`) % AI_REACTION_JITTER_MS);
+    skill.minReactionMs +
+    (hash32(`${seed}:${n}:${tileNumber}:reaction`) % skill.reactionJitterMs);
   if (reactionMs > window) {
     // The window is shorter than the bot can physically react — the tile
     // goes unclaimed by the bot (the human can still take it, or it

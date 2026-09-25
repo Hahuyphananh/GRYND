@@ -1030,6 +1030,13 @@
       "when": 1800000009000,
       "tag": "0165_keno_own_miss",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1800000010000,
+      "tag": "0166_ai_match_difficulty",
+      "breakpoints": true
     }
   ]
 }

@@ -122,10 +122,18 @@ export function isFreeAiMatch(match) {
   return Boolean(match?.isAi) && match?.player2Id === PLINKO_AI_PLAYER_ID;
 }
 
+import { coerceAiDifficulty } from "../aiDifficulty";
+
 // Deterministic bot launch policy. It intentionally varies the three
 // launch inputs by match and ball instead of submitting a fixed perfect
 // shot, while staying inside the same validated ranges as a human player.
-export function chooseAiLaunchInputs({ matchId, ballNumber } = {}) {
+//
+// The tier changes the aim: the two 140-point "precision" buckets sit at
+// x∈[100,200] and x∈[300,400], with the 40-point center trap between them
+// (see BUCKETS). `normal` keeps the wide original spread; `hard` starts
+// centred on a precision bucket with a tight angle; `easy` aims into the
+// center trap.
+export function chooseAiLaunchInputs({ matchId, ballNumber, difficulty = "normal" } = {}) {
   const key = `plinko-ai:${matchId ?? 0}:${ballNumber ?? 1}`;
   let hash = 2166136261;
   for (let i = 0; i < key.length; i += 1) {
@@ -141,6 +149,24 @@ export function chooseAiLaunchInputs({ matchId, ballNumber } = {}) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
+  const tier = coerceAiDifficulty(difficulty);
+  if (tier === "hard") {
+    // Centre of one of the two precision buckets, tight angle + steady pace.
+    const center = random() < 0.5 ? 150 : 350;
+    return {
+      startX: Math.round(center + (random() - 0.5) * 36),
+      power: Math.round(45 + random() * 20),
+      angleDeg: Math.round(-8 + random() * 16),
+    };
+  }
+  if (tier === "easy") {
+    // Straight into the center trap — the bot scores 40 at best.
+    return {
+      startX: Math.round(215 + random() * 70),
+      power: Math.round(35 + random() * 40),
+      angleDeg: Math.round(-24 + random() * 48),
+    };
+  }
   return {
     startX: Math.round(120 + random() * 260),
     power: Math.round(35 + random() * 40),

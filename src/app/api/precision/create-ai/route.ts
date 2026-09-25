@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
     const requested = String(body?.playerName ?? "").replace(/\s+/g, " ").trim();
     const humanName = requested ? requested.slice(0, 24) : "You";
 
-    const matchId = await createAiMatch(userId, humanName);
+    // The lobby's AI tier shapes the bot's stop timing; absent/invalid
+    // coerces to `normal` in the store.
+    const matchId = await createAiMatch(userId, humanName, body?.difficulty);
     return NextResponse.json({ success: true, matchId });
   } catch (error) {
     console.error("[precision/create-ai] error:", error);

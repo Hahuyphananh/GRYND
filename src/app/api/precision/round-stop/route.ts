@@ -7,24 +7,25 @@
 //                after the precision:roundArmStart broadcast)
 //   - nonce    : server-rolled cryptographic nonce (read from
 //                match.roundNonce at the same time)
-//   - elapsedMs: OPTIONAL, the elapsed the client froze at when the player
-//                clicked. A bounded hint, never an authority — it can only
-//                move the graded stop EARLIER, by at most
-//                `STOP_CLIENT_SLACK_MS`, and never past the server's own
-//                measurement (see `resolveStopElapsedMs` in the engine).
+//   - elapsedMs: the elapsed the client froze at when the player clicked. It
+//                IS what the stop is graded at (see `resolveStopElapsedMs` in
+//                the engine) — the number the player was watching — bounded
+//                only by the server's own measurement as a ceiling and
+//                `MIN_STOP_MS` as a floor. A browser that never sends one is
+//                graded on the server's measurement exactly as before.
 // The server stamps the STOP instant at receive time and computes the
-// elapsed time authoritatively as
-// `stopInstant - match.roundGoInstant`. The server uses that elapsed
-// to compute the round winner against the server-stored `match.targetMs`
-// once BOTH seats have submitted. This is the "never trust the client"
-// and "all timing on the server" model: a malicious client cannot
-// fabricate the opponent's stopMs (there is no client-stopMs), cannot
-// influence the GO instant (server-stamped), cannot fabricate elapsed,
-// and CANNOT submit a stop packet carrying a stale `roundId`/`nonce`
-// (the server hard-rejects mismatches \u2014 see recordRoundStop for the
-// replay-attack enforcement details). Duplicate stops within the same
-// round are also hard-rejected: the bucket is NOT refreshed, so an
-// attacker can't iterate their telemetry until they like the diff.
+// arrival-based elapsed as `stopInstant - match.roundGoInstant`, keeping it
+// as the ceiling the client's click instant is clamped to. The round winner
+// is computed against the server-stored `match.targetMs` once BOTH seats have
+// submitted. The remaining guarantees are unchanged: a malicious client
+// cannot fabricate the opponent's stop (there is no client-stop), cannot
+// influence the GO instant (server-stamped), cannot claim a click LATER than
+// the instant we received the packet, and CANNOT submit a stop packet
+// carrying a stale `roundId`/`nonce` (the server hard-rejects mismatches
+// \u2014 see recordRoundStop for the replay-attack enforcement details).
+// Duplicate stops within the same round are also hard-rejected: the bucket is
+// NOT refreshed, so an attacker can't iterate their telemetry until they like
+// the diff.
 //
 // Score / win-condition / phase transitions are server-side. Returns
 // 200 with `RecordRoundStopResult`-shaped payload on success; 4xx for
@@ -62,11 +63,10 @@ export async function POST(req: NextRequest) {
     // no longer submit a STOP (or a Ready) on another player's behalf.
     // The elapsed the player's client froze at when they hit STOP — the
     // number on their screen, measured against the same server GO instant this
-    // route scores from. It is a HINT, not an input: `recordRoundStop` clamps
-    // it against its own measurement (see `resolveStopElapsedMs`). It is
-    // carried for exactly one reason — the packet needs one delivery to get
-    // here, so our own stamp is the click plus that lag, and a MISS tier that
-    // starts at 100ms would grade a dead-on click as a miss without it.
+    // route scores from. It is what the stop is GRADED at: the packet needs a
+    // delivery to get here, so our own stamp is the click plus that lag, and
+    // charging it to the player graded a dead-on click as a miss (and handed
+    // the round to the opponent). See `resolveStopElapsedMs`.
     const claimedElapsedMs = Number(body?.elapsedMs);
     const clientElapsedMs = Number.isFinite(claimedElapsedMs)
       ? claimedElapsedMs

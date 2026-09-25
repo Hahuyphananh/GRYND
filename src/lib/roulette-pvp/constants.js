@@ -18,6 +18,7 @@ import {
   RED_NUMBERS,
   BLACK_NUMBERS,
 } from "../rouletteConfig.js";
+import { coerceAiDifficulty } from "../aiDifficulty";
 
 // ── Match "points" balance (persistent across rounds) ───────────────────
 // Both players start the match with exactly STARTING_POINTS credits.
@@ -305,11 +306,15 @@ export function resolveCalls(calls, player1Bets, player2Bets) {
 // intentionally modest and varied: it selects one or two live targets,
 // never exceeds the bot's current match-point balance, and may call the
 // human's biggest wager after the human has locked in.
-export function chooseAiBets(match, random = Math.random) {
+export function chooseAiBets(match, random = Math.random, difficulty) {
   const points = Number(match?.playerTwoPoints);
   if (!Number.isFinite(points) || points <= 0) {
     return { bets: {}, call: null };
   }
+
+  // Tier reads from the argument when given, else the match row (the store
+  // passes neither, so `match.aiDifficulty` is the norm).
+  const tier = coerceAiDifficulty(difficulty ?? match?.aiDifficulty);
 
   const dead = new Set([
     ...(Array.isArray(match?.serverEliminated)
@@ -317,6 +322,9 @@ export function chooseAiBets(match, random = Math.random) {
       : []),
     ...Object.keys(match?.eliminations || {}),
   ]);
+  const evenMoney = ["red", "black", "even", "odd", "1-18", "19-36"].filter(
+    (key) => isBetKeyLive(key, dead),
+  );
   const named = [
     "red",
     "black",
@@ -335,7 +343,18 @@ export function chooseAiBets(match, random = Math.random) {
   const candidates = [...named, ...singles];
   if (candidates.length === 0) return { bets: {}, call: null };
 
-  const first = candidates[Math.floor(random() * candidates.length)];
+  // The tier decides WHICH bet the bot leads with: an easy bot chases
+  // low-probability single numbers, a hard bot sticks to even-money and
+  // dozens (the highest-expected-value, lowest-variance part of the board),
+  // and the default tier keeps its original wide spread.
+  const pick = (pool) => pool[Math.floor(random() * pool.length)];
+  const first =
+    tier === "easy"
+      ? pick(singles.length ? singles : candidates)
+      : tier === "hard"
+        ? pick(evenMoney.length ? evenMoney : named.length ? named : candidates)
+        : pick(candidates);
+
   const bets = {};
   const firstAmount = Math.max(
     1,
@@ -343,8 +362,11 @@ export function chooseAiBets(match, random = Math.random) {
   );
   bets[first] = firstAmount;
 
-  if (points - firstAmount >= 2 && random() > 0.55) {
-    const second = candidates[Math.floor(random() * candidates.length)];
+  // A hard bot always splits its stake across a second live bet; the others
+  // do so about half the time.
+  const rideSecond = tier === "hard" ? true : random() > 0.55;
+  if (points - firstAmount >= 2 && rideSecond) {
+    const second = pick(candidates);
     if (second !== first) {
       bets[second] = Math.min(
         points - firstAmount,
@@ -353,8 +375,11 @@ export function chooseAiBets(match, random = Math.random) {
     }
   }
 
+  // The CALL bonus rewards predicting the human's biggest wager. A hard bot
+  // almost always takes the shot; an easy one rarely bothers.
+  const callChance = tier === "easy" ? 0.2 : tier === "hard" ? 0.85 : 0.65;
   const humanKeys = biggestWagerKeys(match?.player1Bets || {});
-  const call = humanKeys.length > 0 && random() > 0.35
+  const call = humanKeys.length > 0 && random() < callChance
     ? humanKeys[Math.floor(random() * humanKeys.length)]
     : null;
   return { bets, call };

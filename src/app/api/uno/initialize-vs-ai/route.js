@@ -3,6 +3,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
+import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
@@ -90,11 +91,14 @@ export async function POST(request) {
       { status: 401 },
     );
 
-  const { betAmount } = await request.json();
+  const { betAmount, difficulty } = await request.json();
   // AI matches are free play — a 0 stake is valid (the "Free Play vs AI"
   // button sends 0). Only non-numeric, negative or over-cap values are
   // rejected. A staked AI match is still recorded but never moves tokens.
   const stake = Number(betAmount);
+  // The lobby's AI tier, stored on the game so the bot's turn policy reads
+  // the same value later.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
   if (!Number.isFinite(stake) || stake < 0 || stake > 1000) {
     return new Response(
       JSON.stringify({ success: false, error: "Invalid bet amount" }),
@@ -156,6 +160,7 @@ export async function POST(request) {
           turn: "player",
           status: "active",
           winner: "pending",
+          aiDifficulty,
         })
         .returning();
 

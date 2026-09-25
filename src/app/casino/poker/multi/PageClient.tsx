@@ -27,6 +27,7 @@ import GameSessionHost from "../../../../components/GameSessionHost";
 
 import ReportModal from "../../../../components/ReportModal";
 import { RulesModal, useFirstVisitRules } from "../../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../../components/lobby/AiDifficultyPicker";
 import {
   AI_DIFFICULTY_LABELS,
   coerceAiDifficulty,
@@ -63,7 +64,7 @@ type Player = {
   stack: number;
   hand: Card[];
   isAI?: boolean;
-  difficulty?: "easy" | "medium" | "hard";
+  difficulty?: "easy" | "normal" | "hard";
   hasFolded?: boolean;
   lastAction?: string;
   currentBet: number;
@@ -217,8 +218,10 @@ export default function PokerPage() {
   const [publicGameCode, setPublicGameCode] = useState<string | null>(null);
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
-  const [aiDifficulty, setAiDifficulty] = useState<"easy" | "medium" | "hard">("medium");
-  const [aiDifficultyInput, setAiDifficultyInput] = useState<"easy" | "medium" | "hard">("medium");
+  const [aiDifficulty, setAiDifficulty] = useState<"easy" | "normal" | "hard">("normal");
+  const [aiDifficultyInput, setAiDifficultyInput] = useState<"easy" | "normal" | "hard">(
+    "normal",
+  );
   const [aiInfoOpen, setAiInfoOpen] = useState(false);
   const [selectedAi, setSelectedAi] = useState<Player | null>(null);
   const [turnTimeLimit, setTurnTimeLimit] = useState(60);
@@ -1021,7 +1024,7 @@ export default function PokerPage() {
     handStrength: string,
     toCall: number,
     pot: number,
-    difficulty: "easy" | "medium" | "hard",
+    difficulty: "easy" | "normal" | "hard",
   ): boolean {
     const winProb = computeWinProbability(handStrength);
     // Pot odds: amount to call / (pot after call)
@@ -1029,7 +1032,7 @@ export default function PokerPage() {
     const potOdds = potAfterCall > 0 ? toCall / potAfterCall : 0;
 
     // Difficulty modifiers for calling threshold
-    const loosener: Record<string, number> = { easy: 0.15, medium: 0.05, hard: 0 };
+    const loosener: Record<string, number> = { easy: 0.15, normal: 0.05, hard: 0 };
     const adjustedOdds = potOdds - loosener[difficulty];
 
     return winProb >= adjustedOdds;
@@ -1041,7 +1044,7 @@ export default function PokerPage() {
     highestBet: number,
     stack: number,
     currentBet: number,
-    difficulty: "easy" | "medium" | "hard" = "medium",
+    difficulty: "easy" | "normal" | "hard" = "normal",
   ): number {
     // Hand strength tiers → pot multiplier range
     let minMult: number, maxMult: number, bluffChance: number;
@@ -1091,7 +1094,10 @@ export default function PokerPage() {
     if (game.stage === "showdown" || game.waiting) return;
 
     const current = game.players[game.currentTurn];
-    if (!current || current.hasFolded || !current.isAI) return;          const diff = current.difficulty || aiDifficulty;
+    if (!current || current.hasFolded || !current.isAI) return;
+          // Canonical tier — the lobby stores easy/normal/hard, and legacy
+          // rows ("medium") coerce onto the same scale.
+          const diff = coerceAiDifficulty(current.difficulty || aiDifficulty);
           const timer = setTimeout(
       () => {
         try {
@@ -2023,30 +2029,17 @@ export default function PokerPage() {
               <p className="mb-2 block text-[11px] uppercase tracking-wider text-white/60">
                 AI difficulty
               </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {(
-                  [
-                    { key: "easy", icon: <IconEgg size={18} className="text-green-400" />, label: AI_DIFFICULTY_LABELS.easy, desc: "Beginner bots" },
-                    { key: "medium", icon: <IconScale size={18} className="text-amber-300" />, label: AI_DIFFICULTY_LABELS.normal, desc: "Balanced play" },
-                    { key: "hard", icon: <IconFlame size={18} className="text-red-400" />, label: AI_DIFFICULTY_LABELS.hard, desc: "Tough opponents" },
-                  ] as const
-                ).map((d) => (
-                  <button
-                    key={d.key}
-                    onClick={() => setAiDifficulty(d.key)}
-                    className={`rounded-xl border-2 px-4 py-3 text-left transition-all ${
-                      aiDifficulty === d.key
-                        ? "border-amber-400 bg-amber-500/15 shadow-[0_0_14px_rgba(251,191,36,0.3)]"
-                        : "border-cyan-700/40 bg-slate-900/80 hover:border-cyan-500/50"
-                    }`}
-                  >
-                    <span className="block text-sm font-bold text-white">
-                      {d.icon} {d.label}
-                    </span>
-                    <span className="block text-xs text-white/50">{d.desc}</span>
-                  </button>
-                ))}
-              </div>
+              <AiDifficultyPicker
+                gameKey="poker"
+                value={aiDifficulty}
+                onChange={setAiDifficulty}
+                className="mt-0"
+                hint={{
+                  easy: "Beginner bots — they fold too often and rarely bluff.",
+                  normal: "Balanced bots — the policy the tables always played.",
+                  hard: "Tough bots — they call tighter, bet more, and semi-bluff.",
+                }}
+              />
             </div>
 
             <button
@@ -2872,7 +2865,7 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                       >
                         {occupant.name}
                       </span>
-                      {occupant.isAI && <> <span title={`AI Difficulty: ${AI_DIFFICULTY_LABELS[coerceAiDifficulty(occupant.difficulty || aiDifficulty)]}`}>{(occupant.difficulty || aiDifficulty) === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : (occupant.difficulty || aiDifficulty) === "medium" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>}
+                      {occupant.isAI && (() => { const occTier = coerceAiDifficulty(occupant.difficulty || aiDifficulty); return <> <span title={`AI Difficulty: ${AI_DIFFICULTY_LABELS[occTier]}`}>{occTier === "easy" ? <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> : occTier === "normal" ? <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> : <span className="inline-block h-2 w-2 rounded-full bg-red-500" />}</span></>; })()}
                       {isPlayer ? (
                         <EmoteBubble emote={myEmote} side="mine" />
                       ) : occupant.id === incomingSenderId ? (
@@ -3292,11 +3285,11 @@ shadow-[0_0_80px_rgba(255,0,204,0.4),0_0_120px_rgba(0,229,255,0.2),inset_0_0_60p
                 <label className="block text-sm mb-1">AI Difficulty</label>
                 <select
                   value={aiDifficultyInput}
-                  onChange={(e) => setAiDifficultyInput(e.target.value as "easy" | "medium" | "hard")}
+                  onChange={(e) => setAiDifficultyInput(e.target.value as "easy" | "normal" | "hard")}
                   className="w-full p-2 rounded text-black mb-2"
                 >
                   <option value="easy">{AI_DIFFICULTY_LABELS.easy}</option>
-                  <option value="medium">{AI_DIFFICULTY_LABELS.normal}</option>
+                  <option value="normal">{AI_DIFFICULTY_LABELS.normal}</option>
                   <option value="hard">{AI_DIFFICULTY_LABELS.hard}</option>
                 </select>
 

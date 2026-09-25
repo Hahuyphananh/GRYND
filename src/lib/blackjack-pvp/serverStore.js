@@ -27,6 +27,7 @@ import {
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   ACTION_TYPE,
   BETWEEN_ROUNDS_MS,
@@ -245,9 +246,12 @@ export async function createOrJoin({ userId, stakeAmount }) {
 // Create a free human-vs-AI match. The bot is a server-only second
 // seat and the first round is dealt immediately, so the human never
 // waits for matchmaking or spends tokens.
-export async function createAiMatch({ userId }) {
+export async function createAiMatch({ userId, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
 
+  // The lobby's AI tier, stored on the row so `chooseAiAction` reads the
+  // same value on every round.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
   const deck = buildDeck();
   const player1Hand = drawCards(deck, 2);
   const player2Hand = drawCards(deck, 2);
@@ -259,6 +263,7 @@ export async function createAiMatch({ userId }) {
       stakeAmount: "0.00",
       status: MATCH_STATUS.ROUND_1,
       isAi: true,
+      aiDifficulty,
       roundNumber: 1,
       roundTimerSeconds: ROUND_TIMER_SECONDS,
       roundDeadline: new Date(Date.now() + roundDeadlineMs({

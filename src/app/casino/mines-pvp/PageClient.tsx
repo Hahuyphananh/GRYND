@@ -42,6 +42,11 @@ import {
   MIN_MINES,
   MAX_MINES,
 } from "../../../lib/mines-pvp/constants";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 // Mine-count presets offered to the host in the lobby. Mirrors the
 // preset chip row on the solo mines page (`src/app/casino/mines/
@@ -120,6 +125,11 @@ export default function MinesPvpLobbyPage() {
   );
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // The AI tier the bot picks at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("mines-pvp"),
+  );
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -205,7 +215,10 @@ export default function MinesPvpLobbyPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ minesCount: chosenMines }),
+          body: JSON.stringify({
+          minesCount: chosenMines,
+          difficulty: aiDifficulty,
+        }),
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
@@ -217,7 +230,7 @@ export default function MinesPvpLobbyPage() {
         setBusy(false);
       }
     },
-    [router],
+    [router, aiDifficulty],
   );
 
   const createOrJoin = useCallback(
@@ -546,6 +559,20 @@ export default function MinesPvpLobbyPage() {
       cancelling={cancellingId === myOpenMatchId}
       children={
         <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+          {/* AI tier — the bot's pick policy, chosen before the match */}
+          <div className="sm:col-span-2">
+            <AiDifficultyPicker
+              gameKey="mines-pvp"
+              value={aiDifficulty}
+              onChange={setAiDifficulty}
+              className="mt-0"
+              hint={{
+                easy: "The bot picks at random, with no board reading at all.",
+                normal: "The bot avoids the mine-free center and takes its chances.",
+                hard: "The bot plays the guaranteed-safe center tiles to survive longest.",
+              }}
+            />
+          </div>
           {/* Mine-count picker — host-only at create time */}
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">

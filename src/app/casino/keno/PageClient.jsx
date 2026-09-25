@@ -36,6 +36,8 @@ import {
   kenoPvpMatchRoom,
 } from "../../../lib/keno-pvp/rooms";
 import { STAKE_PRESETS } from "../../../lib/keno-pvp/constants";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
 
 // ── Small inline SVG icons (mirror the slots-pvp lobby) ──────────────
@@ -63,6 +65,11 @@ export default function KenoLobbyPage() {
   const [cancellingId, setCancellingId] = useState(null);
   const [error, setError] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
+  // The AI tier the bot races at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState(() =>
+    readStoredAiDifficulty("keno"),
+  );
 
   const fetchAvailable = useCallback(async () => {
     try {
@@ -228,7 +235,7 @@ export default function KenoLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -339,6 +346,18 @@ export default function KenoLobbyPage() {
         disabled: !isSignedIn || busy || aiBusy,
         busy: aiBusy,
       }}
+      children={
+        <AiDifficultyPicker
+          gameKey="keno"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot skips more tiles (each skip costs it a life) and reacts slowly.",
+            normal: "The bot races fairly — it misses roughly one tile in ten.",
+            hard: "The bot almost never skips a tile and taps near the human floor.",
+          }}
+        />
+      }
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

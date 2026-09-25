@@ -6,6 +6,7 @@ import { db } from "../../../../db/client";
 import { dotsAndBoxesGames, users } from "../../../../db/schema";
 import { createInitialState, TURN_SECONDS } from "../../../../lib/dotsAndBoxesEngine";
 import { DOTS_AND_BOXES_AI_ID } from "../../../../lib/dotsAndBoxesServer";
+import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 export async function POST(req) {
   try {
@@ -14,7 +15,10 @@ export async function POST(req) {
 
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    await req.json().catch(() => ({}));
+    // The lobby's AI-difficulty pick. Absent/invalid coerces to `normal`, so
+    // an older client still starts a game.
+    const body = await req.json().catch(() => ({}));
+    const aiDifficulty = coerceAiDifficulty(body?.difficulty);
 
     const result = await db.transaction(async (tx) => {
       const [user] = await tx
@@ -33,6 +37,7 @@ export async function POST(req) {
           status: "in_progress",
           gameState: createInitialState(),
           isAiGame: true,
+          aiDifficulty,
           timerSeconds: TURN_SECONDS,
           startedAt: new Date(),
           // Free vs-AI games are untimed — no per-turn deadline is stamped

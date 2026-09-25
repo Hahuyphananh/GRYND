@@ -9,6 +9,8 @@ import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRobot, IconUser, IconTable } from "@tabler/icons-react";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
 const WAGER_OPTIONS = [10, 25, 50, 100, 250, 500, 1000];
 
@@ -16,6 +18,11 @@ export default function UnoLobbyPage() {
   const [lobbies, setLobbies] = useState([]);
   const [wager, setWager] = useDefaultWager("uno", 100);
   const [loading, setLoading] = useState(false);
+  // The AI tier the bot plays at, chosen in this lobby and remembered per
+  // game by the picker; sent with the vs-AI start request.
+  const [aiDifficulty, setAiDifficulty] = useState(() =>
+    readStoredAiDifficulty("uno"),
+  );
   const [tokens, setTokens] = useState(null);
   const [joiningId, setJoiningId] = useState(null);
   const [error, setError] = useState(null);
@@ -84,7 +91,7 @@ export default function UnoLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ betAmount: wager }),
+        body: JSON.stringify({ betAmount: wager, difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!data.success || !data.data?.id) {
@@ -110,7 +117,7 @@ export default function UnoLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ betAmount: 0 }),
+        body: JSON.stringify({ betAmount: 0, difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (data.success && data.data?.id) {
@@ -276,6 +283,18 @@ export default function UnoLobbyPage() {
       onCancel={cancelGame}
       cancelling={cancelling}
       waitingSubtitle={`Waiting for a 1v1 Neon Flush match at ${wager.toLocaleString()} tokens…`}
+      children={
+        <AiDifficultyPicker
+          gameKey="uno"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot plays an arbitrary legal card — it will miss easy wins.",
+            normal: "The bot plays its best card, with the occasional slip.",
+            hard: "The bot always plays its highest-scoring legal card.",
+          }}
+        />
+      }
       extraActions={
         <Link
           href="/casino/uno/multiplayer"

@@ -70,6 +70,7 @@ import {
   round2,
 } from "./constants";
 import { hashSeed, simulateBall, simulateDualBalls } from "./physics";
+import { aiDifficultyFromMatch, coerceAiDifficulty } from "../aiDifficulty";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -510,8 +511,12 @@ export async function listMyWaitingMatch({ userId }) {
 // Create a free human-vs-AI match. The bot is inserted as player 2 and
 // starts in the normal READY state, so every subsequent ball still uses
 // the same authoritative launch and collision-resolution path.
-export async function createAiMatch({ userId }) {
+export async function createAiMatch({ userId, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
+
+  // The lobby's AI tier, stored on the row so every ball the bot launches
+  // (including the polling auto-play path) aims to the same skill.
+  const aiDifficulty = coerceAiDifficulty(difficulty);
 
   return await db.transaction(async (tx) => {
     const [match] = await tx
@@ -520,6 +525,7 @@ export async function createAiMatch({ userId }) {
         player1Id: userId,
         player2Id: PLINKO_AI_PLAYER_ID,
         isAi: true,
+        aiDifficulty,
         stakeAmount: "0.00",
         status: MATCH_STATUS.READY,
         currentBall: 1,
@@ -560,6 +566,7 @@ export async function playAiTurn({ userId, matchId }) {
   const inputs = chooseAiLaunchInputs({
     matchId,
     ballNumber: Number(match.currentBall) || 1,
+    difficulty: aiDifficultyFromMatch(match),
   });
   return await launchBall({
     userId: PLINKO_AI_PLAYER_ID,

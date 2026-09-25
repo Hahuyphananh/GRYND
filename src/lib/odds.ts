@@ -1,3 +1,5 @@
+import { coerceAiDifficulty } from "./aiDifficulty";
+
 // src/lib/odds.ts
 //
 // Pure game logic for the Odds PvP prediction game — no DB, no side
@@ -318,7 +320,11 @@ export function resolvePvPRound(
 export function submitAIPick(
   state: InteractiveOddsState,
   playerNumber: number,
+  _difficulty?: unknown,
 ): { updatedState: InteractiveOddsState } {
+  // The bot's own number stays uniform at every tier — random is already
+  // the least predictable pick, so the tier only shapes its PREDICTION (see
+  // `submitAIPrediction`).
   const aiNumber = Math.floor(Math.random() * state.currentMax) + 1;
   const updatedState: InteractiveOddsState = {
     ...state,
@@ -333,8 +339,17 @@ export function submitAIPick(
 export function submitAIPrediction(
   state: InteractiveOddsState,
   playerPrediction: number,
+  difficulty?: unknown,
 ): { round: OddsRound; updatedState: InteractiveOddsState } {
-  const aiPrediction = Math.floor(Math.random() * state.currentMax) + 1;
+  // The bot's prediction is scored against the human's locked-in number, and
+  // it can see that number here. A hard bot reads it most of the time; the
+  // other tiers guess at random, which is what makes them beatable.
+  const tier = coerceAiDifficulty(difficulty);
+  const readChance = tier === "hard" ? 0.7 : 0;
+  const aiPrediction =
+    state.player1Pick != null && Math.random() < readChance
+      ? state.player1Pick
+      : Math.floor(Math.random() * state.currentMax) + 1;
   const withAi: InteractiveOddsState = {
     ...state,
     player1Prediction: playerPrediction,

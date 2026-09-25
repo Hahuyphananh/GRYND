@@ -37,6 +37,8 @@ import {
   roulettePvpMatchRoom,
 } from "../../../lib/roulette-pvp/rooms";
 import { RouletteWheelIcon } from "../../../components/roulette-pvp/RouletteIcons";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
 const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 
@@ -64,6 +66,11 @@ export default function RoulettePvpLobbyPage() {
   const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  // The AI tier the bot bets at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState(() =>
+    readStoredAiDifficulty("roulette"),
+  );
   const [joiningId, setJoiningId] = useState(null);
   const [error, setError] = useState(null);
 
@@ -177,7 +184,7 @@ export default function RoulettePvpLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
@@ -351,6 +358,18 @@ export default function RoulettePvpLobbyPage() {
         disabled: !isSignedIn || busy || aiBusy,
         busy: aiBusy,
       }}
+      children={
+        <AiDifficultyPicker
+          gameKey="roulette"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot chases single numbers and rarely predicts your biggest bet.",
+            normal: "The bot spreads its bets across the whole board.",
+            hard: "The bot sticks to even-money bets and usually calls your biggest wager.",
+          }}
+        />
+      }
       escrowNote={
         <>
           We pair you with another player of the <b>exact same</b> stake.

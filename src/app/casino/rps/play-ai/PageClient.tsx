@@ -38,6 +38,11 @@ import { cosmeticEffectClass } from "../../../../lib/profileCosmetics";
 import useMySeatIdentity from "../../../../hooks/useMySeatIdentity";
 import { RockFistIcon } from "../../../../components/icons/CustomIcons";
 import {
+  coerceAiDifficulty,
+  readStoredAiDifficulty,
+  type AiDifficulty,
+} from "../../../../lib/aiDifficulty";
+import {
   IconHandStop,
   IconScissors,
   IconQuestionMark,
@@ -89,9 +94,19 @@ function randomChoice(): Choice {
   return CHOICES[Math.floor(Math.random() * CHOICES.length)];
 }
 
-/** Light pattern-reading AI — counters your most common throw 50% of the time. */
-function getAIChoice(playerHistory: { playerChoice: Choice }[]): Choice {
-  if (playerHistory.length > 0 && Math.random() < 0.5) {
+/**
+ * Pattern-reading AI — counters your most common throw. How often it reads
+ * your pattern is the difficulty: an easy bot throws purely at random, the
+ * `normal` tier keeps the 50% read it shipped with, and a hard bot mostly
+ * counters what it has seen.
+ */
+function getAIChoice(
+  playerHistory: { playerChoice: Choice }[],
+  difficulty: AiDifficulty = "normal",
+): Choice {
+  const tier = coerceAiDifficulty(difficulty);
+  const readChance = tier === "easy" ? 0 : tier === "hard" ? 0.85 : 0.5;
+  if (playerHistory.length > 0 && Math.random() < readChance) {
     const counts: Record<Choice, number> = { rock: 0, paper: 0, scissors: 0 };
     for (const h of playerHistory) counts[h.playerChoice] += 1;
     const most = (Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] as Choice);
@@ -133,6 +148,10 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   const myIdentity = useMySeatIdentity();
   const myDisplayName = myIdentity.name || "You";
 
+  // The tier chosen in the lobby (remembered per game by the shared picker).
+  const [aiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("rps"),
+  );
   const [myWins, setMyWins] = useState(0);
   const [aiWins, setAiWins] = useState(0);
   const [roundNumber, setRoundNumber] = useState(1);
@@ -165,7 +184,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
     // Small "thinking" delay so the reveal feels like a real opponent.
     await new Promise((r) => setTimeout(r, 550 + Math.random() * 350));
 
-    const ai = getAIChoice(history);
+    const ai = getAIChoice(history, aiDifficulty);
     const result = getResult(choice, ai);
     setAiChoice(ai);
     setLastResult(result);

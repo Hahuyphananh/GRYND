@@ -28,6 +28,7 @@
 import { and, asc, eq, lt, ne } from "drizzle-orm";
 import { db } from "../../db/client";
 import { precisionLobbies, precisionMatches } from "../../db/schema";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   foldPersistedSample,
   logAnomalyEvents,
@@ -52,6 +53,7 @@ import {
   resolveStopElapsedMs,
   revealArmedRoundState,
   rollRandomTarget,
+  stopDeliveryLagMs,
 } from "./engine";
 import type { PrecisionStopTelemetry } from "./engine";
 import {
@@ -61,6 +63,7 @@ import {
   MAX_STOP_MS,
   MIN_STOP_MS,
   ROUND_RESULT_REVEAL_MS,
+  STOP_LAG_ANOMALY_MS,
 } from "./constants";
 import type {
   PlayerSeat,
@@ -84,7 +87,16 @@ export function isPrecisionAiMatch(
 /** How long the bot "thinks" after the round opens, on top of the target.
  *  Spread of 80–320ms keeps its misses human-looking; the STOP itself is
  *  still stamped and graded server-side. */
-function rollBotReactionError(random: () => number = Math.random): number {
+function rollBotReactionError(
+  random: () => number = Math.random,
+  difficulty?: unknown,
+): number {
+  // The tier widens or tightens the bot's stop error: an easy bot is slow and
+  // sloppy, a hard one stops almost on the target. `normal` is the band the
+  // bot shipped with.
+  const tier = coerceAiDifficulty(difficulty);
+  if (tier === "easy") return 220 + Math.floor(random() * 421);
+  if (tier === "hard") return 30 + Math.floor(random() * 111);
   return 80 + Math.floor(random() * 241);
 }
 
@@ -108,6 +120,8 @@ export interface PrecisionMatchRow {
   id: string;
   wager: number;
   isAiGame: boolean;
+  /** The lobby's AI tier (`easy | normal | hard`), or null for PvP rows. */
+  aiDifficulty: string | null;
   phase: PrecisionState["phase"];
   /** Public snapshot — exactly what the client is allowed to see. */
   state: PrecisionState;
@@ -220,6 +234,10 @@ function mapMatchRow(row: Record<string, unknown>): PrecisionMatchRow | null {
     id: String(row.id),
     wager: Number(row.wager ?? 0),
     isAiGame: Boolean(row.isAiGame),
+    aiDifficulty:
+      row.aiDifficulty === null || row.aiDifficulty === undefined
+        ? null
+        : String(row.aiDifficulty),
     phase: state.phase,
     state,
     pendingStops: (row.pendingStops ?? {}) as Record<string, PrecisionStopTelemetry>,
@@ -239,6 +257,7 @@ const MATCH_COLUMNS = {
   id: precisionMatches.id,
   wager: precisionMatches.wager,
   isAiGame: precisionMatches.isAiGame,
+  aiDifficulty: precisionMatches.aiDifficulty,
   state: precisionMatches.state,
   pendingStops: precisionMatches.pendingStops,
   anomalyLedger: precisionMatches.anomalyLedger,
@@ -385,7 +404,7 @@ interface RoundResolutionResult {
 function applyDueTransitions(
   write: MatchWrite,
   now: number,
-  options: { isAiGame: boolean },
+  options: { isAiGame: boolean; aiDifficulty?: unknown },
 ): DueTransitionResult {
   const outcome: DueTransitionResult = {
     changed: false,
@@ -405,7 +424,9 @@ function applyDueTransitions(
     if (options.isAiGame) {
       // The bot's stop instant is derived from the revealed target plus a
       // human-looking error, exactly like the old `setTimeout` delay.
-      write.aiStopAt = new Date(now + Math.max(100, target + rollBotReactionError()));
+      write.aiStopAt = new Date(
+        now + Math.max(100, target + rollBotReactionError(Math.random, options.aiDifficulty)),
+      );
     }
     outcome.changed = true;
     outcome.revealed = true;
@@ -566,7 +587,10 @@ export async function readMatch(
 
   const now = Date.now();
   const write = toWrite(row, now);
-  const outcome = applyDueTransitions(write, now, { isAiGame: row.isAiGame });
+  const outcome = applyDueTransitions(write, now, {
+    isAiGame: row.isAiGame,
+    aiDifficulty: row.aiDifficulty,
+  });
   if (outcome.changed && options.persist !== false) {
     await persistMatch(db, matchId, write);
     row.state = write.state;
@@ -692,7 +716,10 @@ export async function resolveDueTransitions(matchId: string): Promise<PrecisionD
     const now = Date.now();
     const write = toWrite(row, now);
 
-    const outcome = applyDueTransitions(write, now, { isAiGame: row.isAiGame });
+    const outcome = applyDueTransitions(write, now, {
+    isAiGame: row.isAiGame,
+    aiDifficulty: row.aiDifficulty,
+  });
     if (outcome.changed) await persistMatch(tx, matchId, write);
 
     return {
@@ -757,6 +784,8 @@ export async function createMatchForPairing(
     wager: number;
     players: PrecisionPlayer[];
     isAiGame?: boolean;
+    /** The lobby's AI tier; only persisted for AI matches. */
+    aiDifficulty?: unknown;
   },
   dbOrTx: any = db,
 ): Promise<PrecisionState> {
@@ -773,6 +802,9 @@ export async function createMatchForPairing(
     ...reportingColumns(state),
     wager: input.wager,
     isAiGame: Boolean(input.isAiGame),
+    aiDifficulty: input.isAiGame
+      ? coerceAiDifficulty(input.aiDifficulty)
+      : null,
     phase: state.phase,
     state,
     pendingStops: {},
@@ -800,6 +832,7 @@ export async function createMatchForPairing(
 export async function createAiMatch(
   userId: string,
   humanName = "You",
+  difficulty?: unknown,
 ): Promise<string> {
   const matchId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const players: PrecisionPlayer[] = [
@@ -812,7 +845,13 @@ export async function createAiMatch(
       isConnected: true,
     },
   ];
-  await createMatchForPairing({ matchId, wager: 0, players, isAiGame: true });
+  await createMatchForPairing({
+    matchId,
+    wager: 0,
+    players,
+    isAiGame: true,
+    aiDifficulty: difficulty,
+  });
   return matchId;
 }
 
@@ -966,7 +1005,10 @@ export async function markPlayerReady(
 
     const now = Date.now();
     const write = toWrite(row, now);
-    applyDueTransitions(write, now, { isAiGame: row.isAiGame });
+    applyDueTransitions(write, now, {
+      isAiGame: row.isAiGame,
+      aiDifficulty: row.aiDifficulty,
+    });
 
     if (write.state.phase !== "ready_up") {
       // Already past ready-up (or finished) — report current truth; the client
@@ -1063,11 +1105,11 @@ function stopResult(
  *
  * The client's own measurement rides along as `options.clientElapsedMs` —
  * the elapsed it froze at when the player clicked, on the same clock the
- * server scores from. It is a HINT with no authority: `resolveStopElapsedMs`
- * clamps it against our own measurement (never later than it, never more than
- * `STOP_CLIENT_SLACK_MS` earlier, never below `MIN_STOP_MS`), so it can only
- * cancel transport lag — the gap between the click and the packet landing —
- * and never buy a stop the player did not make.
+ * server scores from. It IS the graded instant: `resolveStopElapsedMs` takes
+ * it, bounded only by our own measurement as a ceiling (a stop cannot have
+ * happened after we received it) and `MIN_STOP_MS` as a floor. Grading at the
+ * click is what keeps the delivery from being charged to the player's
+ * reaction time. A credit past `STOP_LAG_ANOMALY_MS` is logged, not applied.
  *
  * Replay protection (unchanged from the in-memory implementation):
  *   * phase must be `active` and the caller must occupy a seat;
@@ -1121,7 +1163,10 @@ export async function recordRoundStop(
     // The bot's stop may already be due (or the round may still be arming
     // because its countdown expired while no client was polling), so apply
     // the due transitions BEFORE validating the human's packet.
-    applyDueTransitions(write, stopInstantMs, { isAiGame: row.isAiGame });
+    applyDueTransitions(write, stopInstantMs, {
+      isAiGame: row.isAiGame,
+      aiDifficulty: row.aiDifficulty,
+    });
 
     const state = write.state;
 
@@ -1193,14 +1238,24 @@ export async function recordRoundStop(
     }
 
     // Grade the STOP at the instant the player actually clicked (their
-    // server-aligned display clock) inside the bounded window the server will
-    // credit, falling back to our own measurement when the hint can't be
-    // trusted. See `resolveStopElapsedMs` for the exact rules.
+    // server-aligned display clock), falling back to our own measurement only
+    // when the click instant is missing or unusable. See
+    // `resolveStopElapsedMs` for the exact rules.
     const serverElapsedMs = stopInstantMs - state.roundGoInstant;
     const elapsedMs = resolveStopElapsedMs({
       serverElapsedMs,
       clientElapsedMs: options.clientElapsedMs,
     });
+    // Delivery lag is no longer capped, so record how much of it was asked
+    // for. Purely observational: it is logged AFTER the grade is fixed and
+    // never changes it.
+    const creditedLagMs = stopDeliveryLagMs(serverElapsedMs, elapsedMs);
+    if (creditedLagMs > STOP_LAG_ANOMALY_MS) {
+      console.warn(
+        `[precision] unusually late stop packet: match=${matchId} round=${roundId} ` +
+          `lag=${creditedLagMs}ms (graded ${elapsedMs}ms, arrived at ${serverElapsedMs}ms)`,
+      );
+    }
     const telemetry = computeStopTelemetry(
       state.roundGoInstant,
       state.roundGoInstant + elapsedMs,

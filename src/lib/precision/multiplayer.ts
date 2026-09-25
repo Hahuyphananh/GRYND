@@ -359,9 +359,9 @@ export const STOP_HTTP_TIMEOUT_MS = 8000;
 /**
  * The elapsed the local client froze at when STOP was clicked, rounded to a
  * whole millisecond and dropped when unusable. This is the ONLY timing value
- * the client ever reports, and the server treats it as a bounded hint (see
- * `resolveStopElapsedMs`): it can cancel the delivery lag between the click
- * and the packet landing, and nothing else.
+ * the client ever reports, and it is what the stop is graded at (see
+ * `resolveStopElapsedMs`): it IS the click, so the delivery lag between the
+ * click and the packet landing is never charged to the player's reaction time.
  */
 export function stopElapsedHint(elapsedMs?: number | null): number | null {
   // `null`/`undefined` mean "there is no frozen elapsed to report" — an explicit
@@ -438,7 +438,7 @@ export function emitStop(
  * different transport. The replay envelope (`roundId` + `nonce`) is passed
  * through untouched, so a stop that races the socket packet is rejected as a
  * duplicate rather than double-counted. The frozen elapsed rides along as the
- * same bounded hint the socket packet carries.
+ * same graded click instant the socket packet carries.
  */
 export async function submitStopOverHttp(
   matchId: string,

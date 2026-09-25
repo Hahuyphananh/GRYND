@@ -38,7 +38,6 @@ import {
   serverClockNow,
 } from "../src/lib/precision/roundClock.ts";
 import { resolveStopElapsedMs } from "../src/lib/precision/engine.ts";
-import { STOP_CLIENT_SLACK_MS } from "../src/lib/precision/constants.ts";
 
 const read = (relative) =>
   readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
@@ -113,15 +112,14 @@ test("with the offset applied, the board shows the elapsed the server grades", (
   assert.equal(displayed, serverMeasured);
   assert.equal(displayed, 2_050);
 
-  // ...which is also what the server finally GRADES: the frozen value rides
-  // along as the bounded hint and the round trip is well inside the slack.
+  // ...which is also what the server finally GRADES: the frozen value IS the
+  // graded instant, so the round trip is not charged to the player at all.
   const arrival = CLICK_AT + 90; // the packet reached the route 90ms later
   const graded = resolveStopElapsedMs({
     serverElapsedMs: arrival - GO,
     clientElapsedMs: displayed,
   });
   assert.equal(graded, displayed, "the result panel must print the frozen value");
-  assert.ok(90 <= STOP_CLIENT_SLACK_MS);
 });
 
 test("without the offset the same round is off by the whole skew (the regression)", () => {

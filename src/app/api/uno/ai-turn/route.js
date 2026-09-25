@@ -10,6 +10,7 @@ import { applyUnoCard, isValidPlay } from "../../../lib/unoLogic";
 import { users } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
+import { aiMistakeRate, coerceAiDifficulty } from "../../../../lib/aiDifficulty";
 
 function safeParse(data) {
   if (!data) return [];
@@ -109,9 +110,18 @@ function scoreCard(card, gameState) {
   return score;
 }
 
-function chooseBestPlay(aiHand, playerHand, topCard, currentColor) {
+function chooseBestPlay(aiHand, playerHand, topCard, currentColor, difficulty) {
   const playable = getPlayableCards(aiHand, topCard, currentColor);
   if (playable.length === 0) return null;
+
+  // Tier policy: `easy` always plays an arbitrary legal card, the other
+  // tiers play the highest-scoring one but occasionally slip (the shared
+  // mistake rate), so `hard` is the fully-scored policy and `normal` is it
+  // with the odd blunder.
+  const tier = coerceAiDifficulty(difficulty);
+  if (tier === "easy" || Math.random() < aiMistakeRate(tier)) {
+    return playable[Math.floor(Math.random() * playable.length)];
+  }
 
   return playable
     .map((card) => ({
@@ -198,6 +208,7 @@ export async function POST(req) {
         playerHand,
         topCard,
         currentColor,
+        game.aiDifficulty,
       );
 
       if (chosenCard) {

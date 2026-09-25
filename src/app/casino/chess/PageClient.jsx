@@ -13,13 +13,11 @@ import {
   IconBook,
 } from "@tabler/icons-react";
 import { playCardDraw, playTick, playBuzz } from "../../../lib/gameAudio";
-const AI_DIFFICULTY_LEVELS = [
-  { level: 1, label: "Beginner", desc: "Easy opponent" },
-  { level: 2, label: "Casual", desc: "Relaxed play" },
-  { level: 3, label: "Intermediate", desc: "Moderate challenge" },
-  { level: 4, label: "Advanced", desc: "Strong opponent" },
-  { level: 5, label: "Expert", desc: "Very tough" },
-];
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
+// The shared easy/normal/hard tiers map onto the engine's 1–5 minimax depth
+// levels (see `coerceAiDifficulty`): easy → 2, normal → 3, hard → 5.
+const AI_LEVEL_BY_TIER = { easy: 2, normal: 3, hard: 5 };
 const TIMER_OPTIONS = [
   { id: "1min", label: "1 Min", time: 60 },
   { id: "2min", label: "2 Min", time: 120 },
@@ -34,7 +32,9 @@ export default function ChessLobby() {
   const { socket } = useSocket();
 
   const [showBetPopup, setShowBetPopup] = useState(false);
-  const [aiDifficulty, setAiDifficulty] = useState(3);
+  // The shared easy/normal/hard tier, remembered per game by the picker.
+  const [aiTier, setAiTier] = useState(() => readStoredAiDifficulty("chess"));
+  const aiDifficulty = AI_LEVEL_BY_TIER[aiTier] ?? 3;
   const [aiTimer, setAiTimer] = useState("5min");
   const [aiColor, setAiColor] = useState("random");
   const [availableGames, setAvailableGames] = useState([]);
@@ -674,28 +674,21 @@ export default function ChessLobby() {
               ))}
             </div>
 
-            {/* Difficulty levels */}
-            <div className="flex flex-col gap-2 mb-4">
-              {AI_DIFFICULTY_LEVELS.map((diff) => (
-                <button
-                  key={diff.level}
-                  onClick={() => {
-                    setAiDifficulty(diff.level);
-                    playTick();
-                  }}
-                  className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
-                    aiDifficulty === diff.level
-                      ? "bg-[#FFD700] text-[#030817] border-[#FFD700] shadow-[0_0_14px_rgba(255,215,0,0.45)]"
-                      : "bg-[#0a1a3a] text-white/80 border-[#00e5ff]/20 hover:bg-[#0d224f] hover:border-[#00e5ff]/40"
-                  }`}
-                >
-                  <span className="font-bold">{diff.label}</span>
-                  <span className={`ml-2 text-xs ${aiDifficulty === diff.level ? "text-[#030817]/70" : "text-white/40"}`}>
-                    · {diff.desc}
-                  </span>
-                </button>
-              ))}
-            </div>
+            {/* Difficulty — the shared easy/normal/hard scale */}
+            <AiDifficultyPicker
+              gameKey="chess"
+              value={aiTier}
+              onChange={(next) => {
+                setAiTier(next);
+                playTick();
+              }}
+              className="mb-4"
+              hint={{
+                easy: "Beginner opponent — searches only a couple of moves ahead.",
+                normal: "Intermediate opponent — a balanced search.",
+                hard: "Advanced opponent — the deepest search the engine offers.",
+              }}
+            />
 
             {error && (
               <div className="mb-2 text-red-400 text-xs text-center">{error}</div>

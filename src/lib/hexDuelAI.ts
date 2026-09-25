@@ -1,9 +1,13 @@
 import type { DuelPlayer } from "./hexDuelEngine";
 import { GRID_SIZE, getHexNeighbors } from "./hexGridUtils";
+import { coerceAiDifficulty } from "./aiDifficulty";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-export type AIDifficulty = "easy" | "medium";
+// The canonical shared AI scale (see `src/lib/aiDifficulty.ts`). The old
+// `medium` spelling coerces to `normal`, so stored games and older clients
+// keep working.
+export type AIDifficulty = "easy" | "normal" | "hard";
 
 export type AIAction =
   | { type: "attack"; sourceKey: string; targetKey: string; troopCount: number }
@@ -207,25 +211,16 @@ export function decideAIAction(
   scoredDisplaces.sort((a, b) => b.score - a.score);
 
   // ── Difficulty modifiers ────────────────────────────────────────────
-  if (difficulty === "easy") {
-    // Add noise to attack scores
+  // `normal` reproduces the noise the old `medium` tier shipped with, so an
+  // existing vs-AI game (stored as `medium`) plays exactly as before.
+  const tier = coerceAiDifficulty(difficulty);
+  const noise = tier === "easy" ? 0.5 : tier === "normal" ? 0.15 : 0;
+  if (noise > 0) {
     for (const a of scoredAttacks) {
-      a.score += a.score * (Math.random() * 0.5 - 0.25); // -25% to +25%
+      a.score += a.score * (Math.random() * noise - noise / 2);
     }
     for (const d of scoredDisplaces) {
-      d.score += d.score * (Math.random() * 0.5 - 0.25);
-    }
-    scoredAttacks.sort((a, b) => b.score - a.score);
-    scoredDisplaces.sort((a, b) => b.score - a.score);
-  }
-
-  if (difficulty === "medium") {
-    // Slight randomness
-    for (const a of scoredAttacks) {
-      a.score += a.score * (Math.random() * 0.15 - 0.075);
-    }
-    for (const d of scoredDisplaces) {
-      d.score += d.score * (Math.random() * 0.15 - 0.075);
+      d.score += d.score * (Math.random() * noise - noise / 2);
     }
     scoredAttacks.sort((a, b) => b.score - a.score);
     scoredDisplaces.sort((a, b) => b.score - a.score);

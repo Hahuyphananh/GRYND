@@ -28,6 +28,8 @@
 //   House:   10% rake on loser's stake only
 //   Draw:    both refunded, no rake
 
+import { coerceAiDifficulty } from "../aiDifficulty";
+
 // ── Board geometry ────────────────────────────────────────────────────
 // 5×5 grid, row-major indexing (cell 0 = top-left, cell 24 =
 // bottom-right). Matches the solo-mines page's
@@ -805,10 +807,12 @@ export function chooseAiCell(match) {
   const available = [];
   const centerBlock = new Set([6, 7, 8, 11, 12, 13, 16, 17, 18]);
   const nonCenter = [];
+  const centerSafe = [];
   for (let i = 0; i < GRID_CELLS; i += 1) {
     if (!exclude.has(i)) {
       available.push(i);
-      if (!centerBlock.has(i)) nonCenter.push(i);
+      if (centerBlock.has(i)) centerSafe.push(i);
+      else nonCenter.push(i);
     }
   }
   if (available.length === 0) {
@@ -816,9 +820,23 @@ export function chooseAiCell(match) {
     // resolved), but pick cell 0 as a safe fallback.
     return { cellIndex: 0 };
   }
-  // Prefer non-center cells to slightly increase mine-hit chance
-  // in a free match (the bot doesn't lose anything).
-  const pool = nonCenter.length > 0 ? nonCenter : available;
+  // The tier changes how the bot picks:
+  //   easy   — no strategy at all: a uniform random live cell.
+  //   normal — the policy the bot shipped with: prefer non-center
+  //            cells, which slightly raises its mine-hit chance.
+  //   hard   — play the guaranteed-mine-free center block first, so it
+  //            survives longer and is a real opponent.
+  const tier = coerceAiDifficulty(match?.aiDifficulty);
+  const pool =
+    tier === "easy"
+      ? available
+      : tier === "hard"
+        ? centerSafe.length > 0
+          ? centerSafe
+          : nonCenter
+        : nonCenter.length > 0
+          ? nonCenter
+          : available;
   return {
     cellIndex: pool[Math.floor(Math.random() * pool.length)],
   };

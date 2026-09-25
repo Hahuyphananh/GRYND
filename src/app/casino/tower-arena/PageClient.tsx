@@ -7,6 +7,11 @@ import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconBuildingSkyscraper } from "@tabler/icons-react";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 const WAGER_OPTIONS = [10, 25, 50, 100, 250, 500, 1000];
 // Any 2–6 is supported; the creator's pick decides when the lobby is full.
@@ -16,6 +21,11 @@ export default function TowerArenaLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
   const [wager, setWager] = useDefaultWager("tower-arena", 10);
   const [maxPlayers, setMaxPlayers] = useState(6);
+  // The AI tier the bots place at, chosen in this lobby and remembered per
+  // game by the picker; sent with the create-ai request.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("tower-arena"),
+  );
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState<number | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
@@ -127,7 +137,7 @@ export default function TowerArenaLobbyPage() {
       const res = await fetch("/api/tower-arena/create-ai-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxPlayers }),
+        body: JSON.stringify({ maxPlayers, difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (data.matchId) {
@@ -285,6 +295,16 @@ export default function TowerArenaLobbyPage() {
       error={error}
       waitingSubtitle={`Waiting for a ${maxPlayers}-player Tower Arena to fill…`}
     >
+      <AiDifficultyPicker
+        gameKey="tower-arena"
+        value={aiDifficulty}
+        onChange={setAiDifficulty}
+        hint={{
+          easy: "The bots drop random shapes at random columns — expect collapses.",
+          normal: "The bots place their safest available block.",
+          hard: "The bots place their safest available block.",
+        }}
+      />
       {/* Player-count selector (2–6) — the creator pick determines when full */}
       <div className="mt-4">
         <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
