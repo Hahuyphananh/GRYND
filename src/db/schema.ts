@@ -4189,3 +4189,93 @@ export const tokenTransactions = pgTable(
     refIdx: index("token_transactions_ref_idx").on(table.referenceType, table.referenceId),
   })
 );
+
+// ── Mini Golf (PvP) ─────────────────────────────────────────────────────
+//
+// Server-authoritative 1v1 turn-based mini golf: best-of-5 holes, first to
+// win 3 holes takes the match, no wagers / no tokens / no payouts.
+//
+// Matchmaking follows the Plinko Duel pattern rather than Pool Masters'
+// lobby+match pair: a single row with a nullable `player2_id` and a
+// `waiting` status IS the lobby, so `create-or-join` matches two players
+// under one advisory lock with no second table to keep in sync. Pool's
+// lobby table exists only because its online flow was never made
+// authoritative; there is no reason to copy that here.
+//
+// Authoritative state lives in `game_state` (jsonb) and is produced solely
+// by `src/lib/mini-golf/rules.ts`. The scalar columns are denormalised
+// copies of the fields the platform needs to filter/sort/settle on
+// (turn, current hole, hole wins, status, seed) so the canonical queue and
+// the lobby list never have to parse JSON. The seed is the source of truth
+// for the course; `game_state.holes` is the frozen snapshot generated from
+// it at creation, so a match replays identically even if COURSE_VERSION or
+// the generator changes later.
+//
+// Player ids are stored as plain clerk-id strings with no FK to `users`,
+// matching every other PvP table.
+export const miniGolfMatches = pgTable(
+  "mini_golf_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // Derived from `game_state.current_turn` on every write.
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    currentHole: integer("current_hole").notNull().default(1),
+    player1HoleWins: integer("player1_hole_wins").notNull().default(0),
+    player2HoleWins: integer("player2_hole_wins").notNull().default(0),
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // Server-generated course seed. bigint because the 32-bit unsigned seed
+    // range (up to 4294967295) overflows int4.
+    seed: bigint("seed", { mode: "number" }).notNull(),
+    courseVersion: integer("course_version").notNull(),
+    // The authoritative MiniGolfState (see src/lib/mini-golf/rules.ts).
+    gameState: jsonb("game_state").notNull(),
+    // Marked on every future AI match so settlement can skip rating/stats.
+    isAi: boolean("is_ai").notNull().default(false),
+    // 'player1' | 'player2' | 'tie'. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("mini_golf_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("mini_golf_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("mini_golf_matches_player2_idx").on(table.player2Id, table.createdAt),
+  })
+);
+
+// Append-only shot log. The authoritative replay record: every accepted
+// stroke with the exact inputs the server validated and the full deterministic
+// simulation output. `shot_seq` is monotonic per match and uniquely indexed,
+// which — together with the row lock taken in `shoot()` — makes replayed or
+// duplicated shots impossible at the storage layer.
+export const miniGolfShots = pgTable(
+  "mini_golf_shots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => miniGolfMatches.id, { onDelete: "cascade" }),
+    shotSeq: integer("shot_seq").notNull(),
+    holeNumber: integer("hole_number").notNull(),
+    playerId: varchar("player_id", { length: 255 }).notNull(),
+    // Strokes this player has taken on this hole after this shot (1-based).
+    strokeNumber: integer("stroke_number").notNull(),
+    angle: numeric("angle").notNull(),
+    power: numeric("power").notNull(),
+    // ShotResult: { path, restPosition, pocketed, settled, frames, waterHits, ... }
+    result: jsonb("result").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("mini_golf_shots_match_idx").on(table.matchId, table.createdAt),
+    holeIdx: index("mini_golf_shots_hole_idx").on(table.matchId, table.holeNumber),
+    // Anti-replay: one persisted row per shot sequence per match.
+    seqIdx: unique("mini_golf_shots_seq_unique").on(table.matchId, table.shotSeq),
+  })
+);

@@ -49,6 +49,7 @@ const RATED_GAMES_FALLBACK = [
   { key: "uno", label: "Neon Flush" },
   { key: "tower-arena", label: "Tower Arena" },
   { key: "hex-duel", label: "Hex Duel" },
+  { key: "mini-golf", label: "Mini Golf" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Every

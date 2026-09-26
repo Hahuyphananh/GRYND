@@ -21,6 +21,7 @@ import Img21 from "../../images/odds.svg";
 import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
+import ImgMiniGolf from "../../images/mini-golf-card.svg";
 import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
@@ -526,6 +527,16 @@ function MainComponent({ adSlot = null }) {
       nameKey: "games.dots_and_boxes_name",
       pvpMode: "1v1",
     },
+    {
+      name: "Mini Golf",
+      href: "/casino/mini-golf",
+      leaderboardKey: "mini-golf",
+      playsKey: "mini-golf",
+      image: ImgMiniGolf,
+      descriptionKey: "games.mini_golf_desc",
+      nameKey: "games.mini_golf_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -546,6 +557,7 @@ function MainComponent({ adSlot = null }) {
   );
 
   const newestOrder = [
+    "mini-golf",
     "memory-grid",
     "mines-pvp",
     "dots-and-boxes",

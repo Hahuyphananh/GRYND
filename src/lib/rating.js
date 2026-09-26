@@ -71,7 +71,7 @@ import {
 // SETTLEMENT STATUS:
 //   * The original 14 duel games (chess … odds-pvp) settle through
 //     applyRatingResult / applyTrophyResult.
-//   * The multi-seat tables (crash-arena, tower-arena, uno) settle TROPHIES
+//   * The multi-seat tables (crash-arena, tower-arena) settle TROPHIES
 //     through applyPlacementTrophies, which reads the same ±30 as a SYMMETRIC
 //     PLACEMENT LADDER: 1st banks the full +30, last pays the full −30, and the
 //     seats between them trade the even shares (4 seats: +30/+10/−10/−30,
@@ -109,6 +109,10 @@ export const RATED_GAMES = Object.freeze([
   "uno",
   "tower-arena",
   "hex-duel",
+  // Mini Golf is fully server-authoritative (the winner is derived from the
+  // deterministic shot simulation in src/lib/mini-golf/rules.ts), so unlike
+  // hex-duel it is ratable from day one.
+  "mini-golf",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -132,6 +136,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   uno: "Neon Flush",
   "tower-arena": "Tower Arena",
   "hex-duel": "Hex Duel",
+  "mini-golf": "Mini Golf",
 });
 
 /** True when a game key is eligible for Elo. */

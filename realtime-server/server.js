@@ -1142,6 +1142,44 @@ io.on("connection", (socket) => {
     logThrottled("tower-arena:leave", "[tower-arena] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Mini Golf room-participant tracking ─────────────────────────
+  // Same pattern as keno-pvp / memory-grid so disconnect handling can forfeit
+  // an abandoned 1v1 match to the opponent (and a re-joining socket cancels the
+  // pending forfeit timer). Keyed by matchId (a uuid).
+  const MINI_GOLF_MATCH_ROOM_PREFIX = "mini-golf:match:";
+  if (!global.__miniGolfRoomParticipants) {
+    global.__miniGolfRoomParticipants = new Map();
+  }
+  const miniGolfRoomParticipants = global.__miniGolfRoomParticipants;
+
+  function trackMiniGolfJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(MINI_GOLF_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(MINI_GOLF_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!miniGolfRoomParticipants.has(matchId)) {
+      miniGolfRoomParticipants.set(matchId, new Set());
+    }
+    miniGolfRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`mini-golf:${matchId}:${userId}`);
+    logThrottled("mini-golf:join", "[mini-golf] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackMiniGolfLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(MINI_GOLF_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(MINI_GOLF_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = miniGolfRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) miniGolfRoomParticipants.delete(matchId);
+    logThrottled("mini-golf:leave", "[mini-golf] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -1192,6 +1230,7 @@ io.on("connection", (socket) => {
     trackRoulettePvpJoin(String(roomId), socket.data.userId);
     trackRpsPvpJoin(String(roomId), socket.data.userId);
     trackTowerArenaJoin(String(roomId), socket.data.userId);
+    trackMiniGolfJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1238,6 +1277,7 @@ io.on("connection", (socket) => {
     trackRoulettePvpLeave(String(roomId), socket.data.userId);
     trackRpsPvpLeave(String(roomId), socket.data.userId);
     trackTowerArenaLeave(String(roomId), socket.data.userId);
+    trackMiniGolfLeave(String(roomId), socket.data.userId);
   });
 
   // The first round is armed by an HTTP ready call, and this broadcast is the
@@ -1679,6 +1719,38 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Mini Golf: ready ───────────────────────────────────────────
+  // The client emits `mini-golf:ready` after a successful /shoot or /forfeit
+  // POST so the opponent gets an instant refresh push instead of waiting for
+  // the next poll. The handler validates that the caller is a tracked
+  // participant of that match, then relays `lobby:updated` to the room
+  // (excluding the sender). The generic `room_event` path still works as a
+  // fallback.
+  socket.on("mini-golf:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = miniGolfRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "mini-golf:rejectReady",
+        "[mini-golf] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${MINI_GOLF_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Crash Arena: table update ─────────────────────────────────
   // The client emits `crashArena:updated` after a successful API
   // mutation (start-round, fold, crash/settle, join, leave) so
@@ -2021,6 +2093,42 @@ io.on("connection", (socket) => {
         socket.data.clerkToken,
         tid,
       );
+    }
+
+    // For Mini Golf: same pattern as keno-pvp / memory-grid — forfeit an
+    // abandoned match to the opponent (or cancel an empty lobby) via
+    // /api/mini-golf/disconnect-forfeit once the grace timer expires.
+    const miniGolfMatchesForUser = [];
+    for (const [mid, set] of miniGolfRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) miniGolfMatchesForUser.push(mid);
+    }
+    for (const mid of miniGolfMatchesForUser) {
+      const roomId = `${MINI_GOLF_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = miniGolfRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) miniGolfRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`mini-golf:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/mini-golf/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[mini-golf] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
     }
 
     // For hex duel: arm a grace timer per game instead of instantly

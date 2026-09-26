@@ -268,16 +268,17 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   assert.equal(TROPHY_CONFIG.win, 30);
   assert.equal(TROPHY_CONFIG.loss, -30);
   assert.equal(TROPHY_CONFIG.max, 1000);
-  // 19 rated games × 1,000 = 19,000 additive overall maximum (Poker's removal
-  // took the 20th game out, and the Battle Pass is derived from this value).
-  assert.equal(TROPHY_CONFIG.overallMax, 19000);
-  assert.equal(TROPHY_CONFIG.gameCount, 19);
+  // 20 rated games × 1,000 = 20,000 additive overall maximum (Mini Golf joined
+  // the rated registry, and the Battle Pass is derived from this value).
+  assert.equal(TROPHY_CONFIG.overallMax, 20000);
+  assert.equal(TROPHY_CONFIG.gameCount, 20);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 19);
+  assert.equal(TROPHY_GAMES.length, 20);
+  assert.equal(isTrophyGame("mini-golf"), true);
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
   // The 6 formerly-excluded games are now REGISTERED (their trophy/rating
@@ -1177,9 +1178,11 @@ const WIRING = [
   // settles N seats in one idempotent journal write.
   ["crash-arena", "src/lib/crash-poker/settleHand.ts", "applyPlacementTrophies"],
   ["tower-arena", "src/lib/tower-arena/serverStore.ts", "applyPlacementTrophies"],
-  ["uno", "src/app/api/uno/multiplayer/route.js", "applyPlacementTrophies"],
   // Roulette is a duel (two seats), so it uses the original 1v1 writer.
   ["roulette-pvp", "src/lib/roulette-pvp/serverStore.js"],
+  // Mini Golf is a 1v1 duel; its winner is derived server-side from the
+  // deterministic shot simulation, so it uses the original 1v1 writer.
+  ["mini-golf", "src/lib/mini-golf/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

@@ -1045,11 +1045,13 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "uno",
     "tower-arena",
     "hex-duel",
+    "mini-golf",
   ]);
   assert.equal(isRatedGame("chess"), true);
-  // The formerly-excluded games are now REGISTERED, so all of the 19 rated
+  // The formerly-excluded games are now REGISTERED, so all of the 20 rated
   // games are rated keys. Poker was removed from the game entirely, so its key
   // must NOT be rated any more.
+  assert.equal(isRatedGame("mini-golf"), true);
   assert.equal(isRatedGame("hex-duel"), true);
   assert.equal(isRatedGame("tower-arena"), true);
   assert.equal(isRatedGame("uno"), true);
