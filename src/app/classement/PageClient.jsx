@@ -44,6 +44,11 @@ const RATED_GAMES_FALLBACK = [
   { key: "dice-flush", label: "Dice Flush" },
   { key: "rps-pvp", label: "Rock Paper Scissors" },
   { key: "odds-pvp", label: "Odds" },
+  { key: "roulette-pvp", label: "Roulette" },
+  { key: "crash-arena", label: "Crash Arena" },
+  { key: "uno", label: "Neon Flush" },
+  { key: "tower-arena", label: "Tower Arena" },
+  { key: "hex-duel", label: "Hex Duel" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Every

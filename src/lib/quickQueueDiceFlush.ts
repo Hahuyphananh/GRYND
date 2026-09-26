@@ -1,11 +1,11 @@
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "../db/client";
-import { diceFlushPlayers, diceFlushRooms, users } from "../db/schema";
+import { diceFlushPlayers, diceFlushRooms } from "../db/schema";
 import { initialState } from "../app/api/dice-flush/_lib";
+import { normalizeStake } from "./games/stakes";
 
 export async function createOrJoinDiceFlushDestination({ userId, wager = 10 }) {
-  const amount = Number(wager);
-  if (!Number.isFinite(amount) || amount <= 0) return { error: "Invalid Dice Flush wager", status: 400 };
+  const amount = normalizeStake(wager);
 
   return db.transaction(async (tx) => {
     const [open] = await tx
@@ -19,8 +19,6 @@ export async function createOrJoinDiceFlushDestination({ userId, wager = 10 }) {
     if (open) {
       const [existing] = await tx.select({ id: diceFlushPlayers.id }).from(diceFlushPlayers).where(and(eq(diceFlushPlayers.roomId, open.id), eq(diceFlushPlayers.userId, userId))).limit(1);
       if (existing) return { error: "Cannot join your own Dice Flush room", status: 400 };
-      const [funded] = await tx.update(users).set({ balance: sql`${users.balance} - ${open.wager}` }).where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${open.wager}`)).returning({ balance: users.balance });
-      if (!funded) return { error: "Insufficient balance", status: 400 };
       const state = typeof open.gameState === "object" && open.gameState ? { ...(open.gameState as Record<string, any>) } as any : null;
       if (!state || !Array.isArray(state.players) || state.players.length !== 1) return { error: "Dice Flush room is invalid", status: 409 };
       state.players = [...state.players, { userId, name: "Quick Queue Player" }];
@@ -35,8 +33,6 @@ export async function createOrJoinDiceFlushDestination({ userId, wager = 10 }) {
       return { match: { ...matched, id: open.id }, joined: true };
     }
 
-    const [funded] = await tx.update(users).set({ balance: sql`${users.balance} - ${amount}` }).where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${amount}`)).returning({ balance: users.balance });
-    if (!funded) return { error: "Insufficient balance", status: 400 };
     const roomId = `yahtzee:quick-queue:${Date.now()}:${Math.floor(Math.random() * 10000)}`;
     const state = initialState(roomId, userId, "Quick Queue Player", amount);
     await tx.insert(diceFlushRooms).values({ id: roomId, status: "waiting", wager: amount, pot: amount, gameState: state });

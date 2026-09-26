@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
@@ -13,13 +12,14 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 
-const WAGER_OPTIONS = [10, 25, 50, 100, 250, 500, 1000];
 // Any 2–6 is supported; the creator's pick decides when the lobby is full.
 const PLAYER_COUNT_OPTIONS = [2, 3, 4, 5, 6];
 
 export default function TowerArenaLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
-  const [wager, setWager] = useDefaultWager("tower-arena", 10);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to pick and no token balance to load.
+  const wager = 0;
   const [maxPlayers, setMaxPlayers] = useState(6);
   // The AI tier the bots place at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
@@ -27,27 +27,12 @@ export default function TowerArenaLobbyPage() {
     readStoredAiDifficulty("tower-arena"),
   );
   const [loading, setLoading] = useState(false);
-  const [tokens, setTokens] = useState<number | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<any>(null);
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
-
-  const loadTokens = async () => {
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data.success) setTokens(Number(data.data.balance));
-    } catch {
-      // silent
-    }
-  };
 
   const load = async () => {
     try {
@@ -82,11 +67,9 @@ export default function TowerArenaLobbyPage() {
 
   useEffect(() => {
     load();
-    loadTokens();
     loadPreview();
     const id = setInterval(() => {
       load();
-      loadTokens();
     }, 3000);
     return () => clearInterval(id);
   }, []);
@@ -240,17 +223,13 @@ export default function TowerArenaLobbyPage() {
             body: (
               <>
                 Final placement follows elimination order — the last player
-                standing wins. The prize pool is the combined stakes minus
-                the platform rake, split by placement.
+                standing wins the match. Nothing is staked and no prize pool
+                is paid; free play only.
               </>
             ),
           },
         ],
       }}
-      balance={tokens}
-      stake={wager}
-      onStakeChange={(v) => setWager(Number(v))}
-      stakeOptions={WAGER_OPTIONS}
       busy={loading}
       onPlay={createLobby}
       playLabel="Create PvP Lobby"
@@ -262,7 +241,6 @@ export default function TowerArenaLobbyPage() {
         busy: loading,
         onClick: playAI,
       }}
-      escrowNote="Every player pays the same entry wager. If no one is waiting at your chosen player count, your wager is escrowed in a private lobby until it fills or you cancel."
       lobbies={lobbies}
       lobbyEmptyText="No open Tower Arenas yet. Be the first to start one."
       lobbyKey={(l) => l.id}

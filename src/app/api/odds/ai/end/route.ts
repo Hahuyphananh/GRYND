@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { oddsGames, users } from "../../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { oddsGames } from "../../../../../db/schema";
+import { eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import {
   initInteractiveOddsGame,
@@ -46,7 +46,6 @@ export async function POST(req: Request) {
       if (!game.isAi) throw new Error("Use PvP endpoints for multiplayer games");
 
       const state = game.gameState as InteractiveOddsState | null;
-      const payout = game.wager * 2;
 
       // Determine winner: if state has a winner, use it; otherwise resolve via timeout/default
       let winner: "player1" | "player2";
@@ -61,20 +60,8 @@ export async function POST(req: Request) {
         player1Won = false;
       }
 
-      // AI games are free play — `game.isAi` is guaranteed true for this
-      // route, but the guard keeps the credit logic defensive. Never pay
-      // out on AI-mode game end even if the persisted `wager` is non-zero.
-      if (player1Won && !game.isAi) {
-        // Credit winnings to the player
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${payout}` })
-          .where(eq(users.clerkId, userId));
-      }
-
-      // Recorded payout is 0 in AI mode so history reflects the free-play
-      // outcome rather than a phantom `wager * 2` credit.
-      const recordedPayout = game.isAi ? 0 : player1Won ? payout : 0;
+      // STAKES ARE RETIRED: AI games are free play, so nothing is paid out.
+      const recordedPayout = 0;
 
       const finalState: InteractiveOddsState = state
         ? { ...state, winner, gameOver: true }

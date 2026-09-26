@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
-import { and, asc, eq, gte, isNull, not, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, not } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
-import { hexDuelGames, users } from "../../../../../db/schema";
+import { hexDuelGames } from "../../../../../db/schema";
 export async function POST(req: Request) {
   // Hoisted above the try so the catch block's diagnostics can read
   // them without re-parsing the request body.
@@ -47,25 +47,6 @@ export async function POST(req: Request) {
       }
       if (!game) throw new Error("No compatible game available");
 
-      let updatedBalance: number | null = null;
-      if (Number(game.wagerAmount) > 0) {
-        const [updatedUser] = await tx.update(users)
-          // `sql\`${col} - ${val}\`` is an arithmetic SET clause (not a
-          // multi-column comparison WHERE) \u2014 stays as a typed `sql`
-          // template since there is no direct Drizzle arithmetic helper.
-          .set({ balance: sql`${users.balance} - ${game.wagerAmount}` })
-          .where(and(
-            eq(users.clerkId, userId),
-            // Replaced raw `sql\`${col} >= ${val}\`` with typed `gte()`
-            // for consistency with the rest of the route and as a
-            // defensive measure against the neon-serverless binder issue.
-            gte(users.balance, game.wagerAmount),
-          ))
-          .returning({ balance: users.balance });
-        if (!updatedUser) throw new Error("Insufficient balance");
-        updatedBalance = Number(updatedUser.balance);
-      }
-
       const [row] = await tx.update(hexDuelGames)
         .set({
           player2Id: userId,
@@ -85,7 +66,7 @@ export async function POST(req: Request) {
         .where(and(eq(hexDuelGames.id, game.id), eq(hexDuelGames.status, "waiting"), isNull(hexDuelGames.player2Id)))
         .returning({ id: hexDuelGames.id });
       if (!row) throw new Error("Game unavailable");
-      return { gameId: row.id, newBalance: updatedBalance };
+      return { gameId: row.id, newBalance: null };
     });
 
     return NextResponse.json({ success: true, ...joined });

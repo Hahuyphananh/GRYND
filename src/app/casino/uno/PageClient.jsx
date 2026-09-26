@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
@@ -12,18 +11,18 @@ import { IconRobot, IconUser, IconTable } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
-const WAGER_OPTIONS = [10, 25, 50, 100, 250, 500, 1000];
 
 export default function UnoLobbyPage() {
   const [lobbies, setLobbies] = useState([]);
-  const [wager, setWager] = useDefaultWager("uno", 100);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to pick and no token balance to load.
+  const wager = 0;
   const [loading, setLoading] = useState(false);
   // The AI tier the bot plays at, chosen in this lobby and remembered per
   // game by the picker; sent with the vs-AI start request.
   const [aiDifficulty, setAiDifficulty] = useState(() =>
     readStoredAiDifficulty("uno"),
   );
-  const [tokens, setTokens] = useState(null);
   const [joiningId, setJoiningId] = useState(null);
   const [error, setError] = useState(null);
   const [myOpenGameId, setMyOpenGameId] = useState(null);
@@ -31,20 +30,6 @@ export default function UnoLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
   const { socket } = useSocket();
-
-  const loadTokens = async () => {
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data.success) setTokens(Number(data.data.balance));
-    } catch {
-      // silent
-    }
-  };
 
   const load = async () => {
     try {
@@ -63,10 +48,8 @@ export default function UnoLobbyPage() {
 
   useEffect(() => {
     load();
-    loadTokens();
     const id = setInterval(() => {
       load();
-      loadTokens();
     }, 3000);
     return () => clearInterval(id);
   }, []);
@@ -223,23 +206,18 @@ export default function UnoLobbyPage() {
             heading: "Modes",
             body: (
               <>
-                Play vs AI for free (no tokens staked), or go 1v1
-                online for a staked match. Winner takes the pot minus
-                the platform fee.
+                Play vs AI for free, or go 1v1 online. The result is worth
+                trophies and rating — nothing is staked and no pot is paid.
               </>
             ),
           },
         ],
       }}
-      balance={tokens}
-      stake={wager}
-      onStakeChange={(v) => setWager(Number(v))}
-      stakeOptions={WAGER_OPTIONS}
       busy={loading}
       onPlay={createGame}
       playLabel="Start vs AI"
       playBusyLabel="Starting game…"
-      canPlay={tokens !== null && tokens >= wager}
+      canPlay={true}
       vsAi={{
         label: "Free Play vs AI",
         badge: "Free",
@@ -247,7 +225,6 @@ export default function UnoLobbyPage() {
         busy: loading,
         onClick: playAI,
       }}
-      escrowNote="Every player pays the same entry wager. If no one is waiting at your chosen stake, your wager is escrowed in a private lobby until it fills or you cancel."
       lobbies={lobbies}
       lobbyEmptyText="No open Neon Flush games yet. Be the first to start one."
       lobbyKey={(l) => l.id}
@@ -282,7 +259,7 @@ export default function UnoLobbyPage() {
       onResume={resumeGame}
       onCancel={cancelGame}
       cancelling={cancelling}
-      waitingSubtitle={`Waiting for a 1v1 Neon Flush match at ${wager.toLocaleString()} tokens…`}
+      waitingSubtitle="Waiting for a 1v1 Neon Flush match…"
       children={
         <AiDifficultyPicker
           gameKey="uno"

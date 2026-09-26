@@ -93,7 +93,6 @@ export const GAME_LABEL_TO_GAME_ID = {
   "mines-duel": "mines-pvp",
   "memory-grid": "memory-grid",
   "plinko-duel": "plinko",
-  poker: "poker",
   "crash-arena": "crash",
   chess: "chess",
   keno: "keno",

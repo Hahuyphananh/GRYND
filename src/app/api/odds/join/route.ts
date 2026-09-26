@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
-import { oddsGames, users } from "../../../../db/schema";
-import { eq, sql, and, isNull } from "drizzle-orm";
+import { oddsGames } from "../../../../db/schema";
+import { eq, and, isNull } from "drizzle-orm";
 import { initPvPOddsGame } from "../../../../lib/odds";
 
 export async function POST(req: Request) {
@@ -44,15 +44,6 @@ export async function POST(req: Request) {
 
       if (!game) throw new Error("Game not found or already joined");
       if (game.player1Id === userId) throw new Error("Cannot join your own game");
-
-      // Deduct wager from joining player
-      const [joiner] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${game.wager}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${game.wager}`))
-        .returning();
-
-      if (!joiner) throw new Error("Insufficient balance");
 
       // Initialize interactive PvP game state
       const gameState = initPvPOddsGame();

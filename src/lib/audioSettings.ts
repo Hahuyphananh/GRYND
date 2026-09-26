@@ -4,7 +4,7 @@
 //
 // Single source of truth for the player's sound preference. Every audio
 // library in the app (gameAudio, hexAudio, oddsAudio, dotsAndBoxesAudio,
-// precisionAudio, pokerAudio) gates its shared AudioContext through
+// precisionAudio) gates its shared AudioContext through
 // `isAudioMuted()`, so flipping this flag silences every game at once.
 //
 // The preference is stored in localStorage and treated as a DEVICE

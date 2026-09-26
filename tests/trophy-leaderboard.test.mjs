@@ -44,7 +44,7 @@ test("config: overall trophies require the documented minimum games", () => {
 test("overallTrophiesFromCounts: sums played games and gates on the minimum", () => {
   // Below the gate → no Overall Trophies value at all.
   const partial = overallTrophiesFromCounts([
-    { trophies: 9000, gamesRated: 300 }, // one game only
+    { trophies: 900, gamesRated: 300 }, // one game only
   ]);
   assert.equal(partial.eligible, false);
   assert.equal(partial.overallTrophies, null);
@@ -52,12 +52,12 @@ test("overallTrophiesFromCounts: sums played games and gates on the minimum", ()
 
   // At the gate → the plain sum.
   const filled = overallTrophiesFromCounts([
-    { trophies: 3000, gamesRated: 100 },
-    { trophies: 1500, gamesRated: 50 },
-    { trophies: 500, gamesRated: 20 },
+    { trophies: 800, gamesRated: 100 },
+    { trophies: 300, gamesRated: 50 },
+    { trophies: 200, gamesRated: 20 },
   ]);
   assert.equal(filled.eligible, true);
-  assert.equal(filled.overallTrophies, 5000);
+  assert.equal(filled.overallTrophies, 1300);
   assert.equal(filled.gamesPlayed, 3);
 
   // An unplayed game (gamesRated 0) contributes nothing and does not qualify.
@@ -75,7 +75,7 @@ test("overallTrophiesFromCounts: clamps each entry into the legal band", () => {
     { trophies: -50, gamesRated: 1 },
     { trophies: 1000, gamesRated: 1 },
   ]);
-  assert.equal(r.overallTrophies, 10000 + 0 + 1000);
+  assert.equal(r.overallTrophies, 1000 + 0 + 1000);
 });
 
 test("overallTrophiesFromCounts: garbage input never throws or NaNs", () => {

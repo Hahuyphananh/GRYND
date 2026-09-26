@@ -30,6 +30,7 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
+import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -59,7 +60,6 @@ import {
   START_WINDOW_MS,
   TAP_GRACE_MS,
   TILE_LOG_LIMIT,
-  computePayout,
   isFreeAiMatch,
   round2,
 } from "./constants";
@@ -95,6 +95,9 @@ export function isParticipant(match, userId) {
 }
 
 export function validateMatchParams({ stakeAmount }) {
+  // STAKES ARE RETIRED: a free match is the only legal entry, so nothing is
+  // rejected here anymore.
+  if (STAKES_RETIRED) return { ok: true };
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
     return {
@@ -292,6 +295,9 @@ export async function createAiMatch({ userId, difficulty }) {
 // parallel" race.
 
 export async function createOrJoin({ userId, stakeAmount }) {
+  // Retired stakes: the match is free, and every escrow/payout below operates
+  // on 0 because the stake is normalized here.
+  stakeAmount = normalizeStake(stakeAmount);
   const validation = validateMatchParams({ stakeAmount });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -326,7 +332,7 @@ export async function createOrJoin({ userId, stakeAmount }) {
         // Caller's own existing lobby — just return it.
         return { match: openMatch, joined: false };
       }
-      return await joinExistingMatch(tx, openMatch.id, userId, stakeAmount);
+      return await joinExistingMatch(tx, openMatch.id, userId);
     }
 
     return await createWaitingMatch(tx, userId, stakeAmount);
@@ -335,16 +341,6 @@ export async function createOrJoin({ userId, stakeAmount }) {
 
 async function createWaitingMatch(tx, userId, stakeAmount) {
   const stake = Number(stakeAmount).toFixed(2);
-
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stake}` })
-    .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${stake}`))
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
 
   const [match] = await tx
     .insert(kenoPvpMatches)
@@ -384,9 +380,7 @@ async function createWaitingMatch(tx, userId, stakeAmount) {
   return { match, joined: false };
 }
 
-async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
-  const stake = Number(stakeAmount).toFixed(2);
-
+async function joinExistingMatch(tx, candidateId, userId) {
   const [match] = await tx
     .select()
     .from(kenoPvpMatches)
@@ -395,16 +389,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
 
   if (!match || match.status !== MATCH_STATUS.WAITING || match.player2Id) {
     return { error: "Lobby no longer available", status: 409 };
-  }
-
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stake}` })
-    .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${stake}`))
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
   }
 
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
@@ -427,11 +411,7 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     .returning();
 
   if (!updated) {
-    // Lost a race to a concurrent joiner — refund and bail.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stake}` })
-      .where(eq(users.clerkId, userId));
+    // Lost a race to a concurrent joiner.
     return { error: "Lobby no longer available", status: 409 };
   }
 
@@ -463,13 +443,6 @@ export async function cancelMatch({ userId, matchId }) {
     if (match.player1Id !== userId) {
       return { error: "Only the creator can cancel", status: 403 };
     }
-
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, match.player1Id));
 
     const [updated] = await tx
       .update(kenoPvpMatches)
@@ -823,35 +796,18 @@ async function applyResolution(tx, match, {
 async function settleMatch(tx, match, { result, reason = "resolved" } = {}) {
   const finalResult = result || RESULT.DRAW;
   const isAi = isFreeAiMatch(match);
-  const payout = isAi
-    ? { winnerNet: 0, houseFee: 0, prizePaid: 0, refundEach: null }
-    : computePayout({ stakeAmount: match.stakeAmount, result: finalResult });
 
   let winnerId = null;
   if (finalResult === RESULT.PLAYER1) winnerId = match.player1Id;
   else if (finalResult === RESULT.PLAYER2) winnerId = match.player2Id;
 
-  if (!isAi && finalResult === RESULT.DRAW) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
-      .where(eq(users.clerkId, match.player1Id));
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
-      .where(eq(users.clerkId, match.player2Id));
-  } else if (!isAi && winnerId) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerId));
-  }
-
+  // Stakes are retired: the match is always free, so there is no pot to pay
+  // out or rake. Settlement is recorded purely for history/stat purposes.
   const settlement = {
     winnerId,
     result: finalResult,
-    houseFee: payout.houseFee.toFixed(2),
-    prizePaid: payout.prizePaid.toFixed(2),
+    houseFee: "0.00",
+    prizePaid: "0.00",
   };
 
   const [updated] = await tx
@@ -1310,12 +1266,6 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       if (match.player1Id !== loserClerkId) {
         return { error: "Only the creator can cancel", status: 403 };
       }
-      await tx
-        .update(users)
-        .set({
-          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-        })
-        .where(eq(users.clerkId, loserClerkId));
       const [updated] = await tx
         .update(kenoPvpMatches)
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
@@ -1338,22 +1288,13 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
     const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
     const isAi = isFreeAiMatch(match);
-    const payout = isAi
-      ? { winnerNet: 0, houseFee: 0, prizePaid: 0 }
-      : computePayout({ stakeAmount: match.stakeAmount, result });
 
-    if (!isAi) {
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-        .where(eq(users.clerkId, winnerUserId));
-    }
-
+    // Stakes are retired: nothing is escrowed, so nothing is paid out.
     const settlement = {
       winnerId: winnerUserId,
       result,
-      houseFee: payout.houseFee.toFixed(2),
-      prizePaid: payout.prizePaid.toFixed(2),
+      houseFee: "0.00",
+      prizePaid: "0.00",
     };
 
     const [updated] = await tx

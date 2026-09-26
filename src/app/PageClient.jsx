@@ -14,7 +14,7 @@ import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import Img1 from "../images/roulette.webp";
 import Img2 from "../images/blackjack-div.webp";
-import Img3 from "../images/poker.jpg";
+import Img3 from "../images/towers.webp";
 import Img4 from "../images/plinko-div.webp";
 import {
   fadeIn,
@@ -724,14 +724,14 @@ function MainComponent({ adSlot = null }) {
               viewport={{ once: true, amount: 0.25 }}
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
-              href="/games/poker/multi"
-              aria-label="Play Poker"
+              href="/games/tower-arena"
+              aria-label="Play Tower Arena"
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
             >
               <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
                 <Image
                   src={Img3}
-                  alt={t("home.game_cards.poker_alt")}
+                  alt={t("home.game_cards.tower_arena_alt")}
                   loading="lazy"
                   sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                   className="h-full w-full object-cover transition-transform group-hover:scale-110"
@@ -741,15 +741,15 @@ function MainComponent({ adSlot = null }) {
                   {t("home.pvp_badge")}
                 </span>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.poker_name")}</h3>
+              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.tower_arena_name")}</h3>
               <p className="text-[#9dd8ff]">
-                {t("home.game_cards.poker_desc")}
+                {t("home.game_cards.tower_arena_desc")}
               </p>
               <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
                 <span>{t("home.play_pvp")}</span>
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </div>
-              {renderFriendWidget("poker")}
+              {renderFriendWidget("tower-arena")}
             </motion.a>
 
             <motion.a

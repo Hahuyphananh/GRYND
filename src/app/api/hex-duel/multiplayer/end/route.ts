@@ -112,43 +112,26 @@ export async function POST(req: Request) {
         (callerIsPlayer1 && winner === "player1") ||
         (!callerIsPlayer1 && winner === "player2");
 
-      let payout = 0;
+      // STAKES ARE RETIRED: no pot, no rake, no payout. Only the win/loss
+      // counters move; the leaderboard helper handles the rest.
+      const payout = 0;
       let newBalance: number | undefined;
 
       if (callerWon) {
-        payout = Number((wagerAmount * PAYOUT_MULTIPLIER).toFixed(2));
-
-        // applyLeaderboardCounters handles totalWon, currentStreak,
-        // bestStreak, biggestWin — only update balance & gamesWon here
-        // to avoid double-counting.
-        const [updatedUser] = await tx
+        await tx
           .update(users)
           .set({
-            balance: sql`${users.balance} + ${payout}`,
             gamesWon: sql`${users.gamesWon} + 1`,
           })
-          .where(eq(users.clerkId, clerkId))
-          .returning({ balance: users.balance });
-
-        // After `const [updatedUser] = await ...returning({...})`,
-        // `updatedUser` is already a SINGLE row object (or undefined).
-        // Earlier code read `updatedUser?.[0]?.balance` which treated the
-        // single row as a 2-D structure, so `.<0>` was always undefined
-        // and `newBalance` silently became 0 on every win/loss response.
-        // The fix below restores the correct single-row field access.
-        newBalance = Number(updatedUser?.balance ?? 0);
+          .where(eq(users.clerkId, clerkId));
       } else {
-        const [updatedUser] = await tx
+        await tx
           .update(users)
           .set({
             currentStreak: sql`0`,
             gamesLost: sql`${users.gamesLost} + 1`,
           })
-          .where(eq(users.clerkId, clerkId))
-          .returning({ balance: users.balance });
-
-        // See comment above re: `updatedUser?.[0]?.balance` bug.
-        newBalance = Number(updatedUser?.balance ?? 0);
+          .where(eq(users.clerkId, clerkId));
       }
 
       // Update the game record. `current_turn` is cleared on completion

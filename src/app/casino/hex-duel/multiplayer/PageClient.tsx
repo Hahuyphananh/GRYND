@@ -1,11 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useDefaultWager } from "../../../../hooks/useDefaultWager";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NavigationBar from "../../../../components/navigation-bar";
-import { CHIP_VALUES } from "../../../../lib/rouletteConfig";
 import { useHexAudio } from "../../../../lib/hexAudio";
 import { IconEye } from "@tabler/icons-react";
 
@@ -14,29 +12,14 @@ export default function HexDuelMultiplayerPage() {
   const [games, setGames] = useState<any[]>([]);
   const [liveGames, setLiveGames] = useState<any[]>([]);
   const [spectatorCounts, setSpectatorCounts] = useState<Record<number, number>>({});
-  const [wager, setWager] = useDefaultWager("hex-duel", 50);
-  const [balance, setBalance] = useState(0);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a game is free to create
+  // and join, so there is no stake or balance to track on this lobby.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const router = useRouter();
   // Audio matches the main Hex Duel game page (same `useHexAudio` lib).
   const audio = useHexAudio();
-
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data.success) setBalance(Number(data.data.balance || 0));
-    } catch {}
-  }, [isSignedIn]);
-
-  useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,18 +53,8 @@ export default function HexDuelMultiplayerPage() {
   useEffect(() => { load(); }, [load]);
 
   const handleCreate = async () => {
-    if (wager <= 0) {
-      setError("Please enter a valid wager amount.");
-      audio.playPush();
-      return;
-    }
     if (!isSignedIn) {
       setError("Please sign in to create a game.");
-      audio.playPush();
-      return;
-    }
-    if (wager > balance) {
-      setError(`Insufficient balance. You need ${wager.toLocaleString()} tokens.`);
       audio.playPush();
       return;
     }
@@ -92,7 +65,7 @@ export default function HexDuelMultiplayerPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ wager }),
+        body: JSON.stringify({ wager: 0 }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -160,15 +133,12 @@ export default function HexDuelMultiplayerPage() {
           </Link>
         </div>
 
-        {/* Balance display */}
-        {isSignedIn && (
-          <div className="mb-4 text-center">
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Your Balance</p>
-            <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
-              {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
-        )}
+        {/* Stakes are retired — nothing has to be put up to play. */}
+        <div className="mb-4 text-center">
+          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+            Free play · no tokens at stake
+          </span>
+        </div>
 
         {/* Error display */}
         {error && (
@@ -183,80 +153,11 @@ export default function HexDuelMultiplayerPage() {
           </div>
         )}
 
-        {/* Wager controls */}
+        {/* Stakes are retired — there is no stake to pick; create a game. */}
         <div className="mb-6 flex flex-wrap items-end gap-3">
-          <div>
-            <label className="text-[10px] text-slate-500 uppercase tracking-widest block mb-1">Stake</label>
-            <input
-              type="number"
-              value={wager}
-              min={0}
-              aria-label="Stake amount"
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === "") { setWager(0); return; }
-                setWager(Number(val) || 0);
-              }}
-              onBlur={() => { if (!wager || wager < 1) setWager(50); }}
-              className="w-28 rounded-lg bg-black/30 border border-white/20 px-3 py-1.5 text-sm focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition"
-              placeholder="Stake"
-            />
-          </div>
-
-          {/* Quick chips */}
-          <div className="flex flex-wrap gap-1">
-            {CHIP_VALUES.map((val) => (
-              <button
-                key={val}
-                onClick={() => {
-                  setWager(val);
-                  audio.playSelect();
-                }}
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all ${
-                  wager === val
-                    ? "bg-[#FFFF33] text-black border-[#FFFF33]"
-                    : "bg-[#0a1a3a] text-[#FFFF33]/80 border-[#FFFF33]/30 hover:bg-[#FFFF33]/20"
-                }`}
-              >
-                {val}
-              </button>
-            ))}
-          </div>
-
-          {/* Bet action buttons */}
-          <div className="flex gap-1">
-            <button
-              onClick={() => {
-                setWager(Math.max(1, Math.floor(balance / 2)));
-                audio.playSelect();
-              }}
-              className="px-2 py-1 rounded text-[10px] font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
-            >
-              ½
-            </button>
-            <button
-              onClick={() => {
-                setWager(Math.max(1, balance));
-                audio.playSelect();
-              }}
-              className="px-2 py-1 rounded text-[10px] font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
-            >
-              ALL
-            </button>
-            <button
-              onClick={() => {
-                setWager((prev) => Math.min(prev * 2, balance));
-                audio.playSelect();
-              }}
-              className="px-2 py-1 rounded text-[10px] font-bold border border-[#FFFF33]/30 bg-[#FFFF33]/15 text-[#FFFF33] hover:bg-[#FFFF33]/25"
-            >
-              2×
-            </button>
-          </div>
-
           <button
             onClick={handleCreate}
-            disabled={actionLoading || wager <= 0}
+            disabled={actionLoading}
             className="rounded-lg border border-cyan-400/40 px-4 py-1.5 text-[11px] font-medium hover:bg-cyan-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             {actionLoading ? (
@@ -292,7 +193,7 @@ export default function HexDuelMultiplayerPage() {
           {games.map((g) => (
             <div key={g.id} className="rounded-lg border border-white/10 p-2.5 flex justify-between items-center">
               <span className="text-[12px] text-slate-300">
-                {g.hostName || "Player"} · {Number(g.wagerAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} tokens
+                {g.hostName || "Player"} · Free play
               </span>
               <button
                 onClick={() => handleJoin(g.id)}
@@ -314,7 +215,7 @@ export default function HexDuelMultiplayerPage() {
             <div key={g.id} className="rounded-lg border border-white/10 p-2.5 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-slate-300">
-                  #{g.id} · {g.hostName || "Player"} vs Opponent · {Number(g.wagerAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} tokens
+                  #{g.id} · {g.hostName || "Player"} vs Opponent · Free play
                 </span>
                 {spectatorCounts[g.id] > 0 && (
                   <span className="text-[10px] text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded-full">

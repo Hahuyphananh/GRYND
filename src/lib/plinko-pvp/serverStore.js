@@ -35,6 +35,7 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
+import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -65,9 +66,7 @@ import {
   RESULT,
   ROUND_DEADLINE_MS,
   ROUND_TIMER_SECONDS,
-  TIE_FEE_PCT,
   autoLaunchInputs,
-  computePayout,
   round2,
 } from "./constants";
 import { hashSeed, simulateBall, simulateDualBalls } from "./physics";
@@ -382,6 +381,10 @@ export function isParticipant(match, userId) {
 // has no other player-chosen params (mines-pvp's minesCount is gone).
 // Returns `{ ok: true }` on success, `{ ok: false, error }` otherwise.
 export function validateMatchParams({ stakeAmount }) {
+  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
+  // range no longer rejects anything. The escrow/payout arithmetic below is
+  // inert — it runs against a 0 stake.
+  if (STAKES_RETIRED) return { ok: true };
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
     return {
@@ -578,6 +581,9 @@ export async function playAiTurn({ userId, matchId }) {
 }
 
 export async function createOrJoin({ userId, stakeAmount }) {
+  // Retired stakes: the match is free, and every escrow/payout below operates
+  // on 0 because the stake is normalized here.
+  stakeAmount = normalizeStake(stakeAmount);
   const validation = validateMatchParams({ stakeAmount });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -620,22 +626,6 @@ export async function createOrJoin({ userId, stakeAmount }) {
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount) {
-  // Deduct creator stake (atomic: only if balance is sufficient).
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   const [match] = await tx
     .insert(plinkoPvpMatches)
     .values({
@@ -680,22 +670,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  // Deduct joiner's stake (atomic: only if balance is sufficient).
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Brief 3-second "Ready" window so both players can read the
   // match-found banner before ball_1's 20-second commit window
   // opens. /status auto-advances to ball_1 once the deadline passes
@@ -722,13 +696,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     )
     .returning();
 
-  // If our conditional UPDATE didn't match any rows (because another
-  // concurrent joiner raced us), refund joiner stake.
+  // If our conditional UPDATE didn't match any rows, another concurrent
+  // joiner raced us.
   if (!updated) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stakeAmount}` })
-      .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
   }    mirrorQueueCreated({ gameKey: "plinko-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
     mirrorQueueCreated({ gameKey: "plinko-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
@@ -792,14 +762,6 @@ export async function cancelMatch({ userId, matchId }) {
       return { error: "Only the creator can cancel", status: 403 };
     }
 
-    // Refund creator stake.
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, userId));
-
     const [updated] = await tx
       .update(plinkoPvpMatches)
       .set({
@@ -834,10 +796,6 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       if (match.player1Id !== loserClerkId) {
         return { error: "Only the creator can cancel", status: 403 };
       }
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-        .where(eq(users.clerkId, loserClerkId));
       const [updated] = await tx
         .update(plinkoPvpMatches)
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
@@ -858,22 +816,7 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
 
     const loserIsP1 = match.player1Id === loserClerkId;
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
-    const payout = computePayout({
-      stakeAmount: match.stakeAmount,
-      // Force a decisive result with the OPPONENT as the winner; the
-      // returned numbers are the standard 1.9× payout math.
-      p1Score: loserIsP1 ? 0 : 1,
-      p2Score: loserIsP1 ? 1 : 0,
-    });
-
-    // Paid matches credit the winner. AI matches are free and the bot is
-    // not a users-table row, so disconnects must never touch balances.
-    if (!isFreeAiMatch(match)) {
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-        .where(eq(users.clerkId, winnerUserId));
-    }
+    const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
 
     const setValues = {
       status: MATCH_STATUS.FINISHED,
@@ -883,9 +826,9 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       p1Ready: false,
       p2Ready: false,
       roundDeadline: null,
-      result: payout.result,
-      houseFee: round2(payout.houseFee).toFixed(2),
-      prizePaid: round2(payout.prizePaid).toFixed(2),
+      result,
+      houseFee: "0.00",
+      prizePaid: "0.00",
       winnerId: winnerUserId,
       endedAt: new Date(),
     };
@@ -896,8 +839,8 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       .returning();
 
     const finalRow = updated || match;
-    if (!isFreeAiMatch(match) && (payout.result === RESULT.PLAYER1 || payout.result === RESULT.PLAYER2)) {
-      await recordPvPResult(tx, finalRow, winnerUserId, payout.result).catch(
+    if (!isFreeAiMatch(match)) {
+      await recordPvPResult(tx, finalRow, winnerUserId, result).catch(
         () => {},
       );
     }
@@ -1553,70 +1496,23 @@ async function forceBallAdvance(tx, match) {
 async function resolveMatch(tx, match) {
   const p1Score = Number(match.p1Score) || 0;
   const p2Score = Number(match.p2Score) || 0;
-  const isTiebreaker = Boolean(match.isTiebreaker);
-  const payout = isFreeAiMatch(match)
-      ? {
-          winnerNet: 0,
-          houseFee: 0,
-          prizePaid: 0,
-          tiebreakerRefund: 0,
-          result:
-            p1Score === p2Score
-              ? RESULT.TIE
-              : p1Score > p2Score
-                ? RESULT.PLAYER1
-                : RESULT.PLAYER2,
-        }
-      : computePayout({
-          stakeAmount: match.stakeAmount,
-          p1Score,
-          p2Score,
-          tieFeePct: isTiebreaker ? TIE_FEE_PCT : 0,
-        });
+  // Stakes are retired: nothing is escrowed, so there is no pot to pay out
+  // or rake. Only the result still matters for settlement.
+  const payout = {
+    result:
+      p1Score === p2Score
+        ? RESULT.TIE
+        : p1Score > p2Score
+          ? RESULT.PLAYER1
+          : RESULT.PLAYER2,
+  };
 
-  // Apply balance changes per the payout math. Ties refund both
-  // players in full (no fee). Winner gets (stake + 0.9 × stake) =
-  // 1.9× their stake back. Loser loses their stake (handled by the
-  // deduction at lobby create/join time — we don't double-deduct).
   const winnerUserId =
     payout.result === RESULT.PLAYER1
       ? match.player1Id
       : payout.result === RESULT.PLAYER2
         ? match.player2Id
         : null;
-  if (!isFreeAiMatch(match) && payout.result === RESULT.PLAYER1) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, match.player1Id));
-  } else if (!isFreeAiMatch(match) && payout.result === RESULT.PLAYER2) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, match.player2Id));
-  } else if (!isFreeAiMatch(match)) {
-    // TIE — refund both players. For normal ties (should no longer
-    // occur with the tiebreaker logic) both get full stake back.
-    // For tiebreaker ties (still tied after ball 4), each player
-    // forfeits TIE_FEE_PCT (5%) of their stake and gets 95% back.
-    // `computePayout` exposes `tiebreakerRefund` when tieFeePct > 0.
-    const refundPerPlayer =
-      isTiebreaker && payout.tiebreakerRefund != null
-        ? payout.tiebreakerRefund
-        : Number(match.stakeAmount);
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${refundPerPlayer}`,
-      })
-      .where(eq(users.clerkId, match.player1Id));
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${refundPerPlayer}`,
-      })
-      .where(eq(users.clerkId, match.player2Id));
-  }
 
   // Stamp the match as finished. `result` uses the long form
   // ('player1' | 'player2' | 'tie') to match the schema's
@@ -1635,8 +1531,8 @@ async function resolveMatch(tx, match) {
     p2Ready: false,
     roundDeadline: null,
     result: payout.result,
-    houseFee: round2(payout.houseFee).toFixed(2),
-    prizePaid: round2(payout.prizePaid).toFixed(2),
+    houseFee: "0.00",
+    prizePaid: "0.00",
     endedAt: new Date(),
   };
   if (winnerUserId !== null) setValues.winnerId = winnerUserId;

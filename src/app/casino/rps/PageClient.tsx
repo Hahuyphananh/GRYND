@@ -9,7 +9,6 @@
 //   * Live list of open lobbies (polled every 3s + realtime nudge).
 
 import { useEffect, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
@@ -23,7 +22,6 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 
-const BET_OPTIONS = [10, 25, 50, 100, 250];
 
 export default function RPSLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -31,8 +29,9 @@ export default function RPSLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
-  const [betAmount, setBetAmount] = useDefaultWager("rps", 10);
-  const [balance, setBalance] = useState(0);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to track and no token balance to load.
+  const betAmount = 0;
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
@@ -42,17 +41,6 @@ export default function RPSLobbyPage() {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("rps"),
   );
-
-  const fetchBalance = async () => {
-    if (!user) return;
-    const response = await fetch("/api/get-user-tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    });
-    const data = await response.json();
-    if (data.success) setBalance(Number(data.data.balance || 0));
-  };
 
   const fetchGames = async () => {
     try {
@@ -67,10 +55,8 @@ export default function RPSLobbyPage() {
   };
 
   useEffect(() => {
-    if (isSignedIn && user) fetchBalance();
     fetchGames();
     const id = setInterval(() => {
-      if (isSignedIn && user) fetchBalance();
       fetchGames();
     }, 3000);
     return () => clearInterval(id);
@@ -91,10 +77,6 @@ export default function RPSLobbyPage() {
   }, [socket]);
 
   const createGame = async () => {
-    if (betAmount <= 0 || betAmount > balance) {
-      setError("Invalid bet amount");
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -209,18 +191,13 @@ export default function RPSLobbyPage() {
             heading: "Stake",
             body: (
               <>
-                Both players stake the same amount; the best-of-7 winner
-                takes the pot minus the platform fee. Play vs AI for free to
-                practice.
+                A free ranked match — the best-of-7 winner takes the trophies
+                and the rating; nothing is staked and no pot is paid.
               </>
             ),
           },
         ],
       }}
-      balance={balance}
-      stake={betAmount}
-      onStakeChange={setBetAmount}
-      stakeOptions={BET_OPTIONS}
       busy={loading}
       onPlay={createGame}
       playLabel="Create PvP Game"
@@ -232,7 +209,6 @@ export default function RPSLobbyPage() {
         busy: loading,
         onClick: playVsAi,
       }}
-      escrowNote="We pair you with another player of the exact same bet. If no one is waiting, your bet is escrowed in a private game until someone joins or you cancel."
       children={
         <AiDifficultyPicker
           gameKey="rps"

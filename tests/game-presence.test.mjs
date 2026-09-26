@@ -85,7 +85,7 @@ test("canonical ids are the existing catalog ids — no new identifier space", (
   // And they all exist in the lobby, so a count can always be rendered.
   const lobby = source(LOBBY);
   const lobbyKeys = [...lobby.matchAll(/leaderboardKey: "([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(lobbyKeys.length >= 20);
+  assert.ok(lobbyKeys.length >= 19);
   for (const id of PRESENCE_GAME_IDS) {
     assert.ok(lobbyKeys.includes(id), `${id} is not a lobby leaderboardKey`);
   }
@@ -196,7 +196,7 @@ test("counts are grouped by game, drop zeroes, and only surface real games", () 
     { gameId: "roulette", players: 12 },
     { gameId: "crash", players: 8 },
     { gameId: "rps", players: 5 },
-    { gameId: "poker", players: 0 }, // nobody playing → absent, not 0
+    { gameId: "tower-arena", players: 0 }, // nobody playing → absent, not 0
     { gameId: "not-a-game", players: 99 }, // legacy/manual row → never surfaced
     { gameId: null, players: 4 },
     { gameId: "chess", players: "3" }, // driver may hand back a numeric string
@@ -208,7 +208,7 @@ test("counts are grouped by game, drop zeroes, and only surface real games", () 
   ]);
 
   assert.deepEqual(counts, { roulette: 12, crash: 8, rps: 5, chess: 3, keno: 3 });
-  assert.equal("poker" in counts, false);
+  assert.equal("tower-arena" in counts, false);
   assert.equal("not-a-game" in counts, false);
   // Every key is a game the lobby can actually render.
   for (const id of Object.keys(counts)) assert.ok(PRESENCE_GAME_IDS.includes(id));
@@ -752,7 +752,7 @@ test("the shared host is the single wiring point, and every game feeds it", () =
   // harness route that resolveGameId deliberately rejects.
   // The tag must open a line (a prose mention in a comment is not a mount).
   const pages = walk("src/app").filter((file) => /^\s*<GameSessionHost/m.test(source(file)));
-  assert.ok(pages.length >= 21, `expected >= 21 game surfaces, found ${pages.length}`);
+  assert.ok(pages.length >= 20, `expected >= 20 game surfaces, found ${pages.length}`);
   for (const file of pages) {
     const src = source(file);
     assert.match(src, /autoStart=/, `${file} must pass autoStart`);
@@ -782,12 +782,11 @@ test("the 4 pages without the host wire the same hook next to their play edge", 
 });
 
 test("a spectator on a live game is never counted as playing", () => {
-  // Four host-mounted games expose a view-only spectator URL where the match
-  // looks in_progress to the watcher too.
+  // Every host-mounted game with a view-only spectator URL opts the watcher
+  // out, where the match would otherwise look in_progress to them too.
   const hostGuards = {
     "src/app/casino/chess-game/[gameId]/PageClient.jsx": "presenceEnabled={!isSpectator}",
     "src/app/casino/four-in-a-row/game/[gameId]/PageClient.tsx": "presenceEnabled={!isSpectator}",
-    "src/app/casino/poker/multi/PageClient.tsx": "presenceEnabled={!isSpectator}",
   };
   for (const [file, needle] of Object.entries(hostGuards)) {
     assert.ok(source(file).includes(needle), `${file} must opt spectators out of presence`);

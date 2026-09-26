@@ -1094,8 +1094,11 @@ export const ratingIdentities = pgTable(
 // at TROPHY_START (0) on their first ranked match in a game.
 //
 // THE RULE (src/lib/trophies.js): win = +30, loss = −30, draw = 0, clamped to
-// [0, 10000]. Reaching 10,000 completes trophy progression for that game and
-// Elo becomes the primary signal (Prestige = max(0, elo − 1000), derived).
+// [0, 1000] PER GAME. Reaching the cap completes trophy progression for that
+// game and unlocks its PRESTIGE ladder — the game's Elo, tracked silently from
+// the first rated match and revealed at the cap (src/lib/prestige.js). The
+// additive overall maximum is OVERALL_TROPHY_MAX — the per-game cap times the
+// number of rated games (TROPHY_GAMES), never a hardcoded total.
 //
 // Written ONLY from server-side match settlement via applyTrophyResult under
 // SELECT ... FOR UPDATE in ascending user_id order. No client input is ever
@@ -1290,81 +1293,6 @@ export const crashGames = pgTable(
     userIdx: index("crash_games_user_idx").on(table.userId, desc(table.createdAt)),
   })
 );
-
-export const pokerGames = pgTable("poker_games", {
-  id: serial("id").primaryKey(),
-  // Legacy single-player stats columns kept for rankings compatibility
-  userId: integer("user_id"),
-  betAmount: numeric("bet_amount", { precision: 10, scale: 2 }),
-  payout: numeric("payout", { precision: 10, scale: 2 }),
-  // Game info
-  gameCode: varchar("game_code", { length: 10 })
-    .notNull()
-    .unique()
-    .default(sql`substr(md5((random())::text), 1, 10)`),
-  maxPlayers: integer("max_players").notNull().default(6),
-  isPrivate: boolean("is_private").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  //  NEW: Players array (max 6 seats)
-  /**
-   * Structure:
-   * [
-   *   { seat: 0, clerkId: "user_123" },
-   *   { seat: 1, clerkId: null },
-   *   ...
-   * ]
-   */
-  players: jsonb("players").notNull().default(sql`
-      '[
-        {"seat":0,"clerkId":null},
-        {"seat":1,"clerkId":null},
-        {"seat":2,"clerkId":null},
-        {"seat":3,"clerkId":null},
-        {"seat":4,"clerkId":null},
-        {"seat":5,"clerkId":null}
-      ]'::jsonb
-    `),
-  // Game state
-  currentTurn: integer("current_turn"),
-  pot: text("pot"),
-  communityCards: jsonb("community_cards"),
-  deck: jsonb("deck"),
-  discardPile: jsonb("discard_pile"),
-  // Betting & rounds
-  round: text("round"),
-  currentBet: text("current_bet"),
-  minRaise: text("min_raise"),
-  // Player-specific info
-  dealerPosition: integer("dealer_position"),
-  smallBlind: text("small_blind"),
-  bigBlind: text("big_blind"),
-  playerPositions: jsonb("player_positions"),
-  // Result
-  status: text("status").default("waiting"),
-  winner: text("winner"),
-  winnings: jsonb("winnings"),
-  // Variant
-  variant: text("variant"),
-  // Existing fields
-  playerHand: jsonb("player_hand").default(sql`'[]'::jsonb`),
-  aiHand: jsonb("ai_hand").default(sql`'[]'::jsonb`),
-});
-
-export const pokerPlayerPositions = pgTable("poker_player_positions", {
-  id: serial("id").primaryKey(),
-  gameId: integer("game_id").notNull(), // FK to poker_games.id (add constraint in SQL migration if desired)
-  playerId: integer("player_id").default(null), // clerk id or NULL for AI
-  position: integer("position").notNull(), // seat index
-  stack: integer("stack").notNull().default(0),
-  currentBet: integer("current_bet").notNull().default(0),
-  hasFolded: boolean("has_folded").notNull().default(false),
-  isAi: boolean("is_ai").notNull().default(false),
-  hand: json("hand")
-    .notNull()
-    .default(sql`'[]'::json`),
-  lastAction: text("last_action").default(null),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
 
 export const blackjackGames = pgTable(
   "blackjack_games",
@@ -1966,7 +1894,7 @@ export const crashArenaTables = pgTable(
     // changes.
     smallBlind: numeric("small_blind", { precision: 10, scale: 2 }),
     // Host-created private table: hidden from the public lobby grid; only
-    // the host may add AI seats (AIs are private-only, like the poker
+    // the host may add AI seats (AIs are private-only, as in
     // tables). Joining still works via the table URL.
     isPrivate: boolean("is_private").notNull().default(false),
     // Server-authoritative wall-clock deadline for the next round start,
@@ -2121,7 +2049,6 @@ export const crashArenaTransactions = pgTable(
 export const usersRelations = relations(users, ({ many }) => ({
   rouletteGames: many(rouletteGames),
   crashGames: many(crashGames),
-  pokerGames: many(pokerGames),
   blackjackGames: many(blackjackGames),
   minesGames: many(minesGames),
   plinkoGames: many(plinkoGames),

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { oddsGames, users } from "../../../../../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { oddsGames } from "../../../../../db/schema";
+import { eq, and } from "drizzle-orm";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
@@ -90,8 +90,8 @@ async function forfeitPlayer(
   wager: number,
   winner: "player1" | "player2",
 ) {
-  // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
-  const payout = wager * 1.9;
+  // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+  const payout = 0;
 
   await db.transaction(async (tx: any) => {
     // Lock the row
@@ -102,12 +102,6 @@ async function forfeitPlayer(
       .for("update");
 
     if (!game || game.status !== "playing") return;
-
-    // Credit winner
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout}` })
-      .where(eq(users.clerkId, winnerId));
 
     // Persist the game-over state so polls/refetches reflect the end.
     const forfeitedState = game.gameState
@@ -175,16 +169,6 @@ async function cancelAbandonedGame(
       .for("update");
 
     if (!game || game.status !== "playing") return;
-
-    // Refund both players
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${wager}` })
-      .where(eq(users.clerkId, player1Id));
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${wager}` })
-      .where(eq(users.clerkId, player2Id));
 
     // Persist the game-over state so polls/refetches reflect the end.
     const cancelledState = game.gameState

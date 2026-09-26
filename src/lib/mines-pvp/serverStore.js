@@ -32,6 +32,7 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
+import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -67,7 +68,6 @@ import {
   activePickerForMatch,
   aiPickDelayElapsed,
   chooseAiCell,
-  computePayout,
   decideOutcome,
   generateSolvableBoard,
   isFreeAiMatch,
@@ -122,7 +122,9 @@ export function isParticipant(match, userId) {
 export function validateMatchParams({ stakeAmount, minesCount }) {
   const stake = Number(stakeAmount);
   const mines = Number(minesCount);
-  if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
+  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
+  // range no longer rejects anything (the mine count still must be valid).
+  if (!STAKES_RETIRED && (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE)) {
     return {
       ok: false,
       error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
@@ -286,6 +288,9 @@ export async function playAiTurn({ userId, matchId }) {
 // prevents a malicious joiner from substituting a different mine
 // count to "fix" the match.
 export async function createOrJoin({ userId, stakeAmount, minesCount }) {
+  // Retired stakes: the match is free, and every escrow/payout below operates
+  // on 0 because the stake is normalized here.
+  stakeAmount = normalizeStake(stakeAmount);
   const validation = validateMatchParams({ stakeAmount, minesCount });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -329,22 +334,6 @@ export async function createOrJoin({ userId, stakeAmount, minesCount }) {
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount, minesCount) {
-  // Deduct creator stake (atomic: only if balance is sufficient).
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   const [match] = await tx
     .insert(minesPvpMatches)
     .values({
@@ -398,22 +387,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  // Deduct joiner's stake (atomic: only if balance is sufficient).
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Server randomizes the turn order at match creation. The chosen
   // player is the one who picks first (status='p1_turn' / 'p2_turn'
   // with currentTurnUserId pointing at them).
@@ -449,13 +422,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     )
     .returning();
 
-  // If our conditional UPDATE didn't match any rows (because another
-  // concurrent joiner raced us), refund joiner stake.
+  // If our conditional UPDATE didn't match any rows, another concurrent
+  // joiner raced us.
   if (!updated) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stakeAmount}` })
-      .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
   }
 
@@ -488,14 +457,6 @@ export async function cancelMatch({ userId, matchId }) {
     if (match.player1Id !== userId) {
       return { error: "Only the creator can cancel", status: 403 };
     }
-
-    // Refund creator stake.
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, userId));
 
     const [updated] = await tx
       .update(minesPvpMatches)
@@ -1101,11 +1062,8 @@ async function resolveMatch(tx, match, loserId) {
     player2Id: match.player2Id,
   });
 
-  // AI matches are always free: no token settlement, no stat updates.
+  // AI matches are always free: no stat updates.
   const isAi = isFreeAiMatch(match);
-  const payout = isAi
-    ? { stake: 0, winnerNet: 0, loserNet: 0, houseFee: 0, prizePaid: 0 }
-    : computePayout({ stakeAmount: match.stakeAmount, result });
 
   // Pick the FIRST pick from each seat for the legacy single-pick
   // columns on `mines_pvp_rounds`. The full chronological history
@@ -1135,15 +1093,6 @@ async function resolveMatch(tx, match, loserId) {
   const winnerId =
     result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
 
-  // Apply balance changes only for paid PvP matches. AI matches
-  // never touch user token balances.
-  if (!isAi) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerId));
-  }
-
   // Stamp the match as finished. The `board` column stays on the
   // row so the post-match reveal screen can render the full mine
   // layout (the /status route stops scrubbing it once
@@ -1156,8 +1105,8 @@ async function resolveMatch(tx, match, loserId) {
       roundDeadline: null,
       result,
       winnerId,
-      houseFee: payout.houseFee.toFixed(2),
-      prizePaid: payout.prizePaid.toFixed(2),
+      houseFee: "0.00",
+      prizePaid: "0.00",
       endedAt: new Date(),
     })
     .where(eq(minesPvpMatches.id, match.id))

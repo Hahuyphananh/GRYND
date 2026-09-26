@@ -4,6 +4,7 @@ import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 function generateDeck() {
   const colors = ["red", "yellow", "green", "blue"];
@@ -92,19 +93,13 @@ export async function POST(request) {
     );
 
   const { betAmount, difficulty } = await request.json();
-  // AI matches are free play — a 0 stake is valid (the "Free Play vs AI"
-  // button sends 0). Only non-numeric, negative or over-cap values are
-  // rejected. A staked AI match is still recorded but never moves tokens.
-  const stake = Number(betAmount);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): an AI match is free play.
+  // The requested stake is normalized to 0, so nothing malformed or legacy
+  // can be stored on the game row.
+  const stake = normalizeStake(betAmount);
   // The lobby's AI tier, stored on the game so the bot's turn policy reads
   // the same value later.
   const aiDifficulty = coerceAiDifficulty(difficulty);
-  if (!Number.isFinite(stake) || stake < 0 || stake > 1000) {
-    return new Response(
-      JSON.stringify({ success: false, error: "Invalid bet amount" }),
-      { status: 400 },
-    );
-  }
 
   try {
     const user = await db.query.users.findFirst({
@@ -116,12 +111,7 @@ export async function POST(request) {
         { status: 404 },
       );
 
-    const balance = parseFloat(user.balance);
-    if (balance < stake)
-      return new Response(
-        JSON.stringify({ success: false, error: "Insufficient balance" }),
-        { status: 400 },
-      );
+    const balance = Number(user.balance);
 
     let deck = generateDeck();
     const playerHand = deck.splice(0, 7);

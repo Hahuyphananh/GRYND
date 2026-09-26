@@ -16,7 +16,7 @@ import {
   attachSeatIdentity,
   createOrJoin,
 } from "../../../../lib/blackjack-pvp/serverStore";
-import { MAX_STAKE, MIN_STAKE } from "../../../../lib/blackjack-pvp/constants";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 function normaliseMatch(match) {
   if (!match) return null;
@@ -68,19 +68,10 @@ export async function POST(req) {
     );
   }
 
-  const stakeAmount = Number(body?.stakeAmount);
-  if (!Number.isFinite(stakeAmount) || stakeAmount < MIN_STAKE) {
-    return NextResponse.json(
-      { success: false, error: "Invalid stake amount" },
-      { status: 400 },
-    );
-  }
-  if (stakeAmount > MAX_STAKE) {
-    return NextResponse.json(
-      { success: false, error: "Stake exceeds maximum limit" },
-      { status: 400 },
-    );
-  }
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match is free to enter.
+  // The requested stake is normalized to 0 so no range check can reject a
+  // free match, and the store's escrow/payout arithmetic runs against 0.
+  const stakeAmount = normalizeStake(body?.stakeAmount);
 
   try {
     const result = await createOrJoin({

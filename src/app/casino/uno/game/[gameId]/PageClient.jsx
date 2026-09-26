@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
-import { useDefaultWager } from "../../../../../hooks/useDefaultWager";
 import UnoCard, { UNO_PALETTE } from "../../../../../components/UnoCard";
 import UnoBack from "../../../../../components/UnoBack";
 import NavigationBar from "../../../../../components/navigation-bar";
@@ -55,8 +54,9 @@ export default function UnoGamePage() {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [betAmount, setBetAmount] = useDefaultWager("uno", 100);
-  const [tokens, setTokens] = useState(null);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): nothing is staked and no
+  // token balance is shown.
+  const betAmount = 0;
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [pendingCard, setPendingCard] = useState(null);
   const [turnHistory, setTurnHistory] = useState([]);
@@ -197,27 +197,6 @@ export default function UnoGamePage() {
       setMessage(t("neonFlush.replayAccepted"));
     }
   }, [gameMode, replayRequested, opponentReplayRequested]);
-  useEffect(() => {
-    const fetchTokens = async () => {
-      try {
-        const res = await fetch("/api/get-user-tokens", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        });
-        const data = await res.json();
-        if (data.success)
-          setTokens({
-            balance: data.data.balance,
-          });
-      } catch (err) {
-        console.error("Erreur lors du chargement des tokens:", err);
-      }
-    };
-    fetchTokens();
-  }, []);
   const checkForWinner = async (gameId) => {
     try {
       const res = await fetch("/api/uno/determine-winner", {
@@ -992,7 +971,7 @@ export default function UnoGamePage() {
               heading: "Modes",
               body: (
                 <>
-                  Play vs AI for free (no tokens staked), or go 1v1 online for a staked match.
+                  Play vs AI for free, or go 1v1 online for a ranked match.
                   Winner takes the pot minus the platform fee.
                 </>
               ),
@@ -1008,13 +987,9 @@ export default function UnoGamePage() {
       <h1 className="text-3xl mb-2 font-bold">
         {gameMode === "online" ? t("neonFlush.onlineTitle") : t("neonFlush.vsAiTitle")}
       </h1>
-      {tokens && (
-        <p className="text-yellow-300 mb-4 text-lg">
-          {t("neonFlush.tokens")}
-          {" : "}
-          {tokens.balance}
-        </p>
-      )}
+      <p className="mb-4 text-sm font-bold uppercase tracking-widest text-emerald-300">
+        Free play · no tokens at stake
+      </p>
       <div className="mb-5 text-center">
         <button
           onClick={() => setShowRules(true)}

@@ -553,7 +553,9 @@ test("E. changing preferences changes the recommendations", () => {
   // primary picks still differ — the change reaches the lobby section.
   const fullStrategy = recommendGames({ ...FULL_ANSWERS, game_types: ["strategy"] });
   const fullChance = recommendGames({ ...FULL_ANSWERS, game_types: ["luck_chance"] });
-  assert.deepEqual(fullStrategy.primaryGameIds, ["poker", "chess", "tower-arena"]);
+  // Poker was removed from the games catalog, so the strategy picks now come
+  // from the remaining strategy games (chess → tower-arena → hex-duel).
+  assert.deepEqual(fullStrategy.primaryGameIds, ["chess", "tower-arena", "hex-duel"]);
   assert.ok(fullStrategy.primaryGameIds.every((id) => !fullChance.primaryGameIds.includes(id)));
   assert.ok(fullChance.recommendations[0].score > recommendGames(null).recommendations[0].score);
   // The lobby section is derived from a fresh server read on every mount, so

@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import { dotsAndBoxesGames } from "../../../../db/schema";
 import { settleDotsAndBoxesGame } from "../../../../lib/dotsAndBoxesServer";
 import { recordInvalidAction } from "../../../../lib/dotsAndBoxesAudit";
 
@@ -50,11 +50,6 @@ export async function POST(req) {
           throw new Error("Only the host can cancel a waiting game");
         }
         if (!game.guestClerkId) {
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${game.betAmount}` })
-            .where(eq(users.clerkId, userId));
-
           await tx
             .update(dotsAndBoxesGames)
             .set({ status: "cancelled", endedAt: new Date() })

@@ -64,7 +64,7 @@ export async function GET() {
   // possibly-stale stored level column. Prestige read-shape mirrors the
   // battlepass endpoint so every consumer sees one consistent contract.
   // Per-game trophies + the derived Prestige (Elo−1000, only for games at the
-  // 10,000 trophy cap). Both are read-only views over the same rows below.
+  // per-game trophy cap). Both are read-only views over the same rows below.
   const trophies = (await getTrophiesForUser(row.clerkId)) as Record<
     string,
     { trophies?: number }
@@ -134,7 +134,7 @@ export async function GET() {
           ...provisionalProgress(0),
         }),
       })),
-      // Battle Pass level derives from TROPHIES (10,000 total = level 100).
+      // Battle Pass level derives from TROPHIES (OVERALL_TROPHY_MAX = level 100).
       level: getLevelFromTrophies(totalTrophies),
       prestige: prestigeWithElos.prestige,
       prestigeGameKey: prestigeWithElos.prestigeGameKey,

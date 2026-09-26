@@ -26,7 +26,6 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -38,7 +37,6 @@ import {
   minesPvpMatchRoom,
 } from "../../../lib/mines-pvp/rooms";
 import {
-  STAKE_PRESETS,
   MIN_MINES,
   MAX_MINES,
 } from "../../../lib/mines-pvp/constants";
@@ -115,15 +113,15 @@ export default function MinesPvpLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useDefaultWager("mines", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
   const [minesCount, setMinesCount] = useState<number>(3);
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
     [],
   );
-  const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   // The AI tier the bot picks at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
@@ -149,30 +147,13 @@ export default function MinesPvpLobbyPage() {
     }
   }, []);
 
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  }, [isSignedIn]);
-
   useEffect(() => {
     fetchAvailable();
-    fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchAvailable, fetchBalance]);
+  }, [fetchAvailable]);
 
   // Derive any lobby the current user owns FROM the availableMatches
   // payload (which carries the player's clerkId as player1Id). This
@@ -366,26 +347,15 @@ export default function MinesPvpLobbyPage() {
   const myOpenMatchId = myOpenMatch?.id ?? null;
 
   // ── Validation ────────────────────────────────────────────────────
-  // Pre-flight guards: minesCount in [1, 24] (per constants) and
-  // stake within the user's balance. The server re-validates both
-  // but catching them client-side avoids a 400 round-trip.
+  // Pre-flight guard: minesCount in [1, 24] (per constants). The
+  // server re-validates but catching it client-side avoids a 400.
   const minesCountValid =
     Number.isInteger(minesCount) && minesCount >= MIN_MINES && minesCount <= MAX_MINES;
-  const stakeValid = stake > 0 && (balance === null || balance >= stake);
-  const canCreate = isSignedIn && !busy && minesCountValid && stakeValid && myOpenMatchId === null;
+  const canCreate = isSignedIn && !busy && minesCountValid && myOpenMatchId === null;
   const canPlayAi = isSignedIn && !busy && minesCountValid;
+  // Stakes are retired — the queue only carries the (free) mine count.
   const quickQueuePreferences = (
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-        Quick Queue stake
-        <input
-          type="number"
-          min={1}
-          value={stake}
-          onChange={(event) => setStake(Math.max(1, Number(event.target.value) || 1))}
-          className="mt-1 w-full rounded-md border border-cyan-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
-        />
-      </label>
       <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
         Quick Queue mines
         <input
@@ -425,7 +395,7 @@ export default function MinesPvpLobbyPage() {
   return (
     <PvpLobbyPage
       quickQueuePreferences={quickQueuePreferences}
-      quickQueueReadinessBody={{ preferredGames: ["mines-pvp"], minesStakeAmount: stake, minesCount }}
+      quickQueueReadinessBody={{ preferredGames: ["mines-pvp"], minesStakeAmount: 0, minesCount }}
       title="Mines Duel Lobby"
       subtitle={
         <>
@@ -489,10 +459,6 @@ export default function MinesPvpLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={stake}
-      onStakeChange={setStake}
-      stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => {
         posthog?.capture("mines_pvp_lobby_create_clicked", {
@@ -507,13 +473,6 @@ export default function MinesPvpLobbyPage() {
         onClick: () => playVsAi(minesCount),
         disabled: !canPlayAi,
       }}
-      escrowNote={
-        <>
-          We pair you with another player of the <b>exact same</b> stake.
-          If no one is waiting, your stake is escrowed in a private lobby
-          with your chosen mine count until someone joins or you cancel.
-        </>
-      }
       error={error}
       lobbies={availableMatches}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."

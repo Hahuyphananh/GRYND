@@ -103,10 +103,6 @@ Notes:
 
 ## Games with no match-over result UI (nothing to convert)
 
-- Poker (multi) — per-hand showdown/replay is part of the ongoing hand flow, not a match end.
-  The result moment is a transient pointer-events-none "WINNER!" banner over the table plus
-  Replay Hand / cash-out buttons; stacks are a running bankroll across hands, so there is no
-  discrete win/loss verdict per hand and no match-over state.
 - Crash Arena (table) — `RoundResultModal` is a per-hand, 8s auto-dismissing card whose design
   is to keep hands flowing (winner semantics: fold-out / last-standing / pot carry-over, plus
   folded-vs-busted player outcomes that don't map to win/loss/draw). The shared screen has no

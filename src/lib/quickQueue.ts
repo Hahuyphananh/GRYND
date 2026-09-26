@@ -1,3 +1,5 @@
+import { TROPHY_MAX } from "./trophies";
+
 export const QUICK_QUEUE_GAME_KEYS = [
   "keno-pvp",
   "mines-pvp",
@@ -34,6 +36,12 @@ export interface QuickQueueRequest {
    * FIFO/preference matching, so every existing caller keeps working.
    */
   trophies?: Record<string, number> | null;
+  /**
+   * gameKey → Elo snapshot, loaded server-side at claim time. Used ONLY above
+   * the trophy cap (where trophies are identical and Prestige separates
+   * players). Optional: absent = the trophy gap (or FIFO) decides.
+   */
+  prestige?: Record<string, number> | null;
 }
 
 export interface QuickQueueCandidate {
@@ -47,16 +55,20 @@ export interface QuickQueueCandidate {
   available: boolean;
   /** gameKey → trophy count snapshot, when the caller supplied one. */
   trophies?: Record<string, number> | null;
+  /** gameKey → Elo snapshot, when the caller supplied one. */
+  prestige?: Record<string, number> | null;
 }
 
-// ── Trophy-aware matchmaking ──────────────────────────────────────────────
+// ── Trophy + prestige matchmaking ─────────────────────────────────────────
 //
-// Trophies are the primary skill signal below the cap (see src/lib/trophies.js),
-// so a quick-queue pair is preferred when the two players' trophies for the
-// chosen game are close. The acceptable gap starts small and WIDENS the longer
-// a player waits, so nobody is starved by a thin ladder — and it collapses back
-// to plain FIFO whenever either side has no trophy data (a brand-new player, or
-// a game with no trophy track). Membership never influences any of this.
+// Trophies are the skill signal BELOW the cap (see src/lib/trophies.js), so a
+// quick-queue pair is preferred when the two players' trophies for the chosen
+// game are close. Once BOTH players have capped the game their trophies are
+// identical, so the queue switches to that game's PRESTIGE (Elo) gap instead.
+// The acceptable gap starts small and WIDENS the longer a player waits, so
+// nobody is starved by a thin ladder — and it collapses back to plain FIFO
+// whenever either side has no data (a brand-new player, or an unplayed game).
+// Membership never influences any of this.
 
 /** Acceptable |trophyA − trophyB| at time zero. */
 export const TROPHY_MATCH_INITIAL_WINDOW = 200;
@@ -94,25 +106,118 @@ export function trophyForGame(
   return Math.max(0, value);
 }
 
+// ── Prestige-aware matchmaking (at/above the trophy cap) ──────────────────
+//
+// Once BOTH players have capped a game (trophies === TROPHY_MAX) their trophy
+// counts are identical, so a trophy gap of 0 would pair them at random. Above
+// the cap the queue therefore switches to that game's PRESTIGE — the player's
+// Elo, revealed at the cap (see src/lib/prestige.js) — using the same
+// widening-window idea scaled to Elo.
+
+/** Acceptable |prestigeA − prestigeB| at time zero. */
+export const PRESTIGE_MATCH_INITIAL_WINDOW = 100;
+
+/** How much the acceptable prestige gap grows per second of waiting. */
+export const PRESTIGE_MATCH_WINDOW_GROWTH_PER_SEC = 30;
+
+/** Hard ceiling for the prestige gap (spans the whole Elo band eventually). */
+export const PRESTIGE_MATCH_MAX_WINDOW = 2000;
+
+/** The acceptable prestige gap for someone who has waited `waitMs`. */
+export function prestigeMatchWindow(waitMs: number): number {
+  const waited = Math.max(0, Number(waitMs) || 0);
+  const grown =
+    PRESTIGE_MATCH_INITIAL_WINDOW +
+    Math.floor(waited / 1000) * PRESTIGE_MATCH_WINDOW_GROWTH_PER_SEC;
+  return Math.min(PRESTIGE_MATCH_MAX_WINDOW, grown);
+}
+
 /**
- * True when two players' trophies for `gameKey` are within the widening
- * window. Missing data on either side always passes (FIFO fallback).
+ * One player's prestige (Elo) for a game, or null when unknown/unplayed.
+ * Missing prestige is "no signal" — it never blocks a match.
+ */
+export function prestigeForGame(
+  prestige: Record<string, number> | null | undefined,
+  gameKey: string,
+): number | null {
+  if (!prestige) return null;
+  const value = Number(prestige[gameKey]);
+  if (!Number.isFinite(value)) return null;
+  return value;
+}
+
+/** True when a player has reached the trophy cap for a game (prestige unlocked). */
+export function trophiesAtCap(
+  trophies: Record<string, number> | null | undefined,
+  gameKey: string,
+): boolean {
+  const value = trophyForGame(trophies, gameKey);
+  return value !== null && value >= TROPHY_MAX;
+}
+
+/**
+ * The pair's skill gap for one game, or null when there is no signal:
+ *   * BOTH capped  → |prestige gap| (Elo),
+ *   * otherwise    → |trophy gap|.
+ */
+export function skillGapForGame({
+  requester,
+  candidate,
+  requesterPrestige,
+  candidatePrestige,
+  gameKey,
+}: {
+  requester?: Record<string, number> | null;
+  candidate?: Record<string, number> | null;
+  requesterPrestige?: Record<string, number> | null;
+  candidatePrestige?: Record<string, number> | null;
+  gameKey: string;
+}): number | null {
+  if (trophiesAtCap(requester, gameKey) && trophiesAtCap(candidate, gameKey)) {
+    const a = prestigeForGame(requesterPrestige, gameKey);
+    const b = prestigeForGame(candidatePrestige, gameKey);
+    if (a === null || b === null) return null;
+    return Math.abs(a - b);
+  }
+  const a = trophyForGame(requester, gameKey);
+  const b = trophyForGame(candidate, gameKey);
+  if (a === null || b === null) return null;
+  return Math.abs(a - b);
+}
+
+/**
+ * True when two players are within the acceptable skill window for `gameKey`:
+ * prestige when BOTH are capped, trophies otherwise. Missing data on either
+ * side always passes (FIFO fallback).
  */
 export function trophiesCompatible({
   requester,
   candidate,
+  requesterPrestige,
+  candidatePrestige,
   gameKey,
   waitMs,
 }: {
   requester?: Record<string, number> | null;
   candidate?: Record<string, number> | null;
+  requesterPrestige?: Record<string, number> | null;
+  candidatePrestige?: Record<string, number> | null;
   gameKey: string;
   waitMs: number;
 }): boolean {
-  const a = trophyForGame(requester, gameKey);
-  const b = trophyForGame(candidate, gameKey);
-  if (a === null || b === null) return true;
-  return Math.abs(a - b) <= trophyMatchWindow(waitMs);
+  const gap = skillGapForGame({
+    requester,
+    candidate,
+    requesterPrestige,
+    candidatePrestige,
+    gameKey,
+  });
+  if (gap === null) return true;
+  const bothCapped =
+    trophiesAtCap(requester, gameKey) && trophiesAtCap(candidate, gameKey);
+  return (
+    gap <= (bothCapped ? prestigeMatchWindow(waitMs) : trophyMatchWindow(waitMs))
+  );
 }
 
 export function normalizeQuickQueueRequest(input: unknown): QuickQueueRequest {
@@ -167,6 +272,8 @@ export function findCompatibleQuickQueueCandidate(
       !trophiesCompatible({
         requester: request.trophies,
         candidate: candidate.trophies,
+        requesterPrestige: request.prestige,
+        candidatePrestige: candidate.prestige,
         gameKey: candidate.gameKey,
         waitMs: now - candidate.queuedAt,
       })
@@ -181,14 +288,18 @@ export function findCompatibleQuickQueueCandidate(
     // matchmaking (no priority queue).
     const gamePriority = request.preferredGames.indexOf(a.gameKey) - request.preferredGames.indexOf(b.gameKey);
     if (gamePriority !== 0) return gamePriority;
-    const trophyGap = (candidate: QuickQueueCandidate) => {
-      const mine = trophyForGame(request.trophies, candidate.gameKey);
-      const theirs = trophyForGame(candidate.trophies, candidate.gameKey);
-      if (mine === null || theirs === null) return Number.POSITIVE_INFINITY;
-      return Math.abs(mine - theirs);
+    const gapFor = (candidate: QuickQueueCandidate) => {
+      const gap = skillGapForGame({
+        requester: request.trophies,
+        candidate: candidate.trophies,
+        requesterPrestige: request.prestige,
+        candidatePrestige: candidate.prestige,
+        gameKey: candidate.gameKey,
+      });
+      return gap === null ? Number.POSITIVE_INFINITY : gap;
     };
-    const gapA = trophyGap(a);
-    const gapB = trophyGap(b);
+    const gapA = gapFor(a);
+    const gapB = gapFor(b);
     if (gapA !== gapB) return gapA - gapB;
     return a.queuedAt - b.queuedAt;
   })[0] ?? null;
@@ -209,6 +320,8 @@ export function findCompatibleQuickQueuePair(
           trophiesCompatible({
             requester: source.trophies,
             candidate: candidate.trophies,
+            requesterPrestige: source.prestige,
+            candidatePrestige: candidate.prestige,
             gameKey,
             waitMs: now - Math.min(source.queuedAt, candidate.queuedAt),
           }),
@@ -222,6 +335,7 @@ export function findCompatibleQuickQueuePair(
           playerCount: source.playerCount,
           queuedAt: candidate.queuedAt,
           trophies: candidate.trophies ?? null,
+          prestige: candidate.prestige ?? null,
           available: candidate.userId !== source.userId && (source.maxWaitMs === null || now - candidate.queuedAt <= source.maxWaitMs) && (candidate.maxWaitMs === null || now - source.queuedAt <= candidate.maxWaitMs),
         })),
     );

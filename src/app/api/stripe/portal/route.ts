@@ -9,16 +9,17 @@
 //   * the portal session is created for the caller's OWN customer id (looked
 //     up from their subscription row) — one user can never open another's
 //     billing portal,
-//   * the user returns to /upgrade-pro after managing.
+//   * the user returns to /upgrade-pro after managing (the portal's own back
+//     link uses `return_url`, so it is the GRYND PRO page too).
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getStripe, getBaseUrl } from "../../../../lib/stripe";
+import { getStripe, getReturnBaseUrl } from "../../../../lib/stripe";
 import { findActiveSubscription } from "../../../../lib/stripe/subscriptions";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const { userId: clerkId } = await auth();
   if (!clerkId) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
@@ -32,7 +33,9 @@ export async function POST() {
     );
   }
 
-  const baseUrl = getBaseUrl();
+  // Same origin the customer is managing FROM, so Stripe's back link returns
+  // to this host's GRYND PRO page.
+  const baseUrl = getReturnBaseUrl(req);
   if (!baseUrl) {
     return NextResponse.json(
       { success: false, error: "Base URL is not configured" },

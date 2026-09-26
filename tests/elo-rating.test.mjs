@@ -782,16 +782,7 @@ test("TEST DUPLICATE RESULT: the journal key is (user, game, match) — a differ
 // ════════════════════════════════════════════════════════════════════════
 
 test("TEST UNAUTHORIZED: an unrated game can never move a rating", async () => {
-  for (const gameKey of [
-    "poker",
-    "crash-arena",
-    "uno",
-    "tower-arena",
-    "roulette-pvp",
-    "hex-duel",
-    "not-a-game",
-    "",
-  ]) {
+  for (const gameKey of ["not-a-game", ""]) {
     const db = makeFakeDb({ users: TWO_USERS });
     const result = await applyRatingResult({ tx: db.tx, ...WIN_ARGS, gameKey });
     assert.equal(result.applied, false, `game ${gameKey} must not be rated`);
@@ -1049,13 +1040,23 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "dice-flush",
     "rps-pvp",
     "odds-pvp",
+    "roulette-pvp",
+    "crash-arena",
+    "uno",
+    "tower-arena",
+    "hex-duel",
   ]);
   assert.equal(isRatedGame("chess"), true);
-  assert.equal(isRatedGame("hex-duel"), false); // client-supplied winner
-  assert.equal(isRatedGame("tower-arena"), false); // 2–6 players
-  assert.equal(isRatedGame("uno"), false); // 2–4 players
-  assert.equal(isRatedGame("poker"), false); // no discrete verdict
-  assert.equal(isRatedGame("crash-arena"), false); // per-hand economy
+  // The formerly-excluded games are now REGISTERED, so all of the 19 rated
+  // games are rated keys. Poker was removed from the game entirely, so its key
+  // must NOT be rated any more.
+  assert.equal(isRatedGame("hex-duel"), true);
+  assert.equal(isRatedGame("tower-arena"), true);
+  assert.equal(isRatedGame("uno"), true);
+  assert.equal(isRatedGame("crash-arena"), true);
+  assert.equal(isRatedGame("roulette-pvp"), true);
+  assert.equal(isRatedGame("poker"), false);
+  assert.equal(isRatedGame("not-a-game"), false);
   assert.equal(normalizeRatingGameKey("nope"), RATED_GAMES[0]);
   assert.equal(getRatingGameLabel("pool"), "Pool Masters");
 });
@@ -1106,15 +1107,15 @@ for (const [gameKey, file] of WIRING) {
   });
 }
 
-test("WIRING: hex-duel is deliberately NOT rated until its winner is server-derived", () => {
+test("WIRING: hex-duel is registered but its settlement is still pending", () => {
   const hexEnd = fs.readFileSync(
     "src/app/api/hex-duel/multiplayer/end/route.ts",
     "utf8",
   );
-  // The endpoint still takes the winner from the request body — documented as
-  // the blocker that keeps Hex Duel out of the rated set.
+  // Hex Duel is now in the 20-game registry, but the endpoint still takes the
+  // winner from the request body, so it has NO settlement wiring yet.
   assert.match(hexEnd, /body\.winner/);
-  assert.equal(isRatedGame("hex-duel"), false);
+  assert.equal(isRatedGame("hex-duel"), true);
 });
 
 // ════════════════════════════════════════════════════════════════════════

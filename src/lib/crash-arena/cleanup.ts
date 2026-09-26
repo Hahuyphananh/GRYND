@@ -17,6 +17,7 @@
 //   3. Marks the player row "left" and records a LEAVE transaction.
 
 import { db } from "../../db/client";
+import { tokensMoveForMatches } from "../games/stakes";
 import {
   users,
   crashArenaTables,
@@ -109,7 +110,7 @@ export async function releaseCrashArenaSeat(
   // wallet move for private tables), so the table balance is play money
   // and must NEVER be refunded. Mark the seat left without touching the
   // wallet or ledger — mirrors the manual leave route's isPrivate guard.
-  const isVirtual = Boolean(tableData[0]?.isPrivate);
+  const isVirtual = Boolean(tableData[0]?.isPrivate) || !tokensMoveForMatches();
   if (isVirtual) {
     await db
       .update(crashArenaPlayers)
@@ -205,16 +206,9 @@ export async function releaseCrashArenaSeat(
   // ── We own the seat now: refund + record + fan out ────────────────────
   const returnAmount = Number(player.balance);
 
-  // PRIVATE tables are virtual-chips only: the buy-in was never taken
-  // from the wallet, so the remaining table balance is play money and is
-  // NEVER refunded (mirrors the AI practice-table rule). Only public tables
-  // convert the table balance back to real tokens.
-  if (!isVirtual && returnAmount > 0) {
-    await db
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${returnAmount}` })
-      .where(eq(users.clerkId, clerkId));
-  }
+  // STAKES ARE RETIRED: every table is virtual-chips only, so the buy-in was
+  // never taken from the wallet and the remaining table balance is play money
+  // that is NEVER refunded.
 
   // ── Record transaction (real ledger only — virtual chips never touch
   //    it; private tables are play money) ────────────────────────────────

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db";
-import { and, eq, ne, sql } from "drizzle-orm";
-import { poolLobbies, poolMatches, users } from "../../../../db/schema";
+import { and, eq, ne } from "drizzle-orm";
+import { poolLobbies, poolMatches } from "../../../../db/schema";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -66,47 +67,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const wager = claimedLobby.wager;
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): the match is free to
+    // join. The lobby's stored wager is normalized to 0, so the balance
+    // guards below can no longer reject a free match and the two debits are
+    // no-ops.
+    const wager = normalizeStake(claimedLobby.wager);
     const hostUserId = claimedLobby.hostUserId;
 
     const result = await db.transaction(async (tx) => {
-      const [hostRow] = await tx
-        .select({ balance: users.balance })
-        .from(users)
-        .where(eq(users.clerkId, hostUserId))
-        .for("update")
-        .limit(1);
-
-      const [joinerRow] = await tx
-        .select({ balance: users.balance })
-        .from(users)
-        .where(eq(users.clerkId, userId))
-        .for("update")
-        .limit(1);
-
-      if (!hostRow) {
-        return { ok: false as const, error: "Host user not found", status: 500 as const };
-      }
-      if (!joinerRow) {
-        return { ok: false as const, error: "User not found", status: 400 as const };
-      }
-      if (Number(hostRow.balance) < wager) {
-        return { ok: false as const, error: "Insufficient balance", status: 400 as const };
-      }
-      if (Number(joinerRow.balance) < wager) {
-        return { ok: false as const, error: "Insufficient balance", status: 400 as const };
-      }
-
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${wager}` })
-        .where(eq(users.clerkId, hostUserId));
-
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${wager}` })
-        .where(eq(users.clerkId, userId));
-
       const firstTurnUserId =
         Math.random() < 0.5 ? hostUserId : userId;
       const firstTurnSeat = firstTurnUserId === hostUserId ? 1 : 2;
@@ -131,18 +99,6 @@ export async function POST(req: Request) {
 
       return { ok: true as const, matchId: match.id, firstTurnSeat };
     });
-
-    if (!result.ok) {
-      await db
-        .update(poolLobbies)
-        .set({ status: "waiting", opponentUserId: null })
-        .where(eq(poolLobbies.id, lobbyId));
-
-      return NextResponse.json(
-        { ok: false, message: result.error },
-        { status: result.status },
-      );
-    }
 
     return NextResponse.json({ ok: true, matchId: result.matchId, firstTurnSeat: result.firstTurnSeat });
   } catch (error: any) {

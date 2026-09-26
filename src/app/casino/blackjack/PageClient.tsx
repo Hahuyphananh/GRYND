@@ -29,7 +29,6 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -45,7 +44,6 @@ import {
   BLACKJACK_PVP_MATCH_UPDATED,
   blackjackPvpMatchRoom,
 } from "../../../lib/blackjack-pvp/rooms";
-import { STAKE_PRESETS } from "../../../lib/blackjack-pvp/constants";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import {
   type AiDifficulty,
@@ -53,7 +51,7 @@ import {
 } from "../../../lib/aiDifficulty";
 import { playCardDraw, playCardPlace, playBuzz } from "../../../lib/gameAudio";
 
-// ── Inline SVG icons (avoid importing poker/roulette icon set) ──────
+// ── Inline SVG icons (avoid importing the shared card-game icon set) ──
 // Kept in-file so this lobby doesn't pull in card-game-specific deps.
 function CardIcon({ className = "" }) {
   return (
@@ -209,9 +207,10 @@ export default function BlackjackPvpLobbyPage() {
   // interpolation, so we don't pass any.
   const { t } = useTranslation();
 
-  const [stake, setStake] = useDefaultWager("blackjack", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
   const [availableMatches, setAvailableMatches] = useState<{ id: number; player1Id: string; stakeAmount: number; createdAt: string }[]>([]);
-  const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   // The AI tier the bot plays at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
@@ -241,30 +240,13 @@ export default function BlackjackPvpLobbyPage() {
     }
   }, []);
 
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  }, [isSignedIn]);
-
   useEffect(() => {
     fetchAvailable();
-    fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchAvailable, fetchBalance]);
+  }, [fetchAvailable]);
 
   // Derive any lobby the current user owns FROM the availableMatches
   // payload (which already carries the player's clerkId as
@@ -490,10 +472,8 @@ export default function BlackjackPvpLobbyPage() {
                 heading: "Pairing",
                 body: (
                   <>
-                    You&apos;re paired with another player of the{" "}
-                    <b>exact same</b> stake. If no one is waiting, your
-                    stake is escrowed in a private lobby until someone
-                    joins or you cancel.
+                    You&apos;re paired with another player. Every match is
+                    free to enter — nothing is staked or escrowed.
                   </>
                 ),
               },
@@ -507,21 +487,14 @@ export default function BlackjackPvpLobbyPage() {
         <p className="text-center text-sm text-white/60 mt-2 mb-7 max-w-2xl mx-auto">
           {t(
             "blackjackPvp.lobby.descLead",
-            "Pick a stake. We pair you with another player of the",
-          )}{" "}
-          <b>
-            {t("blackjackPvp.lobby.descExactSame", "exact same")}
-          </b>{" "}
-          {t(
-            "blackjackPvp.lobby.descMid",
-            "token amount. Best of 3 rounds: each round, you and your opponent play",
+            "Free play. Best of 3 rounds: each round, you and your opponent play",
           )}{" "}
           <b>
             {t("blackjackPvp.lobby.descSimultaneously", "simultaneously")}
           </b>{" "}
           {t(
             "blackjackPvp.lobby.descTail",
-            "with hidden hands. Closest to 21 without busting wins the round. First to 2 round wins takes the pot minus a 2.5% platform fee.",
+            "with hidden hands. Closest to 21 without busting wins the round. First to 2 round wins takes the trophies and the rating.",
           )}
         </p>
 
@@ -531,16 +504,8 @@ export default function BlackjackPvpLobbyPage() {
           className="bg-[#0b224f]/70 backdrop-blur-xl border border-yellow-400/30 shadow-[0_0_30px_rgba(255,255,51,0.18)] rounded-2xl p-6"
         >
           <div className="text-center mb-5 text-sm">
-            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">
-              {t("blackjackPvp.lobby.tokensLabel", "Tokens")}
-            </span>
-            <span className="font-bold text-yellow-300 text-lg">
-              {balance === null
-                ? "…"
-                : balance.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300">
+              Free play · no tokens at stake
             </span>
           </div>
 
@@ -587,45 +552,15 @@ export default function BlackjackPvpLobbyPage() {
           <div className="grid md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
             <div>
               <label className="text-[11px] uppercase tracking-wider text-white/60">
-                {t("blackjackPvp.lobby.stakePerPlayer", "Stake (per player)")}
+                {t("blackjackPvp.lobby.stakePerPlayer", "Entry")}
               </label>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {STAKE_PRESETS.map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => {
-                      setStake(v);
-                      playCardPlace(); // chip-on-table click
-                    }}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-                      stake === v
-                        ? "bg-yellow-300 text-black border-yellow-300 shadow-[0_0_10px_rgba(255,255,51,0.7)]"
-                        : "bg-[#08142f] text-yellow-200/80 border-yellow-300/30 hover:bg-yellow-300/15"
-                    }`}
-                  >
-                    {v.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={balance ?? undefined}
-                  value={stake}
-                  aria-label="Stake amount"
-                  onChange={(e) =>
-                    setStake(Math.max(1, Number(e.target.value) || 0))
-                  }
-                  className="flex-1 rounded-lg bg-[#020617] border border-yellow-300/30 focus:border-yellow-300 outline-none p-2 text-white text-sm"
-                />
+              <div className="mt-2 rounded-lg border border-emerald-600/40 bg-emerald-950/30 p-2 text-center text-sm font-bold text-emerald-200">
+                Free
               </div>
             </div>
             <button
               onClick={() => createOrJoin(stake)}
-              disabled={
-                busy || !isSignedIn || (balance ?? 0) < stake || myOpenMatchId !== null
-              }
+              disabled={busy || !isSignedIn || myOpenMatchId !== null}
               className="p-3 rounded-xl text-base font-extrabold text-black bg-gradient-to-r from-yellow-300 to-amber-500 hover:scale-105 active:scale-95 transition shadow-[0_0_22px_rgba(255,255,51,0.55)] disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
             >
               {busy ? (
@@ -636,30 +571,11 @@ export default function BlackjackPvpLobbyPage() {
                   </span>
                 </>
               ) : (
-                <>
-                  <span>{stake.toLocaleString()}</span>
-                  <CoinIcon className="w-5 h-5 text-amber-900" />
-                  <span>
-                    {" · "}
-                    {t("blackjackPvp.lobby.play", "Play")}
-                  </span>
-                </>
+                <span>{t("blackjackPvp.lobby.play", "Play")}</span>
               )}
             </button>
             <div className="text-xs text-white/55 leading-relaxed">
-              {/* Same lead/exact-same/tail split pattern as the
-                  description above so the bold anchor lines up. */}
-              {t(
-                "blackjackPvp.lobby.escrowLead",
-                "We pair you with another player of the",
-              )}{" "}
-              <b>
-                {t("blackjackPvp.lobby.escrowExactSame", "exact same")}
-              </b>{" "}
-              {t(
-                "blackjackPvp.lobby.escrowTail",
-                "stake. If no one is waiting, your stake is escrowed in a private lobby until someone joins or you cancel.",
-              )}
+              Free to play — nothing is escrowed and no tokens are at stake.
             </div>
           </div>
 
@@ -736,13 +652,7 @@ export default function BlackjackPvpLobbyPage() {
                           </span>
                         </p>
                         <p className="text-xs text-white/60 mt-0.5 flex items-center gap-1">
-                          <span>
-                            {t("blackjackPvp.lobby.stakeLabel", "Stake:")}
-                          </span>
-                          <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-                            {Number(m.stakeAmount).toLocaleString()}
-                            <CoinIcon className="w-3.5 h-3.5 text-yellow-300" />
-                          </span>
+                          <span>Free play</span>
                         </p>
                       </div>
                       <button

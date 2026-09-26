@@ -109,10 +109,6 @@ const PALETTE = {
  * visitor sees, and keeps commas where this UI always put them.
  */
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
-const BALANCE_FORMAT = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
 
 /** Grouped integer, e.g. 1000 → "1,000". */
 export function formatTokens(value) {
@@ -120,29 +116,8 @@ export function formatTokens(value) {
   return NUMBER_FORMAT.format(Number.isFinite(n) ? n : 0);
 }
 
-function formatBalance(balance) {
-  if (balance === null || balance === undefined) return "…";
-  return BALANCE_FORMAT.format(Number(balance) || 0);
-}
-
-/**
- * Responsible-play guard: before a large wager is placed, ask the player to
- * confirm. Triggers when the stake is >= 10,000 tokens or > 10% of their
- * balance — the audit's recommended thresholds. Returns true to proceed.
- */
-export function confirmLargeStake(stake, balance) {
-  const amount = Number(stake);
-  if (!Number.isFinite(amount) || amount <= 0) return true;
-  const bal = Number(balance);
-  const isLargeAbsolute = amount >= 10000;
-  const isLargeVsBalance = Number.isFinite(bal) && bal > 0 && amount > bal * 0.1;
-  if (!isLargeAbsolute && !isLargeVsBalance) return true;
-  return window.confirm(
-    `You're about to stake ${amount.toLocaleString()} tokens — that's ${
-      isLargeVsBalance ? "more than 10% of your balance" : "a large amount"
-    }. Continue?`,
-  );
-}
+// STAKES ARE RETIRED (src/lib/games/stakes.js): a match never moves tokens,
+// so the lobby no longer shows a token balance and no large-stake guard runs.
 
 /**
  * RulesModal — a "How to Play" overlay in the farkle palette. Each
@@ -269,13 +244,6 @@ export function PvpLobby({
   rulesLabel = "How to Play",
   // first-visit auto-open key (per-game, e.g. "lane-runner")
   rulesKey = null,
-  // balance
-  balance = null,
-  // stake
-  stake,
-  onStakeChange,
-  stakeOptions = [],
-  stakeMin = 1,
   // main actions
   busy = false,
   onPlay,
@@ -283,7 +251,6 @@ export function PvpLobby({
   playBusyLabel = "Finding match…",
   canPlay = true,
   vsAi = null, // { label, onClick, disabled, busy }
-  escrowNote = null,
   extraActions = null,
   // game-specific context line shown under the searching overlay title
   // (e.g. "Pairing you with a player on the same stake…")
@@ -330,7 +297,6 @@ export function PvpLobby({
     }
   }, [firstVisit, rules]);
 
-  const stakeInputMax = balance === null ? undefined : balance;
   const filteredLobbies = myOpenId !== null && myOpenId !== undefined
     ? lobbies.filter((l) => l?.id !== myOpenId)
     : lobbies;
@@ -396,12 +362,11 @@ export function PvpLobby({
         animate={{ opacity: 1, y: 0 }}
         className={`rounded-2xl border p-6 shadow-[0_0_30px_rgba(251,191,36,0.12)] backdrop-blur-xl ${PALETTE.card}`}
       >
+        {/* Stakes are retired — a match is free to enter, so no token balance
+            is shown and nothing has to be put up to play. */}
         <div className="mb-5 text-center text-sm">
-          <span className="mr-2 text-[11px] uppercase tracking-widest text-white/55">
-            Tokens
-          </span>
-          <span className="text-lg font-bold text-yellow-300">
-            {formatBalance(balance)}
+          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300">
+            Free play · no tokens at stake
           </span>
         </div>
 
@@ -442,46 +407,20 @@ export function PvpLobby({
         </AnimatePresence>
 
         <div className="grid items-end gap-3 md:grid-cols-[1.1fr_auto_1fr]">
+          {/* Entry is free — there is no stake to pick. */}
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-              Stake
+              Entry
             </label>
-            {stakeOptions.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {stakeOptions.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => onStakeChange?.(v)}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
-                      stake === v ? PALETTE.chipActive : PALETTE.chipIdle
-                    }`}
-                  >
-                    {formatTokens(v)}
-                  </button>
-                ))}
-              </div>
-            )}
-            <input
-              type="number"
-              min={stakeMin}
-              max={stakeInputMax}
-              value={stake}
-              aria-label="Stake amount"
-              onChange={(e) =>
-                onStakeChange?.(Math.max(stakeMin, Number(e.target.value) || 0))
-              }
-              className="mt-1.5 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
-            />
+            <div className="mt-1.5 rounded-md border border-emerald-600/40 bg-emerald-950/30 px-2 py-1.5 text-center text-xs font-bold text-emerald-200">
+              Free
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => {
-                if (!confirmLargeStake(stake, balance)) return;
-                onPlay?.();
-              }}
+              onClick={() => onPlay?.()}
               disabled={!canPlay || busy}
               className={`inline-flex items-center justify-center gap-2 rounded-xl border-b-4 p-3 text-base font-extrabold transition hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${PALETTE.play}`}
             >
@@ -491,11 +430,7 @@ export function PvpLobby({
                   <span>{playBusyLabel}</span>
                 </>
               ) : (
-                <>
-                  <span>{formatTokens(stake)}</span>
-                  <CoinIcon className="h-5 w-5 text-amber-900" />
-                  <span> · {playLabel}</span>
-                </>
+                <span>{playLabel}</span>
               )}
             </button>
             {vsAi && (
@@ -518,7 +453,9 @@ export function PvpLobby({
           </div>
 
           <div className="text-xs leading-relaxed text-white/55">
-            {escrowNote}
+            {/* Stakes are retired — every match is free, so the game-specific
+                escrow note no longer applies. */}
+            Free to play — nothing is escrowed and no tokens are at stake.
           </div>
         </div>
 

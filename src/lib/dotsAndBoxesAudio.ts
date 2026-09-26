@@ -3,7 +3,7 @@
 // ── Dots & Boxes: turn-timer audio cues ────────────────────────────────
 //
 // Mirrors the project's established per-game audio convention
-// (precisionAudio.ts, gameAudio.ts, pokerAudio.ts, hexAudio.ts): one
+// (precisionAudio.ts, gameAudio.ts, hexAudio.ts): one
 // lazy-initialised singleton AudioContext per page, Web Audio API only,
 // no asset loading. Exports two thin helpers:
 //   - playTimerUrgent() — three-second "almost up" beep. Fired once
@@ -82,7 +82,7 @@ export function playTimerExpired() {
 
 // ── Resume AudioContext on first user interaction ──────────────────────
 //
-// Match the precisionAudio / gameAudio / pokerAudio / hexAudio pattern:
+// Match the precisionAudio / gameAudio / hexAudio pattern:
 // Browsers block AudioContext until the user has interacted with the
 // page. Register click + keydown once at module load so the first
 // gesture unlocks audio for the rest of the session.

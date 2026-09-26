@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
 import { users } from "../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { normalizeStake } from "../../../lib/games/stakes";
 
 export async function POST(req) {
   try {
@@ -11,21 +12,11 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { betAmount, riskLevel } = await req.json();
-    if (typeof betAmount !== "number" || betAmount <= 0) {
-      return NextResponse.json(
-        { error: "Invalid bet amount" },
-        { status: 400 },
-      );
-    }
-    // Plinko is high-variance (up to 120x) — capped at HIGH_VARIANCE_MAX_BET
-    // (must match src/lib/games/economy.ts).
-    if (betAmount > 10000) {
-      return NextResponse.json(
-        { error: "Bet exceeds the maximum of 10,000 tokens for Plinko" },
-        { status: 400 },
-      );
-    }
+    const { betAmount: requestedBet, riskLevel } = await req.json();
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a game is free to play.
+    // The requested bet is normalized to 0, so the win amount below is 0 and
+    // the balance update is a no-op — the drop is played, not billed.
+    const betAmount = normalizeStake(requestedBet);
 
     // Validate riskLevel or fallback to medium
     const allowedRisks = ["low", "medium", "high"];
@@ -42,26 +33,11 @@ export async function POST(req) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Verify sufficient balance
-    if (Number(user.balance) < betAmount) {
-      return NextResponse.json(
-        { error: "Insufficient balance" },
-        { status: 400 },
-      );
-    }
-
     // Calculate game result with perfect slot alignment
     const { path, multiplier, finalPosition } = calculatePlinkoResult(risk);
-    const winAmount = parseFloat((betAmount * multiplier).toFixed(2));
-    const newBalance = parseFloat(user.balance) - betAmount + winAmount;
-
-    // Update balance in single transaction
-    await db
-      .update(users)
-      .set({
-        balance: sql`${users.balance} - ${betAmount} + ${winAmount}`,
-      })
-      .where(eq(users.clerkId, clerkId));
+    // STAKES ARE RETIRED: no bet, no payout.
+    const winAmount = 0;
+    const newBalance = Number(user.balance);
 
     return NextResponse.json({
       success: true,

@@ -656,7 +656,6 @@ export default function ProfilePage({ adSlot = null }) {
     const allowedPrefixes = [
       "/casino/chess-game/",
       "/casino/four-in-a-row/game/",
-      "/casino/poker/multi",
     ];
 
     return allowedPrefixes.some((prefix) => url.startsWith(prefix));
@@ -673,7 +672,6 @@ export default function ProfilePage({ adSlot = null }) {
       return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
     if (gameKey === "four-in-a-row")
       return `/casino/four-in-a-row/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
-    if (gameKey === "poker") return `/casino/poker/multi?spectator=1&gameId=${presence.gameId}`;
     return null;
   };
 
@@ -2387,7 +2385,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 
                         if (status.state !== "in_game" || !spectateUrl) return null;
 
-                        const allowedSpectateGames = new Set(["chess", "four-in-a-row", "poker"]);
+                        const allowedSpectateGames = new Set(["chess", "four-in-a-row"]);
                         if (!allowedSpectateGames.has(gameKey)) return null;
 
                         return (

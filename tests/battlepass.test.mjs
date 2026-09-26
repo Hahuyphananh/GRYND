@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   MAX_LEVEL,
   TROPHIES_PER_LEVEL,
@@ -13,6 +14,13 @@ import {
   trophiesToReachLevel,
 } from "../src/lib/battlepass.js";
 import { TITLE_MILESTONES } from "../src/lib/titles.ts";
+import {
+  OVERALL_TROPHY_MAX,
+  TROPHY_GAMES,
+  TROPHY_LOSS,
+  TROPHY_MAX,
+  TROPHY_WIN,
+} from "../src/lib/trophies.js";
 import {
   BATTLEPASS_REWARDS,
   COSMETIC_REWARD_TYPES,
@@ -195,29 +203,30 @@ test("battlepass_xp is retired — the track carries no flat XP rewards", () => 
   );
 });
 
-test("trophiesToReachLevel: 100 trophies per level, 9,900 at level 100", () => {
-  assert.equal(TROPHIES_PER_LEVEL, 100);
+test("trophiesToReachLevel: 190 trophies per level, 18,810 at level 100", () => {
+  // 19 rated games × 1,000 = 19,000 overall, spread across 100 levels.
+  assert.equal(TROPHIES_PER_LEVEL, 190);
   assert.equal(trophiesToReachLevel(1), 0);
-  assert.equal(trophiesToReachLevel(2), 100);
-  assert.equal(trophiesToReachLevel(100), 9900);
+  assert.equal(trophiesToReachLevel(2), 190);
+  assert.equal(trophiesToReachLevel(100), 18810);
 });
 
-test("getLevelFromTrophies: level 1 at 0 trophies, level 100 at 10,000", () => {
+test("getLevelFromTrophies: level 1 at 0, level 100 at the 19,000 overall cap", () => {
   assert.equal(getLevelFromTrophies(0), 1);
-  assert.equal(getLevelFromTrophies(99), 1);
-  assert.equal(getLevelFromTrophies(100), 2);
-  assert.equal(getLevelFromTrophies(9999), 100);
-  assert.equal(getLevelFromTrophies(10000), 100);
+  assert.equal(getLevelFromTrophies(189), 1);
+  assert.equal(getLevelFromTrophies(190), 2);
+  assert.equal(getLevelFromTrophies(18999), 100);
+  assert.equal(getLevelFromTrophies(19000), 100);
   assert.equal(getLevelFromTrophies(999999), 100); // clamped at the cap
 });
 
 test("getBattlepassProgressFromTrophies reports progress within the level", () => {
-  const p = getBattlepassProgressFromTrophies(250);
-  assert.equal(p.level, 3);
-  assert.equal(p.currentLevelTrophies, 200);
-  assert.equal(p.nextLevelTrophies, 300);
-  assert.equal(p.progressPercent, 50);
-  assert.equal(p.remainingToNext, 50);
+  const p = getBattlepassProgressFromTrophies(240);
+  assert.equal(p.level, 2);
+  assert.equal(p.currentLevelTrophies, 190);
+  assert.equal(p.nextLevelTrophies, 380);
+  assert.equal(p.progressPercent, 26);
+  assert.equal(p.remainingToNext, 140);
 });
 
 test("level 3 contains the Daily Streak Shield reward", () => {
@@ -287,4 +296,92 @@ test("title milestones fit the 100-level track and keep the ladder", () => {
       `milestones out of order at index ${i}`,
     );
   }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// The published trophy rule + the copy that states it
+// ═══════════════════════════════════════════════════════════════
+
+const PASSPAGE = "src/app/battlepass/PageClient.jsx";
+const PASSROUTE = "src/app/api/battlepass/route.js";
+
+test("the pass publishes the trophy rule FROM the constants (no hardcoded space)", () => {
+  const route = fs.readFileSync(PASSROUTE, "utf8");
+  // The route imports the ONE definition and derives the payload from it.
+  for (const constant of [
+    "TROPHY_MAX",
+    "TROPHY_GAMES",
+    "TROPHY_WIN",
+    "TROPHY_LOSS",
+    "OVERALL_TROPHY_MAX",
+  ]) {
+    assert.ok(
+      route.includes(constant),
+      `${PASSROUTE} must derive the published rule from ${constant}`,
+    );
+  }
+  assert.match(route, /trophyConfig:\s*\{/, "the pass must publish its trophy rule");
+  for (const field of ["perGameCap", "gameCount", "overallMax", "win", "loss"]) {
+    assert.ok(
+      route.includes(`${field}:`),
+      `trophyConfig must publish ${field}`,
+    );
+  }
+});
+
+test("the published numbers ARE the live trophy space (19 games, 19,000 overall)", () => {
+  // This is the contract the UI copy renders, so it has to be derived, never
+  // typed: the game count follows the rated registry and the overall maximum
+  // follows the per-game cap.
+  assert.equal(TROPHY_GAMES.length, 19, "the rated space is 19 games after Poker's removal");
+  assert.equal(isRatedSpaceConsistent(), true);
+  assert.equal(OVERALL_TROPHY_MAX, TROPHY_MAX * TROPHY_GAMES.length);
+  assert.equal(OVERALL_TROPHY_MAX, 19000);
+  assert.equal(TROPHIES_PER_LEVEL, 190); // 19,000 ÷ 100 levels
+  assert.equal(TROPHY_WIN, 30);
+  assert.equal(TROPHY_LOSS, -30);
+});
+
+function isRatedSpaceConsistent() {
+  // Every key in the space must be unique, so the count is the real number of
+  // games the pass is spread across.
+  return new Set(TROPHY_GAMES).size === TROPHY_GAMES.length;
+}
+
+test("the battlepass copy states the real space and never a stale total", () => {
+  const page = fs.readFileSync(PASSPAGE, "utf8");
+  // The page reads the rule the server publishes.
+  assert.match(page, /trophyConfig/, "copy must read the published trophy rule");
+  assert.match(page, /perGameCap/, "copy must state the per-game cap");
+  assert.match(page, /gameCount/, "copy must state how many games there are");
+  assert.match(page, /pass\.trophiesPerLevel/, "copy must state the real per-level cost");
+  // The retired figures must never come back as copy.
+  assert.doesNotMatch(page, /10,000/, "the old 10,000 trophy total must not appear in copy");
+  assert.doesNotMatch(page, /20,000/, "the old 20,000 trophy total must not appear in copy");
+  assert.doesNotMatch(
+    page,
+    /cap at 1,000 —/,
+    "the copy must derive the cap from trophyConfig, not a literal",
+  );
+});
+
+test("no user-facing surface states a hardcoded trophy total", () => {
+  // Guard the whole app, not just the pass page: the trophy totals are derived
+  // values, so a literal in UI copy is a bug the moment the roster changes.
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(jsx|tsx)$/.test(entry.name)) continue;
+      const src = fs.readFileSync(full, "utf8");
+      if (/(10,000|20,000)\s*(trophies|trophy)/i.test(src)) offenders.push(full);
+    }
+  };
+  walk("src/app");
+  walk("src/components");
+  assert.deepEqual(offenders, [], `hardcoded trophy totals in copy: ${offenders.join(", ")}`);
 });

@@ -33,6 +33,7 @@ import {
 } from "../../db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { applyPlacementTrophies } from "../trophyStore";
 import { handFromEntries, resolveHand } from "./roundSystem";
 import { PLATFORM_FEE, NEXT_ROUND_COUNTDOWN_MS } from "./constants";
 import { broadcastTableUpdate } from "../crash-arena/rooms";
@@ -251,6 +252,73 @@ export async function settleCrashPokerHand(
           type: "RAKE",
           reason: `Platform fee (5%), hand #${round.id}`,
         });
+      }
+    }
+
+    // ── Trophies: the symmetric placement ladder ─────────────────────────
+    // The hand IS the ranked match: `resolveHand` already ranked every seat
+    // that folded out in time (rank 1 = the survivor or the best-timed fold),
+    // and the crash victims are unranked because they got nothing.
+    //
+    // So the finishing order is: the ranked seats in rank order, then EVERY
+    // crash victim as one tied last group. Only the top of that order banks the
+    // full +30; the bottom pays the full −30; the seats between them trade the
+    // even shares (a 4-seat hand pays +30/+10/−10/−30). Ladder shares come from
+    // src/lib/trophies.js, so they are zero-sum and identical in shape to the
+    // other table games.
+    //
+    // Real tables only, mirroring the ledger rule above: practice and PRIVATE
+    // tables are virtual-chip tables, and bot seats hold no account at all —
+    // neither can move a trophy. A hand nobody won (every seat crashed, pot
+    // carried over) settles nothing either. `entries` are already locked by the
+    // round's row lock above, and the per-seat trophy journal (user, game,
+    // match) keeps a replayed settlement a no-op.
+    if (winnerUserId != null && !table.isAi && !table.isPrivate) {
+      const seatIds = [
+        ...new Set(
+          entries
+            .map((entry) => Number(entry.userId))
+            .filter((userId) => Number.isFinite(userId) && userId > 0),
+        ),
+      ];
+      if (seatIds.length > 1) {
+        const seatRows = await tx
+          .select({ id: users.id, clerkId: users.clerkId })
+          .from(users)
+          .where(inArray(users.id, seatIds));
+
+        const clerkByUserId = new Map<number, string>();
+        for (const row of seatRows) {
+          if (await isCrashArenaAiBotId(Number(row.id))) continue;
+          clerkByUserId.set(Number(row.id), row.clerkId);
+        }
+
+        // 1st..Rth from the server's own ranking, one seat per group.
+        const placementGroups: string[][] = [];
+        const rankedIds = new Set<number>();
+        for (const payout of [...payouts].sort((a, b) => a.rank - b.rank)) {
+          const clerkId = clerkByUserId.get(Number(payout.userId));
+          rankedIds.add(Number(payout.userId));
+          if (clerkId) placementGroups.push([clerkId]);
+        }
+
+        // Every seat that crashed is unranked and level: one tied group at the
+        // bottom of the ladder, so the ladder averages their shares rather than
+        // ordering them by whoever the row order happened to list first.
+        const victims = [...clerkByUserId.entries()]
+          .filter(([userId]) => !rankedIds.has(userId))
+          .map(([, clerkId]) => clerkId);
+        if (victims.length > 0) placementGroups.push(victims);
+
+        // One human seat (or one human plus bots) is not a ranked table.
+        if (placementGroups.flat().length > 1) {
+          await applyPlacementTrophies({
+            tx,
+            gameKey: "crash-arena",
+            matchId: String(round.id),
+            placements: placementGroups,
+          }).catch(() => {});
+        }
       }
     }
 

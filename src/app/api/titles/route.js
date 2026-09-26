@@ -81,7 +81,7 @@ export async function GET() {
     // Server-resolved Prestige state — used by the navbar for the badge
     // chip and the global "Prestige unlocked" notice. Prestige is DERIVED
     // from the player's Elo ratings + per-game trophies (max(0, elo−1000)
-    // once a game's trophies reach the 10,000 cap); no column is read.
+    // once a game's trophies reach the per-game cap); no column is read.
     const [ratings, trophies] = await Promise.all([
       getRatingsForUser(userId),
       getTrophiesForUser(userId),

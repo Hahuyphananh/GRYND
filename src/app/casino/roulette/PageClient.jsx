@@ -25,7 +25,6 @@
 // blackjack layout / farkle color scheme.
 
 import { useEffect, useRef, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -40,7 +39,6 @@ import { RouletteWheelIcon } from "../../../components/roulette-pvp/RouletteIcon
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
-const STAKE_PRESETS = [10, 25, 50, 100, 250, 500];
 
 export default function RoulettePvpLobbyPage() {
   const { isSignedIn } = useUser();
@@ -61,9 +59,10 @@ export default function RoulettePvpLobbyPage() {
     if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
   };
 
-  const [stake, setStake] = useDefaultWager("roulette", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
   const [availableMatches, setAvailableMatches] = useState([]);
-  const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   // The AI tier the bot bets at, chosen in this lobby and remembered per
@@ -86,26 +85,10 @@ export default function RoulettePvpLobbyPage() {
     }
   };
 
-  const fetchBalance = async () => {
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  };
-
   useEffect(() => {
     fetchAvailable();
-    if (isSignedIn) fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
   }, [isSignedIn]);
@@ -344,13 +327,9 @@ export default function RoulettePvpLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={stake}
-      onStakeChange={setStake}
-      stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => createOrJoin(stake)}
-      canPlay={isSignedIn && (balance === null || balance >= stake) && !busy && !aiBusy}
+      canPlay={isSignedIn && !busy && !aiBusy}
       vsAi={{
         label: "Play Free vs AI",
         badge: "No tokens",
@@ -369,13 +348,6 @@ export default function RoulettePvpLobbyPage() {
             hard: "The bot sticks to even-money bets and usually calls your biggest wager.",
           }}
         />
-      }
-      escrowNote={
-        <>
-          We pair you with another player of the <b>exact same</b> stake.
-          If no one is waiting, your stake is escrowed in a private lobby
-          until someone joins or you cancel.
-        </>
       }
       error={error}
       lobbies={availableMatches}

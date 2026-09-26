@@ -9,7 +9,7 @@
 //     are only ever written by authoritative settlement (src/lib/prestige.js).
 //   * The displayed badge text is always derived server-side from the user's
 //     Elo ratings + per-game trophies via resolvePrestigeBadge(): Prestige is
-//     `max(0, elo − 1000)` for a game whose trophies have reached the 10,000
+//     `max(0, elo − 1000)` for a game whose trophies have reached the per-game
 //     cap. There is no prestige column any more (see src/lib/prestige.js).
 //   * Toggling on before earning a Prestige is stored but never rendered —
 //     the response always reflects what will actually be shown (display: null).

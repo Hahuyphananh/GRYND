@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
-import { oddsGames, users } from "../../../../db/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { oddsGames } from "../../../../db/schema";
+import { eq, and } from "drizzle-orm";
 
 export async function POST(req: Request) {
   try {
@@ -42,12 +42,6 @@ export async function POST(req: Request) {
         .for("update");
 
       if (!game) throw new Error("Game not found or not cancellable");
-
-      // Refund the wager
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${game.wager}` })
-        .where(eq(users.clerkId, userId));
 
       await tx
         .update(oddsGames)

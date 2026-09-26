@@ -15,7 +15,6 @@ import {
   minesGames,
   oddsGames,
   plinkoGames,
-  pokerGames,
   poolMatches,
   precisionMatches,
   towerArenaMatches,
@@ -80,7 +79,6 @@ const GAME_PAGES: {
   path: string;
   source?: [AnyPgTable, AnyPgColumn];
 }[] = [
-  { path: "/games/poker/multi", source: [pokerGames, pokerGames.createdAt] },
   { path: "/games/blackjack", source: [blackjackGames, blackjackGames.createdAt] },
   { path: "/games/roulette", source: [rouletteGames, rouletteGames.createdAt] },
   { path: "/games/plinko", source: [plinkoGames, plinkoGames.createdAt] },

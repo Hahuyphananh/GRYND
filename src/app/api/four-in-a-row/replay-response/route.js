@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { fourInARowGames, users } from "../../../../db/schema";
+import { fourInARowGames } from "../../../../db/schema";
 import {
   getPlayerRole,
   getUserAliases,
@@ -87,56 +87,6 @@ export async function POST(req) {
 
       if (hostDecision !== "replay" || guestDecision !== "replay") {
         return { resolved: "pending" };
-      }
-
-      const bet = Number(updated.betAmount || 0);
-
-      const [hostCharged] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${bet}` })
-        .where(
-          and(
-            eq(users.clerkId, updated.hostClerkId),
-            sql`${users.balance} >= ${bet}`,
-          ),
-        )
-        .returning({ balance: users.balance });
-
-      if (!hostCharged) {
-        await tx
-          .update(fourInARowGames)
-          .set({ hostReplayDecision: "quit" })
-          .where(eq(fourInARowGames.id, updated.id));
-        return {
-          resolved: "quit",
-          reason: "Replay cancelled: host has insufficient balance",
-        };
-      }
-
-      const [guestCharged] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${bet}` })
-        .where(
-          and(
-            eq(users.clerkId, updated.guestClerkId),
-            sql`${users.balance} >= ${bet}`,
-          ),
-        )
-        .returning({ balance: users.balance });
-
-      if (!guestCharged) {
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${bet}` })
-          .where(eq(users.clerkId, updated.hostClerkId));
-        await tx
-          .update(fourInARowGames)
-          .set({ guestReplayDecision: "quit" })
-          .where(eq(fourInARowGames.id, updated.id));
-        return {
-          resolved: "quit",
-          reason: "Replay cancelled: guest has insufficient balance",
-        };
       }
 
       const [newGame] = await tx

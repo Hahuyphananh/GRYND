@@ -6,6 +6,7 @@ import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql, and } from "drizzle-orm";
 import { initInteractiveOddsGame } from "../../../../../lib/odds";
 import { coerceAiDifficulty } from "../../../../../lib/aiDifficulty";
+import { normalizeStake } from "../../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -17,20 +18,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const requested = Number(body.wager);
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): an AI match is free play.
+    // The requested wager is normalized to 0 so the match row, the HUD and the
+    // history never carry a stake — and no rejection can block free play.
+    const requested = normalizeStake(body.wager);
     // The lobby's AI tier; absent/invalid coerces to `normal` in the store.
     const aiDifficulty = coerceAiDifficulty(body?.difficulty);
-
-    // An AI match is FREE PLAY: the client sends no stake (0), which is the
-    // normal case here — not an invalid wager. Reject only malformed input
-    // (NaN/Infinity) or a negative stake.
-    if (!Number.isFinite(requested) || requested < 0) {
-      return NextResponse.json({ error: "Invalid wager amount" }, { status: 400 });
-    }
-
-    if (requested > 10000) {
-      return NextResponse.json({ error: "Wager exceeds maximum limit" }, { status: 400 });
-    }
 
     if (!process.env.DATABASE_URL) {
       return NextResponse.json(
@@ -52,7 +45,7 @@ export async function POST(req: Request) {
         .values({
           player1Id: userId,
           player2Id: "AI",
-          wager: 0,
+          wager: requested,
           status: "playing",
           isAi: true,
           aiDifficulty,

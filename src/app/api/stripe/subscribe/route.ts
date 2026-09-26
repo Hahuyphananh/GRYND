@@ -21,7 +21,8 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { tokenSubscriptionPlans, stripeCheckoutSessions } from "../../../../db/schema";
-import { getStripe, getBaseUrl } from "../../../../lib/stripe";
+import { getStripe, getReturnBaseUrl } from "../../../../lib/stripe";
+import { createBrandedCheckoutSession } from "../../../../lib/stripe/checkoutBranding";
 import {
   CANONICAL_MEMBERSHIP_PLAN_KEY,
   ensureSubscriptionPlanStripe,
@@ -112,7 +113,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const baseUrl = getBaseUrl();
+  // The origin the customer is checking out FROM, so every return path lands
+  // back on the same app they left (never a different host's homepage).
+  const baseUrl = getReturnBaseUrl(req);
   if (!baseUrl) {
     return NextResponse.json(
       { success: false, error: "Base URL is not configured" },
@@ -122,26 +125,34 @@ export async function POST(req: NextRequest) {
 
   const stripe = getStripe();
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    line_items: [{ price: resolvedPriceId, quantity: 1 }],
-    // Omitted by design: dynamic payment methods selected by Stripe.
-    client_reference_id: clerkId,
-    metadata: { clerkId, planKey: plan.key },
-    // Carried onto the Subscription object so the webhook can map every paid
-    // invoice back to the plan (and user) without trusting the payload.
-    subscription_data: { metadata: { clerkId, planKey: plan.key } },
-    success_url: `${baseUrl}/upgrade-pro?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/upgrade-pro?checkout=cancelled`,
-    allow_promotion_codes: true,
-    // Managed Payments is enabled by default on the account and is the
-    // merchant of record for Grynd subscriptions too (plans are created via
-    // Checkout, which Managed Payments supports). The plan product now carries
-    // the eligible tax code txcd_10103100 (see subscriptions.ts), so the
-    // recurring checkout runs WITH Managed Payments enabled.
-    managed_payments: { enabled: true },
-    integration_identifier: `grynd_subscribe_${randomSuffix()}`,
-  });
+  const session = await createBrandedCheckoutSession(
+    stripe,
+    {
+      mode: "subscription",
+      line_items: [{ price: resolvedPriceId, quantity: 1 }],
+      // Omitted by design: dynamic payment methods selected by Stripe.
+      client_reference_id: clerkId,
+      metadata: { clerkId, planKey: plan.key },
+      // Carried onto the Subscription object so the webhook can map every paid
+      // invoice back to the plan (and user) without trusting the payload.
+      subscription_data: { metadata: { clerkId, planKey: plan.key } },
+      success_url: `${baseUrl}/upgrade-pro?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      // The Checkout back button is `cancel_url` (Stripe: "If set, Checkout
+      // displays a back button and customers will be directed to this URL" —
+      // see the create-session reference). It must therefore always be the
+      // GRYND PRO page, which is where the "checkout cancelled" notice lives.
+      cancel_url: `${baseUrl}/upgrade-pro?checkout=cancelled`,
+      allow_promotion_codes: true,
+      // Managed Payments is enabled by default on the account and is the
+      // merchant of record for Grynd subscriptions too (plans are created via
+      // Checkout, which Managed Payments supports). The plan product now
+      // carries the eligible tax code txcd_10103100 (see subscriptions.ts), so
+      // the recurring checkout runs WITH Managed Payments enabled.
+      managed_payments: { enabled: true },
+      integration_identifier: `grynd_subscribe_${randomSuffix()}`,
+    },
+    baseUrl
+  );
 
   // Persist the ledger row before redirecting. `token_amount` is 0 on purpose
   // — subscription tokens are granted per paid invoice, never at checkout.

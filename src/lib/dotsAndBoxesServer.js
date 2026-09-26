@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { dotsAndBoxesGames, users } from "../db/schema";
+import { dotsAndBoxesGames } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
 import { applyRatingResult } from "./rating";
 import { applyTrophyResult } from "./trophyStore";
@@ -14,7 +14,6 @@ import {
   pickRandomLegalEdge,
 } from "./dotsAndBoxesEngine";
 
-const HOUSE_EDGE_MULTIPLIER = 1.9;
 export const DOTS_AND_BOXES_AI_ID = "AI_BOT";
 
 // Brief "Match found!" takeover window between the opponent joining and
@@ -120,18 +119,6 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
     }
 
     if (result === "draw") {
-      // Refund both players' wagers
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${locked.betAmount}` })
-        .where(eq(users.clerkId, locked.hostClerkId));
-      if (locked.guestClerkId) {
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${locked.betAmount}` })
-          .where(eq(users.clerkId, locked.guestClerkId));
-      }
-
       await tx
         .update(dotsAndBoxesGames)
         .set({
@@ -163,12 +150,8 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
 
     if (!winnerClerkId) return;
 
-    const payout = Number((bet * HOUSE_EDGE_MULTIPLIER).toFixed(2));
-
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout}` })
-      .where(eq(users.clerkId, winnerClerkId));
+    // Stakes are retired: no pot, no rake and no payout to move.
+    const payout = 0;
 
     if (!locked.isAiGame) {
       await applyLeaderboardCounters({

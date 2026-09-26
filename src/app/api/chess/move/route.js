@@ -1,7 +1,7 @@
 import { Chess } from "chess.js";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 
@@ -10,8 +10,6 @@ const UUID_RE =
 import { chessGames, chessMoves, users } from "../../../../db/schema";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
-
-const HOUSE_EDGE_PERCENT = 10;
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -113,31 +111,6 @@ export async function POST(req) {
           .where(eq(chessGames.id, normalizedGameId))
           .for("update");
         if (!lockedGame || lockedGame.status === "finished") return;
-
-        if (isDraw) {
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${lockedGame.betAmount}` })
-            .where(eq(users.clerkId, lockedGame.playerWhiteId));
-
-          if (lockedGame.playerBlackId) {
-            await tx
-              .update(users)
-              .set({ balance: sql`${users.balance} + ${lockedGame.betAmount}` })
-              .where(eq(users.clerkId, lockedGame.playerBlackId));
-          }
-        } else {
-          const pot = Number(lockedGame.betAmount) * 2;
-          const houseFee = Number(
-            ((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2),
-          );
-          const winnerPayout = Number((pot - houseFee).toFixed(2));
-
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-            .where(eq(users.clerkId, winnerId));
-        }
 
         await tx
           .update(chessGames)

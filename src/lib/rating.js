@@ -62,23 +62,33 @@ import {
   provisionalProgress,
 } from "./elo";
 
-// ── Game registry ─────────────────────────────────────────────────────────
+// ── Game registry (the full rated-game space) ──────────────────────────────
 //
-// Only 1v1 games with a SERVER-DERIVED winner are rated. The keys are
-// deliberately identical to the Prestige `source` keys each settlement
-// already passes, so one vocabulary covers both systems and the two
-// journals line up row-for-row.
+// The keys are deliberately identical to the settlement `source`/`gameKey`
+// values each game already passes, so one vocabulary covers ratings, trophies
+// and Prestige and the journals line up row-for-row.
 //
-// DELIBERATELY EXCLUDED (see docs / audit §7):
+// SETTLEMENT STATUS:
+//   * The original 14 duel games (chess … odds-pvp) settle through
+//     applyRatingResult / applyTrophyResult.
+//   * The multi-seat tables (crash-arena, tower-arena, uno) settle TROPHIES
+//     through applyPlacementTrophies, which reads the same ±30 as a SYMMETRIC
+//     PLACEMENT LADDER: 1st banks the full +30, last pays the full −30, and the
+//     seats between them trade the even shares (4 seats: +30/+10/−10/−30,
+//     6 seats: +30/+18/+6/−6/−18/−30), zero-sum and tie-averaged. roulette-pvp
+//     is a two-seat table, so that ladder is simply ±30. See
+//     src/lib/trophyStore.js. None of them have Elo wiring yet.
+//   * The "pending" games are REGISTERED here so the rated-game space — and
+//     thus OVERALL_TROPHY_MAX and Overall Prestige — stays complete, but they
+//     are not settled by the writers yet.
+//
+// DELIBERATELY UNSETTLED FOR NOW:
 //   * hex-duel            — /api/hex-duel/multiplayer/end accepts a
 //                           client-supplied `winner`; unratable until that
-//                           route derives the winner server-side.
-//   * tower-arena, uno    — 3–6 / 2–4 player tables (no binary verdict).
-//   * poker, crash-arena  — running bankroll / per-hand economy, no
-//                           discrete match verdict.
-//   * roulette-pvp        — elimination with per-round draws; no
-//                           match-level win/loss/draw verdict.
-//   * every solo/AI mode  — not competitive.
+//                           route derives the winner server-side (moves are
+//                           already validated + stored, so the board can be
+//                           replayed — see src/app/api/hex-duel/multiplayer/action).
+//   * every solo/AI mode  — not competitive, and no seat is an account.
 export const RATED_GAMES = Object.freeze([
   "chess",
   "four-in-a-row",
@@ -94,6 +104,11 @@ export const RATED_GAMES = Object.freeze([
   "dice-flush",
   "rps-pvp",
   "odds-pvp",
+  "roulette-pvp",
+  "crash-arena",
+  "uno",
+  "tower-arena",
+  "hex-duel",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -112,6 +127,11 @@ export const RATING_GAME_LABELS = Object.freeze({
   "dice-flush": "Dice Flush",
   "rps-pvp": "Rock Paper Scissors",
   "odds-pvp": "Odds",
+  "roulette-pvp": "Roulette",
+  "crash-arena": "Crash Arena",
+  uno: "Neon Flush",
+  "tower-arena": "Tower Arena",
+  "hex-duel": "Hex Duel",
 });
 
 /** True when a game key is eligible for Elo. */
@@ -270,6 +290,48 @@ export async function getRatingsForUser(clerkId) {
   for (const row of rows.rows ?? rows) {
     const key = String(row.gameKey);
     out[key] = toRatingShape(key, row);
+  }
+  return out;
+}
+
+/**
+ * The rating MAPS for MANY players at once, keyed by Clerk id, for the
+ * quick-queue matcher. One query instead of one per queued request.
+ *
+ * Returns `{ [clerkId]: { [gameKey]: rating } }`. A player with no rating rows
+ * is simply absent, which the matcher treats as "no prestige signal". Only the
+ * raw `rating` number is returned — the queue needs a sortable skill value,
+ * not the full read shape.
+ */
+export async function getRatingMapsForUsers(clerkIds) {
+  const ids = [
+    ...new Set(
+      (Array.isArray(clerkIds) ? clerkIds : [])
+        .filter(Boolean)
+        .map((id) => String(id)),
+    ),
+  ];
+  if (ids.length === 0) return {};
+
+  const list = sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await getSql().execute(sql`
+    SELECT u.clerk_id AS "clerkId", r.game_key AS "gameKey", r.rating
+      FROM player_ratings r
+      INNER JOIN users u ON u.id = r.user_id
+     WHERE u.clerk_id IN (${list})
+  `);
+
+  const out = {};
+  for (const row of rows.rows ?? rows) {
+    const clerkId = String(row.clerkId);
+    if (!out[clerkId]) out[clerkId] = {};
+    const value = Number(row.rating);
+    out[clerkId][String(row.gameKey)] = Number.isFinite(value)
+      ? Math.round(value)
+      : STARTING_RATING;
   }
   return out;
 }

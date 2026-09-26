@@ -31,7 +31,6 @@ import {
   laneRunnerGames,
   hexDuelGames,
   oddsGames,
-  pokerGames,
   diceFlushPlayers,
 } from "../../../db/schema";
 
@@ -83,7 +82,7 @@ export async function GET() {
       // ── favorite_game: most-played game, from per-table counts ────────
       // Mirrors the per-table id predicates used across the app (some tables
       // key by integer user id, some by Clerk id; chess/keno-pvp/... are
-      // player1/player2 pairs; poker matches via its jsonb players array).
+      // player1/player2 pairs or a per-user id).
       // Aggregates transfer ~19 rows instead of up to ~19,000. A failing
       // table just contributes 0 — it must never fail the request.
       const safeCount = async (label, fn) => {
@@ -204,24 +203,6 @@ export async function GET() {
               ),
             ),
         ),
-        safeCount("poker", () =>
-          db
-            .select({ n: count() })
-            .from(pokerGames)
-            .where(
-              drizzleSql`exists (
-                select 1
-                from jsonb_array_elements(
-                  case
-                    when jsonb_typeof(${pokerGames.players}) = 'array'
-                      then ${pokerGames.players}
-                    else '[]'::jsonb
-                  end
-                ) elem
-                where elem->>'clerkId' = ${clerkId}
-              )`,
-            ),
-        ),
         safeCount("dice-flush", () =>
           db.select({ n: count() }).from(diceFlushPlayers).where(eq(diceFlushPlayers.userId, clerkId)),
         ),
@@ -244,8 +225,7 @@ export async function GET() {
         ["Memory Grid", counts[13]],
         ["Hex Duel", counts[14]],
         ["Odds", counts[15]],
-        ["Poker", counts[16]],
-        ["Dice Flush", counts[17]],
+        ["Dice Flush", counts[16]],
       ];
       const favoriteGame =
         gameCounts.sort((a, b) => b[1] - a[1])[0]?.[1] > 0
@@ -291,7 +271,7 @@ export async function GET() {
         console.error("[user-stats] Failed to fetch user meta:", selectErr);
       }
 
-      // Battlepass level is DERIVED from TROPHIES (10,000 total = level 100),
+      // Battlepass level is DERIVED from TROPHIES (OVERALL_TROPHY_MAX = level 100),
       // not XP. The stored level/xp columns are legacy and no longer drive
       // progression; nothing is overwritten here.
       const totalTrophies = await getTotalTrophiesForUser(userId);

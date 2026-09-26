@@ -249,10 +249,10 @@ test("no match page ever carries the ad tag", () => {
 
 test("games whose lobby and board are one page stay ad-free", () => {
   // Dice Flush and Odds are played start-to-finish on their lobby URL, so any
-  // tag there would sit on the board itself. Keno, Poker's combined table page
-  // and the Neon Flush reskins are excluded the same way.
+  // tag there would sit on the board itself. Keno and the Neon Flush reskins
+  // are excluded the same way.
   const combined = pagesRenderingTag().filter((p) =>
-    /dice-flush|odds|keno|poker|neon-flush/.test(p),
+    /dice-flush|odds|keno|neon-flush/.test(p),
   );
   assert.deepEqual(combined, [], "lobby-and-board-in-one games must stay ad-free");
 });

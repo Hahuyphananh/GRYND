@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
-import { eq, sql } from "drizzle-orm";
-import { poolMatches, users } from "../../../../db/schema";
+import { eq } from "drizzle-orm";
+import { poolMatches } from "../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 import { logError } from "../../../../lib/logError";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -67,18 +68,13 @@ export async function POST(req: Request) {
         : match.player1Id;
 
     const winnerSeat = isPlayer1 ? 2 : 1;
-    const wager = Number(match.wager ?? 0);
-    // Guard: if wager is invalid, abort gracefully
-    if (!wager || wager <= 0 || !Number.isFinite(wager)) {
-      return NextResponse.json(
-        { success: false, error: "Invalid wager on match" },
-        { status: 400 },
-      );
-    }
-    // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
-    // src/lib/games/economy.ts). Winner keeps 95% of the pot.
-    const houseFee = Math.floor(wager * 2 * 0.05);
-    const payout = isAi ? 0 : wager * 2 - houseFee;
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): the match carried no
+    // stake, so a resign still settles (status, Elo, trophies) but pays out
+    // nothing — the payout and house fee below are 0.
+    const wager = normalizeStake(match.wager ?? 0);
+    // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+    const houseFee = 0;
+    const payout = 0;
 
     // Update the match
     const gameState = (match.gameState as Record<string, unknown>) || {};
@@ -91,14 +87,6 @@ export async function POST(req: Request) {
     };
 
     await db.transaction(async (tx) => {
-      // Pay the winner (unless it's AI)
-      if (!isAi && winnerId) {
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${payout}` })
-          .where(eq(users.clerkId, String(winnerId)));
-      }
-
       // Update match status
       await tx
         .update(poolMatches)

@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 
@@ -9,9 +9,6 @@ const UUID_RE =
 import { chessGames, chessMoves, users } from "../../../../db/schema";import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
-
-
-const HOUSE_EDGE_PERCENT = 10;
 
 async function getUserAliases(clerkId) {
   const aliases = new Set([String(clerkId)]);
@@ -172,14 +169,8 @@ async function settleTimeoutIfNeeded(game, clocks) {
       return;
     }
 
-    const pot = Number(lockedGame.betAmount) * 2;
-    const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-    const winnerPayout = Number((pot - houseFee).toFixed(2));
-
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-      .where(eq(users.clerkId, lockedWinnerId));
+    // Stakes are retired: no pot, no rake and no payout to move.
+    const winnerPayout = 0;
 
     await tx
       .update(chessGames)

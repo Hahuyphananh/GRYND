@@ -21,7 +21,6 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -32,10 +31,7 @@ import {
   LANE_RUSH_DUEL_MATCH_UPDATED,
   laneRushDuelMatchRoom,
 } from "../../../lib/lane-rush-duel/rooms";
-import {
-  DIFFICULTIES,
-  STAKE_PRESETS,
-} from "../../../lib/lane-rush-duel/constants";
+import { DIFFICULTIES } from "../../../lib/lane-rush-duel/constants";
 import { IconShieldCheck } from "@tabler/icons-react";
 
 function TowerIcon({ className = "" }) {
@@ -67,13 +63,13 @@ export default function LaneRushDuelLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useDefaultWager("lane-runner", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
   const [difficulty, setDifficulty] = useState("easy");
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState([]);
-  const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
@@ -94,30 +90,13 @@ export default function LaneRushDuelLobbyPage() {
     }
   }, []);
 
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  }, [isSignedIn]);
-
   useEffect(() => {
     fetchAvailable();
-    fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchAvailable, fetchBalance]);
+  }, [fetchAvailable]);
 
   // Any lobby the current user owns, derived from the polled list.
   const myOpenMatch = useMemo(() => {
@@ -302,9 +281,8 @@ export default function LaneRushDuelLobbyPage() {
   );
 
   const difficultyValid = Boolean(DIFFICULTIES[difficulty]);
-  const stakeValid = stake > 0 && (balance === null || balance >= stake);
   const canCreate =
-    isSignedIn && !busy && difficultyValid && stakeValid && myOpenMatchId === null;
+    isSignedIn && !busy && difficultyValid && myOpenMatchId === null;
 
   return (
     <PvpLobbyPage
@@ -390,10 +368,6 @@ export default function LaneRushDuelLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={stake}
-      onStakeChange={setStake}
-      stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => {
         posthog?.capture("lane_rush_duel_create_clicked", {
@@ -415,13 +389,6 @@ export default function LaneRushDuelLobbyPage() {
           createBotMatch(difficulty);
         },
       }}
-      escrowNote={
-        <>
-          We pair you with another player of the <b>exact same</b> stake.
-          If no one is waiting, your stake is escrowed in a private lobby
-          with your chosen difficulty until someone joins or you cancel.
-        </>
-      }
       error={error}
       lobbies={availableMatches}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."

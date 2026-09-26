@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { oddsGames, users } from "../../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { oddsGames } from "../../../../../db/schema";
+import { eq } from "drizzle-orm";
 import {
   submitAIPick,
   submitAIPrediction,
@@ -111,26 +111,12 @@ export async function POST(req: Request) {
         prediction!,
         game.aiDifficulty,
       );
-      const payout = game.wager * 2;
-
       if (resolved.gameOver) {
         const player1Won = resolved.winner === "player1";
         const drew = resolved.winner === null;
 
-        // AI games are free play — never credit payout on win, even if the
-        // persisted `game.wager` is non-zero. This endpoint is only reached
-        // for AI games (`game.isAi === true`), but the explicit guard keeps
-        // the credit logic defensive in case the route is wired differently.
-        if (player1Won && !game.isAi) {
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${payout}` })
-            .where(eq(users.clerkId, userId));
-        }
-
-        // Record payout as 0 in AI mode so history reflects the free-play
-        // outcome instead of a phantom double-the-wager credit.
-        const recordedPayout = game.isAi ? 0 : player1Won ? payout : 0;
+        // STAKES ARE RETIRED: AI games are free play, so nothing is paid out.
+        const recordedPayout = 0;
 
         await tx
           .update(oddsGames)

@@ -86,14 +86,6 @@ export const GAME_CATALOG = [
   // (fast_paced).
   { id: "plinko", href: "/casino/plinko", tags: ["pvp", "chance", "fast_paced"] },
 
-  // Multiplayer Texas Hold'em: bluffing/reading is planning (strategy + skill)
-  // and the table is the ranked ladder (competitive), 3+ players (multiplayer).
-  {
-    id: "poker",
-    href: "/casino/poker/multi",
-    tags: ["multiplayer", "strategy", "skill", "competitive"],
-  },
-
   // Shared-table last-player-standing on a random crash curve: the curve is
   // chance, the rounds are short (fast_paced), the table is competitive.
   {

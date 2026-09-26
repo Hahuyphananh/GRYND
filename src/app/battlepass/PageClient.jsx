@@ -18,6 +18,12 @@ function formatNumber(n) {
   return Number(n || 0).toLocaleString();
 }
 
+/** "+30" / "−30" — the trophy swing, always signed. */
+function formatSigned(n) {
+  const value = Number(n) || 0;
+  return value > 0 ? `+${formatNumber(value)}` : `−${formatNumber(Math.abs(value))}`;
+}
+
 const RARITY_COLORS = REWARD_RARITIES;
 
 function rewardColor(reward) {
@@ -64,6 +70,17 @@ export default function BattlepassPageClient({ adSlot = null }) {
   const [claimedPass, setClaimedPass] = useState(null);
   const pass = claimedPass ?? resource.data?.pass ?? null;
   const loading = resource.isLoading && !pass;
+  // The trophy RULE comes from the server (see /api/battlepass), so the copy
+  // below states the real per-game cap and game count instead of a hardcoded
+  // total that would drift the moment the rated-game roster changes. The
+  // fallbacks only cover the offline/cached-payload case.
+  const trophyConfig = {
+    perGameCap: pass?.trophyConfig?.perGameCap ?? 1000,
+    gameCount: pass?.trophyConfig?.gameCount ?? 0,
+    overallMax: pass?.trophyConfig?.overallMax ?? 0,
+    win: pass?.trophyConfig?.win ?? 30,
+    loss: pass?.trophyConfig?.loss ?? -30,
+  };
   const [failedEmoteRewards, setFailedEmoteRewards] = useState({});
   // Prestige tier that just unlocked and is being celebrated (null = none).
   const [prestigeCelebrated, setPrestigeCelebrated] = useState(null);
@@ -398,9 +415,16 @@ export default function BattlepassPageClient({ adSlot = null }) {
                   <div>
                     <div className="font-medium text-white">Win ranked matches</div>
                     <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      Every ranked win pays +30 trophies and every loss costs
-                      −30. Trophies never drop below 0 and cap at 10,000 — the
-                      full Battle Pass track.
+                      A ranked win pays {formatSigned(trophyConfig.win)} trophies
+                      and a loss costs {formatSigned(trophyConfig.loss)}. At a
+                      multi-player table the swing follows your placement —
+                      first place takes the full {formatSigned(trophyConfig.win)},
+                      last place pays the full {formatSigned(trophyConfig.loss)},
+                      and the seats in between split the difference. Every game
+                      caps at {formatNumber(trophyConfig.perGameCap)}, so the
+                      whole track is {formatNumber(trophyConfig.overallMax)}
+                      across all {formatNumber(trophyConfig.gameCount)} rated
+                      games.
                     </div>
                   </div>
                 </div>
@@ -451,8 +475,8 @@ export default function BattlepassPageClient({ adSlot = null }) {
                   </h2>
                   <p className="mt-1 text-xs text-[#7dd3fc]">
                     Rewards sit on a horizontal track — scroll sideways through
-                    all {pass.maxLevel} levels. Each level needs more trophies
-                    than the last, and rewards get rarer as you climb.
+                    all {pass.maxLevel} levels, {formatNumber(pass.trophiesPerLevel)}{" "}
+                    trophies each. Rewards get rarer as you climb.
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">

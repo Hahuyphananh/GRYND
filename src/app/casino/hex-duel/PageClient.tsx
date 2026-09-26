@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
@@ -181,14 +180,13 @@ function APPips({ current, max, color, bonusCount }: { current: number; max: num
 //  Wager Modal
 // ══════════════════════════════════════════════════════════════════════════
 
-import { CHIP_VALUES } from "../../../lib/rouletteConfig";
 
 function WagerModal({
-  balance, onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onJoinMultiplayer,
+  onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onJoinMultiplayer,
   onQuickJoinMultiplayer, onRefreshGames, multiplayerGames, multiplayerLoading,
   aiDifficulty, onAiDifficultyChange,
 }: {
-  balance: number; onStartFun: () => void; onStartReal: (w: number) => void;
+  onStartFun: () => void; onStartReal: (w: number) => void;
   loading: boolean; error: string | null; isSignedIn: boolean;
   onCreateMultiplayer: (w: number) => void; onJoinMultiplayer: (gameId: number) => void;
   onQuickJoinMultiplayer: () => void; onRefreshGames: () => void;
@@ -197,15 +195,15 @@ function WagerModal({
   aiDifficulty: AIDifficulty;
   onAiDifficultyChange: (d: AIDifficulty) => void;
 }) {
-  const [wager, setWager] = useDefaultWager("hex-duel", 50);
-  const [playForFun, setPlayForFun] = useState(false);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): every match is free.
+  const wager = 0;
   const [queueMode, setQueueMode] = useState<"ai" | "multiplayer">("ai");
   const [showRules, setShowRules] = useState(false);
   const firstVisitRules = useFirstVisitRules("hex-duel");
   useEffect(() => {
     if (firstVisitRules) setShowRules(true);
   }, [firstVisitRules]);
-  const canAfford = wager > 0 && wager <= balance;
+  const canAfford = true;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Set Stake">
@@ -227,7 +225,7 @@ function WagerModal({
         <h2 className="text-center text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-fuchsia-400 mb-1">
           HEX DUEL
         </h2>
-        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-3">Set Your Stake</p>
+        <p className="text-center text-[10px] text-slate-500 uppercase tracking-[0.2em] mb-3">Free Play · No Stake</p>
 
         {/* How to Play — rules modal at the top of the lobby */}
         <div className="mb-4 text-center">
@@ -293,7 +291,7 @@ function WagerModal({
               <p className="text-[11px] text-slate-500">No open games yet.</p>
             ) : multiplayerGames.map((game) => (
               <div key={game.id} className="flex items-center justify-between rounded-md border border-white/10 px-2 py-1.5">
-                <span className="text-[11px] text-slate-300">#{game.id} · {game.hostName || "Player"} · {Number(game.wagerAmount).toFixed(2)} tokens</span>
+                <span className="text-[11px] text-slate-300">#{game.id} · {game.hostName || "Player"} · Free play</span>
                 <button onClick={() => onJoinMultiplayer(game.id)} className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20">
                   Join
                 </button>
@@ -302,23 +300,16 @@ function WagerModal({
           </div>
         </div>
 
-        {isSignedIn ? (
-          <div className="mb-5 text-center">
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Your Balance</p>
-            <p className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">
-              {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-[10px] text-slate-500">tokens</p>
-          </div>
-        ) : (
-          <div className="mb-5 text-center p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <p className="text-xs text-amber-300 font-medium">Sign in to stake tokens</p>
-            <p className="text-[10px] text-slate-400 mt-1">You can still play for fun!</p>
-          </div>
-        )}        {!playForFun && (queueMode === "ai" ? (
-          <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
-            <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300"><IconDeviceGamepad2 size={13} /> Free Play</p>
-            <p className="text-[10px] text-cyan-100/70">No tokens are staked. Playing vs AI is free.</p>
+        <div className="mb-5 text-center">
+          <span className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+            Free play · no tokens at stake
+          </span>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-cyan-400/40 bg-cyan-500/15 p-3 text-center">
+          <p className="mb-1 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-cyan-300"><IconDeviceGamepad2 size={13} /> Free Play</p>
+          <p className="text-[10px] text-cyan-100/70">No tokens are staked. Every match is free.</p>
+          {queueMode === "ai" && (
             <AiDifficultyPicker
               gameKey="hex-duel"
               value={aiDifficulty}
@@ -330,48 +321,7 @@ function WagerModal({
                 hard: "The bot always picks its highest-scoring move.",
               }}
             />
-          </div>
-        ) : (
-          <div className="mb-4">
-            <label className="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5 block">Stake Amount</label>
-            <input
-              type="number" value={wager} min={1} max={balance}
-              aria-label="Stake amount"
-              onChange={(e) => setWager(Number(e.target.value) || 0)}
-              className="w-full rounded-lg bg-[#020617] border border-white/15 px-3 py-2 text-white text-sm
-                focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none transition mb-3"
-              placeholder="Enter stake..."
-            />
-            <div className="flex gap-1.5">
-              {CHIP_VALUES.map((amount) => (
-                <button
-                  key={amount}
-                  onClick={() => setWager(amount)}
-                  className={`flex-1 rounded-md py-1.5 text-[10px] font-bold transition-all duration-150 border ${
-                    wager === amount
-                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-400/50 shadow-[0_0_8px_rgba(34,211,238,0.2)]"
-                      : "bg-white/[0.03] text-slate-400 border-white/10 hover:border-white/20 hover:text-white"
-                  }`}>{amount}</button>
-              ))}
-            </div>
-            {!canAfford && wager > 0 && (
-              <p className="text-[10px] text-red-400 mt-2 font-medium">Insufficient balance. You need {wager} tokens</p>
-            )}
-          </div>
-        ))}
-
-        <div className="mb-5 flex items-center justify-between rounded-lg bg-white/[0.03] border border-white/10 p-3">
-          <div>
-            <p className="text-xs font-bold text-slate-300">Play for Fun</p>
-            <p className="text-[10px] text-slate-500">No real tokens used</p>
-          </div>
-          <button
-            onClick={() => setPlayForFun(!playForFun)}
-            className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${playForFun ? "bg-purple-500" : "bg-slate-700"}`}
-            role="switch" aria-checked={playForFun}
-          >
-            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${playForFun ? "translate-x-5" : "translate-x-0"}`} />
-          </button>
+          )}
         </div>
 
         {error && (
@@ -380,10 +330,10 @@ function WagerModal({
 
         <button
           onClick={() => {
-            if (queueMode === "multiplayer") return onCreateMultiplayer(playForFun ? 0 : wager);
-            return playForFun ? onStartFun() : onStartReal(wager);
+            if (queueMode === "multiplayer") return onCreateMultiplayer(0);
+            return onStartFun();
           }}
-          disabled={loading || (!playForFun && !canAfford)}
+          disabled={loading}
           className="w-full rounded-xl py-3 text-sm font-bold uppercase tracking-[0.15em] transition-all duration-200
             bg-gradient-to-r from-cyan-500 to-blue-600 text-white
             shadow-[0_0_20px_rgba(34,211,238,0.3)]
@@ -398,16 +348,14 @@ function WagerModal({
           ) : (
             <span className="inline-flex items-center gap-2">
               {queueMode === "multiplayer"
-                ? <><IconGlobe size={16} /> {playForFun ? "Create Multiplayer (Fun)" : `Stake ${wager} Tokens (Multiplayer)`}</>
-                : queueMode === "ai"
-                  ? <><IconDeviceGamepad2 size={16} /> Free Play vs AI</>
-                  : <>{playForFun ? <><IconDeviceGamepad2 size={16} /> Play for Fun</> : <><IconCoins size={16} /> Stake {wager} Tokens vs AI</>}</>}
+                ? <><IconGlobe size={16} /> Create Multiplayer Game</>
+                : <><IconDeviceGamepad2 size={16} /> Free Play vs AI</>}
             </span>
           )}
         </button>
 
         <p className="mt-3 text-center text-[9px] text-slate-600">
-          Winner receives {playForFun ? "bragging rights" : "1.9× payout"}
+          Winner takes the trophies and the rating.
         </p>
       </div>
     </div>
@@ -1084,18 +1032,6 @@ export default function HexDuelPage() {
     }
     if (!effectiveWinner) victoryPlayed.current = false;
   }, [effectiveWinner, audio]);
-
-  // ── Balance ────────────────────────────────────────────────────────
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn || !user) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include" });
-      const data = await res.json();
-      if (data.success) setBalance(Number(data.data.balance || 0));
-    } catch {}
-  }, [isSignedIn, user]);
-
-  useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
   // ── Restore AI session token from localStorage on mount ──────
   // Without this, if the user refreshes the page between start-game
@@ -2345,7 +2281,7 @@ export default function HexDuelPage() {
 
   const handleRestart = useCallback(() => {
     resetGame(); setGameMode("idle"); setWager(0); setWagerError(null);
-    setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null; fetchBalance();
+    setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null;
     setMultiplayerGameId(null); setOpponentReady(false); opponentReadyRef.current = false; multiplayerJoinedRef.current = false;
     lastKnownActionIdRef.current = 0;
     // Audit reviewer HIGH fix: clear the action queue + dedup set so queued
@@ -2372,7 +2308,7 @@ export default function HexDuelPage() {
     }
     setIsAiGame(false);
     window.history.replaceState({}, '', window.location.pathname);
-  }, [resetGame, fetchBalance]);
+  }, [resetGame]);
 
   // ── Action system: wrapped click, confirm, clear ──────────────────
 
@@ -3262,7 +3198,7 @@ export default function HexDuelPage() {
         {/* Wager modal */}
         {!showGame && (
           <WagerModal
-            balance={balance} onStartFun={handleStartFun} onStartReal={handleStartReal}
+            onStartFun={handleStartFun} onStartReal={handleStartReal}
             loading={wagerLoading} error={wagerError} isSignedIn={!!isSignedIn}
             onCreateMultiplayer={handleCreateMultiplayer}
             onJoinMultiplayer={(gameId) => handleJoinMultiplayer(gameId, false)}

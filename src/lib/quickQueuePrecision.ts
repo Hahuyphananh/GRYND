@@ -17,6 +17,7 @@
 // destination id assertion failed.
 
 import { tryAutoMatch } from "./precision/matchmaking";
+import { normalizeStake } from "./games/stakes";
 
 export async function createOrJoinPrecisionDestination({
   userId,
@@ -27,10 +28,7 @@ export async function createOrJoinPrecisionDestination({
   wager?: number;
   name?: string;
 }) {
-  const amount = Math.trunc(Number(wager));
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return { error: "Invalid Precision wager", status: 400 };
-  }
+  const amount = Math.trunc(normalizeStake(wager));
 
   try {
     const result = await tryAutoMatch({

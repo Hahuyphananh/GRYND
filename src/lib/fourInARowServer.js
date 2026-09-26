@@ -1,11 +1,10 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { fourInARowGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
 import { applyRatingResult } from "./rating";
 import { applyTrophyResult } from "./trophyStore";
 
-const HOUSE_EDGE_MULTIPLIER = 1.9;
 const DEFAULT_MOVE_TIME_SECONDS = 60;
 const REPLAY_DECISION_SECONDS = 20;
 
@@ -63,18 +62,6 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
 
     if (result === "draw") {
       await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${locked.betAmount}` })
-        .where(eq(users.clerkId, locked.hostClerkId));
-
-      if (locked.guestClerkId) {
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${locked.betAmount}` })
-          .where(eq(users.clerkId, locked.guestClerkId));
-      }
-
-      await tx
         .update(fourInARowGames)
         .set({
           status: "finished",
@@ -121,12 +108,8 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
 
     if (!winnerClerkId) return;
 
-    const payout = Number((bet * HOUSE_EDGE_MULTIPLIER).toFixed(2));
-
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout}` })
-      .where(eq(users.clerkId, winnerClerkId));
+    // Stakes are retired: no pot, no rake and no payout to move.
+    const payout = 0;
 
     await applyLeaderboardCounters({
       clerkId: winnerClerkId,

@@ -165,7 +165,6 @@ const DIRECT_TABLES = [
   "laneRunnerGames",
   "hexDuelGames",
   "oddsGames",
-  "pokerGames",
   "laneRushDuelMatches",
   "memoryGridMatches",
   "crashArenaEntries",
@@ -230,11 +229,11 @@ test("no currentStreak recalculation variable", () => {
 // Verify drizzle-orm imports
 // ═══════════════════════════════════════════════════════════════
 
-test("sql IS imported from drizzle-orm (needed for poker jsonb query)", () => {
+test("sql IS imported from drizzle-orm (needed for the jsonb game queries)", () => {
   const importMatch = source.match(/import\s*\{([^}]+)\}\s*from\s*"drizzle-orm"/);
   assert.ok(importMatch, "drizzle-orm import must exist");
   const imports = importMatch[1];
-  assert.match(imports, /\bsql\b/, "sql must be imported (used by poker jsonb query)");
+  assert.match(imports, /\bsql\b/, "sql must be imported (used by the jsonb game queries)");
   assert.match(imports, /\beq\b/, "eq must still be imported");
   assert.match(imports, /\bor\b/, "or must still be imported");
   assert.match(imports, /\band\b/, "and must be imported (used by hex duel query)");
@@ -259,9 +258,9 @@ test("odds formatter exists and is included in allBets", () => {
   assert.match(source, /\.\.\.oddsFormatted/, "must spread into allBets");
 });
 
-test("poker formatter exists and is included in allBets", () => {
-  assert.match(source, /pokerFormatted/, "must have poker formatter");
-  assert.match(source, /\.\.\.pokerFormatted/, "must spread into allBets");
+test("poker is gone: no formatter and no poker table is queried", () => {
+  assert.doesNotMatch(source, /pokerFormatted/, "poker formatter must be removed");
+  assert.doesNotMatch(source, /\bpokerGames\b/, "poker_games must not be queried");
 });
 
 test("diceFlush formatter exists and is included in allBets", () => {

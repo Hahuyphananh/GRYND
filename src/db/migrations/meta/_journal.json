@@ -1107,6 +1107,20 @@
       "when": 1800000020000,
       "tag": "0176_reset_battlepass_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1800000021000,
+      "tag": "0177_trophy_cap_and_prestige_regate",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1800000022000,
+      "tag": "0178_drop_poker_tables",
+      "breakpoints": true
     }
   ]
 }

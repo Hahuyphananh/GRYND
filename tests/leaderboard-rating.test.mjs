@@ -217,7 +217,7 @@ test("GAME KEYS: rated games only, one independent board each", () => {
   }
   // Unrated games fall back to the first rated game rather than inventing a
   // board for a game that has no ratings.
-  for (const unrated of ["plinko", "roulette", "uno", "hex-duel", "crash"]) {
+  for (const unrated of ["plinko", "roulette", "crash", "poker"]) {
     assert.equal(normalizeRatingGameKey(unrated), RATED_GAMES[0]);
   }
   assert.equal(getRatingGameLabel("pool"), "Pool Masters");

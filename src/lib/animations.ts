@@ -102,7 +102,7 @@ export const cardDeal = (index, total) => ({
 // hits) still settles as one deal instead of trailing card by card.
 //
 // `dx` and `rotate` are optional non-negative/negative offsets for tables
-// where the slots are NOT in one row (poker's ring of seats): pass the
+// where the slots are NOT in one row (a ring of seats): pass the
 // seat's offset from the shoe and the card travels the full 2D vector,
 // tilted a few degrees on entry. Both default to 0, so the row-based
 // blackjack call sites are byte-for-byte unchanged.

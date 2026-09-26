@@ -33,7 +33,7 @@ export async function GET() {
     if (!dbUserId) {
       return Response.json({ success: true, count: 0, levels: [] });
     }
-    // Level is derived from TROPHIES (10,000 total = level 100), not XP.
+    // Level is derived from TROPHIES (OVERALL_TROPHY_MAX = level 100), not XP.
     const level = getLevelFromTrophies(await getTotalTrophiesForUser(userId));
 
     // Premium-track gating mirrors /api/battlepass: non-members must not be

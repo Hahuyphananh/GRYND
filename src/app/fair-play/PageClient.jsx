@@ -39,7 +39,7 @@ const sections = [
   {
     title: "Game Integrity & Randomness",
     content: [
-      "For games that incorporate random elements, we use cryptographically secure, server-generated seeds to ensure unpredictable outcomes, and several games (such as Crash and Lane Runner) use provably-fair seed hashing so results can be verified after the fact. For skill-based games like Poker, Chess, Four-In-A-Row, and Pool, outcomes are determined purely by player decisions and skill. We regularly audit our game logic to ensure correctness and fairness.",
+      "For games that incorporate random elements, we use cryptographically secure, server-generated seeds to ensure unpredictable outcomes, and several games (such as Crash and Lane Runner) use provably-fair seed hashing so results can be verified after the fact. For skill-based games like Chess, Four-In-A-Row, and Pool, outcomes are determined purely by player decisions and skill. We regularly audit our game logic to ensure correctness and fairness.",
     ],
   },
   {

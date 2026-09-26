@@ -374,7 +374,7 @@ function decoratePrestigeBadge(item) {
   if (!item) return item;
   const { show_prestige_badge, best_prestige, ...rest } = item;
   // Prestige is DERIVED (max(0, elo−1000) for a game whose trophies reached
-  // the 10,000 cap) and computed in SQL by the lateral join below, so the raw
+  // the per-game cap) and computed in SQL by the lateral join below, so the raw
   // columns never leave the server — only the resolved label does. Same label
   // format as resolvePrestigeBadge in src/lib/prestige.js.
   const prestige = Number(best_prestige);
@@ -454,7 +454,7 @@ async function fetchRankedRows({
         INNER JOIN users u ON u.id = s.user_id
         ${OVERALL_ELO_JOIN}
         -- Derived Prestige: the highest (rating − 1000) among the player's
-        -- games whose trophies have reached the 10,000 cap, or NULL. Same
+        -- games whose trophies have reached the per-game cap, or NULL. Same
         -- definition as bestPrestige in src/lib/prestige.js, so the board
         -- badge and the profile can never disagree.
         LEFT JOIN LATERAL (

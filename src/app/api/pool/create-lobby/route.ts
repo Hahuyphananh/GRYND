@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db";
 import { poolLobbies } from "../../../../db/schema";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -15,20 +16,17 @@ export async function POST(req: Request) {
         { ok: false, message: "Unauthorized" },
         { status: 401 },
       );
-    const { wager = 10 } = await req.json().catch(() => ({}));
-    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
-    if (!Number.isFinite(Number(wager)) || Number(wager) <= 0 || Number(wager) > 100000) {
-      return NextResponse.json(
-        { ok: false, message: "Wager must be between 1 and 100,000 tokens" },
-        { status: 400 },
-      );
-    }
+    const { wager } = await req.json().catch(() => ({}));
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
+    // The requested wager is normalized to 0, so the lobby (and the match it
+    // becomes) carries no stake and no range check can reject free play.
+    const stake = normalizeStake(wager);
     const [row] = await db
       .insert(poolLobbies)
       .values({
         id: crypto.randomUUID(),
         hostUserId: userId,
-        wager: Number(wager),
+        wager: stake,
         gameMode: "pvp",
         status: "waiting",
       })

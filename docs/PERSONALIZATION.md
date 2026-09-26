@@ -73,7 +73,6 @@ hand-assigned from each game's shipped description:
 | Mines Duel | pvp, chance, competitive | hidden mines are luck; the staked duel is the core |
 | Memory Grid | pvp, skill, casual | memory is ability; rules take seconds |
 | Plinko | pvp, chance, fast_paced | the drop is chance; 3 balls each, quick |
-| Poker | multiplayer, strategy, skill, competitive | bluffing/reading, ranked multi-table |
 | Crash Arena | multiplayer, chance, fast_paced, competitive | random crash curve, last standing |
 | Chess | pvp, strategy, skill, competitive | "outthink your opponent move by move" |
 | Keno | pvp, chance, fast_paced, casual | same draw for both; timed taps; no teaching needed |

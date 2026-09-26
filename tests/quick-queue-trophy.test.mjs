@@ -3,7 +3,7 @@
  *
  * Trophy-aware matchmaking (Phase: trophies feed quick queue).
  *
- * Trophies are the primary skill signal below the 10,000 cap, so the quick
+ * Trophies are the primary skill signal below the per-game cap, so the quick
  * queue prefers a partner whose per-game trophy count is close. The acceptable
  * gap WIDENS the longer a player waits, so nobody is starved by a thin ladder,
  * and a request with no trophy data (a brand-new player, or a game with no
@@ -18,12 +18,14 @@ import assert from "node:assert/strict";
 import {
   TROPHY_MATCH_INITIAL_WINDOW,
   TROPHY_MATCH_MAX_WINDOW,
+  PRESTIGE_MATCH_INITIAL_WINDOW,
   findCompatibleQuickQueueCandidate,
   normalizeQuickQueueRequest,
   trophiesCompatible,
   trophyForGame,
   trophyMatchWindow,
 } from "../src/lib/quickQueue.ts";
+import { TROPHY_MAX } from "../src/lib/trophies.js";
 
 // `trophies` is attached AFTER normalize (the request validator only accepts
 // the queue constraints) — exactly as the worker does at claim time.
@@ -115,4 +117,38 @@ test("a game with no trophy track is never filtered (FIFO fallback)", () => {
   const opp = candidate({ gameKey: "uno", trophies: {} });
   const found = findCompatibleQuickQueueCandidate(me, [opp], 1_000_000);
   assert.equal(found?.userId, "opp");
+});
+
+test("above the cap, the queue switches to the prestige (Elo) gap", () => {
+  // Both capped → trophies are identical, so only prestige can separate them.
+  const me = {
+    ...request({ trophies: { chess: TROPHY_MAX } }),
+    prestige: { chess: 1200 },
+  };
+  const far = candidate({
+    userId: "far",
+    trophies: { chess: TROPHY_MAX },
+    prestige: { chess: 2200 },
+  });
+  assert.equal(findCompatibleQuickQueueCandidate(me, [far], 1_000_000), null);
+
+  const near = candidate({
+    userId: "near",
+    trophies: { chess: TROPHY_MAX },
+    prestige: { chess: 1200 + PRESTIGE_MATCH_INITIAL_WINDOW - 10 },
+  });
+  const found = findCompatibleQuickQueueCandidate(me, [far, near], 1_000_000);
+  assert.equal(found?.userId, "near");
+});
+
+test("below the cap, prestige is ignored and trophies decide", () => {
+  // Requester is NOT capped → trophy rule applies even though prestige differs.
+  const me = { ...request({ trophies: { chess: 100 } }), prestige: { chess: 1000 } };
+  const near = candidate({
+    userId: "near",
+    trophies: { chess: 150 },
+    prestige: { chess: 2600 },
+  });
+  const found = findCompatibleQuickQueueCandidate(me, [near], 1_000_000);
+  assert.equal(found?.userId, "near");
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, db, eq, loadRoom, requireUser, sql, users, diceFlushRooms } from "../_lib";
+import { and, db, eq, loadRoom, requireUser, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
@@ -14,8 +14,8 @@ export async function POST(req) {
       if (state.state === "finished") return { state };
       const winner = state.players.find((p) => p.userId !== userId);
       if (!winner) throw new Error("Cannot resign before opponent joins");
-      const payout = Math.floor(Number(room.pot || state.pot || 0) * 0.95);
-      await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, winner.userId));
+      // STAKES ARE RETIRED: there is no pot to pay out on a resignation.
+      const payout = 0;
       state.state = "finished";
       state.currentTurn = winner.userId;
       await tx.update(diceFlushRooms).set({ status: "finished", pot: 0, gameState: state }).where(and(eq(diceFlushRooms.id, roomId), eq(diceFlushRooms.status, room.status)));

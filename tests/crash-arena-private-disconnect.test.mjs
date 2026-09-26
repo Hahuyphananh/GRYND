@@ -110,26 +110,20 @@ test("releaseCrashArenaSeat has isPrivate guard that prevents wallet refund", ()
 // Test 3: Private guard comes BEFORE the refund logic
 // ────────────────────────────────────────────────────────────────────────────
 
-test("releaseCrashArenaSeat checks isPrivate before refunding wallet", () => {
+test("releaseCrashArenaSeat never refunds a wallet (stakes retired)", () => {
   const cleanup = read("src/lib/crash-arena/cleanup.ts");
 
-  // Find the isVirtual guard
+  // Every table is virtual now, so the early return must exist...
   const virtualGuardMatch = cleanup.match(
     /if\s*\(\s*isVirtual\s*\)\s*\{[\s\S]*?return\s*\{[^}]*cleaned:\s*true/
   );
-  
-  // Find the wallet refund
-  const refundMatch = cleanup.match(
-    /users\.balance\s*\+\s*\$\{returnAmount\}|balance:\s*sql`\$\{users\.balance\}\s*\+/
-  );
-
   assert.ok(virtualGuardMatch, "isVirtual guard must exist");
-  assert.ok(refundMatch, "wallet refund logic must exist");
 
-  // The guard must come before the refund
-  assert.ok(
-    virtualGuardMatch.index < refundMatch.index,
-    "isPrivate guard must execute before wallet refund logic"
+  // ...and no wallet refund may survive anywhere in the helper.
+  assert.doesNotMatch(
+    cleanup,
+    /balance:\s*sql`\$\{users\.balance\}\s*\+/,
+    "no wallet refund may survive the stake retirement"
   );
 });
 
@@ -162,35 +156,20 @@ test("releaseCrashArenaSeat preserves AI table guard", () => {
 // Test 5: Join route correctly skips wallet deduction for private tables
 // ────────────────────────────────────────────────────────────────────────────
 
-test("join route skips wallet deduction for private tables", () => {
+test("join route never deducts from the wallet (stakes retired)", () => {
   const join = read("src/app/api/crash-arena/join/route.ts");
 
-  // Must set isVirtual based on isPrivate
+  // Every table is virtual — the guard must keep the play-money posture.
   assert.match(
     join,
-    /isVirtual\s*=\s*Boolean\s*\(\s*table\.isPrivate\s*\)/,
-    "join route must set isVirtual from table.isPrivate"
+    /isVirtual\s*=\s*Boolean\s*\(\s*table\.isPrivate\s*\)\s*\|\|\s*!tokensMoveForMatches\(\)/,
+    "join route must treat every table as play money"
   );
-
-  // Must skip balance check for virtual tables
-  assert.match(
+  assert.doesNotMatch(join, /Insufficient balance/i, "no wallet balance check may survive");
+  assert.doesNotMatch(
     join,
-    /if\s*\(\s*!isVirtual\s*&&[^)]*user\.balance[^)]*<\s*buyInAmount\s*\)/,
-    "join route must skip balance check for private tables"
-  );
-
-  // Must skip wallet deduction for virtual tables
-  assert.match(
-    join,
-    /if\s*\(\s*!isVirtual\s*\)\s*\{[\s\S]*?users\.balance\s*-\s*\$\{buyInAmount\}/,
-    "join route must skip wallet deduction for private tables"
-  );
-
-  // Must skip BUY_IN transaction for virtual tables
-  assert.match(
-    join,
-    /if\s*\(\s*!isVirtual\s*\)\s*\{[\s\S]*?crashArenaTransactions[\s\S]*?type:\s*"BUY_IN"/,
-    "join route must skip BUY_IN transaction for private tables"
+    /balance:\s*sql`\$\{users\.balance\}\s*-/,
+    "no wallet deduction may survive the stake retirement"
   );
 });
 
@@ -198,28 +177,20 @@ test("join route skips wallet deduction for private tables", () => {
 // Test 6: Manual leave route has isPrivate guard (existing behavior)
 // ────────────────────────────────────────────────────────────────────────────
 
-test("manual leave route has isPrivate guard preventing refund", () => {
+test("manual leave route never refunds a wallet (stakes retired)", () => {
   const leave = read("src/app/api/crash-arena/leave/route.ts");
 
-  // Must check isPrivate
+  // The route delegates seat release to the shared helper...
   assert.match(
     leave,
-    /isVirtual\s*=\s*Boolean\s*\(\s*table\?\.isPrivate\s*\)/,
-    "leave route must check table.isPrivate"
+    /releaseCrashArenaSeat\s*\(/,
+    "leave route must delegate to the cleanup helper"
   );
-
-  // Must skip wallet refund for virtual tables
-  assert.match(
+  // ...and performs no wallet move of its own.
+  assert.doesNotMatch(
     leave,
-    /if\s*\(\s*!isVirtual\s*&&[^)]*returnAmount\s*>\s*0\s*\)/,
-    "leave route must skip wallet refund for private tables"
-  );
-
-  // Must skip LEAVE transaction for virtual tables
-  assert.match(
-    leave,
-    /if\s*\(\s*!isVirtual\s*\)\s*\{[\s\S]*?crashArenaTransactions[\s\S]*?type:\s*"LEAVE"/,
-    "leave route must skip LEAVE transaction for private tables"
+    /balance:\s*sql`\$\{users\.balance\}\s*\+/,
+    "leave route must not refund a wallet"
   );
 });
 
@@ -374,67 +345,43 @@ test("no code path refunds private table chips to wallet", () => {
 test("no code path creates LEAVE transaction for private tables", () => {
   const cleanup = read("src/lib/crash-arena/cleanup.ts");
 
-  // Extract all LEAVE transaction insertions
-  const leavePattern = /crashArenaTransactions[\s\S]*?type:\s*"LEAVE"/g;
-  const leaveMatches = [...cleanup.matchAll(leavePattern)];
-
-  // For each LEAVE transaction, verify it's after the isVirtual early return
-  for (const match of leaveMatches) {
-    const beforeLeave = cleanup.substring(0, match.index);
-    
-    // Check if this transaction is after the isVirtual early return
-    const hasVirtualGuard = beforeLeave.match(
-      /if\s*\(\s*isVirtual\s*\)\s*\{[\s\S]*?return\s*\{[^}]*cleaned:\s*true/
-    );
-    
-    assert.ok(
-      hasVirtualGuard,
-      "Every LEAVE transaction must be unreachable for private tables (after isVirtual early return)"
-    );
-  }
+  // The virtual early return must precede any LEAVE ledger row, so the row is
+  // unreachable for virtual (i.e. every) table.
+  const guardIndex = cleanup.search(/if\s*\(\s*isVirtual\s*\)\s*\{/);
+  assert.ok(guardIndex >= 0, "isVirtual guard must exist");
+  const leaveIndex = cleanup.indexOf('type: "LEAVE"');
+  assert.ok(
+    leaveIndex === -1 || leaveIndex > guardIndex,
+    "Every LEAVE transaction must be unreachable for private tables (after isVirtual early return)"
+  );
 });
 
 // ────────────────────────────────────────────────────────────────────────────
 // Test 13: Verify the fix matches the intended control from manual leave
 // ────────────────────────────────────────────────────────────────────────────
 
-test("cleanup helper mirrors manual leave route's isPrivate control", () => {
+test("cleanup helper mirrors manual leave route's play-money control", () => {
   const cleanup = read("src/lib/crash-arena/cleanup.ts");
   const leave = read("src/app/api/crash-arena/leave/route.ts");
 
-  // Both must derive isVirtual from isPrivate
+  // Every table is virtual: the guard must not depend on isPrivate alone.
   assert.match(
     cleanup,
-    /isVirtual\s*=\s*Boolean\s*\(\s*tableData\[0\]\?\.isPrivate\s*\)/,
-    "cleanup must derive isVirtual from isPrivate"
+    /isVirtual\s*=\s*Boolean\s*\(\s*tableData\[0\]\?\.isPrivate\s*\)\s*\|\|\s*!tokensMoveForMatches\(\)/,
+    "cleanup must treat every table as play money"
   );
-  assert.match(
-    leave,
-    /isVirtual\s*=\s*Boolean\s*\(\s*table\?\.isPrivate\s*\)/,
-    "leave must derive isVirtual from isPrivate"
-  );
+  assert.match(leave, /releaseCrashArenaSeat\s*\(/, "leave must delegate to the helper");
 
-  // Both must skip wallet refund for virtual tables
+  // The cleanup helper returns early for virtual tables without a refund.
   const cleanupSkipsRefund = cleanup.match(
     /if\s*\(\s*isVirtual\s*\)\s*\{[\s\S]*?return\s*\{[^}]*returned:\s*0/
   );
-  const leaveSkipsRefund = leave.match(
-    /if\s*\(\s*!isVirtual\s*&&[^)]*returnAmount\s*>\s*0\s*\)/
+  assert.ok(cleanupSkipsRefund, "cleanup must skip refund for virtual tables");
+  assert.doesNotMatch(
+    cleanup,
+    /balance:\s*sql`\$\{users\.balance\}\s*\+/,
+    "cleanup must not refund a wallet"
   );
-
-  assert.ok(cleanupSkipsRefund, "cleanup must skip refund for private tables");
-  assert.ok(leaveSkipsRefund, "leave must skip refund for private tables");
-
-  // Both must skip LEAVE transaction for virtual tables
-  const cleanupSkipsTransaction = cleanup.match(
-    /if\s*\(\s*isVirtual\s*\)\s*\{[\s\S]*?return\s*\{[^}]*cleaned:\s*true/
-  );
-  const leaveSkipsTransaction = leave.match(
-    /if\s*\(\s*!isVirtual\s*\)\s*\{[\s\S]*?crashArenaTransactions[\s\S]*?type:\s*"LEAVE"/
-  );
-
-  assert.ok(cleanupSkipsTransaction, "cleanup must skip transaction for private tables");
-  assert.ok(leaveSkipsTransaction, "leave must skip transaction for private tables");
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -476,7 +423,7 @@ test("isPrivate guard executes early in cleanup flow", () => {
   // Find key sections
   const aiGuardMatch = cleanup.match(/if\s*\(\s*tableData\[0\]\?\.isAi\s*\)/);
   const virtualGuardMatch = cleanup.match(/if\s*\(\s*isVirtual\s*\)/);
-  const roundCheckMatch = cleanup.match(/activeRound|crashArenaRounds/);
+  const roundCheckMatch = cleanup.match(/const activeRound = await db/);
 
   assert.ok(aiGuardMatch, "AI guard must exist");
   assert.ok(virtualGuardMatch, "isVirtual guard must exist");

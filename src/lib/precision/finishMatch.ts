@@ -42,6 +42,7 @@ import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { claimPayout, readMatch, releasePayoutClaim } from "./serverStore";
+import { normalizeStake } from "../games/stakes";
 import type { PlayerSeat } from "./types";
 
 /** Payout multiplier applied to the winning seat's wager when a match
@@ -175,20 +176,10 @@ export async function processMatchFinishedPayout(
       reason: "Match has no winner yet",
     };
   }
-  const resolvedWager = Number(
-    args.wager ?? match.wager ?? 0,
-  );
-  if (!Number.isFinite(resolvedWager) || resolvedWager <= 0) {
-    return {
-      success: false,
-      alreadyProcessed: false,
-      payout: 0,
-      newBalance: 0,
-      finalScore: match.score ?? null,
-      winnerUserId: null,
-      reason: "Wager is invalid",
-    };
-  }
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): the match is free, so the
+  // wager is normalized to 0. The payout below is then 0 and the balance move
+  // is a no-op — but the result still settles (stats, Elo, trophies).
+  const resolvedWager = normalizeStake(args.wager ?? match.wager ?? 0);
 
   const winnerPlayer = match.players.find(
     (p) => p.seat === resolvedWinnerSeat,
@@ -224,9 +215,8 @@ export async function processMatchFinishedPayout(
     };
   }
 
-  const payout = Number(
-    (resolvedWager * PRECISION_PAYOUT_MULTIPLIER).toFixed(2),
-  );
+  // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+  const payout = 0;
 
   // ── Claim the payout ─────────────────────────────────────────────
   // Stamps `payout_processed_at` inside a `SELECT ... FOR UPDATE`
@@ -246,23 +236,18 @@ export async function processMatchFinishedPayout(
     };
   }
 
-  // ── Atomic balance + stat update ─────────────────────────────────
-  // We grab the winner's row first so we can return an accurate
-  // post-update balance. Both updates target distinct rows so they
-  // don't need to live in a single transaction, but we wrap them
-  // together for atomicity anyway (matches Hex Duel's posture).
+  // ── Atomic stat update ───────────────────────────────────────────
+  // Stakes are retired, so only the win/loss counters move. Both updates
+  // target distinct rows and are wrapped together for atomicity.
   let newBalance = 0;
   try {
     await db.transaction(async (tx) => {
-      const [winnerRow] = await tx
+      await tx
         .update(users)
         .set({
-          balance: sql`${users.balance} + ${payout}`,
           gamesWon: sql`${users.gamesWon} + 1`,
         })
-        .where(eq(users.clerkId, winnerPlayer.userId))
-        .returning({ balance: users.balance });
-      newBalance = Number(winnerRow?.balance ?? 0);
+        .where(eq(users.clerkId, winnerPlayer.userId));
 
       await tx
         .update(users)

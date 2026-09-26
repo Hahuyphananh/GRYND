@@ -7,6 +7,7 @@ import { eq, sql } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { CacheKeys } from "../../../../lib/redis/keys";
 import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 const PAYOUT_MULTIPLIER = 1.9; // 5% house edge
 
@@ -78,19 +79,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Normalize wager once up front so it can be used by both the AI
-    // session guard (above) and the balance / payout paths (below).
-    const wagerAmount = Number(wager);
-    if (!Number.isFinite(wagerAmount) || wagerAmount <= 0) {
-      // For pure "for fun" matches (no wager ever placed) this would
-      // reject — allow wager=0 in the fun-mode-only shape.
-      if (!isFunMode) {
-        return NextResponse.json(
-          { success: false, error: "Invalid wager amount" },
-          { status: 400 }
-        );
-      }
-    }
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a hex duel moves no
+    // tokens. The wager is normalized to 0 up front, so the balance / payout
+    // paths below are no-ops and the AI session guard matches the 0 that
+    // /start-game bound to the token.
+    const wagerAmount = normalizeStake(wager);
 
     const result = winner === "player1" ? "win" : "loss";
     const endedAt = new Date().toISOString();
@@ -259,18 +252,17 @@ export async function POST(req: Request) {
       });
     }
 
-    // Player won — pay out
-    const payout = Number((wagerAmount * PAYOUT_MULTIPLIER).toFixed(2));
+    // Player won — STAKES ARE RETIRED: no pot, no rake, no payout.
+    const payout = 0;
 
     // applyLeaderboardCounters handles all stat columns (total_won,
     // weekly_wagered, weekly_won, weekly_profit, weekly_wins,
     // current_streak, best_streak, biggest_win, etc.)
-    // Only update balance and gamesWon here — everything else goes
-    // through the shared helper to avoid double-counting.
+    // Only update gamesWon here — everything else goes through the shared
+    // helper to avoid double-counting.
     const [updatedUser] = await db
       .update(users)
       .set({
-        balance: sql`${users.balance} + ${payout}`,
         gamesWon: sql`${users.gamesWon} + 1`,
       })
       .where(eq(users.clerkId, clerkId))

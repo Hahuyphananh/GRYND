@@ -1,18 +1,14 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
-import { chessGames, users } from "../../../../db/schema";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { chessGames } from "../../../../db/schema";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../lib/rating";
 import { applyTrophyResult } from "../../../../lib/trophyStore";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-// Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
-// src/lib/games/economy.ts). Winner keeps 95% of the pot.
-const HOUSE_EDGE_PERCENT = 5;
 
 // Ends any open game for this user.
 // Optional body: { gameId?: string (uuid), result?: "win" | "loss" | "draw" }
@@ -81,11 +77,6 @@ export async function POST(req) {
 
       if (lockedGame.status === "waiting") {
         await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${lockedGame.betAmount}` })
-          .where(eq(users.clerkId, userId));
-
-        await tx
           .update(chessGames)
           .set({
             status: "expired",
@@ -109,14 +100,8 @@ export async function POST(req) {
           return;
         }
 
-        const pot = Number(lockedGame.betAmount) * 2;
-        const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-        const winnerPayout = Number((pot - houseFee).toFixed(2));
-
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-          .where(eq(users.clerkId, opponentId));
+        // Stakes are retired: no pot, no rake and no payout to move.
+        const winnerPayout = 0;
 
         await tx
           .update(chessGames)

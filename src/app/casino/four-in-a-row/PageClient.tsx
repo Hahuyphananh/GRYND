@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
@@ -15,7 +14,6 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 
-const BET_OPTIONS = [10, 25, 50, 100, 250];
 const TIMER_OPTIONS = [
   { value: 10, label: "10 seconds" },
   { value: 30, label: "30 seconds" },
@@ -29,9 +27,10 @@ export default function FourInARowLobbyPage() {
   const router = useRouter();
   const posthog = usePostHog();
 
-  const [betAmount, setBetAmount] = useDefaultWager("four-in-a-row", 10);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to track and no token balance to load.
+  const betAmount = 0;
   const [timerSeconds, setTimerSeconds] = useState(60);
-  const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
@@ -41,17 +40,6 @@ export default function FourInARowLobbyPage() {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("four-in-a-row"),
   );
-
-  const fetchBalance = async () => {
-    if (!user) return;
-    const response = await fetch("/api/get-user-tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    });
-    const data = await response.json();
-    if (data.success) setBalance(Number(data.data.balance || 0));
-  };
 
   const fetchGames = async () => {
     try {
@@ -66,10 +54,8 @@ export default function FourInARowLobbyPage() {
   };
 
   useEffect(() => {
-    if (isSignedIn && user) fetchBalance();
     fetchGames();
     const id = setInterval(() => {
-      if (isSignedIn && user) fetchBalance();
       fetchGames();
     }, 3000);
     return () => clearInterval(id);
@@ -90,10 +76,6 @@ export default function FourInARowLobbyPage() {
   }, [socket]);
 
   const createGame = async () => {
-    if (betAmount <= 0 || betAmount > balance) {
-      setError("Invalid bet amount");
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -192,17 +174,13 @@ export default function FourInARowLobbyPage() {
               heading: "Stake",
               body: (
                 <>
-                  Both players stake the same amount; the winner takes the
-                  pot minus the platform fee. Play vs AI free to practice.
+                  A free ranked match — the winner takes the trophies and the
+                  rating; nothing is staked and no pot is paid.
                 </>
               ),
             },
           ],
         }}
-        balance={balance}
-        stake={betAmount}
-        onStakeChange={setBetAmount}
-        stakeOptions={BET_OPTIONS}
         busy={loading}
         onPlay={createGame}
         playLabel="Create Game"
@@ -214,7 +192,6 @@ export default function FourInARowLobbyPage() {
           busy: loading,
           onClick: playVsAi,
         }}
-        escrowNote="We pair you with another player of the exact same bet. If no one is waiting, your bet is escrowed in a private game until someone joins or you cancel."
         extraActions={
           <button
             type="button"

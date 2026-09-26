@@ -6,15 +6,11 @@
 // disconnect-forfeit route settle identically.
 
 import { db } from "../../db/client";
-import { rpsPvpGames, users } from "../../db/schema";
+import { rpsPvpGames } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
-import { eq, sql } from "drizzle-orm";
-
-// Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
-// src/lib/games/economy.ts). Winner keeps 95% of the pot.
-const HOUSE_EDGE_PERCENT = 5;
+import { eq } from "drizzle-orm";
 
 // Forfeit an in-progress RPS PvP match. The forfeiter loses and the
 // opponent is credited the pot minus the house rake. Only valid while
@@ -47,14 +43,6 @@ export async function forfeitRpsPvpGame({ userId, gameId }) {
       : locked.player1Id;
 
     const betAmount = Number(locked.betAmount);
-    const pot = betAmount * 2;
-    const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-    const winnerPayout = Number((pot - houseFee).toFixed(2));
-
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-      .where(eq(users.clerkId, winnerId));
 
     const [finished] = await tx
       .update(rpsPvpGames)
@@ -73,7 +61,7 @@ export async function forfeitRpsPvpGame({ userId, gameId }) {
     return {
       game: finished,
       winnerId,
-      winnerPayout,
+      winnerPayout: 0,
       forfeiterId: userId,
       betAmount,
     };

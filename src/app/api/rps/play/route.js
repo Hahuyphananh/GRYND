@@ -3,7 +3,8 @@ import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";  import { users, rpsGames } from "../../../../db/schema"; // import rpsGames
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 // Random AI choice
 function getAIChoice() {
@@ -34,13 +35,14 @@ export async function POST(req) {
     const userId = gate.userId;
 
     const body = await req.json();
-    const { betAmount, choice, winStreak = 0 } = body;
+    let { betAmount, choice, winStreak = 0 } = body;
 
-    if (!choice || betAmount <= 0)
+    if (!choice)
       return NextResponse.json({ error: "Invalid bet" }, { status: 400 });
-    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
-    if (betAmount > 100000)
-      return NextResponse.json({ error: "Bet exceeds the maximum of 100,000 tokens" }, { status: 400 });
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a ranked game is free.
+    // The requested bet is normalized to 0, so the balance update below is a
+    // no-op and the payout is nothing.
+    betAmount = normalizeStake(betAmount);
 
     // Get user
     const user = await db.query.users.findFirst({
@@ -50,30 +52,13 @@ export async function POST(req) {
     if (!user)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    if (Number(user.balance) < betAmount)
-      return NextResponse.json({ error: "Not enough tokens" }, { status: 400 });
-
     // AI plays
     const aiChoice = getAIChoice();
     const result = getResult(choice, aiChoice);
 
-    let payout = 0;
-    let newStreak = result === "win" ? winStreak + 1 : 0;
-    let balanceDelta = 0;
-
-    if (result === "win") {
-      //  ONLY 90% PROFIT (NOT INCLUDING BET)
-      payout = betAmount * 0.9;
-      balanceDelta = payout;
-    } else if (result === "lose") {
-      balanceDelta = -betAmount;
-    }
-    //  Update balance atomically
-    const [updated] = await db
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${balanceDelta}` })
-      .where(eq(users.id, user.id))
-      .returning({ balance: users.balance });
+    // STAKES ARE RETIRED: no bet, no payout.
+    const payout = 0;
+    const newStreak = result === "win" ? winStreak + 1 : 0;
 
     //  Insert into rps_games table
     await db.insert(rpsGames).values({
@@ -104,7 +89,7 @@ export async function POST(req) {
     return NextResponse.json({
       aiChoice,
       result,
-      newBalance: Number(updated?.balance ?? user.balance),
+      newBalance: Number(user.balance),
       payout: payout.toFixed(2),
       winStreak: newStreak,
       multiplier: FIXED_MULTIPLIER.toFixed(2),

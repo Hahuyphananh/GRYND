@@ -70,7 +70,6 @@ const ROUTES = [
   { game: "Neon Flush multiplayer", path: "/games/neon-flush/multiplayer" },
   { game: "Odds", path: "/games/odds" },
   { game: "Plinko", path: "/games/plinko" },
-  { game: "Poker", path: "/games/poker/multi" },
   { game: "Pool Masters", path: "/games/pool-masters" },
   { game: "Precision", path: "/games/precision" },
   { game: "Precision test", path: "/games/precision/test" },

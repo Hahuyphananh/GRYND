@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { rpsPvpGames, users } from "../../../../../db/schema";
+import { rpsPvpGames } from "../../../../../db/schema";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-// Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
-// src/lib/games/economy.ts). Winner keeps 95% of the pot.
 const HOUSE_EDGE_PERCENT = 5;
 // Best-of-7 — first player to ROUNDS_TO_WIN decided rounds takes the match.
 const ROUNDS_TO_WIN = 4;
@@ -140,9 +138,8 @@ export async function POST(req) {
       ];
 
       if (matchOver) {
-        const pot = Number(updatedGame.betAmount) * 2;
-        const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-        const winnerPayout = Number((pot - houseFee).toFixed(2));
+        // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+        const winnerPayout = 0;
 
         const winnerId = nextWon1 >= ROUNDS_TO_WIN
           ? updatedGame.player1Id
@@ -155,11 +152,6 @@ export async function POST(req) {
           payout: winnerPayout,
           isPvpWin: true,
         });
-
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${winnerPayout}` })
-          .where(eq(users.clerkId, winnerId));
 
         const [finished] = await tx
           .update(rpsPvpGames)

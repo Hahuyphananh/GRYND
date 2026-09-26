@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { rpsPvpGames, users } from "../../../../../db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { rpsPvpGames } from "../../../../../db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 export async function POST(req) {
   const gate = await requireAgeVerifiedUser();
@@ -48,23 +48,6 @@ export async function POST(req) {
         throw new Error("Cannot join your own game");
       }
 
-      const [updatedUser] = await tx
-        .update(users)
-        .set({
-          balance: sql`${users.balance} - ${game.betAmount}`,
-        })
-        .where(
-          and(
-            eq(users.clerkId, userId),
-            sql`${users.balance} >= ${game.betAmount}`,
-          ),
-        )
-        .returning({ balance: users.balance });
-
-      if (!updatedUser) {
-        throw new Error("Insufficient balance");
-      }
-
       const [matchedGame] = await tx
         .update(rpsPvpGames)
         .set({
@@ -74,7 +57,7 @@ export async function POST(req) {
         .where(eq(rpsPvpGames.id, parsedGameId))
         .returning();
 
-      return { game: matchedGame, newBalance: Number(updatedUser.balance) };
+      return { game: matchedGame, newBalance: null };
     });
 
     return NextResponse.json({

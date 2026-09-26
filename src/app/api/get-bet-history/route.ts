@@ -21,7 +21,6 @@ import {
   laneRunnerGames,
   hexDuelGames,
   oddsGames,
-  pokerGames,
   memoryGridMatches,
   diceFlushRooms,
   diceFlushPlayers,
@@ -87,7 +86,6 @@ export async function GET(req: NextRequest) {
       laneRunnerRows,
       hexDuelRows,
       oddsRows,
-      pokerRows,
       memoryGridRows,
       diceFlushRows,
       minesPvpRows,
@@ -306,38 +304,6 @@ export async function GET(req: NextRequest) {
             eq(oddsGames.player1Id, clerkId),
             eq(oddsGames.player2Id, clerkId),
           ),
-        )
-        .limit(HISTORY_LIMIT),
-      //  Poker (multiplayer, jsonb players array)
-      // Guard against legacy rows where `players` is null or a non-array
-      // jsonb value; jsonb_array_elements on a non-array would throw
-      // "cannot extract elements from a scalar/object" and 500 the route.
-      // Also: the older `@>` form relied on exact key containment, which
-      // never matched because every stored player object has a `seat`
-      // key in addition to `clerkId` — so it silently never returned any
-      // rows even when the user had played poker.
-      db
-        .select({
-          players: pokerGames.players,
-          winnings: pokerGames.winnings,
-          betAmount: pokerGames.betAmount,
-          payout: pokerGames.payout,
-          status: pokerGames.status,
-          createdAt: pokerGames.createdAt,
-        })
-        .from(pokerGames)
-        .where(
-          sql`exists (
-            select 1
-            from jsonb_array_elements(
-              case
-                when jsonb_typeof(${pokerGames.players}) = 'array'
-                  then ${pokerGames.players}
-                else '[]'::jsonb
-              end
-            ) elem
-            where elem->>'clerkId' = ${clerkId}
-          )`,
         )
         .limit(HISTORY_LIMIT),
       //  Memory Grid (PvP, clerkId-based — finished-only)
@@ -607,29 +573,6 @@ export async function GET(req: NextRequest) {
         };
       });
 
-    //  Poker — determine result from winnings jsonb or winner text
-    const pokerFormatted = pokerRows
-      .filter((g) => g.status === "finished")
-      .map((g) => {
-        const playersArr = Array.isArray(g.players) ? g.players : [];
-        const mySeat = playersArr.find((p) => p?.clerkId === clerkId);
-        const winnings =
-          Array.isArray(g.winnings) && mySeat != null
-            ? g.winnings.find((w) => w?.seat === mySeat.seat)
-            : null;
-        const amount = Number(winnings?.bet || g.betAmount || 0);
-        const payout = Number(winnings?.payout || g.payout || 0);
-        const result = payout > amount ? "won" : "lost";
-        return {
-          type: "Poker",
-          date: g.createdAt || new Date().toISOString(),
-          amount,
-          payout,
-          result,
-          tokenDiff: result === "won" ? payout - amount : -amount,
-        };
-      });
-
     //  Dice Flush — joined rows: dice_flush_players + dice_flush_rooms
     // (projection aliases the room columns as room*).
     const diceFlushFormatted = diceFlushRows
@@ -828,7 +771,6 @@ export async function GET(req: NextRequest) {
       ...laneRunnerFormatted,
       ...hexDuelFormatted,
       ...oddsFormatted,
-      ...pokerFormatted,
       ...memoryGridFormatted,
       ...diceFlushFormatted,
       ...minesPvpFormatted,

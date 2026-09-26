@@ -5,7 +5,7 @@
 // Shared, page-wide Web Audio context for the casino games.
 //
 // Every game audio module (gameAudio, hexAudio, oddsAudio, precisionAudio,
-// dotsAndBoxesAudio, fourInARowAudio, pokerAudio — plus the inline context in
+// dotsAndBoxesAudio, fourInARowAudio — plus the inline context in
 // keno-pvp) routes its sounds through this ONE context and connects them to
 // the shared output node.
 //

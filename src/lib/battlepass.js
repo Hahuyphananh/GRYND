@@ -13,20 +13,21 @@
 
 import { getNeonSql } from "../db/neon";
 import { getActiveXpMultiplier } from "./shopItems";
-import { TROPHY_MAX } from "./trophies";
+import { OVERALL_TROPHY_MAX } from "./trophies";
 
 export const MAX_LEVEL = 100;
 
 // ── Trophy-driven progression ─────────────────────────────────────────────
 //
-// The Battle Pass level is DERIVED from trophies, not from XP. 10,000 total
-// trophies (the per-game cap) is the maximum: 100 levels across 10,000
-// trophies ⇒ 100 trophies per level. Nothing is stored — the level is computed
-// on read from the player's trophy total, so it can never drift from the
-// trophy ladder.
+// The Battle Pass level is DERIVED from trophies, not from XP. OVERALL_TROPHY_MAX
+// (every rated game capped: 1,000 × TROPHY_GAMES.length) is the maximum, spread
+// across 100 levels — so the per-level cost follows the size of the rated game
+// space automatically and the pass stays completable. Nothing is stored — the
+// level is computed on read from the player's trophy total, so it can never
+// drift from the trophy ladder.
 
-/** Trophies required per Battle Pass level (10,000 ÷ 100). */
-export const TROPHIES_PER_LEVEL = TROPHY_MAX / MAX_LEVEL;
+/** Trophies required per Battle Pass level (OVERALL_TROPHY_MAX ÷ 100). */
+export const TROPHIES_PER_LEVEL = OVERALL_TROPHY_MAX / MAX_LEVEL;
 
 /** Total trophies required to REACH a level (level 1 = 0). */
 export function trophiesToReachLevel(level) {
@@ -36,7 +37,7 @@ export function trophiesToReachLevel(level) {
 
 /**
  * Battle Pass level for a total trophy count. Level 1 at 0 trophies, level 100
- * at the 10,000 cap. Clamped to 1..MAX_LEVEL.
+ * at the OVERALL_TROPHY_MAX cap. Clamped to 1..MAX_LEVEL.
  */
 export function getLevelFromTrophies(totalTrophies = 0) {
   const total = Math.max(0, Math.floor(Number(totalTrophies) || 0));

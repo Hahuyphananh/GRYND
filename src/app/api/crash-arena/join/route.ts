@@ -16,6 +16,7 @@ import {
 import { CRASH_MAX_BUYIN } from "../../../../lib/games/crash/constants";
 import { normalizeJoinCode } from "../../../../lib/crash-arena/joinCode";
 import { logError } from "../../../../lib/logError";
+import { tokensMoveForMatches } from "../../../../lib/games/stakes";
 
 /**
  * POST /api/crash-arena/join
@@ -98,13 +99,10 @@ export async function POST(req: Request) {
     // from the wallet and never winnable as real tokens. Only PUBLIC tables
     // spend real tokens — so the balance check + deduction below are
     // skipped entirely for private tables.
-    const isVirtual = Boolean(table.isPrivate);
-    if (!isVirtual && Number(user.balance) < buyInAmount) {
-      return NextResponse.json({
-        success: false,
-        error: "Insufficient balance",
-      }, { status: 400 });
-    }
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): no table may ever spend
+    // real tokens, so every join is treated as play-money. The buy-in is the
+    // player's in-game chip stack, not a charge.
+    const isVirtual = Boolean(table.isPrivate) || !tokensMoveForMatches();
 
     // ── Is a round currently running? ─────────────────────────────────────
     // Late joiners don't jump into a live round — they land on the wait
@@ -181,24 +179,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // ── Deduct from wallet (atomic) — PUBLIC tables only ──────────────────
-    // Private tables are virtual: the buy-in is play money, so no wallet
-    // move happens at all (the player's real balance is untouched).
-    let deducted = null;
-    if (!isVirtual) {
-      [deducted] = await db
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${buyInAmount}` })
-        .where(
-          sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${buyInAmount}`,
-        )
-        .returning({ balance: users.balance, id: users.id });
-
-      if (!deducted) {
-        return NextResponse.json({ success: false, error: "Insufficient balance" }, { status: 400 });
-      }
-    }
-
     // ── Create player row (waiting when a round is mid-flight) ───────────
     // The partial unique index (crash_arena_players_table_user_active_uniq)
     // prevents duplicate active seats. If a concurrent request slips through
@@ -219,13 +199,6 @@ export async function POST(req: Request) {
     } catch (err: any) {
       // PostgreSQL unique constraint violation error code
       if (err?.code === "23505" && err?.constraint === "crash_arena_players_table_user_active_uniq") {
-        // Refund the deducted balance if this was a real-money table
-        if (!isVirtual && deducted) {
-          await db
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${buyInAmount}` })
-            .where(eq(users.id, user.id));
-        }
         return NextResponse.json({
           success: false,
           error: "Already seated at this table",
@@ -233,18 +206,6 @@ export async function POST(req: Request) {
       }
       // Re-throw any other error
       throw err;
-    }
-
-    // ── Record transaction (real ledger only — virtual chips never touch
-    //    it; private tables are play money) ────────────────────────────────
-    if (!isVirtual) {
-      await db.insert(crashArenaTransactions).values({
-        userId: user.id,
-        tableId,
-        amount: buyInAmount.toFixed(2),
-        type: "BUY_IN",
-        reason: `Joined ${table.name}`,
-      });
     }
 
     // Best-effort live fanout so the table room + lobby refresh
@@ -257,7 +218,7 @@ export async function POST(req: Request) {
       data: {
         playerId: player.id,
         balance: Number(player.balance),
-        walletBalance: isVirtual ? Number(user.balance) : Number(deducted.balance),
+        walletBalance: Number(user.balance),
         virtual: isVirtual,
         tableId,
         status: player.status,

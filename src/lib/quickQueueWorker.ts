@@ -2,7 +2,9 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { quickQueueAssignmentEvents, quickQueueAssignments, quickQueueRequests } from "../db/schema";
 import { findCompatibleQuickQueuePair, normalizeQuickQueueRequest } from "./quickQueue";
+import { normalizeStake } from "./games/stakes";
 import { getTrophyMapsForUsers } from "./trophyStore";
+import { getRatingMapsForUsers } from "./rating";
 import { createOrJoin as createOrJoinMinesMatch } from "./mines-pvp/serverStore";
 import { createOrJoin as createOrJoinPlinkoMatch } from "./plinko-pvp/serverStore";
 import { createOrJoin as createOrJoinBlackjackMatch } from "./blackjack-pvp/serverStore";
@@ -40,10 +42,19 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     // is the only place matchmaking reads progression, and membership is never
     // consulted.
     let trophyMaps: Record<string, Record<string, number>> = {};
+    let ratingMaps: Record<string, Record<string, number>> = {};
     try {
       trophyMaps = await getTrophyMapsForUsers(rows.map((row) => row.userId));
     } catch (error) {
       console.error("[quick-queue] failed to load trophy snapshots", error);
+    }
+    // Elo snapshots, for the ABOVE-CAP switch: once both players have capped a
+    // game their trophies are identical, so the matcher uses the prestige (Elo)
+    // gap instead (see src/lib/quickQueue.ts). Best-effort like trophies.
+    try {
+      ratingMaps = await getRatingMapsForUsers(rows.map((row) => row.userId));
+    } catch (error) {
+      console.error("[quick-queue] failed to load rating snapshots", error);
     }
 
     const requests = rows.map((row) => ({
@@ -59,6 +70,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       requestId: row.id,
       queuedAt: row.queuedAt.getTime(),
       trophies: trophyMaps[row.userId] ?? null,
+      prestige: ratingMaps[row.userId] ?? null,
       row,
     }));
 
@@ -73,9 +85,16 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       .limit(1);
     if (alreadyAssigned.length > 0) return null;
     let destinationMatchId = null;
-    const sourceStake = Number(pair.source.row?.minesStakeAmount ?? 1);
+    // STAKES ARE RETIRED (src/lib/games/stakes.js). Every queue-matched game
+    // used to be created at the stake the players queued with (the Mines
+    // request's stake field doubles as the queue's stake envelope). That value
+    // is now normalized away HERE, at the one place all 18 queue games are
+    // created, so matchmaking can never hand a game a stake — and therefore
+    // never a debit or a payout — no matter what a queue row still carries
+    // from before the retirement.
+    const sourceStake = normalizeStake(pair.source.row?.minesStakeAmount);
     const sourceMines = Number(pair.source.row?.minesCount ?? 3);
-    const partnerStake = Number(pair.partner.row?.minesStakeAmount ?? sourceStake);
+    const partnerStake = normalizeStake(pair.partner.row?.minesStakeAmount);
     const partnerMines = Number(pair.partner.row?.minesCount ?? sourceMines);
     // Tower Arena supports 2–6 players. The pair worker matches exactly two
     // candidates (a 2-player Tower Arena), but the mode string may carry an

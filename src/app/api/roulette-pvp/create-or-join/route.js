@@ -13,6 +13,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { createOrJoin } from "../../../../lib/roulette-pvp/serverStore";
 import { attachSeatIdentity } from "../../../../lib/seatIdentity";
 import { logError } from "../../../../lib/logError";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 function normaliseMatch(match) {
   if (!match) return null;
@@ -66,22 +67,10 @@ export async function POST(req) {
     );
   }
 
-  const stakeAmount = Number(body?.stakeAmount);
-  if (!Number.isFinite(stakeAmount) || stakeAmount <= 0) {
-    return NextResponse.json(
-      { success: false, error: "Invalid stake amount" },
-      { status: 400 },
-    );
-  }
-
-  // Roulette is high-variance (35:1 on a straight) — match stake capped at
-  // HIGH_VARIANCE_MAX_BET (must match src/lib/games/economy.ts).
-  if (stakeAmount > 10000) {
-    return NextResponse.json(
-      { success: false, error: "Stake exceeds the maximum of 10,000 tokens for Roulette" },
-      { status: 400 },
-    );
-  }
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match is free to enter.
+  // The requested stake is normalized to 0 so no range check can reject a
+  // free match, and the store's escrow/payout arithmetic runs against 0.
+  const stakeAmount = normalizeStake(body?.stakeAmount);
 
   try {
     const result = await createOrJoin({

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { normalizeStake } from "../../../../lib/games/stakes";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
-import { oddsGames, users } from "../../../../db/schema";
-import { eq, sql, and } from "drizzle-orm";
+import { oddsGames } from "../../../../db/schema";
+import { eq, and } from "drizzle-orm";
 import { initPvPOddsGame } from "../../../../lib/odds";
 
 export async function POST(req: Request) {
@@ -23,29 +24,14 @@ export async function POST(req: Request) {
 
 
     const body = await req.json();
-    const wager = Number(body.wager);
-
-    if (!Number.isFinite(wager) || wager <= 0) {
-      return NextResponse.json({ error: "Invalid wager amount" }, { status: 400 });
-    }
-
-    if (wager > 10000) {
-      return NextResponse.json({ error: "Wager exceeds maximum limit" }, { status: 400 });
-    }
+    // STAKES ARE RETIRED (src/lib/games/stakes.js) — a lobby is free to open.
+    const wager = normalizeStake(body.wager);
 
     // This endpoint only creates PvP lobbies — AI practice mode uses the
     // /api/odds/ai/* routes (free play, no wager deducted).
     const gameState = initPvPOddsGame();
 
     const newGame = await db.transaction(async (tx: any) => {
-      const [creator] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${wager}` })
-        .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${wager}`))
-        .returning();
-
-      if (!creator) throw new Error("Insufficient balance");
-
       const [game] = await tx
         .insert(oddsGames)
         .values({

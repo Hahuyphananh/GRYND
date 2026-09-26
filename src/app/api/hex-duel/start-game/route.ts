@@ -4,9 +4,10 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 import { cacheSet } from "../../../../lib/redis/cache";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req: Request) {
   try {
@@ -23,22 +24,11 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const wager = Number(body.wager);
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a hex duel is free to
+    // start. The requested wager is normalized to 0, so the atomic debit below
+    // is a no-op whether the match is PvP or vs AI.
+    const wager = normalizeStake(body.wager);
     const isAiGame = body?.isAiGame === true;
-
-    if (!Number.isFinite(wager) || wager <= 0) {
-      return NextResponse.json(
-        { success: false, error: "Invalid wager amount" },
-        { status: 400 }
-      );
-    }
-    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
-    if (wager > 100000) {
-      return NextResponse.json(
-        { success: false, error: "Wager exceeds the maximum of 100,000 tokens" },
-        { status: 400 }
-      );
-    }
 
     // AI games are free play — no balance deduction, no `totalWagered`
     // bump. We still return the user's CURRENT balance (without any
@@ -87,42 +77,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // Atomic: deduct wager only if balance is sufficient.
-    // The raw `sql\`${users.clerkId} = ${clerkId} AND ${users.balance} >= ${wager}\``
-    // template was replaced with typed `and(eq(...), gte(...))` because
-    // multi-column raw sql templates have parameter-binder fragility
-    // under `drizzle-orm/neon-serverless` and were the root cause of
-    // 500s on the sibling `multiplayer/actions/route.ts`.
-    const [updatedUser] = await db
-      .update(users)
-      .set({
-        // Sql templates for SET-clause arithmetic (single column)
-        // are kept \u2014 the binder fragility is specific to multi-column
-        // comparison WHERE clauses, not to arithmetic expressions.
-        balance: sql`${users.balance} - ${wager}`,
-        totalWagered: sql`${users.totalWagered} + ${wager}`,
-      })
-      .where(
-        // users.balance is declared as numeric(30, 2) in schema.ts,
-        // which Drizzle types as `string` (precision overflows JS
-        // number safety). gte() therefore refuses a JS number; pass
-        // the wager as a fixed-2 string to match the column's scale.
-        and(eq(users.clerkId, clerkId), gte(users.balance, wager.toFixed(2)))
-      )
-      .returning({ balance: users.balance });
-
-    if (!updatedUser) {
-      return NextResponse.json(
-        { success: false, error: "Insufficient balance" },
-        { status: 400 }
-      );
-    }
-
+    // STAKES ARE RETIRED: the match is free, so no wager is deducted.
     return NextResponse.json({
       success: true,
       data: {
         wager,
-        newBalance: Number(updatedUser.balance),
+        newBalance: 0,
       },
     });
   } catch (error) {

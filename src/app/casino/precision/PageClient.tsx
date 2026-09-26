@@ -14,7 +14,6 @@
 //     for the rationale.
 
 import { useCallback, useEffect, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
@@ -30,11 +29,7 @@ import {
   emitLobbyListUpdate,
 } from "../../../lib/precision/multiplayer";
 import { useSocket } from "../../../context/SocketProvider";
-import {
-  DEFAULT_WAGER,
-  DEFAULT_WAGER_OPTIONS,
-  LOBBY_LIST_POLL_INTERVAL_MS,
-} from "../../../lib/precision/constants";
+import { LOBBY_LIST_POLL_INTERVAL_MS } from "../../../lib/precision/constants";
 import type { PrecisionLobby } from "../../../lib/precision/types";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import {
@@ -49,31 +44,17 @@ export default function PrecisionLobbyPage() {
   const { t } = useTranslation();
   const { isSignedIn, user } = useUser();
   const [lobbies, setLobbies] = useState<PrecisionLobby[]>([]);
-  const [wager, setWager] = useDefaultWager("precision", DEFAULT_WAGER);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to pick and no token balance to load.
+  const wager = 0;
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [balance, setBalance] = useState<number | null>(null);
   // The AI tier the bot stops at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("precision"),
   );
-
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn || !user) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // silent
-    }
-  }, [isSignedIn, user]);
 
   // Subscribe to lobby-list updates pushed by other clients via the
   // realtime server. Mirrors the Uno `lobby:uno` room pattern.
@@ -130,13 +111,11 @@ export default function PrecisionLobbyPage() {
   // realtime nudge.
   useEffect(() => {
     void reload();
-    fetchBalance();
     const id = setInterval(() => {
       void reload();
-      fetchBalance();
     }, LOBBY_LIST_POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [fetchBalance]);
+  }, []);
 
   const handleCreatePvP = async () => {
     setCreating(true);
@@ -275,16 +254,12 @@ export default function PrecisionLobbyPage() {
             body: (
               <>
                 Use {t("games.precision.test_solo_label")} to practice
-                with no wager before betting real tokens.
+                with no tokens at stake.
               </>
             ),
           },
         ],
       }}
-      balance={balance}
-      stake={wager}
-      onStakeChange={setWager}
-      stakeOptions={DEFAULT_WAGER_OPTIONS}
       busy={creating}
       onPlay={handleCreatePvP}
       playLabel={t("games.precision.create_pvp_game")}
@@ -323,10 +298,6 @@ export default function PrecisionLobbyPage() {
           </Link>
         </div>
       }
-      escrowNote={t(
-        "games.precision.escrow_note",
-        "We pair you with another player of the exact same wager. If no one is waiting, your wager is escrowed in a private lobby until someone joins or you cancel.",
-      )}
       lobbies={lobbies}
       lobbyEmptyText={t("games.precision.no_open_lobbies")}
       lobbyKey={(l) => l.id}

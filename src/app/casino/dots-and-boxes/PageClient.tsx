@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
@@ -16,7 +15,6 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 
-const BET_OPTIONS = [10, 25, 50, 100, 250];
 
 export default function DotsAndBoxesLobbyPage() {
   const { isSignedIn, user } = useUser();
@@ -25,8 +23,9 @@ export default function DotsAndBoxesLobbyPage() {
   const posthog = usePostHog();
   const { t } = useTranslation();
 
-  const [betAmount, setBetAmount] = useDefaultWager("dots-and-boxes", 10);
-  const [balance, setBalance] = useState(0);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to track and no token balance to load.
+  const betAmount = 0;
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
   const [joiningId, setJoiningId] = useState<number | null>(null);
@@ -36,17 +35,6 @@ export default function DotsAndBoxesLobbyPage() {
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("dots-and-boxes"),
   );
-
-  const fetchBalance = async () => {
-    if (!user) return;
-    const response = await fetch("/api/get-user-tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    });
-    const data = await response.json();
-    if (data.success) setBalance(Number(data.data.balance || 0));
-  };
 
   const fetchGames = async () => {
     try {
@@ -61,10 +49,8 @@ export default function DotsAndBoxesLobbyPage() {
   };
 
   useEffect(() => {
-    if (isSignedIn && user) fetchBalance();
     fetchGames();
     const id = setInterval(() => {
-      if (isSignedIn && user) fetchBalance();
       fetchGames();
     }, 3000);
     return () => clearInterval(id);
@@ -85,11 +71,6 @@ export default function DotsAndBoxesLobbyPage() {
   }, [socket]);
 
   const createGame = async () => {
-    if (betAmount <= 0 || betAmount > balance) {
-      setError(t("games.dots_and_boxes.invalid_bet_alert"));
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
@@ -213,15 +194,10 @@ export default function DotsAndBoxesLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={betAmount}
-      onStakeChange={setBetAmount}
-      stakeOptions={BET_OPTIONS}
       busy={loading}
       onPlay={createGame}
       playLabel={t("games.dots_and_boxes.create_button")}
       playBusyLabel={t("games.dots_and_boxes.creating")}
-      escrowNote={t("games.dots_and_boxes.lobby_tagline")}
       children={
         <AiDifficultyPicker
           gameKey="dots-and-boxes"

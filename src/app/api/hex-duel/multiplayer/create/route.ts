@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
-import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../../db/client";
-import { hexDuelGames, users } from "../../../../../db/schema";
+import { hexDuelGames } from "../../../../../db/schema";
+import { normalizeStake } from "../../../../../lib/games/stakes";
 export async function POST(req: Request) {
   try {
     const gate = await requireAgeVerifiedUser();
@@ -12,23 +12,11 @@ export async function POST(req: Request) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     const { wager } = await req.json();
-    const wagerAmount = Number(wager);
-    if (!Number.isFinite(wagerAmount) || wagerAmount < 0) {
-      return NextResponse.json({ success: false, error: "Invalid wager amount" }, { status: 400 });
-    }
+    // STAKES ARE RETIRED (src/lib/games/stakes.js) — a match is free to open,
+    // so the requested wager is ignored rather than validated.
+    const wagerAmount = normalizeStake(wager);
 
     const result = await db.transaction(async (tx) => {
-      let updatedBalance: number | null = null;
-      if (wagerAmount > 0) {
-        const [updatedUser] = await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} - ${wagerAmount}` })
-          .where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${wagerAmount}`))
-          .returning({ balance: users.balance });
-        if (!updatedUser) throw new Error("Insufficient balance");
-        updatedBalance = Number(updatedUser.balance);
-      }
-
       const [game] = await tx.insert(hexDuelGames).values({
         player1Id: userId,
         wagerAmount: wagerAmount.toFixed(2),
@@ -42,12 +30,11 @@ export async function POST(req: Request) {
         // and `last_action_seq = 0` the moment player2 joins.
       } as any).returning({ id: hexDuelGames.id });
 
-      return { gameId: game.id, newBalance: updatedBalance };
+      return { gameId: game.id, newBalance: null };
     });
 
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {
-    const status = error?.message === "Insufficient balance" ? 400 : 500;
-    return NextResponse.json({ success: false, error: error?.message || "Unable to create game" }, { status });
+    return NextResponse.json({ success: false, error: error?.message || "Unable to create game" }, { status: 500 });
   }
 }

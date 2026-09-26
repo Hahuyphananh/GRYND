@@ -31,7 +31,6 @@ import {
   plinkoGames,
   plinkoPvpMatches,
   playerReports,
-  pokerGames,
   poolLobbies,
   poolMatches,
   poolPlayerStats,
@@ -89,10 +88,7 @@ async function getExistingTables(): Promise<Set<string>> {
  *
  * PvP match history stores players as varchar Clerk ids with no FK
  * (`player1_id` / `player2_id`), so every match a deleted user took part
- * in is purged explicitly. `poker_games` embeds Clerk ids inside its
- * `players` / `player_positions` jsonb — those rows are scrubbed rather
- * than deleted because the same game can legitimately contain players
- * who were never deleted.
+ * in is purged explicitly.
  *
  * Ratings: `player_ratings` / `rating_events` are keyed by `users.id`
  * and cascade with the account, so they ARE erased here. The anti-reset
@@ -267,33 +263,6 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     await tx
       .delete(kenoPvpMatches)
       .where(or(eq(kenoPvpMatches.player1Id, clerkId), eq(kenoPvpMatches.player2Id, clerkId)));
-
-    // ── Poker: Clerk ids are embedded in jsonb — scrub, don't delete. ──
-    // players: [{ seat, clerkId, ... }] — remove any seat referencing the
-    // erased account. player_positions: { hostClerkId, state } — null it.
-    // The whole predicate is parameterized — no string interpolation.
-    await tx.execute(sql`
-      UPDATE poker_games
-      SET players = (
-            SELECT jsonb_agg(
-              CASE WHEN elem->>'clerkId' = ${clerkId}
-                   THEN (elem - 'clerkId')::jsonb
-                   ELSE elem END
-            )
-            FROM jsonb_array_elements(players) AS elem
-          ),
-          player_positions = jsonb_set(
-            COALESCE(player_positions, '{}'::jsonb),
-            '{hostClerkId}',
-            'null'::jsonb,
-            true
-          )
-      WHERE EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(players) AS elem
-        WHERE elem->>'clerkId' = ${clerkId}
-      )
-    `);
 
     // Reports the user filed are their personal data — erase them.
     await tx.delete(playerReports).where(eq(playerReports.reporterClerkId, clerkId));

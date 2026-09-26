@@ -49,6 +49,7 @@
 
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
+import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -81,7 +82,6 @@ import {
   PICKABLE_STATES,
   READY_WINDOW_MS,
   RESULT,
-  computePayout,
   decideOutcome,
   hasResolvedActionId,
   isBotMatch,
@@ -143,7 +143,9 @@ function opponentIdOf(match, seat) {
 // Validate stake + difficulty at lobby creation time.
 export function validateMatchParams({ stakeAmount, difficulty }) {
   const stake = Number(stakeAmount);
-  if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
+  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
+  // range no longer rejects anything (the difficulty still must be valid).
+  if (!STAKES_RETIRED && (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE)) {
     return {
       ok: false,
       error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
@@ -206,6 +208,9 @@ export async function createOrJoin({ userId, stakeAmount, difficulty, vsBot }) {
     });
   }
 
+  // Retired stakes: the match is free, and every escrow/payout below operates
+  // on 0 because the stake is normalized here.
+  stakeAmount = normalizeStake(stakeAmount);
   const validation = validateMatchParams({ stakeAmount, difficulty });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -245,21 +250,6 @@ export async function createOrJoin({ userId, stakeAmount, difficulty, vsBot }) {
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount, difficulty) {
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Shared server seed (revealed post-match) + the host's client
   // seed. The match id becomes the nonce once the row exists — the
   // SHARED BRIDGE is derived after insert so we can use the serial id.
@@ -324,21 +314,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Coin-flip who selects first. The joined match keeps the host's already
   // stored shared bridge (one layout for both seats — the joiner's client
   // seed is copied in purely so the layout stays re-derivable).
@@ -378,10 +353,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     .returning();
 
   if (!updated) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stakeAmount}` })
-      .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
   }
 
@@ -566,11 +537,6 @@ export async function cancelMatch({ userId, matchId }) {
     if (match.player1Id !== userId) {
       return { error: "Only the creator can cancel", status: 403 };
     }
-
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-      .where(eq(users.clerkId, userId));
 
     const [updated] = await tx
       .update(laneRushDuelMatches)
@@ -912,11 +878,6 @@ async function resolveMatch(tx, match, { loserId, reason, action }) {
 
 // ── Settlement (shared by all resolution paths) ───────────────────────
 async function settle(tx, match, { result, action, reason }) {
-  const payout = computePayout({
-    stakeAmount: match.stakeAmount,
-    result,
-  });
-
   const winnerId =
     result === RESULT.PLAYER1
       ? match.player1Id
@@ -929,23 +890,6 @@ async function settle(tx, match, { result, action, reason }) {
     ? existingActions
     : [...existingActions, action].filter(Boolean);
 
-  if (result === RESULT.DRAW) {
-    // Full refund both — no house fee.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-      .where(eq(users.clerkId, match.player1Id));
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-      .where(eq(users.clerkId, match.player2Id));
-  } else {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerId));
-  }
-
   const [updated] = await tx
     .update(laneRushDuelMatches)
     .set({
@@ -954,8 +898,8 @@ async function settle(tx, match, { result, action, reason }) {
       roundDeadline: null,
       result,
       winnerId,
-      houseFee: payout.houseFee.toFixed(2),
-      prizePaid: payout.prizePaid.toFixed(2),
+      houseFee: "0.00",
+      prizePaid: "0.00",
       actions,
       // The bridge state as it stood at the end (the winner crossed row 10; a
       // resignation keeps both seats where they were) — persisted here so the

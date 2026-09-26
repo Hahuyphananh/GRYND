@@ -4,7 +4,7 @@
 //
 // Before this module every game that had a difficulty invented its own: chess
 // numbered its levels 1–5, hex-duel used `easy | medium`, lane-runner keyed off
-// bridge tile widths, dice-flush and the poker/crash tables used `easy | medium
+// bridge tile widths, dice-flush and the crash tables used `easy | medium
 // | hard`, and pool-masters used `easy | normal | hard`. The lobby pickers were
 // hand-rolled per game, so the same concept had four spellings and there was
 // nothing to reuse when a game gained an AI mode.

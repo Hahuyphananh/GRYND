@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { dotsAndBoxesGames, users } from "../../../../db/schema";
+import { dotsAndBoxesGames } from "../../../../db/schema";
 import { READY_WINDOW_MS } from "../../../../lib/dotsAndBoxesServer";
 
 export async function POST(req) {
@@ -56,19 +56,6 @@ export async function POST(req) {
 
       if (!game) throw new Error("No compatible game available");
 
-      const [updatedUser] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${game.betAmount}` })
-        .where(
-          and(
-            eq(users.clerkId, userId),
-            sql`${users.balance} >= ${game.betAmount}`,
-          ),
-        )
-        .returning({ balance: users.balance });
-
-      if (!updatedUser) throw new Error("Insufficient balance");
-
       const [updatedGame] = await tx
         .update(dotsAndBoxesGames)
         .set({
@@ -96,7 +83,6 @@ export async function POST(req) {
       return {
         gameId: updatedGame.id,
         betAmount: Number(updatedGame.betAmount),
-        newBalance: Number(updatedUser.balance),
       };
     });
 

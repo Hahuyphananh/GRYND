@@ -102,29 +102,15 @@ test("join route wraps the player insert in a try-catch for constraint violation
   );
 });
 
-test("join route refunds the buy-in when a duplicate seat is detected", () => {
+test("join route never refunds a buy-in (stakes retired)", () => {
   const joinRoute = readFileSync(
     "src/app/api/crash-arena/join/route.ts",
     "utf8"
   );
-  // When the constraint violation is caught, the route must refund the
-  // deducted balance (for real-money tables) before returning the error.
-  // The refund must be conditional on !isVirtual && deducted.
-  assert.match(
-    joinRoute,
-    /if\s*\(\s*!isVirtual\s*&&\s*deducted\s*\)/,
-    "refund is conditional on real-money table and successful deduction"
-  );
-  assert.match(
-    joinRoute,
-    /\.update\(users\)[\s\S]*?\.set\(\s*\{\s*balance:\s*sql`[^`]*\+[^`]*buyInAmount/,
-    "refund adds the buy-in back to the user balance"
-  );
-  assert.match(
-    joinRoute,
-    /\.where\(eq\(users\.id,\s*user\.id\)\)/,
-    "refund targets the correct user"
-  );
+  // No table ever debits the wallet now, so there is nothing to refund when a
+  // duplicate seat is detected — the refund path must stay gone.
+  assert.doesNotMatch(joinRoute, /if\s*\(\s*!isVirtual\s*&&\s*deducted\s*\)/);
+  assert.doesNotMatch(joinRoute, /balance:\s*sql`[^`]*\+/);
 });
 
 test("join route returns 'Already seated' error when constraint violation is caught", () => {
@@ -167,7 +153,7 @@ test("join route documents the constraint as a defense against concurrent duplic
   // that slip through the existing-seat check will fail at insert time.
   const insertSection = joinRoute.substring(
     joinRoute.indexOf("// ── Create player row"),
-    joinRoute.indexOf("// ── Record transaction")
+    joinRoute.indexOf("// Best-effort live fanout")
   );
   assert.match(
     insertSection,

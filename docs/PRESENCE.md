@@ -128,7 +128,6 @@ to their existing "a real session started" edge.
 | mines-pvp | `mines-pvp/[matchId]` (`mines-duel`) | past `waiting` → finished/cancelled |
 | memory-grid | `memory-grid/[matchId]` | past `waiting` → until the match is finished or cancelled |
 | plinko | `plinko/[matchId]` (`plinko-duel`) | ready or launchable → finished/cancelled |
-| poker | `poker/multi` | the hand is dealt (`!waiting`) → showdown with a winner |
 | crash | `crash-arena/table/[tableId]` (hook) | a round is `running`; the gap between rounds is absorbed by the window, leaving the table clears |
 | chess | `chess/ai` (`chess-ai`) and `chess-game/[gameId]` | the game is live → game over / finished / expired |
 | keno | `keno-pvp/[matchId]` | a round is in play → finished/cancelled |
@@ -155,8 +154,8 @@ to their existing "a real session started" edge.
   between rounds is part of playing.
 - **Finished games stop.** `autoStop` (or the direct `terminal` signal) ends the
   beats and clears the row, so a result screen never keeps a match "playing".
-- **Spectators are never counted.** Five surfaces expose a view-only route where
-  the match looks live to the watcher too — chess, four-in-a-row, poker and
+- **Spectators are never counted.** Every surface that exposes a view-only
+  route keeps the watcher out of presence — chess, four-in-a-row and
   dots-and-boxes pass `presenceEnabled={false}`, and hex-duel passes
   `!isSpectator` into the hook. A spectator sends nothing at all.
   Tower Arena reaches the same state from inside a match: a player eliminated

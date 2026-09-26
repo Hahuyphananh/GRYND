@@ -3,8 +3,9 @@ import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
-import { eq, and, lt, or, sql } from "drizzle-orm";
+import { eq, and, lt, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 const TIMER_CONFIG = {
   "1min": 60,
@@ -41,23 +42,15 @@ export async function POST(req) {
     }
 
     const body = await req.json();
-    const tableAmount = Number(body.tableAmount);
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): competitive play is
+    // free, so a table is created at stake 0 no matter what the client sent.
+    // Whatever was requested is ignored rather than rejected — old clients,
+    // cached pages and saved stake defaults must all still be able to start a
+    // game.
+    const tableAmount = normalizeStake(body.tableAmount);
     const timerMode = String(body.timerMode || "").toLowerCase();
     const timeLimit = Number(body.timeLimit);
     
-    if (!tableAmount || tableAmount <= 0) {
-      return NextResponse.json(
-        { error: "Invalid stake amount" },
-        { status: 400 },
-      );
-    }
-    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
-    if (tableAmount > 100000) {
-      return NextResponse.json(
-        { error: "Stake exceeds the maximum of 100,000 tokens" },
-        { status: 400 },
-      );
-    }
     
     // Accept explicit timeLimit from client, or look up from TIMER_CONFIG
     const initialTimeSeconds = Number.isFinite(timeLimit) && timeLimit > 0
@@ -138,50 +131,29 @@ export async function POST(req) {
       });
     }
 
-    const createdGame = await db.transaction(async (tx) => {
-      const [updatedUser] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${tableAmount}` })
-        .where(
-          and(
-            eq(users.clerkId, clerkId),
-            sql`${users.balance} >= ${tableAmount}`,
-          ),
-        )
-        .returning({ balance: users.balance });
-
-      if (!updatedUser) {
-        throw new Error("Insufficient balance");
-      }
-
-      const [newGame] = await tx
-        .insert(chessGames)
-        .values({
-          playerWhiteId: clerkId,
-          betAmount: tableAmount,
-          timerMode,
-          initialTimeSeconds,
-          status: "waiting",
-          isAiGame: false,
-        })
-        .returning({ id: chessGames.id });
-
-      return { gameId: newGame.id, newBalance: Number(updatedUser.balance) };
-    });
+    const [newGame] = await db
+      .insert(chessGames)
+      .values({
+        playerWhiteId: clerkId,
+        betAmount: tableAmount,
+        timerMode,
+        initialTimeSeconds,
+        status: "waiting",
+        isAiGame: false,
+      })
+      .returning({ id: chessGames.id });
 
     return NextResponse.json({
-      gameId: createdGame.gameId,
+      gameId: newGame.id,
       color: "white",
       ready: false,
       status: "waiting",
       timerMode,
       initialTimeSeconds,
-      newBalance: createdGame.newBalance,
     });
   } catch (err) {
     console.error("Create-game error:", err);
     const errorMessage = err?.message || "Internal Server Error";
-    const status = errorMessage === "Insufficient balance" ? 400 : 500;
-    return NextResponse.json({ error: errorMessage }, { status });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

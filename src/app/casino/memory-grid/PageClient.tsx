@@ -20,7 +20,6 @@
 // PvP skill games.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -32,7 +31,6 @@ import {
   MEMORY_GRID_MATCH_UPDATED,
   memoryGridMatchRoom,
 } from "../../../lib/memory-grid/rooms";
-import { STAKE_PRESETS } from "../../../lib/memory-grid/constants";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import {
   type AiDifficulty,
@@ -86,14 +84,14 @@ export default function MemoryGridLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useDefaultWager("memory-grid", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
     [],
   );
-  const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -120,30 +118,13 @@ export default function MemoryGridLobbyPage() {
     }
   }, []);
 
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  }, [isSignedIn]);
-
   useEffect(() => {
     fetchAvailable();
-    fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchAvailable, fetchBalance]);
+  }, [fetchAvailable]);
 
   // Derive any lobby the current user owns FROM the availableMatches
   // payload (which carries the player's clerkId as player1Id).
@@ -322,8 +303,7 @@ export default function MemoryGridLobbyPage() {
   const myOpenMatchId = myOpenMatch?.id ?? null;
 
   // ── Validation ────────────────────────────────────────────────────
-  const stakeValid = stake > 0 && (balance === null || balance >= stake);
-  const canCreate = isSignedIn && !busy && stakeValid && myOpenMatchId === null;
+  const canCreate = isSignedIn && !busy && myOpenMatchId === null;
 
   return (
     <PvpLobbyPage
@@ -400,10 +380,6 @@ export default function MemoryGridLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={stake}
-      onStakeChange={setStake}
-      stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => {
         posthog?.capture("memory_grid_lobby_create_clicked", { stake });
@@ -428,13 +404,6 @@ export default function MemoryGridLobbyPage() {
             hard: "The bot recalls almost every lit tile in every round.",
           }}
         />
-      }
-      escrowNote={
-        <>
-          We pair you with another player of the <b>exact same</b> stake.
-          If no one is waiting, your stake is escrowed in a private
-          lobby until someone joins or you cancel.
-        </>
       }
       error={error}
       lobbies={availableMatches}

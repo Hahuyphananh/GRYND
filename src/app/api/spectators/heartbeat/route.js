@@ -26,7 +26,7 @@ export async function POST(request) {
   const normalizedGameKey = String(gameKey || "")
     .toLowerCase()
     .trim();
-  const allowedGameKeys = new Set(["chess", "four-in-a-row", "hex-duel", "poker"]);
+  const allowedGameKeys = new Set(["chess", "four-in-a-row", "hex-duel"]);
   if (!allowedGameKeys.has(normalizedGameKey)) {
     return new Response(
       JSON.stringify({ success: false, error: "Unsupported gameKey" }),

@@ -112,6 +112,41 @@ test("checkout, portal and success URLs all return to /upgrade-pro", () => {
   );
 });
 
+test("the Checkout page is GRYND-branded and its back button returns to /upgrade-pro", () => {
+  const BRANDING = read("src/lib/stripe/checkoutBranding.ts");
+  const BATTLEPASS_ROUTE = read("src/app/api/battlepass/claim/route.js");
+
+  // The page carries our palette (dark navy backdrop, brand-yellow CTA) and
+  // our name, so a member never lands on Stripe's stock white form.
+  assert.match(BRANDING, /displayName: "GRYND PRO"/);
+  assert.match(BRANDING, /backgroundColor: "#071536"/);
+  assert.match(BRANDING, /buttonColor: "#f5ff3b"/);
+  assert.match(BRANDING, /iconPath: "\/icon-192\.png"/);
+
+  // Every Checkout Session we create goes through the branded helper, which
+  // degrades instead of ever blocking a payment.
+  assert.match(SUBSCRIBE_ROUTE, /createBrandedCheckoutSession\(/);
+  assert.match(BATTLEPASS_ROUTE, /createBrandedCheckoutSession\(/);
+
+  // The Checkout back button is `cancel_url`, so it points at the GRYND PRO
+  // page AND is built from the origin the customer checked out from — a stored
+  // env value is only the fallback, never a hardcoded host.
+  assert.match(SUBSCRIBE_ROUTE, /getReturnBaseUrl\(req\)/);
+  assert.match(PORTAL_ROUTE, /getReturnBaseUrl\(req\)/);
+  assert.match(BATTLEPASS_ROUTE, /getReturnBaseUrl\(req\)/);
+
+  // The Battle Pass free-trial checkout shares the same way back: cancelling
+  // lands on the GRYND PRO page (the only surface with a cancelled notice),
+  // while the success redirect stays on the page that re-reads the claim.
+  assert.match(BATTLEPASS_ROUTE, /cancel_url: `\$\{baseUrl\}\/upgrade-pro\?checkout=cancelled`/);
+  assert.match(BATTLEPASS_ROUTE, /success_url: `\$\{baseUrl\}\/battlepass\?checkout=success`/);
+  assert.ok(
+    !SUBSCRIBE_ROUTE.includes("getBaseUrl()") &&
+      !PORTAL_ROUTE.includes("getBaseUrl()"),
+    "Stripe return URLs must resolve from the request origin, not a bare env read",
+  );
+});
+
 test("the navbar offers GRYND PRO instead of a Shop", () => {
   assert.ok(!NAVBAR.includes('"/shop"'), "navbar must not link to /shop");
   assert.ok(NAVBAR.includes('"/upgrade-pro"'), "navbar should link to /upgrade-pro");

@@ -35,7 +35,8 @@ import { unlockGlow } from "../../../../lib/glows";
 import { getLevelFromTrophies, addExp } from "../../../../lib/battlepass";
 import { getTotalTrophiesForUser } from "../../../../lib/trophyStore";
 import { rewardsForLevel, COSMETIC_REWARD_TYPES } from "../../../../lib/battlepassRewards";
-import { getStripe, getBaseUrl } from "../../../../lib/stripe";
+import { getStripe, getReturnBaseUrl } from "../../../../lib/stripe";
+import { createBrandedCheckoutSession } from "../../../../lib/stripe/checkoutBranding";
 import {
   isPremiumMember,
   ensureSubscriptionPlanStripe,
@@ -103,7 +104,7 @@ export async function POST(req) {
         { status: 404 },
       );
     }
-    // Level is derived from TROPHIES (10,000 total = level 100), not XP.
+    // Level is derived from TROPHIES (OVERALL_TROPHY_MAX = level 100), not XP.
     const level = getLevelFromTrophies(await getTotalTrophiesForUser(userId));
 
     // Locate the claimed reward:
@@ -264,22 +265,34 @@ export async function POST(req) {
           stripePriceId: plan.stripePriceId,
         })
       ).priceId;
-      const baseUrl = getBaseUrl();
-      const session = await getStripe().checkout.sessions.create({
-        mode: "subscription",
-        line_items: [{ price: resolvedPriceId, quantity: 1 }],
-        client_reference_id: userId,
-        metadata: { clerkId: userId, planKey: plan.key, battlepassTrialDays: days },
-        subscription_data: {
+      // Same origin the player claimed FROM, so every Stripe return path stays
+      // on the host they started from.
+      const baseUrl = getReturnBaseUrl(req);
+      const session = await createBrandedCheckoutSession(
+        getStripe(),
+        {
+          mode: "subscription",
+          line_items: [{ price: resolvedPriceId, quantity: 1 }],
+          client_reference_id: userId,
           metadata: { clerkId: userId, planKey: plan.key, battlepassTrialDays: days },
-          trial_period_days: days,
+          subscription_data: {
+            metadata: { clerkId: userId, planKey: plan.key, battlepassTrialDays: days },
+            trial_period_days: days,
+          },
+          // The success redirect returns to the Battle Pass page that started
+          // the trial — it re-reads the claim state there.
+          success_url: `${baseUrl}/battlepass?checkout=success`,
+          // The back button (Stripe's `cancel_url`) goes to the GRYND PRO page
+          // instead, like the main subscription checkout: it is the one surface
+          // that renders the "checkout cancelled" notice, and the Battle Pass
+          // page has no cancelled state to show.
+          cancel_url: `${baseUrl}/upgrade-pro?checkout=cancelled`,
+          allow_promotion_codes: true,
+          managed_payments: { enabled: true },
+          integration_identifier: `grynd_bp_trial_${randomSuffix()}`,
         },
-        success_url: `${baseUrl}/battlepass?checkout=success`,
-        cancel_url: `${baseUrl}/battlepass?checkout=cancelled`,
-        allow_promotion_codes: true,
-        managed_payments: { enabled: true },
-        integration_identifier: `grynd_bp_trial_${randomSuffix()}`,
-      });
+        baseUrl,
+      );
       await db
         .insert(stripeCheckoutSessions)
         .values({

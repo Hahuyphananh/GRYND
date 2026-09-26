@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
@@ -355,7 +354,9 @@ function MoveHistoryPanel({ history, you, opponent }: { history: any[]; you: any
 
 export default function DiceFlushPage() {
   const { isSignedIn, user } = useUser();
-  const [wager, setWager] = useDefaultWager("dice-flush", 100); const [balance, setBalance] = useState(0); const [loading, setLoading] = useState(false);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no wager to pick and no token balance to load.
+  const wager = 0; const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"pvp" | "ai">("pvp");
   // The tier this practice match's bot plays at. Remembered per game by the
   // picker, and sent with the start-ai request so the AI seat carries it.
@@ -405,7 +406,6 @@ export default function DiceFlushPage() {
   const prevGameStateRef = useRef<string | null>(null);
   const endedRef = useRef(false);
 
-  const fetchBalance = async () => { if (!user) return; const r = await fetch("/api/get-user-tokens", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include" }); const d = await r.json(); if (d.success) setBalance(Number(d.data.balance || 0)); };
   const fetchGames = async () => { const res = await fetch("/api/dice-flush/state", { cache: "no-store" }); const data = await res.json(); if (data.success) setAvailableGames(data.rooms || []); };
   // Normalize old "yahtzee" scorecard keys → "fiveKind" for backward compat with pre-rebrand games
   const normalizeState = (gs: GameState | null): GameState | null => {
@@ -419,7 +419,7 @@ export default function DiceFlushPage() {
   const fetchRoom = async (id: string) => { const res = await fetch(`/api/dice-flush/state?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json(); if (data.success && data.room?.gameState) { setGame(normalizeState(data.room.gameState as GameState)); } };
   const fetchHistory = async (id: string) => { try { const res = await fetch(`/api/dice-flush/history?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json(); if (data.success) setMoveHistory(data.actions || []); } catch {} };
 
-  useEffect(() => { if (isSignedIn && user) fetchBalance(); fetchGames(); }, [isSignedIn, user]);
+  useEffect(() => { fetchGames(); }, [isSignedIn, user]);
 
   // Socket room join — receive live updates from other players
   useEffect(() => {
@@ -712,7 +712,7 @@ export default function DiceFlushPage() {
     }
   }, [game?.currentTurn, game?.turnNumber]);
 
-  const createGame = async () => { if (wager <= 0 || wager > balance) return alert("Invalid wager amount"); setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
+  const createGame = async () => { setLoading(true); try { const res = await fetch("/api/dice-flush/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wager }) }); const d = await res.json(); if (!res.ok || !d.success) return alert(d.error || "Unable to create room"); setRoomId(d.roomId); setGame(d.state); if (socket) socket.emit("join_room", { roomId: d.roomId });} finally { setLoading(false); } };
   // Free play vs AI — no stake is ever sent. The match is created with a 0
   // wager (and a 0 pot server-side), so no tokens are risked and nothing is
   // credited on the result screen.
@@ -772,7 +772,6 @@ export default function DiceFlushPage() {
     setRolling(false);
     endedRef.current = false;
     prevGameStateRef.current = null;
-    fetchBalance();
     fetchGames();
   };
 
@@ -905,7 +904,7 @@ export default function DiceFlushPage() {
       )}
 
       {!roomId && <div className="rounded-2xl border border-[#00e5ff]/30 bg-[#040d24]/80 p-4 backdrop-blur">
-        <div className="mb-3 font-bold text-[#f5ff3b]">Balance: {balance.toFixed(2)} tokens</div>
+        <div className="mb-3 inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300">Free play · no tokens at stake</div>
         <div className="mb-3 grid grid-cols-2 gap-2">
           <button
             onClick={() => setMode("pvp")}
@@ -922,8 +921,6 @@ export default function DiceFlushPage() {
         </div>
         {mode === "pvp" ? (
           <div className="flex flex-wrap gap-2">
-            <label htmlFor="dice-flush-wager" className="sr-only">Stake amount</label>
-            <input id="dice-flush-wager" type="number" value={wager} onChange={(e) => setWager(Number(e.target.value || 0))} className="rounded-lg bg-[#08142f] border border-[#00e5ff]/30 px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00e5ff]" placeholder="Stake" />
             <button onClick={createGame} className="rounded-lg bg-[#00e5ff] px-4 py-2 font-bold text-black hover:bg-[#00e5ff]/80 transition">Create PvP</button>
             <button onClick={fetchGames} className="rounded-lg bg-[#a855f7] px-4 py-2 font-bold text-white hover:bg-[#a855f7]/80 transition">Refresh</button>
           </div>
@@ -947,7 +944,7 @@ export default function DiceFlushPage() {
             <button onClick={playAI} className="mt-3 w-full rounded-lg bg-[#f5ff3b] px-4 py-2 font-bold text-black hover:bg-[#f5ff3b]/80 transition">Play vs AI</button>
           </>
         )}
-      <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p className="text-gray-400 text-sm">No open games. Create one or play vs AI!</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded-lg bg-[#08142f]/80 border border-[#00e5ff]/20 p-2"><span className="text-sm text-gray-300">{l.id} · {l.wager} tokens</span><button onClick={() => joinGame(l.id)} className="rounded-lg bg-[#00e5ff] px-3 py-1 text-sm font-bold text-black hover:bg-[#00e5ff]/80">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
+      <div className="mt-4 space-y-2">{availableGames.length === 0 ? <p className="text-gray-400 text-sm">No open games. Create one or play vs AI!</p> : availableGames.map((l) => <div key={l.id} className="flex items-center justify-between rounded-lg bg-[#08142f]/80 border border-[#00e5ff]/20 p-2"><span className="text-sm text-gray-300">{l.id} · Free play</span><button onClick={() => joinGame(l.id)} className="rounded-lg bg-[#00e5ff] px-3 py-1 text-sm font-bold text-black hover:bg-[#00e5ff]/80">{joiningId === l.id ? "Joining" : "Join"}</button></div>)}</div></div>}
 
       {/* Only the actual dice game is recorded — the create/join lobby
           above and the report modal / footer below sit outside the

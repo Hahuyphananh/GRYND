@@ -24,7 +24,6 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -36,7 +35,6 @@ import {
   PLINKO_PVP_MATCH_UPDATED,
   plinkoPvpMatchRoom,
 } from "../../../lib/plinko-pvp/rooms";
-import { STAKE_PRESETS } from "../../../lib/plinko-pvp/constants";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import {
   type AiDifficulty,
@@ -97,14 +95,14 @@ export default function PlinkoPvpLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // ── Form state ────────────────────────────────────────────────────
-  const [stake, setStake] = useDefaultWager("plinko", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
     [],
   );
-  const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   // The AI tier the bot launches at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
@@ -130,30 +128,13 @@ export default function PlinkoPvpLobbyPage() {
     }
   }, []);
 
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  }, [isSignedIn]);
-
   useEffect(() => {
     fetchAvailable();
-    fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchAvailable, fetchBalance]);
+  }, [fetchAvailable]);
 
   // Derive any lobby the current user owns FROM the availableMatches
   // payload (which carries the player's clerkId as player1Id). This
@@ -335,12 +316,7 @@ export default function PlinkoPvpLobbyPage() {
   const myOpenMatchId = myOpenMatch?.id ?? null;
 
   // ── Validation ────────────────────────────────────────────────────
-  // Pre-flight guards: stake > 0 and within the user's balance. The
-  // server re-validates both but catching them client-side avoids a
-  // 400 round-trip.
-  const stakeValid = stake > 0 && (balance === null || balance >= stake);
-  const canCreate =
-    isSignedIn && !busy && stakeValid && myOpenMatchId === null;
+  const canCreate = isSignedIn && !busy && myOpenMatchId === null;
   const canPlayAi = isSignedIn && !busy;
 
   return (
@@ -395,10 +371,6 @@ export default function PlinkoPvpLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={stake}
-      onStakeChange={setStake}
-      stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => {
         posthog?.capture("plinko_pvp_lobby_create_clicked", {
@@ -423,15 +395,6 @@ export default function PlinkoPvpLobbyPage() {
             hard: "The bot aims at the 140-point precision buckets with a tight angle.",
           }}
         />
-      }
-      escrowNote={
-        <>
-          We pair you with another player of the <b>exact same</b> stake.
-          If no one is waiting, your stake is escrowed in a private lobby
-          until someone joins or you cancel. The server rolls the
-          per-ball seeds at match creation so every ball is replayable
-          for audit.
-        </>
       }
       error={error}
       lobbies={availableMatches}

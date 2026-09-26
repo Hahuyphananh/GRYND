@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { oddsGames, users } from "../../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { oddsGames } from "../../../../../db/schema";
+import { eq } from "drizzle-orm";
 import {
   resolvePvPRound,
   submitPick,
@@ -81,8 +81,8 @@ export async function POST(req: Request) {
       if (roundAge > TIMEOUT_MS && oppDone) {
         const forfeiterId = isPlayer1 ? game.player2Id : game.player1Id;
         const winnerId = userId;
-        // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
-        const payout = game.wager * 1.9;
+        // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+        const payout = 0;
         const winner: "player1" | "player2" = isPlayer1 ? "player1" : "player2";
         // Persist the game-over state so the opponent's polls/socket
         // refetches reflect the match ending (not just the submitter).
@@ -91,11 +91,6 @@ export async function POST(req: Request) {
           gameOver: true,
           winner,
         };
-
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${payout}` })
-          .where(eq(users.clerkId, winnerId!));
 
         await tx
           .update(oddsGames)
@@ -252,8 +247,8 @@ export async function POST(req: Request) {
 
       // Both predictions in — resolve the round (accuracy scoring)
       const pickResult = resolvePvPRound(afterPred);
-      // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
-      const payout = game.wager * 1.9;
+      // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+      const payout = 0;
 
       if (pickResult.updatedState.gameOver) {
         const winner = pickResult.updatedState.winner; // null = draw
@@ -261,12 +256,6 @@ export async function POST(req: Request) {
         const winnerId = player1Won ? game.player1Id : game.player2Id;
 
         if (winner) {
-          // Winner-take-all — the winner gets the full pot.
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${payout}` })
-            .where(eq(users.clerkId, winnerId));
-
           await tx
             .update(oddsGames)
             .set({
@@ -312,16 +301,7 @@ export async function POST(req: Request) {
             loserClerkId: loserId!,
           }).catch(() => {});
         } else {
-          // Exact tie after all rounds — refund BOTH stakes, no winner.
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${game.wager}` })
-            .where(eq(users.clerkId, game.player1Id));
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} + ${game.wager}` })
-            .where(eq(users.clerkId, game.player2Id));
-
+          // Exact tie after all rounds — no winner.
           await tx
             .update(oddsGames)
             .set({

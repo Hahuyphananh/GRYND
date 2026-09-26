@@ -733,7 +733,11 @@ test("settlement clears the live tile and pays the winner", () => {
   assert.ok(settleBody.includes("liveTile: null"));
   assert.ok(settleBody.includes("liveStartedAt: null"));
   assert.ok(settleBody.includes("roundDeadline: null"));
-  assert.ok(settleBody.includes("computePayout({ stakeAmount: match.stakeAmount, result: finalResult })"));
+  // Stakes are retired: settlement records zeroed money columns and never
+  // touches a token balance.
+  assert.ok(settleBody.includes('houseFee: "0.00"'));
+  assert.ok(settleBody.includes('prizePaid: "0.00"'));
+  assert.ok(!settleBody.includes("users.balance"));
   assert.ok(settleBody.includes("recordPvPResult("));
 });
 
@@ -744,7 +748,9 @@ test("the forfeit path hands the match to the opponent without touching the rule
   );
   assert.ok(forfeitBody.includes("RESULT.PLAYER2"));
   assert.ok(forfeitBody.includes("RESULT.PLAYER1"));
-  assert.ok(forfeitBody.includes("computePayout({ stakeAmount: match.stakeAmount, result })"));
+  assert.ok(forfeitBody.includes('houseFee: "0.00"'));
+  assert.ok(forfeitBody.includes('prizePaid: "0.00"'));
+  assert.ok(!forfeitBody.includes("users.balance"));
   const forfeitSection = store.slice(
     store.indexOf("export async function forfeitMatch("),
     store.indexOf("// ── Raw read (no auto-resolve)"),

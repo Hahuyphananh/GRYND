@@ -26,12 +26,6 @@ export async function POST(req) {
           )
           UNION ALL
           (
-            SELECT users.name, 'Poker', poker_games.bet_amount, poker_games.payout, poker_games.created_at
-            FROM poker_games
-            INNER JOIN users ON users.id = poker_games.user_id
-          )
-          UNION ALL
-          (
             SELECT users.name, 'Blackjack', blackjack_games.bet_amount, blackjack_games.payout, blackjack_games.created_at
             FROM blackjack_games
             INNER JOIN users ON users.id = blackjack_games.user_id

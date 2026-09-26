@@ -41,6 +41,7 @@
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
+import { STAKES_RETIRED, normalizeStake } from "../games/stakes";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -63,7 +64,6 @@ import {
   MEMORY_GRID_AI_PLAYER_ID,
   MEMORY_GRID_LOCK_NAMESPACE,
   MIN_STAKE,
-  OVERTIME_DRAW_FEE_PCT,
   PHASES,
   RECONSTRUCT_DEADLINE_MS,
   RESULT,
@@ -76,7 +76,6 @@ import {
   aiSubmissionDelayMs,
   chooseAiReconstruction,
   computeFinalRoundScore,
-  computePayout,
   generatePattern,
   isFreeAiMatch,
   matchWinnerFromTotals,
@@ -149,6 +148,10 @@ function otherSeat(seat) {
 // Validate the stake at lobby creation time. Returns
 // `{ ok: true }` on success, `{ ok: false, error }` otherwise.
 export function validateMatchParams({ stakeAmount }) {
+  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
+  // range no longer rejects anything. The escrow/payout arithmetic below is
+  // inert — it runs against a 0 stake.
+  if (STAKES_RETIRED) return { ok: true };
   const stake = Number(stakeAmount);
   if (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE) {
     return {
@@ -315,6 +318,9 @@ export async function playAiTurn({ userId, matchId }) {
 //      `status='waiting' AND player2_id IS NULL` catches the
 //      "creator cancelled in parallel" race.
 export async function createOrJoin({ userId, stakeAmount }) {
+  // Retired stakes: the match is free, and every escrow/payout below operates
+  // on 0 because the stake is normalized here.
+  stakeAmount = normalizeStake(stakeAmount);
   const validation = validateMatchParams({ stakeAmount });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
@@ -357,22 +363,6 @@ export async function createOrJoin({ userId, stakeAmount }) {
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount) {
-  // Deduct creator stake (atomic: only if balance is sufficient).
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Shared SERVER seed for every round's pattern (revealed post-match)
   // + its committed SHA-256 hash (shown pre-match) — mirrors
   // lane-rush-duel's provably-fair seed system. The match id becomes
@@ -437,22 +427,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  // Deduct joiner's stake (atomic: only if balance is sufficient).
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Brief 3-second "Ready" window so both players can read the
   // match-found banner before round 1's memorize phase opens. /status
   // auto-advances to the memorize phase once the deadline passes
@@ -479,13 +453,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     )
     .returning();
 
-  // If our conditional UPDATE didn't match any rows (because another
-  // concurrent joiner raced us), refund joiner stake.
+  // If our conditional UPDATE didn't match any rows, another concurrent
+  // joiner raced us.
   if (!updated) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stakeAmount}` })
-      .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
   }
 
@@ -521,10 +491,6 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
       if (match.player1Id !== loserClerkId) {
         return { error: "Only the creator can cancel", status: 403 };
       }
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-        .where(eq(users.clerkId, loserClerkId));
       const [updated] = await tx
         .update(memoryGridMatches)
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
@@ -545,21 +511,6 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
     const winnerUserId = loserIsP1 ? match.player2Id : match.player1Id;
     const result = loserIsP1 ? RESULT.PLAYER2 : RESULT.PLAYER1;
     const isAi = isFreeAiMatch(match);
-    const payout = isAi
-      ? { winnerNet: 0, houseFee: 0, prizePaid: 0 }
-      : computePayout({
-          stakeAmount: match.stakeAmount,
-          result,
-        });
-
-    // Credit the winner only for paid PvP. The AI seat is not a user
-    // account and free matches never alter token balances.
-    if (!isAi) {
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-        .where(eq(users.clerkId, winnerUserId));
-    }
 
     const [updated] = await tx
       .update(memoryGridMatches)
@@ -569,8 +520,8 @@ export async function forfeitMatch({ loserClerkId, matchId }) {
         roundDeadline: null,
         result,
         winnerId: winnerUserId,
-        houseFee: payout.houseFee.toFixed(2),
-        prizePaid: payout.prizePaid.toFixed(2),
+        houseFee: "0.00",
+        prizePaid: "0.00",
         endedAt: new Date(),
       })
       .where(
@@ -615,14 +566,6 @@ export async function cancelMatch({ userId, matchId }) {
     if (match.player1Id !== userId) {
       return { error: "Only the creator can cancel", status: 403 };
     }
-
-    // Refund creator stake.
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, userId));
 
     const [updated] = await tx
       .update(memoryGridMatches)
@@ -1222,22 +1165,7 @@ async function resolveMatch(tx, match) {
     Number(match.p2Total || 0),
   );
 
-  // A DRAW is a tiebreak-round draw (equal totals after round 5 go
-  // to round 6, so any end-state draw is a round-6 tie): each player
-  // is refunded 95% of their stake, house keeps 5% per side.
   const isAi = isFreeAiMatch(match);
-  const payout = isAi
-    ? {
-        winnerNet: 0,
-        houseFee: 0,
-        prizePaid: 0,
-        refundEach: 0,
-      }
-    : computePayout({
-        stakeAmount: match.stakeAmount,
-        result,
-        drawFeePct: result === RESULT.DRAW ? OVERTIME_DRAW_FEE_PCT : 0,
-      });
 
   const winnerId =
     result === RESULT.PLAYER1
@@ -1245,26 +1173,6 @@ async function resolveMatch(tx, match) {
       : result === RESULT.PLAYER2
         ? match.player2Id
         : null;
-
-  if (!isAi && winnerId) {
-    // Winner gets their stake back + 90% of the loser's stake.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.winnerNet}` })
-      .where(eq(users.clerkId, winnerId));
-  } else if (!isAi) {
-    // DRAW — refund both players. On a tiebreak draw that is 95% of
-    // each player's stake (5% rake per side), per computePayout's
-    // refundEach.
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
-      .where(eq(users.clerkId, match.player1Id));
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${payout.refundEach}` })
-      .where(eq(users.clerkId, match.player2Id));
-  }
 
   // Stamp the match as finished. The `board` column stays on the
   // row so the post-match reveal screen can render the full layout
@@ -1277,8 +1185,8 @@ async function resolveMatch(tx, match) {
       roundDeadline: null,
       result,
       winnerId,
-      houseFee: payout.houseFee.toFixed(2),
-      prizePaid: payout.prizePaid.toFixed(2),
+      houseFee: "0.00",
+      prizePaid: "0.00",
       endedAt: new Date(),
     })
     .where(eq(memoryGridMatches.id, match.id))

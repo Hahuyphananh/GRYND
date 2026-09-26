@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { rpsPvpGames, users } from "../../../../../db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { rpsPvpGames } from "../../../../../db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function POST(req) {
   const gate = await requireAgeVerifiedUser();
@@ -49,13 +49,7 @@ export async function POST(req) {
         .set({ status: "cancelled", endedAt: new Date() })
         .where(eq(rpsPvpGames.id, parsedGameId));
 
-      const [user] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${game.betAmount}` })
-        .where(eq(users.clerkId, userId))
-        .returning({ balance: users.balance });
-
-      return Number(user.balance);
+      return null;
     });
 
     return NextResponse.json({ success: true, data: { newBalance } });

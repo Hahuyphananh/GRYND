@@ -24,7 +24,6 @@
 // blackjack layout / farkle color scheme.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
@@ -35,7 +34,6 @@ import {
   KENO_PVP_MATCH_UPDATED,
   kenoPvpMatchRoom,
 } from "../../../lib/keno-pvp/rooms";
-import { STAKE_PRESETS } from "../../../lib/keno-pvp/constants";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
@@ -57,9 +55,10 @@ export default function KenoLobbyPage() {
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  const [stake, setStake] = useDefaultWager("keno", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
+  // so there is no stake to pick and no token balance to load.
+  const stake = 0;
   const [availableMatches, setAvailableMatches] = useState([]);
-  const [balance, setBalance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
@@ -81,30 +80,13 @@ export default function KenoLobbyPage() {
     }
   }, []);
 
-  const fetchBalance = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const res = await fetch("/api/get-user-tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data?.success) setBalance(Number(data.data.balance));
-    } catch {
-      // Silent
-    }
-  }, [isSignedIn]);
-
   useEffect(() => {
     fetchAvailable();
-    fetchBalance();
     const interval = setInterval(() => {
       fetchAvailable();
-      fetchBalance();
     }, 3000);
     return () => clearInterval(interval);
-  }, [fetchAvailable, fetchBalance]);
+  }, [fetchAvailable]);
 
   const myOpenMatch = useMemo(
     () =>
@@ -259,8 +241,7 @@ export default function KenoLobbyPage() {
   }, [posthog, router, socket]);
 
   const myOpenMatchId = myOpenMatch?.id ?? null;
-  const stakeValid = stake > 0 && (balance === null || balance >= stake);
-  const canCreate = isSignedIn && !busy && !aiBusy && stakeValid && myOpenMatchId === null;
+  const canCreate = isSignedIn && !busy && !aiBusy && myOpenMatchId === null;
 
   // Redirect to the real Keno match page.
   const matchHref = (matchId) => `/casino/keno-pvp/${matchId}`;
@@ -329,10 +310,6 @@ export default function KenoLobbyPage() {
           },
         ],
       }}
-      balance={balance}
-      stake={stake}
-      onStakeChange={setStake}
-      stakeOptions={STAKE_PRESETS}
       busy={busy}
       onPlay={() => {
         posthog?.capture("keno_pvp_lobby_create_clicked", { stake });
@@ -357,14 +334,6 @@ export default function KenoLobbyPage() {
             hard: "The bot almost never skips a tile and taps near the human floor.",
           }}
         />
-      }
-      escrowNote={
-        <>
-          We pair you with another player of the <b>exact same</b> stake.
-          If no one is waiting, your stake is escrowed in a private lobby
-          until someone joins or you cancel. Both players catch the same
-          server-side ball stream. The server grades every tap.
-        </>
       }
       error={error}
       lobbies={availableMatches}

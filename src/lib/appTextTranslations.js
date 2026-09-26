@@ -313,8 +313,9 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Best-of-3 PvP Blackjack table",
         blackjack_desc:
           "Best-of-3 head-to-head. Read the table, time your swaps, outplay the seat across from you.",
-        poker_alt: "Poker table with cards and chips",
-        poker_desc: "Real players, one table. Bluff, read, and stack up.",
+        tower_arena_alt: "Tower Arena blocks stacked on a shared table",
+        tower_arena_desc:
+          "Two to six players, one shared tower. Build, block, and outlast the collapse.",
         plinko_alt: "Plinko game with falling chips",
         plinko_desc:
           "Duel on the same peg field — 3 balls each. Pick your launch and out-score your rival.",
@@ -474,7 +475,7 @@ export const APP_TEXT_TRANSLATIONS = {
       roulette_desc:
         "Shared wheel, shrinking board. Remove numbers, steal points, and outplay your opponent.",
       blackjack_name: "Blackjack",
-      poker_name: "Poker",
+      tower_arena_name: "Tower Arena",
       plinko_name: "Plinko",
       blackjack_desc:
         "Best-of-3 head-to-head. Read the table, time your swaps, and outplay the seat across from you.",
@@ -486,8 +487,6 @@ export const APP_TEXT_TRANSLATIONS = {
         "Stake tokens and race another player on a shared 4×4 memory grid. Flip two cards to match pairs. A match keeps your turn, winner takes 1.9× their stake; a 5% platform fee applies.",
       plinko_desc:
         "Same peg field, 3 balls each. Pick your launch and out-score your rival.",
-      poker_desc:
-        "Multiplayer Texas Hold'em. Bluff, read the table, and outplay the room.",
       crash_arena_desc:
         "Join a table, post the blinds, and hold against the crash curve. Last player standing takes the pot.",
       chess_desc: "Outthink your opponent move by move.",
@@ -1014,14 +1013,6 @@ export const APP_TEXT_TRANSLATIONS = {
         fetch_balance_error: "Failed to fetch balance",
       },
       // ── Slots page chrome ─────────────────────────────
-      // ── Poker page chrome ─────────────────────────────
-      poker: {
-        title: "♠ Poker Royale ♠",
-        subtitle: "Texas Hold'em Multiplayer",
-        tokens_label: "Tokens",
-        play_button: "Texas Hold'em ♦",
-        tagline: "Face up to 5 other players or AI in private or public matches, with rankings and token prizes.",
-      },
       // ── Uno (Neon Flush) page chrome ──────────────────
       uno: {
         title_online: "Neon Flush 1v1 Online",
@@ -2040,8 +2031,9 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Table de Blackjack PvP en Best of 3",
         blackjack_desc:
           "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
-        poker_alt: "Table de poker avec cartes et jetons",
-        poker_desc: "De vrais joueurs, une table. Bluffe, lis et empile.",
+        tower_arena_alt: "Blocs de Tower Arena empilés sur une table partagée",
+        tower_arena_desc:
+          "De deux à six joueurs, une tour partagée. Construis, bloque et survis à l'effondrement.",
         plinko_alt: "Jeu Plinko avec des jetons qui tombent",
         plinko_desc:
           "Duel sur le même champ de picots — 3 balles chacun. Choisis ton tir et bats ton rival.",
@@ -2202,7 +2194,7 @@ export const APP_TEXT_TRANSLATIONS = {
       roulette_desc:
         "Roue partagée, plateau qui rétrécit. Retirez des numéros, volez des points et dépassez votre adversaire.",
       blackjack_name: "Blackjack",
-      poker_name: "Poker",
+      tower_arena_name: "Tower Arena",
       plinko_name: "Plinko",
       blackjack_desc:
         "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
@@ -2214,8 +2206,6 @@ export const APP_TEXT_TRANSLATIONS = {
         "Misez des tokens et affrontez un autre joueur sur une grille mémoire 4×4 partagée. Retournez deux cartes pour trouver des paires. Une paire garde votre tour, le gagnant remporte 1,9× sa mise ; des frais de plateforme de 5 % s'appliquent.",
       plinko_desc:
         "Même champ de picots, 3 balles chacun. Choisis ton tir et bats ton rival.",
-      poker_desc:
-        "Texas Hold'em multijoueur. Bluffe, lis la table et domine la salle.",
       crash_arena_desc:
         "Rejoignez une table, postez les blinds et tenez face à la courbe du crash. Le dernier joueur en lice remporte le pot.",
       chess_desc: "Dépasse ton adversaire coup par coup.",
@@ -3394,8 +3384,9 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Mesa de Blackjack PvP al mejor de 3",
         blackjack_desc:
           "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
-        poker_alt: "Mesa de póker con cartas y fichas",
-        poker_desc: "Jugadores reales, una mesa. Farolea, lee y acumula.",
+        tower_arena_alt: "Bloques de Tower Arena apilados en una mesa compartida",
+        tower_arena_desc:
+          "De dos a seis jugadores, una torre compartida. Construye, bloquea y sobrevive al derrumbe.",
         plinko_alt: "Juego Plinko con fichas cayendo",
         plinko_desc:
           "Duelo en el mismo campo de clavijas: 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
@@ -3557,7 +3548,7 @@ export const APP_TEXT_TRANSLATIONS = {
       roulette_desc:
         "Ruleta compartida, tablero que se encoge. Retira números, roba puntos y supera a tu rival.",
       blackjack_name: "Blackjack",
-      poker_name: "Póker",
+      tower_arena_name: "Tower Arena",
       plinko_name: "Plinko",
       blackjack_desc:
         "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
@@ -3569,8 +3560,6 @@ export const APP_TEXT_TRANSLATIONS = {
         "Apuesta fichas y enfréntate a otro jugador en una cuadrícula de memoria 4×4 compartida. Voltea dos cartas para encontrar parejas. Una pareja mantiene tu turno, el ganador se lleva 1,9× su apuesta; se aplica una tarifa de plataforma del 5 %.",
       plinko_desc:
         "Mismo campo de clavijas, 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
-      poker_desc:
-        "Texas Hold'em multijugador. Farolea, lee la mesa y domina la sala.",
       crash_arena_desc:
         "Únete a una mesa, publica las ciegas y aguanta contra la curva del crash. El último jugador en pie se lleva el bote.",
       chess_desc: "Supera a tu oponente jugada a jugada.",

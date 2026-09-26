@@ -16,6 +16,13 @@ import {
   trophiesToReachLevel,
 } from "../../../lib/battlepass";
 import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
+import {
+  OVERALL_TROPHY_MAX,
+  TROPHY_GAMES,
+  TROPHY_LOSS,
+  TROPHY_MAX,
+  TROPHY_WIN,
+} from "../../../lib/trophies";
 import { TITLE_MILESTONES } from "../../../lib/titles";
 import {
   rewardsForLevel,
@@ -88,8 +95,8 @@ export async function GET() {
         );
       }
     }
-    // Battle Pass level is DERIVED from trophies (10,000 total = level 100),
-    // never from XP. The stored xp/level columns are legacy and no longer
+    // Battle Pass level is DERIVED from trophies (OVERALL_TROPHY_MAX = level
+    // 100), never from XP. The stored xp/level columns are legacy and no longer
     // drive progression.
     const totalTrophies = userId ? await getTotalTrophiesForUser(userId) : 0;
     const progress = getBattlepassProgressFromTrophies(totalTrophies);
@@ -167,6 +174,20 @@ export async function GET() {
         ...progress,
         ...prestigeStatus,
         levels,
+        // The trophy RULE, published with the pass so the page's copy can never
+        // drift from the constants. `perGameCap` is the per-game cap, `gameCount`
+        // is how many games are rated (which is what sets `overallMax` and the
+        // Battle Pass level cost), and win/loss are the duel swing — the
+        // multi-seat placement ladder spans exactly those two bounds. Adding or
+        // removing a rated game therefore updates the UI copy on the next load
+        // with no page edit.
+        trophyConfig: {
+          perGameCap: TROPHY_MAX,
+          gameCount: TROPHY_GAMES.length,
+          overallMax: OVERALL_TROPHY_MAX,
+          win: TROPHY_WIN,
+          loss: TROPHY_LOSS,
+        },
         // Number of emote/title/glow/cosmetic/functional rewards the player
         // has reached but not yet claimed — drives the navbar nudge +
         // "rewards ready" chip.

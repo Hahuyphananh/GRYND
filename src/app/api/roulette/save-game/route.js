@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { rouletteGames, users } from "../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 const rouletteNumbers = [
   0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24,
@@ -66,15 +67,12 @@ export async function POST(req) {
         { status: 400 },
       );
     }
-    // Roulette is high-variance (35:1 on a straight) — total staked per spin
-    // capped at HIGH_VARIANCE_MAX_BET (must match src/lib/games/economy.ts).
-    const totalStaked = Object.values(bets).reduce((sum, v) => sum + (Number(v) || 0), 0);
-    if (!Number.isFinite(totalStaked) || totalStaked <= 0 || totalStaked > 10000) {
-      return NextResponse.json(
-        { success: false, error: "Total bet must be between 1 and 10,000 tokens" },
-        { status: 400 },
-      );
-    }
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): the spin is free. The
+    // total stake is normalized to 0 so no bet is ever charged; the round is
+    // still resolved and recorded, it just does not move tokens.
+    const totalStaked = normalizeStake(
+      Object.values(bets).reduce((sum, v) => sum + (Number(v) || 0), 0),
+    );
 
     // Get user data
     const userData = await db
@@ -90,37 +88,16 @@ export async function POST(req) {
     }
 
     const user = userData[0];
-    const totalBetAmount = Object.values(bets).reduce((sum, amount) => {
-      const numeric = Number(amount);
-      if (!Number.isFinite(numeric) || numeric <= 0) return sum;
-      return sum + numeric;
-    }, 0);
-    if (totalBetAmount <= 0) {
-      return NextResponse.json(
-        { success: false, error: "Invalid bet amount" },
-        { status: 400 },
-      );
-    }
+    const totalBetAmount = totalStaked;
 
     const spinResultIndex = Math.floor(Math.random() * rouletteNumbers.length);
     const spinResult = rouletteNumbers[spinResultIndex];
-    const payout = calculatePayout(bets, spinResult);
-    const result = payout > 0 ? "won" : "lost";
-
-    const [updatedUser] = await db
-      .update(users)
-      .set({ balance: sql`${users.balance} - ${totalBetAmount} + ${payout}` })
-      .where(
-        sql`${users.clerkId} = ${userId} AND ${users.balance} >= ${totalBetAmount}`,
-      )
-      .returning({ balance: users.balance });
-
-    if (!updatedUser) {
-      return NextResponse.json(
-        { success: false, error: "Insufficient balance" },
-        { status: 400 },
-      );
-    }
+    const spinPayout = calculatePayout(bets, spinResult);
+    const result = spinPayout > 0 ? "won" : "lost";
+    // The spin outcome is still resolved (the client animates it), but with
+    // stakes retired the ledger payout is 0 — nothing is credited.
+    const payout = 0;
+    const updatedUser = { balance: user.balance };
 
     // Record the game
     await db.insert(rouletteGames).values({
@@ -152,7 +129,7 @@ export async function POST(req) {
       data: {
         spinResult,
         spinResultIndex,
-        win: payout > 0,
+        win: spinPayout > 0,
         amount: payout,
         newBalance: Number(updatedUser.balance),
       },

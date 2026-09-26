@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db, getDisplayName, initialState, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { coerceAiDifficulty } from "../../../../lib/aiDifficulty";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req) {
   try {
@@ -13,11 +14,10 @@ export async function POST(req) {
     // that never sent one, lands on the shared default rather than storing a
     // spelling the shared skill table does not know.
     const difficulty = coerceAiDifficulty(rawDifficulty);
-    const amount = Number(wager);
-    // An AI match is FREE PLAY: the client sends no stake (0), which is the
-    // normal case here — not an invalid wager. Reject only malformed input
-    // (NaN/Infinity) or a negative stake.
-    if (!Number.isFinite(amount) || amount < 0) return NextResponse.json({ success: false, error: "Invalid wager" }, { status: 400 });
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): an AI match is free play.
+    // The requested wager is normalized to 0 so no malformed or legacy stake
+    // can be stored on the room.
+    const amount = normalizeStake(wager);
 
     const result = await db.transaction(async (tx) => {
       // AI mode is free play — skip `lockBalance` (no token deduction) and
@@ -25,7 +25,7 @@ export async function POST(req) {
       // game end and no phantom stake is ever stored on the room.
       const roomId = `yahtzee:${Date.now()}:ai`;
       const name = await getDisplayName(userId, tx);
-      const state = initialState(roomId, userId, name, 0);
+      const state = initialState(roomId, userId, name, amount);
       const aiId = `ai:${difficulty}`;
       state.ai = true;
       state.players.push({ userId: aiId, name: `AI (${difficulty})`, isAI: true, difficulty });

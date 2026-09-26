@@ -94,7 +94,6 @@ test("endpoint does NOT fan out across game history tables", () => {
     "poolMatches",
     "hexDuelGames",
     "oddsGames",
-    "pokerGames",
     "memoryGridMatches",
     "diceFlushPlayers",
     "minesPvpMatches",

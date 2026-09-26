@@ -4,7 +4,7 @@
  * Tests for the per-game GRYND trophy system:
  *   * src/lib/trophies.js    — the pure, configurable rule (+30 / −30 / 0) and
  *                              the derived Prestige view of Elo
- *   * the floor (0) and cap (10,000) behaviour
+ *   * the floor (0) and cap (1,000) behaviour
  *   * src/lib/trophyStore.js — the server-authoritative writer + idempotency
  *                              journal + anti-reset identity ledger
  *   * the security posture (nothing client-supplied can move a trophy count,
@@ -39,7 +39,13 @@ import {
   trophyDeltaForOutcome,
   isValidTrophyOutcome,
   applyTrophyDelta,
+  applyTrophyChange,
   computeMatchTrophies,
+  computePlacementTrophies,
+  placementLadder,
+  placementDeltaForRank,
+  PLACEMENT_TOP,
+  PLACEMENT_BOTTOM,
   isTrophyComplete,
   trophyPhase,
   prestigeFromRating,
@@ -51,6 +57,7 @@ import {
 } from "../src/lib/trophies.js";
 
 import {
+  applyPlacementTrophies,
   applyTrophyResult,
   getTrophyForUser,
   getTrophiesForUser,
@@ -135,13 +142,15 @@ function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {
       }
 
       // ── duplicate check ─────────────────────────────────────────
+      // Works for a duel (2 participants) and a table (N participants):
+      // everything after the game key and match id is a participant id.
       if (/^SELECT 1 AS hit FROM trophy_events/i.test(sql)) {
-        const [gameKey, matchId, a, b] = params;
+        const [gameKey, matchId, ...participantIds] = params;
         const hit = state.events.some(
           (e) =>
             e.game_key === gameKey &&
             e.match_id === matchId &&
-            (e.user_id === a || e.user_id === b),
+            participantIds.includes(e.user_id),
         );
         return { rows: hit ? [{ hit: 1 }] : [] };
       }
@@ -189,7 +198,7 @@ function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {
         return { rows: [], rowCount: row ? 1 : 0 };
       }
 
-      // ── journal inserts (two rows per match) ─────────────────────
+      // ── journal inserts (one row per participating seat) ─────────
       if (/^INSERT INTO trophy_events/i.test(sql)) {
         for (let i = 0; i < params.length; i += 8) {
           const [
@@ -255,20 +264,28 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   assert.equal(TROPHY_DRAW, 0);
   assert.equal(TROPHY_START, 0);
   assert.equal(TROPHY_MIN, 0);
-  assert.equal(TROPHY_MAX, 10000);
+  assert.equal(TROPHY_MAX, 1000);
   assert.equal(TROPHY_CONFIG.win, 30);
   assert.equal(TROPHY_CONFIG.loss, -30);
-  assert.equal(TROPHY_CONFIG.max, 10000);
+  assert.equal(TROPHY_CONFIG.max, 1000);
+  // 19 rated games × 1,000 = 19,000 additive overall maximum (Poker's removal
+  // took the 20th game out, and the Battle Pass is derived from this value).
+  assert.equal(TROPHY_CONFIG.overallMax, 19000);
+  assert.equal(TROPHY_CONFIG.gameCount, 19);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 14);
+  assert.equal(TROPHY_GAMES.length, 19);
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
-  assert.equal(isTrophyGame("hex-duel"), false); // client-supplied winner
-  assert.equal(isTrophyGame("uno"), false); // multi-player
+  // The 6 formerly-excluded games are now REGISTERED (their trophy/rating
+  // distribution is wired later), so they are trophy games here too.
+  assert.equal(isTrophyGame("hex-duel"), true);
+  assert.equal(isTrophyGame("uno"), true);
+  // Poker was removed from the game entirely — it must no longer be a trophy
+  // game, which is also what keeps OVERALL_TROPHY_MAX honest.
   assert.equal(isTrophyGame("poker"), false);
   assert.equal(normalizeTrophyGameKey("nope"), RATED_GAMES[0]);
   assert.equal(getTrophyGameLabel("pool"), "Pool Masters");
@@ -305,7 +322,7 @@ test("applyTrophyDelta: a loss subtracts 30", () => {
 });
 
 test("applyTrophyDelta: a draw never moves the count", () => {
-  for (const start of [0, 30, 5000, 10000]) {
+  for (const start of [0, 30, 500, 1000]) {
     const r = applyTrophyDelta(start, "draw");
     assert.equal(r.before, start);
     assert.equal(r.after, start);
@@ -329,17 +346,17 @@ test("applyTrophyDelta: the count can never go below 0", () => {
   assert.equal(nearZero.clamped, true);
 });
 
-test("applyTrophyDelta: the count can never exceed 10,000", () => {
-  const atCap = applyTrophyDelta(10000, "win");
-  assert.equal(atCap.before, 10000);
-  assert.equal(atCap.after, 10000);
+test("applyTrophyDelta: the count can never exceed 1,000", () => {
+  const atCap = applyTrophyDelta(1000, "win");
+  assert.equal(atCap.before, 1000);
+  assert.equal(atCap.after, 1000);
   assert.equal(atCap.delta, 0);
   assert.equal(atCap.nominalDelta, 30);
   assert.equal(atCap.clamped, true);
 
-  // 9,990 plus 30 caps at 10,000, applying only +10.
-  const nearCap = applyTrophyDelta(9990, "win");
-  assert.equal(nearCap.after, 10000);
+  // 990 plus 30 caps at 1,000, applying only +10.
+  const nearCap = applyTrophyDelta(990, "win");
+  assert.equal(nearCap.after, 1000);
   assert.equal(nearCap.delta, 10);
   assert.equal(nearCap.clamped, true);
 });
@@ -347,8 +364,8 @@ test("applyTrophyDelta: the count can never exceed 10,000", () => {
 test("clampTrophies: floor, cap and garbage input", () => {
   assert.equal(clampTrophies(-500), 0);
   assert.equal(clampTrophies(0), 0);
-  assert.equal(clampTrophies(4321), 4321);
-  assert.equal(clampTrophies(999999), 10000);
+  assert.equal(clampTrophies(432), 432);
+  assert.equal(clampTrophies(999999), 1000);
   assert.equal(clampTrophies("nope"), 0); // never NaN
   assert.equal(clampTrophies(undefined), 0);
 });
@@ -366,9 +383,9 @@ test("computeMatchTrophies: a win moves +30 / −30 independently of the gap", (
   assert.equal(r.loser.after, 270);
   // A flat rule ignores the size of the gap — unlike Elo. A 9000-gap win still
   // pays exactly +30, and a loser already at 0 cannot go negative.
-  const lopsided = computeMatchTrophies({ winnerTrophies: 9000, loserTrophies: 0 });
+  const lopsided = computeMatchTrophies({ winnerTrophies: 900, loserTrophies: 0 });
   assert.equal(lopsided.winner.delta, 30);
-  assert.equal(lopsided.winner.after, 9030);
+  assert.equal(lopsided.winner.after, 930);
   assert.equal(lopsided.loser.delta, 0);
   assert.equal(lopsided.loser.after, 0);
 });
@@ -391,39 +408,39 @@ test("computeMatchTrophies: a draw moves neither side", () => {
 // ════════════════════════════════════════════════════════════════════════
 
 test("phase: below the cap trophies lead; at the cap Elo leads", () => {
-  assert.equal(isTrophyComplete(9999), false);
-  assert.equal(isTrophyComplete(10000), true);
+  assert.equal(isTrophyComplete(999), false);
+  assert.equal(isTrophyComplete(1000), true);
   assert.equal(trophyPhase(0), "trophies");
-  assert.equal(trophyPhase(9999), "trophies");
-  assert.equal(trophyPhase(10000), "elo");
+  assert.equal(trophyPhase(999), "trophies");
+  assert.equal(trophyPhase(1000), "elo");
 });
 
-test("prestigeFromRating: prestige = max(0, elo − 1000)", () => {
-  assert.equal(prestigeFromRating(1000), 0);
-  assert.equal(prestigeFromRating(1100), 100);
-  assert.equal(prestigeFromRating(1500), 500);
-  assert.equal(prestigeFromRating(2000), 1000);
-  // Defensive: below the starting rating or non-finite never goes negative.
-  assert.equal(prestigeFromRating(900), 0);
+test("prestigeFromRating: prestige IS the Elo value (starts at 1000)", () => {
+  assert.equal(prestigeFromRating(1000), 1000);
+  assert.equal(prestigeFromRating(1100), 1100);
+  assert.equal(prestigeFromRating(1500), 1500);
+  assert.equal(prestigeFromRating(2000), 2000);
+  assert.equal(prestigeFromRating(900), 900);
   assert.equal(prestigeFromRating(0), 0);
-  assert.equal(prestigeFromRating(undefined), 0);
+  // Non-finite falls back to the 1000 baseline.
+  assert.equal(prestigeFromRating(undefined), 1000);
 });
 
 test("trophyProgress: the exact fields the UI reads", () => {
   const fresh = trophyProgress(0);
   assert.equal(fresh.trophies, 0);
-  assert.equal(fresh.maxTrophies, 10000);
-  assert.equal(fresh.remaining, 10000);
+  assert.equal(fresh.maxTrophies, 1000);
+  assert.equal(fresh.remaining, 1000);
   assert.equal(fresh.progressPercent, 0);
   assert.equal(fresh.complete, false);
   assert.equal(fresh.phase, "trophies");
 
-  const mid = trophyProgress(2500);
-  assert.equal(mid.remaining, 7500);
+  const mid = trophyProgress(250);
+  assert.equal(mid.remaining, 750);
   assert.equal(mid.progressPercent, 25);
   assert.equal(mid.phase, "trophies");
 
-  const done = trophyProgress(10000);
+  const done = trophyProgress(1000);
   assert.equal(done.remaining, 0);
   assert.equal(done.progressPercent, 100);
   assert.equal(done.complete, true);
@@ -449,7 +466,7 @@ test("toTrophyShape: normalizes a row (camelCase and snake_case)", () => {
   assert.equal(shape.games, 11); // decided = wins + losses
   assert.equal(shape.winRate, 54.55);
   assert.equal(shape.lastDelta, 30);
-  assert.equal(shape.maxTrophies, 10000);
+  assert.equal(shape.maxTrophies, 1000);
   assert.equal(shape.phase, "trophies");
 });
 
@@ -586,20 +603,309 @@ test("TEST DUPLICATE RESULT: a different match still moves trophies", async () =
 });
 
 // ════════════════════════════════════════════════════════════════════════
+// 6b. The placement form of the rule (multi-seat tables)
+// ════════════════════════════════════════════════════════════════════════
+
+test("the placement ladder descends from +30 to −30 by rank", () => {
+  assert.equal(placementDeltaForRank(1, 4), 30);
+  assert.equal(placementDeltaForRank(2, 4), 10);
+  assert.equal(placementDeltaForRank(3, 4), -10);
+  assert.equal(placementDeltaForRank(4, 4), -30);
+  // The bounds are the duel values, whichever way the table is read.
+  assert.equal(PLACEMENT_TOP, TROPHY_WIN);
+  assert.equal(PLACEMENT_BOTTOM, TROPHY_LOSS);
+  assert.equal(placementDeltaForRank(1, 6), PLACEMENT_TOP);
+  assert.equal(placementDeltaForRank(6, 6), PLACEMENT_BOTTOM);
+  // A one-seat table has nothing to trade against.
+  assert.equal(placementDeltaForRank(1, 1), 0);
+  assert.deepEqual(placementLadder(1), []);
+});
+
+test("every table size yields a descending, zero-sum integer ladder", () => {
+  // A table redistributes trophies: it must never mint or burn them.
+  assert.deepEqual(placementLadder(2), [30, -30]);
+  assert.deepEqual(placementLadder(3), [30, 0, -30]);
+  assert.deepEqual(placementLadder(4), [30, 10, -10, -30]);
+  assert.deepEqual(placementLadder(5), [30, 15, 0, -15, -30]);
+  assert.deepEqual(placementLadder(6), [30, 18, 6, -6, -18, -30]);
+
+  for (let seats = 2; seats <= 12; seats += 1) {
+    const ladder = placementLadder(seats);
+    assert.equal(ladder.length, seats);
+    assert.equal(
+      ladder.reduce((sum, delta) => sum + delta, 0),
+      0,
+      `${seats}-seat ladder must be zero-sum`,
+    );
+    assert.equal(ladder[0], PLACEMENT_TOP);
+    assert.equal(ladder[seats - 1], PLACEMENT_BOTTOM);
+    for (let i = 1; i < seats; i += 1) {
+      assert.ok(
+        ladder[i] < ladder[i - 1],
+        `${seats}-seat ladder must descend at rank ${i + 1}`,
+      );
+    }
+  }
+});
+
+test("computePlacementTrophies: each seat gets its rung of the ladder", () => {
+  const r = computePlacementTrophies({ groups: [[500], [500], [40], [0]] });
+  assert.equal(r.result, "placement");
+  assert.equal(r.seatCount, 4);
+  assert.deepEqual(r.ladder, [30, 10, -10, -30]);
+  assert.deepEqual(r.nominalDeltas, [30, 10, -10, -30]);
+  assert.deepEqual(
+    r.seats.map((s) => s.delta),
+    [30, 10, -10, 0],
+  );
+  assert.deepEqual(
+    r.seats.map((s) => s.after),
+    [530, 510, 30, 0],
+  );
+  assert.deepEqual(r.seats.map((s) => s.clamped), [false, false, false, true]);
+  // The bottom seat was on the floor: it is still given the −30 rung, but the
+  // clamp means it actually moves nothing.
+  assert.equal(r.seats[3].nominalDelta, -30);
+  assert.equal(r.seats[3].delta, 0);
+  // Placements are 1-based, best first.
+  assert.deepEqual(r.seats.map((s) => s.place), [1, 2, 3, 4]);
+});
+
+test("computePlacementTrophies: tied seats share the ranks they span", () => {
+  // 2nd and 3rd of four are level → each reads the mean of +10 and −10.
+  const r = computePlacementTrophies({ groups: [[100], [100, 100], [100]] });
+  assert.deepEqual(r.nominalDeltas, [30, 0, 0, -30]);
+  assert.deepEqual(r.seats.map((s) => s.place), [1, 2, 2, 4]);
+  assert.deepEqual(r.seats.map((s) => s.placeTo), [1, 3, 3, 4]);
+  // Ties never break the zero sum, whichever seats are level.
+  assert.equal(r.nominalDeltas.reduce((sum, d) => sum + d, 0), 0);
+
+  // Crash Arena: one survivor and three players who crashed. The victims are
+  // all level for last, so they share ranks 2..4: (10 − 10 − 30) / 3 = −10.
+  const crash = computePlacementTrophies({ groups: [[100], [100, 100, 100]] });
+  assert.deepEqual(crash.nominalDeltas, [30, -10, -10, -10]);
+  assert.equal(crash.nominalDeltas.reduce((sum, d) => sum + d, 0), 0);
+  assert.equal(crash.seats[1].place, 2);
+  assert.equal(crash.seats[3].placeTo, 4);
+});
+
+test("computePlacementTrophies: a lone seat settles nothing", () => {
+  const r = computePlacementTrophies({ groups: [[500]] });
+  assert.equal(r.seatCount, 1);
+  assert.deepEqual(r.seats, []);
+  assert.deepEqual(r.nominalDeltas, []);
+});
+
+test("applyTrophyChange: an explicit delta clamps at the bounds like a duel", () => {
+  // The ladder share is applied to the seat's OWN count, so a 2nd place at the
+  // floor loses nothing and a 2nd place at the cap gains nothing.
+  const floored = applyTrophyChange(0, -30);
+  assert.equal(floored.delta, 0);
+  assert.equal(floored.nominalDelta, -30);
+  assert.equal(floored.clamped, true);
+  const capped = applyTrophyChange(TROPHY_MAX, 30);
+  assert.equal(capped.delta, 0);
+  assert.equal(capped.clamped, true);
+  const middle = applyTrophyChange(500, -10);
+  assert.equal(middle.after, 490);
+  assert.equal(middle.clamped, false);
+});
+
+const TABLE_USERS = [
+  { id: 11, clerkId: "user_first", email: "first@grynd.test" },
+  { id: 22, clerkId: "user_second", email: "second@grynd.test" },
+  { id: 33, clerkId: "user_third", email: "third@grynd.test" },
+  { id: 44, clerkId: "user_fourth", email: "fourth@grynd.test" },
+];
+
+const TABLE_ARGS = {
+  gameKey: "crash-arena",
+  matchId: "hand-1",
+  placements: ["user_first", "user_second", "user_third", "user_fourth"],
+};
+
+/** Seed a player's trophy row for one game so a negative swing is observable. */
+function seedTrophyRow(db, userId, gameKey, trophies) {
+  db.state.trophies.set(`${userId}:${gameKey}`, {
+    user_id: userId,
+    game_key: gameKey,
+    trophies,
+    peak_trophies: trophies,
+    games_rated: 1,
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    last_delta: 0,
+    last_trophy_at: null,
+  });
+}
+
+test("PLACEMENT WRITER: the ladder pays +30/+10/−10/−30 across a 4-seat table", async () => {
+  const db = makeFakeDb({ users: TABLE_USERS });
+  // Seed distinct counts so every rung of the ladder is observable — a seat on
+  // the floor legitimately moves 0, which would hide the share it was given.
+  seedTrophyRow(db, 11, "crash-arena", 500);
+  seedTrophyRow(db, 22, "crash-arena", 500);
+  seedTrophyRow(db, 33, "crash-arena", 140);
+  seedTrophyRow(db, 44, "crash-arena", 20);
+
+  const result = await applyPlacementTrophies({ tx: db.tx, ...TABLE_ARGS });
+  assert.equal(result.applied, true);
+  assert.equal(result.result, "placement");
+  assert.equal(result.winner.userId, 11);
+  assert.equal(result.winner.delta, 30);
+  assert.equal(result.winner.trophiesAfter, 530);
+
+  // `places` is the whole finishing order, best first.
+  assert.equal(result.places.length, 4);
+  assert.deepEqual(result.places.map((p) => p.userId), [11, 22, 33, 44]);
+  assert.deepEqual(result.places.map((p) => p.place), [1, 2, 3, 4]);
+  assert.deepEqual(result.places.map((p) => p.nominalDelta), [30, 10, -10, -30]);
+  // The bottom seat only had 20, so its −30 is cut short to −20 (and flagged).
+  assert.deepEqual(result.places.map((p) => p.delta), [30, 10, -10, -20]);
+  assert.deepEqual(result.places.map((p) => p.clamped), [false, false, false, true]);
+  assert.deepEqual(result.places.map((p) => p.trophiesAfter), [530, 510, 130, 0]);
+
+  // Only first place is a WIN; every other seat lost the table, even the one
+  // the ladder still paid for placing 2nd.
+  assert.equal(db.state.trophies.get("11:crash-arena").wins, 1);
+  assert.equal(db.state.trophies.get("11:crash-arena").losses, 0);
+  for (const userId of [22, 33, 44]) {
+    assert.equal(db.state.trophies.get(`${userId}:crash-arena`).losses, 1);
+    assert.equal(db.state.trophies.get(`${userId}:crash-arena`).wins, 0);
+  }
+
+  // One journal row per human seat, all on the same match id.
+  const events = db.eventsFor("crash-arena").filter((e) => e.match_id === "hand-1");
+  assert.equal(events.length, 4);
+  assert.equal(events.filter((e) => e.outcome === "win").length, 1);
+  assert.equal(events.filter((e) => e.outcome === "loss").length, 3);
+  assert.deepEqual(
+    events.map((e) => e.delta),
+    [30, 10, -10, -20],
+  );
+  // The winner's opponent reference is the runner-up; every loser points at the
+  // seat that beat them.
+  assert.equal(events.find((e) => e.outcome === "win").opponent_id, 22);
+  for (const loss of events.filter((e) => e.outcome === "loss")) {
+    assert.equal(loss.opponent_id, 11);
+  }
+});
+
+test("PLACEMENT WRITER: tied seats share the average of the ranks they span", async () => {
+  const db = makeFakeDb({ users: TABLE_USERS });
+  for (const user of TABLE_USERS) seedTrophyRow(db, user.id, "crash-arena", 100);
+
+  // One survivor (rank 1) and the three players who crashed, all level for
+  // last: they share ranks 2..4 → (10 − 10 − 30) / 3 = −10 each.
+  const result = await applyPlacementTrophies({
+    tx: db.tx,
+    ...TABLE_ARGS,
+    placements: [["user_first"], ["user_second", "user_third", "user_fourth"]],
+  });
+  assert.equal(result.applied, true);
+  assert.deepEqual(result.places.map((p) => p.nominalDelta), [30, -10, -10, -10]);
+  assert.deepEqual(result.places.map((p) => p.place), [1, 2, 2, 2]);
+  assert.deepEqual(result.places.map((p) => p.placeTo), [1, 4, 4, 4]);
+  assert.deepEqual(result.places.map((p) => p.delta), [30, -10, -10, -10]);
+  // The tied group banked nothing collectively: the ladder still sums to zero.
+  assert.equal(result.places.reduce((sum, p) => sum + p.nominalDelta, 0), 0);
+});
+
+test("PLACEMENT WRITER: a bare id list is read as a clean 1..N order", async () => {
+  const db = makeFakeDb({ users: TABLE_USERS });
+  const result = await applyPlacementTrophies({
+    tx: db.tx,
+    ...TABLE_ARGS,
+    placements: ["user_fourth", "user_third", "user_second", "user_first"],
+  });
+  assert.equal(result.applied, true);
+  assert.deepEqual(result.places.map((p) => p.userId), [44, 33, 22, 11]);
+  assert.equal(result.places[0].nominalDelta, 30);
+  assert.equal(result.places[3].nominalDelta, -30);
+});
+
+test("PLACEMENT WRITER: replaying the same table writes nothing", async () => {
+  const db = makeFakeDb({ users: TABLE_USERS });
+  await applyPlacementTrophies({ tx: db.tx, ...TABLE_ARGS });
+  const writesAfterFirst = db.writes().length;
+
+  const second = await applyPlacementTrophies({ tx: db.tx, ...TABLE_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.eventsFor("crash-arena").length, 4);
+});
+
+test("PLACEMENT WRITER: a partial replay is refused for the whole table", async () => {
+  const db = makeFakeDb({ users: TABLE_USERS });
+  await applyPlacementTrophies({ tx: db.tx, ...TABLE_ARGS });
+  const writesAfterFirst = db.writes().length;
+
+  // One seat already journaled this match → the others must NOT be moved
+  // again either, or a table could be settled twice for three players.
+  const replay = await applyPlacementTrophies({
+    tx: db.tx,
+    ...TABLE_ARGS,
+    placements: ["user_first", "user_second"],
+  });
+  assert.equal(replay.applied, false);
+  assert.equal(replay.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+});
+
+test("PLACEMENT WRITER: malformed tables are refused before any write", async () => {
+  const cases = [
+    [{ placements: [] }, "missing-player"],
+    [{ placements: undefined }, "missing-player"],
+    [{ placements: ["user_first"] }, "missing-player"],
+    [{ placements: ["user_first", ""] }, "missing-player"],
+    [{ placements: [["user_first"], []] }, "missing-player"],
+    [{ placements: ["user_first", "user_first"] }, "same-player"],
+    [{ placements: [["user_first", "user_second"], ["user_second"]] }, "same-player"],
+    [{ gameKey: "not-a-game" }, "game-not-rated"],
+    [{ matchId: "" }, "invalid-match-id"],
+    [{ placements: ["user_first", "user_ghost"] }, "user-not-found"],
+  ];
+  for (const [override, reason] of cases) {
+    const db = makeFakeDb({ users: TABLE_USERS });
+    const result = await applyPlacementTrophies({
+      tx: db.tx,
+      ...TABLE_ARGS,
+      ...override,
+    });
+    assert.equal(result.applied, false, `${reason} case must be refused`);
+    assert.equal(result.reason, reason);
+    assert.equal(db.writes().length, 0);
+  }
+});
+
+test("PLACEMENT WRITER: the ladder share can never come from the caller", async () => {
+  const db = makeFakeDb({ users: TABLE_USERS });
+  // A forged delta/nominalDelta on the args object must change nothing: the
+  // ladder is built from the counts read inside the lock.
+  const result = await applyPlacementTrophies({
+    tx: db.tx,
+    ...TABLE_ARGS,
+    winnerTrophies: 9999,
+    loserTrophies: 9999,
+    delta: 500,
+    nominalDelta: 500,
+  });
+  assert.equal(result.applied, true);
+  assert.deepEqual(result.places.map((p) => p.nominalDelta), [30, 10, -10, -30]);
+  assert.equal(db.state.trophies.get("11:crash-arena").trophies, 30);
+  // The unseeded seats start at 0, so both losses clamp to nothing.
+  assert.equal(db.state.trophies.get("33:crash-arena").trophies, 0);
+  assert.equal(db.state.trophies.get("44:crash-arena").trophies, 0);
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // 7. Writer: unauthorized / malformed input
 // ════════════════════════════════════════════════════════════════════════
 
 test("TEST UNAUTHORIZED: a non-rated game can never move trophies", async () => {
-  for (const gameKey of [
-    "poker",
-    "crash-arena",
-    "uno",
-    "tower-arena",
-    "roulette-pvp",
-    "hex-duel",
-    "not-a-game",
-    "",
-  ]) {
+  for (const gameKey of ["not-a-game", ""]) {
     const db = makeFakeDb({ users: TWO_USERS });
     const result = await applyTrophyResult({ tx: db.tx, ...WIN_ARGS, gameKey });
     assert.equal(result.applied, false, `game ${gameKey} must not award trophies`);
@@ -683,7 +989,7 @@ test("TEST UNAUTHORIZED: win/draw are the only outcomes the writer accepts", asy
 // 8. Writer: cap behaviour
 // ════════════════════════════════════════════════════════════════════════
 
-test("WRITER CAP: a win at 10,000 stays at 10,000 and reports the cap", async () => {
+test("WRITER CAP: a win at 1,000 stays at 1,000 and reports the cap", async () => {
   const db = makeFakeDb({
     users: TWO_USERS,
     seededEvents: [],
@@ -692,8 +998,8 @@ test("WRITER CAP: a win at 10,000 stays at 10,000 and reports the cap", async ()
   db.state.trophies.set("11:chess", {
     user_id: 11,
     game_key: "chess",
-    trophies: 10000,
-    peak_trophies: 10000,
+    trophies: 1000,
+    peak_trophies: 1000,
     games_rated: 400,
     wins: 350,
     losses: 50,
@@ -704,8 +1010,8 @@ test("WRITER CAP: a win at 10,000 stays at 10,000 and reports the cap", async ()
 
   const result = await applyTrophyResult({ tx: db.tx, ...WIN_ARGS });
   assert.equal(result.applied, true);
-  assert.equal(result.winner.trophiesBefore, 10000);
-  assert.equal(result.winner.trophiesAfter, 10000);
+  assert.equal(result.winner.trophiesBefore, 1000);
+  assert.equal(result.winner.trophiesAfter, 1000);
   assert.equal(result.winner.delta, 0);
   assert.equal(result.winner.complete, true);
   assert.equal(result.winner.phase, "elo");
@@ -778,9 +1084,12 @@ test("MIGRATION: 0173/0174/0175 are present and registered in the drizzle journa
   ]) {
     assert.ok(fs.existsSync(file), `${file} must exist`);
   }
-  // The cap must be enforced at the database level too.
-  const table = fs.readFileSync("src/db/migrations/0173_player_trophies.sql", "utf8");
-  assert.match(table, /trophies.*<= 10000|<= 10000.*trophies/s);
+  // The cap must be enforced at the database level too. 0177 lowers it to 1,000.
+  const table = fs.readFileSync(
+    "src/db/migrations/0177_trophy_cap_and_prestige_regate.sql",
+    "utf8",
+  );
+  assert.match(table, /trophies.*<= 1000|<= 1000.*trophies/s);
 });
 
 test("INVARIANT: trophies.js never imports the economy/XP/battlepass modules", () => {
@@ -863,17 +1172,29 @@ const WIRING = [
   ["odds-pvp", "src/app/api/odds/pvp/pick/route.ts"],
   ["odds-pvp", "src/app/api/odds/pvp/forfeit/route.ts"],
   ["odds-pvp", "src/app/api/odds/pvp/cleanup/route.ts"],
+  // The multi-seat tables use the placement form of the SAME ±30 (first place
+  // wins, every other human seat loses), which is a separate writer because it
+  // settles N seats in one idempotent journal write.
+  ["crash-arena", "src/lib/crash-poker/settleHand.ts", "applyPlacementTrophies"],
+  ["tower-arena", "src/lib/tower-arena/serverStore.ts", "applyPlacementTrophies"],
+  ["uno", "src/app/api/uno/multiplayer/route.js", "applyPlacementTrophies"],
+  // Roulette is a duel (two seats), so it uses the original 1v1 writer.
+  ["roulette-pvp", "src/lib/roulette-pvp/serverStore.js"],
 ];
 
-for (const [gameKey, file] of WIRING) {
+for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {
   test(`WIRING: ${file} feeds the ${gameKey} trophies`, () => {
     const src = fs.readFileSync(file, "utf8");
     assert.match(
       src,
-      /import\s*\{[^}]*applyTrophyResult[^}]*\}/,
-      `${file} must import applyTrophyResult`,
+      new RegExp(`import\\s*\\{[^}]*${writer}[^}]*\\}`),
+      `${file} must import ${writer}`,
     );
-    assert.match(src, /applyTrophyResult\(\{/, `${file} must call applyTrophyResult`);
+    assert.match(
+      src,
+      new RegExp(`${writer}\\(\\{`),
+      `${file} must call ${writer}`,
+    );
     assert.match(
       src,
       new RegExp(`gameKey:\\s*"${gameKey}"`),
@@ -907,7 +1228,11 @@ test("WIRING: trophies are wired into exactly the rated settlements", () => {
       if (files.has(full)) continue;
       if (full === "src/lib/trophyStore.js" || full === "src/lib/trophies.js") continue;
       const src = fs.readFileSync(full, "utf8");
-      if (/applyTrophyResult\(\{/.test(src)) offenders.push(full);
+      // BOTH writers: a settlement that is not in the list above is drift, and
+      // a game can only be settled by one of the two.
+      if (/applyTrophyResult\(\{|applyPlacementTrophies\(\{/.test(src)) {
+        offenders.push(full);
+      }
     }
   };
   walk("src");

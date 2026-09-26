@@ -3,22 +3,24 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { IconBell, IconCoins, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconUser, IconVolume, IconWand } from "@tabler/icons-react";
+import { IconBell, IconGlobe, IconHelp, IconMail, IconRotateClockwise, IconShield, IconSettings, IconUser, IconVolume, IconWand } from "@tabler/icons-react";
 import NavigationBar from "../../components/navigation-bar";
 import SoundToggle from "../../components/SoundToggle";
 import UpgradeProButton from "../../components/UpgradeProButton";
 import { useToast } from "../../components/toast/ToastProvider";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTranslation } from "../../hooks/useTranslation";
-import { WAGER_GAMES } from "../../lib/defaultWagers";
 import { QUESTIONNAIRE_QUESTIONS } from "../../lib/onboardingQuestionnaire";
 
 /**
  * Settings hub. Hosts the preferences that used to live directly in the nav
  * bar (sound toggle, language picker) plus account preferences:
  * responsible play (daily loss limit), account security (self-hosted email
- * OTP second factor), email notification opt-outs, and per-game default
- * wagers. Admin-only tools are rendered only for actual admins.
+ * OTP second factor) and email notification opt-outs. Admin-only tools are
+ * rendered only for actual admins.
+ *
+ * Stakes are retired (src/lib/games/stakes.js): the per-game "default wager"
+ * card is gone — there is no wager for a game to start with.
  */
 export default function SettingsPageClient() {
   const { isLoaded, isSignedIn, user } = useUser();
@@ -54,11 +56,6 @@ export default function SettingsPageClient() {
   });
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsMsg, setPrefsMsg] = useState(null);
-
-  // ── Per-game default wagers ──
-  const [wagerDrafts, setWagerDrafts] = useState({});
-  const [wagerSaving, setWagerSaving] = useState(false);
-  const [wagerMsg, setWagerMsg] = useState(null);
 
   // ── Your GRYND Preferences (the onboarding questionnaire, in edit mode) ──
   // This card only READS the saved answers (one request) and links into the
@@ -179,26 +176,9 @@ export default function SettingsPageClient() {
       }
     };
 
-    const loadWagers = async () => {
-      try {
-        const response = await fetch("/api/user/default-wagers", {
-          credentials: "include",
-        });
-        const data = await response.json();
-        if (response.ok && data?.success && data.wagers) {
-          setWagerDrafts(Object.fromEntries(
-            WAGER_GAMES.map((g) => [g.key, data.wagers[g.key] != null ? String(data.wagers[g.key]) : ""]),
-          ));
-        }
-      } catch (err) {
-        console.error("[SETTINGS_LOAD_WAGERS_ERROR]", err);
-      }
-    };
-
     loadLossLimit();
     loadSecurity();
     loadPrefs();
-    loadWagers();
   }, [isSignedIn, user]);
 
   // ── Handlers ──
@@ -346,41 +326,6 @@ export default function SettingsPageClient() {
       setPrefsMsg({ ok: false, text: "Failed to save — try again." });
     } finally {
       setPrefsSaving(false);
-    }
-  };
-
-  const saveWagers = async () => {
-    setWagerSaving(true);
-    setWagerMsg(null);
-    const wagers = {};
-    for (const g of WAGER_GAMES) {
-      const raw = String(wagerDrafts[g.key] ?? "").trim();
-      if (raw === "") continue;
-      const n = Number(raw);
-      if (!Number.isInteger(n) || n <= 0) {
-        setWagerMsg({ ok: false, text: `Enter a valid token amount for ${g.label} (or leave it empty to use the game default).` });
-        setWagerSaving(false);
-        return;
-      }
-      wagers[g.key] = n;
-    }
-    try {
-      const res = await fetch("/api/user/default-wagers", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wagers }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast("Default wagers saved. They apply the next time you open a game.", "success");
-      } else {
-        setWagerMsg({ ok: false, text: data.error || "Failed to save." });
-      }
-    } catch {
-      setWagerMsg({ ok: false, text: "Failed to save — try again." });
-    } finally {
-      setWagerSaving(false);
     }
   };
 
@@ -690,51 +635,6 @@ export default function SettingsPageClient() {
                 {prefsMsg && (
                   <span className={`text-sm ${prefsMsg.ok ? "text-emerald-300" : "text-red-300"}`}>
                     {prefsMsg.text}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Per-game default wagers */}
-            <div className="rounded-xl border border-fuchsia-400/35 bg-[#18071f]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.12)] md:col-span-2">
-              <h2 className="mb-1 flex items-center gap-2 text-xl text-fuchsia-300">
-                <IconCoins size={20} /> Default Wagers
-              </h2>
-              <p className="mb-4 text-sm text-gray-300">
-                Set the wager each game starts with. Leave a game empty to use
-                its built-in default. Changes apply the next time you open that
-                game.
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {WAGER_GAMES.map((g) => (
-                  <label key={g.key} className="flex flex-col gap-1 rounded-lg border border-[#00e5ff]/20 bg-[#091737] px-3 py-2">
-                    <span className="text-xs font-semibold text-[#c9f7ff]">{g.label}</span>
-                    <span className="text-[10px] text-[#7dd3fc]/70">default: {g.fallback}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                      placeholder={String(g.fallback)}
-                      value={wagerDrafts[g.key] ?? ""}
-                      onChange={(e) => setWagerDrafts((d) => ({ ...d, [g.key]: e.target.value }))}
-                      aria-label={`Default wager for ${g.label}`}
-                      className="w-full rounded-md border border-fuchsia-500/40 bg-[#020617] px-2 py-1.5 text-sm text-white outline-none focus:border-fuchsia-400"
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={saveWagers}
-                  disabled={wagerSaving}
-                  className="rounded-xl border-b-4 border-fuchsia-700 bg-fuchsia-500 px-5 py-2 text-sm font-extrabold text-black transition hover:brightness-110 disabled:opacity-60"
-                >
-                  {wagerSaving ? "Saving…" : "Save wagers"}
-                </button>
-                {wagerMsg && (
-                  <span className={`text-sm ${wagerMsg.ok ? "text-emerald-300" : "text-red-300"}`}>
-                    {wagerMsg.text}
                   </span>
                 )}
               </div>

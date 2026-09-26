@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -57,21 +57,6 @@ export async function POST(req) {
         throw new Error("You cannot join your own game");
       }
 
-      const [updatedUser] = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${game.betAmount}` })
-        .where(
-          and(
-            eq(users.clerkId, userId),
-            sql`${users.balance} >= ${game.betAmount}`,
-          ),
-        )
-        .returning({ balance: users.balance });
-
-      if (!updatedUser) {
-        throw new Error("Insufficient balance");
-      }
-
       const [updatedGame] = await tx
         .update(chessGames)
         .set({
@@ -99,7 +84,6 @@ export async function POST(req) {
         gameId: updatedGame.id,
         playerWhiteId: updatedGame.playerWhiteId,
         playerBlackId: updatedGame.playerBlackId,
-        newBalance: Number(updatedUser.balance),
       };
     });
 

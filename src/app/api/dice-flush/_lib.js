@@ -1,20 +1,24 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { users, diceFlushActions, diceFlushPlayers, diceFlushRooms } from "../../../db/schema";
 import { autoBankIfExpired, checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../lib/rating";
 import { applyTrophyResult } from "../../../lib/trophyStore";
+import { normalizeStake } from "../../../lib/games/stakes";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): the match is free, so the
+  // recorded wager and the pot are 0 and `settleIfEnded` pays out nothing.
+  const stake = normalizeStake(wager);
   return {
     id: roomId,
     game: "yahtzee",
     players: [{ userId: creatorId, name: creatorName }],
     ai: false,
-    wager,
-    pot: wager,
+    wager: stake,
+    pot: stake,
     state: "waiting",
     currentTurn: creatorId,
     turnNumber: 1,
@@ -67,10 +71,10 @@ export async function appendAction(tx, roomId, userId, actionType, payload) {
   await tx.insert(diceFlushActions).values({ roomId, userId, actionType, payload });
 }
 
-export async function lockBalance(tx, userId, amount) {
-  const [updated] = await tx.update(users).set({ balance: sql`${users.balance} - ${amount}` }).where(and(eq(users.clerkId, userId), sql`${users.balance} >= ${amount}`)).returning({ balance: users.balance });
-  if (!updated) throw new Error("Insufficient balance");
-  return Number(updated.balance);
+export async function lockBalance() {
+  // STAKES ARE RETIRED: a match never moves tokens, so there is nothing to
+  // lock and nothing to debit.
+  return 0;
 }
 
 export async function getDisplayName(userId, tx = db) {
@@ -81,31 +85,25 @@ export async function getDisplayName(userId, tx = db) {
 export async function settleIfEnded(tx, roomRow, state) {
   const ended = checkGameEnd(state);
   if (!ended.ended) return { state, ended: false };
-  const payout = Math.floor(state.pot * 0.95);
+  // STAKES ARE RETIRED: there is no pot to pay out or rake.
+  const payout = 0;
   state.state = "finished";
   // Conditional settlement claim: only one transaction may flip the room to
-  // "finished" and credit the payout. The WHERE predicate guards against
-  // concurrent final-turn requests that both validated the same still-playing
-  // snapshot — only the first commit wins; a racing transaction sees no
-  // affected rows and skips the balance credit (idempotent no-op).
+  // "finished". The WHERE predicate guards against concurrent final-turn
+  // requests that both validated the same still-playing snapshot — only the
+  // first commit wins; a racing transaction sees no affected rows and skips
+  // (idempotent no-op).
   const [claimed] = await tx.update(diceFlushRooms).set({ status: "finished", gameState: state, pot: 0 }).where(and(eq(diceFlushRooms.id, roomRow.id), ne(diceFlushRooms.status, "finished"))).returning();
   if (!claimed) {
     // A concurrent transaction already settled — return the finished state
-    // but signal that this transaction did not perform the payout.
+    // but signal that this transaction did not perform the settlement.
     return { state, ended: true, winnerId: ended.winnerId, payout: 0, totals: ended.totals, alreadySettled: true };
   }
-  // Settlement claimed — credit the winner.
-  await tx.update(users).set({ balance: sql`${users.balance} + ${payout}` }).where(eq(users.clerkId, ended.winnerId));
 
-  // Record leaderboard stats for winner and loser
-  const wagerPerPlayer = state.wager || Math.floor(state.pot / (state.players?.length || 2));
-  // Any player being AI means this was a free-play match: no wagers
-  // ever moved on the ledger, so we must pass betAmount=0 to the
-  // leaderboard counters — otherwise total_wagered / weekly_wagered
-  // get inflated by phantom wagers and the player appears to have
-  // wagered tokens they never actually risked.
+  // Record leaderboard stats for winner and loser. Stakes are retired, so no
+  // tokens ever moved on the ledger and every match reports betAmount=0.
   const isAiMatch = !!state.players?.some((p) => p.isAI);
-  const betAmountForCounters = isAiMatch ? 0 : wagerPerPlayer;
+  const betAmountForCounters = 0;
   applyLeaderboardCounters({
     clerkId: ended.winnerId,
     game: "Dice Flush",
@@ -158,4 +156,4 @@ export async function settleIfEnded(tx, roomRow, state) {
   return { state, ended: true, winnerId: ended.winnerId, payout, totals: ended.totals };
 }
 
-export { db, eq, and, asc, isNull, ne, sql, users, diceFlushRooms, diceFlushPlayers, rollDice, holdDice, validateMove, nextTurn };
+export { db, eq, and, asc, isNull, ne, users, diceFlushRooms, diceFlushPlayers, rollDice, holdDice, validateMove, nextTurn };

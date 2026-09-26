@@ -160,10 +160,10 @@ export async function GET(req: NextRequest) {
       (sum, entry) => sum + (Number(entry?.trophies) || 0),
       0,
     );
-    // Battle Pass level — derived from TROPHIES (10,000 total = level 100).
+    // Battle Pass level — derived from TROPHIES (OVERALL_TROPHY_MAX = level 100).
     const battlepassLevel = getLevelFromTrophies(totalTrophies);
     // Prestige — DERIVED from the ratings + trophies above (max(0, elo−1000)
-    // for each game whose trophies reached the 10,000 cap). No column read or
+    // for each game whose trophies reached the per-game cap). No column read or
     // written; can never be set through this or any other client-facing API.
     const prestige = getPrestigeStatus({ ratings, trophies });
     // Server-resolved "Prestige N" badge — only present when the player

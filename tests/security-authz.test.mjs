@@ -6,20 +6,9 @@ function read(path) {
   return fs.readFileSync(path, "utf8");
 }
 
-test("poker update-hand enforces auth and authorization guard", () => {
-  const file = read("src/app/api/poker/update-hand/route.js");
-  assert.match(file, /await\s+auth\(\)/, "route should require auth");
-  assert.match(
-    file,
-    /Unauthorized/,
-    "route should return Unauthorized on missing auth",
-  );
-  assert.match(
-    file,
-    /Forbidden/,
-    "route should block unauthorized state mutation",
-  );
-  assert.match(file, /hostClerkId/, "route should allow host override only");
+test("poker is fully removed: no route, and no client can reach it", () => {
+  assert.equal(fs.existsSync("src/app/api/poker"), false);
+  assert.equal(fs.existsSync("src/app/casino/poker"), false);
 });
 
 test("dice-flush stats enforces auth and participant authorization", () => {

@@ -127,10 +127,6 @@ export default function Footer() {
             </h2>
 
             <div className="space-y-2 text-sm">
-              <Link href="/games/poker/multi" className={linkClass}>
-                Poker
-              </Link>
-
               <Link href="/games/neon-flush" className={linkClass}>
                 Neon Flush
               </Link>

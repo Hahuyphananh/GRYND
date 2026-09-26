@@ -10,15 +10,11 @@ if (!BASE) {
     () => {},
   );
 } else {
-  test("HTTP authz: poker update-hand rejects unauthenticated request", async () => {
-    const res = await fetch(`${BASE}/api/poker/update-hand`, {
-      method: "PATCH",
+  test("HTTP authz: uno multiplayer rejects unauthenticated request", async () => {
+    const res = await fetch(`${BASE}/api/uno/multiplayer`, {
+      method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        gameCode: "ABC123",
-        playerId: "user_x",
-        hand: [],
-      }),
+      body: JSON.stringify({ action: "create" }),
     });
 
     assert.equal(res.status, 401);

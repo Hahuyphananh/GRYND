@@ -18,6 +18,7 @@
 
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
+import { normalizeStake } from "../games/stakes";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
@@ -204,9 +205,11 @@ const SEAT_FIELDS = Object.freeze({
 // by roulette-pvp: a stake-keyed advisory lock + FOR UPDATE row lock +
 // conditional UPDATE on `waiting` + null `player2_id`.
 export async function createOrJoin({ userId, stakeAmount }) {
-  if (!stakeAmount || stakeAmount <= 0) {
-    return { error: "Invalid stake amount", status: 400 };
-  }
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match moves no tokens.
+  // Normalizing here makes every downstream debit/escrow/payout below operate
+  // on 0 — a 0 debit, a 0 pot, a 0 payout — so the money machinery is inert
+  // until it is deleted, and no stake the client sends can be honoured.
+  stakeAmount = normalizeStake(stakeAmount);
 
   return await db.transaction(async (tx) => {
     const lockKey = hashStakeToInt(stakeAmount);
@@ -285,22 +288,7 @@ export async function createAiMatch({ userId, difficulty }) {
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount) {
-  // Deduct stake (atomic: only if balance is sufficient).
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
+  // STAKES ARE RETIRED — no stake is escrowed, so there is no balance guard.
   const [match] = await tx
     .insert(blackjackPvpMatches)
     .values({
@@ -346,21 +334,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [updated] = await tx
@@ -381,13 +354,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     )
     .returning();
 
-  // If our conditional UPDATE didn't match any rows, refund the
-  // joiner's stake — the lobby was cancelled in a parallel tx.
+  // If our conditional UPDATE didn't match any rows, the lobby was
+  // cancelled in a parallel tx. There is no stake to refund (stakes retired).
   if (!updated) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stakeAmount}` })
-      .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
   }
 
@@ -462,13 +431,6 @@ export async function cancelMatch({ userId, matchId }) {
       return { error: "Only the creator can cancel", status: 403 };
     }
 
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, userId));
-
     const [updated] = await tx
       .update(blackjackPvpMatches)
       .set({
@@ -507,13 +469,8 @@ export async function resignMatch({ userId, matchId }) {
       return { error: "Match already ended", status: 409 };
     }
 
-    // Waiting lobby — refund the creator's stake and cancel.
+    // Waiting lobby — cancel it. There is no stake to refund (stakes retired).
     if (match.status === MATCH_STATUS.WAITING) {
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${Number(match.stakeAmount)}` })
-        .where(eq(users.clerkId, userId));
-
       const [updated] = await tx
         .update(blackjackPvpMatches)
         .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
@@ -1374,24 +1331,8 @@ async function resolveRound(tx, match) {
       houseFee = credit.fee.toFixed(2);
       result = RESULT.PLAYER2;
     } else {
-      // TIEBREAK-round draw (round 4 also tied) → refund each player
-      // in paid PvP. Free AI matches never escrow or refund tokens.
-      if (!isFreeAiMatch(match)) {
-        const refundEach = Number(
-          (Number(match.stakeAmount) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(2),
-        );
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${refundEach}` })
-          .where(eq(users.clerkId, match.player1Id));
-        await tx
-          .update(users)
-          .set({ balance: sql`${users.balance} + ${refundEach}` })
-          .where(eq(users.clerkId, match.player2Id));
-        houseFee = Number(
-          (Number(match.stakeAmount) * OVERTIME_DRAW_FEE_PCT * 2).toFixed(2),
-        ).toFixed(2);
-      }
+      // TIEBREAK-round draw → the match is a draw. Stakes are retired, so
+      // there is no stake to refund and no house fee to take.
       result = RESULT.DRAW;
     }
   } else {
@@ -1480,16 +1421,10 @@ async function resolveRound(tx, match) {
   return finalRow;
 }
 
-async function creditWinner(tx, match, roundWinner) {
-  const settlement = calculateMatchSettlement(match, roundWinner);
-  if (isFreeAiMatch(match)) return settlement;
-
-  await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} + ${settlement.payout}` })
-    .where(eq(users.clerkId, settlement.winnerId));
-
-  return settlement;
+async function creditWinner(_tx, match, roundWinner) {
+  // STAKES ARE RETIRED — nothing is credited. The settlement is still
+  // computed so the caller can record the (zero) prizePaid/houseFee.
+  return calculateMatchSettlement(match, roundWinner);
 }
 
 // Best-effort stat side-effect — bumps pvpWins / pvpGamesPlayed on the

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePostHog } from "posthog-js/react";
 import NavigationBar from "../../../components/navigation-bar";
@@ -761,7 +760,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   const { socket } = useSocket();
 
   // ── Lobby state ──
-  const [wager, setWager] = useDefaultWager("odds", 50);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match is free to enter.
+  const wager = 0;
   const [userId, setUserId] = useState<string | null>(null);
   const [games, setGames] = useState<any[]>([]);
   const [myGameId, setMyGameId] = useState<number | null>(null);
@@ -1377,7 +1377,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       currentMax: interactiveState.currentMax,
       winner: gameOver ? finalWinner : "",
       result: gameOver ? finalResult : "player1_won",
-      payout: gameOver ? finalPayout : (wagerLocked ?? wager) * 2,
+      payout: finalPayout,
       p1Score: interactiveState.p1Score,
       p2Score: interactiveState.p2Score,
     };
@@ -1438,31 +1438,9 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
       {!resuming && !gameId && !interactiveState && (
         <>
           <div className="mb-4 text-center text-sm">
-            <span className="uppercase tracking-widest text-[11px] text-white/55 mr-2">Stake</span>
-            <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-              {[10, 25, 50, 100, 250, 500].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setWager(v)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
-                    wager === v
-                      ? "border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
-                      : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-amber-600/50 hover:text-amber-200"
-                  }`}
-                >
-                  {v.toLocaleString()}
-                </button>
-              ))}
-            </div>
-            <input
-              id="odds-pvp-wager"
-              type="number"
-              aria-label="Stake amount"
-              className="mt-2 w-full rounded-md border border-amber-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-amber-400"
-              value={wager}
-              onChange={(e) => setWager(Number(e.target.value))}
-              min={1}
-            />
+            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-emerald-300">
+              Free play · no tokens at stake
+            </span>
           </div>
           <button
             onClick={createGame}
@@ -1491,7 +1469,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
                       {game.player1Name}
                     </p>
                     <p className="text-sm text-white/50">
-                      Stake: <span className="text-yellow-300 font-semibold">{game.wager}</span> <IconCoins size={12} className="inline" />
+                      <span className="font-semibold text-emerald-300">Free play</span>
                     </p>
                   </div>
                   <button
@@ -1525,9 +1503,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
           <p className="text-lg font-bold text-yellow-300">
             {message || "Waiting for opponent..."}
           </p>
-          <p className="text-sm text-white/40 mt-2">
-            Stake: {wagerLocked} <IconCoins size={12} className="inline" />
-          </p>
+          <p className="text-sm text-white/40 mt-2">Free play</p>
           <button
             onClick={cancelGame}
             className="mt-6 px-6 py-2 rounded-lg font-bold bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30"
@@ -1543,7 +1519,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="text-3xl mb-1"><IconTarget size={36} className="text-yellow-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Pick Your Number</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Stake {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Free play
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Choose a number from <span className="text-yellow-400 font-bold">1–{range}</span>. It stays
@@ -1669,7 +1645,7 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             <p className="text-3xl mb-1"><IconCrystalBall size={36} className="text-fuchsia-400" /></p>
             <h2 className="text-xl font-extrabold text-yellow-400">Predict Your Opponent</h2>
             <p className="text-xs text-white/40 mt-1">
-              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Stake {wagerLocked ?? wager} <IconCoins size={12} className="inline" />
+              Round {interactiveState.currentRound} of {interactiveState.totalRounds} · Free play
             </p>
             <p className="text-sm text-white/60 mt-2 mb-4">
               Which number do you think they chose? Pick from{" "}
@@ -2315,7 +2291,7 @@ function OddsGameDisplay({
                 ? "Evenly matched"
                 : "The odds didn't fall your way"
           }
-          subline={userDrew ? "Stakes refunded. You tied." : undefined}
+          subline={userDrew ? "You tied." : undefined}
           opponent={{
             name: oppLabel,
             iconKey: oppIconKey || null,
@@ -2339,7 +2315,7 @@ function OddsGameDisplay({
             oppLabel === "AI"
               ? []
               : [
-                  { label: "Stake", value: String(wager) },
+                  { label: "Entry", value: "Free" },
                   { label: "Pot", value: String(payout) },
                 ]
           }

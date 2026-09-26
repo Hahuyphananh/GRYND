@@ -3,7 +3,7 @@
 // ── Precision rank sound effects ──────────────────────────────────────
 //
 // Mirrors the established per-game audio pattern (gameAudio, hexAudio,
-// pokerAudio, oddsAudio). Uses the Web Audio API with a singleton
+// oddsAudio). Uses the Web Audio API with a singleton
 // AudioContext — no external dependencies, no file loading.
 //
 // Each rank tier gets a distinct sound played via `playRankSound(diffMs)`:

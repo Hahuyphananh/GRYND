@@ -7,7 +7,6 @@ import React, { useEffect, useState } from "react";
 import FrameAvatar from "../../components/FrameAvatar";
 import Img1 from "../../images/rouletteimage.png";
 import Img2 from "../../images/blackjackimage.png";
-import Img3 from "../../images/pokerimage.png";
 import Img4 from "../../images/plinkoimage.png";
 import Img6 from "../../images/crashimage.png";
 import Img7 from "../../images/chessimage.png";
@@ -382,17 +381,6 @@ function MainComponent({ adSlot = null }) {
       popular: true,
     },
     {
-      name: "Poker",
-      href: "/casino/poker/multi",
-      leaderboardKey: "poker",
-      playsKey: "poker",
-      image: Img3,
-      imageClassName: "group-hover:scale-[1.03]",
-      descriptionKey: "games.poker_desc",
-      pvpMode: "multi",
-    },
-
-    {
       name: "Crash Arena",
       href: "/casino/crash-arena",
       leaderboardKey: "crash",
@@ -573,7 +561,6 @@ function MainComponent({ adSlot = null }) {
     "keno",
     "chess",
     "crash",
-    "poker",
     "plinko",
     "blackjack",
     "roulette",

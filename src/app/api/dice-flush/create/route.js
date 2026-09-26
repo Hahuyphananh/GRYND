@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db, getDisplayName, initialState, lockBalance, requireUser, diceFlushPlayers, diceFlushRooms } from "../_lib";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 export async function POST(req) {
   try {
@@ -8,10 +9,10 @@ export async function POST(req) {
     if (gate.response) return gate.response;
     const userId = await requireUser();
     const { wager } = await req.json();
-    const amount = Number(wager);
-    if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ success: false, error: "Invalid wager" }, { status: 400 });
-    // Global bet cap (must match GLOBAL_MAX_BET in src/lib/games/economy.ts).
-    if (amount > 100000) return NextResponse.json({ success: false, error: "Wager exceeds the maximum of 100,000 tokens" }, { status: 400 });
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): creating a room is free.
+    // The requested wager is normalized to 0, so the lockBalance debit below
+    // is a no-op and the pot settles to nothing.
+    const amount = normalizeStake(wager);
 
     const result = await db.transaction(async (tx) => {
       await lockBalance(tx, userId, amount);

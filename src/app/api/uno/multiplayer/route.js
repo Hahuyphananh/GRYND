@@ -4,12 +4,14 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
 import { unoRoomStore } from "../../../../lib/unoRoomStore";
+import { applyPlacementTrophies } from "../../../../lib/trophyStore";
 import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 import { resolveProfileFrame } from "../../../../lib/cosmetics";
+import { normalizeStake } from "../../../../lib/games/stakes";
 
 const MAX_SEATS = 6;
-const HOUSE_EDGE_PERCENT = 5;function getStore() {
+function getStore() {
   return unoRoomStore;
 }
 
@@ -87,7 +89,9 @@ function sanitizeSettings(settings = {}) {
   return {
     gameName: String(settings.gameName || "UNO Table").slice(0, 60),
     visibility: settings.visibility === "public" ? "public" : "private",
-    betAmount: Math.min(Math.max(Number(settings.betAmount) || 100, 1), 1000),
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a table is free to play,
+    // so the bet is normalized to 0 and no ante is ever stored.
+    betAmount: normalizeStake(settings.betAmount),
     maxPlayers,
     startingCards: [5, 7, 9].includes(Number(settings.startingCards))
       ? Number(settings.startingCards)
@@ -281,14 +285,68 @@ async function settleWinner(room, winnerId) {
   const winner = room.activeState.players.find((p) => p.id === winnerId);
   if (!winner || winner.type === "ai" || !winner.userId) return;
 
-  const payout = Number(
-    (room.activeState.pot * ((100 - HOUSE_EDGE_PERCENT) / 100)).toFixed(2),
-  );
-  await db
-    .update(users)
-    .set({ balance: sql`${users.balance} + ${payout}` })
-    .where(eq(users.id, winner.userId));
+  // STAKES ARE RETIRED: no ante was collected, so there is no pot to pay out.
   room.activeState.settled = true;
+
+  // Per-game trophies — the symmetric placement ladder.
+  //
+  // Neon Flush is a real placement table, not a winner-takes-all one: the
+  // server already decided `winnerId` (the player who emptied their hand), and
+  // every other seat has a card count the server owns too. So the finishing
+  // order is the winner first and then the remaining hands SHORTEST FIRST — the
+  // seat closest to going out finished higher. The top of that order banks the
+  // full +30, the fullest hand pays the full −30, and the seats between them
+  // trade the even shares (a 4-seat deal pays +30/+10/−10/−30). Seats holding
+  // the same number of cards share the average of the ranks they span.
+  //
+  // AI seats hold no account and are left out entirely, which also means a
+  // solo human against bots settles nothing — only a real PvP result moves
+  // trophies. The game id is unique per deal, so the per-seat trophy journal
+  // keeps a replayed settlement a no-op.
+  const humanSeats = room.activeState.players.filter(
+    (p) => p.type !== "ai" && p.userId,
+  );
+  if (humanSeats.length > 1) {
+    const seatRows = await db
+      .select({ id: users.id, clerkId: users.clerkId })
+      .from(users)
+      .where(inArray(users.id, humanSeats.map((p) => Number(p.userId))));
+    const clerkByUserId = new Map(
+      seatRows.map((row) => [Number(row.id), row.clerkId]),
+    );
+
+    const finishingOrder = humanSeats
+      .map((seat) => ({
+        clerkId: clerkByUserId.get(Number(seat.userId)),
+        // The winner is the seat that ran out of cards; −1 keeps them first even
+        // if another hand is somehow also empty.
+        cards:
+          seat.id === winner.id
+            ? -1
+            : (room.activeState.hands[seat.id] || []).length,
+      }))
+      .filter((seat) => seat.clerkId)
+      .sort((a, b) => a.cards - b.cards);
+
+    const placementGroups = [];
+    let lastCards = null;
+    for (const seat of finishingOrder) {
+      if (lastCards !== null && seat.cards === lastCards) {
+        placementGroups[placementGroups.length - 1].push(seat.clerkId);
+        continue;
+      }
+      placementGroups.push([seat.clerkId]);
+      lastCards = seat.cards;
+    }
+
+    if (placementGroups.flat().length > 1) {
+      await applyPlacementTrophies({
+        gameKey: "uno",
+        matchId: String(room.activeGameId ?? room.code),
+        placements: placementGroups,
+      }).catch(() => {});
+    }
+  }
 }
 
 function serializeGameForUser(room, userId) {
@@ -729,41 +787,7 @@ export async function POST(request) {
       );
     }
 
-    const betAmount = Number(room.settings.betAmount);
-    const humanIds = contenders
-      .filter((p) => p.type === "human")
-      .map((p) => p.userId);
-    const balances = humanIds.length
-      ? await db
-          .select({ id: users.id, balance: users.balance })
-          .from(users)
-          .where(inArray(users.id, humanIds))
-      : [];
-    const byId = new Map(balances.map((u) => [u.id, Number(u.balance)]));
-
-    for (const p of contenders.filter((p) => p.type === "human")) {
-      const b = byId.get(p.userId) ?? 0;
-      if (b < betAmount) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: `${p.name} has insufficient balance for this bet.`,
-          }),
-          { status: 400 },
-        );
-      }
-    }
-
-    if (humanIds.length) {
-      await db.transaction(async (tx) => {
-        for (const id of humanIds) {
-          await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} - ${betAmount}` })
-            .where(eq(users.id, id));
-        }
-      });
-    }
+    const betAmount = normalizeStake(room.settings.betAmount);
 
     const deck = generateDeck();
     const hands = {};

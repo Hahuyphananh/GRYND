@@ -1,19 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useDefaultWager } from "../../../hooks/useDefaultWager";
 import { useRouter } from "next/navigation";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
-import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconTarget } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
-const WAGER_OPTIONS = [10, 25, 50, 100];
 
 export default function PoolLobbyPage() {
   const router = useRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
-  const [wager, setWager] = useDefaultWager("pool-masters", 10);
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
+  const wager = 0;
   const [loading, setLoading] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +117,7 @@ export default function PoolLobbyPage() {
   return (
     <PvpLobbyPage
       title="Pool Masters Lobby"
-      subtitle="Create or join a staked 1v1 pool match, or play the AI for free."
+      subtitle="Create or join a 1v1 pool match, or play the AI for free."
       icon={<IconTarget className="h-9 w-9 flex-shrink-0 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] sm:h-10 sm:w-10" />}
       rulesKey="pool-masters"
       rules={{
@@ -129,7 +127,7 @@ export default function PoolLobbyPage() {
             heading: "1v1 8-ball pool",
             body: (
               <>
-                Compete head-to-head over a staked game of 8-ball pool.
+                Compete head-to-head over a free game of 8-ball pool.
                 Take turns shooting. Pocket your group of balls, then the
                 8-ball to win the match.
               </>
@@ -148,17 +146,12 @@ export default function PoolLobbyPage() {
             heading: "Practice free",
             body: (
               <>
-                Play vs AI at no cost to learn the game before wagering
-                real tokens.
+                Play vs AI at no cost to learn the game first.
               </>
             ),
           },
         ],
       }}
-      balance={null}
-      stake={wager}
-      onStakeChange={setWager}
-      stakeOptions={WAGER_OPTIONS}
       busy={loading}
       onPlay={createLobby}
       playLabel="Create PvP Game"
@@ -182,7 +175,6 @@ export default function PoolLobbyPage() {
           }}
         />
       }
-      escrowNote="We pair you with another player of the exact same wager. If no one is waiting, your wager is escrowed in a private lobby until someone joins or you cancel."
       lobbies={lobbies}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."
       lobbyKey={(l) => l.id}
@@ -193,13 +185,7 @@ export default function PoolLobbyPage() {
       )}
       lobbyMeta={(l) => (
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>
-            Wager:{" "}
-            <span className="inline-flex items-center gap-1 font-semibold text-yellow-300">
-              {Number(l.wager).toLocaleString()}
-              <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
-            </span>
-          </span>
+          <span className="font-semibold text-emerald-300">Free play</span>
           <span className="capitalize">Mode: {l.gameMode}</span>
           <span className="text-white/40">Waiting for player</span>
         </span>

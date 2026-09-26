@@ -18,6 +18,7 @@
 
 import { eq, and, sql, isNull, gte, lte } from "drizzle-orm";
 import { db } from "../../db/client";
+import { normalizeStake } from "../games/stakes";
 import {
   roulettePvpMatches,
   roulettePvpRounds,
@@ -25,6 +26,7 @@ import {
 } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { ROULETTE_NUMBERS } from "../rouletteConfig";
 import {
@@ -128,9 +130,11 @@ export async function listOpenMatches({ limit = 30 } = {}) {
 //      player2_id IS NULL`, catches the "creator cancelled in
 //      parallel" race.
 export async function createOrJoin({ userId, stakeAmount }) {
-  if (!stakeAmount || stakeAmount <= 0) {
-    return { error: "Invalid stake amount", status: 400 };
-  }
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match moves no tokens.
+  // Normalizing here makes every downstream debit/escrow/payout below operate
+  // on 0 — a 0 debit, a 0 pot, a 0 payout — so the money machinery is inert
+  // until it is deleted, and no stake the client sends can be honoured.
+  stakeAmount = normalizeStake(stakeAmount);
 
   // Two-key advisory lock: the first int is a project-specific
   // namespace constant so we don't share the global single-int
@@ -256,22 +260,7 @@ function hashStakeToInt(stake) {
 }
 
 async function createWaitingMatch(tx, userId, stakeAmount) {
-  // Deduct stake
-  const [creator] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!creator) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
+  // STAKES ARE RETIRED — no stake is escrowed, so there is no balance guard.
   // Both players start the match with exactly STARTING_POINTS (100)
   // match-currency credits. Points persist across rounds: every round's
   // (payout − total_bet) is debited/credited from this column directly.
@@ -319,22 +308,6 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  // Deduct joiner's stake (atomically: only if balance is sufficient).
-  const [joiner] = await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} - ${stakeAmount}` })
-    .where(
-      and(
-        eq(users.clerkId, userId),
-        sql`${users.balance} >= ${stakeAmount}`,
-      ),
-    )
-    .returning({ balance: users.balance });
-
-  if (!joiner) {
-    return { error: "Insufficient balance", status: 400 };
-  }
-
   // Brief 3-second "Ready" window so both players can read the
   // match-found banner before round_1's 25-second betting window
   // starts. /status auto-advances to round_1 once the deadline passes
@@ -361,13 +334,9 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     )
     .returning();
 
-  // If our conditional UPDATE didn't match any rows (because another
-  // concurrent joiner raced us), refund joiner stake.
+  // If our conditional UPDATE didn't match any rows, another concurrent
+  // joiner raced us. There is no stake to refund (stakes retired).
   if (!updated) {
-    await tx
-      .update(users)
-      .set({ balance: sql`${users.balance} + ${stakeAmount}` })
-      .where(eq(users.clerkId, userId));
     return { error: "Lobby no longer available", status: 409 };
   }    mirrorQueueCreated({ gameKey: "roulette-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
     mirrorQueueCreated({ gameKey: "roulette-pvp", matchId: updated.id, playerCount: 2, queuedAt: updated.createdAt ? new Date(updated.createdAt) : undefined });
@@ -429,14 +398,7 @@ export async function cancelMatch({ userId, matchId }) {
       return { error: "Only the creator can cancel", status: 403 };
     }
 
-    // Refund creator stake
-    await tx
-      .update(users)
-      .set({
-        balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-      })
-      .where(eq(users.clerkId, userId));
-
+    // Cancel the lobby. There is no stake to refund (stakes retired).
     const [updated] = await tx
       .update(roulettePvpMatches)
       .set({
@@ -1064,20 +1026,8 @@ export async function resolveRound(tx, match) {
     if (p1Eliminated && p2Eliminated) {
       // Degenerate case: both sides wiped out simultaneously
       // (e.g. spin on green at low stacked balances — red AND
-      // black bets both lose). House takes no fee: refund both
-      // stakes in full and finish with no winner declared.
-      await tx
-        .update(users)
-        .set({
-          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-        })
-        .where(eq(users.clerkId, match.player1Id));
-      await tx
-        .update(users)
-        .set({
-          balance: sql`${users.balance} + ${Number(match.stakeAmount)}`,
-        })
-        .where(eq(users.clerkId, match.player2Id));
+      // black bets both lose). Stakes are retired, so there is no
+      // stake to refund; the match simply finishes with no winner.
       nextStatus = MATCH_STATUS.FINISHED;
       result = "draw";
     } else {
@@ -1275,22 +1225,29 @@ async function recordRoulettePvpResult(tx, finalRow) {
     betAmount: stake,
     payout: 0,
   }).catch(() => {});
+
+  // Per-game trophies — the same authoritative ±30 on the match winner, which
+  // the server derived from the elimination rounds (per-round draws never
+  // decide a match, so the winner here is already the last player standing, or
+  // the seat that won a forfeit). Only a real PvP match qualifies: the AI
+  // free-play seat holds no account, so an `isAi` match moves no trophies. The
+  // trophy journal keyed by (user, game, match) makes a replayed settlement a
+  // no-op.
+  if (!finalRow.isAi) {
+    await applyTrophyResult({
+      tx,
+      gameKey: "roulette-pvp",
+      matchId: String(finalRow.id),
+      winnerClerkId: winnerId,
+      loserClerkId: loserId,
+    }).catch(() => {});
+  }
 }
 
-// Credit winner's balance (server-side atomic transaction). Returns
-// the updated winner user row + the fee + payout numbers so the caller
-// can persist them on the match row.
-async function creditWinner(tx, match, roundWinner) {
+// STAKES ARE RETIRED — nothing is credited. The settlement is still computed
+// so the caller can persist the (zero) fee/payout numbers on the match row.
+async function creditWinner(_tx, match, roundWinner) {
   const settlement = calculateMatchSettlement(match, roundWinner);
-  if (settlement.payout <= 0) {
-    return { winner: { winnerId: settlement.winnerId }, fee: 0, payout: 0 };
-  }
-
-  await tx
-    .update(users)
-    .set({ balance: sql`${users.balance} + ${settlement.payout}` })
-    .where(eq(users.clerkId, settlement.winnerId));
-
   return {
     winner: { winnerId: settlement.winnerId },
     fee: settlement.fee,

@@ -2,9 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";
 import { unoGames, users } from "../../../../db/schema";
-import { and, eq, or, sql, inArray } from "drizzle-orm";
+import { and, eq, or, inArray } from "drizzle-orm";
 
-const HOUSE_EDGE_PERCENT = 2; // same as your UNO payout (1.98)
 
 export async function POST(req) {
   try {
@@ -52,20 +51,10 @@ export async function POST(req) {
       const isWaiting = lockedGame.status === "waiting";
       const isActive = lockedGame.status === "active";
 
-      const betAmount = Number(lockedGame.betAmount);
-      const pot = Number(lockedGame.pot || betAmount * 2);
-
       // =========================
-      //  WAITING GAME → REFUND
+      //  WAITING GAME → CANCEL
       // =========================
       if (isWaiting) {
-        await tx
-          .update(users)
-          .set({
-            balance: sql`${users.balance} + ${betAmount}`,
-          })
-          .where(eq(users.clerkId, userId));
-
         await tx
           .update(unoGames)
           .set({
@@ -103,25 +92,14 @@ export async function POST(req) {
 
         if (!opponentId) return;
 
-        const houseFee = Number(((pot * HOUSE_EDGE_PERCENT) / 100).toFixed(2));
-        const payout = Number((pot - houseFee).toFixed(2));
-
-        //  Pay opponent
-        await tx
-          .update(users)
-          .set({
-            balance: sql`${users.balance} + ${payout}`,
-          })
-          .where(eq(users.id, opponentId));
-
-        //  End game
+        //  End game — STAKES ARE RETIRED: no pot to pay out on a resignation.
         await tx
           .update(unoGames)
           .set({
             status: "finished",
             winner: lockedGame.userId === requestingUser.id ? "player2" : "player1",
             result: "loss",
-            payout: payout.toString(),
+            payout: "0",
           })
           .where(eq(unoGames.id, gameId));
 

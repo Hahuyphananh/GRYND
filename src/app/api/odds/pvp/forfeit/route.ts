@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../../db/client";
-import { oddsGames, users } from "../../../../../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { oddsGames } from "../../../../../db/schema";
+import { eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import { applyRatingResult } from "../../../../../lib/rating";
 import { applyTrophyResult } from "../../../../../lib/trophyStore";
@@ -50,17 +50,11 @@ export async function POST(req: Request) {
 
       const forfeiterIsP1 = isPlayer1;
       const winnerId = forfeiterIsP1 ? game.player2Id : game.player1Id;
-      // 5% house rake (winner gets 95% of the 2x pot = 1.9x wager).
-      const payout = game.wager * 1.9;
+      // STAKES ARE RETIRED: no pot, no rake and no payout to move.
+      const payout = 0;
       const winner: "player1" | "player2" = forfeiterIsP1
         ? "player2"
         : "player1";
-
-      // Credit winner
-      await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} + ${payout}` })
-        .where(eq(users.clerkId, winnerId!));
 
       // Persist the game-over state so the opponent's polls/socket
       // refetches reflect the match ending (not just the forfeiter).

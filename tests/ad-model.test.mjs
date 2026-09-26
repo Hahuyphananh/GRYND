@@ -173,7 +173,7 @@ test("no ad capability exists inside gameplay", () => {
 
   // Games whose lobby and board share one route stay entirely ad-free.
   for (const page of allPages()) {
-    if (!/dice-flush|odds|keno|poker|neon-flush/.test(page)) continue;
+    if (!/dice-flush|odds|keno|neon-flush/.test(page)) continue;
     const source = read(page);
     assert.ok(!/<AdSlot\s/.test(source), `${page} plays on its lobby URL — no ad slot`);
     assert.ok(!/AdSenseScript/.test(source), `${page} plays on its lobby URL — no ad loader`);
