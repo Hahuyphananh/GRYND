@@ -1427,7 +1427,11 @@ test("MIGRATION: 0171 is present and registered in the drizzle journal", () => {
   const entry = journal.entries.find((e) => e.tag === "0171_rating_identities");
   assert.ok(entry, "0171_rating_identities must be in _journal.json");
   assert.equal(entry.idx, 152);
-  assert.equal(journal.entries[journal.entries.length - 1].tag, "0172_drop_big_wins");
+  // 0171 must be followed by the 0172 drop it was released with. (Later
+  // migrations may be appended after it, so this must not assert "last".)
+  const next = journal.entries.find((e) => e.tag === "0172_drop_big_wins");
+  assert.ok(next, "0172_drop_big_wins must follow 0171");
+  assert.equal(next.idx, 153);
 });
 
 test("MIGRATION: 0172 drops the obsolete big_wins table", () => {

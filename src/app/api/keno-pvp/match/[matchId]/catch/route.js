@@ -11,7 +11,7 @@
 //   * taps on any other tile are rejected — only the lit tile counts.
 //
 // The action keeps its historical path (`/catch`) because clients, the
-// realtime server and the quest/analytics wiring all reference it.
+// realtime server and the analytics wiring all reference it.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";

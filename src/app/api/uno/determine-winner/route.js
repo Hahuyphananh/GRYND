@@ -5,7 +5,6 @@ import { db } from "../../../../db/client";
 import { users, unoGames } from "../../../../db/schema";
 import { and, eq } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
-import { applyPrestigeResult } from "../../../../lib/prestige";
 
 function safeParse(value, fallback = []) {
   if (value == null) return fallback;
@@ -159,31 +158,6 @@ export async function POST(req) {
         payout: Number(payout),
         isPvpWin: true,
       });
-
-      // Permanent Prestige — competitive multiplayer finish (AI mode is
-      // free play and never moves Prestige).
-      const prestigeLoserUserId =
-        winner === "player1" ? game.player2Id : game.userId;
-      const prestigeLoserUser = prestigeLoserUserId
-        ? await db.query.users.findFirst({
-            where: eq(users.id, prestigeLoserUserId),
-          })
-        : null;
-
-      applyPrestigeResult({
-        clerkId: winnerUser.clerkId,
-        outcome: "win",
-        source: "uno",
-        sourceId: String(game.id),
-      }).catch(() => {});
-      if (prestigeLoserUser?.clerkId) {
-        applyPrestigeResult({
-          clerkId: prestigeLoserUser.clerkId,
-          outcome: "loss",
-          source: "uno",
-          sourceId: String(game.id),
-        }).catch(() => {});
-      }
 
       const didRequesterWin = winner === role;
       const updatedRequester = didRequesterWin

@@ -8,8 +8,8 @@
 import { db } from "../../db/client";
 import { rpsPvpGames, users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
-import { applyPrestigeResult } from "../prestige";
 import { applyRatingResult } from "../rating";
+import { applyTrophyResult } from "../trophyStore";
 import { eq, sql } from "drizzle-orm";
 
 // Harmonized to the shared 5% PvP rake (must match PVP_RAKE_PCT in
@@ -98,27 +98,19 @@ export function recordForfeitStats(result) {
     payout: 0,
   }).catch(() => {});
 
-  // Permanent Prestige — competitive forfeit: the opponent wins and the
-  // forfeiter records a loss. Keyed on the match id, so replaying the
-  // forfeit (disconnect + poll, double submit) can never double-count.
-  applyPrestigeResult({
-    clerkId: result.winnerId,
-    outcome: "win",
-    source: "rps-pvp",
-    sourceId: String(result.game.id),
-  }).catch(() => {});
-  applyPrestigeResult({
-    clerkId: result.forfeiterId,
-    outcome: "loss",
-    source: "rps-pvp",
-    sourceId: String(result.game.id),
-  }).catch(() => {});
-
   // Per-game Elo — a competitive forfeit (the winner is the opponent who
   // stayed, resolved server-side in the settle transaction above). Runs on
   // its own transaction; the rating_events journal makes a replayed forfeit
   // (disconnect + poll, double submit) a no-op.
   applyRatingResult({
+    gameKey: "rps-pvp",
+    matchId: String(result.game.id),
+    winnerClerkId: result.winnerId,
+    loserClerkId: result.forfeiterId,
+  }).catch(() => {});
+  // Per-game trophies — the same authoritative forfeit (+30 / −30), on the
+  // same idempotent path.
+  applyTrophyResult({
     gameKey: "rps-pvp",
     matchId: String(result.game.id),
     winnerClerkId: result.winnerId,

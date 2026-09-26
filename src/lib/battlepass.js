@@ -13,12 +13,71 @@
 
 import { getNeonSql } from "../db/neon";
 import { getActiveXpMultiplier } from "./shopItems";
+import { TROPHY_MAX } from "./trophies";
 
 export const MAX_LEVEL = 100;
 
+// ── Trophy-driven progression ─────────────────────────────────────────────
+//
+// The Battle Pass level is DERIVED from trophies, not from XP. 10,000 total
+// trophies (the per-game cap) is the maximum: 100 levels across 10,000
+// trophies ⇒ 100 trophies per level. Nothing is stored — the level is computed
+// on read from the player's trophy total, so it can never drift from the
+// trophy ladder.
+
+/** Trophies required per Battle Pass level (10,000 ÷ 100). */
+export const TROPHIES_PER_LEVEL = TROPHY_MAX / MAX_LEVEL;
+
+/** Total trophies required to REACH a level (level 1 = 0). */
+export function trophiesToReachLevel(level) {
+  const n = Math.min(MAX_LEVEL, Math.max(1, Math.floor(Number(level) || 1)));
+  return (n - 1) * TROPHIES_PER_LEVEL;
+}
+
+/**
+ * Battle Pass level for a total trophy count. Level 1 at 0 trophies, level 100
+ * at the 10,000 cap. Clamped to 1..MAX_LEVEL.
+ */
+export function getLevelFromTrophies(totalTrophies = 0) {
+  const total = Math.max(0, Math.floor(Number(totalTrophies) || 0));
+  return Math.min(MAX_LEVEL, Math.max(1, Math.floor(total / TROPHIES_PER_LEVEL) + 1));
+}
+
+/**
+ * Full progress object for the battlepass page / profile card, derived from
+ * TROPHIES. Mirrors the shape of `getBattlepassProgress` (which is now the
+ * legacy XP view) so existing UI keeps working.
+ */
+export function getBattlepassProgressFromTrophies(totalTrophies = 0) {
+  const total = Math.max(0, Math.floor(Number(totalTrophies) || 0));
+  const level = getLevelFromTrophies(total);
+  const currentLevelTrophies = trophiesToReachLevel(level);
+  const nextLevelTrophies =
+    level >= MAX_LEVEL
+      ? currentLevelTrophies
+      : trophiesToReachLevel(level + 1);
+  const range = Math.max(1, nextLevelTrophies - currentLevelTrophies);
+  return {
+    level,
+    trophies: total,
+    currentLevelTrophies,
+    nextLevelTrophies,
+    prevLevelRequired: currentLevelTrophies,
+    nextLevelRequired: nextLevelTrophies,
+    progressPercent:
+      level >= MAX_LEVEL
+        ? 100
+        : Math.min(100, Math.round(((total - currentLevelTrophies) / range) * 100)),
+    remainingToNext: Math.max(0, nextLevelTrophies - total),
+    maxLevel: MAX_LEVEL,
+    trophiesPerLevel: TROPHIES_PER_LEVEL,
+  };
+}
+
+// ── Legacy XP track (no longer drives the level) ──────────────────────────
+
 // EXP sources.
 export const WAGER_EXP_DIVISOR = 10; // 1 XP per 10 staked
-export const QUEST_EXP_MULTIPLIER = 2; // quest XP = quest reward value × 2
 // One-time onboarding bonus for finishing the first Free Play vs AI match
 // (migration 0143). Free-play matches otherwise award no XP (expForWager(0)
 // = 0); this is the single explicit exception, granted once server-side by
@@ -75,11 +134,6 @@ export function expForWager(betAmount = 0) {
   return Math.floor(bet / WAGER_EXP_DIVISOR);
 }
 
-// XP granted for claiming a quest with the given reward value.
-export function expForQuest(reward = 0) {
-  return Math.max(0, Math.floor(Number(reward) || 0)) * QUEST_EXP_MULTIPLIER;
-}
-
 let _sql = null;
 function getSql() {
   if (_sql) return _sql;
@@ -96,8 +150,8 @@ function getSql() {
 // `users` and `user_stats` (the two tables the level is read from).
 // Returns the new { level, xp } or null.
 //
-// An active 2× XP Boost (timed shop item) multiplies the granted XP — the
-// multiplier is looked up inside addExp so every XP source (quest claims,
+// An active 2× Progress Boost (timed shop item) multiplies the granted XP — the
+// multiplier is looked up inside addExp so every XP source (settled wagers,
 // onboarding bonuses, any future grant) honors the boost at this single
 // chokepoint.
 export async function addExp(userId, amount) {

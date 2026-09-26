@@ -17,6 +17,8 @@ import {
   getPrestigeStatus,
   resolvePrestigeBadge,
 } from "../../../lib/prestige";
+import { getRatingsForUser } from "../../../lib/rating";
+import { getTrophiesForUser } from "../../../lib/trophyStore";
 
 export async function GET() {
   const { userId } = await auth();
@@ -77,17 +79,18 @@ export async function GET() {
     const streakTitle = equippedStreak.title;
 
     // Server-resolved Prestige state — used by the navbar for the badge
-    // chip and the global "Prestige unlocked" notice. The badge text is
-    // always derived here from the real columns, never from the client.
-    const prestigeStatus = getPrestigeStatus({
-      prestigeLevel: Number(dbUser.prestigeLevel) || 0,
-      prestigeNetWins: 0,
-      xp: Number(dbUser.xp) || 0,
-    });
+    // chip and the global "Prestige unlocked" notice. Prestige is DERIVED
+    // from the player's Elo ratings + per-game trophies (max(0, elo−1000)
+    // once a game's trophies reach the 10,000 cap); no column is read.
+    const [ratings, trophies] = await Promise.all([
+      getRatingsForUser(userId),
+      getTrophiesForUser(userId),
+    ]);
+    const prestigeStatus = getPrestigeStatus({ ratings, trophies });
     const prestigeBadge = resolvePrestigeBadge({
-      xp: Number(dbUser.xp) || 0,
-      prestigeLevel: Number(dbUser.prestigeLevel) || 0,
       showPrestigeBadge: Boolean(dbUser.showPrestigeBadge),
+      ratings,
+      trophies,
     });
 
     return new Response(

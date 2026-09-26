@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { quickQueueAssignmentEvents, quickQueueAssignments, quickQueueRequests } from "../db/schema";
 import { findCompatibleQuickQueuePair, normalizeQuickQueueRequest } from "./quickQueue";
+import { getTrophyMapsForUsers } from "./trophyStore";
 import { createOrJoin as createOrJoinMinesMatch } from "./mines-pvp/serverStore";
 import { createOrJoin as createOrJoinPlinkoMatch } from "./plinko-pvp/serverStore";
 import { createOrJoin as createOrJoinBlackjackMatch } from "./blackjack-pvp/serverStore";
@@ -31,6 +32,20 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       .limit(Math.max(1, Math.min(limit, 500)))
       .for("update", { skipLocked: true });
 
+    // Trophy skill snapshots for every queued player, in one query. Trophies
+    // are the primary skill signal below the cap, so the matcher pairs players
+    // whose per-game trophy counts are close — widening the acceptable gap the
+    // longer someone waits (see src/lib/quickQueue.ts). A player with no trophy
+    // rows for a game has no skill signal and falls back to FIFO for it; this
+    // is the only place matchmaking reads progression, and membership is never
+    // consulted.
+    let trophyMaps: Record<string, Record<string, number>> = {};
+    try {
+      trophyMaps = await getTrophyMapsForUsers(rows.map((row) => row.userId));
+    } catch (error) {
+      console.error("[quick-queue] failed to load trophy snapshots", error);
+    }
+
     const requests = rows.map((row) => ({
       ...normalizeQuickQueueRequest({
         userId: row.userId,
@@ -43,6 +58,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       premium: Boolean(row.premium),
       requestId: row.id,
       queuedAt: row.queuedAt.getTime(),
+      trophies: trophyMaps[row.userId] ?? null,
       row,
     }));
 

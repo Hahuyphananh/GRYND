@@ -32,7 +32,7 @@ import {
   towerArenaTurns,
   users,
 } from "../../db/schema";
-import { applyLeaderboardCounters } from "../leaderboardCounters";import { applyPrestigeResult, resolvePrestigeBadge } from "../prestige";
+import { applyLeaderboardCounters } from "../leaderboardCounters";import { resolvePrestigeBadge } from "../prestige";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
 import { getFrameDecorations } from "../cosmetics";
@@ -1111,34 +1111,6 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
     }
   }
 
-  // Permanent Prestige — paid competitive finish: first place earns +1
-  // and every other human participant records a -1 loss (AI / free-play
-  // matches move no Prestige). Idempotent on the match id via the
-  // prestige_results journal.
-  if (isPaid) {
-    for (const r of ranked) {
-      if (r.isAi) continue;
-      // AWAITED on purpose. `applyPrestigeResult` runs its queries on the
-      // SAME transaction client it is handed, so firing it off without
-      // awaiting made it race everything that followed — the caller's
-      // next statement AND the transaction COMMIT — with pg throwing
-      // "Calling client.query() when the client is already executing a
-      // query". That is what broke every PAID finish: a 2-player resign
-      // 500'd (the client silently did nothing), and a ceiling collapse
-      // answered `matchFinished: true` while the whole transaction rolled
-      // back, leaving the match active, the eliminated seat active and no
-      // result popup. Free vs-AI matches never ran this block, which is
-      // why they were unaffected.
-      await applyPrestigeResult({
-        tx,
-        clerkId: r.userId,
-        outcome: r.placement === 1 ? "win" : "loss",
-        source: "tower-arena",
-        sourceId: String(match.id),
-      }).catch(() => {});
-    }
-  }
-
   const finishDistinctId =
     winner && !winner.isAi ? winner.userId : match.hostUserId || "system";
   towerArenaFinished({
@@ -1647,9 +1619,10 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
       name: row.name || "Player",
       iconKey: row.selectedIcon || DEFAULT_ICON_KEY,
       profileFrame: decorationByClerkId.get(row.clerkId) || null,
+      // Prestige is derived from ratings + per-game trophies, which are not
+      // loaded here — an opted-in player with no capped game resolves to no
+      // badge.
       prestigeBadge: resolvePrestigeBadge({
-        xp: row.xp,
-        prestigeLevel: row.prestigeLevel,
         showPrestigeBadge: row.showPrestigeBadge,
       }),
     });

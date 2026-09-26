@@ -9,8 +9,8 @@
 // (server-authoritative via users.onboarding_completed_at, written through
 // /api/onboarding/complete) and launches the player straight into the
 // EXISTING Free Play vs AI tutorial match (Rock Paper Scissors — reused
-// as-is, no duplicate game), whose finish grants the one-time onboarding XP
-// through the existing Battle Pass pipeline.
+// as-is, no duplicate game), whose finish grants the one-time onboarding
+// reward through the existing Battle Pass pipeline.
 //
 // This page only renders the flow, it never decides "is this user new" on
 // its own. Refreshing resumes the current step (sessionStorage, per user +

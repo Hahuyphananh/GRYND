@@ -1082,6 +1082,152 @@ export const ratingIdentities = pgTable(
   }),
 );
 
+// PER-GAME TROPHIES
+// ==============================================================================
+// One independent trophy count per (player, game), sitting alongside — never
+// replacing — the per-game Elo rating. A Chess trophy count and a Precision
+// trophy count are separate rows and are never combined.
+//
+// The row is created LAZILY, the first time the player completes an eligible
+// ranked match in that game (src/lib/trophyStore.js), so an unplayed game
+// reads as "no trophies yet" instead of a fabricated row. Every player starts
+// at TROPHY_START (0) on their first ranked match in a game.
+//
+// THE RULE (src/lib/trophies.js): win = +30, loss = −30, draw = 0, clamped to
+// [0, 10000]. Reaching 10,000 completes trophy progression for that game and
+// Elo becomes the primary signal (Prestige = max(0, elo − 1000), derived).
+//
+// Written ONLY from server-side match settlement via applyTrophyResult under
+// SELECT ... FOR UPDATE in ascending user_id order. No client input is ever
+// accepted for a trophy count, a delta or an outcome.
+//
+// NOTE: this table is intentionally NOT a child of the token economy. Trophy
+// counts are never affected by balance, winnings, XP, Battle Pass or cosmetics.
+export const playerTrophies = pgTable(
+  "player_trophies",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Trophy game key — identical vocabulary to RATED_GAMES (src/lib/rating.js),
+    // so trophies and Elo can never disagree about which games are competitive.
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    // Current trophy count for this game, clamped to [0, TROPHY_MAX].
+    trophies: integer("trophies").notNull().default(0),
+    // Highest count ever reached — monotonic, so a bad run can never erase a peak.
+    peakTrophies: integer("peak_trophies").notNull().default(0),
+    gamesRated: integer("games_rated").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    draws: integer("draws").notNull().default(0),
+    // The delta applied by the player's most recent ranked match, so result
+    // screens can show "+30 / −30" without a second lookup. NOT the source of
+    // truth — the journal row is.
+    lastDelta: integer("last_delta").notNull().default(0),
+    lastTrophyAt: timestamp("last_trophy_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqPlayerGame: unique("player_trophies_user_game_unique").on(
+      table.userId,
+      table.gameKey,
+    ),
+    // Board ordering: trophies DESC within one game.
+    boardIdx: index("player_trophies_game_trophies_idx").on(
+      table.gameKey,
+      desc(table.trophies),
+    ),
+    userIdx: index("player_trophies_user_idx").on(table.userId),
+  }),
+);
+
+// TROPHY EVENT JOURNAL — IDEMPOTENCY + PER-MATCH TROPHY HISTORY
+// ==============================================================================
+// One row per player per ranked match (two rows per match), keyed uniquely by
+// (user_id, game_key, match_id). The unique key is what makes a duplicate,
+// replayed, retried or concurrent settlement of the same match a guaranteed
+// no-op — and the same rows double as the trophy history (opponent, both
+// counts, delta), without touching any game's own tables.
+//
+// Inserted only from src/lib/trophyStore.js, inside the caller's settlement
+// transaction, so the journal commits atomically with the trophy update.
+export const trophyEvents = pgTable(
+  "trophy_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    // Authoritative match id in that game's own table.
+    matchId: varchar("match_id", { length: 128 }).notNull(),
+    opponentId: integer("opponent_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Authoritative outcome for THIS user: "win" | "loss" | "draw".
+    outcome: varchar("outcome", { length: 8 }).notNull(),
+    trophiesBefore: integer("trophies_before").notNull(),
+    trophiesAfter: integer("trophies_after").notNull(),
+    delta: integer("delta").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqTrophyEvent: unique("trophy_events_unique_event").on(
+      table.userId,
+      table.gameKey,
+      table.matchId,
+    ),
+    userIdx: index("trophy_events_user_idx").on(
+      table.userId,
+      table.gameKey,
+      table.createdAt,
+    ),
+    matchIdx: index("trophy_events_match_idx").on(table.matchId),
+  }),
+);
+
+// TROPHY IDENTITY LEDGER — ANTI-RESET FOR TROPHY PROGRESS
+// ==============================================================================
+// A snapshot of one player's per-game trophies, keyed by a HASH OF THEIR
+// NORMALIZED EMAIL (the SAME digest the Elo ledger uses — see
+// identityHashForEmail in src/lib/rating.js) instead of by user id. It carries
+// NO foreign key to `users`, so it SURVIVES account deletion and lets a
+// deleted-and-recreated account restore its trophies instead of restarting.
+//
+// Refreshed on every ranked match from the just-updated `player_trophies` row.
+// The email itself is never stored — only a domain-separated sha256 hex digest.
+//
+// NOT part of the token economy: no balance, winnings, XP, Battle Pass,
+// Prestige or cosmetic value is stored or derived here.
+export const trophyIdentities = pgTable(
+  "trophy_identities",
+  {
+    id: serial("id").primaryKey(),
+    // sha256 hex of "grynd:rating-identity:" + lower(trim(email)).
+    identityHash: varchar("identity_hash", { length: 64 }).notNull(),
+    gameKey: varchar("game_key", { length: 64 }).notNull(),
+    trophies: integer("trophies").notNull().default(0),
+    peakTrophies: integer("peak_trophies").notNull().default(0),
+    gamesRated: integer("games_rated").notNull().default(0),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    draws: integer("draws").notNull().default(0),
+    lastDelta: integer("last_delta").notNull().default(0),
+    lastTrophyAt: timestamp("last_trophy_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqIdentityGame: unique("trophy_identities_identity_game_unique").on(
+      table.identityHash,
+      table.gameKey,
+    ),
+    identityIdx: index("trophy_identities_identity_idx").on(table.identityHash),
+  }),
+);
+
 export const chatRoomTypeEnum = pgEnum("chat_room_type", ["global", "game"]);
 
 export const chatMessages = pgTable(

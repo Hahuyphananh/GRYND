@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
       // AI games are free play (wager is never deducted) — skip the stats
       // pipeline entirely so beating the AI no longer records a phantom
-      // loss (payout 0) in user_stats / quests. Real PvP games settle via
+      // loss (payout 0) in user_stats. Real PvP games settle via
       // /api/odds/pvp/* instead. This route is AI-only (guarded above), so
       // the isAi guard keeps it defensive.
       if (!game.isAi) {

@@ -395,8 +395,9 @@ test("UI: the badge renders next to names on the classement", () => {
   const page = fs.readFileSync("src/app/classement/PageClient.jsx", "utf8");
   assert.match(page, /function OverallEloBadge\(/);
   assert.match(page, /<OverallEloBadge item=\{item\}/);
-  // Not doubled up on the Overall tab, where it is already the metric.
-  assert.match(page, /!isOverallTab\(tab\) && \(/);
+  // Not doubled up on the Overall tab (where it is already the metric) or the
+  // Trophy tab (where the badge has no meaning).
+  assert.match(page, /!isOverallTab\(tab\) && !isTrophyTab\(tab\) && \(/);
 });
 
 test("UI: the badge renders in both profile headers", () => {

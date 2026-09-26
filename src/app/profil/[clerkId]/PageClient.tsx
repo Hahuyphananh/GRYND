@@ -307,7 +307,7 @@ export default function PublicProfilePage() {
                 )}
               </div>
               <p className="text-sm text-gray-400 mt-1">
-                Level {profile.level} · {Number(profile.xp).toLocaleString()} XP
+                Level {profile.level} · Battle Pass
               </p>
               {/* Competitive identity strip — every number is real
                   leaderboard-record data (same source as /classement). */}

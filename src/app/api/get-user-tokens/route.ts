@@ -11,6 +11,7 @@ import {
 import { getIconByKey } from "../../../lib/icons";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../lib/stripe/subscriptions";
 import { getOverallEloForUser } from "../../../lib/rating";
+import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { OVERALL_MIN_GAMES } from "../../../lib/elo";
 
 export async function POST(req: Request) {
@@ -42,8 +43,9 @@ export async function POST(req: Request) {
           dailyStreakCurrent: 0,
           dailyStreakBest: 0,
           equippedCosmetics: {},
-          // Ratings need a database — without one there is no Overall Elo to
-          // show, so the navbar simply hides the badge.
+          // Trophies need a database — without one there is nothing to show,
+          // so the navbar simply shows 0.
+          totalTrophies: 0,
           overallElo: null,
           overallEligibleGames: 0,
           overallEligible: false,
@@ -123,6 +125,18 @@ export async function POST(req: Request) {
       console.error(" Error computing Overall Elo in /api/get-user-tokens:", error);
     }
 
+    // TOTAL TROPHIES — the sum of the player's per-game trophy counts. This is
+    // the headline competitive number the navbar shows (it replaced Overall
+    // Elo there) and the value the Battle Pass level derives from. Read-only,
+    // never client-supplied; a failure degrades to 0 rather than breaking the
+    // navbar.
+    let totalTrophies = 0;
+    try {
+      totalTrophies = await getTotalTrophiesForUser(clerkId);
+    } catch (error) {
+      console.error(" Error computing total trophies in /api/get-user-tokens:", error);
+    }
+
     // Equipped cosmetics (category → catalog metadata + visual payload) so the
     // client can render profile frames / badges / effects. Server-written only
     // (src/lib/cosmetics.ts); disabled or missing keys are dropped here.
@@ -181,9 +195,11 @@ export async function POST(req: Request) {
           dailyStreakCurrent: user.dailyStreakCurrent,
           dailyStreakBest: user.dailyStreakBest,
           equippedCosmetics,
-          // Overall Elo — null until the player has an established rating in
-          // OVERALL_MIN_GAMES different games. The navbar renders it in the
-          // space the token balance used to occupy.
+          // Total trophies — the headline number the navbar renders in the
+          // space the token balance used to occupy. 0 for a new player.
+          totalTrophies,
+          // Overall Elo — kept for other consumers; null until the player has
+          // an established rating in OVERALL_MIN_GAMES different games.
           overallElo: overall.overallElo,
           overallEligibleGames: overall.eligibleGames,
           overallEligible: overall.eligible,

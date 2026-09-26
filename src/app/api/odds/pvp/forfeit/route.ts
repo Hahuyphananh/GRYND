@@ -5,8 +5,8 @@ import { db } from "../../../../../db/client";
 import { oddsGames, users } from "../../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
-import { applyPrestigeResult } from "../../../../../lib/prestige";
 import { applyRatingResult } from "../../../../../lib/rating";
+import { applyTrophyResult } from "../../../../../lib/trophyStore";
 
 export async function POST(req: Request) {
   try {
@@ -97,25 +97,17 @@ export async function POST(req: Request) {
         isPvpWin: false,
       }).catch(() => {});
 
-      // Permanent Prestige — competitive forfeit settlement: winner +1,
-      // forfeiter -1. Idempotent on the game id via the journal.
-      applyPrestigeResult({
-        clerkId: winnerId!,
-        outcome: "win",
-        source: "odds-pvp",
-        sourceId: String(gameId),
-      }).catch(() => {});
-      applyPrestigeResult({
-        clerkId: userId,
-        outcome: "loss",
-        source: "odds-pvp",
-        sourceId: String(gameId),
-      }).catch(() => {});
-
       // Per-game Elo — the forfeiter loses, the opponent (winnerId, resolved
       // server-side from the game row) gains. The caller's own id can only
       // ever be the loser here.
       applyRatingResult({
+        gameKey: "odds-pvp",
+        matchId: String(gameId),
+        winnerClerkId: winnerId,
+        loserClerkId: userId,
+      }).catch(() => {});
+      // Per-game trophies — the same authoritative forfeit (+30 / −30).
+      applyTrophyResult({
         gameKey: "odds-pvp",
         matchId: String(gameId),
         winnerClerkId: winnerId,

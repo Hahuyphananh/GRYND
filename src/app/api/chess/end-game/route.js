@@ -4,8 +4,8 @@ import { db } from "../../../../db/client";
 import { chessGames, users } from "../../../../db/schema";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
-import { applyPrestigeResult } from "../../../../lib/prestige";
 import { applyRatingResult } from "../../../../lib/rating";
+import { applyTrophyResult } from "../../../../lib/trophyStore";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -144,26 +144,20 @@ export async function POST(req) {
           payout: 0,
         }).catch(() => {});
 
-        // Permanent Prestige — competitive forfeit (opponent left): the
-        // remaining player wins and the leaver records the loss.
-        applyPrestigeResult({
-          clerkId: opponentId,
-          outcome: "win",
-          source: "chess",
-          sourceId: String(gameId),
-        }).catch(() => {});
-        applyPrestigeResult({
-          clerkId: userId,
-          outcome: "loss",
-          source: "chess",
-          sourceId: String(gameId),
-        }).catch(() => {});
-
         // Per-game Elo — a competitive forfeit. The winner is the player who
         // STAYED (derived server-side above from the game's seat columns and
         // the caller's identity), so a caller can never award themselves the
         // win by calling this route. AI games are excluded above.
         applyRatingResult({
+          gameKey: "chess",
+          matchId: String(gameId),
+          winnerClerkId: opponentId,
+          loserClerkId: userId,
+        }).catch(() => {});
+
+        // Per-game trophies — the same authoritative forfeit (+30 / −30),
+        // clamped to [0, 10000] and idempotent on the match id.
+        applyTrophyResult({
           gameKey: "chess",
           matchId: String(gameId),
           winnerClerkId: opponentId,

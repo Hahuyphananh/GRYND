@@ -15,6 +15,7 @@ import AsyncState from "../../components/states/AsyncState";
 import UpgradeProButton from "../../components/UpgradeProButton";
 
 const TABS = [
+  "trophies",
   "all-time",
   "overall",
   "per-game",
@@ -156,6 +157,14 @@ function isOverallTab(tab) {
   return tab === "overall";
 }
 
+// The cross-game OVERALL TROPHIES board — the headline competitive board. It
+// ranks by the SUM of a player's per-game trophy counts (players need a trophy
+// row in at least OVERALL_TROPHY_MIN_GAMES games). Derived on read; nothing is
+// stored, so a trophy change shows up on the next load.
+function isTrophyTab(tab) {
+  return tab === "trophies";
+}
+
 function getMetricValue(item, tab, category) {
   if (isStreakTab(tab)) {
     const field =
@@ -176,6 +185,13 @@ function getMetricValue(item, tab, category) {
       // Game-specific Elo, exactly as the server ranked it. Never derived
       // from, or mixed with, any other game's rating.
       return formatNumber(field("rating"));
+    case "trophies": {
+      // The cross-game trophy total and how many different games contributed —
+      // both server-computed; never a token/winnings metric.
+      const trophies = formatNumber(item.overallTrophies ?? item.overall_trophies);
+      const games = formatNumber(item.gamesPlayed ?? item.games_played);
+      return `${trophies} Trophies · ${games} games`;
+    }
     case "overall": {
       // The aggregate Elo and how many different games qualified for it —
       // both server-computed, never a token/winnings metric.
@@ -271,13 +287,15 @@ function RankBadge({ rank }) {
 function Podium({ items, myClerkId, tab, category }) {
   if (!items || items.length === 0) return null;
   const order = items.length === 1 ? [0] : items.length === 2 ? [1, 0] : [1, 0, 2];
-  const metricLabel = isPerGameTab(tab)
-    ? "Elo"
-    : isOverallTab(tab)
-      ? "Overall Elo"
-      : isStreakTab(tab)
-        ? "Days"
-        : CATEGORY_LABELS[category];
+  const metricLabel = isTrophyTab(tab)
+    ? "Trophies"
+    : isPerGameTab(tab)
+      ? "Elo"
+      : isOverallTab(tab)
+        ? "Overall Elo"
+        : isStreakTab(tab)
+          ? "Days"
+          : CATEGORY_LABELS[category];
 
   return (
     <div className="mb-6 grid grid-cols-3 gap-2 sm:gap-3">
@@ -322,7 +340,7 @@ function Podium({ items, myClerkId, tab, category }) {
               {item.user?.name || item.name}
             </span>
             <ProvisionalChip item={item} className="mt-0.5" />
-            {!isOverallTab(tab) && (
+            {!isOverallTab(tab) && !isTrophyTab(tab) && (
               <OverallEloBadge item={item} className="mt-0.5" />
             )}
             {isMe && (
@@ -387,12 +405,17 @@ export default function LeaderboardPage({ adSlot = null }) {
   // ranks by the cross-game aggregate.
   const displayCategory = isPerGameTab(tab)
     ? "rating"
-    : isOverallTab(tab)
-      ? "overall"
-      : category;
+    : isTrophyTab(tab)
+      ? "trophies"
+      : isOverallTab(tab)
+        ? "overall"
+        : category;
   const myClerkId = isSignedIn ? user?.id : null;
 
   const endpoint = useMemo(() => {
+    // The cross-game Overall Trophies board — the headline competitive board,
+    // ranked by each player's summed per-game trophies.
+    if (tab === "trophies") return `/api/leaderboard/trophy-overall?limit=50`;
     // The cross-game Overall Elo board — an aggregate of established game
     // ratings, restricted to players with enough different games.
     if (tab === "overall") return `/api/leaderboard/overall?limit=50`;
@@ -477,7 +500,9 @@ export default function LeaderboardPage({ adSlot = null }) {
                 aria-pressed={tab === x}
                 className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] ${tab === x ? "border-[#f5ff3b]/60 bg-[#f5ff3b] text-[#041125]" : "border-[#00e5ff]/50 bg-[#0a214d] text-[#00e5ff] hover:bg-[#123b82]"}`}
               >
-                {x === "all-time"
+                {x === "trophies"
+                  ? "Trophies"
+                  : x === "all-time"
                   ? "All-Time"
                   : x === "overall"
                     ? "Overall Elo"
@@ -512,7 +537,8 @@ export default function LeaderboardPage({ adSlot = null }) {
           </div>
         ) : (
           !isStreakTab(tab) &&
-          !isOverallTab(tab) && (
+          !isOverallTab(tab) &&
+          !isTrophyTab(tab) && (
             <div className="mb-4 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
               <div className="flex w-max min-w-full gap-2 sm:flex-wrap sm:justify-center">
                 {ALL_TIME_CATEGORIES.map((x) => (
@@ -528,6 +554,19 @@ export default function LeaderboardPage({ adSlot = null }) {
               </div>
             </div>
           )
+        )}
+
+        {isTrophyTab(tab) && (
+          <p className="mb-4 text-center text-xs text-cyan-200/70">
+            Ranked by{" "}
+            <span className="font-bold text-[#f5ff3b]">total trophies</span>{" "}
+            — the sum of every rated game. A win is +30, a loss −30. Players
+            need trophies in at least{" "}
+            <span className="font-bold text-[#f5ff3b]">
+              {Number(board.data?.minGames || 3)} different games
+            </span>{" "}
+            to qualify.
+          </p>
         )}
 
         {isPerGameTab(tab) && (
@@ -595,7 +634,16 @@ export default function LeaderboardPage({ adSlot = null }) {
                 {/* Real board record (weekly/all-time/per-game/streak rows all
                     return it). The Overall tab shows the aggregate instead —
                     its rows carry no per-game win/loss record. */}
-                {isOverallTab(tab) ? (
+                {isTrophyTab(tab) ? (
+                  <p className="mt-0.5 text-sm text-cyan-200/80">
+                    <span className="font-bold text-[#f5ff3b]">
+                      {formatNumber(me.overallTrophies)} Trophies
+                    </span>
+                    {" · "}
+                    {formatNumber(me.gamesPlayed)}{" "}
+                    {Number(me.gamesPlayed) === 1 ? "game" : "games"}
+                  </p>
+                ) : isOverallTab(tab) ? (
                   <p className="mt-0.5 text-sm text-cyan-200/80">
                     <span className="font-bold text-[#f5ff3b]">
                       {formatNumber(me.overallElo)} Overall Elo
@@ -700,6 +748,15 @@ export default function LeaderboardPage({ adSlot = null }) {
                     across {formatNumber(me.eligibleGames)} games.
                   </p>
                 )}
+                {isTrophyTab(tab) && me && (
+                  <p className="mt-3 text-center text-xs text-cyan-200/80">
+                    Your total:{" "}
+                    <span className="font-bold text-[#f5ff3b]">
+                      {formatNumber(me.overallTrophies)} Trophies
+                    </span>{" "}
+                    across {formatNumber(me.gamesPlayed)} games.
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -766,13 +823,15 @@ export default function LeaderboardPage({ adSlot = null }) {
                     <th className="px-2 py-2 text-xs uppercase tracking-wider sm:px-3">#</th>
                     <th className="px-2 py-2 text-xs uppercase tracking-wider sm:px-3">Player</th>
                     <th className="px-2 py-2 text-right text-xs uppercase tracking-wider sm:px-3 sm:text-left">
-                      {isStreakTab(tab)
-                        ? "Days"
-                        : isPerGameTab(tab)
-                          ? "Elo"
-                          : isOverallTab(tab)
-                            ? "Overall Elo"
-                            : CATEGORY_LABELS[category]}
+                      {isTrophyTab(tab)
+                        ? "Trophies"
+                        : isStreakTab(tab)
+                          ? "Days"
+                          : isPerGameTab(tab)
+                            ? "Elo"
+                            : isOverallTab(tab)
+                              ? "Overall Elo"
+                              : CATEGORY_LABELS[category]}
                     </th>
                   </tr>
                 </thead>
@@ -818,7 +877,7 @@ export default function LeaderboardPage({ adSlot = null }) {
                                     </span>
                                   )}
                                   <ProvisionalChip item={item} />
-                                  {!isOverallTab(tab) && (
+                                  {!isOverallTab(tab) && !isTrophyTab(tab) && (
                                     <OverallEloBadge item={item} />
                                   )}
                                 </span>

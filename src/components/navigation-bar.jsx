@@ -12,7 +12,7 @@ import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
 import BattlepassClaimBadge from "./BattlepassClaimBadge";
-import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconSwords, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
 import useDailyLoss from "../lib/useDailyLoss";
@@ -46,23 +46,20 @@ function NavigationBar({ currentPath = "" }) {
   // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
   const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState(() => {
-    // Seed the Overall Elo display from the last known value so a fresh mount
+    // Seed the total-trophy display from the last known value so a fresh mount
     // (the navbar remounts on every navigation) does NOT replay the change
     // animation when nothing actually moved. Only a real change animates.
-    let overallElo = null;
-    let overallEligibleGames = 0;
-    let overallMinGames = 3;
+    let totalTrophies = 0;
     try {
-      const raw = sessionStorage.getItem("nav-elo");
+      const raw = sessionStorage.getItem("nav-trophies");
       if (raw) {
         const cached = JSON.parse(raw);
-        const elo = Number(cached?.overallElo);
-        overallElo = Number.isFinite(elo) && elo > 0 ? elo : null;
-        overallEligibleGames = Number(cached?.overallEligibleGames) || 0;
-        overallMinGames = Number(cached?.overallMinGames) || 3;
+        const trophies = Number(cached?.totalTrophies);
+        // Every player starts at 0 trophies, so 0 is a real displayable value.
+        totalTrophies = Number.isFinite(trophies) && trophies >= 0 ? trophies : 0;
       }
     } catch {
-      // sessionStorage unavailable (SSR / private mode) — start unrated.
+      // sessionStorage unavailable (SSR / private mode) — start at 0.
     }
     return {
       name: "",
@@ -82,20 +79,18 @@ function NavigationBar({ currentPath = "" }) {
       prestigeBadge: null,
       prestige: 0,
       prestigeUnlocked: false,
-      // Overall Elo — the server-computed aggregate of the player's
-      // established per-game ratings (see src/lib/rating.js). Null until they
-      // qualify, in which case the navbar shows an "Unrated" placeholder where
-      // the token balance used to sit. Never derived on the client.
-      overallElo,
-      overallEligibleGames,
-      overallMinGames,
+      // TOTAL TROPHIES — the server-computed sum of the player's per-game
+      // trophy counts (see src/lib/trophies.js / trophyStore.js). This is the
+      // headline competitive number in the navbar (it replaced Overall Elo
+      // there). Everyone starts at 0, so 0 is shown rather than a placeholder.
+      totalTrophies,
     };
   });
   // Whether the chip has finished its first paint. The first render must not
   // animate (it is just the cached/initial value); only later changes do.
-  const eloFirstPaint = useRef(true);
+  const trophyFirstPaint = useRef(true);
   useEffect(() => {
-    eloFirstPaint.current = false;
+    trophyFirstPaint.current = false;
   }, []);
   const [, setError] = useState(null);
   // Prestige tier being celebrated by the global in-app notice (null = none).
@@ -238,25 +233,21 @@ function NavigationBar({ currentPath = "" }) {
             // GRYND PRO chat colour, which must not paint the display name.
             glowColor: data.data.glowColor || null,
             streakTitle: data.data.streakTitle || null,
-            // Overall Elo display values (server-computed). A null means the
-            // player has not yet established enough different games.
-            overallElo:
-              Number.isFinite(Number(data.data.overallElo)) &&
-              Number(data.data.overallElo) > 0
-                ? Number(data.data.overallElo)
-                : null,
-            overallEligibleGames: Number(data.data.overallEligibleGames) || 0,
-            overallMinGames: Number(data.data.overallMinGames) || 3,
+            // TOTAL TROPHIES (server-computed sum of per-game counts). A
+            // missing/invalid value degrades to 0 — everyone starts at 0.
+            totalTrophies: (() => {
+              const n = Number(data.data.totalTrophies);
+              return Number.isFinite(n) && n >= 0 ? n : 0;
+            })(),
           }));
-        // Remember the last known Elo so the next mount starts from it and the
-        // chip only animates on a real change (see the state initializer).
+        // Remember the last known trophy total so the next mount starts from it
+        // and the chip only animates on a real change (see the state
+        // initializer).
         try {
           sessionStorage.setItem(
-            "nav-elo",
+            "nav-trophies",
             JSON.stringify({
-              overallElo: data.data.overallElo ?? null,
-              overallEligibleGames: Number(data.data.overallEligibleGames) || 0,
-              overallMinGames: Number(data.data.overallMinGames) || 3,
+              totalTrophies: Number(data.data.totalTrophies) || 0,
             }),
           );
         } catch {}
@@ -581,59 +572,35 @@ function NavigationBar({ currentPath = "" }) {
               )}
               {isLoaded && isSignedIn ? (
                 <>
-                  {/* Overall Elo — sits where the token balance used to be.
-                      Server-computed aggregate; shows "Unrated" until the
-                      player has established ratings in enough games. */}
+                  {/* Total trophies — sits where the token balance used to be.
+                      Server-computed sum of the player's per-game trophy
+                      counts; everyone starts at 0 and the total never hides. */}
                   <Link
                     href="/profil"
-                    data-testid="nav-elo"
-                    className={
-                      "hidden items-center gap-1.5 rounded-lg border px-3 py-1.5 transition-colors lg:flex " +
-                      (profile?.overallElo != null
-                        ? "border-[#f5ff3b]/40 bg-[#f5ff3b]/10 hover:bg-[#f5ff3b]/20"
-                        : "border-[#7dd3fc]/30 bg-[#7dd3fc]/10 hover:bg-[#7dd3fc]/20")
-                    }
-                    title={
-                      profile?.overallElo != null
-                        ? `Overall Elo across ${profile.overallEligibleGames} games`
-                        : `Earn an established rating in ${profile?.overallMinGames ?? 3} different games to unlock Overall Elo`
-                    }
+                    data-testid="nav-trophies"
+                    className="hidden items-center gap-1.5 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1.5 transition-colors hover:bg-[#f5ff3b]/20 lg:flex"
+                    title="Total trophies across every rated game"
                   >
-                    <IconSwords
-                      size={15}
-                      className={
-                        profile?.overallElo != null
-                          ? "text-[#f5ff3b]"
-                          : "text-[#7dd3fc]"
+                    <IconTrophy size={15} className="text-[#f5ff3b]" />
+                    {/* keyed on the total so a change remounts the span and
+                        replays the pop-in; the ref suppresses the very first
+                        paint so cached values don't animate. */}
+                    <motion.span
+                      key={profile.totalTrophies}
+                      initial={
+                        trophyFirstPaint.current || shouldReduceMotion
+                          ? false
+                          : { opacity: 0, y: -4, scale: 0.9 }
                       }
-                    />
-                    {profile?.overallElo != null ? (
-                      <>
-                        {/* keyed on the rating so a change remounts the span
-                            and replays the pop-in; the ref suppresses the very
-                            first paint so cached values don't animate. */}
-                        <motion.span
-                          key={profile.overallElo}
-                          initial={
-                            eloFirstPaint.current || shouldReduceMotion
-                              ? false
-                              : { opacity: 0, y: -4, scale: 0.9 }
-                          }
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="text-sm font-semibold text-[#f5ff3b]"
-                        >
-                          {profile.overallElo.toLocaleString()}
-                        </motion.span>
-                        <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
-                          Elo
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-xs font-medium text-[#7dd3fc]">
-                        Unrated
-                      </span>
-                    )}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      className="text-sm font-semibold text-[#f5ff3b]"
+                    >
+                      {Number(profile.totalTrophies || 0).toLocaleString()}
+                    </motion.span>
+                    <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
+                      Trophies
+                    </span>
                   </Link>
                   <div className="hidden items-center space-x-4 lg:flex">
                     <Link href="/profil" className="group flex items-center space-x-2">
@@ -764,11 +731,9 @@ function NavigationBar({ currentPath = "" }) {
                         <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                       </div>
                     )}
-                    <div className="text-xs text-[#f5ff3b]" data-testid="nav-elo-mobile">
-                      <IconSwords size={12} className="mb-0.5 mr-0.5 inline" />{" "}
-                      {profile?.overallElo != null
-                        ? `Overall ${profile.overallElo.toLocaleString()} Elo`
-                        : "Unrated"}
+                    <div className="text-xs text-[#f5ff3b]" data-testid="nav-trophies-mobile">
+                      <IconTrophy size={12} className="mb-0.5 mr-0.5 inline" />{" "}
+                      {`${Number(profile.totalTrophies || 0).toLocaleString()} Trophies`}
                     </div>
                   </div>
                 </Link>

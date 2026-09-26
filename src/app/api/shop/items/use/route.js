@@ -15,8 +15,8 @@ import {
   hasActiveEffect,
   shopItemByKey,
   useItemAsEffect,
+  userIdByClerkId,
 } from "../../../../../lib/shopItems";
-import { userIdByClerkId } from "../../../../../lib/quests";
 
 export async function POST(req) {
   try {

@@ -6,11 +6,9 @@ import { db } from "../../../../db/client";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-import { chessGames, chessMoves, users } from "../../../../db/schema";import {
-  applyPrestigeResult,
-  resolvePrestigeBadge,
-} from "../../../../lib/prestige";
+import { chessGames, chessMoves, users } from "../../../../db/schema";import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { applyRatingResult } from "../../../../lib/rating";
+import { applyTrophyResult } from "../../../../lib/trophyStore";
 
 
 const HOUSE_EDGE_PERCENT = 10;
@@ -196,40 +194,32 @@ async function settleTimeoutIfNeeded(game, clocks) {
         and(eq(chessGames.id, game.id), eq(chessGames.status, "in_progress")),
       );
 
-      // Permanent Prestige — competitive clock-timeout finish (chess vs AI
-      // is free play and never earns Prestige).
+      // Competitive clock-timeout finish: chess vs AI is free play and never
+      // earns Elo or trophies.
       if (!lockedGame.isAiGame && lockedWinnerId) {
-        const prestigeLoserId =
+        const loserClerkId =
           lockedGame.playerWhiteId === lockedWinnerId
             ? lockedGame.playerBlackId
             : lockedGame.playerWhiteId;
-        await applyPrestigeResult({
-          tx,
-          clerkId: lockedWinnerId,
-          outcome: "win",
-          source: "chess",
-          sourceId: String(game.id),
-        }).catch(() => {});
-        if (prestigeLoserId) {
-          await applyPrestigeResult({
-            tx,
-            clerkId: prestigeLoserId,
-            outcome: "loss",
-            source: "chess",
-            sourceId: String(game.id),
-          }).catch(() => {});
-        }
 
         // Per-game Elo — server-authoritative clock timeout (the winner was
         // resolved from the recomputed clocks above, never from the client).
-        // AI games are free play and are excluded, exactly like Prestige.
-        if (prestigeLoserId) {
+        // AI games are free play and are excluded.
+        if (loserClerkId) {
           await applyRatingResult({
             tx,
             gameKey: "chess",
             matchId: String(game.id),
             winnerClerkId: lockedWinnerId,
-            loserClerkId: prestigeLoserId,
+            loserClerkId,
+          }).catch(() => {});
+          // Per-game trophies — the same authoritative timeout result.
+          await applyTrophyResult({
+            tx,
+            gameKey: "chess",
+            matchId: String(game.id),
+            winnerClerkId: lockedWinnerId,
+            loserClerkId,
           }).catch(() => {});
         }
       }

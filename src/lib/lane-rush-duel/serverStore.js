@@ -49,8 +49,8 @@
 
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
-import { applyPrestigeResult } from "../prestige";
 import { applyRatingResult } from "../rating";
+import { applyTrophyResult } from "../trophyStore";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
 import { laneRushDuelMatches, users } from "../../db/schema";
 import { sendSystemNotificationEmail } from "../emails/system";
@@ -1004,9 +1004,9 @@ async function recordPvPResult(tx, match, winnerId, result) {
     .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
 
-  // Canonical stats + quests pipeline (user_stats wins/losses/win_rate/
-  // total_bets, pvp_wins, wagered/won, streaks, battlepass XP, quest
-  // progress). Fire-and-forget on its own pool — never blocks settlement.
+  // Canonical stats pipeline (user_stats wins/losses/win_rate/
+  // total_bets, pvp_wins, wagered/won, streaks). Fire-and-forget on its own
+  // pool — never blocks settlement.
   const stake = Number(match.stakeAmount) || 0;
   const winnerPayout = Number(match.prizePaid) || 0;
   applyLeaderboardCounters({
@@ -1023,30 +1023,18 @@ async function recordPvPResult(tx, match, winnerId, result) {
     payout: 0,
   }).catch(() => {});
 
-  // Permanent Prestige — server-authoritative PvP hook. This runs on the
-  // same guarded single-execution path as the stats above (the match flips
-  // to `finished` once inside this transaction) and the prestige_results
-  // journal keyed by (user, source, source_id) makes a duplicate or
-  // concurrent settlement of this match a no-op.
-  await applyPrestigeResult({
-    tx,
-    clerkId: winnerId,
-    outcome: "win",
-    source: "lane-rush-duel",
-    sourceId: String(match.id),
-  }).catch(() => {});
-  await applyPrestigeResult({
-    tx,
-    clerkId: loserId,
-    outcome: "loss",
-    source: "lane-rush-duel",
-    sourceId: String(match.id),
-  }).catch(() => {});
-
-  // Per-game Elo — same guarded single-execution path as Prestige above, so
-  // only ONE settlement of this match can ever move a rating. The
-  // rating_events journal keyed by (user, game, match) makes it idempotent.
+  // Per-game Elo — guarded single-execution path: only ONE settlement of this
+  // match can ever move a rating. The rating_events journal keyed by
+  // (user, game, match) makes it idempotent.
   await applyRatingResult({
+    tx,
+    gameKey: "lane-rush-duel",
+    matchId: String(match.id),
+    winnerClerkId: winnerId,
+    loserClerkId: loserId,
+  }).catch(() => {});
+  // Per-game trophies — the same authoritative result (+30 / −30).
+  await applyTrophyResult({
     tx,
     gameKey: "lane-rush-duel",
     matchId: String(match.id),

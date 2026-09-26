@@ -105,6 +105,28 @@ export async function invalidateRatingBoards(gameKey?: string): Promise<void> {
 }
 
 /**
+ * Invalidate the cached per-game trophy boards (and the cross-game Overall
+ * Trophies board).
+ *
+ * Trophy boards are small (only players with a trophy row) and change only
+ * when a ranked match settles, so they are purged eagerly rather than
+ * debounced. Pass a game key to purge just that game's pages plus the overall
+ * board (which depends on every game); omit it to purge every trophy board
+ * (used by the weekly reset and admin cache flush).
+ */
+export async function invalidateTrophyBoards(gameKey?: string): Promise<void> {
+  if (gameKey) {
+    await Promise.all([
+      cacheDeletePattern(CacheKeys.trophy.gameAll(gameKey)),
+      // The overall board aggregates every game, so it always moves.
+      cacheDeletePattern(CacheKeys.trophy.overallAll),
+    ]);
+    return;
+  }
+  await cacheDeletePattern(CacheKeys.trophy.all);
+}
+
+/**
  * Invalidate the recent games feed.
  *
  * Call this after any new game is recorded.
@@ -135,6 +157,8 @@ export async function invalidateOnGameSettlement(
     // so they can be purged eagerly on every settlement — a just-finished
     // rated match should show its new ranking immediately.
     invalidateRatingBoards(),
+    // Trophy boards are the same size/shape and move on the same settlement.
+    invalidateTrophyBoards(),
     invalidateRecentGames(),
     clerkId ? invalidateUserStats(clerkId) : Promise.resolve(),
   ]);

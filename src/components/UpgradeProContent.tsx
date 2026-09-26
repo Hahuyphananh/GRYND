@@ -211,7 +211,7 @@ export default function UpgradeProContent({
 
           {!active && (
             <p className="mt-3 text-xs text-[#9dd8ff]/60">
-              Every game, ranked play, Elo, leaderboards, tournaments, quests and the
+              Every game, ranked play, Elo, leaderboards, tournaments and the
               Battle Pass stay free — GRYND PRO never changes your odds or matchmaking.
             </p>
           )}

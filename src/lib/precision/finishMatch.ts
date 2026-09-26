@@ -39,8 +39,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { users } from "../../db/schema";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
-import { applyPrestigeResult } from "../prestige";
 import { applyRatingResult } from "../rating";
+import { applyTrophyResult } from "../trophyStore";
 import { claimPayout, readMatch, releasePayoutClaim } from "./serverStore";
 import type { PlayerSeat } from "./types";
 
@@ -310,29 +310,6 @@ export async function processMatchFinishedPayout(
     console.error("[precision] leaderboard (loser) failed:", err);
   });
 
-  // Permanent Prestige — server-authoritative PvP hook. AI matches never
-  // reach this point (isAiGame short-circuits above), and the
-  // precisionPaidOutMatches guard means a match pays out only once, so
-  // this can never double-apply. Fire-and-forget like the leaderboard
-  // side-effects above; the prestige_results journal keeps the event
-  // idempotent regardless.
-  applyPrestigeResult({
-    clerkId: winnerPlayer.userId,
-    outcome: "win",
-    source: "precision",
-    sourceId: matchId,
-  }).catch((err) => {
-    console.error("[precision] prestige (winner) failed:", err);
-  });
-  applyPrestigeResult({
-    clerkId: loserPlayer.userId,
-    outcome: "loss",
-    source: "precision",
-    sourceId: matchId,
-  }).catch((err) => {
-    console.error("[precision] prestige (loser) failed:", err);
-  });
-
   // Per-game Elo — both seats come from the canonical match row and the
   // winner from `winnerSeat` (never a client value). This runs on the same
   // claim-guarded path as everything else above, so a retry from the other
@@ -345,6 +322,19 @@ export async function processMatchFinishedPayout(
     loserClerkId: loserPlayer.userId,
   }).catch((err) => {
     console.error("[precision] rating update failed:", err);
+  });
+
+  // Per-game trophies — the same authoritative result (+30 / −30). AI matches
+  // never reach this point (isAiGame short-circuits above) and the payout
+  // claim guard means a match settles only once, so this cannot double-apply;
+  // the trophy_events journal keeps it idempotent regardless.
+  applyTrophyResult({
+    gameKey: "precision",
+    matchId,
+    winnerClerkId: winnerPlayer.userId,
+    loserClerkId: loserPlayer.userId,
+  }).catch((err) => {
+    console.error("[precision] trophy update failed:", err);
   });
 
   return {

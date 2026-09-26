@@ -1489,7 +1489,7 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
           <div className="mt-3 text-xs text-[#7dd3fc]">
             {t(
               "profile.battlepass.earn",
-              "Earn XP by playing and completing quests.",
+              "Earn trophies by winning ranked matches.",
             )}
           </div>
           <Link
@@ -2942,7 +2942,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
             <p className="mt-2 text-gray-200">
               {t(
                 "profile.levelUp.body",
-                "Keep wagering and completing quests — rewards unlock soon.",
+                "Keep playing and winning ranked matches — rewards unlock soon.",
               )}
             </p>
             <button

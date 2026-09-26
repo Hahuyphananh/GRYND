@@ -4,8 +4,8 @@ import { db } from "../../../db/client";
 import { users, diceFlushActions, diceFlushPlayers, diceFlushRooms } from "../../../db/schema";
 import { autoBankIfExpired, checkGameEnd, holdDice, nextTurn, rollDice, validateMove } from "../../../../game-engine/diceFlushEngine";
 import { applyLeaderboardCounters } from "../../../lib/leaderboardCounters";
-import { applyPrestigeResult } from "../../../lib/prestige";
 import { applyRatingResult } from "../../../lib/rating";
+import { applyTrophyResult } from "../../../lib/trophyStore";
 
 export function initialState(roomId, creatorId, creatorName, wager) {
   return {
@@ -128,40 +128,24 @@ export async function settleIfEnded(tx, roomRow, state) {
     }
   }
 
-  // Permanent Prestige — competitive (non-AI) finish: the match winner
-  // earns +1 and every other human player records a -1 loss. Idempotent
-  // on the room id via the prestige_results journal.
+  // Competitive (non-AI) finish: Dice Flush is 1v1, so rate the winner against
+  // the single human opponent. This runs on the claim-guarded path (only the
+  // transaction that claimed the settlement reaches here) and the journals
+  // keep it idempotent.
   if (!isAiMatch) {
-    await applyPrestigeResult({
-      tx,
-      clerkId: ended.winnerId,
-      outcome: "win",
-      source: "dice-flush",
-      sourceId: String(roomRow.id),
-    }).catch(() => {});
-    if (state.players) {
-      for (const p of state.players) {
-        if (p.userId !== ended.winnerId && !p.isAI) {
-          await applyPrestigeResult({
-            tx,
-            clerkId: p.userId,
-            outcome: "loss",
-            source: "dice-flush",
-            sourceId: String(roomRow.id),
-          }).catch(() => {});
-        }
-      }
-    }
-
-    // Per-game Elo — Dice Flush is 1v1, so rate the winner against the single
-    // human opponent. Runs on the same claim-guarded path as the prestige
-    // calls above (only the transaction that claimed the settlement reaches
-    // here) and the journal keeps it idempotent.
     const humanLoser = state.players?.find(
       (p) => p.userId !== ended.winnerId && !p.isAI,
     );
     if (humanLoser) {
       await applyRatingResult({
+        tx,
+        gameKey: "dice-flush",
+        matchId: String(roomRow.id),
+        winnerClerkId: ended.winnerId,
+        loserClerkId: humanLoser.userId,
+      }).catch(() => {});
+      // Per-game trophies — the same authoritative win (+30 / −30).
+      await applyTrophyResult({
         tx,
         gameKey: "dice-flush",
         matchId: String(roomRow.id),

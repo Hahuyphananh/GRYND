@@ -21,7 +21,7 @@
 //
 // WHAT NEVER ENTERS THE CALCULATION (by construction — see src/lib/elo.js):
 // token balance, winnings/payout, wagered amount, XP, Battle Pass level,
-// Prestige, streaks, quests, cosmetics, membership. The only inputs are the
+// Prestige, streaks, cosmetics, membership. The only inputs are the
 // two current ratings, the two rated-games counts, and the outcome.
 //
 // WHAT THE CLIENT CAN NEVER DO:
@@ -601,7 +601,7 @@ export function toOverallShape(row) {
  *   loser?: object,
  * }>}
  * Never throws for expected inputs — callers run it as a best-effort side
- * effect of settlement, exactly like applyPrestigeResult.
+ * effect of settlement, exactly like applyTrophyResult.
  */
 export async function applyRatingResult({
   tx,

@@ -17,17 +17,7 @@ const faqSections = [
       },
       {
         q: "How do I earn more tokens?",
-        a: (
-          <>
-            There are several ways to grow your balance: claim your{" "}
-            <Link href="/profil" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
-              daily login reward
-            </Link>{" "}
-            and build your streak for bigger bonuses, win skill-based games, earn referral bonuses
-            when friends join through your code, and pick up comeback bonuses if you take a break.
-            Higher VIP levels also unlock better rewards as you play.
-          </>
-        ),
+        a: "Win skill-based games to grow your balance, earn referral bonuses when friends join through your code, and pick up comeback bonuses if you take a break. Ranked wins also earn trophies that drive your Battle Pass progression.",
       },
       {
         q: "Can I withdraw or buy tokens?",
@@ -90,7 +80,7 @@ const faqSections = [
     questions: [
       {
         q: "How do levels, titles, and streaks work?",
-        a: "Your VIP level rises as your total staked grows, unlocking milestone titles you can equip on your profile. Daily streaks build with consecutive daily logins — the longer the streak, the better the daily reward — and top streaks earn their own titles.",
+        a: "Your Battle Pass level rises with the trophies you earn from ranked matches — win to gain trophies, and unlock milestone titles, name glows, emotes and profile frames as you climb. Your profile also tracks win streaks and your highest all-time streak.",
       },
       {
         q: "How do referrals work?",

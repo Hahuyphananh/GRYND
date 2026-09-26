@@ -346,11 +346,11 @@ export async function settleCrashPokerHand(
       nextRoundAt != null ? nextRoundAt.getTime() : Date.now() + NEXT_ROUND_COUNTDOWN_MS,
   });
 
-  // ── User stats + quests (real tables only, human participants) ──
+  // ── User stats (real tables only, human participants) ──
   // Crash Arena is a multi-player PvP table, so a settled hand is a PvP
   // outcome. The rank-1 winner records a PvP win and each "lost"
   // participant a loss through the canonical applyLeaderboardCounters
-  // pipeline (user_stats wins/losses/win_rate, pvp_wins, quests). Folded
+  // pipeline (user_stats wins/losses/win_rate, pvp_wins). Folded
   // entries are skipped — they received a ranked payout, so they don't
   // represent a settled win/loss. Practice/private tables use virtual
   // chips and never touch real stats (mirrors the WIN/RAKE transaction

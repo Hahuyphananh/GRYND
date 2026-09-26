@@ -1,6 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
-import { getBattlepassProgress, getLevelFromXp } from "../../../lib/battlepass";
+import {
+  getBattlepassProgressFromTrophies,
+  getLevelFromTrophies,
+} from "../../../lib/battlepass";
+import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { getHighestTitle } from "../../../lib/titles";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
@@ -287,14 +291,12 @@ export async function GET() {
         console.error("[user-stats] Failed to fetch user meta:", selectErr);
       }
 
-      // Battlepass level comes from EXP (wagering + quest claims), NOT total
-      // wagered. The level/xp columns are maintained incrementally by
-      // applyLeaderboardCounters (per settled bet) and addExp (per quest
-      // claim); we only derive the display values here and must NOT
-      // overwrite level — that would clobber quest-earned progress.
-      const userXp = Math.max(0, Math.floor(Number(row?.xp) || 0));
-      const computedLevel = getLevelFromXp(userXp);
-      const progress = getBattlepassProgress(userXp);
+      // Battlepass level is DERIVED from TROPHIES (10,000 total = level 100),
+      // not XP. The stored level/xp columns are legacy and no longer drive
+      // progression; nothing is overwritten here.
+      const totalTrophies = await getTotalTrophiesForUser(userId);
+      const computedLevel = getLevelFromTrophies(totalTrophies);
+      const progress = getBattlepassProgressFromTrophies(totalTrophies);
       const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
       // Titles still unlock by level — keep the highest unlocked title in

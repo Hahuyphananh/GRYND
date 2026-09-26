@@ -2,12 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   MAX_LEVEL,
+  TROPHIES_PER_LEVEL,
   expForNextLevel,
-  expForQuest,
   expForWager,
   expToReachLevel,
   getBattlepassProgress,
+  getBattlepassProgressFromTrophies,
+  getLevelFromTrophies,
   getLevelFromXp,
+  trophiesToReachLevel,
 } from "../src/lib/battlepass.js";
 import { TITLE_MILESTONES } from "../src/lib/titles.ts";
 import {
@@ -91,12 +94,6 @@ test("expForWager grants 1 XP per 10 staked, 0 for fun-mode bets", () => {
   assert.equal(expForWager("1000"), 100);
 });
 
-test("expForQuest scales with the quest reward value", () => {
-  assert.equal(expForQuest(0), 0);
-  assert.equal(expForQuest(60), 120);
-  assert.equal(expForQuest(130), 260);
-});
-
 test("reward track covers exactly levels 1-100 with reserved slots", () => {
   assert.equal(BATTLEPASS_REWARDS.length, 100);
   for (let i = 0; i < 100; i++) {
@@ -158,26 +155,69 @@ test("the track carries no token rewards and no currency-typed entries", () => {
   }
 });
 
-test("every level 1-100 carries at least one reward", () => {
+test("every level 1-100 carries a reward or is an explicit reserved slot", () => {
+  const reserved = new Set(RESERVED_LEVELS);
   for (let level = 1; level <= 100; level++) {
-    assert.ok(
-      rewardsForLevel(level).length >= 1,
-      `level ${level} has no reward (fill it with battlepass_xp or an existing cosmetic)`,
-    );
+    const rewards = rewardsForLevel(level);
+    if (reserved.has(level)) {
+      assert.equal(
+        rewards.length,
+        0,
+        `reserved level ${level} must stay empty until a replacement reward is specified`,
+      );
+    } else {
+      assert.ok(
+        rewards.length >= 1,
+        `level ${level} has no reward and is not listed in RESERVED_LEVELS`,
+      );
+    }
   }
 });
 
-test("battlepass_xp rewards carry a positive flat XP value", () => {
-  let count = 0;
+test("battlepass_xp is retired — the track carries no flat XP rewards", () => {
+  // The Battle Pass is driven by trophies now, so the flat XP filler rewards
+  // were removed. Their levels are reserved until replacement rewards are
+  // specified (RESERVED_LEVELS), never silently dropped.
+  const offenders = [];
   for (const entry of BATTLEPASS_REWARDS) {
     for (const reward of entry.rewards) {
-      if (reward.type !== "battlepass_xp") continue;
-      count += 1;
-      assert.equal(typeof reward.value, "number", `XP reward at level ${entry.level} must be numeric`);
-      assert.ok(reward.value > 0, `XP reward at level ${entry.level} must be positive`);
+      if (reward.type === "battlepass_xp") offenders.push(entry.level);
     }
   }
-  assert.ok(count > 0, "the track should use battlepass_xp as its filler reward");
+  assert.deepEqual(
+    offenders,
+    [],
+    `battlepass_xp rewards must be removed; found at levels: ${offenders.join(", ")}`,
+  );
+  assert.ok(
+    RESERVED_LEVELS.length > 0,
+    "the retired XP levels must be tracked in RESERVED_LEVELS",
+  );
+});
+
+test("trophiesToReachLevel: 100 trophies per level, 9,900 at level 100", () => {
+  assert.equal(TROPHIES_PER_LEVEL, 100);
+  assert.equal(trophiesToReachLevel(1), 0);
+  assert.equal(trophiesToReachLevel(2), 100);
+  assert.equal(trophiesToReachLevel(100), 9900);
+});
+
+test("getLevelFromTrophies: level 1 at 0 trophies, level 100 at 10,000", () => {
+  assert.equal(getLevelFromTrophies(0), 1);
+  assert.equal(getLevelFromTrophies(99), 1);
+  assert.equal(getLevelFromTrophies(100), 2);
+  assert.equal(getLevelFromTrophies(9999), 100);
+  assert.equal(getLevelFromTrophies(10000), 100);
+  assert.equal(getLevelFromTrophies(999999), 100); // clamped at the cap
+});
+
+test("getBattlepassProgressFromTrophies reports progress within the level", () => {
+  const p = getBattlepassProgressFromTrophies(250);
+  assert.equal(p.level, 3);
+  assert.equal(p.currentLevelTrophies, 200);
+  assert.equal(p.nextLevelTrophies, 300);
+  assert.equal(p.progressPercent, 50);
+  assert.equal(p.remainingToNext, 50);
 });
 
 test("level 3 contains the Daily Streak Shield reward", () => {

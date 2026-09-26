@@ -12,8 +12,8 @@ import {
 } from "../../../../../lib/odds";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
-import { applyPrestigeResult } from "../../../../../lib/prestige";
 import { applyRatingResult } from "../../../../../lib/rating";
+import { applyTrophyResult } from "../../../../../lib/trophyStore";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -124,24 +124,16 @@ export async function POST(req: Request) {
           isPvpWin: false,
         }).catch(() => {});
 
-        // Permanent Prestige — competitive forfeit settlement: winner +1,
-        // forfeiter -1. Idempotent on the game id via the journal.
-        applyPrestigeResult({
-          clerkId: winnerId,
-          outcome: "win",
-          source: "odds-pvp",
-          sourceId: String(gameId),
-        }).catch(() => {});
-        applyPrestigeResult({
-          clerkId: forfeiterId,
-          outcome: "loss",
-          source: "odds-pvp",
-          sourceId: String(gameId),
-        }).catch(() => {});
-
         // Per-game Elo — timeout forfeit: the opponent wins, resolved
         // server-side from the game row's seat columns.
         applyRatingResult({
+          gameKey: "odds-pvp",
+          matchId: String(gameId),
+          winnerClerkId: winnerId,
+          loserClerkId: forfeiterId,
+        }).catch(() => {});
+        // Per-game trophies — the same authoritative forfeit (+30 / −30).
+        applyTrophyResult({
           gameKey: "odds-pvp",
           matchId: String(gameId),
           winnerClerkId: winnerId,
@@ -304,24 +296,16 @@ export async function POST(req: Request) {
             isPvpWin: false,
           }).catch(() => {});
 
-          // Permanent Prestige — competitive round-win settlement:
-          // winner +1, loser -1. Idempotent on the game id.
-          applyPrestigeResult({
-            clerkId: winnerId!,
-            outcome: "win",
-            source: "odds-pvp",
-            sourceId: String(gameId),
-          }).catch(() => {});
-          applyPrestigeResult({
-            clerkId: loserId!,
-            outcome: "loss",
-            source: "odds-pvp",
-            sourceId: String(gameId),
-          }).catch(() => {});
-
           // Per-game Elo — the round winner comes from the server-side Odds
           // engine (pickResult.updatedState.winner), never a client value.
           applyRatingResult({
+            gameKey: "odds-pvp",
+            matchId: String(gameId),
+            winnerClerkId: winnerId!,
+            loserClerkId: loserId!,
+          }).catch(() => {});
+          // Per-game trophies — the same authoritative round-win (+30 / −30).
+          applyTrophyResult({
             gameKey: "odds-pvp",
             matchId: String(gameId),
             winnerClerkId: winnerId!,

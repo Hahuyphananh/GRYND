@@ -2,8 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { dotsAndBoxesGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
-import { applyPrestigeResult } from "./prestige";
 import { applyRatingResult } from "./rating";
+import { applyTrophyResult } from "./trophyStore";
 import {
   TURN_SECONDS as DEFAULT_MOVE_TIME_SECONDS,
   determineResult,
@@ -179,50 +179,39 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
         isPvpWin: true,
       });
 
-      const prestigeLoserId =
+      const loserClerkId =
         locked.hostClerkId === winnerClerkId
           ? locked.guestClerkId
           : locked.hostClerkId;
 
       // Also record the loser's loss + stake so losses / win_rate / wagered
       // stay in sync with the winner's win (matches chess / precision).
-      if (prestigeLoserId) {
+      if (loserClerkId) {
         await applyLeaderboardCounters({
-          clerkId: prestigeLoserId,
+          clerkId: loserClerkId,
           game: "dots-and-boxes",
           betAmount: bet,
           payout: 0,
         });
       }
 
-      // Permanent Prestige — competitive PvP finish (AI matches are free
-      // play and draws refund above).
-      await applyPrestigeResult({
-        tx,
-        clerkId: winnerClerkId,
-        outcome: "win",
-        source: "dots-and-boxes",
-        sourceId: String(gameId),
-      }).catch(() => {});
-      if (prestigeLoserId) {
-        await applyPrestigeResult({
-          tx,
-          clerkId: prestigeLoserId,
-          outcome: "loss",
-          source: "dots-and-boxes",
-          sourceId: String(gameId),
-        }).catch(() => {});
-      }
-
-      // Per-game Elo — same guarded single-execution path as Prestige above,
-      // so only ONE settlement of this match can ever move a rating.
-      if (prestigeLoserId) {
+      // Per-game Elo — guarded single-execution path: only ONE settlement of
+      // this match can ever move a rating.
+      if (loserClerkId) {
         await applyRatingResult({
           tx,
           gameKey: "dots-and-boxes",
           matchId: String(gameId),
           winnerClerkId,
-          loserClerkId: prestigeLoserId,
+          loserClerkId,
+        }).catch(() => {});
+        // Per-game trophies — the same authoritative win (+30 / −30).
+        await applyTrophyResult({
+          tx,
+          gameKey: "dots-and-boxes",
+          matchId: String(gameId),
+          winnerClerkId,
+          loserClerkId,
         }).catch(() => {});
       }
     }

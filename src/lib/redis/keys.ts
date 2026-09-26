@@ -84,6 +84,30 @@ export const CacheKeys = {
     all: `${PREFIX}:rating:*`,
   },
 
+  // ── Per-game trophy boards ─────────────────────────────────────
+  // Mirrors the `rating` namespace (and is deliberately under `trophy:`, not
+  // `lb:`), so the debounced settlement purge never touches these and a
+  // performed match purges just its own game's pages. Overall Trophies
+  // depends on EVERY game, so any settlement purges it via `all`.
+  trophy: {
+    /** grynd:trophy:{game}:{limit}:{offset} */
+    board: (game: string, limit: number, offset: number) =>
+      `${PREFIX}:trophy:${game}:${limit}:${offset}`,
+
+    /** Every page of a single game's trophy board. */
+    gameAll: (game: string) => `${PREFIX}:trophy:${game}:*`,
+
+    /** grynd:trophy:overall:{limit}:{offset} */
+    overall: (limit: number, offset: number) =>
+      `${PREFIX}:trophy:overall:${limit}:${offset}`,
+
+    /** Every page of the cross-game Overall Trophies board. */
+    overallAll: `${PREFIX}:trophy:overall:*`,
+
+    /** Wildcard pattern for eviction of ALL trophy boards. */
+    all: `${PREFIX}:trophy:*`,
+  },
+
   // ── User Stats ───────────────────────────────────────────────
   userStats: (clerkId: string) => `${PREFIX}:user:stats:${clerkId}`,
   userStatsAll: `${PREFIX}:user:stats:*`,
@@ -167,6 +191,10 @@ export const CacheTTL = {
       moves only when its own game is played, and is patched eagerly by the
       settlement that caused the change — so a short safety TTL is plenty. */
   rating: 60,
+
+  /** Trophy boards: 60s, for the same reasons as `rating` — small per-game
+      boards that are purged eagerly by their own game's settlement. */
+  trophy: 60,
 
   /** Individual user stats: 3 min backup TTL */
   userStats: 3 * 60,

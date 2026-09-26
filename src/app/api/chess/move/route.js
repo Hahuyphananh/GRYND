@@ -8,8 +8,8 @@ import { db } from "../../../../db/client";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import { chessGames, chessMoves, users } from "../../../../db/schema";
-import { applyPrestigeResult } from "../../../../lib/prestige";
 import { applyRatingResult } from "../../../../lib/rating";
+import { applyTrophyResult } from "../../../../lib/trophyStore";
 
 const HOUSE_EDGE_PERCENT = 10;
 
@@ -149,41 +149,32 @@ export async function POST(req) {
           })
           .where(eq(chessGames.id, normalizedGameId));
 
-        // Permanent Prestige — competitive PvP finish. Draws and AI
-        // matches never move Prestige (chess vs AI is free play).
+        // Competitive PvP finish. Draws and AI matches never move Elo or
+        // trophies (chess vs AI is free play).
         if (!isDraw && !lockedGame.isAiGame && winnerId) {
-          const prestigeLoserId =
+          const loserClerkId =
             lockedGame.playerWhiteId === winnerId
               ? lockedGame.playerBlackId
               : lockedGame.playerWhiteId;
-          await applyPrestigeResult({
-            tx,
-            clerkId: winnerId,
-            outcome: "win",
-            source: "chess",
-            sourceId: String(normalizedGameId),
-          }).catch(() => {});
-          if (prestigeLoserId) {
-            await applyPrestigeResult({
-              tx,
-              clerkId: prestigeLoserId,
-              outcome: "loss",
-              source: "chess",
-              sourceId: String(normalizedGameId),
-            }).catch(() => {});
-          }
 
-          // Per-game Elo — the same guarded single-execution path as Prestige
-          // above (the game row only reaches a terminal state once), and the
-          // rating_events journal makes a replay a no-op. The winner comes
+          // Per-game Elo — the game row only reaches a terminal state once and
+          // the rating_events journal makes a replay a no-op. The winner comes
           // from the server-side chess.js result, never the client.
-          if (prestigeLoserId) {
+          if (loserClerkId) {
             await applyRatingResult({
               tx,
               gameKey: "chess",
               matchId: String(normalizedGameId),
               winnerClerkId: winnerId,
-              loserClerkId: prestigeLoserId,
+              loserClerkId,
+            }).catch(() => {});
+            // Per-game trophies — the same authoritative win (+30 / −30).
+            await applyTrophyResult({
+              tx,
+              gameKey: "chess",
+              matchId: String(normalizedGameId),
+              winnerClerkId: winnerId,
+              loserClerkId,
             }).catch(() => {});
           }
         }

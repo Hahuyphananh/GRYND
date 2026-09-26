@@ -1079,6 +1079,34 @@
       "when": 1800000016000,
       "tag": "0172_drop_big_wins",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1800000017000,
+      "tag": "0173_player_trophies",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1800000018000,
+      "tag": "0174_trophy_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1800000019000,
+      "tag": "0175_trophy_identities",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1800000020000,
+      "tag": "0176_reset_battlepass_progress",
+      "breakpoints": true
     }
   ]
 }

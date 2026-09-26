@@ -1,6 +1,5 @@
 import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement } from "./redis/invalidation";
-import { updateQuestProgress } from "./quests";
 import { MAX_LEVEL, expForWager } from "./battlepass";
 import { getActiveXpMultiplierByClerkId } from "./shopItems";
 import { sendLossStreakEmail } from "./emails/behavior";
@@ -185,10 +184,4 @@ export async function applyLeaderboardCounters({
   // Invalidate caches affected by this game settlement.
   // Fire-and-forget — don't block the settlement response on cache ops.
   invalidateOnGameSettlement(clerkId).catch(() => {});
-
-  // Daily/weekly quest progress — same fire-and-forget pattern. A quest
-  // can only advance on a real settled wager (bet > 0), matching the guard
-  // above.
-  updateQuestProgress({ clerkId, game, betAmount: bet, payout: win, isPvpWin })
-    .catch((err) => console.error("[quests] progress update failed:", err));
 }

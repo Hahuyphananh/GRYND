@@ -31,7 +31,7 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 
 // Anything user-scoped: cached in memory, never persisted to disk.
 const SENSITIVE_PATTERN =
-  /(get-user-tokens|user\/stats|user-stats|user\/glows|prestige-badge|membership\/status|\/friends|friend|invites|get-bet-history|get-purchase-history|\/titles|cosmetics|referral|quests|chat-color|profile-customization)/i;
+  /(get-user-tokens|user\/stats|user-stats|user\/glows|prestige-badge|membership\/status|\/friends|friend|invites|get-bet-history|get-purchase-history|\/titles|cosmetics|referral|chat-color|profile-customization)/i;
 
 /** True when a SWR key may be written to localStorage. */
 export function isPersistableKey(key) {

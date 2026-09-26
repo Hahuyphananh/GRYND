@@ -7,7 +7,7 @@
  * Every PvP game replaces its bespoke WIN/LOSS/DRAW popup with this shared
  * full-screen result overlay. It never computes or invents rewards — games
  * pass the REAL values already returned by their existing match APIs, and
- * any section (XP, Battle Pass, Prestige, duration, opponent, details…) is
+ * any section (Battle Pass, Prestige, duration, opponent, details…) is
  * simply hidden when its data is absent.
  *
  * Two live progression values are read from the platform's OWN endpoints
@@ -22,8 +22,8 @@
  *   1. Detect the finished state exactly as today (status === "finished",
  *      a result phase, etc.) and keep rendering the game page underneath.
  *   2. Map the existing winner/result to `outcome` ("win" | "loss" | "draw").
- *   3. Map existing payout fields to `tokenDelta`; XP / Battle Pass /
- *      Prestige go in `xp` / `progress` only if the match payload carries
+ *   3. Map existing payout fields to `tokenDelta`; Battle Pass /
+ *      Prestige go in `progress` only if the match payload carries
  *      them — otherwise omit (sections auto-hide, no fake numbers).
  *   4. Compute `durationSeconds` from existing startedAt/endedAt when both
  *      exist, else omit.
@@ -42,7 +42,6 @@ import {
   IconCoins,
   IconHeartHandshake,
   IconRobot,
-  IconStar,
   IconTrophy,
   IconX,
 } from "@tabler/icons-react";
@@ -246,7 +245,6 @@ export default function PvpResultScreen({
   const [liveStreak, setLiveStreak] = useState(null);
   const [liveRank, setLiveRank] = useState(null);
   const [liveRankDelta, setLiveRankDelta] = useState(null);
-  const [liveXp, setLiveXp] = useState(null);
   const [liveOverall, setLiveOverall] = useState(null);
 
   useEffect(() => {
@@ -256,15 +254,10 @@ export default function PvpResultScreen({
     setLiveStreak(null);
     setLiveRank(null);
     setLiveRankDelta(null);
-    setLiveXp(null);
     setLiveOverall(null);
 
-    // Current win streak + XP granted by the most recent settled match,
-    // both from the platform's own stats endpoint. Streak is only
-    // meaningful on a win (a settled loss resets it to 0 server-side); XP
-    // is granted on every settled wager and gated by a freshness window so
-    // a stale grant (old match / Monday weekly reset) is never shown as
-    // this match's XP.
+    // Current win streak, from the platform's own stats endpoint. Streak is
+    // only meaningful on a win (a settled loss resets it to 0 server-side).
     const fetchStats = () =>
       fetch("/api/user/stats", {
         credentials: "include",
@@ -276,20 +269,6 @@ export default function PvpResultScreen({
           if (streak === null && outcome === "win") {
             const s = Number(stats.currentStreak ?? 0);
             if (Number.isFinite(s) && s > 0) setLiveStreak(s);
-          }
-          if (xp === null) {
-            const earned = Number(stats.lastXpEarned ?? 0);
-            const at = stats.lastXpEarnedAt
-              ? new Date(stats.lastXpEarnedAt).getTime()
-              : null;
-            if (
-              Number.isFinite(earned) &&
-              earned > 0 &&
-              at !== null &&
-              Date.now() - at < 3 * 60 * 1000
-            ) {
-              setLiveXp(earned);
-            }
           }
           // Overall Elo movement across the most recent rated match. Derived
           // server-side from the rating journal; gated by a freshness window
@@ -330,9 +309,9 @@ export default function PvpResultScreen({
 
     fetchStats();
     // One retry: some settle paths apply the counters fire-and-forget, so
-    // the result can reach the client a moment before the XP write lands.
+    // the result can reach the client a moment before the stats write lands.
     const retry = setTimeout(() => {
-      if (xp === null || overallElo === null) fetchStats();
+      if (overallElo === null) fetchStats();
     }, 1200);
 
     // True weekly rank + the movement caused by the most recent settled
@@ -361,12 +340,11 @@ export default function PvpResultScreen({
       clearTimeout(retry);
       controller.abort();
     };
-  }, [open, outcome, streak, rank, xp, overallElo, gameKey]);
+  }, [open, outcome, streak, rank, overallElo, gameKey]);
 
   const displayStreak = streak ?? (outcome === "win" ? liveStreak : null);
   const displayRank = rank ?? liveRank;
   const displayRankDelta = rankDelta ?? liveRankDelta;
-  const displayXp = xp ?? liveXp;
   const displayOverall = overallElo ?? liveOverall;
   // A 1-win streak is not a streak worth celebrating — start at 2.
   const showStreak = displayStreak !== null && Number(displayStreak) >= 2;
@@ -375,7 +353,6 @@ export default function PvpResultScreen({
 
   const hasRewards =
     tokenDelta !== null ||
-    displayXp !== null ||
     displayOverall !== null ||
     (Array.isArray(progress) && progress.length > 0);
 
@@ -640,13 +617,11 @@ export default function PvpResultScreen({
 
             {/* Rewards — only rows whose data actually exists.
                 Sequenced AFTER the outcome, never with it: the win/loss hero
-                lands first, then the payout (token delta, XP, progression)
+                lands first, then the payout (token delta, progression)
                 registers one short beat later, so the order the player reads
                 is result → money → details. A rise + fade with a hair of
                 scale, 0.22s, gated through the shared helper — with reduced
-                motion it appears in place with no movement and no delay. The
-                XP bar inside keeps its own width animation: different
-                property, no conflict with this container. */}
+                motion it appears in place with no movement and no delay. */}
             {hasRewards && (
               <motion.div
                 {...withReducedMotion(shouldReduce, {
@@ -677,17 +652,6 @@ export default function PvpResultScreen({
                       <AnimatedNumber value={tokenDelta} reduce={shouldReduce === true} />
                       <IconCoins size={18} className="text-[#f5ff3b]" aria-hidden="true" />
                     </motion.span>
-                  </div>
-                )}
-                {displayXp !== null && (
-                  <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/25 px-4 py-2.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
-                      XP
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-lg font-black text-cyan-300">
-                      +{formatTokens(displayXp)}
-                      <IconStar size={18} className="text-[#00e5ff]" aria-hidden="true" />
-                    </span>
                   </div>
                 )}
                 {displayOverall !== null && (

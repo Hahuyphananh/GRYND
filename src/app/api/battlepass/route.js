@@ -11,35 +11,34 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
 import {
   MAX_LEVEL,
-  expForNextLevel,
-  expToReachLevel,
-  getBattlepassProgress,
+  TROPHIES_PER_LEVEL,
+  getBattlepassProgressFromTrophies,
+  trophiesToReachLevel,
 } from "../../../lib/battlepass";
+import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { TITLE_MILESTONES } from "../../../lib/titles";
 import {
   rewardsForLevel,
   COSMETIC_REWARD_TYPES,
 } from "../../../lib/battlepassRewards";
 import { getPrestigeStatus } from "../../../lib/prestige";
+import { getRatingsForUser } from "../../../lib/rating";
+import { getTrophiesForUser } from "../../../lib/trophyStore";
 import { isPremiumMember } from "../../../lib/stripe/subscriptions";
 
 export async function GET() {
   try {
     const { userId } = await auth();
     // The battlepass page is public (middleware allows it), so anonymous
-    // visitors get a fresh level-1 / 0-XP pass and only signed-in users
+    // visitors get a fresh level-1 / 0-trophy pass and only signed-in users
     // read their real progress from the DB.
-    let xp = 0;
     let dbUserId = null;
-    let prestigeLevel = 0;
-    let prestigeNetWins = 0;
     let ownedEmoteKeys = new Set();
     let ownedTitleKeys = new Set();
     let ownedGlowKeys = new Set();
     let ownedCosmeticKeys = new Set();
-    // Per-level functional claims: "level:type" keys (xp_boost, quest_boost,
-    // shield, battlepass_xp) — each identical track entry is claimable exactly
-    // once.
+    // Per-level functional claims: "level:type" keys (xp_boost, shield,
+    // battlepass_xp) — each identical track entry is claimable exactly once.
     let functionalClaims = new Set();
     // Premium-track gating: non-members see premium rewards locked (unless
     // already owned — ownership is always honored first, so grandfathered
@@ -51,15 +50,12 @@ export async function GET() {
     if (userId) {
       const sql = getNeonSql();
       const rows = await sql`
-        SELECT id, xp, prestige_level, prestige_net_wins
+        SELECT id
           FROM users
          WHERE clerk_id = ${userId}
          LIMIT 1
       `;
       dbUserId = rows[0]?.id ?? null;
-      xp = Math.max(0, Math.floor(Number(rows[0]?.xp) || 0));
-      prestigeLevel = Math.max(0, Math.floor(Number(rows[0]?.prestige_level) || 0));
-      prestigeNetWins = Math.max(0, Math.floor(Number(rows[0]?.prestige_net_wins) || 0));
       if (dbUserId) {
         // Rewards are NEVER auto-granted — the player claims them on the
         // battlepass page (POST /api/battlepass/claim). We only read
@@ -92,15 +88,23 @@ export async function GET() {
         );
       }
     }
-    const progress = getBattlepassProgress(xp);
+    // Battle Pass level is DERIVED from trophies (10,000 total = level 100),
+    // never from XP. The stored xp/level columns are legacy and no longer
+    // drive progression.
+    const totalTrophies = userId ? await getTotalTrophiesForUser(userId) : 0;
+    const progress = getBattlepassProgressFromTrophies(totalTrophies);
 
-    // Permanent Prestige (post-Level-100 progression). Read-only exposure —
-    // Prestige is only ever written server-side by authoritative settlement
-    // via src/lib/prestige.js.
+    // Prestige (endgame, post-trophy-cap). DERIVED from the player's Elo
+    // ratings + per-game trophies — read-only, never written, never stored.
+    const [ratings, trophyMap] = userId
+      ? await Promise.all([
+          getRatingsForUser(userId).catch(() => ({})),
+          getTrophiesForUser(userId).catch(() => ({})),
+        ])
+      : [{}, {}];
     const prestigeStatus = getPrestigeStatus({
-      prestigeLevel,
-      prestigeNetWins,
-      xp,
+      ratings,
+      trophies: trophyMap,
     });
 
     const titleByLevel = new Map(
@@ -117,11 +121,9 @@ export async function GET() {
         const isCosmetic = COSMETIC_REWARD_TYPES.has(reward.type);
         const isFunctional =
           reward.type === "xp_boost" ||
-          reward.type === "quest_boost" ||
           reward.type === "shield" ||
           reward.type === "grynd" ||
-          reward.type === "battlepass_xp" ||
-          reward.type === "quest_reroll";
+          reward.type === "battlepass_xp";
         const owned =
           isEmote && dbUserId
             ? ownedEmoteKeys.has(reward.key)
@@ -151,8 +153,8 @@ export async function GET() {
       });
       levels.push({
         level,
-        xpRequired: expToReachLevel(level),
-        xpForNext: expForNextLevel(level),
+        trophiesRequired: trophiesToReachLevel(level),
+        trophiesForNext: TROPHIES_PER_LEVEL,
         title: titleByLevel.get(level) || null,
         // Battlepass rewards for this level. Empty array = reserved slot.
         rewards,

@@ -5,6 +5,9 @@ import { useMemo, useState } from "react";
 // Tabbed stat panel for the profile pages. Mirrors the leaderboard boards:
 //   - Record: games won/lost, win rate, games played, net wins, W/L ratio,
 //     PvP wins and win streaks (the all-time leaderboard categories)
+//   - Trophies: this player's per-game trophy progress toward the 10,000 cap
+//     (the primary competitive progression and the number the Battle Pass
+//     level derives from)
 //   - Game Ratings: this player's per-game Elo, one independent rating per
 //     game (the same numbers the per-game leaderboards rank by)
 //   - Weekly: the weekly equivalents (no weekly PvP counter exists)
@@ -20,6 +23,7 @@ import { useMemo, useState } from "react";
 // aggregate with no rating system of its own (it has no K-factor or results).
 const TABS = [
   { key: "record", label: "Record" },
+  { key: "trophies", label: "Trophies" },
   { key: "ratings", label: "Game Ratings" },
   { key: "weekly", label: "Weekly" },
   { key: "streaks", label: "Streaks" },

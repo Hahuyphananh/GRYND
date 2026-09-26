@@ -1228,7 +1228,7 @@ export async function resolveRound(tx, match) {
   // Best-effort stat side-effect for the finished match. Draws set
   // winnerId = null (both stakes refunded) so nothing is recorded;
   // real finishes record gamesWon/gamesLost + the canonical
-  // applyLeaderboardCounters pipeline (user_stats, quests, etc.).
+  // applyLeaderboardCounters pipeline (user_stats, etc.).
   if (updated && nextStatus === MATCH_STATUS.FINISHED && updated.winnerId) {
     await recordRoulettePvpResult(tx, updated).catch(() => {});
   }
@@ -1240,7 +1240,7 @@ export async function resolveRound(tx, match) {
 // mirrors blackjack-pvp / mines-pvp. Bumps the legacy per-seat counters
 // (public profile reads games_won / games_lost) and calls the canonical
 // applyLeaderboardCounters pipeline (user_stats wins/losses/win_rate/
-// total_bets, pvp_wins, wagered/won, streaks, battlepass XP, quests) for
+// total_bets, pvp_wins, wagered/won, streaks) for
 // BOTH seats. Fire-and-forget on its own pool — never blocks settlement.
 async function recordRoulettePvpResult(tx, finalRow) {
   const winnerId = finalRow?.winnerId;

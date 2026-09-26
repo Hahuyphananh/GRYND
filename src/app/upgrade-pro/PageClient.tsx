@@ -46,7 +46,6 @@ const FREE_FEATURES = [
   "Profiles",
   "Normal match history",
   "Progression systems",
-  "Quests",
   "Battle Pass",
   "Cosmetic rewards",
 ];

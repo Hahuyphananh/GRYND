@@ -2,8 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { getLevelFromXp } from "../../../../lib/battlepass";
+import {
+  getLevelFromTrophies,
+} from "../../../../lib/battlepass";
 import { getPrestigeStatus } from "../../../../lib/prestige";
+import { getTrophiesForUser } from "../../../../lib/trophyStore";
 import {
   RATED_GAMES,
   getRatingGameLabel,
@@ -36,9 +39,9 @@ export async function GET() {
       weeklyProfit: users.weeklyProfit,
       weeklyWins: users.weeklyWins,
       pvpWins: users.pvpWins,
-      // XP granted by the most recent settled wager + when it happened
+      // Legacy XP granted by the most recent settled wager + when it happened
       // (written by applyLeaderboardCounters, migration 0151). Result
-      // screens use these with a freshness window so "+N XP" is the real
+      // consumers can use these with a freshness window so a bonus is the real
       // grant from this match, never a stale or invented number.
       lastXpEarned: users.lastSettledXp,
       lastXpEarnedAt: users.lastSettledXpAt,
@@ -57,14 +60,20 @@ export async function GET() {
     .limit(1);
 
   if (!row) return Response.json({ error: "User not found" }, { status: 404 });
-  // Battlepass level is derived from XP (wagering + quests), not the
+  // Battlepass level is derived from TROPHIES (ranked wins), not the
   // possibly-stale stored level column. Prestige read-shape mirrors the
   // battlepass endpoint so every consumer sees one consistent contract.
-  const prestige = getPrestigeStatus({
-    prestigeLevel: row.prestigeLevel,
-    prestigeNetWins: row.prestigeNetWins,
-    xp: Number(row.xp) || 0,
-  });
+  // Per-game trophies + the derived Prestige (Elo−1000, only for games at the
+  // 10,000 trophy cap). Both are read-only views over the same rows below.
+  const trophies = (await getTrophiesForUser(row.clerkId)) as Record<
+    string,
+    { trophies?: number }
+  >;
+  const totalTrophies = Object.values(trophies).reduce(
+    (sum, entry) => sum + (Number(entry?.trophies) || 0),
+    0,
+  );
+
   // Per-game Elo ratings (read-only). Only games the player has actually
   // completed a rated match in appear in `ratings`, so an unplayed game
   // reads as "Unrated" rather than a fabricated 1000. `lastDelta` is the
@@ -80,6 +89,8 @@ export async function GET() {
   // provisional game rating never counts. It is derived on read, never
   // stored, so a game rating change is reflected automatically.
   const overall = overallEloFromRatingsMap(ratings);
+  // Re-derive Prestige now that `ratings` is loaded (Elo−1000, capped games).
+  const prestigeWithElos = getPrestigeStatus({ ratings, trophies });
   // How the aggregate moved across the player's most recent rated match,
   // reconstructed on read from the rating_events journal (Overall Elo stores
   // no history of its own). The result screen reads these with a freshness
@@ -93,6 +104,9 @@ export async function GET() {
     userStats: {
       ...row,
       ratings,
+      // Per-game trophies + the total the Battle Pass level derives from.
+      trophies,
+      totalTrophies,
       overallElo: overall.overallElo,
       overallEligibleGames: overall.eligibleGames,
       overallEligible: overall.eligible,
@@ -120,12 +134,14 @@ export async function GET() {
           ...provisionalProgress(0),
         }),
       })),
-      level: getLevelFromXp(Number(row.xp) || 0),
-      prestige: prestige.prestige,
-      prestigeNetWins: prestige.prestigeNetWins,
-      nextPrestigeRequirement: prestige.nextPrestigeRequirement,
-      prestigeProgressPercent: prestige.prestigeProgressPercent,
-      prestigeUnlocked: prestige.prestigeUnlocked,
+      // Battle Pass level derives from TROPHIES (10,000 total = level 100).
+      level: getLevelFromTrophies(totalTrophies),
+      prestige: prestigeWithElos.prestige,
+      prestigeGameKey: prestigeWithElos.prestigeGameKey,
+      prestigeNetWins: prestigeWithElos.prestigeNetWins,
+      nextPrestigeRequirement: prestigeWithElos.nextPrestigeRequirement,
+      prestigeProgressPercent: prestigeWithElos.prestigeProgressPercent,
+      prestigeUnlocked: prestigeWithElos.prestigeUnlocked,
     },
   });
 }

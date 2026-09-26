@@ -35,10 +35,8 @@ const CLAIMABLE_UI_TYPES = new Set([
   "title",
   "color",
   "xp_boost",
-  "quest_boost",
   "shield",
   "battlepass_xp",
-  "quest_reroll",
   "badge",
   "profile_frame",
   "avatar_effect",
@@ -82,17 +80,14 @@ export default function BattlepassPageClient({ adSlot = null }) {
 
   const claimReward = async (reward, level) => {
     if (claimingKey) return;
-    // Functional rewards (xp_boost / quest_boost / shield / battlepass_xp /
-    // quest_reroll / grynd) have no key — they're disambiguated by their track
-    // level, so include it in the claim payload so each identical entry is
-    // claimed exactly once.
+    // Functional rewards (xp_boost / shield / battlepass_xp / grynd) have no
+    // key — they're disambiguated by their track level, so include it in the
+    // claim payload so each identical entry is claimed exactly once.
     const isFunctional =
       reward.type === "xp_boost" ||
-      reward.type === "quest_boost" ||
       reward.type === "shield" ||
       reward.type === "grynd" ||
-      reward.type === "battlepass_xp" ||
-      reward.type === "quest_reroll";
+      reward.type === "battlepass_xp";
     const key = `${reward.type}:${reward.key ?? `lvl${level}`}`;
     setClaimingKey(key);
     setClaimError(null);
@@ -240,10 +235,9 @@ export default function BattlepassPageClient({ adSlot = null }) {
             Battlepass
           </h1>
           <p className="mt-2 text-sm text-[#9dd8ff]">
-            Earn XP by playing and completing quests to climb 100 levels and
-            unlock rewards — from name glows, emotes and profile frames to
-            titles, XP boosts, cosmetics and free GRYND PRO days. No currency
-            required.
+            Win ranked matches to earn trophies and climb 100 levels — from
+            name glows, emotes and profile frames to titles, progression
+            boosts, cosmetics and free GRYND PRO days. No currency required.
           </p>
         </div>
 
@@ -304,7 +298,7 @@ export default function BattlepassPageClient({ adSlot = null }) {
                     )}
                   </div>
                   <div className="rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-4 py-1.5 text-sm font-semibold text-[#f5ff3b]">
-                    {formatNumber(pass.xp)} XP total
+                    {formatNumber(pass.trophies)} Trophies
                   </div>
                 </div>
 
@@ -363,7 +357,7 @@ export default function BattlepassPageClient({ adSlot = null }) {
                     </div>
                   </div>
                   <div className="rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-4 py-1.5 text-sm font-semibold text-[#f5ff3b]">
-                    {formatNumber(pass.xp)} XP total
+                    {formatNumber(pass.trophies)} Trophies
                   </div>
                 </div>
 
@@ -377,56 +371,45 @@ export default function BattlepassPageClient({ adSlot = null }) {
                   <span>
                     {isMaxed
                       ? "Max level reached!"
-                      : `${formatNumber(pass.xp - pass.currentLevelXp)} / ${formatNumber(pass.nextLevelXp - pass.currentLevelXp)} XP to level ${level + 1}`}
+                      : `${formatNumber(pass.trophies - pass.currentLevelTrophies)} / ${formatNumber(pass.nextLevelTrophies - pass.currentLevelTrophies)} trophies to level ${level + 1}`}
                   </span>
                   <span>{isMaxed ? "100%" : `${progressPercent}%`}</span>
                 </div>
                 {!isMaxed && (
                   <div className="mt-1 text-xs text-[#7dd3fc]">
-                    {formatNumber(pass.remainingToNext)} XP remaining to level{" "}
-                    {level + 1} · Reach {formatNumber(pass.nextLevelRequired)}{" "}
-                    XP total
+                    {formatNumber(pass.remainingToNext)} trophies remaining to level{" "}
+                    {level + 1} · Reach {formatNumber(pass.nextLevelTrophies)}{" "}
+                    trophies total
                   </div>
                 )}
               </div>
             )}
 
-            {/* How to earn XP */}
+            {/* How to earn trophies */}
             <div className="mt-6 rounded-xl border border-[#00e5ff]/30 bg-[#0b224f]/85 p-6">
               <h2 className="text-lg font-semibold text-[#00e5ff]">
-                How to earn XP
+                How to earn trophies
               </h2>
               <div className="mt-4 space-y-4">
                 <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 text-lg">
-                    🎲
+                    🏆
                   </div>
                   <div>
-                    <div className="font-medium text-white">Play games</div>
+                    <div className="font-medium text-white">Win ranked matches</div>
                     <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      Earn 1 XP per 10 staked on any game. The bigger the
-                      stake, the faster you level up.
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-lg">
-                    🎯
-                  </div>
-                  <div>
-                    <div className="font-medium text-white">Complete quests</div>
-                    <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      Completing and claiming daily and weekly quests grants
-                      Battle Pass XP — weekly quests pay more.
+                      Every ranked win pays +30 trophies and every loss costs
+                      −30. Trophies never drop below 0 and cap at 10,000 — the
+                      full Battle Pass track.
                     </div>
                   </div>
                 </div>
               </div>
               <Link
-                href="/"
+                href="/games"
                 className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[#f5ff3b] hover:text-yellow-300"
               >
-                Open today's quests on the home page →
+                Find a ranked match →
               </Link>
             </div>
 
@@ -468,8 +451,8 @@ export default function BattlepassPageClient({ adSlot = null }) {
                   </h2>
                   <p className="mt-1 text-xs text-[#7dd3fc]">
                     Rewards sit on a horizontal track — scroll sideways through
-                    all {pass.maxLevel} levels. Each level needs more XP than
-                    the last, and rewards get rarer as you climb.
+                    all {pass.maxLevel} levels. Each level needs more trophies
+                    than the last, and rewards get rarer as you climb.
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -675,9 +658,9 @@ export default function BattlepassPageClient({ adSlot = null }) {
                           </div>
                         )}
 
-                        {/* XP requirement */}
+                        {/* Trophy requirement */}
                         <div className="mt-1.5 text-[9px] text-[#7dd3fc]/70">
-                          Reach {formatNumber(lvl.xpRequired)} XP
+                          Reach {formatNumber(lvl.trophiesRequired)} trophies
                         </div>
                       </div>
                     );

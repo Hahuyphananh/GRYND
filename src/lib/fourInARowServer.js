@@ -2,8 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { fourInARowGames, users } from "../db/schema";
 import { applyLeaderboardCounters } from "./leaderboardCounters";
-import { applyPrestigeResult } from "./prestige";
 import { applyRatingResult } from "./rating";
+import { applyTrophyResult } from "./trophyStore";
 
 const HOUSE_EDGE_MULTIPLIER = 1.9;
 const DEFAULT_MOVE_TIME_SECONDS = 60;
@@ -104,6 +104,16 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
           loserClerkId: locked.guestClerkId,
           result: "draw",
         }).catch(() => {});
+        // Per-game trophies — a draw moves nothing (0 / 0), but it is still
+        // journaled so the history and the idempotency key stay complete.
+        await applyTrophyResult({
+          tx,
+          gameKey: "four-in-a-row",
+          matchId: String(gameId),
+          winnerClerkId: locked.hostClerkId,
+          loserClerkId: locked.guestClerkId,
+          result: "draw",
+        }).catch(() => {});
       }
 
       return;
@@ -126,50 +136,39 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
       isPvpWin: true,
     });
 
-    const prestigeLoserId =
+    const loserClerkId =
       locked.hostClerkId === winnerClerkId
         ? locked.guestClerkId
         : locked.hostClerkId;
 
     // Also record the loser's loss + stake so losses / win_rate / wagered
     // stay in sync with the winner's win (matches chess / precision).
-    if (prestigeLoserId) {
+    if (loserClerkId) {
       await applyLeaderboardCounters({
-        clerkId: prestigeLoserId,
+        clerkId: loserClerkId,
         game: "four-in-a-row",
         betAmount: bet,
         payout: 0,
       });
     }
 
-    // Permanent Prestige — competitive PvP finish (draws refund above and
-    // four-in-a-row has no AI mode, so every paid finish counts).
-    await applyPrestigeResult({
-      tx,
-      clerkId: winnerClerkId,
-      outcome: "win",
-      source: "four-in-a-row",
-      sourceId: String(gameId),
-    }).catch(() => {});
-    if (prestigeLoserId) {
-      await applyPrestigeResult({
-        tx,
-        clerkId: prestigeLoserId,
-        outcome: "loss",
-        source: "four-in-a-row",
-        sourceId: String(gameId),
-      }).catch(() => {});
-    }
-
-    // Per-game Elo — same guarded single-execution path as Prestige above, so
-    // only ONE settlement of this match can ever move a rating.
-    if (prestigeLoserId) {
+    // Per-game Elo — guarded single-execution path: only ONE settlement of
+    // this match can ever move a rating.
+    if (loserClerkId) {
       await applyRatingResult({
         tx,
         gameKey: "four-in-a-row",
         matchId: String(gameId),
         winnerClerkId,
-        loserClerkId: prestigeLoserId,
+        loserClerkId,
+      }).catch(() => {});
+      // Per-game trophies — the same authoritative win (+30 / −30).
+      await applyTrophyResult({
+        tx,
+        gameKey: "four-in-a-row",
+        matchId: String(gameId),
+        winnerClerkId,
+        loserClerkId,
       }).catch(() => {});
     }
 

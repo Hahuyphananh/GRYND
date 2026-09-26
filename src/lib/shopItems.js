@@ -9,29 +9,16 @@
 // Each price is set at-or-slightly-above the item's expected value so the
 // shop is a net token sink (never a token printer):
 //
-//   * streak_shield — EV ≈ the login rewards a missed-day reset would
-//     destroy: the escalating daily reward (avg ~187/day over a 14-day
-//     cycle, up to 350 on day 14) + milestone bonuses + streak-title
-//     progress. Priced at 800 (≈ two days of an active player's income),
-//     comfortably above the average daily reward, below the multi-hundred
-//     milestone value so high-streak players still buy.
+//   * streak_shield — absorbs one missed day so the player's login streak
+//     survives. The daily rewards that once made the streak valuable are
+//     retired, so this is a low-value convenience item retained for
+//     inventory/battlepass compatibility; priced at 800.
 //
 //   * xp_boost_2x_24h — EV ≈ extra battlepass XP for 24h (+200–500 XP for
 //     an average active day). XP is progression-only (rewards are
 //     cosmetics + functional items, not cashable tokens), so its EV is
 //     soft; 500 stays the cheap impulse price but is still a real sink
 //     against the 5,000-token starting balance.
-//
-//   * quest_boost_3 — EV ≈ 3 × average daily quest reward (~80) = 240
-//     tokens returned, plus the doubled quest XP. Priced at 1,000: well
-//     above the token EV (house keeps the edge) but still attractive
-//     because the doubled XP rides along.
-//
-//   * quest_xp_boost_3 — like quest_boost_3 but doubles the quest XP (not
-//     the quest reward value): EV is soft progression-only, priced at 1,200.
-//
-//   * quest_reroll — swap one daily quest for a fresh one (progress resets).
-//     EV is close to zero in tokens; priced at 1,500 for the convenience.
 //
 //   * xp_boost_3x_12h — a stockpiled 3× XP window. Bought as a consumable
 //     charge and ACTIVATED via POST /api/shop/items/use (duplicate
@@ -44,8 +31,8 @@
 // Membership adds NO XP multiplier (GRYND PRO is non-competitive — see
 // src/lib/stripe/subscriptions.ts). Only timed boosts from the item inventory
 // multiply XP, and they are applied HERE so every XP source (settled wagers,
-// quest claims, onboarding, Battle Pass claims) honors them without each
-// caller doing its own resolution. This is pure progression — boosts never
+// onboarding, Battle Pass claims) honors them without each caller doing its
+// own resolution. This is pure progression — boosts never
 // touch RNG, odds or win payouts.
 
 export const SHOP_ITEMS = [
@@ -64,8 +51,8 @@ export const SHOP_ITEMS = [
   },
   {
     key: "xp_boost_2x_24h",
-    name: "2× XP Boost",
-    desc: "Double all battlepass XP for 24 hours",
+    name: "2× Progress Boost",
+    desc: "2× progression for 24 hours",
     price: 500,
     category: "timed",
     hours: 24,
@@ -76,48 +63,9 @@ export const SHOP_ITEMS = [
     sortOrder: 2,
   },
   {
-    key: "quest_boost_3",
-    name: "Quest Boost",
-    desc: "Your next 3 quest claims pay double tokens",
-    price: 1000,
-    category: "consumable",
-    qtyPerUse: 3,
-    badge: "Economy",
-    color: "#34d399",
-    rarity: "Common",
-    enabled: true,
-    sortOrder: 3,
-  },
-  {
-    key: "quest_xp_boost_3",
-    name: "Quest XP Boost",
-    desc: "Your next 3 quest claims pay double quest XP",
-    price: 1200,
-    category: "consumable",
-    qtyPerUse: 3,
-    badge: "Progression",
-    color: "#a78bfa",
-    rarity: "Rare",
-    enabled: true,
-    sortOrder: 4,
-  },
-  {
-    key: "quest_reroll",
-    name: "Quest Reroll",
-    desc: "Swap one daily quest for a fresh one",
-    price: 1500,
-    category: "consumable",
-    qtyPerUse: 1,
-    badge: "Convenience",
-    color: "#fbbf24",
-    rarity: "Rare",
-    enabled: true,
-    sortOrder: 5,
-  },
-  {
     key: "xp_boost_3x_12h",
-    name: "3× XP Boost (12h)",
-    desc: "Stockpile: triple all battlepass XP for 12 hours. Activate it after buying.",
+    name: "3× Progress Boost (12h)",
+    desc: "Stockpile: 3× progression for 12 hours. Activate it after buying.",
     price: 800,
     category: "consumable",
     qtyPerUse: 1,
@@ -135,6 +83,24 @@ export const SHOP_ITEMS = [
 
 export function shopItemByKey(key) {
   return SHOP_ITEMS.find((i) => i.key === key) || null;
+}
+
+/**
+ * Resolve a local integer user id from a Clerk id. Returns null when the
+ * account has no row yet. Shared by the shop routes (formerly lived in the
+ * retired quests library).
+ */
+export async function userIdByClerkId(clerkId) {
+  const { db } = await import("../db");
+  const { eq } = await import("drizzle-orm");
+  const { users } = await import("../db/schema");
+
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1);
+  return rows[0]?.id ?? null;
 }
 
 // ── Inventory helpers ─────────────────────────────────────────────────────

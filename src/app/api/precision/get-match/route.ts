@@ -88,11 +88,10 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   for (const row of rows) {
     badgeByUser.set(
       String(row.clerkId),
-      resolvePrestigeBadge({
-        xp: row.xp,
-        prestigeLevel: row.prestigeLevel,
-        showPrestigeBadge: row.showPrestigeBadge,
-      }),
+      // Prestige is derived from ratings + per-game trophies, which are not
+      // loaded for opponents here — an opted-in player with no capped game
+      // resolves to no badge.
+      resolvePrestigeBadge({ showPrestigeBadge: row.showPrestigeBadge }),
     );
     iconByUser.set(String(row.clerkId), row.iconKey || null);
     colorByUser.set(

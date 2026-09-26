@@ -16,6 +16,8 @@
     "test:icons": "node scripts/check-tabler-icons.mjs",
     "test:elo": "node --import tsx --test tests/elo-rating.test.mjs",
     "test:elo-leaderboard": "node --import tsx --test tests/leaderboard-rating.test.mjs",
+    "test:trophies": "node --import tsx --test tests/trophy-system.test.mjs tests/trophy-leaderboard.test.mjs tests/quick-queue-trophy.test.mjs",
+    "test:prestige-retired": "node --import tsx --test tests/prestige-retirement.test.mjs",
     "test:overall-elo": "node --import tsx --test tests/overall-elo.test.mjs",
     "test:icon-system": "node --import tsx --test tests/iconAssets.test.mjs tests/icons-db.test.mjs",
     "test:states": "node --import tsx --test tests/persistent-swr-cache.test.mjs tests/session-cleanup.test.mjs",

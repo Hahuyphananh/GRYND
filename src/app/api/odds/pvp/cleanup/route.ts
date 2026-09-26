@@ -6,8 +6,8 @@ import { oddsGames, users } from "../../../../../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import type { PvPInteractiveOddsState } from "../../../../../lib/odds";
 import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
-import { applyPrestigeResult } from "../../../../../lib/prestige";
 import { applyRatingResult } from "../../../../../lib/rating";
+import { applyTrophyResult } from "../../../../../lib/trophyStore";
 
 /** Maximum time (ms) a player can stay inactive before being auto-forfeited */
 const TIMEOUT_MS = 120_000;
@@ -143,24 +143,16 @@ async function forfeitPlayer(
       isPvpWin: false,
     }).catch(() => {});
 
-    // Permanent Prestige — competitive forfeit settlement: winner +1,
-    // forfeiter -1. Idempotent on the game id via the journal.
-    applyPrestigeResult({
-      clerkId: winnerId,
-      outcome: "win",
-      source: "odds-pvp",
-      sourceId: String(gameId),
-    }).catch(() => {});
-    applyPrestigeResult({
-      clerkId: forfeiterId,
-      outcome: "loss",
-      source: "odds-pvp",
-      sourceId: String(gameId),
-    }).catch(() => {});
-
     // Per-game Elo — inactivity forfeit: the opponent wins, the idle player
     // records the loss. Both sides come from the game row, never the client.
     applyRatingResult({
+      gameKey: "odds-pvp",
+      matchId: String(gameId),
+      winnerClerkId: winnerId,
+      loserClerkId: forfeiterId,
+    }).catch(() => {});
+    // Per-game trophies — the same authoritative forfeit (+30 / −30).
+    applyTrophyResult({
       gameKey: "odds-pvp",
       matchId: String(gameId),
       winnerClerkId: winnerId,

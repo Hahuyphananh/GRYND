@@ -10,7 +10,8 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
-import { getLevelFromXp } from "../../../../lib/battlepass";
+import { getLevelFromTrophies } from "../../../../lib/battlepass";
+import { getTotalTrophiesForUser } from "../../../../lib/trophyStore";
 import {
   rewardsForLevel,
   COSMETIC_REWARD_TYPES,
@@ -32,9 +33,8 @@ export async function GET() {
     if (!dbUserId) {
       return Response.json({ success: true, count: 0, levels: [] });
     }
-    const level = getLevelFromXp(
-      Math.max(0, Math.floor(Number(rows[0]?.xp) || 0)),
-    );
+    // Level is derived from TROPHIES (10,000 total = level 100), not XP.
+    const level = getLevelFromTrophies(await getTotalTrophiesForUser(userId));
 
     // Premium-track gating mirrors /api/battlepass: non-members must not be
     // nudged about premium rewards they can't claim. Owned (grandfathered)
@@ -66,11 +66,9 @@ export async function GET() {
         const isCosmetic = COSMETIC_REWARD_TYPES.has(reward.type);
         const isFunctional =
           reward.type === "xp_boost" ||
-          reward.type === "quest_boost" ||
           reward.type === "shield" ||
           reward.type === "grynd" ||
-          reward.type === "battlepass_xp" ||
-          reward.type === "quest_reroll";
+          reward.type === "battlepass_xp";
         const owned =
           reward.type === "emote"
             ? ownedEmoteKeys.has(reward.key)

@@ -20,7 +20,6 @@ import {
   fadeIn,
   fadeUp,
   hoverScale,
-  modalMotion,
   stagger,
   withReducedMotion,
 } from "../lib/animations";
@@ -28,12 +27,11 @@ import {
   UIPro06PrimaryButton,
   UIPro07SecondaryButton,
   UIPro17ModalBackdrop,
-  UIPro18ModalPanel,
 } from "../components/uipro";
-import { useToast } from "../components/toast/ToastProvider";
 import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
 import UpgradeProButton from "../components/UpgradeProButton";
+import GryndProWidget from "../components/GryndProWidget";
 import {
   REWARD_RARITIES,
   REWARD_TYPES,
@@ -50,39 +48,6 @@ function MainComponent({ adSlot = null }) {
   // home page deliberately does NOT fetch /api/get-user-tokens itself — the
   // navbar already does that on every page, and a duplicate fetch here was
   // pure waste (its state was never read by any UI).
-  const [dailyRewardCooldown, setDailyRewardCooldown] = useState(false);
-  const [nextRewardTime, setNextRewardTime] = useState(null); // timestamp for cooldown
-  const [cooldownTimeLeft, setCooldownTimeLeft] = useState("");
-  const [rewardPopupVisible, setRewardPopupVisible] = useState(false);
-  // GRYND PRO membership state for the daily-claim surfaces
-  // from the last claim.
-  const [membership, setMembership] = useState(null);
-  const [streakData, setStreakData] = useState({
-    currentDay: 0,
-    claimedDays: [], // array of ISO dates strings
-    currentStreak: 0,
-    lastClaimDate: null,
-    maxDay: 14,
-    dailyStreakCurrent: 0,
-    dailyStreakBest: 0,
-    weeklyStreakCurrent: 0,
-    weeklyStreakBest: 0,
-    streakTitle: null,
-    nextMilestone: null, // { days: number, title: string }
-  });
-
-  const [milestoneBonus, setMilestoneBonus] = useState(0);
-  const [milestoneTitle, setMilestoneTitle] = useState(null);
-  const [showExpandedBadge, setShowExpandedBadge] = useState(false);
-  // Daily / weekly challenges widget.
-  const [showChallenges, setShowChallenges] = useState(false);
-  const [challengeTab, setChallengeTab] = useState("daily");
-  const [quests, setQuests] = useState({ daily: [], weekly: [] });
-  const [questsLoading, setQuestsLoading] = useState(false);
-  const [claimingQuestId, setClaimingQuestId] = useState(null);
-  const [rerollingQuestId, setRerollingQuestId] = useState(null);
-  const [questError, setQuestError] = useState(null);
-  const [claimedDay, setClaimedDay] = useState(null);
   // Battlepass widget — level, next reward and progress toward it.
   const [showBattlepass, setShowBattlepass] = useState(false);
   const [battlepass, setBattlepass] = useState(null);
@@ -108,14 +73,6 @@ function MainComponent({ adSlot = null }) {
   const shouldReduceMotion = useReducedMotion();
   const fadeUpVariant = withReducedMotion(shouldReduceMotion, fadeUp);
   const fadeInVariant = withReducedMotion(shouldReduceMotion, fadeIn);
-  const modalBackdropVariant = withReducedMotion(
-    shouldReduceMotion,
-    modalMotion.backdrop,
-  );
-  const modalPanelVariant = withReducedMotion(
-    shouldReduceMotion,
-    modalMotion.panel,
-  );
 
   const fetchFriendPresence = async () => {
     try {
@@ -154,96 +111,6 @@ function MainComponent({ adSlot = null }) {
     );
   };
 
-  const loadQuests = async () => {
-    if (!user || !isSignedIn) return;
-    setQuestsLoading(true);
-    setQuestError(null);
-    try {
-      const res = await fetch("/api/quests", { credentials: "include" });
-      const data = await res.json();
-      if (!data.success) {
-        setQuestError(data.error || "Failed to load quests");
-        return;
-      }
-      setQuests({
-        daily: Array.isArray(data.daily) ? data.daily : [],
-        weekly: Array.isArray(data.weekly) ? data.weekly : [],
-      });
-    } catch (err) {
-      console.error("[QUESTS_LOAD_ERROR]", err);
-      setQuestError("Failed to load quests");
-    } finally {
-      setQuestsLoading(false);
-    }
-  };
-
-  const claimQuest = async (questId) => {
-    if (claimingQuestId) return;
-    setClaimingQuestId(questId);
-    setQuestError(null);
-    try {
-      const res = await fetch("/api/quests/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ questId }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setQuestError(data.error || "Failed to claim quest");
-        return;
-      }
-      // Mark the quest claimed locally + credit the balance display.
-      setQuests((prev) => ({
-        daily: prev.daily.map((q) =>
-          q.id === questId ? { ...q, claimed: true } : q
-        ),
-        weekly: prev.weekly.map((q) =>
-          q.id === questId ? { ...q, claimed: true } : q
-        ),
-      }));
-    } catch (err) {
-      console.error("[QUESTS_CLAIM_ERROR]", err);
-      setQuestError("Failed to claim quest");
-    } finally {
-      setClaimingQuestId(null);
-    }
-  };
-
-  const rerollQuest = async (questId) => {
-    if (rerollingQuestId || claimingQuestId) return;
-    setRerollingQuestId(questId);
-    setQuestError(null);
-    try {
-      const res = await fetch("/api/quests/reroll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ questId }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setQuestError(data.error || "Failed to reroll quest");
-        return;
-      }
-      // Swap the rerolled quest in place (daily only — the server keeps
-      // the same slot, refreshed content, reset progress).
-      setQuests((prev) => ({
-        daily: prev.daily.map((q) =>
-          q.id === questId
-            ? { ...q, ...data.quest, id: data.quest.questId, claimed: !!data.quest.claimed }
-            : q
-        ),
-        weekly: prev.weekly,
-      }));
-    } catch (err) {
-      console.error("[QUESTS_REROLL_ERROR]", err);
-      setQuestError("Failed to reroll quest");
-    } finally {
-      setRerollingQuestId(null);
-    }
-  };
-
   const loadBattlepass = async () => {
     if (!user || !isSignedIn) return;
     setBattlepassLoading(true);
@@ -265,94 +132,6 @@ function MainComponent({ adSlot = null }) {
       setBattlepassLoading(false);
     }
   };
-
-  const questTitle = (q) => {
-    const game = q.gameKey
-      ? t(`home.challenges.game_${q.gameKey}`)
-      : null;
-    const count = Number(q.target).toLocaleString();
-    const amount = Number(q.target).toLocaleString();
-    const x = Number(q.target);
-    switch (q.questType) {
-      case "play":
-        return game
-          ? t("home.challenges.play_game", { count, game })
-          : t("home.challenges.play_any", { count });
-      case "win":
-        return game
-          ? t("home.challenges.win_game", { count, game })
-          : t("home.challenges.win_any", { count });
-      case "wager":
-        return t("home.challenges.wager", { amount });
-      case "multiplier":
-        return t("home.challenges.multiplier", { x });
-      case "streak":
-        return t("home.challenges.streak", { count });
-      case "diversify":
-        return t("home.challenges.diversify", { count });
-      case "pvp":
-        return t("home.challenges.pvp", { count });
-      default:
-        return q.questType;
-    }
-  };
-
-  const questProgressPct = (q) => {
-    const target = Number(q.target);
-    if (!target) return 0;
-    return Math.min(100, Math.round((Number(q.progress) / target) * 100));
-  };
-
-  const fetchRewardStatus = async () => {
-    if (!user || !isSignedIn) return;
-
-    try {
-      const res = await fetch("/api/get-login-reward-status");
-      const data = await res.json();
-      if (!data.success) return;
-
-      setStreakData({
-        currentDay: data.currentDay,
-        claimedDays: data.claimedDays || [],
-        lastClaimDate: data.lastClaimedDate,
-        maxDay: data.maxDay || 14,
-        dailyStreakCurrent: data.dailyStreakCurrent ?? 0,
-        dailyStreakBest: data.dailyStreakBest ?? 0,
-        weeklyStreakCurrent: data.weeklyStreakCurrent ?? 0,
-        weeklyStreakBest: data.weeklyStreakBest ?? 0,
-        streakTitle: data.streakTitle || null,
-        nextMilestone: data.nextMilestone || null,
-      });
-
-      // Reset one-shot milestone bonus/title (these only come from claim response)
-      setMilestoneBonus(0);
-      setMilestoneTitle(null);
-
-      if (data.lastClaimedDate) {
-        const lastClaimed = new Date(data.lastClaimedDate);
-        const now = new Date();
-
-        const toUtcDayKey = (d) =>
-          Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-
-        if (toUtcDayKey(lastClaimed) === toUtcDayKey(now)) {
-          setDailyRewardCooldown(true);
-
-          const nextTime = new Date(lastClaimed);
-          nextTime.setHours(nextTime.getHours() + 24);
-          setNextRewardTime(nextTime);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch reward status:", err);
-    }
-  };
-
-  // Load today's daily + weekly quests once signed in.
-  useEffect(() => {
-    if (isLoaded && isSignedIn) loadQuests();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, isSignedIn]);
 
   // Load the battlepass widget data once signed in.
   useEffect(() => {
@@ -405,113 +184,6 @@ function MainComponent({ adSlot = null }) {
     }
     router.push("/");
   };
-
-  useEffect(() => {
-    fetchRewardStatus();
-  }, [user, isSignedIn]);
-
-  // Fetch GRYND PRO membership status for the daily-claim surfaces
-  // login bonus state.
-  useEffect(() => {
-    if (!isSignedIn) {
-      setMembership(null);
-      return;
-    }
-    let cancelled = false;
-    fetch("/api/membership/status", { credentials: "include" })
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        if (!cancelled && data?.success) {
-          setMembership(data.active ? data : null);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [isSignedIn, user]);
-
-  const claimDailyReward = async () => {
-    if (!user || !isSignedIn) {
-      showToast(t("home.rewards.must_sign_in"), "error");
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/claim-login-reward", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}), // REQUIRED
-        credentials: "include",
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        showToast(data.error || t("home.rewards.claim_error"), "error");
-        return;
-      }
-
-      setClaimedDay(data.claimedDay);
-
-      // Update streak display with real leaderboard values & next reward day
-      setStreakData((prev) => ({
-        ...prev,
-        currentDay: data.nextDay ?? prev.currentDay,
-        dailyStreakCurrent: data.dailyStreakCurrent ?? 0,
-        dailyStreakBest: data.dailyStreakBest ?? 0,
-        weeklyStreakCurrent: data.weeklyStreakCurrent ?? 0,
-        weeklyStreakBest: data.weeklyStreakBest ?? 0,
-        streakTitle: data.streakTitle || null,
-        nextMilestone: data.nextMilestone || null,
-      }));
-
-      // Capture milestone bonus info for popup display
-      setMilestoneBonus(data.milestoneBonus || 0);
-      setMilestoneTitle(data.milestoneTitle || null);
-
-      setRewardPopupVisible(true);
-
-      // 4) Set 24h cooldown
-      const nextTime = new Date();
-      nextTime.setHours(nextTime.getHours() + 24);
-      setNextRewardTime(nextTime);
-      setDailyRewardCooldown(true);
-    } catch (err) {
-      console.error(err);
-      showToast(err.message || t("home.rewards.claim_error"), "error");
-    }
-  };
-
-  useEffect(() => {
-    if (!nextRewardTime) return;
-
-    const interval = setInterval(() => {
-      const now = new Date();
-      const diff = nextRewardTime - now;
-
-      if (diff <= 0) {
-        setDailyRewardCooldown(false);
-        setNextRewardTime(null);
-        setCooldownTimeLeft("");
-        clearInterval(interval);
-        return;
-      }
-
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setCooldownTimeLeft(
-        `${hours.toString().padStart(2, "0")}:${minutes
-          .toString()
-          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`,
-      );
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [nextRewardTime]);
 
   const fetchLiveStats = async () => {
     try {
@@ -673,9 +345,6 @@ function MainComponent({ adSlot = null }) {
   };
 
   useRevealOnScroll([]);
-
-  // Global branded toasts (UX plan P0-1) — replaces the old local toast.
-  const { showToast } = useToast();
 
   // Derived battlepass widget values — the next reward is the first reward
   // of the upcoming level (reserved-empty levels show "soon").
@@ -1301,211 +970,7 @@ function MainComponent({ adSlot = null }) {
         </div>
       </section>
 
-      {isSignedIn && (
-        <div className="fixed left-4 top-20 z-50">
-          <button
-            onClick={() => setShowExpandedBadge(!showExpandedBadge)}
-            className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-amber-400/40 px-3 py-2 text-sm text-amber-300 backdrop-blur-sm hover:border-amber-400 hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(251,191,36,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-          >
-            <span className="text-lg text-amber-400">
-              <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
-            </span>
-            <span className="font-bold">{streakData.dailyStreakCurrent || 0}</span>
-            <span className="hidden sm:inline text-xs text-amber-200/70">
-              {streakData.streakTitle || "days"}
-            </span>
-            <span className="text-[10px] text-amber-400/50">
-              {showExpandedBadge ? "▲" : "▼"}
-            </span>
-          </button>
-          {showExpandedBadge && (
-            <div className="mt-1 rounded-xl border border-amber-400/30 bg-black/85 backdrop-blur-md p-3 text-xs text-amber-200 shadow-[0_0_20px_rgba(251,191,36,0.2)] w-52">
-              <div className="flex justify-between mb-1">
-                <span>{t("home.streak.daily_streak")}</span>
-                <span className="font-bold text-amber-400">{streakData.dailyStreakCurrent || 0} {t("home.rewards.days")}</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span>{t("home.streak.best")}</span>
-                <span className="text-amber-300">{streakData.dailyStreakBest || 0} {t("home.rewards.days")}</span>
-              </div>
-              {streakData.streakTitle && (
-                <div className="flex justify-between mb-1">
-                  <span>{t("home.streak.title")}</span>
-                  <span className="text-amber-400 font-semibold">{streakData.streakTitle}</span>
-                </div>
-              )}
-              {streakData.nextMilestone && (
-                <div className="mt-2 pt-2 border-t border-amber-400/20">
-                  <p className="text-[10px] text-amber-300/60 uppercase tracking-wider">{t("home.streak.next_milestone")}</p>
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-amber-400">{streakData.nextMilestone.title}</span>
-                    <span className="text-amber-300">{streakData.nextMilestone.days} {t("home.rewards.days")}</span>
-                  </div>
-                  <div className="mt-1 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
-                      style={{
-                        width: `${Math.min(100, ((streakData.dailyStreakCurrent || 0) / streakData.nextMilestone.days) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-              {!streakData.nextMilestone && (streakData.dailyStreakCurrent || 0) >= 365 && (
-                <p className="mt-2 text-center text-amber-400 font-bold">
-                  <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/><path d="M3 19h18"/></svg>
-                  {t("home.streak.all_complete")}</p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      {isSignedIn && (
-        <div className="fixed left-4 top-44 z-50">
-          <button
-            onClick={() => setShowChallenges(!showChallenges)}
-            className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-[#00e5ff]/40 px-3 py-2 text-sm text-[#00e5ff] backdrop-blur-sm hover:border-[#00e5ff] hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(0,229,255,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-          >
-            <span className="text-lg">
-              <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M7 3H4a2 2 0 00-2 2v0a4 4 0 005 3"/><path d="M17 3h3a2 2 0 012 2v0a4 4 0 01-5 3"/><path d="M12 4v5"/></svg>
-            </span>
-            <span className="font-bold">{t("home.challenges.title")}</span>
-            <span className="text-[10px] text-[#00e5ff]/50">
-              {showChallenges ? "▲" : "▼"}
-            </span>
-          </button>
-          {showChallenges && (
-            <div className="mt-1 w-64 rounded-xl border border-[#00e5ff]/30 bg-black/85 backdrop-blur-md p-3 text-xs text-cyan-100 shadow-[0_0_20px_rgba(0,229,255,0.2)]">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-bold text-[#00e5ff]">{t("home.challenges.title")}</span>
-              </div>
-              {/* Daily / Weekly tab switcher */}
-              <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
-                {["daily", "weekly"].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setChallengeTab(tab)}
-                    className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
-                      challengeTab === tab
-                        ? "bg-[#00e5ff] text-[#041125]"
-                        : "text-[#00e5ff]/70 hover:text-[#00e5ff]"
-                    }`}
-                  >
-                    {tab === "daily"
-                      ? t("home.challenges.daily")
-                      : t("home.challenges.weekly")}
-                  </button>
-                ))}
-              </div>
-              {/* Quest list */}
-              {questError && (
-                <p className="mb-2 text-center text-[11px] text-red-300">{questError}</p>
-              )}
-              {questsLoading ? (
-                <div className="py-4 text-center text-[11px] text-[#00e5ff]/70">
-                  {t("ui.loading")}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {(challengeTab === "daily" ? quests.daily : quests.weekly)
-                    .length === 0 ? (
-                    <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-white/15 bg-white/5 px-3 py-5 text-center">
-                      <svg className="w-6 h-6 text-[#00e5ff]/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                      <p className="text-[11px] text-cyan-200/70">
-                        {challengeTab === "daily"
-                          ? t("home.challenges.empty_daily")
-                          : t("home.challenges.empty_weekly")}
-                      </p>
-                    </div>
-                  ) : (
-                    (challengeTab === "daily" ? quests.daily : quests.weekly).map(
-                      (q) => {
-                        const pct = questProgressPct(q);
-                        const done = Number(q.progress) >= Number(q.target);
-                        return (
-                          <div
-                            key={q.id}
-                            className={`rounded-lg border px-3 py-2 ${
-                              q.claimed
-                                ? "border-green-400/40 bg-green-900/20"
-                                : done
-                                  ? "border-[#f5ff3b]/50 bg-[#f5ff3b]/10"
-                                  : "border-white/10 bg-white/5"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-[11px] font-semibold text-cyan-100 leading-snug">
-                                {questTitle(q)}
-                              </p>
-                              <span className="shrink-0 text-[11px] font-bold text-[#f5ff3b]">
-                                {Number(q.reward).toLocaleString()}
-                              </span>
-                            </div>
-                            {!q.claimed && (
-                              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    done
-                                      ? "bg-gradient-to-r from-[#f5ff3b] to-amber-400"
-                                      : "bg-gradient-to-r from-[#00e5ff] to-[#00ffa6]"
-                                  }`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                            )}
-                            <div className="mt-1.5 flex items-center justify-between gap-2">
-                              <span className="text-[10px] text-cyan-200/60">
-                                {q.questType === "multiplier"
-                                  ? `${Number(q.progress).toFixed(1)}x / ${Number(q.target)}x`
-                                  : q.questType === "wager"
-                                    ? `${Number(q.progress).toLocaleString()} / ${Number(q.target).toLocaleString()}`
-                                    : `${Number(q.progress)} / ${Number(q.target)}`}
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                {challengeTab === "daily" && !q.claimed && (
-                                  <button
-                                    onClick={() => rerollQuest(q.id)}
-                                    disabled={!!rerollingQuestId || !!claimingQuestId}
-                                    title={t("home.challenges.reroll") || "Swap for a fresh quest (uses a Quest Reroll)"}
-                                    className="rounded-md border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-1.5 py-1 text-[10px] font-bold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/25 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
-                                  >
-                                    {rerollingQuestId === q.id ? "…" : "⟳"}
-                                  </button>
-                                )}
-                                {done && !q.claimed ? (
-                                <button
-                                  onClick={() => claimQuest(q.id)}
-                                  disabled={!!claimingQuestId}
-                                  className="rounded-md bg-[#f5ff3b] px-2.5 py-1 text-[10px] font-bold text-[#041125] transition-all hover:bg-[#e8ff00] hover:scale-105 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
-                                >
-                                  {claimingQuestId === q.id
-                                    ? "..."
-                                    : t("home.challenges.claim")}
-                                </button>
-                              ) : q.claimed ? (
-                                <span className="text-[10px] font-bold text-green-300">
-                                  ✓ {t("home.challenges.claimed")}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-cyan-200/40">
-                                  {pct}%
-                                </span>
-                              )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      },
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      {/* Battlepass widget — same pill pattern as the daily streak and
-          quests widgets, but anchored on the right side and tooltip-style:
+      {/* Battlepass widget — a pill anchored on the right side, tooltip-style:
           it opens on hover (and on tap for touch devices). Shows the
           player's level, progress toward the next one, the next reward,
           and a link to the full battlepass page. */}
@@ -1550,7 +1015,7 @@ function MainComponent({ adSlot = null }) {
                   </p>
                 ) : battlepass ? (
                   <>
-                    {/* Level + total XP */}
+                    {/* Level + total trophies */}
                     <div className="mb-2 flex items-center justify-between">
                       <span className="font-bold text-[#f5ff3b]">
                         {t("nav.battlepass")}
@@ -1587,13 +1052,13 @@ function MainComponent({ adSlot = null }) {
                       />
                     </div>
 
-                    {/* Total XP + XP needed for the next level */}
+                    {/* Total trophies + trophies needed for the next level */}
                     <div className="mt-1.5 flex justify-between text-[10px] text-amber-200/60">
-                      <span>{Number(battlepass.xp).toLocaleString()} XP total</span>
+                      <span>{Number(battlepass.trophies).toLocaleString()} trophies</span>
                       <span>
                         {battlepassMaxed
                           ? "Max level"
-                          : `${Number(battlepass.remainingToNext).toLocaleString()} XP to level ${
+                          : `${Number(battlepass.remainingToNext).toLocaleString()} to level ${
                               battlepass.level + 1
                             }`}
                       </span>
@@ -1649,176 +1114,10 @@ function MainComponent({ adSlot = null }) {
           </div>
         </div>
       )}
-      {isSignedIn && !dailyRewardCooldown && (
-        <div className="fixed right-4 bottom-16 z-50 flex flex-col items-end gap-1.5">
-          {membership?.active && (
-            <span className="rounded-full border border-emerald-400/60 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]">
-              {t("home.rewards.premium_badge")}
-            </span>
-          )}
-          <button
-            onClick={claimDailyReward}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-[#031026] transition-all shadow-lg bg-[#FFD700] hover:scale-110 animate-pulse border border-amber-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-            title={t("home.rewards.claim_daily_title")}
-          >
-            {t("home.rewards.claim_button")}
-          </button>
-        </div>
-      )}
-
-      {isSignedIn && dailyRewardCooldown && (
-        <div className="fixed right-4 bottom-16 z-50 text-sm text-[#FFD700] bg-black/60 px-3 py-2 rounded-lg">
-          <svg className="w-4 h-4 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          {t("home.rewards.next_reward_in")} {cooldownTimeLeft}
-        </div>
-      )}
-      {/* reward modal */}
-      <AnimatePresence>
-        {rewardPopupVisible && (
-          <UIPro17ModalBackdrop className="fixed inset-0 flex items-center justify-center bg-black/80 z-50">
-            <motion.div
-              initial={modalBackdropVariant.initial}
-              animate={modalBackdropVariant.animate}
-              exit={modalBackdropVariant.exit}
-              transition={modalBackdropVariant.transition}
-              className="absolute inset-0"
-            />
-            <motion.div
-              initial={modalPanelVariant.initial}
-              animate={modalPanelVariant.animate}
-              exit={modalPanelVariant.exit}
-              transition={modalPanelVariant.transition}
-              className="relative z-10"
-            >
-              <UIPro18ModalPanel
-                className="bg-gradient-to-b from-[#003366] to-[#001a33] 
-                border-2 border-[#FFD700]
-                p-6 rounded-2xl text-white 
-                max-w-4xl w-[95%] text-center shadow-2xl
-                max-h-[90vh] overflow-y-auto"
-              >
-                <h2 className="text-3xl font-extrabold text-[#FFD700] mb-2 flex items-center justify-center gap-2">
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
-                  {t("home.rewards.modal_title")}
-                </h2>
-
-                <p className="mb-6 text-lg">
-                  {t("home.rewards.day")}{" "}
-                  <span className="text-[#FFD700] font-bold">{claimedDay}</span>{" "}
-                  {t("home.rewards.claimed")}!
-                </p>
-
-                {/* 14 DAY GRID */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 mb-6">
-                  {Array.from({ length: streakData.maxDay || 14 }).map(
-                    (_, i) => {
-                      const day = i + 1;
-                      // Must mirror /api/claim-login-reward (25 XP per
-                      // streak day — linear escalation).
-                      const baseReward = 25 * day; // must match LOGIN_REWARD_PER_DAY in claim-login-reward
-                      // Membership grants no login bonus (see the API route).
-                      const reward = Math.round(
-                        baseReward * (membership?.active ? 1.5 : 1),
-                      );
-
-                      const claimed = day < claimedDay;
-                      const isToday = day === claimedDay;
-
-                      return (
-                        <div
-                          key={day}
-                          className={`relative flex flex-col items-center justify-center
-  rounded-xl p-3 border font-bold transition-all overflow-hidden
-
-  ${
-    claimed
-      ? "bg-green-500/20 border-green-400"
-      : isToday
-        ? "bg-[#FFD700]/20 border-[#FFD700] scale-105"
-        : "bg-white/5 border-white/10"
-  }
-  `}
-                        >
-                          {/* DARK OVERLAY */}
-                          {claimed && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-10">
-                              <svg className="w-8 h-8 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-                            </div>
-                          )}
-
-                          <div className="text-sm">
-                            {t("home.rewards.day")} {day}
-                          </div>
-
-                          <div className="text-lg flex justify-center gap-0.5 flex-wrap">
-                            {Array.from({ length: Math.min(day, 5) }).map((_, j) => (
-                              <svg key={j} className="w-5 h-5 text-[#FFD700]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10" fill="currentColor" fillOpacity="0.15"/><circle cx="12" cy="12" r="6" fill="currentColor" fillOpacity="0.3"/></svg>
-                            ))}
-                          </div>
-
-                          <div className="text-xs text-[#FFD700]">
-                            {reward.toLocaleString()} XP
-                          </div>
-
-                          {isToday && membership?.active && (
-                            <span className="mt-0.5 rounded-full bg-emerald-500/20 px-1.5 text-[9px] font-bold text-emerald-300">
-                              +50%
-                            </span>
-                          )}
-                        </div>
-                      );
-                    },
-                  )}
-                </div>
-
-                {/* Streak message */}
-                <div className="mb-4 text-lg">
-                  <svg className="w-5 h-5 inline text-amber-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z"/></svg>
-                  {t("home.rewards.current_streak")}:
-                  <span className="text-[#FFD700] font-bold">
-                    {" "}
-                    {streakData.dailyStreakCurrent || streakData.currentDay} {t("home.rewards.days")}
-                  </span>
-                  {streakData.dailyStreakBest > 0 && (
-                    <span className="text-sm text-white/50">
-                      {" "}(Best: {streakData.dailyStreakBest})
-                    </span>
-                  )}
-                </div>
-
-                {/* Milestone bonus celebration */}
-                {milestoneBonus > 0 && (
-                  <div className="mb-4 rounded-xl border-2 border-amber-400 bg-gradient-to-r from-amber-500/20 to-amber-600/20 p-4 animate-pulse">
-                    <p className="text-lg font-bold text-amber-300">
-                      <svg className="w-6 h-6 inline text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 9H4.5a2.5 2.5 0 010-5H6"/><path d="M18 9h1.5a2.5 2.5 0 000-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0012 0V2Z"/></svg>
-                      Streak Milestone Reached!
-                    </p>
-                    <p className="text-2xl font-extrabold text-amber-400 mt-1">
-                      {milestoneTitle}
-                    </p>
-                    <p className="text-lg mt-1">
-                      <span className="text-amber-300 font-bold">+{milestoneBonus.toLocaleString()} bonus XP!</span>
-                    </p>
-                  </div>
-                )}
-
-                <button
-                  onClick={async () => {
-                    setRewardPopupVisible(false);
-                    await fetchRewardStatus(); // refresh AFTER closing
-                  }}
-                  className="mt-2 px-6 py-3 
-                   bg-[#FFD700] text-[#003366] 
-                   font-bold rounded-lg border border-amber-400/30
-                   hover:scale-105 transition-all shadow-[0_0_16px_rgba(255,215,0,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#001a33]"
-                >
-                  {t("ui.confirm")}
-                </button>
-              </UIPro18ModalPanel>
-            </motion.div>
-          </UIPro17ModalBackdrop>
-        )}
-      </AnimatePresence>
+      {/* GRYND PRO widget — replaces the old Daily Reward claim button in
+          this corner. Free accounts see the membership pitch; PRO members
+          see a small status card. Home page only (never inside gameplay). */}
+      <GryndProWidget />
 
       {/* ── Terms & Conditions Modal ── */}
       <AnimatePresence>

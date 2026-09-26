@@ -173,7 +173,7 @@ export async function POST(req: Request) {
     // Track leaderboard OUTSIDE the transaction to avoid deadlocks.
     // AI games are free play (wager never deducted) — skip the stats
     // pipeline so beating the AI no longer records a phantom loss
-    // (payout 0) in user_stats / quests.
+    // (payout 0) in user_stats.
     if (result.gameStatus === "finished" && !(result as any).isAi) {
       await applyLeaderboardCounters({
         clerkId: userId,

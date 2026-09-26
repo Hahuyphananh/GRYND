@@ -9,7 +9,7 @@
 //   * emote                — key-based cosmetics (user_emotes)
 //   * title                — battlepass-exclusive special titles
 //                       (user_special_titles via unlockTitle)
-//   * xp_boost / quest_boost / shield — functional rewards granted into
+//   * xp_boost / shield — functional rewards granted into
 //                       the item-shop inventory (user_item_effects /
 //                       user_items), recorded per-level in
 //                       battlepass_claims so each identical track entry
@@ -32,7 +32,8 @@ import {
 import { unlockEmote } from "../../../../lib/emotes";
 import { unlockTitle } from "../../../../lib/specialTitles";
 import { unlockGlow } from "../../../../lib/glows";
-import { getLevelFromXp, addExp } from "../../../../lib/battlepass";
+import { getLevelFromTrophies, addExp } from "../../../../lib/battlepass";
+import { getTotalTrophiesForUser } from "../../../../lib/trophyStore";
 import { rewardsForLevel, COSMETIC_REWARD_TYPES } from "../../../../lib/battlepassRewards";
 import { getStripe, getBaseUrl } from "../../../../lib/stripe";
 import {
@@ -55,18 +56,14 @@ const CLAIMABLE_TYPES = new Set([
   "color",
   "grynd",
   "xp_boost",
-  "quest_boost",
   "shield",
   "battlepass_xp",
-  "quest_reroll",
   ...COSMETIC_REWARD_TYPES,
 ]);
 // Functional reward types → item-shop inventory mapping.
 const FUNCTIONAL_GRANTS = {
   xp_boost: null, // handled specially (effect key encodes multiplier×hours)
-  quest_boost: { itemKey: "quest_boost_3" },
   shield: { itemKey: "streak_shield" },
-  quest_reroll: { itemKey: "quest_reroll" },
 };
 
 /** 8 random lowercase letters suffix for the checkout integration_identifier. */
@@ -106,14 +103,13 @@ export async function POST(req) {
         { status: 404 },
       );
     }
-    const level = getLevelFromXp(
-      Math.max(0, Math.floor(Number(rows[0]?.xp) || 0)),
-    );
+    // Level is derived from TROPHIES (10,000 total = level 100), not XP.
+    const level = getLevelFromTrophies(await getTotalTrophiesForUser(userId));
 
     // Locate the claimed reward:
     //   * key-based types (emote/title/color) — first matching entry at or
     //     below the player's level (existing behavior).
-    //   * functional types (xp_boost/quest_boost/shield) — the EXACT track
+    //   * functional types (xp_boost/shield) — the EXACT track
     //     level in the request (they have no key, and each identical entry
     //     is a distinct claimable reward).
     let rewardLevel = null;

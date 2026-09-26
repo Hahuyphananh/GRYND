@@ -43,7 +43,7 @@
 // Editing rules: this hook must stay strictly auxiliary. It reads no game
 // state, writes nothing a game reads, keeps no UI, and swallows every failure
 // (see src/lib/gamePresenceClient.js) — a presence outage cannot affect
-// gameplay, bets, XP, rewards or matchmaking.
+// gameplay, bets, rewards or matchmaking.
 
 import { useEffect, useRef } from "react";
 import { PRESENCE_HEARTBEAT_MS, isPresenceGame } from "../lib/gamePresence";
