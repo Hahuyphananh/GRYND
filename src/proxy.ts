@@ -38,7 +38,6 @@ const GAME_ROUTE_PATTERNS = [
   "/casino/neon-flush(.*)",
   // /uno is the top-level alias of the Uno game page.
   "/uno",
-  "/uno/multiplayer(.*)",
   "/casino/plinko(.*)",
   "/casino/mines-pvp(.*)",
   // /casino/crash still redirects to the PVP Crash Arena.

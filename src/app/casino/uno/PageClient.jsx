@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useSocket } from "../../../context/SocketProvider";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
-import { IconRobot, IconUser, IconTable } from "@tabler/icons-react";
+import { IconRobot } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
 
@@ -271,16 +270,6 @@ export default function UnoLobbyPage() {
             hard: "The bot always plays its highest-scoring legal card.",
           }}
         />
-      }
-      extraActions={
-        <Link
-          href="/casino/uno/multiplayer"
-          className="mt-4 w-full rounded-xl border-b-4 border-amber-700 bg-amber-500 text-black font-bold py-3 transition hover:brightness-110"
-        >
-          <span className="inline-flex items-center justify-center gap-2">
-            <IconTable size={18} /> Multiplayer Tables (2–6 players)
-          </span>
-        </Link>
       }
     />
   );

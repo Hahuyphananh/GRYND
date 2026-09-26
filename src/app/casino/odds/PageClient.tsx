@@ -897,11 +897,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // ── Lobby: get user + subscribe to lobby updates ──
   useEffect(() => {
     const getUser = async () => {
+      // A non-JSON error response must not throw out of the mount effect —
+      // `res.json()` on an HTML error page rejects and React reports it as an
+      // uncaught error. Parse defensively and leave the user id unset.
       const res = await fetch("/api/get-user");
-      const json = await res.json();
-      if (json.success) setUserId(json.data.userId);
+      const json = await res.json().catch(() => null);
+      if (json?.success) setUserId(json.data?.userId ?? null);
     };
-    getUser();
+    void getUser();
   }, []);
 
   const fetchGames = useCallback(async () => {

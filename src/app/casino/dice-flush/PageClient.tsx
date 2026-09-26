@@ -406,7 +406,10 @@ export default function DiceFlushPage() {
   const prevGameStateRef = useRef<string | null>(null);
   const endedRef = useRef(false);
 
-  const fetchGames = async () => { const res = await fetch("/api/dice-flush/state", { cache: "no-store" }); const data = await res.json(); if (data.success) setAvailableGames(data.rooms || []); };
+  // A non-JSON error response (a 500/502 HTML page) must not throw out of the
+  // mount effect — `res.json()` on it rejects with a SyntaxError that React
+  // reports as an uncaught error. Parse defensively and treat it as no data.
+  const fetchGames = async () => { const res = await fetch("/api/dice-flush/state", { cache: "no-store" }); const data = await res.json().catch(() => null); if (data?.success) setAvailableGames(data.rooms || []); };
   // Normalize old "yahtzee" scorecard keys → "fiveKind" for backward compat with pre-rebrand games
   const normalizeState = (gs: GameState | null): GameState | null => {
     if (!gs?.scorecards) return gs;
@@ -416,7 +419,7 @@ export default function DiceFlushPage() {
     }
     return gs;
   };
-  const fetchRoom = async (id: string) => { const res = await fetch(`/api/dice-flush/state?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json(); if (data.success && data.room?.gameState) { setGame(normalizeState(data.room.gameState as GameState)); } };
+  const fetchRoom = async (id: string) => { const res = await fetch(`/api/dice-flush/state?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (data?.success && data.room?.gameState) { setGame(normalizeState(data.room.gameState as GameState)); } };
   const fetchHistory = async (id: string) => { try { const res = await fetch(`/api/dice-flush/history?roomId=${encodeURIComponent(id)}`, { cache: "no-store" }); const data = await res.json(); if (data.success) setMoveHistory(data.actions || []); } catch {} };
 
   useEffect(() => { fetchGames(); }, [isSignedIn, user]);

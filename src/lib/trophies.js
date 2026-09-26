@@ -15,7 +15,7 @@
 //   Ranked loss = −30 trophies
 //   Draw        =   0 trophies
 //
-//   At a MULTI-SEAT table (Crash Arena, Tower Arena, Neon Flush) the rule
+//   At a MULTI-SEAT table (Crash Arena, Tower Arena) the rule
 //   reads by placement on a SYMMETRIC LINEAR LADDER: the best seat banks the
 //   full +30, the last seat the full −30, and every seat between them pays or
 //   earns its even share of the difference (a 4-seat table is +30/+10/−10/−30,
@@ -23,8 +23,7 @@
 //
 //   The ladder is ZERO-SUM: the seats' nominal deltas always add up to exactly
 //   0, so a table redistributes trophies rather than minting them. Tied seats
-//   (Neon Flush losers on the same card count, Crash victims with no rank)
-//   share the average of the ranks they occupy.
+//   (Crash victims with no rank) share the average of the ranks they occupy.
 //
 //   See `computePlacementTrophies` below; a two-seat table degrades to the
 //   plain ±30 duel rule, which is why the 1v1 games need no special case.
@@ -364,7 +363,7 @@ export function placementLadder(seats) {
 
 /**
  * Compute the trophy result of one ranked match with MORE THAN ONE human seat —
- * the multi-seat table games (Crash Arena, Tower Arena, Neon Flush) and, in its
+ * the multi-seat table games (Crash Arena, Tower Arena) and, in its
  * two-seat form, every 1v1 too.
  *
  * The rule is ONE symmetric linear ladder, expressed by placement rather than
@@ -376,8 +375,8 @@ export function placementLadder(seats) {
  *
  * `groups` describes the WHOLE finishing order, best first. Each inner array is
  * one placement group and contains the CURRENT trophy counts of the seats that
- * finished level (fewer than `seats` cards left in Neon Flush, crash victims
- * with no surviving bankroll). A tied group is awarded the AVERAGE of the ranks
+ * finished level (crash victims with no surviving bankroll). A tied group is
+ * awarded the AVERAGE of the ranks
  * it spans, so being level with two other players never silently rewards or
  * punishes whoever the server happened to list first.
  *

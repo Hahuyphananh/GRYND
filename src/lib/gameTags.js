@@ -103,8 +103,9 @@ export const GAME_CATALOG = [
   { id: "keno", href: "/casino/keno", tags: ["pvp", "chance", "fast_paced", "casual"] },
 
   // "Fast card duels. Match colors and numbers": fast_paced, instantly
-  // readable (casual), 3+ players (multiplayer).
-  { id: "uno", href: "/casino/neon-flush", tags: ["multiplayer", "fast_paced", "casual"] },
+  // readable (casual), head-to-head against the AI or one online opponent
+  // (pvp). The multi-seat table mode was retired.
+  { id: "uno", href: "/casino/neon-flush", tags: ["pvp", "fast_paced", "casual"] },
 
   // Best-of-7 mind games: a round resolves in a click (fast_paced) and there
   // is nothing to learn (casual).

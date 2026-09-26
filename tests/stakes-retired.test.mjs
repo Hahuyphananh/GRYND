@@ -169,7 +169,6 @@ const CONVERTED = [
   "src/app/api/hex-duel/end-game/route.ts",
   "src/app/api/uno/initialize-vs-ai/route.js",
   "src/app/api/uno/join-online/route.js",
-  "src/app/api/uno/multiplayer/route.js",
   // Settlement / payout paths
   "src/lib/precision/finishMatch.ts",
 ];

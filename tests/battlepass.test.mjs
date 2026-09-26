@@ -203,30 +203,30 @@ test("battlepass_xp is retired — the track carries no flat XP rewards", () => 
   );
 });
 
-test("trophiesToReachLevel: 190 trophies per level, 18,810 at level 100", () => {
-  // 19 rated games × 1,000 = 19,000 overall, spread across 100 levels.
-  assert.equal(TROPHIES_PER_LEVEL, 190);
+test("trophiesToReachLevel: 200 trophies per level, 19,800 at level 100", () => {
+  // 20 rated games × 1,000 = 20,000 overall, spread across 100 levels.
+  assert.equal(TROPHIES_PER_LEVEL, 200);
   assert.equal(trophiesToReachLevel(1), 0);
-  assert.equal(trophiesToReachLevel(2), 190);
-  assert.equal(trophiesToReachLevel(100), 18810);
+  assert.equal(trophiesToReachLevel(2), 200);
+  assert.equal(trophiesToReachLevel(100), 19800);
 });
 
-test("getLevelFromTrophies: level 1 at 0, level 100 at the 19,000 overall cap", () => {
+test("getLevelFromTrophies: level 1 at 0, level 100 at the 20,000 overall cap", () => {
   assert.equal(getLevelFromTrophies(0), 1);
-  assert.equal(getLevelFromTrophies(189), 1);
-  assert.equal(getLevelFromTrophies(190), 2);
-  assert.equal(getLevelFromTrophies(18999), 100);
-  assert.equal(getLevelFromTrophies(19000), 100);
+  assert.equal(getLevelFromTrophies(199), 1);
+  assert.equal(getLevelFromTrophies(200), 2);
+  assert.equal(getLevelFromTrophies(19999), 100);
+  assert.equal(getLevelFromTrophies(20000), 100);
   assert.equal(getLevelFromTrophies(999999), 100); // clamped at the cap
 });
 
 test("getBattlepassProgressFromTrophies reports progress within the level", () => {
   const p = getBattlepassProgressFromTrophies(240);
   assert.equal(p.level, 2);
-  assert.equal(p.currentLevelTrophies, 190);
-  assert.equal(p.nextLevelTrophies, 380);
-  assert.equal(p.progressPercent, 26);
-  assert.equal(p.remainingToNext, 140);
+  assert.equal(p.currentLevelTrophies, 200);
+  assert.equal(p.nextLevelTrophies, 400);
+  assert.equal(p.progressPercent, 20);
+  assert.equal(p.remainingToNext, 160);
 });
 
 test("level 3 contains the Daily Streak Shield reward", () => {
@@ -329,15 +329,15 @@ test("the pass publishes the trophy rule FROM the constants (no hardcoded space)
   }
 });
 
-test("the published numbers ARE the live trophy space (19 games, 19,000 overall)", () => {
+test("the published numbers ARE the live trophy space (20 games, 20,000 overall)", () => {
   // This is the contract the UI copy renders, so it has to be derived, never
   // typed: the game count follows the rated registry and the overall maximum
   // follows the per-game cap.
-  assert.equal(TROPHY_GAMES.length, 19, "the rated space is 19 games after Poker's removal");
+  assert.equal(TROPHY_GAMES.length, 20, "the rated space is 20 games after Mini Golf's addition");
   assert.equal(isRatedSpaceConsistent(), true);
   assert.equal(OVERALL_TROPHY_MAX, TROPHY_MAX * TROPHY_GAMES.length);
-  assert.equal(OVERALL_TROPHY_MAX, 19000);
-  assert.equal(TROPHIES_PER_LEVEL, 190); // 19,000 ÷ 100 levels
+  assert.equal(OVERALL_TROPHY_MAX, 20000);
+  assert.equal(TROPHIES_PER_LEVEL, 200); // 20,000 ÷ 100 levels
   assert.equal(TROPHY_WIN, 30);
   assert.equal(TROPHY_LOSS, -30);
 });

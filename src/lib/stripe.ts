@@ -62,6 +62,52 @@ function comparableHostname(value: string): string | null {
 }
 
 /**
+ * The app's own hostnames. A request served on any of these is the GRYND app,
+ * so the customer must be sent back there — whatever a possibly-stale
+ * `NEXT_PUBLIC_BASE_URL` happens to say.
+ *
+ * This exists because the deployment has moved domains (grynd.mywire.org →
+ * grynd.dedyn.io) while the configured base URL lagged behind. Treating only
+ * the configured site as "ours" stranded returning customers on the retired
+ * domain (and pointed Stripe's Checkout icon fetch at a 404 there, which made
+ * it drop the branding). Add new domains here, or via the comma-separated
+ * `NEXT_PUBLIC_CANONICAL_HOSTS` env var, as the app gains them.
+ */
+export const GRYND_HOSTNAMES: readonly string[] = [
+  "grynd.dedyn.io",
+  "grynd.mywire.org",
+  "casino-app-sandy.vercel.app",
+];
+
+/** localhost / *.localhost / loopback — always the developer's own machine. */
+function isLocalHostname(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost");
+}
+
+/**
+ * True when `host` (already normalised by `comparableHostname`) belongs to the
+ * GRYND app — one of `GRYND_HOSTNAMES`, a subdomain of one, a loopback host, or
+ * an extra host listed in `NEXT_PUBLIC_CANONICAL_HOSTS`.
+ *
+ * Trusting these hosts is what lets the request origin win over a stale
+ * configured base URL without opening an open redirect: a Host header that
+ * isn't one of our own domains still falls back to the configured origin.
+ */
+function isGryndHostname(host: string | null): boolean {
+  if (!host) return false;
+  if (isLocalHostname(host)) return true;
+
+  const extra = (process.env.NEXT_PUBLIC_CANONICAL_HOSTS ?? "")
+    .split(",")
+    .map((entry) => comparableHostname(entry.trim()))
+    .filter((entry): entry is string => Boolean(entry));
+
+  return [...GRYND_HOSTNAMES, ...extra].some(
+    (known) => host === known || host.endsWith(`.${known}`)
+  );
+}
+
+/**
  * The origin the current request was actually served on, or null when the
  * host headers are missing. Proxy headers win over `host` because that is what
  * the visitor's browser really addressed once a platform proxy rewrote it.
@@ -91,17 +137,19 @@ function requestOrigin(req: { headers?: Headers } | undefined): string | null {
  * Checkout back button, the billing portal's return link).
  *
  * The configured `NEXT_PUBLIC_BASE_URL` remains the authority — but a customer
- * who started checkout on this origin must come back to THIS origin, so a
- * request origin that is the same site (www/apex and port differences ignored)
- * is preferred over it. That keeps staging/preview/localhost flows inside
- * staging/preview/localhost instead of bouncing a returning customer off to a
- * different host (where the /upgrade-pro path can be lost to an unrelated
- * redirect further up the stack).
+ * who started checkout on this origin must come back to THIS origin. The
+ * request origin is therefore preferred when it is:
  *
- * The Host header is attacker-controlled, so it is only ever accepted when it
- * matches the configured site — a spoofed Host can never turn our Stripe
- * redirect URLs into an open redirect. When no site is configured at all the
- * request origin is the only absolute origin available, so it is used.
+ *   * the configured site (www/apex and port differences ignored), or
+ *   * any of the app's own hostnames (`isGryndHostname`), so a stale or
+ *     late-migrated `NEXT_PUBLIC_BASE_URL` can never strand a returning
+ *     customer on a retired domain (where /upgrade-pro 404s and the Checkout
+ *     back button dead-ends), or
+ *   * the only absolute origin available (no site configured at all).
+ *
+ * The Host header is attacker-controlled, so it is only accepted for a host we
+ * actually recognise — a spoofed Host can never turn our Stripe redirect URLs
+ * into an open redirect.
  */
 export function getReturnBaseUrl(req?: { headers?: Headers }): string {
   const configured = getBaseUrl();
@@ -110,7 +158,12 @@ export function getReturnBaseUrl(req?: { headers?: Headers }): string {
   if (origin) {
     const configuredHost = comparableHostname(configured);
     const originHost = comparableHostname(origin);
-    if (originHost && (configuredHost === null || originHost === configuredHost)) {
+    if (
+      originHost &&
+      (configuredHost === null ||
+        originHost === configuredHost ||
+        isGryndHostname(originHost))
+    ) {
       return origin;
     }
   }

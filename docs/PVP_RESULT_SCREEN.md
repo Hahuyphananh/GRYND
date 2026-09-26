@@ -80,8 +80,6 @@ Notes:
   real points/refund/stake math from the match payload)
 - Chess Arena — `src/app/casino/chess-game/[gameId]/PageClient.jsx` (win/loss/draw screen from
   game row result/payout; old popup + icons deleted)
-- UNO Table — `src/app/casino/uno/multiplayer/PageClient.tsx` (4-player table end screen from
-  real seat results/pot; old `endPopup` deleted)
 - Rock Paper Scissors — `src/app/casino/rps/game/[gameId]/PageClient.tsx` (win/loss/draw screen
   from real choose/status settlement; old popup deleted)
 - Four in a Row — `src/app/casino/four-in-a-row/game/[gameId]/PageClient.tsx` (game-over screen

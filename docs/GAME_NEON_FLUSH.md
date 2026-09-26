@@ -1,6 +1,6 @@
 # Neon Flush (UNO) — Game Guide
 
-Neon Flush is GRYND's UNO-style card game, available **solo (vs AI)** and **multiplayer**. Classic UNO rules: match the top card by colour or value, use action cards to mess with your opponent, and be the first to empty your hand to win the round.
+Neon Flush is GRYND's UNO-style card game, available **solo (vs AI)** and **1v1 online**. Classic UNO rules: match the top card by colour or value, use action cards to mess with your opponent, and be the first to empty your hand to win the round.
 
 ## How a round works
 
@@ -18,13 +18,13 @@ Neon Flush is GRYND's UNO-style card game, available **solo (vs AI)** and **mult
 ## Match format
 
 - **Solo (vs AI)** — play rounds against the GRYND AI.
-- **Multiplayer** — real-time rounds against another player for a stake. Rounds accumulate (rounds-won tallies); the match winner takes the pot. Players can also toggle "skip next round" between rounds.
-- The winner's payout comes from the finished-match pot (house rake per the standard PvP economy); AI practice matches never move tokens.
+- **1v1 online** — real-time rounds against another player. Rounds accumulate (rounds-won tallies) and players can toggle "skip next round" between rounds.
+- Nothing is staked and no pot is paid: the result is worth trophies and rating only.
 
 ## Modes
 
 - **Neon Flush Solo** — free practice vs AI.
-- **Neon Flush Multiplayer** — staked PvP rounds.
+- **Neon Flush 1v1 Online** — head-to-head rounds against another player.
 
 ## Key numbers
 

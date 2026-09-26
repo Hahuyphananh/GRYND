@@ -78,8 +78,8 @@ export const PRESENCE_GAME_IDS = GAME_CATALOG.map((game) => game.id);
  *
  * Two labels intentionally share a game id: playing Chess vs the AI
  * (`chess-ai`) and a Chess duel (`chess`) are both "Chess" on the lobby, and
- * the same goes for Neon Flush / UNO multiplayer, RPS vs AI, Four in a Row vs
- * AI — a player choosing the AI opponent is still playing that game. The
+ * the same goes for Neon Flush vs AI (`neon-flush`), RPS vs AI, Four in a Row
+ * vs AI — a player choosing the AI opponent is still playing that game. The
  * tutorial's RPS match is a real player playing a real game, so it counts too.
  *
  * `precision-test` is deliberately ABSENT: it is a developer harness route,
@@ -96,7 +96,6 @@ export const GAME_LABEL_TO_GAME_ID = {
   "crash-arena": "crash",
   chess: "chess",
   keno: "keno",
-  "uno-multiplayer": "uno",
   "rock-paper-scissors": "rps",
   "tower-arena": "tower-arena",
   "four-in-a-row": "four-in-a-row",

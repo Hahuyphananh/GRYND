@@ -107,8 +107,10 @@ test("every label the repo actually reports maps to a game (drift guard)", () =>
     }
   }
 
-  // Sanity: the inventory is the real thing (23 game pages + 4 hook callers).
-  assert.ok(labels.size >= 24, `expected >= 24 labels, found ${labels.size}`);
+  // Sanity: the inventory is the real thing (the game pages plus the hook
+  // callers). The Neon Flush multiplayer table was retired, removing the
+  // `uno-multiplayer` label, so the floor is one lower than before.
+  assert.ok(labels.size >= 23, `expected >= 23 labels, found ${labels.size}`);
 
   for (const label of labels) {
     if (label === "precision-test") continue; // deliberately excluded below
@@ -127,7 +129,6 @@ test("every label the repo actually reports maps to a game (drift guard)", () =>
   assert.equal(resolveGameId("four-in-a-row-ai"), "four-in-a-row");
   assert.equal(resolveGameId("rock-paper-scissors-ai"), "rps");
   assert.equal(resolveGameId("neon-flush"), "uno");
-  assert.equal(resolveGameId("uno-multiplayer"), "uno");
   assert.equal(resolveGameId("dice-flush"), "yahtzee");
 
   // No label maps to a game that isn't in the catalog.
@@ -752,7 +753,8 @@ test("the shared host is the single wiring point, and every game feeds it", () =
   // harness route that resolveGameId deliberately rejects.
   // The tag must open a line (a prose mention in a comment is not a mount).
   const pages = walk("src/app").filter((file) => /^\s*<GameSessionHost/m.test(source(file)));
-  assert.ok(pages.length >= 20, `expected >= 20 game surfaces, found ${pages.length}`);
+  // The Neon Flush multiplayer table was retired, so one surface is gone.
+  assert.ok(pages.length >= 19, `expected >= 19 game surfaces, found ${pages.length}`);
   for (const file of pages) {
     const src = source(file);
     assert.match(src, /autoStart=/, `${file} must pass autoStart`);

@@ -88,7 +88,6 @@ const ALLOWED = [
   "src/app/casino/rps/page.tsx",
   "src/app/casino/tower-arena/page.tsx",
   "src/app/casino/uno/page.jsx",
-  "src/app/casino/uno/multiplayer/page.tsx",
 ];
 
 /** Every route file in src/app (page.*), as repo-relative POSIX paths. */
@@ -371,9 +370,7 @@ test("the alias routes inherit the tag by rendering, not by importing it", () =>
   // directly — a second render site would be untracked by the allow-list.
   for (const alias of [
     "src/app/uno/page.tsx",
-    "src/app/uno/multiplayer/page.tsx",
     "src/app/casino/neon-flush/page.tsx",
-    "src/app/casino/neon-flush/multiplayer/page.tsx",
   ]) {
     assert.ok(
       !/AdSenseScript/.test(read(alias)),

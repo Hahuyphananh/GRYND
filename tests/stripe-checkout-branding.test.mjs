@@ -242,6 +242,45 @@ test("the checkout origin wins, so the customer returns to the page they left", 
   }
 });
 
+test("a stale configured domain never beats the domain the customer checked out on", () => {
+  // The deployment moved grynd.mywire.org -> grynd.dedyn.io, but production's
+  // NEXT_PUBLIC_BASE_URL lagged behind. A customer on the NEW domain must come
+  // back to the new domain (and Stripe must fetch the icon from there), not be
+  // stranded on the retired one where /upgrade-pro 404s.
+  const prevBase = process.env.NEXT_PUBLIC_BASE_URL;
+  const prevApp = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.NEXT_PUBLIC_BASE_URL = "https://www.grynd.mywire.org";
+  delete process.env.NEXT_PUBLIC_APP_URL;
+
+  try {
+    const sameSite = (host) => ({
+      headers: new Headers({ host, "x-forwarded-proto": "https" }),
+    });
+
+    assert.equal(
+      getReturnBaseUrl(sameSite("www.grynd.dedyn.io")),
+      "https://www.grynd.dedyn.io",
+      "the domain the customer is on wins over the stale configured domain"
+    );
+    // The retired domain itself is still recognised (an old bookmark there
+    // should not bounce to an unrelated host either).
+    assert.equal(
+      getReturnBaseUrl(sameSite("grynd.mywire.org")),
+      "https://grynd.mywire.org"
+    );
+    // An unknown host is still rejected in favour of the configured origin.
+    assert.equal(
+      getReturnBaseUrl(sameSite("evil.example.com")),
+      "https://www.grynd.mywire.org"
+    );
+  } finally {
+    if (prevBase === undefined) delete process.env.NEXT_PUBLIC_BASE_URL;
+    else process.env.NEXT_PUBLIC_BASE_URL = prevBase;
+    if (prevApp === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = prevApp;
+  }
+});
+
 test("with no configured site, the request origin is still an absolute origin", () => {
   const prevBase = process.env.NEXT_PUBLIC_BASE_URL;
   const prevApp = process.env.NEXT_PUBLIC_APP_URL;

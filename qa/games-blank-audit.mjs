@@ -43,6 +43,19 @@ const REPORTS = join(root, "qa", "reports", "games-blank-audit");
 const BASE = process.env.BASE || "http://localhost:3000";
 const SHOT_ALL = process.argv.includes("--shots");
 const FAIL_API = process.argv.includes("--fail-api");
+// Playwright's bundled Chromium is not always downloaded (e.g. on a machine
+// with system Chrome installed); BROWSER_CHANNEL=chrome uses the real one.
+const CHANNEL = process.env.BROWSER_CHANNEL || "";
+
+// ── Console-noise filter ───────────────────────────────────────────────────
+// A match page that throws during render is the bug this audit hunts. The
+// browser reports a render crash two ways: an uncaught `pageerror` (no error
+// boundary) or a React/Next error-boundary message on the console (the
+// boundary swallowed the throw). Everything here is NOT that: failed network
+// requests, third-party ad/support scripts and CORS noise that every page
+// emits. Whatever is left is a real JavaScript/React error worth reporting.
+const CONSOLE_NOISE =
+  /Failed to load resource|Access to script|net::ERR_|CORS policy|tawk\.to|googlesyndication|doubleclick|clarity\.ms|posthog|favicon|401 \(Unauthorized\)|500 \(Internal Server Error\)/i;
 
 // Routes a player can reach WITHOUT an existing match/table id: each game's
 // landing page (the target of the game cards in /casino) plus the vs-AI,
@@ -67,7 +80,6 @@ const ROUTES = [
   { game: "Memory Grid", path: "/games/memory-grid" },
   { game: "Mines PvP", path: "/games/mines-pvp" },
   { game: "Neon Flush", path: "/games/neon-flush" },
-  { game: "Neon Flush multiplayer", path: "/games/neon-flush/multiplayer" },
   { game: "Odds", path: "/games/odds" },
   { game: "Plinko", path: "/games/plinko" },
   { game: "Pool Masters", path: "/games/pool-masters" },
@@ -78,10 +90,8 @@ const ROUTES = [
   { game: "RPS vs AI", path: "/games/rps/play-ai" },
   { game: "Tower Arena", path: "/games/tower-arena" },
   { game: "Uno", path: "/games/uno" },
-  { game: "Uno multiplayer", path: "/games/uno/multiplayer" },
   // The top-level /uno aliases are separate routes, not rewrites.
   { game: "Uno (top-level)", path: "/uno" },
-  { game: "Uno multiplayer (top-level)", path: "/uno/multiplayer" },
 ];
 
 // Match/table pages: what a game sends you to after you hit Play. Audited with
@@ -331,6 +341,10 @@ async function audit(browser, route) {
     if (msg.type() === "error") consoleErrors.push(msg.text().slice(0, 300));
   });
   page.on("pageerror", (err) => pageErrors.push(String(err).slice(0, 300)));
+  // React/Next report render failures by logging on the console even when an
+  // error boundary catches them, so the DOM can look "fine" while the page is
+  // actually broken. Keep those separate from the network noise.
+  const jsErrors = consoleErrors.filter((t) => !CONSOLE_NOISE.test(t));
 
   const result = { ...route, status: null, finalUrl: null, blank: false };
   try {
@@ -373,11 +387,14 @@ async function audit(browser, route) {
 
   result.consoleErrors = consoleErrors;
   result.pageErrors = pageErrors;
+  // The real signal: an uncaught throw and/or a non-noise console error.
+  result.jsErrors = jsErrors;
+  result.crashed = pageErrors.length > 0 || jsErrors.length > 0;
   await context.close();
   return result;
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(CHANNEL ? { channel: CHANNEL } : {});
 mkdirSync(REPORTS, { recursive: true });
 const results = [];
 
@@ -397,15 +414,19 @@ for (const route of ALL_ROUTES) {
       ? "STUCK"
       : r.invisibleContent
         ? "HIDDEN"
-        : r.error
-          ? "ERROR"
-          : "ok";
+        : r.crashed
+          ? "JS-ERR"
+          : r.error
+            ? "ERROR"
+            : "ok";
   console.log(
     `${flag.padEnd(6)} ${route.game.padEnd(23)} ${String(r.status || "-").padEnd(4)} ` +
       `paint:${String(r.contentPaintedPct ?? "-").padStart(6)}% text:${String(r.contentTextChars ?? "-").padStart(5)} ` +
-      `nodes:${String(r.visibleContentNodes ?? "-").padStart(4)} js:${r.pageErrors.length}` +
+      `nodes:${String(r.visibleContentNodes ?? "-").padStart(4)} pageerr:${r.pageErrors.length} jserr:${(r.jsErrors || []).length}` +
       `${r.error ? ` err:${r.error}` : ""}`,
   );
+  for (const e of r.pageErrors || []) console.log(`         ! pageerror: ${e}`);
+  for (const e of r.jsErrors || []) console.log(`         ! console:   ${e}`);
 }
 
 await browser.close();
@@ -413,7 +434,7 @@ await browser.close();
 const blanks = results.filter((r) => r.blank);
 const stuck = results.filter((r) => r.stuckLoading);
 const hidden = results.filter((r) => r.invisibleContent);
-const crashed = results.filter((r) => r.pageErrors.length > 0);
+const crashed = results.filter((r) => r.crashed);
 
 writeFileSync(
   join(REPORTS, "report.json"),
@@ -425,4 +446,8 @@ console.log(`blank: ${blanks.length}${blanks.length ? ` -> ${blanks.map((b) => b
 console.log(`stuck on loading: ${stuck.length}${stuck.length ? ` -> ${stuck.map((b) => b.game).join(", ")}` : ""}`);
 console.log(`invisible content: ${hidden.length}${hidden.length ? ` -> ${hidden.map((b) => b.game).join(", ")}` : ""}`);
 console.log(`client-side crashes: ${crashed.length}${crashed.length ? ` -> ${crashed.map((c) => c.game).join(", ")}` : ""}`);
+for (const c of crashed) {
+  for (const e of c.pageErrors || []) console.log(`  ${c.game} [pageerror] ${e}`);
+  for (const e of c.jsErrors || []) console.log(`  ${c.game} [console]   ${e}`);
+}
 console.log(`report: ${join(REPORTS, "report.json")}`);

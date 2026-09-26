@@ -10,11 +10,11 @@ if (!BASE) {
     () => {},
   );
 } else {
-  test("HTTP authz: uno multiplayer rejects unauthenticated request", async () => {
-    const res = await fetch(`${BASE}/api/uno/multiplayer`, {
+  test("HTTP authz: uno online matchmaking rejects unauthenticated request", async () => {
+    const res = await fetch(`${BASE}/api/uno/join-online`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "create" }),
+      body: JSON.stringify({ mode: "join_or_create" }),
     });
 
     assert.equal(res.status, 401);

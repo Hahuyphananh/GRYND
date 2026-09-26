@@ -2330,7 +2330,7 @@ export default function TowerArenaMatchPage() {
               onBack={() => router.replace("/casino/tower-arena")}
             />
           ) : (
-            {pageBody}
+            pageBody
           )}
 
           {/* Final placement popup (built above) — inside the host, i.e.

@@ -7,7 +7,10 @@
 // NON-GAMEPLAY page:
 //
 //   * free member  → the promotional card (branding, value prop, the existing
-//                    PRO benefits, and the existing UpgradeProButton CTA),
+//                    PRO benefits, and the existing UpgradeProButton CTA, which
+//                    links straight to /upgrade-pro instead of opening the modal
+//                    — the widget is a pointer to the full offer, not a place to
+//                    sell it),
 //   * active member → a small "GRYND PRO" status card (no upsell),
 //   * signed out    → nothing.
 //
@@ -80,7 +83,7 @@ export default function GryndProWidget() {
           stays free.
         </p>
         <div className="mt-3">
-          <UpgradeProButton className="w-full" />
+          <UpgradeProButton className="w-full" linkToPage />
         </div>
       </div>
     </div>

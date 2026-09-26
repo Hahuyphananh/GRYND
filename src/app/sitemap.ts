@@ -98,7 +98,6 @@ const GAME_PAGES: {
   { path: "/games/neon-flush" }, // no dedicated table yet → static
   { path: "/games/hex-duel", source: [hexDuelGames, hexDuelGames.createdAt] },
   { path: "/games/uno", source: [unoGames, unoGames.createdAt] },
-  { path: "/games/uno/multiplayer" }, // same game, no separate table
   { path: "/games/lane-runner", source: [laneRunnerGames, laneRunnerGames.createdAt] },
   { path: "/games/tower-arena", source: [towerArenaMatches, towerArenaMatches.createdAt] },
   { path: "/games/odds", source: [oddsGames, oddsGames.createdAt] },

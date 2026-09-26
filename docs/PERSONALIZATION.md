@@ -76,7 +76,7 @@ hand-assigned from each game's shipped description:
 | Crash Arena | multiplayer, chance, fast_paced, competitive | random crash curve, last standing |
 | Chess | pvp, strategy, skill, competitive | "outthink your opponent move by move" |
 | Keno | pvp, chance, fast_paced, casual | same draw for both; timed taps; no teaching needed |
-| Neon Flush (UNO) | multiplayer, fast_paced, casual | fast card duels, instantly readable |
+| Neon Flush (UNO) | pvp, fast_paced, casual | fast card duels, instantly readable |
 | Rock-Paper-Scissors | pvp, fast_paced, casual | best-of-7 mind games, one click per round |
 | Tower Arena | multiplayer, strategy, skill, competitive | placement planning + collapse risk, 2–6 players |
 | Four-In-A-Row | pvp, strategy, skill | pure alignment planning |

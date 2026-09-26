@@ -131,7 +131,7 @@ to their existing "a real session started" edge.
 | crash | `crash-arena/table/[tableId]` (hook) | a round is `running`; the gap between rounds is absorbed by the window, leaving the table clears |
 | chess | `chess/ai` (`chess-ai`) and `chess-game/[gameId]` | the game is live → game over / finished / expired |
 | keno | `keno-pvp/[matchId]` | a round is in play → finished/cancelled |
-| uno | `uno/multiplayer` (`uno-multiplayer`) and `uno/game/[gameId]` (`neon-flush`) | a game is on screen (never the lobby) → end popup |
+| uno | `uno/game/[gameId]` (`neon-flush`) | a game is on screen (never the lobby) → end popup |
 | rps | `rps/game/[gameId]` and `rps/play-ai` | matched/active · past the picker → finished/cancelled · match over |
 | tower-arena | `tower-arena/game/[matchId]` | `isActive` **and not eliminated** → `isFinished` |
 | four-in-a-row | `four-in-a-row/game/[gameId]` and `.../play-ai` | `in_progress` · game active → finished/cancelled · game ended |

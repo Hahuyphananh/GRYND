@@ -2,7 +2,7 @@
 //
 // Ends a match immediately, without declaring a winner, and returns the new
 // state so the end-popup flow can surface "Resigned". Matches the posture of
-// /api/pool/resign and /api/uno/multiplayer/resign.
+// /api/pool/resign.
 //
 // The transition itself lives in `serverStore.resignMatch`, inside a
 // `SELECT … FOR UPDATE` transaction:
