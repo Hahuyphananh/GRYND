@@ -345,9 +345,9 @@ function applySecurityHeaders(response: NextResponse) {
     "Content-Security-Policy",
     "default-src 'self'; " +
       scriptSrc +
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.tawk.to https://cdn.jsdelivr.net; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; " +
       "img-src 'self' data: blob: https:; " +
-      "font-src 'self' data: https://fonts.gstatic.com https://*.tawk.to; " +
+      "font-src 'self' data: https://fonts.gstatic.com; " +
       "connect-src 'self' https: wss:; " +
       // AdSense serves each ad unit in a cross-origin iframe, so `frame-src`
       // — the one directive that is NOT wildcarded above — has to name its
@@ -362,7 +362,7 @@ function applySecurityHeaders(response: NextResponse) {
       // message (Privacy & messaging) shown to EEA/UK/Swiss visitors — see
       // src/lib/consentRegions.ts. Blocking it would leave those visitors
       // unable to consent at all, which is a revenue loss, not a privacy win.
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://*.tawk.to https://embed.tawk.to https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com; " +
+      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com; " +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

@@ -10,7 +10,6 @@ import { countryFromHeaders, requiresGoogleCmp } from "../lib/consentRegions";
 import { ORGANIZATION_ID, buildWebsiteJsonLd } from "../lib/reviewJsonLd";
 import DisableInspect from "../components/DisableInspect";
 import CsrfFetchGuard from "../components/CsrfFetchGuard";
-import TawkProvider from "../components/TawkProvider";
 import SplashScreen from "../components/SplashScreen";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
@@ -143,7 +142,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <ToastProvider>
             <CsrfFetchGuard />
             <DisableInspect />
-            <TawkProvider />
             <main id="main-content" className="pt-[68px] sm:pt-16">{children}</main>
             <ClerkSafeChatWidget />
             {/* Mirrors Google's CMP decision into the local consent record so

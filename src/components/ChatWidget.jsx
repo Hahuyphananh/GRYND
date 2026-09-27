@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { useSocket } from "../context/SocketProvider";
 import FrameAvatar from "./FrameAvatar";
@@ -76,7 +77,6 @@ export default function ChatWidget() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [activeTab, setActiveTab] = useState("chat");
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Fetch admin status from DB-backed API on mount
@@ -302,22 +302,6 @@ export default function ChatWidget() {
     }
   }
 
-  function openSupportChat() {
-    setActiveTab("support");
-
-    const openTawk = () => {
-      if (typeof window === "undefined") return;
-      if (window.Tawk_API && window.Tawk_API.maximize) {
-        window.Tawk_API.showWidget?.();
-        window.Tawk_API.maximize();
-      } else {
-        setTimeout(openTawk, 200);
-      }
-    };
-
-    openTawk();
-  }
-
   if (!room) return null;
 
   return (
@@ -339,28 +323,16 @@ export default function ChatWidget() {
           <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.08] mix-blend-overlay bg-[repeating-linear-gradient(0deg,black,black_2px,transparent_2px,transparent_4px)] animate-scanlines" />
           <div className="mb-2 flex items-center justify-between gap-2 text-cyan-300">
             <div className="flex items-center gap-1 rounded-lg border border-cyan-400/25 bg-black/40 p-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("chat")}
-                className={`rounded px-2 py-1 text-[12px] font-medium transition ${
-                  activeTab === "chat"
-                    ? "bg-cyan-400/20 text-cyan-100"
-                    : "text-cyan-300/70 hover:bg-cyan-500/10 hover:text-cyan-200"
-                }`}
-              >
+              <span className="rounded bg-cyan-400/20 px-2 py-1 text-[12px] font-medium text-cyan-100">
                 {room.title}
-              </button>
-              <button
-                type="button"
-                onClick={openSupportChat}
-                className={`rounded px-2 py-1 text-[12px] font-medium transition ${
-                  activeTab === "support"
-                    ? "bg-cyan-400/20 text-cyan-100"
-                    : "text-cyan-300/70 hover:bg-cyan-500/10 hover:text-cyan-200"
-                }`}
+              </span>
+              <Link
+                href="/contact"
+                onClick={() => setIsOpen(false)}
+                className="rounded px-2 py-1 text-[12px] font-medium text-cyan-300/70 transition hover:bg-cyan-500/10 hover:text-cyan-200"
               >
                 Support
-              </button>
+              </Link>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -385,8 +357,7 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          {activeTab === "chat" ? (
-            <>
+          <>
               <div
                 ref={messagesContainerRef}
                 role="region"
@@ -492,15 +463,7 @@ export default function ChatWidget() {
                   </button>
                 </form>
               )}
-            </>
-          ) : (
-            <div className="rounded border border-cyan-400/20 bg-black/60 p-3 text-xs text-cyan-200">
-              <p className="mb-2">Support chat is opening…</p>
-              <p className="text-slate-400">
-                If it did not open yet, click Support again in a second.
-              </p>
-            </div>
-          )}
+          </>
 
           {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
         </div>

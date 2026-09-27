@@ -3,8 +3,8 @@
 Three of the four remaining audit items are prepared here as **review-before-apply**
 artifacts. They are intentionally NOT wired into the drizzle migration chain
 (`src/db/migrations`) — they change production data semantics and need a human
-review + staging test first. The fourth item (SRI on the Tawk script) is already
-implemented in `src/components/TawkProvider.tsx`.
+review + staging test first. The fourth item (SRI on the Tawk script) no longer
+applies — Tawk.to has been removed from the app.
 
 | File | Fix | Risk | Needs |
 |------|-----|------|-------|

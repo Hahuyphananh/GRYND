@@ -53,7 +53,7 @@ const sections = [
   {
     title: "Support & Live Chat",
     content: [
-      "Our support chat is provided by Tawk.to. When you use the live chat widget, Tawk.to processes your chat messages and contact details under its own privacy policy, as a service provider to us. Chat messages you send on the platform (global and game rooms) are stored by us, are visible to other players, and may be moderated.",
+      "Support runs through the contact form on our /contact page. Messages you submit there are stored by us and handled by our own team. Chat messages you send on the platform (global and game rooms) are stored by us, are visible to other players, and may be moderated.",
     ],
   },
   {
@@ -65,7 +65,7 @@ const sections = [
   {
     title: "Data Sharing & Third Parties",
     content: [
-      "We share personal data only with the service providers we use to operate the platform, who process it on our behalf under contractual obligations: Clerk (authentication), Neon and Vercel Postgres (database hosting), Vercel (hosting), Upstash (caching), Supabase (supporting services), PostHog (analytics), Sentry (error monitoring), Resend (email delivery), Tawk.to (support chat), and Google (advertising, through AdSense).",
+      "We share personal data only with the service providers we use to operate the platform, who process it on our behalf under contractual obligations: Clerk (authentication), Neon and Vercel Postgres (database hosting), Vercel (hosting), Upstash (caching), Supabase (supporting services), PostHog (analytics), Sentry (error monitoring), Resend (email delivery), and Google (advertising, through AdSense).",
       "Advertising is served through Google AdSense, which processes ad data as an independent controller under its own privacy policy rather than as our service provider; the consent signals described under \u201cAdvertising\u201d are how your choices reach it.",
       "If token purchases are enabled, payment processing is handled by a third-party payment processor; we do not store your card or other payment instrument details.",
       "We may also disclose information where required by law, to enforce our Terms, or to protect the rights, property, or safety of our users or the public.",
