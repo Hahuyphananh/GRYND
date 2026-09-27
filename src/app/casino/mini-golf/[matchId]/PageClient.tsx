@@ -339,7 +339,10 @@ export default function MiniGolfMatchPage() {
     setShowForfeitConfirm(false);
     setForfeiting(true);
     try {
-      const res = await fetch(`${apiMatch}/forfeit`, { method: "POST" });
+      const res = await fetch(`${apiMatch}/forfeit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
       const data = await res.json().catch(() => null);
       if (data?.success) {
         setMatch(data.data.match);
@@ -356,7 +359,10 @@ export default function MiniGolfMatchPage() {
     setShowForfeitConfirm(false);
     setForfeiting(true);
     try {
-      await fetch(`${apiMatch}/cancel`, { method: "POST" });
+      await fetch(`${apiMatch}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
       refresh();
     } finally {
       setForfeiting(false);

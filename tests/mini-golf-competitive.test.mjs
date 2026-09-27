@@ -251,3 +251,28 @@ test("security: forfeit/disconnect cannot award a client-chosen winner", () => {
   // The forfeit winner is the OTHER seat, derived server-side.
   assert.match(STORE_SRC, /const winnerSeat = otherSeat\(seat as Seat\)/);
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// 6. Transport contract — every Mini Golf mutation declares JSON
+// ════════════════════════════════════════════════════════════════════════
+
+test("every Mini Golf POST declares a JSON content-type", () => {
+  // The proxy's transport guard answers 415 to ANY POST/PUT/PATCH whose
+  // content-type is not application/json — body or no body. Create, join,
+  // practice, forfeit and cancel are all bodyless POSTs, so a missing header
+  // broke the whole lobby. Pin the pairing so it cannot regress.
+  for (const file of [
+    "src/app/casino/mini-golf/PageClient.tsx",
+    "src/app/casino/mini-golf/[matchId]/PageClient.tsx",
+  ]) {
+    const src = read(file);
+    const posts = (src.match(/method: "POST"/g) ?? []).length;
+    const jsonHeaders = (src.match(/"Content-Type": "application\/json"/g) ?? []).length;
+    assert.ok(posts > 0, `${file} is expected to issue POSTs`);
+    assert.equal(
+      jsonHeaders,
+      posts,
+      `${file}: ${posts} POST(s) but ${jsonHeaders} JSON content-type header(s) — a bodyless POST without one gets a 415`,
+    );
+  }
+});

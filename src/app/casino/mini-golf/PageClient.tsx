@@ -87,7 +87,12 @@ export default function MiniGolfLobbyPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/mini-golf/create-or-join", { method: "POST" });
+      const res = await fetch("/api/mini-golf/create-or-join", {
+        method: "POST",
+        // The proxy rejects POSTs without a JSON content-type (415), even
+        // bodyless ones — declare it so matchmaking reaches the route.
+        headers: { "Content-Type": "application/json" },
+      });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         setError(data?.error || "Unable to find a match");
@@ -110,7 +115,10 @@ export default function MiniGolfLobbyPage() {
     setAiBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/mini-golf/create-ai", { method: "POST" });
+      const res = await fetch("/api/mini-golf/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         setError(data?.error || "Unable to start a practice match");
@@ -130,7 +138,10 @@ export default function MiniGolfLobbyPage() {
       if (cancelling) return;
       setCancelling(true);
       try {
-        await fetch(`/api/mini-golf/match/${matchId}/cancel`, { method: "POST" });
+        await fetch(`/api/mini-golf/match/${matchId}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
         pokeLobby();
         await fetchLobbies();
       } finally {
