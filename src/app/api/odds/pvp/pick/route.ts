@@ -107,16 +107,13 @@ export async function POST(req: Request) {
         applyLeaderboardCounters({
           clerkId: winnerId,
           game: "odds",
-          betAmount: game.wager,
-          payout,
+          outcome: "win",
           isPvpWin: true,
         }).catch(() => {});
         applyLeaderboardCounters({
           clerkId: forfeiterId!,
           game: "odds",
-          betAmount: game.wager,
-          payout: 0,
-          isPvpWin: false,
+          outcome: "loss",
         }).catch(() => {});
 
         // Per-game Elo — timeout forfeit: the opponent wins, resolved
@@ -273,16 +270,13 @@ export async function POST(req: Request) {
           applyLeaderboardCounters({
             clerkId: winnerId!,
             game: "odds",
-            betAmount: game.wager,
-            payout,
+            outcome: "win",
             isPvpWin: true,
           }).catch(() => {});
           applyLeaderboardCounters({
             clerkId: loserId!,
             game: "odds",
-            betAmount: game.wager,
-            payout: 0,
-            isPvpWin: false,
+            outcome: "loss",
           }).catch(() => {});
 
           // Per-game Elo — the round winner comes from the server-side Odds

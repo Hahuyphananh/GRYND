@@ -68,11 +68,24 @@ import {
   seatForPickNumber,
   activeSeatForMatch,
   activePickerForMatch,
+  // AI cell-selection policy
+  chooseAiCell,
   // AI pick pacing
   AI_PICK_DELAY_MS,
   MINES_AI_PLAYER_ID,
   lastAiPickAt,
   aiPickDelayElapsed,
+  // Shared-board preparation: end reasons + per-player flag claims
+  WIN_REASON,
+  normalizeFlags,
+  correctFlagCount,
+  hasFlaggedAllMines,
+  flagsForSeat,
+  // Shared-board mechanics: claim/reveal discrimination + winner mapping
+  isFlagEntry,
+  revealedCells,
+  withFlagForSeat,
+  resultForWinner,
 } from "../src/lib/mines-pvp/constants.js";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -402,7 +415,7 @@ test("isMine: board with no mines array returns false", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// nearestMineDistance — the private minesweeper-style hint
+// nearestMineDistance — the PUBLIC shared-board minesweeper clue
 // ════════════════════════════════════════════════════════════════════════
 
 test("nearestMineDistance: touching a mine (any of the 8 cells) is distance 1", () => {
@@ -638,13 +651,14 @@ test("generateSolvableBoard: throws on invalid mine counts (mirrors generateBoar
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// decideOutcome — the user-spec resolution table (odds-turn flow)
+// decideOutcome — LEGACY loser-shaped resolver (kept on the public API)
 //
-// Every match ends when a player picks a mine; the picker loses.
-// `decideOutcome({ loserId, player1Id, player2Id })` returns the seat
-// of the WINNING player. DRAW remains on the RESULT enum for parity
-// with other PvP systems that produce draws, but is never returned
-// by the new mines-pvp logic.
+// The store no longer resolves through this. A shared-board match ends either
+// on a mine hit (the HITTER loses) or on a full flag sweep (the FLAGGER wins),
+// and the store resolves winner-shaped via `resultForWinner`. This pure
+// mapping stays exported only because it is part of the engine's surface;
+// DRAW remains on the RESULT enum for parity with other PvP systems but is
+// never produced by the mines-pvp flow.
 // ════════════════════════════════════════════════════════════════════════
 
 test("decideOutcome: loserId = player1Id -> PLAYER2 wins", () => {
@@ -1229,6 +1243,320 @@ test("aiPickDelayElapsed: malformed timestamp does not wedge the bot", () => {
     picks: [aiPick({ pickedAt: "not-a-date" })],
   });
   assert.equal(aiPickDelayElapsed(m, NOW), true);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// WIN_REASON — why a finished match ended (shared-board rules)
+// ════════════════════════════════════════════════════════════════════════
+
+test("WIN_REASON is frozen with the four known endings", () => {
+  assert.equal(Object.isFrozen(WIN_REASON), true);
+  assert.equal(WIN_REASON.MINE_HIT, "mine_hit");
+  assert.equal(WIN_REASON.ALL_MINES_FLAGGED, "all_mines_flagged");
+  assert.equal(WIN_REASON.RESIGN, "resign");
+  assert.equal(WIN_REASON.DISCONNECT, "disconnect");
+});
+
+test("WIN_REASON values are unique strings", () => {
+  const values = Object.values(WIN_REASON);
+  assert.equal(new Set(values).size, values.length);
+  for (const v of values) assert.equal(typeof v, "string");
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// normalizeFlags — the canonical flag-set shape
+// ════════════════════════════════════════════════════════════════════════
+
+test("normalizeFlags: returns a unique, sorted, in-range copy", () => {
+  assert.deepEqual(normalizeFlags([8, 3, 3, 0]), [0, 3, 8]);
+  assert.deepEqual(normalizeFlags([24, 12, 0]), [0, 12, 24]);
+});
+
+test("normalizeFlags: drops non-integer / out-of-range / null entries", () => {
+  // "5" coerces to the integer 5 (kept); 1.5, NaN, -1, 25 and null are
+  // dropped. This is the tamper surface: a malformed request body must
+  // never persist a bogus cell.
+  assert.deepEqual(
+    normalizeFlags([1.5, NaN, -1, 25, null, undefined, "5", "abc"]),
+    [5],
+  );
+});
+
+test("normalizeFlags: non-array input returns an empty array", () => {
+  assert.deepEqual(normalizeFlags(null), []);
+  assert.deepEqual(normalizeFlags(undefined), []);
+  assert.deepEqual(normalizeFlags("3"), []);
+  assert.deepEqual(normalizeFlags({}), []);
+});
+
+test("normalizeFlags: two orderings of the same claims compare equal", () => {
+  assert.deepEqual(normalizeFlags([3, 8]), normalizeFlags([8, 3]));
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// correctFlagCount / hasFlaggedAllMines — the server-side flag win check
+// ════════════════════════════════════════════════════════════════════════
+
+test("correctFlagCount: counts only flags that really are mines", () => {
+  const board = { size: 5, mines: [0, 7, 24] };
+  assert.equal(correctFlagCount([0, 7, 24], board), 3);
+  assert.equal(correctFlagCount([0, 1, 2], board), 1);
+  assert.equal(correctFlagCount([1, 2, 3], board), 0);
+  assert.equal(correctFlagCount([], board), 0);
+});
+
+test("correctFlagCount: malformed board returns 0", () => {
+  assert.equal(correctFlagCount([0], null), 0);
+  assert.equal(correctFlagCount([0], {}), 0);
+  assert.equal(correctFlagCount([0], { mines: "x" }), 0);
+});
+
+test("hasFlaggedAllMines: true when every mine is claimed", () => {
+  const board = { size: 5, mines: [0, 7, 24] };
+  assert.equal(hasFlaggedAllMines([0, 7, 24], board), true);
+  assert.equal(hasFlaggedAllMines([24, 0, 7], board), true);
+});
+
+test("hasFlaggedAllMines: extra (wrong) flags do not block the win", () => {
+  // The rule only requires every MINE to be claimed; a wrong flag is not
+  // a loss, so it must not deny the win either.
+  const board = { size: 5, mines: [0, 7] };
+  assert.equal(hasFlaggedAllMines([0, 1, 7, 13], board), true);
+});
+
+test("hasFlaggedAllMines: false while any mine is unflagged", () => {
+  const board = { size: 5, mines: [0, 7, 24] };
+  assert.equal(hasFlaggedAllMines([0, 7], board), false);
+  assert.equal(hasFlaggedAllMines([], board), false);
+});
+
+test("hasFlaggedAllMines: empty / malformed board is never a win", () => {
+  assert.equal(hasFlaggedAllMines([0, 1], null), false);
+  assert.equal(hasFlaggedAllMines([0, 1], {}), false);
+  assert.equal(hasFlaggedAllMines([0, 1], { mines: [] }), false);
+});
+
+test("hasFlaggedAllMines: works against a generated board (every mine claimed)", () => {
+  const board = generateBoard(4);
+  assert.equal(hasFlaggedAllMines(board.mines, board), true);
+  // One mine missing → not a win.
+  assert.equal(hasFlaggedAllMines(board.mines.slice(1), board), false);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// flagsForSeat — the two player flag collections are independent
+// ════════════════════════════════════════════════════════════════════════
+
+test("flagsForSeat: reads each seat from its own column", () => {
+  const match = { p1Flags: [3, 8], p2Flags: [3] };
+  assert.deepEqual(flagsForSeat(match, "player1"), [3, 8]);
+  assert.deepEqual(flagsForSeat(match, "player2"), [3]);
+});
+
+test("flagsForSeat: the same cell may be claimed by both seats (no clobbering)", () => {
+  const match = { p1Flags: [12], p2Flags: [12] };
+  assert.deepEqual(flagsForSeat(match, "player1"), [12]);
+  assert.deepEqual(flagsForSeat(match, "player2"), [12]);
+});
+
+test("flagsForSeat: missing / legacy rows read as an empty array", () => {
+  assert.deepEqual(flagsForSeat(null, "player1"), []);
+  assert.deepEqual(flagsForSeat(undefined, "player2"), []);
+  assert.deepEqual(flagsForSeat({}, "player1"), []);
+  assert.deepEqual(flagsForSeat({ p1Flags: null }, "player1"), []);
+  assert.deepEqual(flagsForSeat({ p1Flags: "nope" }, "player1"), []);
+});
+
+test("flagsForSeat: normalises the stored value (unique, sorted, in-range)", () => {
+  assert.deepEqual(flagsForSeat({ p1Flags: [8, 3, 3, 99, -1] }, "player1"), [3, 8]);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// isFlagEntry / revealedCells — flags are claims, never reveals
+// ════════════════════════════════════════════════════════════════════════
+
+test("isFlagEntry: reads both the legacy and the explicit discriminator", () => {
+  assert.equal(isFlagEntry({ flag: true }), true);
+  assert.equal(isFlagEntry({ kind: "flag" }), true);
+  assert.equal(isFlagEntry({ flag: true, kind: "flag" }), true);
+  assert.equal(isFlagEntry({ cell: 3, isMine: false }), false);
+  assert.equal(isFlagEntry({ flag: false }), false);
+  assert.equal(isFlagEntry(null), false);
+  assert.equal(isFlagEntry(undefined), false);
+});
+
+test("revealedCells: excludes flag claims and de-duplicates", () => {
+  const match = {
+    picks: [
+      { cell: 4, seat: "player1", isMine: false }, // reveal
+      { cell: 9, seat: "player2", flag: true }, // claim — NOT a reveal
+      { cell: 4, seat: "player2", isMine: false }, // duplicate reveal
+      { cell: 12, seat: "player1", kind: "flag" }, // explicit claim marker
+    ],
+  };
+  assert.deepEqual(revealedCells(match), [4]);
+});
+
+test("revealedCells: drops out-of-range entries and tolerates legacy rows", () => {
+  assert.deepEqual(
+    revealedCells({ picks: [{ cell: 25 }, { cell: -1 }, { cell: 1.5 }, { cell: 7 }] }),
+    [7],
+  );
+  assert.deepEqual(revealedCells(null), []);
+  assert.deepEqual(revealedCells({}), []);
+  assert.deepEqual(revealedCells({ picks: null }), []);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// withFlagForSeat — a claim touches ONE seat's column
+// ════════════════════════════════════════════════════════════════════════
+
+test("withFlagForSeat: returns a single-column patch for the claiming seat", () => {
+  const match = { p1Flags: [3], p2Flags: [8] };
+  assert.deepEqual(withFlagForSeat(match, "player1", 12), { p1Flags: [3, 12] });
+  assert.deepEqual(withFlagForSeat(match, "player2", 0), { p2Flags: [0, 8] });
+  // The other seat's collection is never part of the patch.
+  assert.equal("p2Flags" in withFlagForSeat(match, "player1", 4), false);
+});
+
+test("withFlagForSeat: canonicalises (unique, sorted) and is idempotent", () => {
+  const match = { p1Flags: [8, 3] };
+  assert.deepEqual(withFlagForSeat(match, "player1", 8), { p1Flags: [3, 8] });
+  assert.deepEqual(withFlagForSeat(match, "player1", 5), { p1Flags: [3, 5, 8] });
+  assert.deepEqual(withFlagForSeat({}, "player1", 12), { p1Flags: [12] });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// resultForWinner — winner-shaped resolution (loser semantics can't flip)
+// ════════════════════════════════════════════════════════════════════════
+
+test("resultForWinner: maps the winner to the result string", () => {
+  assert.equal(
+    resultForWinner({ winnerId: "u1", player1Id: "u1", player2Id: "u2" }),
+    RESULT.PLAYER1,
+  );
+  assert.equal(
+    resultForWinner({ winnerId: "u2", player1Id: "u1", player2Id: "u2" }),
+    RESULT.PLAYER2,
+  );
+});
+
+test("resultForWinner: throws for a non-participant winner (never a draw)", () => {
+  assert.throws(
+    () => resultForWinner({ winnerId: "u3", player1Id: "u1", player2Id: "u2" }),
+    RangeError,
+  );
+  assert.throws(
+    () => resultForWinner({ winnerId: null, player1Id: "u1", player2Id: "u2" }),
+    RangeError,
+  );
+});
+
+test("resultForWinner agrees with decideOutcome for the same match", () => {
+  // decideOutcome takes the LOSER; resultForWinner takes the WINNER. For the
+  // same match they must name opposite seats — the invariant that makes the
+  // winner-shaped store resolver safe.
+  assert.equal(
+    resultForWinner({ winnerId: "u2", player1Id: "u1", player2Id: "u2" }),
+    decideOutcome({ loserId: "u1", player1Id: "u1", player2Id: "u2" }),
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════
+// chooseAiCell — the reveal-only bot's cell policy
+// ════════════════════════════════════════════════════════════════════
+
+function aiMatch({ picks = [], aiDifficulty, mines = [0, 7, 24] } = {}) {
+  return {
+    picks,
+    aiDifficulty,
+    board: { size: 5, mines },
+    player1Id: "u1",
+    player2Id: MINES_AI_PLAYER_ID,
+  };
+}
+
+test("chooseAiCell: returns a valid, unpicked cell", () => {
+  const m = aiMatch();
+  for (let i = 0; i < 200; i += 1) {
+    const { cellIndex } = chooseAiCell(m);
+    assert.ok(
+      Number.isInteger(cellIndex) && cellIndex >= 0 && cellIndex < GRID_CELLS,
+      `bot returned an invalid cell ${cellIndex}`,
+    );
+    assert.equal(m.picks.some((p) => p.cell === cellIndex), false);
+  }
+});
+
+test("chooseAiCell: never re-picks a revealed OR claimed cell", () => {
+  // A flag claim is not a reveal, but the bot must not "pick" an occupied
+  // cell either — the server would reject it as a duplicate.
+  const picks = [
+    { seat: "player1", cell: 0, flag: false },
+    { seat: "player2", cell: 1, flag: false },
+    { seat: "player1", cell: 2, flag: true },
+  ];
+  const m = aiMatch({ picks });
+  const excluded = new Set([0, 1, 2]);
+  for (let i = 0; i < 300; i += 1) {
+    const { cellIndex } = chooseAiCell(m);
+    assert.equal(excluded.has(cellIndex), false, `bot re-picked ${cellIndex}`);
+  }
+});
+
+test("chooseAiCell: easy tier samples anywhere (the center included)", () => {
+  const m = aiMatch({ aiDifficulty: "easy" });
+  const seen = new Set();
+  for (let i = 0; i < 800; i += 1) seen.add(chooseAiCell(m).cellIndex);
+  assert.ok(
+    [...CENTER_BLOCK_SET].some((c) => seen.has(c)),
+    "the easy bot must be able to open a center cell",
+  );
+});
+
+test("chooseAiCell: normal tier avoids the mine-free center while cells remain", () => {
+  const m = aiMatch({ aiDifficulty: "normal" });
+  for (let i = 0; i < 400; i += 1) {
+    assert.equal(
+      CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex),
+      false,
+      "normal bot must avoid the center block",
+    );
+  }
+});
+
+test("chooseAiCell: hard tier plays the guaranteed-safe center first", () => {
+  const m = aiMatch({ aiDifficulty: "hard" });
+  for (let i = 0; i < 400; i += 1) {
+    assert.ok(
+      CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex),
+      "hard bot must open inside the center block",
+    );
+  }
+});
+
+test("chooseAiCell: falls back to the non-center cells once the center is exhausted", () => {
+  const picks = [...CENTER_BLOCK_SET].map((cell) => ({
+    seat: "player1",
+    cell,
+    flag: false,
+  }));
+  const m = aiMatch({ picks, aiDifficulty: "hard" });
+  for (let i = 0; i < 200; i += 1) {
+    assert.equal(CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex), false);
+  }
+});
+
+test("chooseAiCell: every cell taken -> safe fallback index (no crash)", () => {
+  const picks = Array.from({ length: GRID_CELLS }, (_, cell) => ({ cell }));
+  assert.equal(chooseAiCell(aiMatch({ picks })).cellIndex, 0);
+});
+
+test("chooseAiCell: an unknown tier falls back to the normal policy", () => {
+  const m = aiMatch({ aiDifficulty: "totally-made-up" });
+  for (let i = 0; i < 200; i += 1) {
+    assert.equal(CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex), false);
+  }
 });
 
 console.log("\n? All Mines Duel engine tests passed!\n");

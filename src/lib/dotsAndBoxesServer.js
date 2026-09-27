@@ -154,11 +154,12 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
     const payout = 0;
 
     if (!locked.isAiGame) {
+      // SKILL leaderboards only (wins/losses/win_rate/streaks) — outcome-driven
+      // and token/XP-free.
       await applyLeaderboardCounters({
         clerkId: winnerClerkId,
         game: "dots-and-boxes",
-        betAmount: bet,
-        payout,
+        outcome: "win",
         isPvpWin: true,
       });
 
@@ -167,14 +168,12 @@ export async function settleDotsAndBoxesGame(gameId, winnerClerkId, result) {
           ? locked.guestClerkId
           : locked.hostClerkId;
 
-      // Also record the loser's loss + stake so losses / win_rate / wagered
-      // stay in sync with the winner's win (matches chess / precision).
+      // Record the loser too so win_rate / streaks stay in sync with the win.
       if (loserClerkId) {
         await applyLeaderboardCounters({
           clerkId: loserClerkId,
           game: "dots-and-boxes",
-          betAmount: bet,
-          payout: 0,
+          outcome: "loss",
         });
       }
 

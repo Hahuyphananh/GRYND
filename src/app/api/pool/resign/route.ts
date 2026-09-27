@@ -107,18 +107,15 @@ export async function POST(req: Request) {
       applyLeaderboardCounters({
         clerkId: loserId,
         game: "Pool",
-        betAmount: wager,
-        payout: 0,
+        outcome: "loss",
       }).catch(() => {});
     }
     if (!isAi && winnerId) {
-      const isPvp = !isAi;
       applyLeaderboardCounters({
         clerkId: winnerId,
         game: "Pool",
-        betAmount: wager,
-        payout,
-        isPvpWin: isPvp,
+        outcome: "win",
+        isPvpWin: true,
       }).catch(() => {});
     }
 

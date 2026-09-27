@@ -35,16 +35,10 @@ export function isFreeAiMatch(match) {
 export function calculateMatchSettlement(match, roundWinner) {
   const winnerId =
     roundWinner === "player1" ? match?.player1Id : match?.player2Id;
-  if (isFreeAiMatch(match)) {
-    return { winnerId, fee: 0, payout: 0 };
-  }
-  const totalPot = Number(match?.stakeAmount || 0) * 2;
-  const fee = Number((totalPot * HOUSE_FEE_PCT).toFixed(2));
-  return {
-    winnerId,
-    fee,
-    payout: Number((totalPot - fee).toFixed(2)),
-  };
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): a match never moves tokens,
+  // so there is no pot, no rake and no payout — only the winner is identified.
+  // Trophies and Elo are applied by the settlement path.
+  return { winnerId, fee: 0, payout: 0 };
 }
 
 // ── House fee (Prompt 10: 2.5% per the math in the spec) ─────────────────

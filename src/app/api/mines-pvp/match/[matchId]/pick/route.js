@@ -13,7 +13,8 @@
 //   • participant + active-state validation
 //   • FOR UPDATE row lock so two parallel pickTile calls can't race
 //   • conditional UPDATE on `match.status` to refuse stale POSTs
-//   • synchronous state advancement (p1 → p2, p2 → finished)
+//   • synchronous state advancement (p1 ↔ p2 alternating in the
+//     shared-board odds order; revealing a mine ends the match)
 //
 // Anti-cheat considerations baked into `pickTile`:
 //   * only the player whose turn it is can pick (server-trusted
@@ -102,11 +103,18 @@ export async function POST(req, { params }) {
     }
 
     // Best-effort push to the match room so the opponent sees the
-    // pick without waiting for the 1.5s poll. The helper internally
-    // handles the no-op case when the realtime-server runs in a
-    // separate process.
+    // reveal (or the sudden-death mine hit) without waiting for the
+    // 1.5s poll. Same `lobby:updated` event the rest of the game uses —
+    // the listener refetches `/status` for authoritative state, so the
+    // payload is a hint only and never carries board data. The helper
+    // internally handles the no-op case when the realtime-server runs
+    // in a separate process.
     broadcastMatchUpdate(matchId, {
       status: result.match?.status,
+      currentTurnUserId: result.match?.currentTurnUserId ?? null,
+      roundDeadline: result.match?.roundDeadline ?? null,
+      winnerId: result.match?.winnerId ?? null,
+      winReason: result.match?.winReason ?? null,
       justResolved: Boolean(result.justResolved),
     });
 

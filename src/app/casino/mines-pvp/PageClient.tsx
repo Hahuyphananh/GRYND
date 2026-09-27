@@ -381,8 +381,8 @@ export default function MinesPvpLobbyPage() {
     minesCount <= 3
       ? "Every board at this mine count is verified to be fully solvable " +
         "by deduction from the center opening. Open center, read the " +
-        "distance hints, and you'll never be forced to guess. The game " +
-        "ends in zugzwang: whoever must pick when only mines remain loses."
+        "shared clues, and you'll never be forced to guess — and every " +
+        "clue you uncover is visible to your opponent too."
       : minesCount <= 5
         ? "Boards at this mine count are solver-verified for the center " +
           "opening in the vast majority of games. Open center and the " +
@@ -406,8 +406,10 @@ export default function MinesPvpLobbyPage() {
           your first pick can never hit a mine, and the board is
           solver-verified so the center opening is fully solvable by
           deduction. Each player gets <b>20 seconds</b> to click one tile
-          A mine means you lose, safe means you keep your stake in play.
-          Both picks in → winner takes 1.9× their stake, house takes 0.1×.
+          or flag one you believe is a mine. Reveals and their clues are
+          <b>public</b> — you both see the same board. Click a mine and you
+          lose instantly; correctly flag <b>every</b> mine and you win
+          instantly.
         </>
       }
       icon={
@@ -438,13 +440,26 @@ export default function MinesPvpLobbyPage() {
             ),
           },
           {
-            heading: "Take turns clicking",
+            heading: "Shared information",
             body: (
               <>
-                Each player gets <b>20 seconds</b> to click one tile. A
-                mine means you lose, safe means your stake stays in play.
-                The game ends in zugzwang: whoever must pick when only
-                mines remain loses.
+                Every safe tile one of you reveals is revealed for
+                <b>both</b> of you, and the clue on it (how close the
+                nearest mine is) is public — you both read the same board
+                and race to deduce where the mines are.
+              </>
+            ),
+          },
+          {
+            heading: "Take turns clicking or flagging",
+            body: (
+              <>
+                Each player gets <b>20 seconds</b> to either reveal a tile
+                or flag one they believe is a mine. Clicking a mine loses
+                the match <b>instantly</b>. Flags are your own claims — your
+                opponent has their own set — and a wrong claim never loses
+                you the match, it only costs you the turn. Claim
+                <b>every</b> mine and you win instantly.
               </>
             ),
           },
@@ -452,8 +467,7 @@ export default function MinesPvpLobbyPage() {
             heading: "Payout",
             body: (
               <>
-                Both picks in → winner takes <b>1.9× their stake</b>,
-                house takes 0.1×.
+                Winner takes <b>1.9× their stake</b>, house takes 0.1×.
               </>
             ),
           },

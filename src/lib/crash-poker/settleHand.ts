@@ -18,9 +18,10 @@
 //        • crash victims get NOTHING;
 //        • nobody folded + crash → nobody wins; the full pot carries over.
 //   3. Marks entries won / folded / lost, credits EVERY ranked player's
-//      table balance, writes one WIN transaction per ranked player (+ one
-//      RAKE on the winner) on real tables only, updates the table's
-//      carry-over, settles the round, re-opens the table, and broadcasts.
+//      table balance, updates the table's carry-over, settles the round,
+//      re-opens the table, and broadcasts. STAKES ARE RETIRED, so the WIN /
+//      RAKE ledger writes are gated off — no fee is charged and no token
+//      moves; the chips credited are virtual play money.
 
 import { db } from "../../db/client";
 import {
@@ -33,6 +34,7 @@ import {
 } from "../../db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { applyLeaderboardCounters } from "../leaderboardCounters";
+import { tokensMoveForMatches } from "../games/stakes";
 import { applyPlacementTrophies } from "../trophyStore";
 import { handFromEntries, resolveHand } from "./roundSystem";
 import { PLATFORM_FEE, NEXT_ROUND_COUNTDOWN_MS } from "./constants";
@@ -232,7 +234,13 @@ export async function settleCrashPokerHand(
     //    tables are virtual chips that never touch the ledger; bot seats
     //    are reserved users whose table balances are virtual too, so their
     //    wins are never ledgered). ─────────────────────────────────────────
-    if (!table.isAi && !table.isPrivate) {
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): no table may move tokens,
+    // so no WIN credit and no RAKE fee is ever ledgered. The chips credited
+    // to `crash_arena_players.balance` above are play money that never
+    // returns to the wallet (the seat-release path is virtual too), and the
+    // 5% rake is therefore never charged. Same seam as the join/cleanup
+    // routes so the "can a table move tokens?" answer stays identical.
+    if (tokensMoveForMatches() && !table.isAi && !table.isPrivate) {
       for (const p of payouts) {
         if (p.amount <= 0) continue;
         if (await isCrashArenaAiBotId(p.userId)) continue;
@@ -487,14 +495,10 @@ async function recordCrashArenaStats(opts: {
 
   const winnerClerk = clerkByUserId.get(winnerUserId);
   if (winnerClerk) {
-    const winnerEntry = entries.find(
-      (e) => e.userId === winnerUserId && e.result === "won",
-    );
     applyLeaderboardCounters({
       clerkId: winnerClerk,
       game: "crash",
-      betAmount: Number(winnerEntry?.contributed ?? 0),
-      payout,
+      outcome: "win",
       isPvpWin: true,
     }).catch(() => {});
   }
@@ -507,8 +511,7 @@ async function recordCrashArenaStats(opts: {
     applyLeaderboardCounters({
       clerkId: clerk,
       game: "crash",
-      betAmount: Number(e.contributed) || 0,
-      payout: 0,
+      outcome: "loss",
     }).catch(() => {});
   }
 }

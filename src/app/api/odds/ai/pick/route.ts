@@ -10,7 +10,6 @@ import {
   viewForPlayer,
 } from "../../../../../lib/odds";
 import type { InteractiveOddsState } from "../../../../../lib/odds";
-import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 
 export async function POST(req: Request) {
   try {
@@ -160,14 +159,7 @@ export async function POST(req: Request) {
     // AI games are free play (wager never deducted) — skip the stats
     // pipeline so beating the AI no longer records a phantom loss
     // (payout 0) in user_stats.
-    if (result.gameStatus === "finished" && !(result as any).isAi) {
-      await applyLeaderboardCounters({
-        clerkId: userId,
-        game: "odds",
-        betAmount: (result as any).wager,
-        payout: result.player1Won ? result.payout : 0,
-      }).catch((err) => console.error("Leaderboard error:", err));
-    }
+    // AI results deliberately do NOT touch the leaderboards.
 
     return NextResponse.json({
       success: true,

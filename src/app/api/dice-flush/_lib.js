@@ -100,27 +100,24 @@ export async function settleIfEnded(tx, roomRow, state) {
     return { state, ended: true, winnerId: ended.winnerId, payout: 0, totals: ended.totals, alreadySettled: true };
   }
 
-  // Record leaderboard stats for winner and loser. Stakes are retired, so no
-  // tokens ever moved on the ledger and every match reports betAmount=0.
+  // Record the SKILL leaderboards (wins/losses/win_rate/streaks) for a real
+  // human-vs-human match only — outcome-driven and token/XP-free. An AI
+  // practice game must not feed the leaderboards.
   const isAiMatch = !!state.players?.some((p) => p.isAI);
-  const betAmountForCounters = 0;
-  applyLeaderboardCounters({
-    clerkId: ended.winnerId,
-    game: "Dice Flush",
-    betAmount: betAmountForCounters,
-    payout,
-    isPvpWin: state.players?.length > 1 && !isAiMatch,
-  }).catch(() => {});
+  if (!isAiMatch && ended.winnerId) {
+    applyLeaderboardCounters({
+      clerkId: ended.winnerId,
+      game: "Dice Flush",
+      outcome: "win",
+      isPvpWin: true,
+    }).catch(() => {});
 
-  // Record loss for other player(s)
-  if (state.players) {
-    for (const p of state.players) {
+    for (const p of state.players ?? []) {
       if (p.userId !== ended.winnerId && !p.isAI) {
         applyLeaderboardCounters({
           clerkId: p.userId,
           game: "Dice Flush",
-          betAmount: betAmountForCounters,
-          payout: 0,
+          outcome: "loss",
         }).catch(() => {});
       }
     }

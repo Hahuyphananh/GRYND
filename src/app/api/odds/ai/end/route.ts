@@ -4,7 +4,6 @@ import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerifi
 import { db } from "../../../../../db/client";
 import { oddsGames } from "../../../../../db/schema";
 import { eq } from "drizzle-orm";
-import { applyLeaderboardCounters } from "../../../../../lib/leaderboardCounters";
 import {
   initInteractiveOddsGame,
   type InteractiveOddsState,
@@ -82,16 +81,8 @@ export async function POST(req: Request) {
       // AI games are free play (wager is never deducted) — skip the stats
       // pipeline entirely so beating the AI no longer records a phantom
       // loss (payout 0) in user_stats. Real PvP games settle via
-      // /api/odds/pvp/* instead. This route is AI-only (guarded above), so
-      // the isAi guard keeps it defensive.
-      if (!game.isAi) {
-        await applyLeaderboardCounters({
-          clerkId: userId,
-          game: "odds",
-          betAmount: game.wager,
-          payout: recordedPayout,
-        }).catch(() => {});
-      }
+      // /api/odds/pvp/* instead. This route is AI-only, and AI results
+      // deliberately do NOT touch the leaderboards.
 
       return { winner, player1Won, payout: recordedPayout };
     });

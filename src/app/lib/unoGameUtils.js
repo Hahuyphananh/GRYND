@@ -1,6 +1,7 @@
 import { db } from "../../db/client";
 import { users, unoGames } from "../../db/schema";
 import { eq } from "drizzle-orm";
+import { normalizeStake } from "../../lib/games/stakes";
 
 // Generates a new shuffled UNO deck
 function generateUnoDeck() {
@@ -35,6 +36,11 @@ function generateUnoDeck() {
 
 //  Create a new game
 export async function createUnoGame(userId, betAmount) {
+  // STAKES ARE RETIRED (src/lib/games/stakes.js): creating a game is free.
+  // The requested bet is normalized to 0, so nothing is escrowed and no
+  // balance is ever debited.
+  betAmount = normalizeStake(betAmount);
+
   const deck = generateUnoDeck();
   const playerHand = deck.splice(0, 7);
   const aiHand = deck.splice(0, 7);
@@ -43,13 +49,8 @@ export async function createUnoGame(userId, betAmount) {
 
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!user) throw new Error("User not found");
-  const newBalance = user.balance - betAmount;
 
   const [inserted] = await db.transaction(async (tx) => {
-    await tx
-      .update(users)
-      .set({ balance: newBalance.toString() })
-      .where(eq(users.id, userId));
     return await tx
       .insert(unoGames)
       .values({
@@ -70,7 +71,14 @@ export async function createUnoGame(userId, betAmount) {
       .returning();
   });
 
-  return { gameId: inserted.id, newBalance, playerHand, aiHand, topCard };
+  return {
+    gameId: inserted.id,
+    // No debit happened, so the wallet is unchanged.
+    newBalance: parseFloat(user.balance),
+    playerHand,
+    aiHand,
+    topCard,
+  };
 }
 
 //  Get an existing game by ID

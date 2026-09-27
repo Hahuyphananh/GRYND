@@ -15,7 +15,8 @@
 //     * turn enforcement (only the player whose turn it is can pick)
 //     * 20-second pick-window auto-pick (AFK → random cell, which
 //       may be a mine — that's the punishment for going AFK)
-//     * end-state resolution per user spec table
+//     * end-state resolution per the shared-board rules (a mine hit →
+//       the revealer loses; all mines flagged → the flagger wins)
 //     * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
 //     * full board hidden from clients until match finishes
 //   Centralising this in a tiny module keeps the API routes thin
@@ -65,16 +66,22 @@ import {
   ROUND_PICK_DEADLINE_MS,
   TERMINAL_STATES,
   ROUND_TIMER_SECONDS,
+  WIN_REASON,
   activePickerForMatch,
   aiPickDelayElapsed,
   chooseAiCell,
-  decideOutcome,
+  flagsForSeat,
   generateSolvableBoard,
+  hasFlaggedAllMines,
+  isFlagEntry,
   isFreeAiMatch,
   isMine,
   nearestMineDistance,
   pickRandomCell,
   relocateMine,
+  resultForWinner,
+  revealedCells,
+  withFlagForSeat,
 } from "./constants";
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -505,9 +512,12 @@ export async function resignMatch({ userId, matchId }) {
       return { error: "Use cancel to leave a waiting match", status: 400 };
     }
 
-    // Resignation is a loss for the resigner: `resolveMatch` treats
-    // the passed `loserId` as the loser and credits the opponent.
-    const updated = await resolveMatch(tx, match, userId);
+    // Resignation is a loss for the resigner: name the OPPONENT as the
+    // winner (never the resigner as the loser) and label the ending.
+    const updated = await resolveMatch(tx, match, {
+      winnerId: otherSeatId(match, userId),
+      reason: WIN_REASON.RESIGN,
+    });
     return { match: updated, resigned: true };
   });
 }
@@ -616,27 +626,43 @@ async function forcePick(tx, match) {
     isMine: pickIsMine,
     // Proximity hint for SAFE picks (null on a mine): how many tiles
     // away the nearest mine is, computed server-side from the board.
-    // The /status route strips it from the OPPONENT's view — each
-    // player only ever sees their own numbers.
+    // PUBLIC under the shared-board rules — both seats see the same
+    // board, so matchView never strips the opponent's clues.
     hint: pickIsMine ? null : nearestMineDistance(board, cellIndex),
     mercy: mercyUsed,
     autoPicked: true,
     pickedAt: pickedAt.toISOString(),
   };
 
-  // Apply the pick + (if mine) resolve OR (if safe) advance turn.
+  // Apply the pick: a mine resolves the match, a safe cell advances the
+  // turn. `applyPick` always returns `{ match, justResolved }`.
   return await applyPick(tx, { ...match, board }, newPick);
 }
 
-// ── Pure utility: flatten every pick cell across all players ──────────
-// Used by forcePick's `excludePicks` so the AFK auto-pick never
-// re-uses a cell the other player already cleared. Safe to call on
-// legacy rows whose `picks` is NULL — returns an empty array.
+// ── Pure utility: every REVEALED cell across both players ─────────────
+// Used by the duplicate-reveal guard in `pickTile` + `flagTile` and by
+// forcePick's `excludePicks` so the AFK auto-pick never re-uses a cell
+// anyone already cleared. Safe to call on legacy rows whose `picks` is
+// NULL — returns an empty array.
+//
+// FLAG claims are deliberately NOT counted as reveals: under the
+// shared-board rules a flag is a claim on a still-hidden cell, so the other
+// player (or the flagger) may still reveal it — only a real reveal blocks a
+// second reveal. Duplicate FLAGS are rejected separately, against the
+// flagger's OWN flag set (see `flagTile`).
 function pickHistoryCells(match) {
-  const picks = Array.isArray(match?.picks) ? match.picks : [];
-  return picks
-    .map((p) => Number(p?.cell))
-    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  return revealedCells(match);
+}
+
+// The OTHER participant's clerkId for whoever just acted. Used to derive a
+// winner from the loser we observed (a mine hit) — or to name the opponent a
+// resigner loses to — so no call site has to hand-roll the seat ternary and
+// silently pick the wrong side. Returns null when the actor isn't a seat.
+function otherSeatId(match, userId) {
+  if (!match) return null;
+  if (match.player1Id === userId) return match.player2Id ?? null;
+  if (match.player2Id === userId) return match.player1Id ?? null;
+  return null;
 }
 
 // ── Apply a (validated) pick to the match ─────────────────────────────-
@@ -648,26 +674,53 @@ function pickHistoryCells(match) {
 // (mine hit) or advance to the next picker (odds formula).
 
 // Shared by `applyPick` (pickTile / forcePick) and `flagTile`: compute
-// the legacy scalar mirrors (most-recent-of-each-seat) for a new
+// the legacy scalar mirrors (most-recent-of-each-seat REVEAL) for a new
 // chronological `picks` array. `picks` stores `pickedAt` as an ISO
 // string for JSONB portability, but the Drizzle `p{N}_picked_at`
 // columns are declared `timestamp()` (mode 'date' default) and crash
 // with `TypeError: value.getTime is not a function` when bound from a
 // raw string — so `pickSeatMostRecentDate` re-hydrates to a Date
-// before .set(). Flag entries flow through the same mirrors (their
-// `isMine` = whether the flagged cell really held a mine).
+// before .set().
+//
+// FLAG entries are skipped entirely. The legacy columns describe REVEALS
+// (`p{N}_pick_is_mine` in particular is surfaced to the viewer's own seat
+// mid-match by the /status scrub), and a flag's correctness is secret until
+// the match ends — mirroring a flag here would hand the flagger the answer.
+// Flags are published exclusively through `p1_flags` / `p2_flags`.
 function mirrorPickSetValues(allPicks) {
+  const reveals = allPicks.filter((p) => !isFlagEntry(p));
   return {
-    p1Pick: pickSeatMostRecent(allPicks, "player1", "cell"),
-    p2Pick: pickSeatMostRecent(allPicks, "player2", "cell"),
-    p1PickIsMine: pickSeatMostRecent(allPicks, "player1", "isMine"),
-    p2PickIsMine: pickSeatMostRecent(allPicks, "player2", "isMine"),
-    p1PickedAt: pickSeatMostRecentDate(allPicks, "player1"),
-    p2PickedAt: pickSeatMostRecentDate(allPicks, "player2"),
+    p1Pick: pickSeatMostRecent(reveals, "player1", "cell"),
+    p2Pick: pickSeatMostRecent(reveals, "player2", "cell"),
+    p1PickIsMine: pickSeatMostRecent(reveals, "player1", "isMine"),
+    p2PickIsMine: pickSeatMostRecent(reveals, "player2", "isMine"),
+    p1PickedAt: pickSeatMostRecentDate(reveals, "player1"),
+    p2PickedAt: pickSeatMostRecentDate(reveals, "player2"),
     p1AutoPicked:
-      pickSeatMostRecent(allPicks, "player1", "autoPicked") ?? false,
+      pickSeatMostRecent(reveals, "player1", "autoPicked") ?? false,
     p2AutoPicked:
-      pickSeatMostRecent(allPicks, "player2", "autoPicked") ?? false,
+      pickSeatMostRecent(reveals, "player2", "autoPicked") ?? false,
+  };
+}
+
+// The turn-advance patch for a match whose `picks` array already contains
+// the action that just landed: whoever the closed-form odds formula puts up
+// next, a fresh deadline (free vs-AI matches stay untimed), and the legacy
+// status mirror. Extracted so `applyPick` (safe reveal) and `flagTile` (a
+// flag consumes your turn) advance identically — one source of truth for
+// turn order.
+function nextTurnPatch(match) {
+  const nextPickerId = activePickerForMatch(match);
+  return {
+    currentTurnUserId: nextPickerId,
+    // Free vs-AI matches are untimed (see advanceFromReady).
+    roundDeadline: isFreeAiMatch(match)
+      ? null
+      : new Date(Date.now() + roundDeadlineMs(match)),
+    status:
+      nextPickerId === match.player1Id
+        ? MATCH_STATUS.P1_TURN
+        : MATCH_STATUS.P2_TURN,
   };
 }
 
@@ -685,8 +738,10 @@ async function applyPick(tx, match, pick) {
   };
 
   if (pick.isMine) {
-    // Mine hit → resolve immediately. The picker of the mine loses
-    // outright per the new odds-turn spec (no draws possible).
+    // Sudden-death mine: the picker who revealed a mine loses IMMEDIATELY
+    // and the opponent wins, per the shared-board rules. The winner is
+    // derived here (never the loser) and `resolveMatch` re-derives the
+    // result from it, so the two sides can't be accidentally swapped.
     // Conditional update + resolve are inside the same tx so a
     // concurrent status poll can't see a half-applied pick.
     const [updated] = await tx
@@ -713,37 +768,32 @@ async function applyPick(tx, match, pick) {
       const mergedPicks = Array.isArray(merged.picks)
         ? [...merged.picks, pick]
         : [pick];
-      return await resolveMatch(
+      const finalRow = await resolveMatch(
         tx,
         { ...merged, picks: mergedPicks },
-        pick.userId,
+        {
+          winnerId: otherSeatId(merged, pick.userId),
+          reason: WIN_REASON.MINE_HIT,
+        },
       );
+      return { match: finalRow, justResolved: true };
     }
-    return await resolveMatch(tx, updated, pick.userId);
+    const finalRow = await resolveMatch(tx, updated, {
+      winnerId: otherSeatId(updated, pick.userId),
+      reason: WIN_REASON.MINE_HIT,
+    });
+    return { match: finalRow, justResolved: true };
   }
 
-  // Safe pick → advance to the next picker via the closed-form
-  // odds formula. Set the next deadline + flip `currentTurnUserId`
-  // + keep `status` aligned with the new picker seat for legacy
-  // status listeners that still interpret p1_turn / p2_turn.
+  // Safe reveal → the clue is computed server-side (on `pick.hint`) and is
+  // PUBLIC to both seats now; only the turn advances here.
   const fakeMatchAfter = { ...match, picks: allPicks };
-  const nextPickerId = activePickerForMatch(fakeMatchAfter);
-  // Free vs-AI matches are untimed (see advanceFromReady).
-  const nextDeadline = isFreeAiMatch(match)
-    ? null
-    : new Date(Date.now() + roundDeadlineMs(match));
-  const nextStatus =
-    nextPickerId === match.player1Id
-      ? MATCH_STATUS.P1_TURN
-      : MATCH_STATUS.P2_TURN;
 
   const [updated] = await tx
     .update(minesPvpMatches)
     .set({
       ...setValues,
-      currentTurnUserId: nextPickerId,
-      roundDeadline: nextDeadline,
-      status: nextStatus,
+      ...nextTurnPatch(fakeMatchAfter),
     })
     .where(
       and(
@@ -792,8 +842,9 @@ function pickSeatMostRecentDate(picks, seatLabel) {
 //
 // Server-side authoritative tile-pick action. Only the player whose
 // turn it is can pick. Cell index must be 0-24 and not already
-// picked. After the pick lands, the turn advances to the other
-// player (or to `finished` if both picks are now in).
+// REVEALED. After a safe pick lands the turn advances to the next
+// picker in the shared-board odds order; a mine ends the match
+// immediately with the revealer losing.
 //
 // Rejects stale submissions: if the pick window has elapsed, return
 // 409 so the client knows to wait for the next status poll to
@@ -878,7 +929,8 @@ export async function pickTile({ userId, matchId, cellIndex }) {
       cell: idx,
       isMine: pickIsMine,
       // Proximity hint for SAFE picks (null on a mine): distance to the
-      // nearest mine. Stripped from the opponent's view by /status.
+      // nearest mine. PUBLIC under the shared-board rules — both seats
+      // see the same clues.
       hint: pickIsMine ? null : nearestMineDistance(board, idx),
       mercy: mercyUsed,
       autoPicked: false,
@@ -889,33 +941,33 @@ export async function pickTile({ userId, matchId, cellIndex }) {
   });
 }
 
-// ── flagTile (the "call a mine" skill move) ───────────────────────────
+// ── flagTile (a per-player CLAIM on a still-hidden cell) ──────────────
 //
-// On your turn you may FLAG a tile instead of picking it: declare
-// "this tile is a mine". Terminal either way:
-//   • CORRECT (the tile really is a mine) → the OPPONENT loses (you
-//     deduced it, you take the pot).
-//   • WRONG (the tile is safe) → YOU lose (your read was bad).
+// On your turn you may FLAG a tile instead of revealing it: declare "this
+// tile is a mine". Under the shared-board rules a flag is a CLAIM, never a
+// revelation:
+//   • It is PLAYER-SPECIFIC. Each seat owns its own set
+//     (`p1_flags` / `p2_flags`), the same cell may be claimed by both, and
+//     neither set can ever overwrite the other.
+//   • A WRONG flag is NOT a loss. You simply spent your turn on a bad read.
+//   • Flagging EVERY mine wins IMMEDIATELY (`winReason: all_mines_flagged`).
+//     The check is board-derived and server-side only — the client is never
+//     told whether a claim was correct while the match is live.
+//   • The flag does not reveal the cell, so anyone (including you) may still
+//     REVEAL it later; only a reveal blocks another reveal.
 //
-// Skill notes (per user spec):
-//   * No first-pick mercy for flags — mercy protects the opening
-//     PICK because it is definitionally a guess; a flag is a
-//     deliberate claim, so a wrong first-turn flag loses outright.
-//   * Self-balancing by mine count: a random flag wins with
-//     probability mines/25, so flagging blind is terrible at low
-//     mine counts and only becomes worth it when you have actually
-//     DEDUCED a cell must be a mine (or accepted the high-mine
-//     gamble). The private distance hints are the deduction surface.
-//   * A flag ends the match immediately, so it never leaks mid-match
-//     state — the flag entry only ever exists in the finished
-//     reveal (same scrub path as picks).
+// Validation mirrors pickTile: participant, pickable state, turn enforcement
+// (closed-form odds formula), deadline freshness, cell-not-already-REVEALED,
+// and cell-not-already-claimed-BY-YOU (a duplicate flag is rejected with 409
+// rather than silently re-claimed — there is no unflag route, so re-flagging
+// the same cell carries no new information).
 //
-// Validation mirrors pickTile: participant, pickable state, turn
-// enforcement (closed-form odds formula), deadline freshness, and
-// cell-not-already-picked. The flag is recorded in the chronological
-// `picks` array with `flag: true` (the legacy scalar mirrors follow
-// the shared mirrorPickSetValues path), then the match resolves
-// terminally via resolveMatch.
+// The claim is recorded in the chronological `picks` array with `flag: true`
+// so it consumes a turn and shows up in history, but it carries NO
+// `isMine` / `hint`: a flag entry is public to both seats, so the server's
+// verdict on it must not travel with it mid-match. Flag sets are published
+// through `p1_flags` / `p2_flags` and the legacy scalar mirrors skip flags
+// entirely.
 export async function flagTile({ userId, matchId, cellIndex }) {
   // Defense-in-depth input validation (the API route also validates).
   const idx = Number(cellIndex);
@@ -958,53 +1010,64 @@ export async function flagTile({ userId, matchId, cellIndex }) {
       return { error: "It is not your turn", status: 403 };
     }
 
-    // Cannot flag a cell either side has already revealed.
-    const historyCells = pickHistoryCells(match);
-    if (historyCells.includes(idx)) {
-      return { error: "Cell already picked", status: 409 };
+    // Cannot flag a cell either side has already REVEALED (the claim would
+    // contradict settled information). A flag on a cell the OTHER player
+    // merely claimed is legal — the claims are independent.
+    if (pickHistoryCells(match).includes(idx)) {
+      return { error: "Cell already revealed", status: 409 };
     }
 
-    const flagIsMine = isMine(match.board, idx);
     const seat = userId === match.player1Id ? "player1" : "player2";
+    // Duplicate of YOUR OWN claim: rejected (409). There is no unflag route,
+    // so re-claiming the same cell carries no information and would only
+    // burn a turn.
+    const myFlags = flagsForSeat(match, seat);
+    if (myFlags.includes(idx)) {
+      return { error: "Cell already flagged", status: 409 };
+    }
+
     const flagEntry = {
       userId,
       seat,
       cell: idx,
-      isMine: flagIsMine,
-      // No hint on a flag: the number would be meaningless on a cell
-      // the flagger believes is a mine (and a wrong flag is a loss
-      // anyway — the game is over).
+      // A flag reveals NOTHING about the hidden board, so the entry carries
+      // no `isMine` verdict and no proximity hint. The post-match verdict is
+      // re-derived from the revealed board, which only exists once the match
+      // is finished.
+      isMine: null,
       hint: null,
-      // Discriminator: this entry is a flag, not a pick. The client
-      // renders flag-specific copy for the result screen.
+      // Discriminators: this entry is a CLAIM, not a reveal. Both are read
+      // by `isFlagEntry`, so either is sufficient — `kind` is the explicit
+      // one, `flag` keeps the existing client render path working.
       flag: true,
+      kind: "flag",
       mercy: false,
       autoPicked: false,
       pickedAt: new Date().toISOString(),
     };
 
-    // The loser depends on the flag's correctness:
-    //   correct (isMine)  → the flagger WINS, opponent loses
-    //   wrong (safe)      → the flagger LOSES
-    const loserId = flagIsMine
-      ? userId === match.player1Id
-        ? match.player2Id
-        : match.player1Id
-      : userId;
-
-    // Append the flag + mirror legacy scalars, then resolve terminally
-    // inside the same tx (same race pattern as applyPick's mine path).
+    // Append the claim to the turn history + record it in THIS seat's own
+    // flag set. `withFlagForSeat` returns a single-column patch, so the two
+    // players' collections can never overwrite one another.
     const allPicks = Array.isArray(match.picks)
       ? [...match.picks, flagEntry]
       : [flagEntry];
-    const setValues = {
-      picks: allPicks,
-      ...mirrorPickSetValues(allPicks),
-    };
+    const flagsPatch = withFlagForSeat(match, seat, idx);
+    const claimedFlags = seat === "player1" ? flagsPatch.p1Flags : flagsPatch.p2Flags;
+
+    // THE WIN CONDITION: this player's set now covers every mine on the
+    // server-only board. Extra (wrong) claims do not block it.
+    const wonByFlags = hasFlaggedAllMines(claimedFlags, match.board);
 
     const [updated] = await tx
       .update(minesPvpMatches)
-      .set(setValues)
+      .set({
+        picks: allPicks,
+        ...flagsPatch,
+        // Legacy scalar mirrors deliberately skip flag entries (see
+        // `mirrorPickSetValues`).
+        ...mirrorPickSetValues(allPicks),
+      })
       .where(
         and(
           eq(minesPvpMatches.id, match.id),
@@ -1014,50 +1077,94 @@ export async function flagTile({ userId, matchId, cellIndex }) {
       .returning();
 
     if (!updated) {
-      // Lost the race to a concurrent safe-pick advance; resolve on the
-      // FRESH row with the flag entry merged onto its picks so the
-      // rounds row + result never drop the deciding flag.
-      const [refreshed] = await tx
-        .select()
-        .from(minesPvpMatches)
-        .where(eq(minesPvpMatches.id, match.id));
-      const merged = refreshed || match;
-      const mergedPicks = Array.isArray(merged.picks)
-        ? [...merged.picks, flagEntry]
-        : [flagEntry];
-      return await resolveMatch(
-        tx,
-        { ...merged, picks: mergedPicks },
-        loserId,
-      );
+      // Lost the race to a concurrent action on the same turn: the flag was
+      // NEVER applied, so reject rather than replaying it against the fresh
+      // row (replaying could hand the claimer a turn that wasn't theirs).
+      return { error: "Match state changed, please retry", status: 409 };
     }
 
-    return await resolveMatch(tx, updated, loserId);
+    if (wonByFlags) {
+      // The flagger wins immediately: every mine is claimed. Resolved from
+      // the WINNER's id, so the sides cannot be swapped.
+      const final = await resolveMatch(tx, updated, {
+        winnerId: userId,
+        reason: WIN_REASON.ALL_MINES_FLAGGED,
+      });
+      return { match: final, justResolved: true };
+    }
+
+    // Otherwise the claim simply consumed this turn — advance to the next
+    // picker through the same closed-form turn order picks use. A wrong flag
+    // is NOT a loss; the match continues.
+    const next = await advanceTurn(tx, updated);
+    return { match: next, justResolved: false };
   });
+}
+
+// Advance the turn for a match whose `picks` array already contains the
+// action that just landed. Conditional on the status we validated against, so
+// a racing action can't double-advance the same turn; on a race we return the
+// freshly-fetched row (the other actor owns the new turn).
+async function advanceTurn(tx, match) {
+  const [updated] = await tx
+    .update(minesPvpMatches)
+    .set(nextTurnPatch(match))
+    .where(
+      and(
+        eq(minesPvpMatches.id, match.id),
+        eq(minesPvpMatches.status, match.status),
+      ),
+    )
+    .returning();
+
+  if (updated) return updated;
+
+  const [refreshed] = await tx
+    .select()
+    .from(minesPvpMatches)
+    .where(eq(minesPvpMatches.id, match.id));
+  return refreshed || match;
 }
 
 // ── Resolve the match ─────────────────────────────────────────────────
 //
-// End-state machine: both picks are in, decide outcome per user spec
-// table (decideOutcome), credit the winner, refund on draw, insert
-// the history row, and stamp the match as `finished`.
+// Single server-authoritative end path for every ending. Callers name the
+// WINNER and the REASON, never the loser:
 //
-// Per spec:
-//   P1 mine + P2 mine → P2 loses (P1 mined first)
-//   P1 mine + P2 safe → P1 loses
-//   P1 safe + P2 mine → P2 loses
-//   P1 safe + P2 safe → DRAW (full refund, no fee)
-async function resolveMatch(tx, match, loserId) {
-  if (!loserId) {
-    // Defensive: shouldn't be called without a loserId. The legacy
-    // two-pick DRAW flow used `match.p1Pick == null || match.p2Pick
-    // == null` as a no-resolve guard; the new odds flow requires
-    // an explicit loserId to know who's the loser.
+//   resolveMatch(tx, match, { winnerId, reason })
+//
+// Winner-shaped by design. The shared-board rules end a match on a mine hit
+// (the HITTER loses) or on a full flag sweep (the FLAGGER wins), so a
+// loser-shaped signature invites a future caller to pass the deciding seat
+// and silently reverse the result — `resultForWinner` makes that impossible
+// (it throws unless the id is one of the two seats). The old
+// `decideOutcome(loserId)` path is kept only for the engine's public API and
+// its unit tests; the store no longer resolves through it.
+//
+// Reasons: 'mine_hit' | 'all_mines_flagged' | 'resign' | 'disconnect'
+// (WIN_REASON). The
+// reason is stamped on BOTH the match row and the rounds snapshot, so the
+// post-match read path can label the ending without joining the live row.
+//
+// Idempotency/concurrency: every caller already holds the match row under a
+// `SELECT … FOR UPDATE` inside its transaction, and the status guard below
+// bounces a row that is already terminal, so a second request can never
+// record a second winner.
+async function resolveMatch(tx, match, { winnerId, reason } = {}) {
+  if (!match) return match;
+  if (TERMINAL_STATES.has(match.status)) {
+    // Already settled (e.g. a racing request that lost the row lock).
+    return match;
+  }
+  if (!winnerId) {
+    // Defensive: a resolution without a winner is a programming error, not
+    // a draw — the shared-board rules have no draw case at all. Bail out
+    // without touching the row rather than writing a half-finished match.
     return match;
   }
 
-  const result = decideOutcome({
-    loserId,
+  const result = resultForWinner({
+    winnerId,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
   });
@@ -1088,10 +1195,9 @@ async function resolveMatch(tx, match, loserId) {
     boardSnapshot: match.board ?? { size: 5, mines: [] },
     picks,
     roundWinner: result,
+    // WHY it ended, mirrored onto the replay snapshot.
+    winReason: reason ?? null,
   });
-
-  const winnerId =
-    result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
 
   // Stamp the match as finished. The `board` column stays on the
   // row so the post-match reveal screen can render the full mine
@@ -1105,6 +1211,9 @@ async function resolveMatch(tx, match, loserId) {
       roundDeadline: null,
       result,
       winnerId,
+      // WHY this match ended ('mine_hit' | 'all_mines_flagged' |
+      // 'resign' | 'disconnect').
+      winReason: reason ?? null,
       houseFee: "0.00",
       prizePaid: "0.00",
       endedAt: new Date(),
@@ -1152,23 +1261,19 @@ async function recordPvPResult(tx, match, winnerId, result) {
     .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
 
-  // Canonical stats pipeline (user_stats wins/losses/win_rate/
-  // total_bets, pvp_wins, wagered/won, streaks). Fire-and-forget on its own
-  // pool — never blocks settlement.
-  const stake = Number(match.stakeAmount) || 0;
-  const winnerPayout = Number(match.prizePaid) || 0;
+  // Canonical SKILL stats pipeline (wins/losses/win_rate/streaks, pvp_wins).
+  // Outcome-driven and token/XP-free: only the win/loss/streak leaderboards
+  // move. Fire-and-forget on its own pool — never blocks settlement.
   applyLeaderboardCounters({
     clerkId: winnerId,
     game: "mines-pvp",
-    betAmount: stake,
-    payout: winnerPayout,
+    outcome: "win",
     isPvpWin: true,
   }).catch(() => {});
   applyLeaderboardCounters({
     clerkId: loserId,
     game: "mines-pvp",
-    betAmount: stake,
-    payout: 0,
+    outcome: "loss",
   }).catch(() => {});
 
   // Per-game Elo — guarded single-execution path: only ONE settlement of this
@@ -1200,7 +1305,7 @@ async function recordPvPResult(tx, match, winnerId, result) {
 //      (p1_turn or p2_turn depending on the host's first-player roll).
 //   2. `p1_turn` or `p2_turn` deadline elapsed → force-pick a random
 //      cell for the current player (AFK nudge), then advance the turn
-//      OR resolve the match (if it was player2's auto-pick).
+//      OR resolve the match (if the auto-pick hit a mine).
 //
 // Also scrubs the `board` column from the returned match row when
 // the match is not yet `finished`, so the client can't inspect mine
@@ -1259,7 +1364,11 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       match.roundDeadline &&
       new Date(match.roundDeadline).getTime() <= Date.now()
     ) {
-      match = await forcePick(tx, match);
+      // forcePick hands back `{ match, justResolved }` (the shared
+      // applyPick shape) — unwrap to the row so the steps below read the
+      // FRESH state rather than the wrapper.
+      const forced = await forcePick(tx, match);
+      match = forced?.match ?? forced;
     }
 
     // 3) Server-side AI turn: if this is a free AI match and it's
@@ -1344,18 +1453,31 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
 export function scrubMatchForViewer(match) {
   if (!match) return match;
   const isFinished = match.status === MATCH_STATUS.FINISHED;
+  // Flag CLAIMS are public, shared-board state: both players see both
+  // seats' flags ("both players' flags" is explicitly part of the shared
+  // competitive picture). They are therefore always present on the
+  // scrubbed row — unlike the hidden `board` — and are canonicalised here
+  // so every reader gets normalised integer arrays rather than a raw /
+  // legacy JSONB shape. Each seat is read from its OWN column, so the two
+  // sets stay independent (the same cell may appear in both).
+  const flags = {
+    p1Flags: flagsForSeat(match, "player1"),
+    p2Flags: flagsForSeat(match, "player2"),
+  };
   if (isFinished) {
     // Finished: keep the board so the client can render the post-
     // match reveal animation.
-    return { ...match };
+    return { ...match, ...flags };
   }
   // Not finished: replace the board with a placeholder so the
   // client knows the field is server-only without seeing the mines.
   return {
     ...match,
+    ...flags,
     board: null,
-    // Also hide opponent's auto-pick flag mid-match so neither side
-    // can infer whether the other has been AFK'd yet.
+    // Per-viewer scrubbing (e.g. hiding the OPPONENT's auto-pick flag so
+    // neither side can infer AFK state) is done by `scrubPicksForViewer` /
+    // `normaliseMatchForViewer` in matchView.js.
   };
 }
 

@@ -205,13 +205,13 @@ export default function ChatWidget() {
   // subscription is server-side filtered to room_type=global, so it only
   // fires for the global chat — game-room chat stays on the socket path.
   useEffect(() => {
-    if (!isOpen || activeTab !== "chat" || !room || room.roomType !== "global") return;
+    if (!isOpen || !room || room.roomType !== "global") return;
     const unsubscribe = subscribeToChatMessages((row) => {
       if (row.roomType !== room.roomType || row.roomId !== room.roomId) return;
       setMessages((prev) => upsertChatMessage(prev, row));
     });
     return unsubscribe;
-  }, [isOpen, activeTab, room?.roomType, room?.roomId]);
+  }, [isOpen, room?.roomType, room?.roomId]);
 
   async function handleRefresh() {
     setError("");

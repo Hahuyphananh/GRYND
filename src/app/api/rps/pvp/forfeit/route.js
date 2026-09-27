@@ -1,10 +1,10 @@
 // src/app/api/rps/pvp/forfeit/route.js
 //
 // POST — forfeit from an in-progress RPS PvP best-of-7 game. The
-// forfeiter loses and the opponent is credited the pot minus the
-// shared 5% house rake. Only valid while the match is `matched`
-// (both players joined, rounds in progress); a `active` (waiting)
-// game is cancelled with a full refund via `/cancel` instead.
+// forfeiter loses and the opponent banks the win (trophies + Elo).
+// STAKES ARE RETIRED — no pot, rake or refund moves. Only valid while
+// the match is `matched` (both players joined, rounds in progress);
+// an `active` (waiting) game is cancelled via `/cancel` instead.
 // Settlement logic lives in `src/lib/rps-pvp/serverStore.js` so the
 // realtime-server disconnect-forfeit route settles identically.
 

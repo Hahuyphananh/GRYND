@@ -74,8 +74,8 @@ export const GAME_CATALOG = [
   // execution (skill) — not the deal.
   { id: "blackjack", href: "/casino/blackjack", tags: ["pvp", "strategy", "skill"] },
 
-  // Staked 1v1 on a hidden 5x5 mine board: the mines are luck (chance), the
-  // staked duel is the competitive core.
+  // Staked 1v1 on a SHARED 5x5 mine board: the mine layout is luck (chance),
+  // but the public reveals/clues make the read a real competitive core.
   { id: "mines-pvp", href: "/casino/mines-pvp", tags: ["pvp", "chance", "competitive"] },
 
   // Flip pairs on a 4x4 grid: memory is ability (skill), the rules take

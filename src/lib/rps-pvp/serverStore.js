@@ -13,10 +13,10 @@ import { applyTrophyResult } from "../trophyStore";
 import { eq } from "drizzle-orm";
 
 // Forfeit an in-progress RPS PvP match. The forfeiter loses and the
-// opponent is credited the pot minus the house rake. Only valid while
-// the match is `matched` (both players joined); terminal matches are
-// left untouched; `active` (waiting) games are cancelled with a full
-// refund via the /cancel route instead.
+// opponent banks the win (trophies + Elo; STAKES ARE RETIRED, so no pot or
+// rake moves). Only valid while the match is `matched` (both players
+// joined); terminal matches are left untouched; `active` (waiting) games are
+// cancelled via the /cancel route instead.
 export async function forfeitRpsPvpGame({ userId, gameId }) {
   return await db.transaction(async (tx) => {
     const [locked] = await tx
@@ -72,18 +72,19 @@ export async function forfeitRpsPvpGame({ userId, gameId }) {
 // swallowed so they can never roll the settlement.
 export function recordForfeitStats(result) {
   if (!result || !result.game) return;
+  // Stakes are retired, so the counters are driven by the explicit outcome
+  // (no wager/payout): the opponent who stayed banks a PvP win, the
+  // forfeiter takes a loss. Trophies/Elo are applied separately below.
   applyLeaderboardCounters({
     clerkId: result.winnerId,
     game: "rps-pvp",
-    betAmount: Number(result.game.betAmount),
-    payout: result.winnerPayout,
+    outcome: "win",
     isPvpWin: true,
   }).catch(() => {});
   applyLeaderboardCounters({
     clerkId: result.forfeiterId,
     game: "rps-pvp",
-    betAmount: Number(result.game.betAmount),
-    payout: 0,
+    outcome: "loss",
   }).catch(() => {});
 
   // Per-game Elo — a competitive forfeit (the winner is the opponent who

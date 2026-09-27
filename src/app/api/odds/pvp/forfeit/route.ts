@@ -79,16 +79,13 @@ export async function POST(req: Request) {
       applyLeaderboardCounters({
         clerkId: winnerId!,
         game: "odds",
-        betAmount: game.wager,
-        payout,
+        outcome: "win",
         isPvpWin: true,
       }).catch(() => {});
       applyLeaderboardCounters({
         clerkId: userId,
         game: "odds",
-        betAmount: game.wager,
-        payout: 0,
-        isPvpWin: false,
+        outcome: "loss",
       }).catch(() => {});
 
       // Per-game Elo — the forfeiter loses, the opponent (winnerId, resolved

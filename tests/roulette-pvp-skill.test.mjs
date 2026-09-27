@@ -182,12 +182,14 @@ test("calculateMatchSettlement: free AI matches never pay tokens", () => {
   );
 });
 
-test("calculateMatchSettlement: paid PvP keeps the existing pot math", () => {
-  const settlement = calculateMatchSettlement(
-    { isAi: false, player1Id: "human", player2Id: "other", stakeAmount: 100 },
-    "player2",
+test("calculateMatchSettlement: a paid PvP match still moves no tokens", () => {
+  // Stakes are retired — even a legacy row carrying a non-zero stake stake
+  // settles with no fee and no payout; only the winner is identified.
+  assert.deepEqual(
+    calculateMatchSettlement(
+      { isAi: false, player1Id: "human", player2Id: "other", stakeAmount: 100 },
+      "player2",
+    ),
+    { winnerId: "other", fee: 0, payout: 0 },
   );
-  assert.equal(settlement.winnerId, "other");
-  assert.equal(settlement.fee, 5);
-  assert.equal(settlement.payout, 195);
 });

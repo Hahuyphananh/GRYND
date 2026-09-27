@@ -107,12 +107,12 @@ export async function POST(req) {
       payout: payout.toFixed(2),
     });
 
-    // Track leaderboard stats
+    // Track leaderboard stats — outcome-driven (stakes are retired, so no
+    // wager/payout is passed). A winning spin banks a win, a losing one a loss.
     applyLeaderboardCounters({
       clerkId: userId,
       game: "Roulette",
-      betAmount: totalBetAmount,
-      payout,
+      outcome: spinPayout > 0 ? "win" : "loss",
     }).catch(() => {});
 
     // Fire system notification for large roulette bets (≥ 1000 tokens)

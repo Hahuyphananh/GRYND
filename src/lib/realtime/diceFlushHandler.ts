@@ -1,5 +1,6 @@
 import { checkGameEnd, holdDice, nextTurn, rollDice, validateMove, TURN_TIME_LIMIT_MS, type DiceFlushCategory, type DiceFlushGameState } from "../../../game-engine/diceFlushEngine";
 import { chooseAiOption, coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
+import { normalizeStake } from "../games/stakes";
 
 type SocketLike = { emit: (event: string, payload: any) => void; to?: (room: string) => { emit: (event:string, payload:any)=>void } };
 
@@ -35,8 +36,11 @@ export function diceFlushHandler(socket: SocketLike, ctx: { userId: string; user
   return {
     create_room: ({ wager }: { wager: number }) => {
       const id = `yahtzee:${Date.now()}`;
-      ctx.wallet.lockWager(ctx.userId, wager);
-      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }], ai: false, wager, pot: wager, state: "waiting", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: {}, scorecardOwner: {}, currentCall: null, turnDeadline: null };
+      // STAKES ARE RETIRED: the requested wager is normalized to 0, so the
+      // lock is a no-op and the pot stays empty — no entry fee, no rake.
+      const stake = normalizeStake(wager);
+      ctx.wallet.lockWager(ctx.userId, stake);
+      const room: DiceFlushGameState = { id, game: "yahtzee", players: [{ userId: ctx.userId, name: ctx.username }], ai: false, wager: stake, pot: stake, state: "waiting", currentTurn: ctx.userId, turnNumber: 1, rollsThisTurn: 0, dice: [1,1,1,1,1], heldDice:[false,false,false,false,false], scorecards: {}, scorecardOwner: {}, currentCall: null, turnDeadline: null };
       rooms.set(id, room);
       socket.emit("room_created", room);
     },

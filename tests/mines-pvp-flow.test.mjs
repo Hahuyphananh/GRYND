@@ -24,11 +24,16 @@
  * production server store):
  *   1. `pickTile(userId, idx)` computes the active picker via the
  *      closed-form formula; rejects if `userId` doesn't match.
- *   2. The pick is appended to `match.picks`.
- *   3. If the new pick is a mine → resolve immediately (the picker
- *      loses) per `decideOutcome({ loserId, player1Id, player2Id })`.
+ *   2. The reveal is appended to `match.picks` (with its server-computed
+ *      clue, which is PUBLIC to both seats).
+ *   3. If the revealed cell is a mine → resolve immediately, naming the
+ *      OPPONENT of the picker as the winner (`winReason: mine_hit`).
  *   4. Else → compute next picker via the same formula and flip
  *      `currentTurnUserId` + status + deadline.
+ *
+ * Shared-board mirror contract (see `flagTile` below): a FLAG is a
+ * per-player CLAIM that consumes a turn, never a loss. Claiming EVERY mine
+ * wins immediately (`winReason: all_mines_flagged`).
  *
  * Run:  node --test tests/mines-pvp-flow.test.mjs
  */
@@ -54,17 +59,28 @@ import {
   ROUND_TIMER_SECONDS,
   TERMINAL_STATES,
   WINNER_RATIO,
+  WIN_REASON,
   activePickerForMatch,
+  chooseAiCell,
   computePayout,
   decideOutcome,
+  flagsForSeat,
   generateBoard,
   generateSolvableBoard,
+  hasFlaggedAllMines,
   isMine,
+  MINES_AI_PLAYER_ID,
   nearestMineDistance,
+  normalizeFlags,
   pickRandomCell,
   relocateMine,
+  resultForWinner,
+  revealedCells,
   round2,
+  withFlagForSeat,
 } from "../src/lib/mines-pvp/constants.js";
+
+import { normaliseMatchForViewer } from "../src/lib/mines-pvp/matchView.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // In-memory mirror of the DB row + state-machine helpers
@@ -97,8 +113,13 @@ function makeMatch({
     p1PickedAt: null,
     p2PickedAt: null,
     picks: [], // chronological JSONB-backed pick history
+    // Per-player flag CLAIMS (shared-board rules): independent JSONB arrays
+    // that default to empty, exactly like the DB columns.
+    p1Flags: [],
+    p2Flags: [],
     result: null,
     winnerId: null,
+    winReason: null,
     prizePaid: null,
     houseFee: null,
     startedAt: null,
@@ -134,6 +155,15 @@ function seatForUser(match, userId) {
 
 function isParticipant(match, userId) {
   return seatForUser(match, userId) !== null;
+}
+
+// Mirror of the production `otherSeatId`: derive the opponent so a winner is
+// never hand-rolled from a loser (the side-swap bug class).
+function otherSeatId(match, userId) {
+  if (!match) return null;
+  if (match.player1Id === userId) return match.player2Id ?? null;
+  if (match.player2Id === userId) return match.player1Id ?? null;
+  return null;
 }
 
 function scrubMatchForViewer(match) {
@@ -180,7 +210,11 @@ function applyPick(match, pick) {
   }
 
   if (pick.isMine) {
-    return resolveMatch(match, pick.userId);
+    // Sudden-death mine: the picker loses, the opponent wins.
+    return resolveMatch(match, {
+      winnerId: otherSeatId(match, pick.userId),
+      reason: WIN_REASON.MINE_HIT,
+    });
   }
 
   // Safe pick → advance to next picker via the closed-form formula.
@@ -195,10 +229,13 @@ function applyPick(match, pick) {
   return match;
 }
 
-function resolveMatch(match, loserId) {
-  if (!loserId) return match;
-  const result = decideOutcome({
-    loserId,
+// Mirror of the production resolver: winner-shaped (`{ winnerId, reason }`),
+// stamps `winReason`, and refuses to re-settle an already-terminal match.
+function resolveMatch(match, { winnerId, reason } = {}) {
+  if (!winnerId) return match;
+  if (TERMINAL_STATES.has(match.status)) return match;
+  const result = resultForWinner({
+    winnerId,
     player1Id: match.player1Id,
     player2Id: match.player2Id,
   });
@@ -208,10 +245,10 @@ function resolveMatch(match, loserId) {
   match.currentTurnUserId = null;
   match.roundDeadline = null;
   match.result = result;
+  match.winnerId = winnerId;
+  match.winReason = reason ?? null;
   match.prizePaid = payout.prizePaid;
   match.houseFee = payout.houseFee;
-  match.winnerId =
-    result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
   match.endedAt = new Date();
   return match;
 }
@@ -294,9 +331,8 @@ function pickTile({ userId, matchId, cellIndex, matches }) {
   }
 
   // Disallow duplicate picks across the full per-pick history.
-  const historyCells = (match.picks ?? [])
-    .map((p) => Number(p?.cell))
-    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  // REVEALED cells only — a flag claim does not block a later reveal.
+  const historyCells = revealedCells(match);
   if (historyCells.includes(idx)) {
     return { error: "Cell already picked", status: 409 };
   }
@@ -329,15 +365,18 @@ function pickTile({ userId, matchId, cellIndex, matches }) {
   return { match: result, justResolved: pickIsMine };
 }
 
-// ── Mirror of flagTile (the "call a mine" skill move) ────────────────
+// ── Mirror of flagTile (a per-player CLAIM) ─────────────────────────
 //
-// Same validation chain as pickTile, but the outcome is ALWAYS
-// terminal: correct flag (tile is a mine) → the OPPONENT loses;
-// wrong flag (tile is safe) → the FLAGGER loses. No first-pick
-// mercy for flags (a flag is a deliberate claim, not the
-// definitionally-guessy opening pick). The flag entry lands in the
-// chronological `picks` array with `flag: true` and resolves via
-// resolveMatch.
+// Same validation chain as pickTile, but a flag CLAIMS a still-hidden cell
+// instead of revealing it:
+//   • the claim lands in the FLAGGER's OWN set (`p1Flags` / `p2Flags`),
+//     which never merges with or overwrites the other seat's;
+//   • a WRONG claim is NOT a loss — the turn simply passes;
+//   • claiming EVERY mine wins immediately with
+//     `winReason: 'all_mines_flagged'`;
+//   • the claim consumes a turn, so it is recorded in the chronological
+//     `picks` array with `flag: true` (and NO `isMine` verdict, which
+//     would leak the hidden board) purely so the turn counter advances.
 function flagTile({ userId, matchId, cellIndex, matches }) {
   const idx = Number(cellIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
@@ -369,57 +408,63 @@ function flagTile({ userId, matchId, cellIndex, matches }) {
   ) {
     return { error: "It is not your turn", status: 403 };
   }
-  const historyCells = (match.picks ?? [])
-    .map((p) => Number(p?.cell))
-    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  // REVEALED cells only — a flag claim does not block a later reveal.
+  const historyCells = revealedCells(match);
   if (historyCells.includes(idx)) {
-    return { error: "Cell already picked", status: 409 };
+    return { error: "Cell already revealed", status: 409 };
   }
 
-  const flagIsMine = isMine(match.board, idx);
   const seat = userId === match.player1Id ? "player1" : "player2";
+  // Duplicate of your OWN claim → rejected (there is no unflag).
+  if (flagsForSeat(match, seat).includes(idx)) {
+    return { error: "Cell already flagged", status: 409 };
+  }
+
   const flagEntry = {
     userId,
     seat,
     cell: idx,
-    isMine: flagIsMine,
+    // No verdict and no clue: a claim reveals nothing, so the entry is safe
+    // to hand to both seats mid-match.
+    isMine: null,
     hint: null,
     flag: true,
+    kind: "flag",
     mercy: false,
     autoPicked: false,
     pickedAt: new Date().toISOString(),
   };
 
-  // Correct flag → opponent loses; wrong flag → flagger loses.
-  const loserId = flagIsMine
-    ? userId === match.player1Id
-      ? match.player2Id
-      : match.player1Id
-    : userId;
-
   match.picks = [...(match.picks ?? []), flagEntry];
-  if (seat === "player1") {
-    match.p1Pick = idx;
-    match.p1PickIsMine = flagIsMine;
-    match.p1PickedAt = new Date(flagEntry.pickedAt);
-    match.p1AutoPicked = false;
-  } else {
-    match.p2Pick = idx;
-    match.p2PickIsMine = flagIsMine;
-    match.p2PickedAt = new Date(flagEntry.pickedAt);
-    match.p2AutoPicked = false;
+  // The claim lands in THIS seat's own set only (mirrors `withFlagForSeat`).
+  Object.assign(match, withFlagForSeat(match, seat, idx));
+
+  // Every mine claimed by this player → immediate win.
+  const claimedFlags = flagsForSeat(match, seat);
+  if (hasFlaggedAllMines(claimedFlags, match.board)) {
+    resolveMatch(match, {
+      winnerId: userId,
+      reason: WIN_REASON.ALL_MINES_FLAGGED,
+    });
+    return { match, justResolved: true };
   }
 
-  resolveMatch(match, loserId);
-  return { match, justResolved: true };
+  // Otherwise the claim just consumes the turn — a wrong flag is NOT a loss.
+  const nextPickerId = activePickerForMatch(match);
+  match.currentTurnUserId = nextPickerId;
+  match.status =
+    nextPickerId === match.player1Id
+      ? MATCH_STATUS.P1_TURN
+      : MATCH_STATUS.P2_TURN;
+  match.roundDeadline = new Date(Date.now() + ROUND_PICK_DEADLINE_MS);
+  return { match, justResolved: false };
 }
 
 function forcePick(match) {
   if (!PICKABLE_STATES.has(match.status)) return match;
   const pickerId = activePickerForMatch(match);
-  const historyCells = (match.picks ?? [])
-    .map((p) => Number(p?.cell))
-    .filter((c) => Number.isInteger(c) && c >= 0 && c < GRID_CELLS);
+  // REVEALED cells only — a flag claim does not block a later reveal.
+  const historyCells = revealedCells(match);
   const cellIndex = pickRandomCell({ excludePicks: historyCells });
   // First-pick mercy on the AFK path too (mirrors production forcePick):
   // the game's opening is never a trap, even for an AFK'd first turn.
@@ -1122,10 +1167,10 @@ test("pickTile: mercy applies ONLY to the first pick (later mine picks still res
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// flagTile — the "call a mine" skill move
+// flagTile — per-player CLAIMS (shared-board rules)
 // ════════════════════════════════════════════════════════════════════════
 
-test("flagTile: CORRECT flag (tile is a mine) -> opponent loses, flagger wins", () => {
+test("flagTile: a flag is a CLAIM, not a terminal move (partial correct flag continues)", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 100, minesCount: 3, matches });
   createOrJoin({ userId: "u2", stakeAmount: 100, minesCount: 3, matches });
@@ -1135,19 +1180,30 @@ test("flagTile: CORRECT flag (tile is a mine) -> opponent loses, flagger wins", 
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
 
+  // Three mines: claiming ONE of them is not a win.
   const mineCell = match.board.mines[0];
   const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: mineCell, matches });
-  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
-  assert.equal(r.match.result, RESULT.PLAYER1);
-  assert.equal(r.match.winnerId, "u1");
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN, "turn passes to the opponent");
+  assert.equal(r.match.currentTurnUserId, "u2");
+  assert.equal(r.match.winnerId, null);
+  assert.equal(r.match.winReason, null);
+  assert.equal(r.justResolved, false);
+  // The claim is recorded in the claimer's OWN set...
+  assert.deepEqual(r.match.p1Flags, [mineCell]);
+  assert.deepEqual(r.match.p2Flags, []);
+  // ...and in the turn history (a flag consumes a turn), but WITHOUT any
+  // mine verdict — that would leak the hidden board.
   const entry = r.match.picks.at(-1);
   assert.equal(entry.flag, true);
-  assert.equal(entry.isMine, true);
-  assert.equal(r.match.prizePaid, round2(100 * 1.9));
-  assert.equal(r.match.houseFee, round2(100 * 0.1));
+  assert.equal(entry.cell, mineCell);
+  assert.equal(entry.isMine, null);
+  assert.equal(entry.hint, null);
+  // Legacy scalar mirrors describe REVEALS only — a flag never sets them.
+  assert.equal(r.match.p1Pick, null);
+  assert.equal(r.match.p1PickIsMine, null);
 });
 
-test("flagTile: WRONG flag (tile is safe) -> flagger loses, and NO first-pick mercy for flags", () => {
+test("flagTile: WRONG flag (tile is safe) is NOT a loss — the match continues", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 1, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 1, matches });
@@ -1157,19 +1213,16 @@ test("flagTile: WRONG flag (tile is safe) -> flagger loses, and NO first-pick me
   match.currentTurnUserId = "u1";
   match.roundDeadline = new Date(Date.now() + 10_000);
 
-  // u1's FIRST action is a flag on a known-SAFE cell. Mercy protects
-  // the opening PICK (a definitional guess) — a flag is a deliberate
-  // claim, so a wrong first-turn flag loses outright.
   const safeCell = match.board.mines[0] === 0 ? 1 : 0;
   assert.equal(isMine(match.board, safeCell), false);
   const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: safeCell, matches });
-  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
-  assert.equal(r.match.result, RESULT.PLAYER2);
-  assert.equal(r.match.winnerId, "u2");
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
+  assert.equal(r.match.winnerId, null);
+  assert.equal(r.match.winReason, null);
+  assert.deepEqual(r.match.p1Flags, [safeCell]);
   const entry = r.match.picks.at(-1);
   assert.equal(entry.flag, true);
-  assert.equal(entry.isMine, false);
-  assert.equal(entry.mercy, false);
+  assert.equal(entry.isMine, null);
 });
 
 test("flagTile: rejects when it's not your turn (403)", () => {
@@ -1187,7 +1240,7 @@ test("flagTile: rejects when it's not your turn (403)", () => {
   assert.ok(/not your turn/i.test(r.error));
 });
 
-test("flagTile: rejects flagging an already-picked cell (409)", () => {
+test("flagTile: rejects flagging an already-REVEALED cell (409)", () => {
   const matches = new Map();
   createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
   createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
@@ -1202,7 +1255,7 @@ test("flagTile: rejects flagging an already-picked cell (409)", () => {
   match.roundDeadline = new Date(Date.now() + 10_000);
   const r = flagTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
   assert.equal(r.status, 409);
-  assert.ok(/already picked/i.test(r.error));
+  assert.ok(/already revealed/i.test(r.error));
 });
 
 test("flagTile: rejects when the pick window has expired", () => {
@@ -1233,10 +1286,10 @@ test("flagTile: rejects non-participant with 403", () => {
   assert.equal(r.status, 403);
 });
 
-test("end-to-end: P1 picks safe, then P2 correctly flags a mine -> P2 wins", () => {
+test("end-to-end: flagging EVERY mine wins immediately with all_mines_flagged", () => {
   const matches = new Map();
-  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
-  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 2, matches });
+  createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 2, matches });
   const match = [...matches.values()][0];
   match.firstPlayerId = "u1";
   match.status = MATCH_STATUS.P1_TURN;
@@ -1248,16 +1301,251 @@ test("end-to-end: P1 picks safe, then P2 correctly flags a mine -> P2 wins", () 
   for (let i = 0; i < GRID_CELLS; i += 1) {
     if (!mines.includes(i)) safeCells.push(i);
   }
-  // Turn 1: u1 picks a safe tile.
+  // Turn 1: u1 reveals a safe tile (its shared clue is stamped on the entry).
   pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCells[0], matches });
-  // Turn 2: u2 flags a mine -> correct -> u2 wins.
+  // Turns 2 + 3: u2 claims the first mine (match continues), then — by the
+  // odds pattern — claims the second and completes the sweep.
   match.roundDeadline = new Date(Date.now() + 10_000);
-  const r = flagTile({ userId: "u2", matchId: match.id, cellIndex: mines[0], matches });
+  const first = flagTile({ userId: "u2", matchId: match.id, cellIndex: mines[0], matches });
+  assert.equal(first.match.status, MATCH_STATUS.P2_TURN, "one of two mines is not enough");
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = flagTile({ userId: "u2", matchId: match.id, cellIndex: mines[1], matches });
   assert.equal(r.match.status, MATCH_STATUS.FINISHED);
   assert.equal(r.match.result, RESULT.PLAYER2);
   assert.equal(r.match.winnerId, "u2");
+  assert.equal(r.match.winReason, WIN_REASON.ALL_MINES_FLAGGED);
+  assert.deepEqual(r.match.p2Flags, mines.slice().sort((a, b) => a - b));
   assert.equal(r.match.picks.at(-1).flag, true);
-  assert.equal(r.match.picks.length, 2, "one safe pick + one flag entry");
+  assert.deepEqual(r.match.p1Flags, [], "the opponent's claims stay empty");
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Shared-board rules — server authority (mine hit, flags, game-over guard)
+// ════════════════════════════════════════════════════════════════════════
+
+// A ready-to-play match with u1/u2 joined. `first` names the seat the server
+// rolled as the match's first player (the odds pattern then gives that seat
+// turns 1, 4, 5…, and the OTHER seat turns 2, 3, 6, 7… — i.e. the second
+// player acts twice in a row, which is what most of these tests exploit).
+function sharedBoardMatch({ minesCount = 3, stakeAmount = 50, first = "u1" } = {}) {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount, minesCount, matches });
+  createOrJoin({ userId: "u2", stakeAmount, minesCount, matches });
+  const match = [...matches.values()][0];
+  match.firstPlayerId = first;
+  match.status = first === "u1" ? MATCH_STATUS.P1_TURN : MATCH_STATUS.P2_TURN;
+  match.currentTurnUserId = first;
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  return { matches, match };
+}
+
+function safeCellOf(match) {
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!match.board.mines.includes(i)) return i;
+  }
+  throw new Error("no safe cell");
+}
+
+// A safe cell nobody has revealed yet — flag claims are fine on it, and a
+// REVEALED cell can no longer be flagged (409).
+function unrevealedSafeCellOf(match) {
+  const revealed = revealedCells(match);
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!match.board.mines.includes(i) && !revealed.includes(i)) return i;
+  }
+  throw new Error("no unrevealed safe cell");
+}
+
+// ── A + B: safe reveal is SHARED (same clue for both players) ─────────
+test("shared reveal: a safe pick records the clue and both players see the SAME entry", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 2 });
+  const cell = safeCellOf(match);
+  const r = pickTile({ userId: "u1", matchId: match.id, cellIndex: cell, matches });
+  assert.equal(r.justResolved, false);
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN, "turn advances to the opponent");
+
+  const entry = r.match.picks.at(-1);
+  assert.equal(entry.cell, cell);
+  assert.equal(entry.seat, "player1");
+  assert.equal(entry.userId, "u1");
+  assert.equal(entry.isMine, false);
+  assert.equal(entry.hint, nearestMineDistance(match.board, cell));
+  // The clue lives on the SHARED history, so the opponent reads the exact
+  // same number from the exact same entry — nothing is stripped per viewer.
+  const forOpponent = r.match.picks.find((p) => p.cell === cell);
+  assert.equal(forOpponent.hint, entry.hint);
+  assert.ok(
+    forOpponent.hint === null || Number.isInteger(forOpponent.hint),
+    "the server computes the clue (the client never does)",
+  );
+});
+
+// ── C: sudden-death mine ─────────────────────────────────────────────
+test("sudden death: revealing a mine ends the match, the picker loses, winReason=mine_hit", () => {
+  // NOTE: the very FIRST pick of a match is protected by first-pick mercy,
+  // so a mine can only ever detonate from the second turn on. u1 leads, so
+  // u2 holds turns 2 and 3; u2 reveals safely on turn 2 and detonates on 3.
+  const { matches, match } = sharedBoardMatch({ minesCount: 2, stakeAmount: 100 });
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  assert.equal(activePickerForMatch(match), "u2");
+  pickTile({ userId: "u2", matchId: match.id, cellIndex: unrevealedSafeCellOf(match), matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  assert.equal(activePickerForMatch(match), "u2");
+  const r = pickTile({
+    userId: "u2",
+    matchId: match.id,
+    cellIndex: match.board.mines[0],
+    matches,
+  });
+  assert.equal(r.justResolved, true);
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.winnerId, "u1", "the opponent wins");
+  assert.equal(r.match.result, RESULT.PLAYER1);
+  assert.equal(r.match.winReason, WIN_REASON.MINE_HIT);
+  assert.equal(r.match.currentTurnUserId, null);
+  assert.equal(r.match.roundDeadline, null);
+});
+
+// ── C2: mine hit by the SECOND player gives the win to player 1 ──────
+test("sudden death: the second player mining hands the win to player 1", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 2 });
+  // Turn 1: u1 reveals a safe cell. Turn 2: u2 mines.
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: match.board.mines[0], matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.winnerId, "u1");
+  assert.equal(r.match.winReason, WIN_REASON.MINE_HIT);
+});
+
+// ── D: flags are player-specific ─────────────────────────────────────
+test("flags are player-specific: one seat's claim never appears in the other's set", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 3 });
+  const claimed = safeCellOf(match); // a wrong claim still counts as a claim
+  const r1 = flagTile({ userId: "u1", matchId: match.id, cellIndex: claimed, matches });
+  assert.deepEqual(r1.match.p1Flags, [claimed]);
+  assert.deepEqual(r1.match.p2Flags, []);
+
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r2 = flagTile({ userId: "u2", matchId: match.id, cellIndex: claimed, matches });
+  // The SAME cell can be claimed by both — the collections stay independent.
+  assert.deepEqual(r2.match.p1Flags, [claimed], "u1's claim is untouched");
+  assert.deepEqual(r2.match.p2Flags, [claimed]);
+});
+
+// ── G: all mines flagged wins immediately ────────────────────────────
+test("all mines flagged: completing the sweep wins with winReason=all_mines_flagged", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 1, stakeAmount: 50 });
+  const r = flagTile({
+    userId: "u1",
+    matchId: match.id,
+    cellIndex: match.board.mines[0],
+    matches,
+  });
+  assert.equal(r.justResolved, true);
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.winnerId, "u1");
+  assert.equal(r.match.result, RESULT.PLAYER1);
+  assert.equal(r.match.winReason, WIN_REASON.ALL_MINES_FLAGGED);
+});
+
+// ── G2: extra WRONG claims do not block the all-mines win ────────────
+test("all mines flagged: a stray wrong claim does not block the win", () => {
+  // u2 leads, so u1 holds turns 2 AND 3 (the odds pattern's consecutive
+  // pair) — enough for a wrong claim followed by the real one.
+  const { matches, match } = sharedBoardMatch({ minesCount: 1, first: "u2" });
+  pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  const wrong = unrevealedSafeCellOf(match);
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const first = flagTile({ userId: "u1", matchId: match.id, cellIndex: wrong, matches });
+  // The odds pattern gives the second player turns 2 AND 3, so u1 is still up.
+  assert.equal(first.match.status, MATCH_STATUS.P1_TURN);
+  assert.equal(activePickerForMatch(first.match), "u1", "turn 3 is still u1's");
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: match.board.mines[0], matches });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  assert.equal(r.match.winnerId, "u1");
+  assert.equal(r.match.winReason, WIN_REASON.ALL_MINES_FLAGGED);
+});
+
+// ── H: a finished match accepts no further actions ───────────────────
+test("game over: picks and flags are rejected once the match is FINISHED", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 1 });
+  const r = flagTile({
+    userId: "u1",
+    matchId: match.id,
+    cellIndex: match.board.mines[0],
+    matches,
+  });
+  assert.equal(r.match.status, MATCH_STATUS.FINISHED);
+  const firstWinner = r.match.winnerId;
+
+  const pick = pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  assert.equal(pick.status, 400);
+  assert.ok(/not awaiting a pick/i.test(pick.error));
+
+  const flag = flagTile({ userId: "u2", matchId: match.id, cellIndex: 0, matches });
+  assert.equal(flag.status, 400);
+  assert.ok(/not awaiting a pick/i.test(flag.error));
+
+  // Exactly one winner was recorded, and the row was not re-settled.
+  assert.equal(match.winnerId, firstWinner);
+  assert.equal(match.winReason, WIN_REASON.ALL_MINES_FLAGGED);
+});
+
+// ── I: a reveal cannot be repeated ───────────────────────────────────
+test("duplicate reveal: a cell revealed by either player cannot be revealed again", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 3 });
+  const cell = safeCellOf(match);
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: cell, matches });
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: cell, matches });
+  assert.equal(r.status, 409);
+  assert.ok(/already picked/i.test(r.error));
+  assert.equal(r.match, undefined, "no match payload on a rejected duplicate");
+});
+
+// ── I2: a flag does NOT block a later reveal of that cell ────────────
+test("a flagged cell is still revealable (a claim is not a reveal)", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 3 });
+  const cell = safeCellOf(match);
+  flagTile({ userId: "u1", matchId: match.id, cellIndex: cell, matches });
+  assert.deepEqual(revealedCells(match), [], "a claim reveals nothing");
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: cell, matches });
+  assert.equal(r.error, undefined);
+  assert.ok(revealedCells(r.match).includes(cell));
+  // Both records coexist: the claim AND the reveal.
+  assert.deepEqual(r.match.p1Flags, [cell]);
+});
+
+// ── J: duplicate flag rejected ───────────────────────────────────────
+test("duplicate flag: re-claiming your own cell is rejected with 409", () => {
+  // u2 leads, so u1 holds turns 2 and 3 — two consecutive claims.
+  const { matches, match } = sharedBoardMatch({ minesCount: 3, first: "u2" });
+  pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  const cell = unrevealedSafeCellOf(match);
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  flagTile({ userId: "u1", matchId: match.id, cellIndex: cell, matches });
+  assert.equal(activePickerForMatch(match), "u1", "turn 3 is still u1's");
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = flagTile({ userId: "u1", matchId: match.id, cellIndex: cell, matches });
+  assert.equal(r.status, 409);
+  assert.ok(/already flagged/i.test(r.error));
+  assert.deepEqual(match.p1Flags, [cell], "the set is unchanged");
+});
+
+// ── Flag helpers used by the store are the canonical ones ────────────
+test("flag helpers stay canonical (normalise + independence + sweep check)", () => {
+  assert.deepEqual(normalizeFlags([8, 3, 3, "8", 99, -1, null, 1.5]), [3, 8]);
+  const { match } = sharedBoardMatch({ minesCount: 2 });
+  Object.assign(match, withFlagForSeat(match, "player1", match.board.mines[0]));
+  assert.deepEqual(flagsForSeat(match, "player1"), [match.board.mines[0]]);
+  assert.deepEqual(flagsForSeat(match, "player2"), []);
+  assert.equal(hasFlaggedAllMines(match.p1Flags, match.board), false);
+  Object.assign(match, withFlagForSeat(match, "player1", match.board.mines[1]));
+  assert.equal(hasFlaggedAllMines(match.p1Flags, match.board), true);
 });
 
 test("pickTile: never returns DRAW (no ties in the new flow)", () => {
@@ -1546,6 +1834,213 @@ test("end-to-end: u2 AFKs on turn 2 auto-pick auto-loses if mine (or advances if
       assert.ok(PICKABLE_STATES.has(r2.match.status));
     }
   }
+});
+
+// ── QA pass — setup / second reveal / races / security / AI ─────────
+test("QA match setup: the board is generated ONCE and both players act on the same one", () => {
+  const matches = new Map();
+  const created = createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  const boardRef = created.match.board;
+  const joined = createOrJoin({ userId: "u2", stakeAmount: 50, minesCount: 3, matches });
+  assert.equal(joined.match, created.match, "the joiner reuses the SAME row");
+  assert.equal(joined.match.board, boardRef, "join never regenerates the board");
+  assert.equal(joined.joined, true);
+  assert.equal(joined.match.minesCount, 3);
+
+  // Both viewers describe the same board: the COUNT is public, the layout is
+  // hidden while the match is live — for BOTH seats.
+  const m = joined.match;
+  m.status = MATCH_STATUS.P1_TURN;
+  m.currentTurnUserId = "u1";
+  const asP1 = normaliseMatchForViewer(m, "u1");
+  const asP2 = normaliseMatchForViewer(m, "u2");
+  assert.equal(asP1.minesCount, asP2.minesCount);
+  assert.equal(asP1.minesCount, boardRef.mines.length);
+  assert.equal(asP1.board, null);
+  assert.equal(asP2.board, null);
+});
+
+test("QA second reveal: P2's clue reaches P1 unchanged (identical shared info)", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 3 });
+  // turn 1 — u1 reveals safely.
+  pickTile({ userId: "u1", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  // turn 2 — u2 reveals safely.
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  const r = pickTile({
+    userId: "u2",
+    matchId: match.id,
+    cellIndex: unrevealedSafeCellOf(match),
+    matches,
+  });
+  const p2Entry = r.match.picks.find((p) => p.seat === "player2");
+  assert.ok(p2Entry, "player2's reveal is recorded");
+  assert.equal(p2Entry.isMine, false);
+  assert.equal(p2Entry.hint, nearestMineDistance(match.board, p2Entry.cell));
+
+  // Both clients render the SAME revealed board — P1 sees P2's clue too.
+  const fingerprint = (v) =>
+    v.picks.map((p) => `${p.seat}:${p.cell}:${p.hint}`).sort();
+  const asP1 = normaliseMatchForViewer(match, "u1");
+  const asP2 = normaliseMatchForViewer(match, "u2");
+  assert.deepEqual(fingerprint(asP1), fingerprint(asP2));
+  assert.ok(
+    asP1.picks.some((p) => p.seat === "player2" && p.hint !== null),
+    "P1 must receive P2's clue",
+  );
+});
+
+test("QA race: re-resolving a FINISHED match is a no-op (no double winner)", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 1 });
+  const first = flagTile({
+    userId: "u1",
+    matchId: match.id,
+    cellIndex: match.board.mines[0],
+    matches,
+  });
+  assert.equal(first.match.winnerId, "u1");
+  // A racing request tries to settle the same row as u2's mine-hit win.
+  resolveMatch(match, { winnerId: "u2", reason: WIN_REASON.MINE_HIT });
+  assert.equal(match.winnerId, "u1", "the first winner stands");
+  assert.equal(match.result, RESULT.PLAYER1);
+  assert.equal(match.winReason, WIN_REASON.ALL_MINES_FLAGGED);
+});
+
+test("QA security: a tampered body cannot forge isMine / hint / winner on a pick", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 2 });
+  const safe = safeCellOf(match);
+  const r = pickTile({
+    userId: "u1",
+    matchId: match.id,
+    cellIndex: safe,
+    matches,
+    // All of this is a forged client body and must be ignored.
+    isMine: true,
+    hint: 99,
+    winnerId: "u1",
+    winReason: "mine_hit",
+    result: "player1",
+  });
+  const entry = r.match.picks.at(-1);
+  assert.equal(entry.isMine, false, "the verdict comes from the hidden board");
+  assert.equal(entry.hint, nearestMineDistance(match.board, safe), "the clue is server-computed");
+  assert.equal(r.match.winnerId, null, "no winner is forged");
+  assert.equal(r.match.winReason, null);
+  assert.equal(r.match.status, MATCH_STATUS.P2_TURN);
+});
+
+test("QA security: a non-current player cannot mutate the match as the opponent", () => {
+  const { matches, match } = sharedBoardMatch({ minesCount: 2 }); // u1 holds turn 1
+  const r = pickTile({ userId: "u2", matchId: match.id, cellIndex: safeCellOf(match), matches });
+  assert.equal(r.status, 403);
+  assert.ok(/not your turn/i.test(r.error));
+  assert.equal(match.picks.length, 0, "no state was mutated");
+});
+
+test("QA AI: the reveal-only bot loses by hitting a mine (opponent wins)", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  match.player2Id = MINES_AI_PLAYER_ID;
+  match.isAi = true;
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P2_TURN;
+  match.currentTurnUserId = MINES_AI_PLAYER_ID;
+  match.roundDeadline = new Date(Date.now() + 10_000);
+
+  // Reveal every SAFE cell so only mines remain: any legal bot pick is a mine.
+  const mineSet = new Set(match.board.mines);
+  match.picks = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (mineSet.has(i)) continue;
+    match.picks.push({
+      userId: "u1",
+      seat: "player1",
+      cell: i,
+      isMine: false,
+      hint: nearestMineDistance(match.board, i),
+      flag: false,
+      autoPicked: false,
+      pickedAt: new Date().toISOString(),
+    });
+  }
+
+  const { cellIndex } = chooseAiCell(match);
+  assert.ok(mineSet.has(cellIndex), "only mines were left, so the bot's pick hits one");
+
+  // Apply exactly as the server's inline AI path does.
+  const after = applyPick(match, {
+    userId: MINES_AI_PLAYER_ID,
+    seat: "player2",
+    cell: cellIndex,
+    isMine: isMine(match.board, cellIndex),
+    hint: null,
+    mercy: false,
+    autoPicked: false,
+    pickedAt: new Date().toISOString(),
+  });
+  assert.equal(after.status, MATCH_STATUS.FINISHED);
+  assert.equal(after.winnerId, "u1", "the human wins");
+  assert.equal(after.result, RESULT.PLAYER1);
+  assert.equal(after.winReason, WIN_REASON.MINE_HIT);
+});
+
+test("QA AI: the bot's safe reveal stamps a PUBLIC clue both seats can read", () => {
+  const matches = new Map();
+  createOrJoin({ userId: "u1", stakeAmount: 50, minesCount: 3, matches });
+  const match = [...matches.values()][0];
+  const revealedSafe = safeCellOf(match);
+  match.player2Id = MINES_AI_PLAYER_ID;
+  match.isAi = true;
+  match.firstPlayerId = "u1";
+  match.status = MATCH_STATUS.P2_TURN;
+  match.currentTurnUserId = MINES_AI_PLAYER_ID;
+  match.roundDeadline = new Date(Date.now() + 10_000);
+  // One safe reveal for the human + every mine CLAIMED, so the bot's only
+  // legal pick is a safe cell (the flag entries are excluded by chooseAiCell).
+  match.picks = [
+    {
+      userId: "u1",
+      seat: "player1",
+      cell: revealedSafe,
+      isMine: false,
+      hint: nearestMineDistance(match.board, revealedSafe),
+      flag: false,
+      autoPicked: false,
+      pickedAt: new Date().toISOString(),
+    },
+    ...match.board.mines.map((cell) => ({
+      userId: "u1",
+      seat: "player1",
+      cell,
+      isMine: null,
+      hint: null,
+      flag: true,
+      kind: "flag",
+      autoPicked: false,
+      pickedAt: new Date().toISOString(),
+    })),
+  ];
+
+  const { cellIndex } = chooseAiCell(match);
+  const botIsMine = isMine(match.board, cellIndex);
+  assert.equal(botIsMine, false, "the bot's pick is a safe cell here");
+  const after = applyPick(match, {
+    userId: MINES_AI_PLAYER_ID,
+    seat: "player2",
+    cell: cellIndex,
+    isMine: botIsMine,
+    hint: botIsMine ? null : nearestMineDistance(match.board, cellIndex),
+    mercy: false,
+    autoPicked: false,
+    pickedAt: new Date().toISOString(),
+  });
+  const ai = after.picks.at(-1);
+  assert.equal(ai.userId, MINES_AI_PLAYER_ID);
+  assert.equal(ai.hint, nearestMineDistance(match.board, cellIndex));
+  const asHuman = normaliseMatchForViewer(after, "u1");
+  const rendered = asHuman.picks.find((p) => p.userId === MINES_AI_PLAYER_ID);
+  assert.ok(rendered, "the human sees the bot's reveal");
+  assert.equal(rendered.hint, ai.hint, "the bot's clue is public, not stripped");
 });
 
 console.log("\n? All Mines Duel flow tests passed!\n");

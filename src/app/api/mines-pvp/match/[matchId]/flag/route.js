@@ -1,20 +1,20 @@
 // src/app/api/mines-pvp/match/[matchId]/flag/route.js
 //
-// POST — submit a per-match FLAG ("call a mine") instead of a pick.
+// POST — submit a per-match FLAG (a per-player CLAIM) instead of a pick.
 // On your turn you may declare a tile you believe is a mine:
-//   • CORRECT (tile really is a mine) → opponent loses, you win
-//   • WRONG (tile is safe) → you lose
-// Terminal either way — the match resolves immediately, so no
-// mid-match state is ever leaked by a flag.
+//   • The claim is added to YOUR OWN flag set (`p1Flags` / `p2Flags`).
+//     The two seats' collections are independent.
+//   • A WRONG claim is NOT a loss — the turn simply passes to the
+//     opponent.
+//   • Claiming EVERY mine wins IMMEDIATELY
+//     (`winReason: 'all_mines_flagged'`).
 //
 // Thin mirror of the /pick route: forwards `{ cellIndex }` to
 // `flagTile` in the server store, which performs the same
 // validation chain as `pickTile` (participant + active state, FOR
 // UPDATE row lock, conditional UPDATE on `match.status`, turn
 // enforcement via the closed-form odds formula, deadline freshness,
-// cell-not-already-picked). Unlike picks, there is NO first-pick
-// mercy for flags — a flag is a deliberate claim, not the
-// definitionally-guessy opening pick.
+// cell-not-already-REVEALED, cell-not-already-claimed-by-you).
 //
 // Anti-cheat considerations baked into `flagTile`:
 //   * only the player whose turn it is can flag (server-trusted
@@ -22,23 +22,32 @@
 //   * the board column is never exposed mid-match
 //   * a stale submission (post-deadline) is rejected with 400 so
 //     the client waits for the next poll's AFK auto-pick instead
-//   * duplicate/flag-of-an-already-picked cell rejected with 409
+//   * flagging an already-REVEALED cell, or re-flagging a cell you
+//     already claimed, is rejected with 409
+//   * whether a claim was CORRECT is board-derived and never leaves
+//     the server while the match is live — the flag entry itself
+//     carries no verdict, so a claim leaks nothing
 //
-// The POST response deliberately omits the flag's isMine (the client
-// learns the outcome from the subsequent /status poll, which fully
-// reveals the board once status='finished').
+// The POST response deliberately omits any correctness verdict (the
+// client learns the outcome from the subsequent /status poll, which
+// fully reveals the board once status='finished'). It DOES return the
+// caller's updated flag set so the toggle reflects the claim at once.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { flagTile } from "../../../../../../lib/mines-pvp/serverStore";
-import { GRID_CELLS } from "../../../../../../lib/mines-pvp/constants";
+import {
+  GRID_CELLS,
+  flagsForSeat,
+} from "../../../../../../lib/mines-pvp/constants";
 import { broadcastMatchUpdate } from "../../../../../../lib/mines-pvp/rooms";
 
 function normaliseFlagResult(match) {
   if (!match) return null;
-  // Only return structural fields — never the flag's isMine (that
-  // would leak the answer before the full reveal). The client
-  // refetches /status right after, which shows the finished board.
+  // Only return structural fields plus the PUBLIC flag claims — never any
+  // correctness verdict (that would leak the answer before the full
+  // reveal). The client refetches /status right after, which shows the
+  // finished board when the sweep completed.
   return {
     id: match.id,
     status: match.status,
@@ -46,6 +55,10 @@ function normaliseFlagResult(match) {
     p2Pick: match.p2Pick ?? null,
     currentTurnUserId: match.currentTurnUserId,
     roundDeadline: match.roundDeadline,
+    p1Flags: flagsForSeat(match, "player1"),
+    p2Flags: flagsForSeat(match, "player2"),
+    winReason: match.winReason ?? null,
+    winnerId: match.winnerId ?? null,
   };
 }
 
@@ -99,17 +112,24 @@ export async function POST(req, { params }) {
       );
     }
 
-    // Best-effort push to the match room so the opponent sees the
-    // resolution without waiting for the 1.5s poll.
+    // Best-effort push to the match room so the opponent sees the new
+    // turn (or the all-mines-flagged finish) without waiting for a poll.
+    // Same `lobby:updated` event as the rest of the game — listeners
+    // refetch `/status` for authoritative state and the payload never
+    // carries board or flag-correctness data.
     broadcastMatchUpdate(matchId, {
       status: result.match?.status,
-      justResolved: true,
+      currentTurnUserId: result.match?.currentTurnUserId ?? null,
+      roundDeadline: result.match?.roundDeadline ?? null,
+      winnerId: result.match?.winnerId ?? null,
+      winReason: result.match?.winReason ?? null,
+      justResolved: Boolean(result.justResolved),
     });
 
-    // Server-side AI trigger: if the match is a free AI game and the
-    // human just flagged, trigger the bot's response. Flags are
-    // terminal so this is best-effort only.
-    if (result.match?.isAi && result.match?.status !== "finished") {
+    // Server-side AI trigger: if the match is a free AI game and the human
+    // just flagged, trigger the bot's response. Best-effort only — a flag
+    // is no longer terminal, so the bot may well have a turn now.
+    if (result.match?.isAi && !result.justResolved) {
       try {
         const { playAiTurn } = await import("../../../../../../lib/mines-pvp/serverStore");
         await playAiTurn({ userId: result.match.player1Id, matchId });
@@ -122,7 +142,7 @@ export async function POST(req, { params }) {
       success: true,
       data: {
         match: normaliseFlagResult(result.match),
-        justResolved: true,
+        justResolved: Boolean(result.justResolved),
       },
     });
   } catch (error) {

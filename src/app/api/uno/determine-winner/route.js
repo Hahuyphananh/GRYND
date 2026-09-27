@@ -98,7 +98,9 @@ export async function POST(req) {
         );
       }
 
-      const payout = (parseFloat(game.pot || "0") * 0.95).toFixed(2);
+      // STAKES ARE RETIRED: no pot, no rake, no payout. The winner is decided
+      // by trophies + Elo, so this settlement must not move a single token.
+      const payout = "0.00";
 
       const didFinalize = await db.transaction(async (tx) => {
         const finalized = await tx
@@ -118,20 +120,7 @@ export async function POST(req) {
           )
           .returning({ id: unoGames.id });
 
-        if (finalized.length === 0) {
-          return false;
-        }
-
-        await tx
-          .update(users)
-          .set({
-            balance: (
-              parseFloat(winnerUser.balance) + parseFloat(payout)
-            ).toFixed(2),
-          })
-          .where(eq(users.id, winnerUserId));
-
-        return true;
+        return finalized.length > 0;
       });
 
       if (!didFinalize) {
@@ -154,24 +143,21 @@ export async function POST(req) {
       await applyLeaderboardCounters({
         clerkId: winnerUser.clerkId,
         game: "uno",
-        betAmount: Number(game.betAmount || 0),
-        payout: Number(payout),
+        outcome: "win",
         isPvpWin: true,
       });
 
       const didRequesterWin = winner === role;
-      const updatedRequester = didRequesterWin
-        ? parseFloat(requester.balance) + parseFloat(payout)
-        : parseFloat(requester.balance);
 
       return NextResponse.json({
         success: true,
         winner,
         result: didRequesterWin ? "win" : "lose",
-        newBalance: updatedRequester,
+        // Stakes are retired — no balance ever moves on settle.
+        newBalance: parseFloat(requester.balance),
         message: didRequesterWin
-    ? `You won! Payout after tax: ${payout}`
-    : "Opponent won. You lost your bet.",
+    ? "You won!"
+    : "Opponent won.",
       });
     }
 

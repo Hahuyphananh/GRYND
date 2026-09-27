@@ -51,32 +51,25 @@ export async function POST(request) {
       );
     }
 
-    const refund = parseFloat(waitingGame.betAmount || "0");
+    // STAKES ARE RETIRED (src/lib/games/stakes.js): a waiting game is free to
+    // open, so there is nothing to refund — the wallet is never touched.
     const currentBalance = parseFloat(user.balance || "0");
-    const updatedBalance = (currentBalance + refund).toFixed(2);
 
-    await db.transaction(async (tx) => {
-      await tx
-        .update(unoGames)
-        .set({
-          status: "cancelled",
-          result: "cancelled",
-          winner: "cancelled",
-          payout: "0.00",
-        })
-        .where(eq(unoGames.id, waitingGame.id));
-
-      await tx
-        .update(users)
-        .set({ balance: updatedBalance })
-        .where(eq(users.id, user.id));
-    });
+    await db
+      .update(unoGames)
+      .set({
+        status: "cancelled",
+        result: "cancelled",
+        winner: "cancelled",
+        payout: "0.00",
+      })
+      .where(eq(unoGames.id, waitingGame.id));
 
     return new Response(
       JSON.stringify({
         success: true,
         message: "Game cancelled",
-        newBalance: updatedBalance,
+        newBalance: currentBalance,
       }),
       { status: 200 },
     );

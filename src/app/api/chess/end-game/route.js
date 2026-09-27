@@ -118,15 +118,13 @@ export async function POST(req) {
         applyLeaderboardCounters({
           clerkId: opponentId,
           game: "Chess",
-          betAmount: Number(lockedGame.betAmount),
-          payout: winnerPayout,
+          outcome: "win",
           isPvpWin: true,
         }).catch(() => {});
         applyLeaderboardCounters({
           clerkId: userId,
           game: "Chess",
-          betAmount: Number(lockedGame.betAmount),
-          payout: 0,
+          outcome: "loss",
         }).catch(() => {});
 
         // Per-game Elo — a competitive forfeit. The winner is the player who

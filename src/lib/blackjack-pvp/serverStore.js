@@ -1452,21 +1452,18 @@ async function recordPvPResult(tx, match, winnerId, result) {
 
   // Canonical stats pipeline (user_stats wins/losses/win_rate/
   // total_bets, pvp_wins, wagered/won, streaks). Fire-and-forget on its own
-  // pool — never blocks settlement.
-  const stake = Number(match.stakeAmount) || 0;
-  const winnerPayout = Number(match.prizePaid) || 0;
+  // pool — never blocks settlement. Outcome-driven and token/XP-free: only
+  // the win/loss/streak leaderboards move.
   applyLeaderboardCounters({
     clerkId: winnerId,
     game: "blackjack-pvp",
-    betAmount: stake,
-    payout: winnerPayout,
+    outcome: "win",
     isPvpWin: true,
   }).catch(() => {});
   applyLeaderboardCounters({
     clerkId: loserId,
     game: "blackjack-pvp",
-    betAmount: stake,
-    payout: 0,
+    outcome: "loss",
   }).catch(() => {});
 
   // Per-game Elo — guarded single-execution path: only ONE settlement of this

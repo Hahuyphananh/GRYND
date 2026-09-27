@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
 import { hexDuelGames, users } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { CacheKeys } from "../../../../lib/redis/keys";
 import { cacheDelete, cacheGet } from "../../../../lib/redis/cache";
 import { normalizeStake } from "../../../../lib/games/stakes";
@@ -199,9 +198,9 @@ export async function POST(req: Request) {
 
     // ── Real mode: validate wager, update balances, record history ──
     if (winner !== "player1") {
-      // Player lost — reset streak, track games lost
-      // applyLeaderboardCounters handles all stat columns (total_wagered,
-      // weekly_wagered, weekly_profit, current_streak, etc.)
+      // Player lost — track games lost. The skill counters (losses, streak
+      // reset, win_rate) are handled by applyLeaderboardCounters; no token or
+      // XP column exists to update.
       const [updatedUser] = await db
         .update(users)
         .set({
@@ -233,13 +232,7 @@ export async function POST(req: Request) {
         } as unknown as typeof hexDuelGames.$inferInsert)
         .catch((e) => console.error("Failed to insert hex duel history (loss):", e));
 
-      // Record leaderboard stats for the loss
-      applyLeaderboardCounters({
-        clerkId,
-        game: "Hex Duel",
-        betAmount: wagerAmount,
-        payout: 0,
-      }).catch(() => {});
+      // AI results deliberately do NOT touch the leaderboards.
 
       return NextResponse.json({
         success: true,
@@ -255,11 +248,9 @@ export async function POST(req: Request) {
     // Player won — STAKES ARE RETIRED: no pot, no rake, no payout.
     const payout = 0;
 
-    // applyLeaderboardCounters handles all stat columns (total_won,
-    // weekly_wagered, weekly_won, weekly_profit, weekly_wins,
-    // current_streak, best_streak, biggest_win, etc.)
-    // Only update gamesWon here — everything else goes through the shared
-    // helper to avoid double-counting.
+    // The skill counters (wins, streaks, win_rate) go through the shared
+    // applyLeaderboardCounters helper — no token/XP column exists. Only
+    // gamesWon is updated here to avoid double-counting.
     const [updatedUser] = await db
       .update(users)
       .set({
@@ -298,13 +289,7 @@ export async function POST(req: Request) {
         } as unknown as typeof hexDuelGames.$inferInsert)
         .catch((e) => console.error("Failed to insert hex duel history (win):", e));
 
-    // Record leaderboard stats for the win
-    applyLeaderboardCounters({
-      clerkId,
-      game: "Hex Duel",
-      betAmount: wagerAmount,
-      payout,
-    }).catch(() => {});
+    // AI results deliberately do NOT touch the leaderboards.
 
     return NextResponse.json({
       success: true,

@@ -148,8 +148,7 @@ export async function POST(req) {
         await applyLeaderboardCounters({
           clerkId: winnerId,
           game: "rps-pvp",
-          betAmount: Number(updatedGame.betAmount),
-          payout: winnerPayout,
+          outcome: "win",
           isPvpWin: true,
         });
 

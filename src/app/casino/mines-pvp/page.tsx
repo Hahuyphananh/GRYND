@@ -6,7 +6,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 export const metadata: Metadata = {
   title: "Mines Duel | GRYND",
   description:
-    "Play Mines Duel on GRYND. Stake tokens and face another player on a shared 5×5 board. Host picks the mine count, winner takes 1.9×.",
+    "Play Mines Duel on GRYND. Face another player on a shared 5×5 board — every safe reveal and clue is public. Step on a mine and you lose instantly; flag every mine and you win.",
   openGraph: { images: [ogImageUrl("/images/og/mines.jpg")] },
 };
 

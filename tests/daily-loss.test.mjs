@@ -9,13 +9,14 @@
  *    row) instead of scanning game history tables
  *  - /api/user/daily-loss keeps crash-arena parity (entries → rounds →
  *    tables join, settled only, same pot/rake math as bet-history)
- *  - applyLeaderboardCounters bumps daily_wagered / daily_won on every
- *    settlement (the casino / funnel games)
+ *  - applyLeaderboardCounters is outcome-driven and moves ONLY the skill
+ *    counters the leaderboards read (wins/losses/win_rate/streaks/pvp_wins)
+ *    — it never touches a token- or XP-denominated column
  *  - The four PvP server stores (mines-pvp, keno-pvp, memory-grid,
  *    lane-rush-duel) feed BOTH seats through applyLeaderboardCounters in
- *    recordPvPResult — so the daily counters, user_stats wins/losses, and
- *    quests all update for these PvP games (they used to settle outside
- *    the counters funnel entirely)
+ *    recordPvPResult — so user_stats wins/losses, pvp_wins, streaks and the
+ *    leaderboards all update for these PvP games (they used to settle
+ *    outside the counters funnel entirely)
  *  - GET /api/jobs/daily-reset zeroes the counters with a WHERE guard
  *  - The useDailyLoss hook calls the new endpoint and dedupes/caches
  *    (shared promise + 60s cache)
@@ -136,20 +137,72 @@ test("endpoint response is marked private (never CDN-cached)", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// applyLeaderboardCounters — bumps daily counters in the CTE
+// applyLeaderboardCounters — outcome-driven skill counters, token-free
 // ═══════════════════════════════════════════════════════════════
 
-test("leaderboardCounters bumps daily_wagered and daily_won in the users UPDATE", () => {
+// Strip comments so the "does not touch" checks only see executable code
+// (the doc comment legitimately names the columns it deliberately omits).
+const countersCode = counters
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "");
+
+test("leaderboardCounters is driven by an explicit outcome, not a wager", () => {
   assert.match(
-    counters,
-    /daily_wagered\s*=\s*daily_wagered\s*\+\s*\$\{bet\}/,
-    "daily_wagered must increment by bet",
+    countersCode,
+    /outcome === "win"/,
+    "must derive the win from the explicit outcome",
   );
   assert.match(
-    counters,
-    /daily_won\s*=\s*daily_won\s*\+\s*\$\{win\}/,
-    "daily_won must increment by win",
+    countersCode,
+    /outcome === "loss"/,
+    "must derive the loss from the explicit outcome",
   );
+  assert.doesNotMatch(
+    countersCode,
+    /betAmount|payout/,
+    "must not infer a result from a wager/payout",
+  );
+});
+
+test("leaderboardCounters touches no token- or XP-denominated column", () => {
+  for (const column of [
+    "total_wagered",
+    "weekly_wagered",
+    "total_won",
+    "weekly_won",
+    "weekly_profit",
+    "daily_wagered",
+    "daily_won",
+    "biggest_win",
+    "weekly_biggest_win",
+    "best_multiplier",
+    "xp",
+    "level",
+    "last_settled_xp",
+  ]) {
+    assert.doesNotMatch(
+      countersCode,
+      new RegExp(`\\b${column}\\b`),
+      `must not write ${column} — progression is trophies, not wagers/XP`,
+    );
+  }
+});
+
+test("leaderboardCounters keeps the skill counters the boards rank", () => {
+  for (const column of [
+    "current_streak",
+    "best_streak",
+    "weekly_wins",
+    "pvp_wins",
+    "last_settled_wins_delta",
+    "last_settled_losses_delta",
+  ]) {
+    assert.match(
+      counters,
+      new RegExp(`\\b${column}\\b`),
+      `must keep updating ${column}`,
+    );
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -160,29 +213,24 @@ test("leaderboardCounters bumps daily_wagered and daily_won in the users UPDATE"
 for (const [game, path] of Object.entries(PVP_STORES)) {
   const source = fs.readFileSync(path, "utf8");
 
-  test(`${game}: winner recorded via applyLeaderboardCounters (stake bet, prizePaid payout, isPvpWin)`, () => {
-    // The winner is fed through the canonical counters pipeline: bet = stake,
-    // payout = prizePaid, isPvpWin = true (drives daily_wagered/daily_won,
-    // user_stats wins, pvp_wins, and win-type quests).
+  test(`${game}: winner recorded via applyLeaderboardCounters (outcome win, isPvpWin)`, () => {
+    // The winner is fed through the canonical counters pipeline with an
+    // explicit `outcome: "win"` and isPvpWin: true (drives user_stats wins,
+    // pvp_wins, streaks and the win boards). No wager/payout is involved.
     assert.match(
       source,
-      /applyLeaderboardCounters\(\{[\s\S]*?betAmount: stake[\s\S]*?payout: winnerPayout[\s\S]*?isPvpWin: true/,
-      `${game} winner must call applyLeaderboardCounters with stake/prizePaid/isPvpWin`,
-    );
-    assert.match(
-      source,
-      /const winnerPayout = Number\(match\.prizePaid\) \|\| 0;/,
-      `${game} must derive the winner payout from prizePaid`,
+      /applyLeaderboardCounters\(\{[\s\S]*?clerkId: winnerId[\s\S]*?outcome: "win"[\s\S]*?isPvpWin: true/,
+      `${game} winner must call applyLeaderboardCounters with outcome win + isPvpWin`,
     );
   });
 
-  test(`${game}: loser recorded via applyLeaderboardCounters (stake bet, payout 0)`, () => {
-    // The loser gets the same stake as betAmount and payout 0 — so the loss
-    // lands in user_stats (losses +1, wagered +stake, no win).
+  test(`${game}: loser recorded via applyLeaderboardCounters (outcome loss)`, () => {
+    // The loser gets an explicit `outcome: "loss"` — landing in user_stats
+    // (losses +1, streak reset) with no token movement.
     assert.match(
       source,
-      /applyLeaderboardCounters\(\{[\s\S]*?clerkId: loserId[\s\S]*?betAmount: stake[\s\S]*?payout: 0/,
-      `${game} loser must call applyLeaderboardCounters with stake bet and payout 0`,
+      /applyLeaderboardCounters\(\{[\s\S]*?clerkId: loserId[\s\S]*?outcome: "loss"/,
+      `${game} loser must call applyLeaderboardCounters with outcome loss`,
     );
   });
 

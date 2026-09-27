@@ -1190,8 +1190,9 @@ export async function resolveRound(tx, match) {
 // mirrors blackjack-pvp / mines-pvp. Bumps the legacy per-seat counters
 // (public profile reads games_won / games_lost) and calls the canonical
 // applyLeaderboardCounters pipeline (user_stats wins/losses/win_rate/
-// total_bets, pvp_wins, wagered/won, streaks) for
-// BOTH seats. Fire-and-forget on its own pool — never blocks settlement.
+// total_bets, pvp_wins, streaks) for BOTH seats when this is a real
+// human-vs-human match. Fire-and-forget on its own pool — never blocks
+// settlement.
 async function recordRoulettePvpResult(tx, finalRow) {
   const winnerId = finalRow?.winnerId;
   if (!winnerId) return;
@@ -1210,21 +1211,21 @@ async function recordRoulettePvpResult(tx, finalRow) {
     .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
 
-  const stake = Number(finalRow.stakeAmount) || 0;
-  const winnerPayout = Number(finalRow.prizePaid) || 0;
-  applyLeaderboardCounters({
-    clerkId: winnerId,
-    game: "roulette-pvp",
-    betAmount: stake,
-    payout: winnerPayout,
-    isPvpWin: true,
-  }).catch(() => {});
-  applyLeaderboardCounters({
-    clerkId: loserId,
-    game: "roulette-pvp",
-    betAmount: stake,
-    payout: 0,
-  }).catch(() => {});
+  // SKILL leaderboards (wins/losses/win_rate/streaks) move only for a real
+  // human-vs-human match — an AI free-play match must not feed them.
+  if (!finalRow.isAi) {
+    applyLeaderboardCounters({
+      clerkId: winnerId,
+      game: "roulette-pvp",
+      outcome: "win",
+      isPvpWin: true,
+    }).catch(() => {});
+    applyLeaderboardCounters({
+      clerkId: loserId,
+      game: "roulette-pvp",
+      outcome: "loss",
+    }).catch(() => {});
+  }
 
   // Per-game trophies — the same authoritative ±30 on the match winner, which
   // the server derived from the elimination rounds (per-round draws never

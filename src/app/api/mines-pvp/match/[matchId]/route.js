@@ -8,30 +8,39 @@
 //      roll).
 //   2. `p1_turn` / `p2_turn` deadline elapsed → force-pick a random
 //      cell for the current player (AFK nudge), then advance the
-//      turn OR resolve the match (if it was player2's auto-pick).
+//      turn OR resolve the match (if the auto-pick hit a mine).
 //
-// CRITICAL — visibility model (odds turn flow):
-//   • During active play (`ready` / `p1_turn` / `p2_turn`):
+// CRITICAL — visibility model (shared-board rules). The actual scrubbing
+// lives in `src/lib/mines-pvp/matchView.js` (pure + unit-tested), which every
+// read path shares so a client can never receive two divergent descriptions
+// of the same row:
+//   • During active play (`waiting` / `ready` / `p1_turn` / `p2_turn`):
 //     - the `board` jsonb is HIDDEN (replaced with `null`) so the
 //       client can't peek at mine positions mid-match.
 //     - the `picks` jsonb array is FULLY visible to BOTH seats.
-//       Every pick on the array must be a SAFE pick — if any had
-//       been a mine the match would have ended immediately, so
-//       revealing safe picks (cell indexes only, NOT
-//       isMine/autoPicked which would otherwise leak AFK state)
-//       gives both players faithful board progress without
-//       leaking mine positions.
-//     - the proximity `hint` on each pick is PRIVATE: only the
-//       viewer's OWN picks carry their number mid-match, so the
-//       opponent's picks give away no clues (each player builds
-//       their own picture of the board).
+//       Every REVEAL on the array is a safe cell — if any had been a
+//       mine the match would have ended immediately — so revealing the
+//       reveals gives both players the same shared board progress
+//       without leaking mine positions.
+//     - the CLUE (`hint`) on each reveal is PUBLIC: the shared-board
+//       rules give both players the same board, so the server-computed
+//       number on a revealed cell is the SAME information for both
+//       seats. The client never computes a clue itself; it renders the
+//       one the server stamped. (Flag entries carry no clue: a claim is
+//       not a reveal.)
+//     - FLAG claims are public per seat via `p1Flags` / `p2Flags`.
+//       A flag never states whether it was correct — that verdict only
+//       exists in the finished reveal, derived from the board.
 //     - the viewer sees their OWN auto-pick flag (true/false) so
 //       they can render their own AFK state; the OPPONENT's
 //       auto-pick flag is scrubbed to false to avoid leaking
 //       whether the opponent is AFK.
-//   • Once `finished`: full reveal — every pick in the array has
-//     its full metadata exposed (cellIndex, isMine, autoPicked,
-//     pickedAt), plus the full board.
+//   • Once `finished`: full reveal — every reveal in the array has
+//     its real `isMine` verdict exposed, plus the full board and the
+//     `winnerId` / `winReason` pair.
+//
+// The match is NEVER mutated from anything the client sends: this route takes
+// no body and derives every field from the server-side row.
 //
 // Mirrors the auth/error/visibility pattern of
 // `src/app/api/blackjack-pvp/match/[matchId]/route.js`.
@@ -44,159 +53,7 @@ import {
   enrichMatchWithPlayers,
 } from "../../../../../lib/mines-pvp/serverStore";
 import { broadcastMatchUpdate } from "../../../../../lib/mines-pvp/rooms";
-import {
-  GRID_CELLS,
-  MATCH_STATUS,
-} from "../../../../../lib/mines-pvp/constants";
-
-function isTerminalStatus(status) {
-  return status === MATCH_STATUS.FINISHED || status === MATCH_STATUS.CANCELLED;
-}
-
-// Per-seat scrub helper for the legacy single-pick columns. Kept
-// for backwards-compat with any client that still reads
-// `p1Pick` / `p2Pick` etc. directly; new clients should consume the
-// `picks` array (returned by `scrubPicksForViewer`) instead. The
-// legacy columns show the MOST RECENT pick from each seat (mirrored
-// server-side) so the rendered cell matches the latest entry in
-// the per-seat slice of `picks`.
-function scrubPickColumnsForViewer(match, viewerUserId) {
-  const viewerIsPlayer1 = match.player1Id === viewerUserId;
-  const finished = isTerminalStatus(match.status);
-
-  return {
-    p1Pick: match.p1Pick ?? null,
-    p1PickIsMine:
-      finished || viewerIsPlayer1 ? match.p1PickIsMine ?? null : null,
-    p1PickedAt:
-      finished || viewerIsPlayer1 ? match.p1PickedAt ?? null : null,
-    p1AutoPicked:
-      finished || viewerIsPlayer1 ? Boolean(match.p1AutoPicked) : false,
-    p2Pick: match.p2Pick ?? null,
-    p2PickIsMine:
-      finished || !viewerIsPlayer1 ? match.p2PickIsMine ?? null : null,
-    p2PickedAt:
-      finished || !viewerIsPlayer1 ? match.p2PickedAt ?? null : null,
-    p2AutoPicked:
-      finished || !viewerIsPlayer1 ? Boolean(match.p2AutoPicked) : false,
-  };
-}
-
-// Scrub the per-pick `picks` array for the viewer. Mid-game, only
-// safe picks can exist (a mine would have ended the match), so we
-// hardcode `isMine: false` and scrub the OPPONENT's `autoPicked`
-// flag to false so neither side can deduce the other's AFK state.
-function scrubPicksForViewer(picks, viewerUserId, match, finished) {
-  if (!Array.isArray(picks)) return [];
-  const sanitized = [];
-  for (const raw of picks) {
-    if (!raw || typeof raw !== "object") continue;
-    const isViewerPick =
-      typeof raw.userId === "string" && raw.userId === viewerUserId;
-    sanitized.push({
-      userId: raw.userId ?? null,
-      seat: raw.seat ?? null,
-      cell: Number(raw.cell) || 0,
-      // Mid-game scrub: every pick is safe (game would have ended).
-      // Finished: reveal the actual isMine flag (the game-ending
-      // mine is the one whose isMine=true inside this array).
-      isMine:
-        finished || isViewerPick ? Boolean(raw.isMine) : false,
-      // Proximity hint (distance to the nearest mine, 1+ for safe
-      // picks). PRIVATE: only the picker's own picks carry it
-      // mid-match (the opponent's are stripped so they can't scrape
-      // free clues off the shared board); the post-match reveal
-      // shows everything.
-      hint:
-        finished || isViewerPick
-          ? raw.hint != null
-            ? Number(raw.hint)
-            : null
-          : null,
-      pickedAt: typeof raw.pickedAt === "string" ? raw.pickedAt : null,
-      // The viewer's own auto-pick is fine to reveal; the OPPONENT's
-      // is scrubbed to false (AFK should not be visible to a peer).
-      autoPicked:
-        finished || isViewerPick ? Boolean(raw.autoPicked) : false,
-      // Flag discriminator: true when this entry ended the match via
-      // the "call a mine" move. A flag is terminal, so it can only
-      // ever appear in the finished reveal — pass it through so the
-      // client can render flag-specific result copy.
-      flag: Boolean(raw.flag),
-    });
-  }
-  return sanitized;
-}
-
-function normaliseMatchForViewer(match, viewerUserId) {
-  if (!match) return null;
-  const viewerIsPlayer1 = match.player1Id === viewerUserId;
-  const finished = isTerminalStatus(match.status);
-  const picks = scrubPicksForViewer(
-    Array.isArray(match.picks) ? match.picks : [],
-    viewerUserId,
-    match,
-    finished,
-  );
-
-  // Safe-tiles counter — the zugzwang legibility stat. The client
-  // CANNOT derive this mid-match (the opponent's picks have their
-  // `isMine` scrubbed, so a viewer can't count safe reveals they
-  // didn't make), so the server stamps it from the board + raw pick
-  // history: total safe cells (25 − mines) minus every safe pick so
-  // far (mine picks never count — and mid-match there are none yet,
-  // because a mine would have ended the game). As it approaches 0,
-  // only mines are left unrevealed: whoever's turn it is next loses
-  // by logic — the zugzwang endgame.
-  const safeTilesTotal = GRID_CELLS - Number(match.minesCount);
-  const safePicksMade = (Array.isArray(match.picks) ? match.picks : []).filter(
-    (p) => p && !Boolean(p.isMine),
-  ).length;
-
-  return {
-    id: match.id,
-    player1Id: match.player1Id,
-    player2Id: match.player2Id,
-    isAi: Boolean(match.isAi),
-    stakeAmount: Number(match.stakeAmount),
-    minesCount: match.minesCount,
-    safeTilesRemaining: Math.max(0, safeTilesTotal - safePicksMade),
-    status: match.status,
-    firstPlayerId: match.firstPlayerId,
-    currentTurnUserId: match.currentTurnUserId,
-    roundDeadline: match.roundDeadline,
-    viewerIsPlayer1,
-    isViewerTurn: match.currentTurnUserId === viewerUserId,
-    // New odds-turn fields: the chronological pick history is the
-    // authoritative source. Clients render the board from this
-    // array; the legacy single-pick scalars are mirrored for
-    // backwards-compat only.
-    picks,
-    pickCount: picks.length,
-    ...scrubPickColumnsForViewer(match, viewerUserId),
-    // Board: full reveal at finished, hidden mid-match.
-    board: finished ? match.board : null,
-    // Result + payout. Loser sees zero prize/fees (avoids leaking
-    // the winner's exact payout amount). The new odds-turn flow
-    // never produces a DRAW; the field stays on the response for
-    // legacy consumers.
-    result: match.result ?? null,
-    winnerId: match.winnerId ?? null,
-    prizePaid:
-      finished && match.winnerId === viewerUserId
-        ? Number(match.prizePaid) || 0
-        : 0,
-    houseFee:
-      finished && match.winnerId === viewerUserId
-        ? Number(match.houseFee) || 0
-        : 0,
-    startedAt: match.startedAt,
-    endedAt: match.endedAt,
-    createdAt: match.createdAt,
-    // Player summaries (usernames/icons) added by enrichMatchWithPlayers.
-    players: match.players ?? null,
-  };
-}
+import { normaliseMatchForViewer } from "../../../../../lib/mines-pvp/matchView";
 
 export async function GET(req, { params }) {
   const gate = await requireAgeVerifiedUser();
@@ -267,7 +124,9 @@ export async function GET(req, { params }) {
     }
 
     // Always returns 1 row (this is a single-round game) — kept as
-    // an array for API symmetry with the multi-round PvP systems.
+    // an array for API symmetry with the multi-round PvP systems. A row
+    // only exists once the match settled (it carries the board snapshot),
+    // so an active match returns `rounds: []` and nothing can leak.
     const rounds = await fetchMatchRounds(matchId);
 
     return NextResponse.json({
@@ -285,6 +144,7 @@ export async function GET(req, { params }) {
           p2AutoPicked: Boolean(r.p2AutoPicked),
           boardSnapshot: r.boardSnapshot ?? null,
           roundWinner: r.roundWinner,
+          winReason: r.winReason ?? null,
           createdAt: r.createdAt,
         })),
       },

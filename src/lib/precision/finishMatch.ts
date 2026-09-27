@@ -2,9 +2,9 @@
 //
 // Mirror of the Hex Duel `/api/hex-duel/multiplayer/end` route pattern
 // (`src/app/api/hex-duel/multiplayer/end/route.ts`). Specifically:
-//   * Updates `users.balance += payout` via Drizzle ORM `sql` template.
 //   * Increments `gamesWon` on the winner, `currentStreak = 0` and
-//     `gamesLost += 1` on the loser.
+//     `gamesLost += 1` on the loser. STAKES ARE RETIRED — no balance moves
+//     and no payout is credited.
 //   * Calls `applyLeaderboardCounters({ game: "Precision", ... })` so
 //     weekly / monthly leaderboards stay consistent with how every
 //     other PvP game (Uno, Hex Duel, Pool, Chess) contributes.
@@ -90,15 +90,13 @@ export interface ProcessMatchFinishedPayoutResult {
  *   2. Compute `payout = wager × PRECISION_PAYOUT_MULTIPLIER`. Clamp
  *      to a minimum of 0 to stay safe against negative/NaN wagers.
  *   3. Atomic Drizzle transaction:
- *        - SELECT winner row for an accurate post-update balance.
- *        - `UPDATE users SET balance = balance + payout, gamesWon += 1`
- *          on the winner.
+ *        - `UPDATE users SET gamesWon += 1` on the winner.
  *        - `UPDATE users SET currentStreak = 0, gamesLost += 1` on
  *          the loser.
+ *      STAKES ARE RETIRED, so there is no balance move and no payout — the
+ *      result still settles (win/loss counters, Elo, trophies).
  *   4. Fire-and-forget leaderboard counters (no await so a no-op
  *      leaderboard failure can't stall the response).
- *   5. If the payout exceeds `1_000_000` tokens, register a big-win
- *      entry outside the transaction.
  *
  * Returns `{ alreadyProcessed: true }` if the matchId has already
  * been paid out — callers can use this to deduplicate retry traffic
@@ -280,8 +278,7 @@ export async function processMatchFinishedPayout(
   applyLeaderboardCounters({
     clerkId: winnerPlayer.userId,
     game: "Precision",
-    betAmount: resolvedWager,
-    payout,
+    outcome: "win",
     isPvpWin: true,
   }).catch((err) => {
     console.error("[precision] leaderboard (winner) failed:", err);
@@ -289,8 +286,7 @@ export async function processMatchFinishedPayout(
   applyLeaderboardCounters({
     clerkId: loserPlayer.userId,
     game: "Precision",
-    betAmount: resolvedWager,
-    payout: 0,
+    outcome: "loss",
   }).catch((err) => {
     console.error("[precision] leaderboard (loser) failed:", err);
   });

@@ -96,11 +96,15 @@ test("free AI settlement never pays tokens or fees", () => {
   });
 });
 
-test("paid settlement remains separate from free AI settlement", () => {
+test("a paid PvP settlement moves no tokens either", () => {
+  // Stakes are retired — even a legacy row carrying a non-zero stake settles
+  // with no fee, no payout and nothing to refund; only the winner is known.
   const paid = baseMatch({ isAi: false, stakeAmount: "100.00" });
-  const settlement = calculateMatchSettlement(paid, RESULT.PLAYER1);
-  assert.equal(settlement.winnerId, "user_123");
-  assert.equal(settlement.payout, 195);
-  assert.equal(settlement.fee, 5);
+  assert.deepEqual(calculateMatchSettlement(paid, RESULT.PLAYER1), {
+    winnerId: "user_123",
+    fee: 0,
+    payout: 0,
+    refundEach: 0,
+  });
   assert.equal(calcHandValue([card("A"), card("K")]), 21);
 });

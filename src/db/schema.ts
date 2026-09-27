@@ -2912,26 +2912,31 @@ export const blackjackPvpRoundsRelations = relations(blackjackPvpRounds, ({ one 
   }),
 }));
 
-// MINES PvP MATCHES — server-authoritative two-player "Mines Duel".
-// Both players on the same 5×5 board; the HOST picks the mine count
-// at lobby creation. The server randomizes turn order at match
-// creation (when player2 joins), then each player gets a 20s window
-// to pick a single cell. The match resolves after both picks.
+// MINES PvP MATCHES — server-authoritative two-player "Mines Duel",
+// played under the SHARED-BOARD competitive Minesweeper rules. Both
+// players act on the SAME 5×5 board; the HOST picks the mine count at
+// lobby creation. The server randomizes turn order at match creation
+// (when player2 joins), then each player gets a 20s window to either
+// REVEAL a tile or FLAG one they believe is a mine.
 //
 // Match flow:
 //   waiting → ready → p1_turn → p2_turn → finished
 //
-// Resolution rules (per user spec):
-//   P1 mine + P2 mine → P2 loses (P1 mined first)
-//   P1 mine + P2 safe → P1 loses
-//   P1 safe + P2 mine → P2 loses
-//   P1 safe + P2 safe → DRAW (full refund, no house fee)
+// Shared-board rules:
+//   • EVERY safe reveal (and its server-computed clue) is public to both
+//     players — they read the same board, so the clue is not private.
+//   • Revealing a mine loses IMMEDIATELY for the revealer (sudden death);
+//     the opponent wins with `win_reason = 'mine_hit'`.
+//   • Flags are per-player CLAIMS (`p1_flags` / `p2_flags`), never
+//     terminal, and a WRONG claim is not a loss — it just costs a turn.
+//   • A player who correctly flags EVERY mine wins IMMEDIATELY with
+//     `win_reason = 'all_mines_flagged'`.
+//   • There is no draw case; a finished match rejects every further action.
 //
-// Payout:
+// Payout (non-AI matches; stakes are currently retired and normalized to 0):
 //   Winner: own stake back + 90% of loser's stake
 //   Loser:   loses entire stake
 //   House:   10% rake on loser's stake only
-//   Draw:    both refunded, no rake
 //
 // Schema conventions match roulette_pvp_matches / blackjack_pvp_matches:
 //   * clerkIds stored as varchar(255), no FK to `users`
@@ -2997,19 +3002,19 @@ export const minesPvpMatches = pgTable(
     // clerkId of the player currently being asked to pick. Null
     // when status is in {waiting, ready, finished, cancelled}.
     currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
-    // 0-24 row-major cell index the player picked. Null until the
-    // player picks (or gets auto-picked at deadline). In the odds-turn
-    // flow each player can have many picks; these scalars hold the
-    // MOST RECENT pick from each seat (kept for legacy replays /
-    // history views) — the authoritative per-pick history lives on
-    // `picks` (see below).
+    // 0-24 row-major cell index of the seat's most recent REVEAL. Null
+    // until the player reveals (or gets auto-revealed at deadline). Flag
+    // CLAIMS never touch these scalars — they describe reveals only, and
+    // `p{N}_pick_is_mine` is surfaced to the viewer's own seat mid-match,
+    // so mirroring a claim here would hand the claimer its verdict. The
+    // authoritative history lives on `picks` (see below) and the claims on
+    // `p{N}_flags`.
     p1Pick: integer("p1_pick"),
     p2Pick: integer("p2_pick"),
-    // Whether the player's pick landed on a mine. Computed at pick
-    // time and persisted so post-match replays don't have to walk
-    // `board` to render the result. In the odds-turn flow these
-    // scalars mirror the most-recent pick's isMine flag (each player
-    // can have many picks; full history lives on `picks`).
+    // Whether the seat's most recent REVEAL landed on a mine. Computed at
+    // reveal time and persisted so post-match replays don't have to walk
+    // `board` to render the result. Full history lives on `picks`; flag
+    // claims are deliberately excluded (see `p{N}_pick` above).
     p1PickIsMine: boolean("p1_pick_is_mine"),
     p2PickIsMine: boolean("p2_pick_is_mine"),
     // True when the server auto-picked because round_deadline
@@ -3020,10 +3025,19 @@ export const minesPvpMatches = pgTable(
     p1PickedAt: timestamp("p1_picked_at"),
     p2PickedAt: timestamp("p2_picked_at"),
     // ── Odds turn system ────────────────────────────────────────
-    // Chronologically-ordered JSONB array of every pick made in the
-    // match. Each entry shape:
+    // Chronologically-ordered JSONB array of every ACTION in the match —
+    // both reveals and flag claims, since both consume a turn.
+    //
+    // REVEAL entry:
     //   { userId, seat: "player1"|"player2", cell: <0..24>,
-    //     isMine: boolean, autoPicked: boolean, pickedAt: ISO ts }
+    //     isMine: boolean, hint: <server clue | null>, flag: false,
+    //     mercy: boolean, autoPicked: boolean, pickedAt: ISO ts }
+    // CLAIM entry:
+    //   { userId, seat, cell, isMine: null, hint: null, flag: true,
+    //     kind: "flag", mercy: false, autoPicked: boolean, pickedAt }
+    //   (a claim carries NO verdict — it is public to both seats mid-match,
+    //    so the server's answer on it cannot travel with it)
+    //
     // Authoritative state — `picks.length` is the turn counter; the
     // server computes the next picker's seat/turn via the closed-
     // form "odds" formula in src/lib/mines-pvp/constants.js
@@ -3033,6 +3047,27 @@ export const minesPvpMatches = pgTable(
     picks: jsonb("picks")
       .notNull()
       .default(sql`'[]'::jsonb`),
+    // Per-player flag CLAIMS (shared-board rules). Flags are NOT terminal:
+    // each seat owns its own set, the same cell may be flagged by both, a
+    // flag never ends the match on its own, and a wrong flag is not a loss.
+    // Each array holds unique, sorted 0-24 row-major cell indices (the
+    // canonical form — see `normalizeFlags` in src/lib/mines-pvp/
+    // constants.js). The claim is ALSO recorded in `picks` as a `flag: true`
+    // entry (a claim consumes a turn), but the SET itself — the source of
+    // truth for the all-mines-flagged win — lives here, per seat.
+    p1Flags: jsonb("p1_flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    p2Flags: jsonb("p2_flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // WHY the match ended (see WIN_REASON in
+    // src/lib/mines-pvp/constants.js): 'mine_hit' | 'all_mines_flagged'
+    // | 'resign' | 'disconnect'. Null until the match finishes — the
+    // shared-board rules added the second player-driven ending
+    // (`all_mines_flagged`), so `result` alone no longer says how the hand
+    // was decided.
+    winReason: varchar("win_reason", { length: 32 }),
     // Pick-window deadline. 20s per spec. The server's
     // `fetchMatchWithAutoResolve` mirrors blackjack-pvp /
     // roulette-pvp: when this timestamp elapses and the active
@@ -3044,7 +3079,10 @@ export const minesPvpMatches = pgTable(
     roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
-    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
+    // 'player1' | 'player2' | null. There is no DRAW under the shared-board
+    // rules ('draw' only appears on legacy pre-migration rows); `win_reason`
+    // above records how the hand was actually decided.
+    result: varchar("result", { length: 20 }),
     houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
     prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
     isAi: boolean("is_ai").notNull().default(false),
@@ -3093,17 +3131,21 @@ export const minesPvpRounds = pgTable(
     boardSnapshot: jsonb("board_snapshot")
       .notNull()
       .default(sql`'{"size":5,"mines":[]}'::jsonb`),
-    // Odds-turn history: full chronological pick list from this
-    // match, mirrored at resolution time so post-match replay
-    // views can render every tile-pick (every player's every pick)
-    // without re-walking the live match row. Shape of each entry
-    // matches the `mines_pvp_matches.picks` element shape —
-    // see that column for the contract.
+    // Odds-turn history: the full chronological action list from this
+    // match (every reveal AND every flag claim), mirrored at resolution
+    // time so post-match replay views can render every action without
+    // re-walking the live match row. Shape of each entry matches the
+    // `mines_pvp_matches.picks` element shape — see that column for the
+    // contract.
     picks: jsonb("picks")
       .notNull()
       .default(sql`'[]'::jsonb`),
-    // 'player1' | 'player2' | 'draw' | null
+    // 'player1' | 'player2' | null ('draw' only on legacy rows).
     roundWinner: varchar("round_winner", { length: 10 }),
+    // Mirror of the match's `win_reason` captured at resolution time so a
+    // replay can label how the hand ended (mine hit vs all mines flagged
+    // vs resign/disconnect) without joining the live match row.
+    winReason: varchar("win_reason", { length: 32 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({

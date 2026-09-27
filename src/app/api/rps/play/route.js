@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { applyLeaderboardCounters } from "../../../../lib/leaderboardCounters";
 import { sendSystemNotificationEmail } from "../../../../lib/emails/system";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { db } from "../../../../db/client";  import { users, rpsGames } from "../../../../db/schema"; // import rpsGames
@@ -70,12 +69,7 @@ export async function POST(req) {
       payout,
     });
 
-    await applyLeaderboardCounters({
-      clerkId: userId,
-      game: "rps",
-      betAmount,
-      payout,
-    });
+    // AI/free-play results deliberately do NOT touch the leaderboards.
 
     // Fire system notification for large RPS bets (≥ 1000 tokens)
     if (betAmount >= 1000) {

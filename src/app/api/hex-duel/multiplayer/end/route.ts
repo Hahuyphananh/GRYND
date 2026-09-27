@@ -172,8 +172,7 @@ export async function POST(req: Request) {
       applyLeaderboardCounters({
         clerkId,
         game: "Hex Duel",
-        betAmount: result.wager,
-        payout: result.won ? result.payout : 0,
+        outcome: result.won ? "win" : "loss",
         isPvpWin: result.won,
       }).catch(() => {});
     }

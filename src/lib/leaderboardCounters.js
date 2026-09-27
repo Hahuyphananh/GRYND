@@ -1,9 +1,6 @@
 import { getNeonSql } from "../db/neon";
 import { invalidateOnGameSettlement } from "./redis/invalidation";
-import { MAX_LEVEL, expForWager } from "./battlepass";
-import { getActiveXpMultiplierByClerkId } from "./shopItems";
 import { sendLossStreakEmail } from "./emails/behavior";
-import { sendProgressionEmail } from "./emails/progression";
 
 let _sql = null;
 function getSql() {
@@ -17,69 +14,69 @@ function getSql() {
   return _sql;
 }
 
+/**
+ * Record the skill outcome of a settled game on the counters the SKILL
+ * leaderboards read.
+ *
+ * WHY THIS SHAPE
+ *   The leaderboards rank wins, win rate and streaks (never tokens). Those
+ *   counters must move for EVERY settled competitive result, so this helper is
+ *   driven by an explicit `outcome` rather than by a wager: stakes are retired
+ *   (every match is created with stake 0), so a `payout > bet` test can never
+ *   identify a win. Trophies and Elo are applied separately.
+ *
+ * WHAT IT DOES *NOT* DO
+ *   No token- or XP-denominated column is touched — `total_wagered`,
+ *   `total_won`, `weekly_profit`, `biggest_win`, `best_multiplier`, `xp`,
+ *   `level`, `last_settled_xp*` and the daily wagered/won counters are all
+ *   deliberately absent. Progression is trophies; there is no wager XP.
+ *
+ * @param {object} args
+ * @param {string} args.clerkId       the player whose result this is
+ * @param {string} [args.game]        canonical game key (context only)
+ * @param {"win"|"loss"} args.outcome the settled result for THIS player
+ * @param {boolean} [args.isPvpWin]   true only for the winner of a real
+ *                                    human-vs-human match (feeds pvp_wins)
+ */
 export async function applyLeaderboardCounters({
   clerkId,
   game = "casino",
-  betAmount = 0,
-  payout = 0,
+  outcome,
   isPvpWin = false,
 }) {
-  const bet = Math.max(0, Math.floor(Number(betAmount) || 0));
-  const win = Math.max(0, Math.floor(Number(payout) || 0));
-  const multiplier = bet > 0 ? win / bet : 0;
-  const isWin = win > bet;
+  const isWin = outcome === "win";
+  const isLoss = outcome === "loss";
 
-  if (!clerkId || bet <= 0) return;
+  // Only a real settled result moves a counter. AI/bot matches are filtered by
+  // the caller (they must not touch leaderboards), and a missing/invalid
+  // outcome is a no-op rather than a guess.
+  if (!clerkId || (!isWin && !isLoss)) return;
 
-  // Battlepass EXP: 1 XP per 10 tokens wagered (0 for fun-mode bets,
-  // matching the bet > 0 guard above). An active XP Boost (2×/3×, timed
-  // shop/battlepass effect) multiplies the wager XP — looked up here (the
-  // settlement path only has the Clerk id) so every settled wager honors
-  // the boost.
-  const betExp =
-    expForWager(bet) * (await getActiveXpMultiplierByClerkId(clerkId));
-
-  // Fetch user's current level and email BEFORE the update to detect level up
+  // Fetch the player's email + current streak BEFORE the update so the loss
+  // streak email (if any) reflects this result.
   const userBefore = await getSql()`
-    SELECT id, level, email, name, current_streak
+    SELECT id, email, name, current_streak
     FROM users
     WHERE clerk_id = ${clerkId}
     LIMIT 1
   `;
 
-  const previousLevel = userBefore?.[0]?.level ?? 1;
   const userEmail = userBefore?.[0]?.email;
   const userName = userBefore?.[0]?.name;
-  const previousStreak = userBefore?.[0]?.current_streak ?? 0;
 
   const counterRows = await getSql()`
     WITH updated_user AS (
       UPDATE users
-      SET total_wagered = total_wagered + ${bet},
-          weekly_wagered = weekly_wagered + ${bet},
-          total_won = total_won + ${win},
-          weekly_won = weekly_won + ${win},
-          weekly_profit = weekly_profit + ${win - bet},
-          -- Daily responsible-play counters (UTC day; reset by /api/jobs/daily-reset).
-          daily_wagered = daily_wagered + ${bet},
-          daily_won = daily_won + ${win},
-          biggest_win = GREATEST(biggest_win, ${win}),
-          best_multiplier = GREATEST(best_multiplier, ${multiplier}),
-          current_streak = CASE WHEN ${isWin} THEN current_streak + 1 ELSE 0 END,
+      SET current_streak = CASE WHEN ${isWin} THEN current_streak + 1 ELSE 0 END,
           best_streak = GREATEST(best_streak, CASE WHEN ${isWin} THEN current_streak + 1 ELSE best_streak END),
           weekly_wins = weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
           pvp_wins = pvp_wins + CASE WHEN ${isPvpWin} THEN 1 ELSE 0 END,
-          xp = LEAST(2147483647, xp + ${betExp}),
-          level = LEAST(${MAX_LEVEL}, GREATEST(1, FLOOR((SQRT(21025 + 20 * (xp::bigint + ${betExp})) - 135) / 10)::int)),
-          -- Result-screen progression: persist the facts of this settlement
-          -- so PvpResultScreen can show real +XP / rank movement via
-          -- /api/user/stats + /api/leaderboard/my-rank (migration 0151).
-          last_settled_xp = ${betExp},
-          last_settled_xp_at = NOW(),
+          -- Result-screen progression: the wins/losses this settlement moved,
+          -- read by /api/leaderboard/my-rank (migration 0151).
           last_settled_wins_delta = CASE WHEN ${isWin} THEN 1 ELSE 0 END,
           last_settled_losses_delta = CASE WHEN ${isWin} THEN 0 ELSE 1 END
       WHERE clerk_id = ${clerkId}
-      RETURNING id, level, xp, email, name, current_streak, biggest_win
+      RETURNING id, email, name, current_streak
     )
     INSERT INTO user_stats (
       user_id,
@@ -87,21 +84,12 @@ export async function applyLeaderboardCounters({
       wins,
       losses,
       win_rate,
-      total_wagered,
-      total_won,
-      biggest_win,
       current_streak,
       best_streak,
-      level,
-      xp,
-      weekly_wagered,
-      weekly_won,
       weekly_wins,
       weekly_losses,
-      weekly_biggest_win,
-      weekly_best_streak,
       weekly_win_rate,
-      weekly_level_gain,
+      weekly_best_streak,
       weekly_game_streak
     )
     SELECT
@@ -110,21 +98,12 @@ export async function applyLeaderboardCounters({
       CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       CASE WHEN ${isWin} THEN 0 ELSE 1 END,
       CASE WHEN ${isWin} THEN 100 ELSE 0 END,
-      ${bet},
-      ${win},
-      ${win},
       CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       CASE WHEN ${isWin} THEN 1 ELSE 0 END,
-      level,
-      xp,
-      ${bet},
-      ${win},
       CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       CASE WHEN ${isWin} THEN 0 ELSE 1 END,
-      ${win},
-      CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       CASE WHEN ${isWin} THEN 100 ELSE 0 END,
-      0,
+      CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       CASE WHEN ${isWin} THEN 1 ELSE 0 END
     FROM updated_user
     ON CONFLICT (user_id) DO UPDATE SET
@@ -132,52 +111,27 @@ export async function applyLeaderboardCounters({
       wins = user_stats.wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       losses = user_stats.losses + CASE WHEN ${isWin} THEN 0 ELSE 1 END,
       win_rate = ROUND(((user_stats.wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END)::numeric / NULLIF(user_stats.total_bets + 1, 0)) * 100, 2),
-      total_wagered = user_stats.total_wagered + ${bet},
-      total_won = user_stats.total_won + ${win},
-      biggest_win = GREATEST(user_stats.biggest_win, ${win}),
       current_streak = CASE WHEN ${isWin} THEN user_stats.current_streak + 1 ELSE 0 END,
       best_streak = GREATEST(user_stats.best_streak, CASE WHEN ${isWin} THEN user_stats.current_streak + 1 ELSE user_stats.best_streak END),
-      level = EXCLUDED.level,
-      xp = EXCLUDED.xp,
-      weekly_wagered = user_stats.weekly_wagered + ${bet},
-      weekly_won = user_stats.weekly_won + ${win},
       weekly_wins = user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END,
       weekly_losses = user_stats.weekly_losses + CASE WHEN ${isWin} THEN 0 ELSE 1 END,
-      weekly_biggest_win = GREATEST(user_stats.weekly_biggest_win, ${win}),
       weekly_game_streak = CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END,
-      weekly_best_streak = GREATEST(user_stats.weekly_best_streak, CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE 0 END),
+      weekly_best_streak = GREATEST(user_stats.weekly_best_streak, CASE WHEN ${isWin} THEN user_stats.weekly_game_streak + 1 ELSE user_stats.weekly_best_streak END),
       weekly_win_rate = ROUND(((user_stats.weekly_wins + CASE WHEN ${isWin} THEN 1 ELSE 0 END)::numeric / NULLIF(user_stats.weekly_wins + user_stats.weekly_losses + 1, 0)) * 100, 2),
-      weekly_level_gain = GREATEST(0, EXCLUDED.level - user_stats.level + user_stats.weekly_level_gain),
       updated_at = NOW()
-    RETURNING user_id AS id, level, xp
+    RETURNING user_id AS id, current_streak
   `;
 
-  // Battlepass rewards are NOT auto-granted on settlement — the player
-  // claims them on the battlepass page once they reach the level.
+  const currentStreak = counterRows?.[0]?.current_streak ?? (isWin ? 1 : 0);
 
-  const userRow = counterRows?.[0];
-  const newLevel = userRow?.level ?? previousLevel;
-  const currentStreak = userRow?.current_streak ?? (isWin ? 1 : -1);
-
-  // Send emails (fire-and-forget, don't block settlement)
-  if (userEmail) {
-    // Level up email
-    if (newLevel > previousLevel) {
-      try {
-        await sendProgressionEmail({ clerkId, email: userEmail, name: userName }, newLevel);
-      } catch (err) {
-        console.error("[applyLeaderboardCounters] Level up email failed:", err);
-      }
-    }
-
-    // Loss streak email (3+ losses in a row)
-    // current_streak: positive for wins, 0 after first loss, -1 after second, -2 after third, etc.
-    if (!isWin && currentStreak <= -3) {
-      try {
-        await sendLossStreakEmail({ clerkId, email: userEmail, name: userName });
-      } catch (err) {
-        console.error("[applyLeaderboardCounters] Loss streak email failed:", err);
-      }
+  // Loss streak email (3+ losses in a row) — fire-and-forget, never blocks
+  // settlement. `current_streak` counts consecutive WINS, so a fresh loss
+  // resets it to 0; the email only concerns itself with an active streak.
+  if (userEmail && isLoss && Number(currentStreak) <= -3) {
+    try {
+      await sendLossStreakEmail({ clerkId, email: userEmail, name: userName });
+    } catch (err) {
+      console.error("[applyLeaderboardCounters] Loss streak email failed:", err);
     }
   }
 

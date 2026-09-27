@@ -125,16 +125,13 @@ async function forfeitPlayer(
     applyLeaderboardCounters({
       clerkId: winnerId,
       game: "odds",
-      betAmount: wager,
-      payout,
+      outcome: "win",
       isPvpWin: true,
     }).catch(() => {});
     applyLeaderboardCounters({
       clerkId: forfeiterId,
       game: "odds",
-      betAmount: wager,
-      payout: 0,
-      isPvpWin: false,
+      outcome: "loss",
     }).catch(() => {});
 
     // Per-game Elo — inactivity forfeit: the opponent wins, the idle player

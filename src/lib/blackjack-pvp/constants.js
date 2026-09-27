@@ -123,24 +123,14 @@ export function isFreeAiMatch(match) {
   return Boolean(match?.isAi);
 }
 
-// Pure settlement contract used by the server store and tests. AI
-// matches remain free even if a legacy row contains a non-zero stake.
+// Pure settlement contract used by the server store and tests. STAKES ARE
+// RETIRED (src/lib/games/stakes.js): no match moves tokens, so there is no
+// pot, no rake, no payout and nothing to refund — only the winner is
+// identified. Trophies and Elo are applied by the settlement path.
 export function calculateMatchSettlement(match, result) {
   const winnerId =
     result === RESULT.PLAYER1 ? match?.player1Id : match?.player2Id;
-  if (isFreeAiMatch(match)) {
-    return { winnerId, fee: 0, payout: 0, refundEach: 0 };
-  }
-  const totalPot = Number(match?.stakeAmount || 0) * 2;
-  const fee = Number((totalPot * HOUSE_FEE_PCT).toFixed(2));
-  return {
-    winnerId,
-    fee,
-    payout: Number((totalPot - fee).toFixed(2)),
-    refundEach: Number(
-      (Number(match?.stakeAmount || 0) * (1 - OVERTIME_DRAW_FEE_PCT)).toFixed(2),
-    ),
-  };
+  return { winnerId, fee: 0, payout: 0, refundEach: 0 };
 }
 
 // ── Per-seat round state ──────────────────────────────────────────────

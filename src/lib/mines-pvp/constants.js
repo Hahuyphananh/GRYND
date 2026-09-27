@@ -5,8 +5,8 @@
 // `src/lib/blackjack-pvp/constants.js` so the lobby + match flow
 // shares the same shape (stake presets / round timer / status enum
 // / advisory-lock namespace / RESULT enum) while the game logic is
-// mines-specific (5×5 board gen, mine-hit detection, 2-pick
-// outcome table, 90/10 payout split).
+// mines-specific (5×5 board gen, mine-hit / all-mines-flagged
+// endings, 90/10 payout split).
 //
 // The board-gen helper is intentionally kept INDEPENDENT from the
 // solo-mines `generateBoard` in `src/app/api/mines/start/route.js`
@@ -16,17 +16,21 @@
 // `board` jsonb column (scrubbed from /status responses until
 // status='finished').
 //
-// Resolution rules (per user spec):
-//   P1 mine + P2 mine → P2 loses (P1 mined first)
-//   P1 mine + P2 safe → P1 loses
-//   P1 safe + P2 mine → P2 loses
-//   P1 safe + P2 safe → DRAW (full refund, no house fee)
+// Shared-board rules (ONE board, alternating server-authoritative turns):
+//   • Both players reveal on the SAME board; every safe reveal and its
+//     clue are PUBLIC to both seats.
+//   • Revealing a mine loses IMMEDIATELY for the revealer (opponent wins,
+//     winReason='mine_hit').
+//   • Flags are per-player CLAIMS, never terminal — a wrong flag is NOT a
+//     loss, it just costs a turn.
+//   • Correctly flagging EVERY mine wins IMMEDIATELY
+//     (winReason='all_mines_flagged').
+//   • There is NO draw; a finished match rejects every further action.
 //
-// Payout:
+// Payout (stakes currently retired / normalized to 0):
 //   Winner: own stake back + 90% of loser's stake
 //   Loser:   loses entire stake
 //   House:   10% rake on loser's stake only
-//   Draw:    both refunded, no rake
 
 import { coerceAiDifficulty } from "../aiDifficulty";
 
@@ -155,11 +159,13 @@ export const WINNER_RATIO = 0.90; // 90% of the loser's stake
 export const HOUSE_RATIO = 0.10; // 10% of the loser's stake
 
 // ── Status state machine ──────────────────────────────────────────────
-// Six states. The host creates a match (waiting → joins from
-// lobby), player2 joins (ready → 3s banner → p1_turn), player1
-// picks (→ p2_turn), player2 picks (→ finished). `cancelled` is
-// reachable from any non-terminal state when a player disconnects
-// past the grace period (or the host leaves before player2 joins).
+// Six states. The host creates a match (waiting → joins from lobby),
+// player2 joins (ready → 3s banner → p1_turn), then the players alternate
+// server-authoritative turns (p1_turn ↔ p2_turn) until the match ends — a
+// reveal hits a mine, a player flags every mine, or someone
+// resigns/disconnects (→ finished). `cancelled` is reachable from any
+// non-terminal state when a player disconnects past the grace period (or
+// the host leaves before player2 joins).
 export const MATCH_STATUS = Object.freeze({
   WAITING: "waiting",
   READY: "ready",
@@ -219,7 +225,8 @@ export const MINES_PVP_LOCK_NAMESPACE = 0x4d505650 & 0x7fffffff;
 // ── Result string constants ───────────────────────────────────────────
 // 'player1' | 'player2' | 'draw' | null. Stored in
 // `mines_pvp_matches.result` and `mines_pvp_rounds.round_winner`.
-// Mirrors blackjack-pvp / roulette-pvp convention.
+// Mirrors blackjack-pvp / roulette-pvp convention; DRAW is legacy-only
+// under the shared-board rules (there is no draw case).
 export const RESULT = Object.freeze({
   PLAYER1: "player1",
   PLAYER2: "player2",
@@ -233,6 +240,22 @@ export const RESULT = Object.freeze({
 export const PICK_KIND = Object.freeze({
   MINE: "mine",
   SAFE: "safe",
+});
+
+// ── Match-end reason (`winReason`) ────────────────────────────────────
+// WHY a finished match ended. Stored on `mines_pvp_matches.win_reason`
+// and mirrored onto `mines_pvp_rounds.win_reason` at resolution time so
+// replays can label the ending without re-deriving it. The shared-board
+// rules have two player-driven endings plus two infrastructure endings:
+//   MINE_HIT          — a picker revealed a mine → that player lost
+//   ALL_MINES_FLAGGED — a player flagged EVERY mine → that player won
+//   RESIGN            — a player conceded
+//   DISCONNECT        — a player dropped past the grace period
+export const WIN_REASON = Object.freeze({
+  MINE_HIT: "mine_hit",
+  ALL_MINES_FLAGGED: "all_mines_flagged",
+  RESIGN: "resign",
+  DISCONNECT: "disconnect",
 });
 
 // ── Board generator ───────────────────────────────────────────────────
@@ -301,12 +324,10 @@ export function generateBoard(minesCount) {
 //      back to the board that deduced furthest, because matchmaking
 //      must never block on board quality.
 //
-// Honest caveat (documented for reviewers): distance hints are private
-// per viewer in this game, so "solvable" here means solvable from the
-// COLLECTIVE information both players reveal — the strongest information
-// any real player could ever hold. That is a necessary condition for
-// guess-free play (if the omniscient-collective solver is stuck, real
-// players certainly are). Combined with a safe center + first-pick
+// Honest caveat (documented for reviewers): distance hints are PUBLIC to
+// both players in this game, so "solvable" here means solvable from the
+// SAME information both players share — exactly what a real player can
+// hold. If the solver is stuck on that information, real players are too. Combined with a safe center + first-pick
 // mercy this is the strongest achievable no-guess guarantee on a 5×5
 // with distance hints; the measured acceptance rate is ~96% of 3-mine
 // lobbies and ~73% of 4-mine lobbies at the default 100 attempts.
@@ -556,10 +577,10 @@ export function isMine(board, cellIndex) {
 // The skill mechanic: a safe pick reveals ONE number — how many tiles
 // away the NEAREST mine is (Chebyshev tile distance: 1 = touching a
 // mine). Computed server-side from the board, since the client can't
-// see mine positions mid-match. The number is PRIVATE: it is only
-// visible on the tiles the viewer picked themselves (the server strips
-// the opponent's hints before responding), so each player builds their
-// own picture of the board and the opponent's picks give away nothing.
+// see mine positions mid-match. Under the shared-board rules the number
+// is PUBLIC: both players act on the same board, so every safe reveal's
+// clue is visible to both of them (matchView never strips opponent
+// hints).
 
 /**
  * Chebyshev (king-move) tile distance from `cellIndex` to the nearest
@@ -588,6 +609,107 @@ export function nearestMineDistance(board, cellIndex) {
   return Number.isFinite(best) ? best : null;
 }
 
+// ── Player flags (shared-board "claims") ───────────────────────────────
+// Under the shared-board rules a flag is a per-player CLAIM, not a pick:
+// each seat owns its own flag set (the same cell may be flagged by both),
+// a flag never ends the match on its own, and a wrong flag is NOT a loss.
+// Flags therefore live on their own columns
+// (`mines_pvp_matches.p1_flags` / `p2_flags`) and never enter the `picks`
+// turn history. The helpers below are the single source of truth for how
+// a flag set is normalised and how the "all mines flagged" win is
+// decided — the server store will call them once the flag flow lands.
+
+// Sanitise a flag set to unique, sorted, in-range integer cell indices so
+// the stored JSONB is canonical: two orderings of the same
+// claims compare equal, and tampered input (strings, floats, out-of-range
+// or null entries) is dropped rather than persisted.
+export function normalizeFlags(flags) {
+  if (!Array.isArray(flags)) return [];
+  const seen = new Set();
+  for (const raw of flags) {
+    // Only numbers and numeric strings are acceptable claims. Anything
+    // else (null, undefined, booleans, arrays/objects) is dropped —
+    // notably `null`, which `Number()` would otherwise coerce to cell 0.
+    if (typeof raw !== "number" && typeof raw !== "string") continue;
+    const idx = Number(raw);
+    if (Number.isInteger(idx) && idx >= 0 && idx < GRID_CELLS) seen.add(idx);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+// How many of `flags` really are mines on `board`. Board-derived and
+// pure, so it is only ever computed server-side (the client never has the
+// hidden layout mid-match).
+export function correctFlagCount(flags, board) {
+  if (!board || !Array.isArray(board.mines)) return 0;
+  const mines = new Set(board.mines);
+  return normalizeFlags(flags).filter((c) => mines.has(c)).length;
+}
+
+// Does `flags` cover EVERY mine on `board`? This is the win condition for
+// the shared-board rule "a player who correctly flags ALL mines wins
+// immediately". Extra (wrong) flags do not block the win — the rule only
+// requires every mine to be claimed, and a wrong flag is not a loss.
+export function hasFlaggedAllMines(flags, board) {
+  if (!board || !Array.isArray(board.mines) || board.mines.length === 0) {
+    return false;
+  }
+  const flagged = new Set(normalizeFlags(flags));
+  return board.mines.every((m) => flagged.has(m));
+}
+
+// Read a seat's flag claims off a match row, normalised. `p1Flags` /
+// `p2Flags` are the persisted per-player sets (jsonb arrays on
+// `mines_pvp_matches`); each seat owns its own field, so the same cell can
+// be flagged by both without either clobbering the other. This is the
+// canonical read used by match serialisation, so a client never sees a
+// null / raw-legacy shape.
+export function flagsForSeat(match, seat) {
+  const field = seat === "player2" ? "p2Flags" : "p1Flags";
+  return normalizeFlags(match?.[field]);
+}
+
+// Is this `picks` entry a FLAG claim rather than a reveal? Flags share the
+// chronological `picks` array so they consume a turn and render in history,
+// but they reveal nothing about the hidden board — every board-derived
+// consumer (duplicate-reveal checks, safe-tile counters, the client's
+// revealed-cell set) must skip them.
+//
+// Both discriminators are honoured: `flag: true` is the original marker
+// (still written by the store) and `kind: "flag"` is the explicit typed
+// marker. Reading both keeps legacy rows working.
+export function isFlagEntry(entry) {
+  return Boolean(entry && (entry.flag === true || entry.kind === "flag"));
+}
+
+// Every cell REVEALED so far, excluding flag claims. Backs the
+// "cell has not already been revealed" validation on both `pickTile` and
+// `flagTile`, the AFK auto-pick's exclusion set, and the client's revealed
+// set — a cell another player merely FLAGGED is still revealable.
+// Returns unique, sorted, in-range cell indices.
+export function revealedCells(match) {
+  const picks = Array.isArray(match?.picks) ? match.picks : [];
+  const seen = new Set();
+  for (const entry of picks) {
+    if (isFlagEntry(entry)) continue;
+    const idx = Number(entry?.cell);
+    if (Number.isInteger(idx) && idx >= 0 && idx < GRID_CELLS) seen.add(idx);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+// Add `cellIndex` to a seat's OWN flag set, returning the partial row patch
+// (only the touched column) rather than a merged whole-match object — the two
+// seats therefore can never clobber each other's claims, and the caller can
+// spread the result straight into a Drizzle `.set()`. The result is
+// canonicalised (`normalizeFlags`), so the stored JSONB is always unique,
+// sorted and in range.
+export function withFlagForSeat(match, seat, cellIndex) {
+  const field = seat === "player2" ? "p2Flags" : "p1Flags";
+  const next = normalizeFlags([...flagsForSeat(match, seat), cellIndex]);
+  return { [field]: next };
+}
+
 // ── Outcome resolver ──────────────────────────────────────────────────
 // Given the player who just hit a mine (the loser), decide the match
 // outcome. The odds-turn flow has NO draw case — the match ends the
@@ -607,14 +729,29 @@ export function decideOutcome({ loserId, player1Id, player2Id }) {
   );
 }
 
+// Winner-side counterpart of `decideOutcome`. The shared-board rules have two
+// player-driven endings — a mine hit (the HITTER loses) and an all-mines-flag
+// win (the FLAGGER wins) — so resolving from an explicit `winnerId` makes it
+// impossible for a future caller to pass the wrong side and silently reverse
+// the result (which is exactly the class of bug the loser-shaped signature
+// invited). Throws unless the winner is one of the two seats.
+export function resultForWinner({ winnerId, player1Id, player2Id }) {
+  if (winnerId === player1Id) return RESULT.PLAYER1;
+  if (winnerId === player2Id) return RESULT.PLAYER2;
+  throw new RangeError(
+    `resultForWinner: winnerId must equal player1Id or player2Id, got ${winnerId}`,
+  );
+}
+
 // ── Payout calculator ─────────────────────────────────────────────────
 // Returns the per-side settlement numbers for a resolved match:
 //
 //   { stake, winnerNet, loserNet, houseFee, prizePaid }
 //
-// Rules (per user spec):
-//   DRAW:       both refunded. winnerNet = loserNet = null,
-//               houseFee = 0, prizePaid = 0.
+// Rules:
+//   DRAW:       legacy only — the shared-board flow never produces a draw,
+//               but the refund path is kept for old rows. Both refunded:
+//               winnerNet = loserNet = null, houseFee = 0, prizePaid = 0.
 //   PLAYER1:    player1 wins. player1 gets (stake + 0.9 * stake) =
 //               1.9x stake back; player2 loses stake. House rake
 //               = 0.1 * stake. prizePaid = 1.9 * stake.
@@ -664,10 +801,9 @@ export function computePayout({ stakeAmount, result }) {
 // auto-picks a random cell. The cell CAN be a mine — that's the
 // punishment for going AFK in the middle of a turn. The
 // `excludePicks` parameter is an array of cell indices that
-// either side has already locked in (so the auto-pick never
-// re-uses the opponent's cell, which would be a no-op visual
-// pick and trigger the resolution as "both picked at the same
-// cell").
+// either side has already REVEALED (so the auto-pick never re-uses
+// a revealed cell, which the store would reject as an invalid
+// duplicate pick).
 //
 // Returns a 0..GRID_CELLS-1 cell index, or throws if every cell
 // is already picked (which shouldn't happen — both players only
@@ -737,16 +873,6 @@ export function isFreeAiMatch(match) {
   return Boolean(match?.isAi);
 }
 
-// Pure settlement contract used by the server store and tests. AI
-// matches remain free even if a legacy row contains a non-zero stake.
-export function calculateAiSettlement(match) {
-  if (isFreeAiMatch(match)) {
-    return { winnerId: match?.player1Id, fee: 0, payout: 0 };
-  }
-  // Paid matches use the normal computePayout path.
-  return null;
-}
-
 // ── AI pick pacing ──────────────────────────────────────────────────────
 // Minimum pause between the bot's two CONSECUTIVE picks (the odds
 // turn pattern gives the AI two tiles in a row, e.g. turns 2-3).
@@ -796,8 +922,8 @@ export function aiPickDelayElapsed(match, now = Date.now()) {
 //      mine-free, so a random non-center pick slightly increases
 //      the chance the bot hits a mine — which is acceptable for a
 //      free AI match that doesn't affect token balances).
-//   3. Optionally attempt a FLAG when the bot can deduce a mine
-//      (currently deferred to keep the implementation simple).
+//   3. The bot never flags — AI play is reveal-only by design; flags are a
+//      human per-player CLAIM and the bot has no claim strategy.
 // Returns `{ cellIndex }` with a valid unpicked cell.
 export function chooseAiCell(match) {
   const picks = Array.isArray(match?.picks) ? match.picks : [];

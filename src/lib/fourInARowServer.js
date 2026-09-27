@@ -111,11 +111,12 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
     // Stakes are retired: no pot, no rake and no payout to move.
     const payout = 0;
 
+    // SKILL leaderboards only (wins/losses/win_rate/streaks) — outcome-driven
+    // and token/XP-free.
     await applyLeaderboardCounters({
       clerkId: winnerClerkId,
       game: "four-in-a-row",
-      betAmount: bet,
-      payout,
+      outcome: "win",
       isPvpWin: true,
     });
 
@@ -124,14 +125,12 @@ export async function settleFourInARowGame(gameId, winnerClerkId, result) {
         ? locked.guestClerkId
         : locked.hostClerkId;
 
-    // Also record the loser's loss + stake so losses / win_rate / wagered
-    // stay in sync with the winner's win (matches chess / precision).
+    // Record the loser too so win_rate / streaks stay in sync with the win.
     if (loserClerkId) {
       await applyLeaderboardCounters({
         clerkId: loserClerkId,
         game: "four-in-a-row",
-        betAmount: bet,
-        payout: 0,
+        outcome: "loss",
       });
     }
 
