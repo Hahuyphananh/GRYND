@@ -271,9 +271,10 @@ test("every bot whose turn is gated by the server has a client ask that clears t
     `keno probes [${offsets}] must span the bot's ${minReaction}–${ceiling}ms reaction band`,
   );
 
-  // Mines PvP — the server paces the bot (idempotent: a refused ask is safe to
-  // repeat). Client and server must share the one exported constant, otherwise
-  // the page retriggers before the gate opens and the bot's second tile stalls.
+  // Mines PvP — turns strictly alternate, so the server gates the bot's turn
+  // on the shared turn formula (an ask that arrives out of turn is answered
+  // idempotently rather than failing). The page still uses the shared reveal
+  // rhythm constant for its own board hold.
   const minesConstants = read("src/lib/mines-pvp/constants.js");
   const minesStore = read("src/lib/mines-pvp/serverStore.js");
   const minesPage = read("src/app/casino/mines-pvp/[matchId]/PageClient.tsx");
@@ -281,15 +282,15 @@ test("every bot whose turn is gated by the server has a client ask that clears t
   assert.ok(
     minesPage.includes("AI_PICK_DELAY_MS,") &&
       /setTimeout\(resolve, AI_PICK_DELAY_MS\)/.test(minesPage),
-    "the page must pace its retrigger with the shared constant",
+    "the page must pace its own reveal rhythm with the shared constant",
   );
   assert.ok(
-    minesStore.includes("if (!aiPickDelayElapsed(match))"),
-    "the server holds a paced ask off rather than failing it",
+    minesStore.includes("expectedPicker !== match.player2Id"),
+    "the server only plays the bot when the turn formula says it is up",
   );
   assert.ok(
     minesStore.includes("alreadyPlayed: true"),
-    "a paced-hold answer stays success-shaped so the client can just re-ask",
+    "an out-of-turn ask stays success-shaped so the client can just re-ask",
   );
 
   // Lane Rush Duel — the bot is paced server-side, so ONE ask per state is not

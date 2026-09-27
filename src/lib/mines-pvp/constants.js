@@ -32,52 +32,43 @@
 //   Loser:   loses entire stake
 //   House:   10% rake on loser's stake only
 
-import { coerceAiDifficulty } from "../aiDifficulty";
+import { chooseAiOption, coerceAiDifficulty } from "../aiDifficulty";
 
 // ── Board geometry ────────────────────────────────────────────────────
-// 5×5 grid, row-major indexing (cell 0 = top-left, cell 24 =
-// bottom-right). Matches the solo-mines page's
-// `Array(GRID_SIZE ** 2)` convention so the existing tileset
-// styling/animation can be reused in the PvP client without any
-// re-indexing of `cellType[cellIndex]`.
-export const GRID_SIZE = 5;
-export const GRID_CELLS = GRID_SIZE * GRID_SIZE; // 25
+// 10×10 grid, row-major indexing (cell 0 = top-left, cell 99 =
+// bottom-right). Mirrors classic Minesweeper: a wide field of small
+// tiles rather than a handful of large ones.
+export const GRID_SIZE = 10;
+export const GRID_CELLS = GRID_SIZE * GRID_SIZE; // 100
 export const MIN_MINES = 1;
-export const MAX_MINES = GRID_CELLS - 1; // 24 — never allow 25 (instant loss)
+export const MAX_MINES = GRID_CELLS - 1; // 99 — a board can never be all mines
 
-// ── Odds turn-pattern (minutesPvP "rounds continue until mine" flow) ──
-// Per user spec the turn order after the server-randomised `firstPlayer`
-// is taken into account is:
+// Every match is played at the SAME mine density: 1 mine per 10 tiles.
+// On the 10×10 board that is exactly 10 mines, and the whole flow (lobby,
+// validation, board generation) is pinned to this single value — there is
+// no host-picked mine count any more.
+export const MINES_PER_MATCH = 10;
+
+// ── Turn order (strict alternation) ───────────────────────────────────
+// Each turn a player makes EXACTLY ONE action — reveal a tile OR place a
+// flag — and then the turn passes to the opponent. There are no double
+// turns and no way to chain a reveal and a flag in the same turn.
 //
-//   turn 1: firstPlayer      (FP leads)
+//   turn 1: firstPlayer
 //   turn 2: secondPlayer
-//   turn 3: secondPlayer     (SP leads this pair)
-//   turn 4: firstPlayer
-//   turn 5: firstPlayer      (FP leads again — the pair-leader pattern flips)
-//   turn 6: secondPlayer
-//   turn 7: secondPlayer
-//   turn 8: firstPlayer
+//   turn 3: firstPlayer
+//   turn 4: secondPlayer
 //   ...
 //
-// Both players pick in alternation but in pairs of two — the LEAD
-// player of each pair swaps every pair, so the pattern repeats
-// every four turns.
-//
-// Closed form: for turn N (1-indexed),
-//   N % 4 == 1 or N % 4 == 0  →  firstPlayer
-//   N % 4 == 2 or N % 4 == 3  →  secondPlayer
-//
-// Encoded below as `seatForPickNumber` so the server store and the
-// tests can both call it without re-deriving the rule. The pure
-// return shape is the SEAT LABEL ("player1" | "player2"), not the
-// clerkId — the call site maps seat → clerkId via the match row.
+// Closed form: odd turns belong to the opener, even turns to the other
+// seat. Encoded below as `seatForPickNumber` so the server store and the
+// tests both call it without re-deriving the rule. The return shape is the
+// SEAT LABEL ("player1" | "player2"); the call site maps seat → clerkId.
 export function seatForPickNumber(pickNumber, firstPlayerSeat) {
-  // Reject non-number inputs up front (`"1"`, `null`, `1.5`, `-1`,
-  // `0` etc. all return null). Without the explicit `typeof` guard,
-  // `Number("1")` coerces to the valid number 1 and the formula
-  // would happily accept a string lookalike. `null` is a special
-  // case: `Number(null) === 0` so the early `n < 1` rule does catch
-  // it, but we keep the typeof guard for clarity.
+  // Reject non-number inputs up front (`"1"`, `null`, `1.5`, `-1`, `0`
+  // etc. all return null). Without the explicit `typeof` guard, `Number("1")`
+  // coerces to the valid number 1 and the formula would accept a string
+  // lookalike.
   if (
     typeof pickNumber !== "number" ||
     !Number.isInteger(pickNumber) ||
@@ -85,9 +76,7 @@ export function seatForPickNumber(pickNumber, firstPlayerSeat) {
   ) {
     return null;
   }
-  const mod = ((pickNumber % 4) + 4) % 4; // safe for off-by-one / negative
-  // mod == 1 (first turn) or mod == 0 (4th turn) → firstPlayer
-  if (mod === 1 || mod === 0) return firstPlayerSeat;
+  if (pickNumber % 2 === 1) return firstPlayerSeat;
   return firstPlayerSeat === "player1" ? "player2" : "player1";
 }
 
@@ -295,57 +284,15 @@ export function generateBoard(minesCount) {
   };
 }
 
-// ── No-guess board verification ────────────────────────────────────────
-// The "no-guess" skill feature. Three parts:
-//
-//   1. FIRST-PICK MERCY (`relocateMine`): the very first pick of a
-//      match is always safe. Before any cell is revealed there is zero
-//      information, so the opening is definitionally a guess — mercy
-//      makes it a safe guess (the same convention real guess-free
-//      minesweeper uses). The server store calls this at pick time and
-//      persists the relocated board.
-//   2. SAFE CENTER (`ejectMinesFromCenter`): every generated board keeps
-//      the 3×3 center block mine-free, so the natural center opening
-//      always yields a rich hint (distance 2 → 9 tiles of info) instead
-//      of the near-useless hint-1 "one of my neighbours is a mine" case
-//      that makes distance-hint deduction stall immediately.
-//   3. SOLVABILITY CHECK (`simulateSolvability` + `generateSolvableBoard`):
-//      a solver plays the board using only the distance hints a player
-//      would actually see and, at every step, asks "is there a provably
-//      safe cell?". A cell is provably safe iff it sits strictly inside
-//      some revealed cell's safety radius (Chebyshev distance < hint —
-//      a hint of `d` proves no mine lies within `d-1` tiles). If the
-//      solver is ever stuck while safe cells remain, that state would
-//      force a coin-flip guess, so the board is rejected.
-//      `generateSolvableBoard` rolls up to `attempts` boards (each
-//      center-block-safe) and returns the first whose CENTER opening is
-//      fully guess-free — verified end-to-end down to the zugzwang
-//      endgame where only mines remain. If none qualifies, it falls
-//      back to the board that deduced furthest, because matchmaking
-//      must never block on board quality.
-//
-// Honest caveat (documented for reviewers): distance hints are PUBLIC to
-// both players in this game, so "solvable" here means solvable from the
-// SAME information both players share — exactly what a real player can
-// hold. If the solver is stuck on that information, real players are too. Combined with a safe center + first-pick
-// mercy this is the strongest achievable no-guess guarantee on a 5×5
-// with distance hints; the measured acceptance rate is ~96% of 3-mine
-// lobbies and ~73% of 4-mine lobbies at the default 100 attempts.
-
-// Openings used for reporting / tests: the center (the natural first
-// pick, guaranteed safe by generation) plus the four corners.
-export const SENSIBLE_FIRST_PICKS = [12, 0, 4, 20, 24];
-
-// The opening the generator guarantees: the center cell (row 2, col 2).
-export const CENTER_FIRST_PICK = 12;
-
-// The 3×3 block around the center that generation keeps mine-free.
-export const CENTER_BLOCK = Object.freeze([6, 7, 8, 11, 12, 13, 16, 17, 18]);
-export const CENTER_BLOCK_SET = new Set(CENTER_BLOCK);
+// ── First-pick mercy ───────────────────────────────────────────────────
+// The opening reveal is definitionally a guess (zero information), so the
+// server makes the very first reveal of a match always safe: if it lands
+// on a mine, the mine is relocated to a random safe cell (see
+// `relocateMine`). There is no centre-block / solvability guarantee any
+// more — this is a wide 10×10 field where the distance clues do the work.
 
 // Chebyshev (king-move) tile distance between two cell indices. Returns
-// null for unknown / out-of-range inputs (defensive — the solver never
-// passes bad indices, but a future caller might).
+// null for unknown / out-of-range inputs.
 export function chebyshevDistance(a, b) {
   const ra = cellIndexToRowCol(a);
   const rb = cellIndexToRowCol(b);
@@ -374,187 +321,6 @@ export function relocateMine(board, cellIndex) {
     size: board.size ?? GRID_SIZE,
     mines: mines.sort((a, b) => a - b),
   };
-}
-
-// The solver: plays `board` from `firstPick` using only the distance
-// hints that reveal itself, and reports whether it ever gets stuck
-// (forced to guess) while safe cells remain.
-//
-// Returns `{ guessFree, revealedCount, safeRemaining }`:
-//   guessFree    — true if the solver always had a provably-safe pick
-//                  until every safe cell was found. The game then ends
-//                  in the zugzwang endgame (only mines remain, so the
-//                  player whose turn it is must pick one) — that is the
-//                  skill part, not a guess.
-//   revealedCount — how many cells the solver revealed before finishing
-//                  or getting stuck (info-leak metric for tie-breaking
-//                  between two boards that both get stuck).
-//   safeRemaining — how many safe cells were still unrevealed when the
-//                  solver got stuck (0 when guessFree).
-//
-// Deterministic for a given (board, firstPick): candidate ties are
-// broken by lowest cell index, and the reveal order prefers the cell
-// deepest inside a revealed safety radius (richest new information).
-export function simulateSolvability(
-  board,
-  firstPick,
-  { maxIterations = GRID_CELLS * 4 } = {},
-) {
-  if (!board || !Array.isArray(board.mines)) {
-    return { guessFree: false, revealedCount: 0, safeRemaining: 0 };
-  }
-  const idx = Number(firstPick);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
-    return { guessFree: false, revealedCount: 0, safeRemaining: 0 };
-  }
-
-  const mineSet = new Set(board.mines);
-  const safeSet = new Set();
-  for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (!mineSet.has(i)) safeSet.add(i);
-  }
-
-  const revealed = new Map(); // cell index -> distance hint
-  const picked = new Set();
-
-  const reveal = (cell) => {
-    picked.add(cell);
-    revealed.set(cell, nearestMineDistance(board, cell) ?? GRID_SIZE);
-  };
-
-  reveal(idx);
-
-  const countSafeRemaining = () => {
-    let n = 0;
-    for (const c of safeSet) if (!picked.has(c)) n += 1;
-    return n;
-  };
-
-  for (let iter = 0; iter < maxIterations; iter += 1) {
-    const safeRemaining = countSafeRemaining();
-    if (safeRemaining === 0) {
-      // Every safe cell found — only mines are left. Zugzwang endgame,
-      // not a guess.
-      return { guessFree: true, revealedCount: picked.size, safeRemaining: 0 };
-    }
-
-    // Provably safe = strictly inside some revealed cell's safety radius
-    // (Chebyshev distance < hint). A mine can never sit inside a safety
-    // radius (that would contradict the hint), so these are guaranteed
-    // safe picks.
-    const provablySafe = new Set();
-    for (const [c, d] of revealed) {
-      if (d < 1) continue;
-      const rc = cellIndexToRowCol(c);
-      const span = d - 1;
-      const r0 = Math.max(0, rc.row - span);
-      const r1 = Math.min(GRID_SIZE - 1, rc.row + span);
-      const c0 = Math.max(0, rc.col - span);
-      const c1 = Math.min(GRID_SIZE - 1, rc.col + span);
-      for (let r = r0; r <= r1; r += 1) {
-        for (let col = c0; col <= c1; col += 1) {
-          provablySafe.add(rowColToCellIndex(r, col));
-        }
-      }
-    }
-
-    const candidates = [];
-    for (const c of provablySafe) {
-      if (!picked.has(c)) candidates.push(c);
-    }
-    if (candidates.length === 0) {
-      // No provably-safe pick while safe cells remain → any pick here is
-      // a coin flip. The board fails the no-guess check from this opening.
-      return {
-        guessFree: false,
-        revealedCount: picked.size,
-        safeRemaining,
-      };
-    }
-
-    // Pick the candidate deepest inside a safety radius (maximises the
-    // new information the reveal produces), lowest index on ties.
-    let best = candidates[0];
-    let bestScore = -1;
-    for (const c of candidates) {
-      let minD = Infinity;
-      for (const rc of revealed.keys()) {
-        const d = chebyshevDistance(c, rc);
-        if (d !== null && d < minD) minD = d;
-      }
-      if (minD > bestScore || (minD === bestScore && c < best)) {
-        bestScore = minD;
-        best = c;
-      }
-    }
-    reveal(best);
-  }
-
-  // Iteration cap (defensive — a 5×5 board can never take this long).
-  return {
-    guessFree: false,
-    revealedCount: picked.size,
-    safeRemaining: countSafeRemaining(),
-  };
-}
-
-// Move every mine sitting inside the 3×3 center block to a random
-// non-mine cell OUTSIDE the block, so the center opening always lands
-// in safe territory. Returns a NEW board (never mutates the input) and
-// preserves the mine count. Best-effort: if there aren't enough free
-// cells outside the block to host every ejected mine (only possible
-// above 16 mines), the leftovers stay put.
-export function ejectMinesFromCenter(board) {
-  if (!board || !Array.isArray(board.mines)) return board;
-  const mines = [...board.mines];
-  let changed = false;
-  for (let i = 0; i < mines.length; i += 1) {
-    if (!CENTER_BLOCK_SET.has(mines[i])) continue;
-    const outside = [];
-    for (let c = 0; c < GRID_CELLS; c += 1) {
-      if (!CENTER_BLOCK_SET.has(c) && !mines.includes(c)) outside.push(c);
-    }
-    if (outside.length === 0) continue; // no room — leave it (m > 16)
-    mines[i] = outside[Math.floor(Math.random() * outside.length)];
-    changed = true;
-  }
-  if (!changed) return board;
-  return {
-    size: board.size ?? GRID_SIZE,
-    mines: mines.sort((a, b) => a - b),
-  };
-}
-
-// Generate a no-guess board: rolls up to `attempts` center-block-safe
-// boards and returns the first whose CENTER opening is fully guess-free
-// (the solver deduces every safe cell down to the zugzwang endgame).
-// If none qualifies, returns the board that deduced furthest from the
-// center (fallback — matchmaking must never block on board quality).
-export function generateSolvableBoard(minesCount, { attempts = 100 } = {}) {
-  // Validate up front (mirrors generateBoard's contract so a bad
-  // minesCount 400s the route rather than looping forever).
-  const count = Number(minesCount);
-  if (
-    !Number.isInteger(count) ||
-    count < MIN_MINES ||
-    count > MAX_MINES
-  ) {
-    throw new RangeError(
-      `generateSolvableBoard: minesCount must be an integer in [${MIN_MINES}, ${MAX_MINES}], got ${minesCount}`,
-    );
-  }
-
-  const attemptsN = Math.max(1, Number(attempts) || 100);
-  let best = null; // { board, revealed }
-  for (let a = 0; a < attemptsN; a += 1) {
-    const board = ejectMinesFromCenter(generateBoard(count));
-    const r = simulateSolvability(board, CENTER_FIRST_PICK);
-    if (r.guessFree) return board; // fully solvable from the center
-    if (!best || r.revealedCount > best.revealed) {
-      best = { board, revealed: r.revealedCount };
-    }
-  }
-  return best ? best.board : ejectMinesFromCenter(generateBoard(count));
 }
 
 // ── Mine lookup helper ────────────────────────────────────────────────
@@ -873,14 +639,10 @@ export function isFreeAiMatch(match) {
   return Boolean(match?.isAi);
 }
 
-// ── AI pick pacing ──────────────────────────────────────────────────────
-// Minimum pause between the bot's two CONSECUTIVE picks (the odds
-// turn pattern gives the AI two tiles in a row, e.g. turns 2-3).
-// Without this the server auto-plays the second tile in the same
-// status poll that shows the first, so both land at once. The guard
-// is checked by BOTH the inline auto-play path
-// (fetchMatchWithAutoResolve) and the explicit /ai-turn trigger so
-// the pacing holds no matter which path fires first.
+// ── AI pick pacing (legacy) ────────────────────────────────────────────
+// Turn order is strict alternation now, so the bot never takes two turns
+// in a row and no pacing window is required to separate its actions. This
+// value still drives the client's own reveal-rhythm hold after a pick.
 export const AI_PICK_DELAY_MS = 1500;
 
 // Timestamp (ISO string or Date) of the bot's most recent pick, or
@@ -913,59 +675,104 @@ export function aiPickDelayElapsed(match, now = Date.now()) {
   return now - ts >= AI_PICK_DELAY_MS;
 }
 
-// ── AI cell-selection strategy ────────────────────────────────────────
-// The bot picks a cell for its turn. Strategy:
-//   1. If only mines remain (safeTilesRemaining <= 0), the bot
-//      must lose — it picks a random unpicked cell (which is a mine).
-//   2. Otherwise pick a random unpicked cell that avoids the
-//      center block when possible (the center block is guaranteed
-//      mine-free, so a random non-center pick slightly increases
-//      the chance the bot hits a mine — which is acceptable for a
-//      free AI match that doesn't affect token balances).
-//   3. The bot never flags — AI play is reveal-only by design; flags are a
-//      human per-player CLAIM and the bot has no claim strategy.
+// ── AI cell-selection strategy (reveal-only, deduction-driven) ────────
+// The bot reveals one tile per turn and never flags (flags are a human
+// strategy; the bot has no claim path). It reads exactly the SAME public
+// information a human sees — every revealed cell and its server-stamped
+// distance clue — and never peeks at the hidden board.
+//
+// For each unknown cell we estimate a RISK from the clues:
+//   • a clue of `h` on cell r proves NO mine sits within Chebyshev
+//     distance h-1 of r, so every cell strictly inside that radius is
+//     risk 0 (provably safe),
+//   • a cell on the h-radius frontier of a low-h clue is the most likely
+//     to be the mine that clue is pointing at, so it scores highest.
+// The bot then takes the lowest-risk cell. `chooseAiOption` applies the
+// shared per-tier slip: `hard` always takes the best cell, `normal`
+// occasionally takes a slightly worse one, and `easy` ignores deduction
+// entirely and picks at random.
+//
+// `aiCellRisk` is exported for tests so the policy can be asserted without
+// reaching into the picker.
+export function aiCellRisk(cell, revealed) {
+  let risk = 0;
+  for (const { cell: r, hint } of revealed) {
+    if (!Number.isInteger(hint) || hint < 1) continue;
+    const d = chebyshevDistance(cell, r);
+    if (d === null) continue;
+    if (d < hint) continue; // provably safe given this clue
+    // `edge` 0 means the cell sits right on the clue's mine frontier.
+    const edge = d - hint;
+    risk += 1 / (edge + 1) / hint;
+  }
+  return risk;
+}
+
 // Returns `{ cellIndex }` with a valid unpicked cell.
-export function chooseAiCell(match) {
+export function chooseAiCell(match, random = Math.random) {
   const picks = Array.isArray(match?.picks) ? match.picks : [];
-  const exclude = new Set(
-    picks.map((p) => Number(p?.cell)).filter((c) => Number.isInteger(c)),
-  );
+  const exclude = new Set();
+  const revealed = [];
+  for (const p of picks) {
+    const cell = Number(p?.cell);
+    if (!Number.isInteger(cell) || cell < 0 || cell >= GRID_CELLS) continue;
+    // A reveal clears the cell for good; a flag claim does not (it hides
+    // the cell, so the board still has to be read from the clues).
+    if (p?.flag) continue;
+    exclude.add(cell);
+    revealed.push({ cell, hint: Number(p?.hint) });
+  }
+
   const available = [];
-  const centerBlock = new Set([6, 7, 8, 11, 12, 13, 16, 17, 18]);
-  const nonCenter = [];
-  const centerSafe = [];
   for (let i = 0; i < GRID_CELLS; i += 1) {
-    if (!exclude.has(i)) {
-      available.push(i);
-      if (centerBlock.has(i)) centerSafe.push(i);
-      else nonCenter.push(i);
-    }
+    if (!exclude.has(i)) available.push(i);
   }
   if (available.length === 0) {
-    // Every cell picked — shouldn't happen (match should have
-    // resolved), but pick cell 0 as a safe fallback.
+    // Every cell revealed — shouldn't happen (match should have resolved),
+    // but pick cell 0 as a safe fallback.
     return { cellIndex: 0 };
   }
-  // The tier changes how the bot picks:
-  //   easy   — no strategy at all: a uniform random live cell.
-  //   normal — the policy the bot shipped with: prefer non-center
-  //            cells, which slightly raises its mine-hit chance.
-  //   hard   — play the guaranteed-mine-free center block first, so it
-  //            survives longer and is a real opponent.
+
+  // Shuffle the live cells so equal-risk ties break RANDOMLY. Without this
+  // the stable sort below would hand the lowest index every tie, so the bot
+  // would open cell 0 every single game.
+  for (let i = available.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [available[i], available[j]] = [available[j], available[i]];
+  }
+
   const tier = coerceAiDifficulty(match?.aiDifficulty);
-  const pool =
-    tier === "easy"
-      ? available
-      : tier === "hard"
-        ? centerSafe.length > 0
-          ? centerSafe
-          : nonCenter
-        : nonCenter.length > 0
-          ? nonCenter
-          : available;
-  return {
-    cellIndex: pool[Math.floor(Math.random() * pool.length)],
-  };
+
+  // Easy: no deduction at all — a uniform random live cell.
+  if (tier === "easy") {
+    return {
+      cellIndex: available[Math.floor(random() * available.length) % available.length],
+    };
+  }
+
+  // Normal / hard: score by risk (lower is safer). `chooseAiOption` takes
+  // the highest score, so negate the risk.
+  const chosen = chooseAiOption(
+    tier,
+    available,
+    (cell) => -aiCellRisk(cell, revealed),
+    random,
+  );
+  return { cellIndex: chosen ?? 0 };
+}
+
+// ── Per-player mine counters ──────────────────────────────────────────
+// The shared-board flag flow publishes a COUNT of confirmed mines per
+// seat (never the locations). `minesFoundForSeat` derives it from the
+// seat's own flag set + the server-only board, and
+// `minesRemainingForSeat` is what the side-by-side "5 | 5" counter shows.
+export function minesFoundForSeat(match, seat) {
+  return correctFlagCount(flagsForSeat(match, seat), match?.board);
+}
+
+export function minesRemainingForSeat(match, seat) {
+  const total = Number(match?.minesCount) || MINES_PER_MATCH;
+  return Math.max(0, total - minesFoundForSeat(match, seat));
 }
 
 // ── Re-exports so the lobby + match UI can mirror the same

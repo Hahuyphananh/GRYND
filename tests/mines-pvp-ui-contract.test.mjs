@@ -7,11 +7,12 @@
  * `board-fit-desktop.test.mjs` pins its layout hooks:
  *
  *   • shared reveals — the opponent's clue is rendered, never hidden
- *   • player ownership accents on BOTH reveals and flags
- *   • flags are CLAIMS: both sets are visible, a claim never opens the result
- *     popup, and completing the sweep shows the normal result screen
+ *   • revealed tiles carry the seat accent
+ *   • flags are PRIVATE: only your own confirmed mines render, and the
+ *     opponent's counter is the only thing shown for them
+ *   • the side-by-side mine counter shows both seats' remaining mines
  *   • mine click ends the match immediately (no waiting for a turn)
- *   • the seat cards report Reveals + Flags (counts only — never locations)
+ *   • the seat cards report Reveals + Mines found (counts only)
  *   • the existing turn indicator / board guard / realtime room are kept
  *
  * Run:  node --import tsx --test tests/mines-pvp-ui-contract.test.mjs
@@ -67,14 +68,13 @@ test("reveals carry the seat accent (player1 cyan / player2 fuchsia)", () => {
   assert.match(SRC, /const diamondColor =/);
 });
 
-test("both players' flag claims are rendered, seat-accented", () => {
-  // Read per seat from the shared payload.
-  assert.match(SRC, /match\.player1Id === myUserId \? match\.p1Flags : match\.p2Flags/);
-  assert.match(SRC, /match\.player1Id === myUserId \? match\.p2Flags : match\.p1Flags/);
-  // Rendered on the board for either owner.
+test("only the viewer's OWN confirmed mines render; opponent flags are hidden", () => {
+  // Read from the private `myFlags` array only.
+  assert.match(SRC, /Array\.isArray\(match\.myFlags\) \? match\.myFlags : \[\]/);
   assert.match(SRC, /const claimedByMe = myFlags\.includes\(cellIndex\);/);
-  assert.match(SRC, /const claimedByOpponent = opponentFlags\.includes\(cellIndex\);/);
-  assert.match(SRC, /if \(isFlagTarget \|\| claimedByMe \|\| claimedByOpponent\) \{/);
+  // Nothing in the client reads an opponent flag set.
+  assert.doesNotMatch(SRC, /opponentFlags/);
+  assert.doesNotMatch(SRC, /p1Flags|p2Flags/);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -91,9 +91,9 @@ test("a flag click POSTs /flag and never opens the result screen by itself", () 
   );
 });
 
-test("the flag toggle explains the claim rules (no 'wrong = you lose')", () => {
-  assert.match(SRC, /Claim every mine to win/);
-  assert.match(SRC, /a wrong claim only costs you a turn/);
+test("the flag toggle explains the flag rules", () => {
+  assert.match(SRC, /Find every mine to win/);
+  assert.match(SRC, /wrong flag is rejected and costs you your turn/);
   assert.doesNotMatch(SRC, /wrong = you lose/);
   assert.doesNotMatch(SRC, /Correct = opponent/i);
 });
@@ -119,18 +119,26 @@ test("a mine click refetches the authoritative state immediately", () => {
 // 5. Scoreboard — reveals + flags per seat, counts only
 // ════════════════════════════════════════════════════════════════════════
 
-test("the seat cards report Reveals and Flags with mine-count progress", () => {
+test("the seat cards report Reveals and Mines found", () => {
   assert.match(SRC, /reveals: number;/);
-  assert.match(SRC, /flags: number;/);
-  assert.match(SRC, /mineCount: number;/);
+  assert.match(SRC, /minesFound: number;/);
+  assert.match(SRC, /minesTotal: number;/);
   assert.match(SRC, /Reveals:\{" "\}/);
-  assert.match(SRC, /Flags:\{" "\}/);
-  assert.match(SRC, /\/ \{mineCount\}/);
+  assert.match(SRC, /Mines found:\{" "\}/);
+  assert.match(SRC, /\/ \{minesTotal\}/);
   // Both seats are fed their own counters from the shared state.
   assert.match(SRC, /reveals=\{myPicks\.length\}/);
-  assert.match(SRC, /flags=\{myFlags\.length\}/);
+  assert.match(SRC, /minesFound=\{Number\(match\?\.myMinesFound\) \|\| 0\}/);
   assert.match(SRC, /reveals=\{opponentPicks\.length\}/);
-  assert.match(SRC, /flags=\{opponentFlags\.length\}/);
+  assert.match(SRC, /minesFound=\{Number\(match\?\.opponentMinesFound\) \|\| 0\}/);
+});
+
+test("the side-by-side mine counter shows both seats' remaining mines", () => {
+  assert.match(SRC, /Mines remaining/);
+  assert.match(SRC, /const myMinesRemaining =/);
+  assert.match(SRC, /const oppMinesRemaining =/);
+  // The two numbers render next to a pipe separator ("5 | 4").
+  assert.match(SRC, /text-white\/25">\|</);
 });
 
 test("the scoreboard never renders a mine location", () => {

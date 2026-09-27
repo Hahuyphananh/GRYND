@@ -69,10 +69,10 @@ test("the Mines board opts into the shared desktop sizing hook", () => {
     /className="mines-board-frame[^"]*w-full/,
     "the hook must be on the full-width board wrapper",
   );
-  // The square is still a square: a 5×5 grid of aspect-square cells.
+  // The square is still a square: a 10×10 grid of aspect-square cells.
   assert.ok(
-    mines.includes("grid grid-cols-5"),
-    "the Mines board keeps its 5-column grid",
+    mines.includes("grid grid-cols-10"),
+    "the Mines board keeps its 10-column grid",
   );
   assert.ok(
     mines.includes("aspect-square"),

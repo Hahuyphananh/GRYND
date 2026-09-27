@@ -17,5 +17,5 @@ test("Mines lobby sends preferences to readiness", () => {
   assert.match(mines, /minesStakeAmount: 0/);
   assert.match(mines, /minesCount/);
   assert.match(lobby, /quickQueueReadinessBody/);
-  assert.match(controller, /JSON\.stringify\(\{ \.\.\.readinessBody, preferredGames \}\)/);
+  assert.match(controller, /JSON\.stringify\(\{ \.\.\.stableReadinessBody, preferredGames \}\)/);
 });

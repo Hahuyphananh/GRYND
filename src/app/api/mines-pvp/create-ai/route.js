@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createAiMatch } from "../../../../lib/mines-pvp/serverStore";
-import { MIN_MINES, MAX_MINES } from "../../../../lib/mines-pvp/constants";
+import { MINES_PER_MATCH } from "../../../../lib/mines-pvp/constants";
 
 function normaliseMatch(match) {
   if (!match) return null;
@@ -19,9 +19,10 @@ function normaliseMatch(match) {
     firstPlayerId: match.firstPlayerId,
     currentTurnUserId: match.currentTurnUserId,
     roundDeadline: match.roundDeadline,
-    // Shared-board persistent state (new matches always start empty).
-    p1Flags: Array.isArray(match.p1Flags) ? match.p1Flags : [],
-    p2Flags: Array.isArray(match.p2Flags) ? match.p2Flags : [],
+    // The viewer's own flag set (empty on a brand-new match) + counters.
+    myFlags: [],
+    myMinesFound: 0,
+    opponentMinesFound: 0,
     winReason: match.winReason ?? null,
     startedAt: match.startedAt,
     endedAt: match.endedAt,
@@ -41,23 +42,14 @@ export async function POST(req) {
     body = {};
   }
 
-  const minesCount = Number(body?.minesCount ?? 3);
-  if (!Number.isInteger(minesCount) || minesCount < MIN_MINES || minesCount > MAX_MINES) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: `Mines count must be an integer in [${MIN_MINES}, ${MAX_MINES}]`,
-      },
-      { status: 400 },
-    );
-  }
-
+  // The mine count is fixed server-side (10 on the 10×10 board); any value
+  // an older client sends is ignored rather than rejected.
   try {
     // `difficulty` is the lobby picker's tier; the store coerces it (absent
     // or invalid → normal), so an older client still creates a match.
     const result = await createAiMatch({
       userId,
-      minesCount,
+      minesCount: MINES_PER_MATCH,
       difficulty: body?.difficulty,
     });
     if (result.error) {

@@ -43,9 +43,10 @@ const AI_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/ai-turn/route.js");
 
 const P1 = "user_1";
 const P2 = "user_2";
-// A 3-mine board: 0, 7, 24 are mines; everything else is safe.
-const MINES = [0, 7, 24];
-const BOARD = { size: 5, mines: MINES };
+// A fixture 10×10 board (5 mines) — the serializer's arithmetic is the
+// subject under test here, independent of the fixed MINES_PER_MATCH.
+const MINES = [0, 7, 24, 55, 63];
+const BOARD = { size: 10, mines: MINES };
 
 function activeMatch(overrides = {}) {
   return {
@@ -54,7 +55,7 @@ function activeMatch(overrides = {}) {
     player2Id: P2,
     isAi: false,
     stakeAmount: "0.00",
-    minesCount: 3,
+    minesCount: 5,
     status: MATCH_STATUS.P1_TURN,
     firstPlayerId: P1,
     currentTurnUserId: P1,
@@ -125,10 +126,10 @@ test("active match: the hidden board is never serialised", () => {
   for (const viewer of [P1, P2]) {
     const view = normaliseMatchForViewer(match, viewer);
     assert.equal(view.board, null, "board must be null while the match is live");
-    assert.equal(view.minesCount, 3, "the COUNT is public; the layout is not");
+    assert.equal(view.minesCount, 5, "the COUNT is public; the layout is not");
     // The mine layout must not appear anywhere in the payload.
     assert.equal("mines" in view, false);
-    assert.equal(json(view).includes("[0,7,24]"), false);
+    assert.equal(json(view).includes("[0,7,24,55,63]"), false);
     assert.equal(/"(board|boardSnapshot)":\s*\{/.test(json(view)), false);
   }
 });
@@ -181,24 +182,32 @@ test("active match: turn, deadline and seat identity are all exposed", () => {
   assert.equal(asP2.isViewerTurn, true);
 });
 
-test("active match: both players' flag claims are public and independent", () => {
+test("active match: flag locations are private, only the COUNTS are public", () => {
   const match = activeMatch({
     status: MATCH_STATUS.P1_TURN,
-    picks: [claim({ seat: "player1", userId: P1, cell: 17 })],
-    p1Flags: [17],
-    // The same cell may be claimed by both seats.
-    p2Flags: [17, 19],
+    picks: [
+      { ...claim({ seat: "player1", userId: P1, cell: 7 }), isMine: true },
+    ],
+    p1Flags: [7],
+    p2Flags: [24],
   });
-  for (const viewer of [P1, P2]) {
-    const view = normaliseMatchForViewer(match, viewer);
-    assert.deepEqual(view.p1Flags, [17]);
-    assert.deepEqual(view.p2Flags, [17, 19]);
-  }
-  // A claim exposes no verdict and no clue.
-  const entry = normaliseMatchForViewer(match, P1).picks[0];
-  assert.equal(entry.flag, true);
-  assert.equal(entry.hint, null);
-  assert.equal(entry.isMine, false);
+  // Each viewer sees only their OWN confirmed mines; the opponent's set is
+  // never serialised.
+  const asP1 = normaliseMatchForViewer(match, P1);
+  assert.deepEqual(asP1.myFlags, [7]);
+  assert.equal(asP1.myMinesFound, 1);
+  assert.equal(asP1.opponentMinesFound, 1);
+  assert.equal("p1Flags" in asP1, false);
+  assert.equal("p2Flags" in asP1, false);
+
+  const asP2 = normaliseMatchForViewer(match, P2);
+  assert.deepEqual(asP2.myFlags, [24]);
+  // P2 never learns the opponent's flag cell from the pick history.
+  const opponentEntry = asP2.picks.find((p) => p.userId === P1);
+  assert.equal(opponentEntry.flag, true);
+  assert.equal(opponentEntry.cell, null);
+  assert.equal(opponentEntry.hint, null);
+  assert.equal(opponentEntry.isMine, false);
 });
 
 test("active match: flag claims do not count as discovered safe cells", () => {
@@ -210,8 +219,8 @@ test("active match: flag claims do not count as discovered safe cells", () => {
     p2Flags: [18],
   });
   const view = normaliseMatchForViewer(match, P1);
-  // 25 - 3 mines = 22 safe cells; ONE safe reveal so far (the claim is not one).
-  assert.equal(view.safeTilesRemaining, 21);
+  // 100 - 5 mines = 95 safe cells; ONE safe reveal so far (the claim is not one).
+  assert.equal(view.safeTilesRemaining, 94);
   assert.equal(view.pickCount, 2, "claims still consume a turn and are counted");
 });
 
@@ -333,9 +342,9 @@ test("the flag route accepts ONLY { cellIndex } and trusts no client verdict", (
   assert.match(FLAG_ROUTE, /const cellIndex = Number\(body\?\.cellIndex\)/);
   assert.doesNotMatch(FLAG_ROUTE, /body\?\.(isMine|hint|winner|board|flags|winnerId|winReason)/);
   assert.doesNotMatch(FLAG_ROUTE, /body\.(isMine|hint|winner|board)/);
-  // It reports the caller's own claim set, never a correctness verdict.
-  assert.match(FLAG_ROUTE, /p1Flags: flagsForSeat\(match, "player1"\)/);
-  assert.match(FLAG_ROUTE, /p2Flags: flagsForSeat\(match, "player2"\)/);
+  // It reports the caller's own confirmed mines + the public counters.
+  assert.match(FLAG_ROUTE, /myFlags: flagsForSeat\(match, viewerSeat\)/);
+  assert.match(FLAG_ROUTE, /opponentMinesFound: minesFoundForSeat\(match, opponentSeat\)/);
   assert.doesNotMatch(FLAG_ROUTE, /isMine:/);
 });
 

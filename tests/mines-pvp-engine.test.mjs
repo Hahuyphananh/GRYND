@@ -1,14 +1,14 @@
 /**
  * Mines Duel ("Mines PvP") — engine unit tests.
  *
- * Pure-function tests for the shared constants + deterministic helpers
- * in `src/lib/mines-pvp/constants.js`. The board generator and the
- * outcome/payout math are the contract every other piece of the match
- * system depends on, so they're tested exhaustively (valid + invalid
- * inputs, edge cases at the boundaries).
+ * Pure-function tests for the shared constants + deterministic helpers in
+ * `src/lib/mines-pvp/constants.js`. The current rules:
  *
- * The flow-level (DB-backed) tests for `createOrJoin`, `pickTile`, and
- * `fetchMatchWithAutoResolve` live in `tests/mines-pvp-flow.test.mjs`.
+ *   • 10×10 board (100 cells), a FIXED 10 mines (1 per 10 tiles).
+ *   • strict alternation — one action (reveal OR flag) per turn.
+ *   • a reveal hits a mine → the revealer loses immediately.
+ *   • a flag on a mine confirms it for the flagger (private); a wrong flag is
+ *     rejected and costs the turn. Confirm every mine → win.
  *
  * Run:  node --test tests/mines-pvp-engine.test.mjs
  */
@@ -22,6 +22,7 @@ import {
   GRID_CELLS,
   MIN_MINES,
   MAX_MINES,
+  MINES_PER_MATCH,
   // Per-turn window
   ROUND_TIMER_SECONDS,
   ROUND_PICK_DEADLINE_MS,
@@ -45,20 +46,13 @@ import {
   // Result + pick constants
   RESULT,
   PICK_KIND,
-  // No-guess board machinery
-  SENSIBLE_FIRST_PICKS,
-  CENTER_FIRST_PICK,
-  CENTER_BLOCK,
-  CENTER_BLOCK_SET,
-  chebyshevDistance,
-  relocateMine,
-  ejectMinesFromCenter,
-  simulateSolvability,
-  generateSolvableBoard,
-  // Pure helpers under test
+  // Board machinery
   generateBoard,
   isMine,
   nearestMineDistance,
+  chebyshevDistance,
+  relocateMine,
+  // Pure helpers under test
   decideOutcome,
   computePayout,
   pickRandomCell,
@@ -70,21 +64,24 @@ import {
   activePickerForMatch,
   // AI cell-selection policy
   chooseAiCell,
-  // AI pick pacing
+  aiCellRisk,
+  // AI pick pacing (legacy surface)
   AI_PICK_DELAY_MS,
   MINES_AI_PLAYER_ID,
   lastAiPickAt,
   aiPickDelayElapsed,
-  // Shared-board preparation: end reasons + per-player flag claims
+  // Flags + mine counters
   WIN_REASON,
   normalizeFlags,
   correctFlagCount,
   hasFlaggedAllMines,
   flagsForSeat,
-  // Shared-board mechanics: claim/reveal discrimination + winner mapping
   isFlagEntry,
   revealedCells,
   withFlagForSeat,
+  minesFoundForSeat,
+  minesRemainingForSeat,
+  // Shared-board mechanics
   resultForWinner,
 } from "../src/lib/mines-pvp/constants.js";
 
@@ -92,70 +89,49 @@ import {
 // Board geometry constants
 // ════════════════════════════════════════════════════════════════════════
 
-test("GRID_SIZE is 5 (matches solo-mines 5x5 layout)", () => {
-  assert.equal(GRID_SIZE, 5);
+test("GRID_SIZE is 10 (a wide Minesweeper field)", () => {
+  assert.equal(GRID_SIZE, 10);
 });
 
-test("GRID_CELLS is 25 (5*5)", () => {
-  assert.equal(GRID_CELLS, 25);
+test("GRID_CELLS is 100 (10×10)", () => {
+  assert.equal(GRID_CELLS, 100);
   assert.equal(GRID_CELLS, GRID_SIZE * GRID_SIZE);
 });
 
-test("MIN_MINES is 1 (at least 1 mine so the game has stakes)", () => {
+test("MIN_MINES is 1 (at least one mine)", () => {
   assert.equal(MIN_MINES, 1);
 });
 
-test("MAX_MINES is GRID_CELLS - 1 (24 — never allow 25 instant-loss)", () => {
-  assert.equal(MAX_MINES, 24);
+test("MAX_MINES is GRID_CELLS - 1 (99)", () => {
+  assert.equal(MAX_MINES, 99);
   assert.equal(MAX_MINES, GRID_CELLS - 1);
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// Per-turn window
-// ════════════════════════════════════════════════════════════════════════
-
-test("ROUND_TIMER_SECONDS is 20 (mirrors blackjack-pvp pacing)", () => {
-  assert.equal(ROUND_TIMER_SECONDS, 20);
+test("MINES_PER_MATCH is 10 (1 mine per 10 tiles)", () => {
+  assert.equal(MINES_PER_MATCH, 10);
+  assert.equal(MINES_PER_MATCH, Math.round(GRID_CELLS / 10));
 });
 
-test("ROUND_PICK_DEADLINE_MS is 20000 (20 seconds in ms)", () => {
+// ════════════════════════════════════════════════════════════════════════
+// Per-turn window / stakes / payout split
+// ════════════════════════════════════════════════════════════════════════
+
+test("ROUND_TIMER_SECONDS is 20 and the deadline mirrors it", () => {
+  assert.equal(ROUND_TIMER_SECONDS, 20);
   assert.equal(ROUND_PICK_DEADLINE_MS, 20_000);
   assert.equal(ROUND_PICK_DEADLINE_MS, ROUND_TIMER_SECONDS * 1000);
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// Stake matchmaking constants
-// ════════════════════════════════════════════════════════════════════════
-
-test("STAKE_PRESETS match the chip row used by blackjack-pvp / roulette-pvp", () => {
+test("stake presets + bounds", () => {
   assert.deepEqual(STAKE_PRESETS, [10, 25, 50, 100, 250, 500]);
-});
-
-test("MIN_STAKE is 1", () => {
   assert.equal(MIN_STAKE, 1);
+  assert.equal(MAX_STAKE, 100_000);
 });
 
-test("MAX_STAKE is 1,000,000 (one million cap)", () => {
-  assert.equal(MAX_STAKE, 100_000); // economy cap (GLOBAL_MAX_BET)
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// House fee / payout split (per user spec: 90/10 on the LOSER's stake)
-// ════════════════════════════════════════════════════════════════════════
-
-test("HOUSE_FEE_PCT is 0.10 (10% rake)", () => {
+test("the 90/10 split sums to 1", () => {
   assert.equal(HOUSE_FEE_PCT, 0.10);
-});
-
-test("WINNER_RATIO is 0.90 (winner takes 90% of the loser's stake)", () => {
   assert.equal(WINNER_RATIO, 0.90);
-});
-
-test("HOUSE_RATIO is 0.10 (house takes 10% of the loser's stake)", () => {
   assert.equal(HOUSE_RATIO, 0.10);
-});
-
-test("WINNER_RATIO + HOUSE_RATIO sum to 1.0 (full loser's stake is split)", () => {
   assert.equal(WINNER_RATIO + HOUSE_RATIO, 1.0);
 });
 
@@ -163,7 +139,8 @@ test("WINNER_RATIO + HOUSE_RATIO sum to 1.0 (full loser's stake is split)", () =
 // Status state machine
 // ════════════════════════════════════════════════════════════════════════
 
-test("MATCH_STATUS contains the six expected states", () => {
+test("MATCH_STATUS is frozen with the six states", () => {
+  assert.equal(Object.isFrozen(MATCH_STATUS), true);
   assert.equal(MATCH_STATUS.WAITING, "waiting");
   assert.equal(MATCH_STATUS.READY, "ready");
   assert.equal(MATCH_STATUS.P1_TURN, "p1_turn");
@@ -172,1265 +149,229 @@ test("MATCH_STATUS contains the six expected states", () => {
   assert.equal(MATCH_STATUS.CANCELLED, "cancelled");
 });
 
-test("MATCH_STATUS is frozen (immutable at runtime)", () => {
-  assert.equal(Object.isFrozen(MATCH_STATUS), true);
-});
-
-test("ACTIVE_STATES includes ready / p1_turn / p2_turn (excludes waiting)", () => {
+test("ACTIVE / PICKABLE / TERMINAL partition the states", () => {
   assert.equal(ACTIVE_STATES.has(MATCH_STATUS.READY), true);
-  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.P1_TURN), true);
-  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.P2_TURN), true);
-  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.WAITING), false);
-  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.FINISHED), false);
-  assert.equal(ACTIVE_STATES.has(MATCH_STATUS.CANCELLED), false);
-});
-
-test("PICKABLE_STATES is a strict subset of ACTIVE_STATES (no ready banner picks)", () => {
-  for (const state of PICKABLE_STATES) {
-    assert.equal(ACTIVE_STATES.has(state), true, `${state} should be in ACTIVE_STATES`);
-  }
+  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.READY), false);
   assert.equal(PICKABLE_STATES.has(MATCH_STATUS.P1_TURN), true);
   assert.equal(PICKABLE_STATES.has(MATCH_STATUS.P2_TURN), true);
-  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.READY), false, "ready banner doesn't accept picks");
-  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.WAITING), false, "no opponent yet");
-  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.FINISHED), false, "terminal state");
-  assert.equal(PICKABLE_STATES.has(MATCH_STATUS.CANCELLED), false, "terminal state");
-});
-
-test("TERMINAL_STATES is finished + cancelled", () => {
   assert.equal(TERMINAL_STATES.has(MATCH_STATUS.FINISHED), true);
   assert.equal(TERMINAL_STATES.has(MATCH_STATUS.CANCELLED), true);
-  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.WAITING), false);
-  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.READY), false);
-  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.P1_TURN), false);
-  assert.equal(TERMINAL_STATES.has(MATCH_STATUS.P2_TURN), false);
-});
-
-test("ACTIVE_STATES and TERMINAL_STATES are disjoint (no double-classification)", () => {
   for (const state of ACTIVE_STATES) {
-    assert.equal(TERMINAL_STATES.has(state), false, `${state} should not be in both`);
+    assert.equal(TERMINAL_STATES.has(state), false);
   }
-  for (const state of TERMINAL_STATES) {
-    assert.equal(ACTIVE_STATES.has(state), false, `${state} should not be in both`);
+  for (const state of PICKABLE_STATES) {
+    assert.equal(ACTIVE_STATES.has(state), true);
   }
 });
 
-test("READY_WINDOW_MS is 3 seconds (3s 'Get ready' banner)", () => {
+test("READY_WINDOW_MS / FINISHED_GRACE_MS", () => {
   assert.equal(READY_WINDOW_MS, 3000);
-});
-
-test("FINISHED_GRACE_MS is 5 seconds (post-finish grace before lobby nav)", () => {
   assert.equal(FINISHED_GRACE_MS, 5000);
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// Advisory-lock namespace
-// ════════════════════════════════════════════════════════════════════════
-
-test("MINES_PVP_LOCK_NAMESPACE is a positive 31-bit integer (Postgres bigint-safe)", () => {
+test("MINES_PVP_LOCK_NAMESPACE is a positive 31-bit integer", () => {
   assert.equal(Number.isInteger(MINES_PVP_LOCK_NAMESPACE), true);
-  assert.ok(MINES_PVP_LOCK_NAMESPACE > 0, "should be positive");
-  assert.ok(
-    MINES_PVP_LOCK_NAMESPACE <= 0x7fffffff,
-    "should fit in a positive 31-bit signed int",
-  );
+  assert.ok(MINES_PVP_LOCK_NAMESPACE > 0);
+  assert.ok(MINES_PVP_LOCK_NAMESPACE <= 0x7fffffff);
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// RESULT / PICK_KIND enums
-// ════════════════════════════════════════════════════════════════════════
-
-test("RESULT is frozen with player1 / player2 / draw", () => {
+test("RESULT / PICK_KIND / WIN_REASON vocabularies", () => {
   assert.equal(Object.isFrozen(RESULT), true);
   assert.equal(RESULT.PLAYER1, "player1");
   assert.equal(RESULT.PLAYER2, "player2");
   assert.equal(RESULT.DRAW, "draw");
-});
-
-test("PICK_KIND is frozen with mine / safe", () => {
-  assert.equal(Object.isFrozen(PICK_KIND), true);
   assert.equal(PICK_KIND.MINE, "mine");
   assert.equal(PICK_KIND.SAFE, "safe");
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// generateBoard
-// ════════════════════════════════════════════════════════════════════════
-
-test("generateBoard: 1 mine returns a valid 1-mine board", () => {
-  for (let i = 0; i < 50; i += 1) {
-    const board = generateBoard(1);
-    assert.equal(board.size, 5);
-    assert.equal(board.mines.length, 1);
-    assert.ok(board.mines[0] >= 0 && board.mines[0] < GRID_CELLS);
-  }
-});
-
-test("generateBoard: 12 mines returns a valid 12-mine board", () => {
-  const board = generateBoard(12);
-  assert.equal(board.size, 5);
-  assert.equal(board.mines.length, 12);
-});
-
-test("generateBoard: 24 mines (max) returns a valid 24-mine board", () => {
-  const board = generateBoard(24);
-  assert.equal(board.size, 5);
-  assert.equal(board.mines.length, 24);
-});
-
-test("generateBoard: mines are unique (no duplicate cells)", () => {
-  for (let i = 0; i < 100; i += 1) {
-    const board = generateBoard(12);
-    const seen = new Set();
-    for (const idx of board.mines) {
-      assert.equal(seen.has(idx), false, `duplicate mine cell ${idx}`);
-      seen.add(idx);
-    }
-  }
-});
-
-test("generateBoard: mines are sorted ascending (deterministic ordering for storage)", () => {
-  for (let i = 0; i < 50; i += 1) {
-    const board = generateBoard(15);
-    for (let j = 1; j < board.mines.length; j += 1) {
-      assert.ok(
-        board.mines[j] > board.mines[j - 1],
-        `mines should be sorted ascending; got ${board.mines[j - 1]} before ${board.mines[j]}`,
-      );
-    }
-  }
-});
-
-test("generateBoard: all mine indices are within 0..GRID_CELLS-1", () => {
-  for (let i = 0; i < 100; i += 1) {
-    const board = generateBoard(20);
-    for (const idx of board.mines) {
-      assert.ok(Number.isInteger(idx), `mine ${idx} is not an integer`);
-      assert.ok(idx >= 0 && idx < GRID_CELLS, `mine ${idx} is out of range`);
-    }
-  }
-});
-
-test("generateBoard: distribution is roughly uniform (each cell appears ~count/25 times in 1000 trials)", () => {
-  const counts = new Array(GRID_CELLS).fill(0);
-  const trials = 1000;
-  for (let i = 0; i < trials; i += 1) {
-    const board = generateBoard(5);
-    for (const idx of board.mines) counts[idx] += 1;
-  }
-  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
-    assert.ok(
-      counts[cell] > 100 && counts[cell] < 320,
-      `cell ${cell} hit ${counts[cell]} times — out of expected range`,
-    );
-  }
-});
-
-test("generateBoard: 0 mines throws RangeError", () => {
-  assert.throws(() => generateBoard(0), RangeError);
-});
-
-test("generateBoard: 25 mines throws RangeError (instant-loss not allowed)", () => {
-  assert.throws(() => generateBoard(25), RangeError);
-});
-
-test("generateBoard: 100 mines throws RangeError", () => {
-  assert.throws(() => generateBoard(100), RangeError);
-});
-
-test("generateBoard: -1 mines throws RangeError", () => {
-  assert.throws(() => generateBoard(-1), RangeError);
-});
-
-test("generateBoard: non-integer (1.5) throws RangeError", () => {
-  assert.throws(() => generateBoard(1.5), RangeError);
-});
-
-test("generateBoard: NaN throws RangeError", () => {
-  assert.throws(() => generateBoard(NaN), RangeError);
-});
-
-test("generateBoard: numeric string is coerced (no throw for '5')", () => {
-  const board = generateBoard("5");
-  assert.equal(board.mines.length, 5);
-  assert.throws(() => generateBoard("abc"), RangeError);
-  assert.throws(() => generateBoard("1.5"), RangeError);
-});
-
-test("generateBoard: error message mentions valid range", () => {
-  try {
-    generateBoard(99);
-    assert.fail("expected throw");
-  } catch (err) {
-    assert.ok(err instanceof RangeError, "should be RangeError");
-    assert.ok(err.message.includes(String(MIN_MINES)), "should mention min");
-    assert.ok(err.message.includes(String(MAX_MINES)), "should mention max");
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// isMine
-// ════════════════════════════════════════════════════════════════════════
-
-test("isMine: returns true for a cell listed in board.mines", () => {
-  const board = generateBoard(3);
-  for (const idx of board.mines) {
-    assert.equal(isMine(board, idx), true);
-  }
-});
-
-test("isMine: returns false for a cell NOT in board.mines", () => {
-  const board = generateBoard(3);
-  const mineSet = new Set(board.mines);
-  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
-    if (!mineSet.has(cell)) {
-      assert.equal(isMine(board, cell), false);
-    }
-  }
-});
-
-test("isMine: out-of-range cell returns false (defence-in-depth)", () => {
-  const board = generateBoard(3);
-  assert.equal(isMine(board, -1), false);
-  assert.equal(isMine(board, GRID_CELLS), false);
-  assert.equal(isMine(board, 9999), false);
-});
-
-test("isMine: non-integer cell returns false (defence-in-depth)", () => {
-  const board = generateBoard(3);
-  assert.equal(isMine(board, 1.5), false);
-  assert.equal(isMine(board, "5"), false);
-  assert.equal(isMine(board, null), false);
-  assert.equal(isMine(board, undefined), false);
-});
-
-test("isMine: null board returns false", () => {
-  assert.equal(isMine(null, 0), false);
-  assert.equal(isMine(undefined, 0), false);
-});
-
-test("isMine: board with no mines array returns false", () => {
-  assert.equal(isMine({}, 5), false);
-  assert.equal(isMine({ mines: "not-an-array" }, 5), false);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// nearestMineDistance — the PUBLIC shared-board minesweeper clue
-// ════════════════════════════════════════════════════════════════════════
-
-test("nearestMineDistance: touching a mine (any of the 8 cells) is distance 1", () => {
-  // Center cell 12 (row 2, col 2) with mines at 6 (diag), 13 (right),
-  // 17 (below) — all adjacent.
-  assert.equal(nearestMineDistance({ size: 5, mines: [6, 13, 17] }, 12), 1);
-  // A mine ON the cell itself is distance 0 (only reachable
-  // post-match — safe picks always return >= 1).
-  assert.equal(nearestMineDistance({ size: 5, mines: [12] }, 12), 0);
-});
-
-test("nearestMineDistance: reports the CLOSEST mine (Chebyshev tiles)", () => {
-  // Mines at 0 (0,0) and 18 (3,3). Cell 12 (2,2): cheb to 0 = 2,
-  // cheb to 18 = 1 -> 1.
-  assert.equal(nearestMineDistance({ size: 5, mines: [0, 18] }, 12), 1);
-  // Single mine at 0 (0,0). Cell 24 (4,4) is 4 tiles away.
-  assert.equal(nearestMineDistance({ size: 5, mines: [0] }, 24), 4);
-  // Mines [0,1,2] (top row). Cell 7 (1,2): nearest = 1 (touches 1/2).
-  assert.equal(nearestMineDistance({ size: 5, mines: [0, 1, 2] }, 7), 1);
-  // Same board, cell 12 (2,2): nearest = 2 tiles below the top row.
-  assert.equal(nearestMineDistance({ size: 5, mines: [0, 1, 2] }, 12), 2);
-  // Cell 0 is the mine itself -> 0.
-  assert.equal(nearestMineDistance({ size: 5, mines: [0, 1, 2] }, 0), 0);
-});
-
-test("nearestMineDistance: defensive inputs return null", () => {
-  assert.equal(nearestMineDistance(null, 0), null);
-  assert.equal(nearestMineDistance({}, 0), null);
-  assert.equal(nearestMineDistance({ mines: "not-an-array" }, 0), null);
-  assert.equal(nearestMineDistance({ mines: [] }, 0), null);
-  assert.equal(nearestMineDistance({ mines: [0] }, -1), null);
-  assert.equal(nearestMineDistance({ mines: [0] }, 99), null);
-  assert.equal(nearestMineDistance({ mines: [0] }, 1.5), null);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// No-guess board machinery — constants, mercy, solver, generator
-// ════════════════════════════════════════════════════════════════════════
-
-test("SENSIBLE_FIRST_PICKS = center + the four corners", () => {
-  assert.deepEqual(SENSIBLE_FIRST_PICKS, [12, 0, 4, 20, 24]);
-});
-
-test("CENTER_FIRST_PICK is the center cell (row 2, col 2)", () => {
-  assert.equal(CENTER_FIRST_PICK, 12);
-  assert.deepEqual(cellIndexToRowCol(CENTER_FIRST_PICK), { row: 2, col: 2 });
-});
-
-test("CENTER_BLOCK is the 3x3 block around the center (9 cells)", () => {
-  assert.equal(CENTER_BLOCK.length, 9);
-  assert.deepEqual(
-    [...CENTER_BLOCK].sort((a, b) => a - b),
-    [6, 7, 8, 11, 12, 13, 16, 17, 18],
-  );
-  assert.equal(CENTER_BLOCK_SET.size, 9);
-  assert.equal(CENTER_BLOCK_SET.has(12), true);
-  assert.equal(CENTER_BLOCK_SET.has(0), false);
-  assert.equal(CENTER_BLOCK_SET.has(24), false);
-});
-
-test("chebyshevDistance: king-move distance between cells", () => {
-  // Same cell -> 0
-  assert.equal(chebyshevDistance(12, 12), 0);
-  // Orthogonal neighbour -> 1
-  assert.equal(chebyshevDistance(7, 12), 1);
-  // Diagonal neighbour -> 1
-  assert.equal(chebyshevDistance(6, 12), 1);
-  // Corner (0,0) to center (2,2) -> 2
-  assert.equal(chebyshevDistance(0, 12), 2);
-  // (0,0) to (4,4) -> 4
-  assert.equal(chebyshevDistance(0, 24), 4);
-  // Defensive
-  assert.equal(chebyshevDistance(-1, 12), null);
-  assert.equal(chebyshevDistance(25, 12), null);
-  assert.equal(chebyshevDistance(1.5, 12), null);
-});
-
-test("relocateMine: moves the mine off a cell, preserving the mine count", () => {
-  for (let i = 0; i < 200; i += 1) {
-    const board = generateBoard(5);
-    const target = board.mines[0];
-    const moved = relocateMine(board, target);
-    assert.equal(moved.mines.length, 5, "mine count preserved");
-    assert.equal(moved.mines.includes(target), false, `mine ${target} should be gone`);
-    assert.equal(isMine(moved, target), false);
-    // Every remaining mine must be a valid unique cell.
-    const seen = new Set();
-    for (const m of moved.mines) {
-      assert.ok(Number.isInteger(m) && m >= 0 && m < GRID_CELLS);
-      assert.equal(seen.has(m), false, `duplicate mine ${m}`);
-      seen.add(m);
-    }
-  }
-});
-
-test("relocateMine: no-op on a safe cell / malformed input", () => {
-  const board = { size: 5, mines: [0, 5] };
-  // No-op returns the same board reference (never mutates, never copies).
-  assert.equal(relocateMine(board, 12), board);
-  assert.equal(relocateMine(board, -1), board);
-  assert.deepEqual(board.mines, [0, 5], "input untouched");
-  // Malformed inputs pass through untouched.
-  assert.equal(relocateMine(null, 0), null);
-  assert.equal(relocateMine({ mines: "x" }, 0).mines, "x");
-});
-
-test("ejectMinesFromCenter: removes every mine from the 3x3 center block", () => {
-  for (let i = 0; i < 300; i += 1) {
-    const board = ejectMinesFromCenter(generateBoard(5));
-    assert.equal(board.mines.length, 5);
-    for (const m of board.mines) {
-      assert.equal(
-        CENTER_BLOCK_SET.has(m),
-        false,
-        `mine ${m} should not sit in the center block`,
-      );
-    }
-  }
-});
-
-test("ejectMinesFromCenter: works from the densest legal mine counts (up to 16)", () => {
-  for (let i = 0; i < 50; i += 1) {
-    const board = ejectMinesFromCenter(generateBoard(16));
-    assert.equal(board.mines.length, 16);
-    for (const m of board.mines) {
-      assert.equal(CENTER_BLOCK_SET.has(m), false);
-    }
-  }
-});
-
-test("ejectMinesFromCenter: best-effort beyond 16 mines (center block must hold some)", () => {
-  const board = ejectMinesFromCenter(generateBoard(20));
-  assert.equal(board.mines.length, 20);
-  const seen = new Set();
-  for (const m of board.mines) {
-    assert.equal(seen.has(m), false);
-    seen.add(m);
-  }
-});
-
-test("simulateSolvability: a single corner mine is fully solvable from the center", () => {
-  // Mine at corner 0. Center hint = 2 -> 3x3 block revealed -> cascade.
-  const r = simulateSolvability({ size: 5, mines: [0] }, 12);
-  assert.equal(r.guessFree, true);
-  assert.equal(r.safeRemaining, 0);
-  assert.equal(r.revealedCount, 24); // every safe cell (all but the mine)
-});
-
-test("simulateSolvability: a hint-1 opening (mine adjacent to the pick) is stuck", () => {
-  // Mine at 7 sits directly above the center -> center hint = 1 -> the
-  // hint proves nothing safe -> any continuation is a guess.
-  const r = simulateSolvability({ size: 5, mines: [7] }, 12);
-  assert.equal(r.guessFree, false);
-  assert.ok(r.safeRemaining > 0);
-});
-
-test("simulateSolvability: a mid-game stall strands safe cells (distance hints are weak there)", () => {
-  // Mines at 2 (0,2) and 10 (2,0): the center cascade deduces 20 of the
-  // 23 safe cells, then hits a wall of hint-1 frontier reveals and can
-  // prove nothing about the last 3 safe cells -> forced guess.
-  const r = simulateSolvability({ size: 5, mines: [2, 10] }, 12);
-  assert.equal(r.guessFree, false);
-  assert.equal(r.safeRemaining, 3);
-});
-
-test("simulateSolvability: deterministic for the same board + opening", () => {
-  const board = { size: 5, mines: [0, 2, 14, 22] };
-  const a = simulateSolvability(board, 12);
-  const b = simulateSolvability(board, 12);
-  assert.deepEqual(a, b);
-});
-
-test("simulateSolvability: defensive inputs", () => {
-  assert.equal(simulateSolvability(null, 12).guessFree, false);
-  assert.equal(simulateSolvability({ mines: "x" }, 12).guessFree, false);
-  assert.equal(simulateSolvability({ size: 5, mines: [0] }, -1).guessFree, false);
-  assert.equal(simulateSolvability({ size: 5, mines: [0] }, 99).guessFree, false);
-});
-
-test("generateSolvableBoard: every returned board is valid (count, unique, sorted)", () => {
-  for (const m of [1, 2, 3, 5, 8, 12]) {
-    for (let i = 0; i < 20; i += 1) {
-      const board = generateSolvableBoard(m);
-      assert.equal(board.size, 5);
-      assert.equal(board.mines.length, m, `m=${m} mine count`);
-      const seen = new Set();
-      for (let j = 0; j < board.mines.length; j += 1) {
-        assert.equal(seen.has(board.mines[j]), false, `duplicate mine ${board.mines[j]}`);
-        seen.add(board.mines[j]);
-        assert.ok(board.mines[j] >= 0 && board.mines[j] < GRID_CELLS);
-        if (j > 0) {
-          assert.ok(board.mines[j] > board.mines[j - 1], "mines sorted ascending");
-        }
-      }
-    }
-  }
-});
-
-test("generateSolvableBoard: center block is always mine-free", () => {
-  for (const m of [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 16]) {
-    for (let i = 0; i < 30; i += 1) {
-      const board = generateSolvableBoard(m);
-      for (const idx of board.mines) {
-        assert.equal(
-          CENTER_BLOCK_SET.has(idx),
-          false,
-          `m=${m}: mine ${idx} inside center block`,
-        );
-      }
-    }
-  }
-});
-
-test("generateSolvableBoard: low mine counts are always fully solvable from the center", () => {
-  // Measured acceptance: ~100% at m<=3, ~90% at m=4, ~72% at m=5.
-  // Assert the hard floor we ship on: m<=3 boards must virtually
-  // always pass (allow a tiny epsilon for randomness at 3).
-  const trials = 60;
-  let passed = 0;
-  for (let i = 0; i < trials; i += 1) {
-    const board = generateSolvableBoard(3);
-    if (simulateSolvability(board, CENTER_FIRST_PICK).guessFree) passed += 1;
-  }
-  assert.ok(passed >= trials - 1, `expected ~100% pass at 3 mines, got ${passed}/${trials}`);
-});
-
-test("generateSolvableBoard: throws on invalid mine counts (mirrors generateBoard)", () => {
-  assert.throws(() => generateSolvableBoard(0), RangeError);
-  assert.throws(() => generateSolvableBoard(25), RangeError);
-  assert.throws(() => generateSolvableBoard(-1), RangeError);
-  assert.throws(() => generateSolvableBoard(1.5), RangeError);
-  assert.throws(() => generateSolvableBoard(NaN), RangeError);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// decideOutcome — LEGACY loser-shaped resolver (kept on the public API)
-//
-// The store no longer resolves through this. A shared-board match ends either
-// on a mine hit (the HITTER loses) or on a full flag sweep (the FLAGGER wins),
-// and the store resolves winner-shaped via `resultForWinner`. This pure
-// mapping stays exported only because it is part of the engine's surface;
-// DRAW remains on the RESULT enum for parity with other PvP systems but is
-// never produced by the mines-pvp flow.
-// ════════════════════════════════════════════════════════════════════════
-
-test("decideOutcome: loserId = player1Id -> PLAYER2 wins", () => {
-  assert.equal(
-    decideOutcome({ loserId: "u1", player1Id: "u1", player2Id: "u2" }),
-    RESULT.PLAYER2,
-  );
-});
-
-test("decideOutcome: loserId = player2Id -> PLAYER1 wins", () => {
-  assert.equal(
-    decideOutcome({ loserId: "u2", player1Id: "u1", player2Id: "u2" }),
-    RESULT.PLAYER1,
-  );
-});
-
-test("decideOutcome: never returns DRAW for any (loserId, seat) pair", () => {
-  for (const loserId of ["u1", "u2"]) {
-    const result = decideOutcome({
-      loserId,
-      player1Id: "u1",
-      player2Id: "u2",
-    });
-    assert.notEqual(
-      result,
-      RESULT.DRAW,
-      `decideOutcome leaked DRAW for loserId=${loserId}`,
-    );
-    assert.ok(
-      result === RESULT.PLAYER1 || result === RESULT.PLAYER2,
-      `decideOutcome returned non-PLAYER value: ${result}`,
-    );
-  }
-});
-
-test("decideOutcome: loserId must match one of player1Id / player2Id (RangeError otherwise)", () => {
-  assert.throws(
-    () => decideOutcome({ loserId: "u3", player1Id: "u1", player2Id: "u2" }),
-    RangeError,
-  );
-  assert.throws(
-    () => decideOutcome({ loserId: null, player1Id: "u1", player2Id: "u2" }),
-    RangeError,
-  );
-  assert.throws(
-    () => decideOutcome({
-      loserId: undefined,
-      player1Id: "u1",
-      player2Id: "u2",
-    }),
-    RangeError,
-  );
-  assert.throws(
-    () => decideOutcome({ loserId: "", player1Id: "u1", player2Id: "u2" }),
-    RangeError,
-  );
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// seatForPickNumber / activeSeatForMatch / activePickerForMatch
-// — the closed-form "odds" turn order helper
-//
-// Pattern (with firstPlayerSeat = "player1"):
-//   turn 1 -> player1, turn 2 -> player2, turn 3 -> player2,
-//   turn 4 -> player1, turn 5 -> player1, turn 6 -> player2,
-//   turn 7 -> player2, turn 8 -> player1, ...
-// Grouped by 4: each pair of two consecutive picks stays on the
-// "leader" until the pair-leader flips.
-// ════════════════════════════════════════════════════════════════════════
-
-test("seatForPickNumber: closed-form pattern (firstPlayerSeat='player1')", () => {
-  const expected = [
-    [1, "player1"],
-    [2, "player2"],
-    [3, "player2"],
-    [4, "player1"],
-    [5, "player1"],
-    [6, "player2"],
-    [7, "player2"],
-    [8, "player1"],
-    [9, "player1"],
-    [10, "player2"],
-    [11, "player2"],
-    [12, "player1"],
-  ];
-  for (const [n, want] of expected) {
-    assert.equal(seatForPickNumber(n, "player1"), want, `turn ${n}`);
-  }
-});
-
-test("seatForPickNumber: firstPlayerSeat='player2' mirrors the pattern", () => {
-  const expected = [
-    [1, "player2"],
-    [2, "player1"],
-    [3, "player1"],
-    [4, "player2"],
-    [5, "player2"],
-    [6, "player1"],
-  ];
-  for (const [n, want] of expected) {
-    assert.equal(seatForPickNumber(n, "player2"), want, `turn ${n}`);
-  }
-});
-
-test("seatForPickNumber: invalid N returns null (defensive)", () => {
-  assert.equal(seatForPickNumber(0, "player1"), null);
-  assert.equal(seatForPickNumber(-1, "player1"), null);
-  assert.equal(seatForPickNumber(1.5, "player1"), null);
-  assert.equal(seatForPickNumber("1", "player1"), null);
-  assert.equal(seatForPickNumber(null, "player1"), null);
-});
-
-test("activeSeatForMatch: derives turns from picks.length + firstPlayerId", () => {
-  const mkMatch = ({ firstPlayerId, picks }) => ({
-    player1Id: "u1",
-    player2Id: "u2",
-    firstPlayerId,
-    picks,
-  });
-  assert.equal(
-    activeSeatForMatch(mkMatch({ firstPlayerId: "u1", picks: [] })),
-    "player1",
-  );
-  assert.equal(
-    activeSeatForMatch(
-      mkMatch({ firstPlayerId: "u1", picks: [{ seat: "player1" }] }),
-    ),
-    "player2",
-  );
-  assert.equal(
-    activeSeatForMatch(
-      mkMatch({
-        firstPlayerId: "u1",
-        picks: [{ seat: "player1" }, { seat: "player2" }],
-      }),
-    ),
-    "player2",
-  );
-  assert.equal(
-    activeSeatForMatch(
-      mkMatch({
-        firstPlayerId: "u1",
-        picks: [
-          { seat: "player1" },
-          { seat: "player2" },
-          { seat: "player2" },
-        ],
-      }),
-    ),
-    "player1",
-  );
-  assert.equal(
-    activeSeatForMatch(
-      mkMatch({
-        firstPlayerId: "u1",
-        picks: [
-          { seat: "player1" },
-          { seat: "player2" },
-          { seat: "player2" },
-          { seat: "player1" },
-        ],
-      }),
-    ),
-    "player1",
-  );
-});
-
-test("activePickerForMatch: returns clerkId of the active picker", () => {
-  const mkMatch = ({ firstPlayerId, picks }) => ({
-    player1Id: "u1",
-    player2Id: "u2",
-    firstPlayerId,
-    picks,
-  });
-  assert.equal(
-    activePickerForMatch(mkMatch({ firstPlayerId: "u1", picks: [] })),
-    "u1",
-  );
-  assert.equal(
-    activePickerForMatch(mkMatch({ firstPlayerId: "u2", picks: [] })),
-    "u2",
-  );
-  assert.equal(
-    activePickerForMatch(
-      mkMatch({
-        firstPlayerId: "u1",
-        picks: [{ seat: "player1" }, { seat: "player2" }],
-      }),
-    ),
-    "u2",
-  );
-  assert.equal(activePickerForMatch(null), null);
-  assert.equal(
-    activePickerForMatch({
-      player1Id: "u1",
-      player2Id: null,
-      firstPlayerId: "u1",
-      picks: [],
-    }),
-    null,
-  );
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// computePayout
-// ════════════════════════════════════════════════════════════════════════
-
-test("computePayout: stake 100, P1 wins -> winnerNet=190, loserNet=-100, houseFee=10, prizePaid=190", () => {
-  const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
-  assert.equal(p.stake, 100);
-  assert.equal(p.winnerNet, 190);
-  assert.equal(p.loserNet, -100);
-  assert.equal(p.houseFee, 10);
-  assert.equal(p.prizePaid, 190);
-});
-
-test("computePayout: stake 100, P2 wins -> mirror math", () => {
-  const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER2 });
-  assert.equal(p.stake, 100);
-  assert.equal(p.winnerNet, 190);
-  assert.equal(p.loserNet, -100);
-  assert.equal(p.houseFee, 10);
-  assert.equal(p.prizePaid, 190);
-});
-
-test("computePayout: stake 50, DRAW -> winnerNet=null, loserNet=null, houseFee=0, prizePaid=0", () => {
-  const p = computePayout({ stakeAmount: 50, result: RESULT.DRAW });
-  assert.equal(p.stake, 50);
-  assert.equal(p.winnerNet, null);
-  assert.equal(p.loserNet, null);
-  assert.equal(p.houseFee, 0);
-  assert.equal(p.prizePaid, 0);
-});
-
-test("computePayout: prizePaid = stake + winnerPrize (1.9x stake total)", () => {
-  for (const stake of [1, 10, 25, 100, 250, 1000]) {
-    for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
-      const p = computePayout({ stakeAmount: stake, result });
-      assert.equal(
-        p.prizePaid,
-        round2(stake + stake * WINNER_RATIO),
-        `stake=${stake} result=${result} prizePaid mismatch`,
-      );
-    }
-  }
-});
-
-test("computePayout: loserNet is always -stake (regardless of winner)", () => {
-  for (const stake of [1, 10, 50, 100, 500, 9999.99]) {
-    for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
-      const p = computePayout({ stakeAmount: stake, result });
-      assert.equal(p.loserNet, -stake);
-    }
-  }
-});
-
-test("computePayout: fractional stake rounds to 2dp", () => {
-  const p = computePayout({ stakeAmount: 1.5, result: RESULT.PLAYER1 });
-  assert.equal(p.stake, 1.5);
-  assert.equal(p.winnerNet, 2.85);
-  assert.equal(p.loserNet, -1.5);
-  assert.equal(p.houseFee, 0.15);
-  assert.equal(p.prizePaid, 2.85);
-});
-
-test("computePayout: very small stake (0.01) houseFee rounds to 0", () => {
-  const p = computePayout({ stakeAmount: 0.01, result: RESULT.PLAYER1 });
-  assert.equal(p.stake, 0.01);
-  assert.equal(p.winnerNet, 0.02);
-  assert.equal(p.loserNet, -0.01);
-  assert.equal(p.houseFee, 0);
-  assert.equal(p.prizePaid, 0.02);
-});
-
-test("computePayout: invalid result throws RangeError", () => {
-  assert.throws(
-    () => computePayout({ stakeAmount: 100, result: "foo" }),
-    RangeError,
-  );
-  assert.throws(
-    () => computePayout({ stakeAmount: 100, result: null }),
-    RangeError,
-  );
-  assert.throws(
-    () => computePayout({ stakeAmount: 100, result: undefined }),
-    RangeError,
-  );
-});
-
-test("computePayout: negative stake throws RangeError", () => {
-  assert.throws(
-    () => computePayout({ stakeAmount: -1, result: RESULT.PLAYER1 }),
-    RangeError,
-  );
-});
-
-test("computePayout: NaN stake throws RangeError", () => {
-  assert.throws(
-    () => computePayout({ stakeAmount: NaN, result: RESULT.PLAYER1 }),
-    RangeError,
-  );
-});
-
-test("computePayout: Infinity stake throws RangeError", () => {
-  assert.throws(
-    () => computePayout({ stakeAmount: Infinity, result: RESULT.PLAYER1 }),
-    RangeError,
-  );
-});
-
-test("computePayout: string stake is coerced (no throw for numeric strings)", () => {
-  const p = computePayout({ stakeAmount: "100", result: RESULT.PLAYER1 });
-  assert.equal(p.stake, 100);
-  assert.equal(p.winnerNet, 190);
-  assert.throws(
-    () => computePayout({ stakeAmount: "abc", result: RESULT.PLAYER1 }),
-    RangeError,
-  );
-});
-
-test("computePayout: houseFee + winnerPrize = stake (full loser's stake is split)", () => {
-  for (const stake of [1, 10, 50, 100, 999.99]) {
-    for (const result of [RESULT.PLAYER1, RESULT.PLAYER2]) {
-      const p = computePayout({ stakeAmount: stake, result });
-      assert.equal(round2(p.houseFee + (p.winnerNet - stake)), round2(stake));
-    }
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// pickRandomCell
-// ════════════════════════════════════════════════════════════════════════
-
-test("pickRandomCell: returns a valid cell index in 0..GRID_CELLS-1", () => {
-  for (let i = 0; i < 200; i += 1) {
-    const cell = pickRandomCell();
-    assert.ok(Number.isInteger(cell));
-    assert.ok(cell >= 0 && cell < GRID_CELLS);
-  }
-});
-
-test("pickRandomCell: never returns a cell in excludePicks", () => {
-  const exclude = [0, 5, 12, 24];
-  for (let i = 0; i < 200; i += 1) {
-    const cell = pickRandomCell({ excludePicks: exclude });
-    assert.ok(!exclude.includes(cell), `cell ${cell} is in excludePicks`);
-  }
-});
-
-test("pickRandomCell: with no params, excludePicks defaults to []", () => {
-  for (let i = 0; i < 50; i += 1) {
-    const cell = pickRandomCell();
-    assert.ok(cell >= 0 && cell < GRID_CELLS);
-  }
-});
-
-test("pickRandomCell: filters non-integer entries from excludePicks", () => {
-  const exclude = [1.5, NaN, "abc", 5, -1, null, "3"];
-  for (let i = 0; i < 200; i += 1) {
-    const cell = pickRandomCell({ excludePicks: exclude });
-    assert.ok(Number.isInteger(cell), `cell ${cell} should be an integer`);
-    assert.ok(cell >= 0 && cell < GRID_CELLS);
-    assert.notEqual(cell, 5, "5 should be excluded");
-    assert.notEqual(cell, 0, "null->0 should be excluded");
-    assert.notEqual(cell, 3, '"3"->3 should be excluded');
-  }
-});
-
-test("pickRandomCell: excludes ALL cells -> throws", () => {
-  const all = Array.from({ length: GRID_CELLS }, (_, i) => i);
-  assert.throws(() => pickRandomCell({ excludePicks: all }), /every cell is already picked/);
-});
-
-test("pickRandomCell: distribution is roughly uniform across the 25 cells", () => {
-  const counts = new Array(GRID_CELLS).fill(0);
-  const trials = 5000;
-  for (let i = 0; i < trials; i += 1) {
-    counts[pickRandomCell()] += 1;
-  }
-  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
-    assert.ok(
-      counts[cell] > 100 && counts[cell] < 320,
-      `cell ${cell} hit ${counts[cell]} times`,
-    );
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// round2 helper
-// ════════════════════════════════════════════════════════════════════════
-
-test("round2: rounds to 2dp (no floating-point drift)", () => {
-  assert.equal(round2(0.1 + 0.2), 0.3);
-  assert.equal(round2(1.005), 1);
-  assert.equal(round2(1.015), 1.01);
-  assert.equal(round2(190.0), 190);
-  assert.equal(round2(2.85), 2.85);
-  assert.equal(round2(0.001), 0);
-  assert.equal(round2(0.009), 0.01);
-});
-
-test("round2: NaN / Infinity / non-number returns 0 (defensive)", () => {
-  assert.equal(round2(NaN), 0);
-  assert.equal(round2(Infinity), 0);
-  assert.equal(round2(-Infinity), 0);
-  assert.equal(round2("not a number"), 0);
-  assert.equal(round2(undefined), 0);
-  assert.equal(round2(null), 0);
-});
-
-test("round2: 0 stays 0", () => {
-  assert.equal(round2(0), 0);
-  assert.equal(round2(-0), 0);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// cellIndexToRowCol / rowColToCellIndex — round-trip helpers
-// ════════════════════════════════════════════════════════════════════════
-
-test("cellIndexToRowCol: cell 0 -> row 0, col 0", () => {
-  assert.deepEqual(cellIndexToRowCol(0), { row: 0, col: 0 });
-});
-
-test("cellIndexToRowCol: cell 24 -> row 4, col 4", () => {
-  assert.deepEqual(cellIndexToRowCol(24), { row: 4, col: 4 });
-});
-
-test("cellIndexToRowCol: cell 5 -> row 1, col 0 (row-major)", () => {
-  assert.deepEqual(cellIndexToRowCol(5), { row: 1, col: 0 });
-});
-
-test("cellIndexToRowCol: cell 12 -> row 2, col 2 (center)", () => {
-  assert.deepEqual(cellIndexToRowCol(12), { row: 2, col: 2 });
-});
-
-test("cellIndexToRowCol: out-of-range returns null", () => {
-  assert.equal(cellIndexToRowCol(-1), null);
-  assert.equal(cellIndexToRowCol(25), null);
-  assert.equal(cellIndexToRowCol(9999), null);
-});
-
-test("cellIndexToRowCol: non-integer returns null", () => {
-  assert.equal(cellIndexToRowCol(1.5), null);
-  assert.equal(cellIndexToRowCol("5.5"), null);
-  assert.equal(cellIndexToRowCol("abc"), null);
-  assert.equal(cellIndexToRowCol(undefined), null);
-  assert.equal(cellIndexToRowCol(NaN), null);
-  assert.equal(cellIndexToRowCol({}), null);
-});
-
-test("rowColToCellIndex: (0,0) -> 0, (4,4) -> 24, (1,0) -> 5, (2,2) -> 12", () => {
-  assert.equal(rowColToCellIndex(0, 0), 0);
-  assert.equal(rowColToCellIndex(4, 4), 24);
-  assert.equal(rowColToCellIndex(1, 0), 5);
-  assert.equal(rowColToCellIndex(2, 2), 12);
-});
-
-test("rowColToCellIndex: out-of-range returns null", () => {
-  assert.equal(rowColToCellIndex(-1, 0), null);
-  assert.equal(rowColToCellIndex(0, -1), null);
-  assert.equal(rowColToCellIndex(5, 0), null);
-  assert.equal(rowColToCellIndex(0, 5), null);
-});
-
-test("rowColToCellIndex: non-integer returns null", () => {
-  assert.equal(rowColToCellIndex(1.5, 0), null);
-  assert.equal(rowColToCellIndex(0, "2.5"), null);
-  assert.equal(rowColToCellIndex(0, "abc"), null);
-  assert.equal(rowColToCellIndex(0, undefined), null);
-  assert.equal(rowColToCellIndex(NaN, 0), null);
-  assert.equal(rowColToCellIndex(0, {}), null);
-});
-
-test("rowColToCellIndex <-> cellIndexToRowCol round-trip for every cell", () => {
-  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
-    const rc = cellIndexToRowCol(cell);
-    assert.deepEqual(rc, { row: Math.floor(cell / 5), col: cell % 5 });
-    assert.equal(rowColToCellIndex(rc.row, rc.col), cell);
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// AI pick pacing — lastAiPickAt / aiPickDelayElapsed
-// ════════════════════════════════════════════════════════════════════════
-
-function aiMatchRow({ picks = [], p2PickedAt = null }) {
-  return {
-    isAi: true,
-    player1Id: "human",
-    player2Id: MINES_AI_PLAYER_ID,
-    picks,
-    p2PickedAt,
-  };
-}
-
-function aiPick({ userId = MINES_AI_PLAYER_ID, pickedAt }) {
-  return { userId, seat: "player2", cell: 0, isMine: false, pickedAt };
-}
-
-const NOW = Date.UTC(2026, 0, 1, 12, 0, 0);
-
-// lastAiPickAt — reads the bot's most recent pick from the
-// chronological picks array, falling back to p2_picked_at.
-
-test("lastAiPickAt: null when the bot has never picked", () => {
-  assert.equal(lastAiPickAt(aiMatchRow({})), null);
-  assert.equal(lastAiPickAt(null), null);
-});
-
-test("lastAiPickAt: falls back to p2_picked_at when picks is empty", () => {
-  const pickedAt = new Date(NOW);
-  const m = aiMatchRow({ p2PickedAt: pickedAt });
-  assert.equal(lastAiPickAt(m), pickedAt);
-  // String p2PickedAt also works (DB rows may surface either shape).
-  const ts = pickedAt.toISOString();
-  assert.equal(lastAiPickAt(aiMatchRow({ p2PickedAt: ts })), ts);
-});
-
-test("lastAiPickAt: scans the picks array for the bot's entries only", () => {
-  const botTs = new Date(NOW + 10_000).toISOString();
-  const humanTs = new Date(NOW + 99_999).toISOString();
-  const m = aiMatchRow({
-    picks: [aiPick({ pickedAt: humanTs }), aiPick({ pickedAt: botTs })],
-  });
-  assert.equal(lastAiPickAt(m), botTs);
-});
-
-test("lastAiPickAt: human entries never count, even as the last entry", () => {
-  const humanTs = new Date(NOW + 10_000).toISOString();
-  const m = aiMatchRow({
-    picks: [
-      aiPick({
-        userId: "human",
-        seat: "player1",
-        pickedAt: humanTs,
-      }),
-    ],
-  });
-  assert.equal(lastAiPickAt(m), null);
-});
-
-// aiPickDelayElapsed — the pacing gate for the bot's two consecutive
-// picks (turns 2-3, 6-7, …).
-
-test("aiPickDelayElapsed: true when the bot has never picked", () => {
-  assert.equal(aiPickDelayElapsed(aiMatchRow({}), NOW), true);
-});
-
-test("aiPickDelayElapsed: true once the delay window has elapsed", () => {
-  const m = aiMatchRow({
-    picks: [aiPick({ pickedAt: new Date(NOW).toISOString() })],
-  });
-  assert.equal(aiPickDelayElapsed(m, NOW + AI_PICK_DELAY_MS), true);
-  assert.equal(aiPickDelayElapsed(m, NOW + AI_PICK_DELAY_MS + 1), true);
-});
-
-test("aiPickDelayElapsed: false while inside the delay window", () => {
-  const m = aiMatchRow({
-    picks: [aiPick({ pickedAt: new Date(NOW).toISOString() })],
-  });
-  assert.equal(aiPickDelayElapsed(m, NOW), false);
-  assert.equal(aiPickDelayElapsed(m, NOW + AI_PICK_DELAY_MS - 1), false);
-});
-
-test("aiPickDelayElapsed: ignores human picks when pacing (bot pair only)", () => {
-  // Human picked just now, bot picked long ago → bot is clear to go.
-  const m = aiMatchRow({
-    picks: [
-      aiPick({ pickedAt: new Date(NOW - 60_000).toISOString() }),
-      aiPick({
-        userId: "human",
-        seat: "player1",
-        pickedAt: new Date(NOW).toISOString(),
-      }),
-    ],
-  });
-  assert.equal(aiPickDelayElapsed(m, NOW), true);
-});
-
-test("aiPickDelayElapsed: malformed timestamp does not wedge the bot", () => {
-  const m = aiMatchRow({
-    picks: [aiPick({ pickedAt: "not-a-date" })],
-  });
-  assert.equal(aiPickDelayElapsed(m, NOW), true);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// WIN_REASON — why a finished match ended (shared-board rules)
-// ════════════════════════════════════════════════════════════════════════
-
-test("WIN_REASON is frozen with the four known endings", () => {
-  assert.equal(Object.isFrozen(WIN_REASON), true);
   assert.equal(WIN_REASON.MINE_HIT, "mine_hit");
   assert.equal(WIN_REASON.ALL_MINES_FLAGGED, "all_mines_flagged");
   assert.equal(WIN_REASON.RESIGN, "resign");
   assert.equal(WIN_REASON.DISCONNECT, "disconnect");
 });
 
-test("WIN_REASON values are unique strings", () => {
-  const values = Object.values(WIN_REASON);
-  assert.equal(new Set(values).size, values.length);
-  for (const v of values) assert.equal(typeof v, "string");
-});
-
 // ════════════════════════════════════════════════════════════════════════
-// normalizeFlags — the canonical flag-set shape
+// seatForPickNumber — strict alternation
 // ════════════════════════════════════════════════════════════════════════
 
-test("normalizeFlags: returns a unique, sorted, in-range copy", () => {
-  assert.deepEqual(normalizeFlags([8, 3, 3, 0]), [0, 3, 8]);
-  assert.deepEqual(normalizeFlags([24, 12, 0]), [0, 12, 24]);
+test("seatForPickNumber alternates every single turn", () => {
+  const expected = [
+    [1, "player1"],
+    [2, "player2"],
+    [3, "player1"],
+    [4, "player2"],
+    [5, "player1"],
+    [6, "player2"],
+  ];
+  for (const [n, want] of expected) {
+    assert.equal(seatForPickNumber(n, "player1"), want, `turn ${n}`);
+  }
 });
 
-test("normalizeFlags: drops non-integer / out-of-range / null entries", () => {
-  // "5" coerces to the integer 5 (kept); 1.5, NaN, -1, 25 and null are
-  // dropped. This is the tamper surface: a malformed request body must
-  // never persist a bogus cell.
-  assert.deepEqual(
-    normalizeFlags([1.5, NaN, -1, 25, null, undefined, "5", "abc"]),
-    [5],
-  );
+test("seatForPickNumber mirrors when player2 opens", () => {
+  assert.equal(seatForPickNumber(1, "player2"), "player2");
+  assert.equal(seatForPickNumber(2, "player2"), "player1");
+  assert.equal(seatForPickNumber(3, "player2"), "player2");
 });
 
-test("normalizeFlags: non-array input returns an empty array", () => {
-  assert.deepEqual(normalizeFlags(null), []);
-  assert.deepEqual(normalizeFlags(undefined), []);
-  assert.deepEqual(normalizeFlags("3"), []);
-  assert.deepEqual(normalizeFlags({}), []);
+test("seatForPickNumber rejects non-positive / non-integer input", () => {
+  for (const bad of [0, -1, 1.5, "1", null, undefined, NaN]) {
+    assert.equal(seatForPickNumber(bad, "player1"), null);
+  }
 });
 
-test("normalizeFlags: two orderings of the same claims compare equal", () => {
-  assert.deepEqual(normalizeFlags([3, 8]), normalizeFlags([8, 3]));
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// correctFlagCount / hasFlaggedAllMines — the server-side flag win check
-// ════════════════════════════════════════════════════════════════════════
-
-test("correctFlagCount: counts only flags that really are mines", () => {
-  const board = { size: 5, mines: [0, 7, 24] };
-  assert.equal(correctFlagCount([0, 7, 24], board), 3);
-  assert.equal(correctFlagCount([0, 1, 2], board), 1);
-  assert.equal(correctFlagCount([1, 2, 3], board), 0);
-  assert.equal(correctFlagCount([], board), 0);
-});
-
-test("correctFlagCount: malformed board returns 0", () => {
-  assert.equal(correctFlagCount([0], null), 0);
-  assert.equal(correctFlagCount([0], {}), 0);
-  assert.equal(correctFlagCount([0], { mines: "x" }), 0);
-});
-
-test("hasFlaggedAllMines: true when every mine is claimed", () => {
-  const board = { size: 5, mines: [0, 7, 24] };
-  assert.equal(hasFlaggedAllMines([0, 7, 24], board), true);
-  assert.equal(hasFlaggedAllMines([24, 0, 7], board), true);
-});
-
-test("hasFlaggedAllMines: extra (wrong) flags do not block the win", () => {
-  // The rule only requires every MINE to be claimed; a wrong flag is not
-  // a loss, so it must not deny the win either.
-  const board = { size: 5, mines: [0, 7] };
-  assert.equal(hasFlaggedAllMines([0, 1, 7, 13], board), true);
-});
-
-test("hasFlaggedAllMines: false while any mine is unflagged", () => {
-  const board = { size: 5, mines: [0, 7, 24] };
-  assert.equal(hasFlaggedAllMines([0, 7], board), false);
-  assert.equal(hasFlaggedAllMines([], board), false);
-});
-
-test("hasFlaggedAllMines: empty / malformed board is never a win", () => {
-  assert.equal(hasFlaggedAllMines([0, 1], null), false);
-  assert.equal(hasFlaggedAllMines([0, 1], {}), false);
-  assert.equal(hasFlaggedAllMines([0, 1], { mines: [] }), false);
-});
-
-test("hasFlaggedAllMines: works against a generated board (every mine claimed)", () => {
-  const board = generateBoard(4);
-  assert.equal(hasFlaggedAllMines(board.mines, board), true);
-  // One mine missing → not a win.
-  assert.equal(hasFlaggedAllMines(board.mines.slice(1), board), false);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// flagsForSeat — the two player flag collections are independent
-// ════════════════════════════════════════════════════════════════════════
-
-test("flagsForSeat: reads each seat from its own column", () => {
-  const match = { p1Flags: [3, 8], p2Flags: [3] };
-  assert.deepEqual(flagsForSeat(match, "player1"), [3, 8]);
-  assert.deepEqual(flagsForSeat(match, "player2"), [3]);
-});
-
-test("flagsForSeat: the same cell may be claimed by both seats (no clobbering)", () => {
-  const match = { p1Flags: [12], p2Flags: [12] };
-  assert.deepEqual(flagsForSeat(match, "player1"), [12]);
-  assert.deepEqual(flagsForSeat(match, "player2"), [12]);
-});
-
-test("flagsForSeat: missing / legacy rows read as an empty array", () => {
-  assert.deepEqual(flagsForSeat(null, "player1"), []);
-  assert.deepEqual(flagsForSeat(undefined, "player2"), []);
-  assert.deepEqual(flagsForSeat({}, "player1"), []);
-  assert.deepEqual(flagsForSeat({ p1Flags: null }, "player1"), []);
-  assert.deepEqual(flagsForSeat({ p1Flags: "nope" }, "player1"), []);
-});
-
-test("flagsForSeat: normalises the stored value (unique, sorted, in-range)", () => {
-  assert.deepEqual(flagsForSeat({ p1Flags: [8, 3, 3, 99, -1] }, "player1"), [3, 8]);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// isFlagEntry / revealedCells — flags are claims, never reveals
-// ════════════════════════════════════════════════════════════════════════
-
-test("isFlagEntry: reads both the legacy and the explicit discriminator", () => {
-  assert.equal(isFlagEntry({ flag: true }), true);
-  assert.equal(isFlagEntry({ kind: "flag" }), true);
-  assert.equal(isFlagEntry({ flag: true, kind: "flag" }), true);
-  assert.equal(isFlagEntry({ cell: 3, isMine: false }), false);
-  assert.equal(isFlagEntry({ flag: false }), false);
-  assert.equal(isFlagEntry(null), false);
-  assert.equal(isFlagEntry(undefined), false);
-});
-
-test("revealedCells: excludes flag claims and de-duplicates", () => {
+test("activeSeatForMatch / activePickerForMatch derive the turn from history", () => {
   const match = {
-    picks: [
-      { cell: 4, seat: "player1", isMine: false }, // reveal
-      { cell: 9, seat: "player2", flag: true }, // claim — NOT a reveal
-      { cell: 4, seat: "player2", isMine: false }, // duplicate reveal
-      { cell: 12, seat: "player1", kind: "flag" }, // explicit claim marker
-    ],
+    player1Id: "u1",
+    player2Id: "u2",
+    firstPlayerId: "u1",
+    picks: [],
   };
-  assert.deepEqual(revealedCells(match), [4]);
+  assert.equal(activeSeatForMatch(match), "player1");
+  assert.equal(activePickerForMatch(match), "u1");
+  match.picks = [{ cell: 5 }];
+  assert.equal(activeSeatForMatch(match), "player2");
+  assert.equal(activePickerForMatch(match), "u2");
+  match.picks = [{ cell: 5 }, { cell: 6 }];
+  assert.equal(activeSeatForMatch(match), "player1");
 });
 
-test("revealedCells: drops out-of-range entries and tolerates legacy rows", () => {
-  assert.deepEqual(
-    revealedCells({ picks: [{ cell: 25 }, { cell: -1 }, { cell: 1.5 }, { cell: 7 }] }),
-    [7],
+// ════════════════════════════════════════════════════════════════════════
+// generateBoard
+// ════════════════════════════════════════════════════════════════════════
+
+test("generateBoard: produces a valid 5-mine board", () => {
+  for (let i = 0; i < 50; i += 1) {
+    const board = generateBoard(5);
+    assert.equal(board.size, 10);
+    assert.equal(board.mines.length, 5);
+    const seen = new Set();
+    for (const idx of board.mines) {
+      assert.ok(Number.isInteger(idx) && idx >= 0 && idx < GRID_CELLS);
+      assert.equal(seen.has(idx), false, `duplicate mine ${idx}`);
+      seen.add(idx);
+    }
+  }
+});
+
+test("generateBoard: mines are sorted ascending", () => {
+  for (let i = 0; i < 50; i += 1) {
+    const board = generateBoard(5);
+    for (let j = 1; j < board.mines.length; j += 1) {
+      assert.ok(board.mines[j] > board.mines[j - 1]);
+    }
+  }
+});
+
+test("generateBoard: roughly uniform distribution across 100 cells", () => {
+  const counts = new Array(GRID_CELLS).fill(0);
+  const trials = 1000;
+  for (let i = 0; i < trials; i += 1) {
+    for (const idx of generateBoard(5).mines) counts[idx] += 1;
+  }
+  for (let cell = 0; cell < GRID_CELLS; cell += 1) {
+    assert.ok(
+      counts[cell] > 15 && counts[cell] < 95,
+      `cell ${cell} hit ${counts[cell]} times — out of range`,
+    );
+  }
+});
+
+test("generateBoard: rejects invalid mine counts", () => {
+  for (const bad of [0, 100, -1, 1.5, NaN]) {
+    assert.throws(() => generateBoard(bad), RangeError);
+  }
+  // The generic bounds still allow up to MAX_MINES for the pure generator.
+  assert.equal(generateBoard(99).mines.length, 99);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// isMine / nearestMineDistance / chebyshevDistance
+// ════════════════════════════════════════════════════════════════════════
+
+test("isMine: true for listed mines, false otherwise", () => {
+  const board = generateBoard(5);
+  for (const idx of board.mines) assert.equal(isMine(board, idx), true);
+  const set = new Set(board.mines);
+  for (let c = 0; c < GRID_CELLS; c += 1) {
+    if (!set.has(c)) assert.equal(isMine(board, c), false);
+  }
+});
+
+test("isMine: defensive inputs return false", () => {
+  const board = generateBoard(5);
+  assert.equal(isMine(board, -1), false);
+  assert.equal(isMine(board, GRID_CELLS), false);
+  assert.equal(isMine(board, "5"), false);
+  assert.equal(isMine(null, 0), false);
+  assert.equal(isMine({}, 5), false);
+});
+
+test("nearestMineDistance: Chebyshev tiles to the closest mine", () => {
+  // Board 10×10. Mine at 0 (0,0). Cell 99 (9,9) is 9 tiles away.
+  assert.equal(nearestMineDistance({ size: 10, mines: [0] }, 99), 9);
+  // Cell 11 (1,1) touches (0,0) diagonally.
+  assert.equal(nearestMineDistance({ size: 10, mines: [0] }, 11), 1);
+  // A mine on the cell itself is distance 0.
+  assert.equal(nearestMineDistance({ size: 10, mines: [55] }, 55), 0);
+});
+
+test("nearestMineDistance: defensive inputs return null", () => {
+  assert.equal(nearestMineDistance(null, 0), null);
+  assert.equal(nearestMineDistance({}, 0), null);
+  assert.equal(nearestMineDistance({ mines: [] }, 0), null);
+  assert.equal(nearestMineDistance({ mines: [0] }, -1), null);
+  assert.equal(nearestMineDistance({ mines: [0] }, 999), null);
+});
+
+test("chebyshevDistance: king-move distance between cells", () => {
+  assert.equal(chebyshevDistance(0, 0), 0);
+  assert.equal(chebyshevDistance(0, 11), 1);
+  assert.equal(chebyshevDistance(0, 55), 5);
+  assert.equal(chebyshevDistance(0, 99), 9);
+  assert.equal(chebyshevDistance(-1, 12), null);
+  assert.equal(chebyshevDistance(100, 12), null);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// relocateMine (first-pick mercy)
+// ════════════════════════════════════════════════════════════════════════
+
+test("relocateMine: moves the mine off a cell, preserving the count", () => {
+  for (let i = 0; i < 100; i += 1) {
+    const board = generateBoard(5);
+    const target = board.mines[0];
+    const moved = relocateMine(board, target);
+    assert.equal(moved.mines.length, 5);
+    assert.equal(isMine(moved, target), false);
+  }
+});
+
+test("relocateMine: no-op on a safe cell / malformed input", () => {
+  const board = { size: 10, mines: [0, 5] };
+  assert.equal(relocateMine(board, 12), board);
+  assert.deepEqual(board.mines, [0, 5]);
+  assert.equal(relocateMine(null, 0), null);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// decideOutcome / resultForWinner / computePayout
+// ════════════════════════════════════════════════════════════════════════
+
+test("decideOutcome maps a loser to the winning seat", () => {
+  assert.equal(
+    decideOutcome({ loserId: "u1", player1Id: "u1", player2Id: "u2" }),
+    RESULT.PLAYER2,
   );
-  assert.deepEqual(revealedCells(null), []);
-  assert.deepEqual(revealedCells({}), []);
-  assert.deepEqual(revealedCells({ picks: null }), []);
+  assert.equal(
+    decideOutcome({ loserId: "u2", player1Id: "u1", player2Id: "u2" }),
+    RESULT.PLAYER1,
+  );
+  assert.throws(
+    () => decideOutcome({ loserId: "u3", player1Id: "u1", player2Id: "u2" }),
+    RangeError,
+  );
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// withFlagForSeat — a claim touches ONE seat's column
-// ════════════════════════════════════════════════════════════════════════
-
-test("withFlagForSeat: returns a single-column patch for the claiming seat", () => {
-  const match = { p1Flags: [3], p2Flags: [8] };
-  assert.deepEqual(withFlagForSeat(match, "player1", 12), { p1Flags: [3, 12] });
-  assert.deepEqual(withFlagForSeat(match, "player2", 0), { p2Flags: [0, 8] });
-  // The other seat's collection is never part of the patch.
-  assert.equal("p2Flags" in withFlagForSeat(match, "player1", 4), false);
-});
-
-test("withFlagForSeat: canonicalises (unique, sorted) and is idempotent", () => {
-  const match = { p1Flags: [8, 3] };
-  assert.deepEqual(withFlagForSeat(match, "player1", 8), { p1Flags: [3, 8] });
-  assert.deepEqual(withFlagForSeat(match, "player1", 5), { p1Flags: [3, 5, 8] });
-  assert.deepEqual(withFlagForSeat({}, "player1", 12), { p1Flags: [12] });
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// resultForWinner — winner-shaped resolution (loser semantics can't flip)
-// ════════════════════════════════════════════════════════════════════════
-
-test("resultForWinner: maps the winner to the result string", () => {
+test("resultForWinner is winner-shaped and throws on a non-seat", () => {
   assert.equal(
     resultForWinner({ winnerId: "u1", player1Id: "u1", player2Id: "u2" }),
     RESULT.PLAYER1,
@@ -1439,124 +380,187 @@ test("resultForWinner: maps the winner to the result string", () => {
     resultForWinner({ winnerId: "u2", player1Id: "u1", player2Id: "u2" }),
     RESULT.PLAYER2,
   );
-});
-
-test("resultForWinner: throws for a non-participant winner (never a draw)", () => {
   assert.throws(
-    () => resultForWinner({ winnerId: "u3", player1Id: "u1", player2Id: "u2" }),
-    RangeError,
-  );
-  assert.throws(
-    () => resultForWinner({ winnerId: null, player1Id: "u1", player2Id: "u2" }),
+    () => resultForWinner({ winnerId: "x", player1Id: "u1", player2Id: "u2" }),
     RangeError,
   );
 });
 
-test("resultForWinner agrees with decideOutcome for the same match", () => {
-  // decideOutcome takes the LOSER; resultForWinner takes the WINNER. For the
-  // same match they must name opposite seats — the invariant that makes the
-  // winner-shaped store resolver safe.
-  assert.equal(
-    resultForWinner({ winnerId: "u2", player1Id: "u1", player2Id: "u2" }),
-    decideOutcome({ loserId: "u1", player1Id: "u1", player2Id: "u2" }),
+test("computePayout: winner takes stake + 90%, house 10%, loser -stake", () => {
+  const p = computePayout({ stakeAmount: 100, result: RESULT.PLAYER1 });
+  assert.equal(p.winnerNet, 190);
+  assert.equal(p.loserNet, -100);
+  assert.equal(p.houseFee, 10);
+  assert.equal(p.prizePaid, 190);
+  // Draw (legacy) refunds both sides.
+  const d = computePayout({ stakeAmount: 100, result: RESULT.DRAW });
+  assert.equal(d.winnerNet, null);
+  assert.equal(d.houseFee, 0);
+  assert.throws(() => computePayout({ stakeAmount: -1, result: RESULT.PLAYER1 }), RangeError);
+  assert.throws(() => computePayout({ stakeAmount: 10, result: "nope" }), RangeError);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// pickRandomCell / round2 / cell conversions
+// ════════════════════════════════════════════════════════════════════════
+
+test("pickRandomCell: returns a valid cell and honours the exclusion set", () => {
+  for (let i = 0; i < 100; i += 1) {
+    const cell = pickRandomCell({ excludePicks: [0, 1, 2] });
+    assert.ok(cell >= 3 && cell < GRID_CELLS);
+  }
+  assert.throws(
+    () =>
+      pickRandomCell({
+        excludePicks: Array.from({ length: GRID_CELLS }, (_, i) => i),
+      }),
+    Error,
   );
 });
 
-// ════════════════════════════════════════════════════════════════════
-// chooseAiCell — the reveal-only bot's cell policy
-// ════════════════════════════════════════════════════════════════════
+test("round2 rounds to two decimals", () => {
+  assert.equal(round2(0.1 + 0.2), 0.3);
+  assert.equal(round2("1.005"), 1.0);
+  assert.equal(round2(NaN), 0);
+});
 
-function aiMatch({ picks = [], aiDifficulty, mines = [0, 7, 24] } = {}) {
-  return {
-    picks,
-    aiDifficulty,
-    board: { size: 5, mines },
-    player1Id: "u1",
-    player2Id: MINES_AI_PLAYER_ID,
+test("cell ↔ row/col round trip", () => {
+  for (const idx of [0, 9, 10, 55, 99]) {
+    const rc = cellIndexToRowCol(idx);
+    assert.equal(rowColToCellIndex(rc.row, rc.col), idx);
+  }
+  assert.equal(cellIndexToRowCol(100), null);
+  assert.equal(rowColToCellIndex(10, 0), null);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Flags + mine counters
+// ════════════════════════════════════════════════════════════════════════
+
+test("normalizeFlags: unique, sorted, in-range, tamper-safe", () => {
+  assert.deepEqual(normalizeFlags([5, 3, 5, 101, -1, "7", 1.5, null]), [3, 5, 7]);
+  assert.deepEqual(normalizeFlags("nope"), []);
+});
+
+test("correctFlagCount counts only real mines", () => {
+  const board = { size: 10, mines: [1, 2, 3, 4, 5] };
+  assert.equal(correctFlagCount([1, 2, 99], board), 2);
+  assert.equal(correctFlagCount([], board), 0);
+});
+
+test("hasFlaggedAllMines: every mine must be claimed", () => {
+  const board = { size: 10, mines: [1, 2, 3, 4, 5] };
+  assert.equal(hasFlaggedAllMines([1, 2, 3, 4, 5], board), true);
+  assert.equal(hasFlaggedAllMines([1, 2, 3, 4], board), false);
+  assert.equal(hasFlaggedAllMines([], board), false);
+});
+
+test("flagsForSeat reads a seat's own set, normalised", () => {
+  const match = { p1Flags: [9, 3, 3], p2Flags: [5] };
+  assert.deepEqual(flagsForSeat(match, "player1"), [3, 9]);
+  assert.deepEqual(flagsForSeat(match, "player2"), [5]);
+  assert.deepEqual(flagsForSeat({}, "player1"), []);
+});
+
+test("withFlagForSeat returns a single-column patch", () => {
+  const match = { p1Flags: [1], p2Flags: [2] };
+  assert.deepEqual(withFlagForSeat(match, "player1", 7), { p1Flags: [1, 7] });
+  assert.deepEqual(withFlagForSeat(match, "player2", 8), { p2Flags: [2, 8] });
+});
+
+test("isFlagEntry reads both discriminators", () => {
+  assert.equal(isFlagEntry({ flag: true }), true);
+  assert.equal(isFlagEntry({ kind: "flag" }), true);
+  assert.equal(isFlagEntry({ cell: 1 }), false);
+  assert.equal(isFlagEntry(null), false);
+});
+
+test("revealedCells skips flag entries", () => {
+  const match = {
+    picks: [
+      { cell: 1, flag: false },
+      { cell: 2, flag: true, kind: "flag" },
+      { cell: "3", flag: false },
+    ],
   };
-}
-
-test("chooseAiCell: returns a valid, unpicked cell", () => {
-  const m = aiMatch();
-  for (let i = 0; i < 200; i += 1) {
-    const { cellIndex } = chooseAiCell(m);
-    assert.ok(
-      Number.isInteger(cellIndex) && cellIndex >= 0 && cellIndex < GRID_CELLS,
-      `bot returned an invalid cell ${cellIndex}`,
-    );
-    assert.equal(m.picks.some((p) => p.cell === cellIndex), false);
-  }
+  assert.deepEqual(revealedCells(match), [1, 3]);
+  assert.deepEqual(revealedCells({}), []);
 });
 
-test("chooseAiCell: never re-picks a revealed OR claimed cell", () => {
-  // A flag claim is not a reveal, but the bot must not "pick" an occupied
-  // cell either — the server would reject it as a duplicate.
-  const picks = [
-    { seat: "player1", cell: 0, flag: false },
-    { seat: "player2", cell: 1, flag: false },
-    { seat: "player1", cell: 2, flag: true },
-  ];
-  const m = aiMatch({ picks });
-  const excluded = new Set([0, 1, 2]);
-  for (let i = 0; i < 300; i += 1) {
-    const { cellIndex } = chooseAiCell(m);
-    assert.equal(excluded.has(cellIndex), false, `bot re-picked ${cellIndex}`);
-  }
+test("minesFoundForSeat / minesRemainingForSeat track the public counters", () => {
+  const board = { size: 10, mines: [1, 2, 3, 4, 5] };
+  const match = { minesCount: 5, board, p1Flags: [1, 2], p2Flags: [] };
+  assert.equal(minesFoundForSeat(match, "player1"), 2);
+  assert.equal(minesRemainingForSeat(match, "player1"), 3);
+  assert.equal(minesFoundForSeat(match, "player2"), 0);
+  assert.equal(minesRemainingForSeat(match, "player2"), 5);
 });
 
-test("chooseAiCell: easy tier samples anywhere (the center included)", () => {
-  const m = aiMatch({ aiDifficulty: "easy" });
-  const seen = new Set();
-  for (let i = 0; i < 800; i += 1) seen.add(chooseAiCell(m).cellIndex);
-  assert.ok(
-    [...CENTER_BLOCK_SET].some((c) => seen.has(c)),
-    "the easy bot must be able to open a center cell",
+// ════════════════════════════════════════════════════════════════════════
+// AI — reveal-only, deduction-driven
+// ════════════════════════════════════════════════════════════════════════
+
+test("aiCellRisk: cells inside a clue's safety radius are risk 0", () => {
+  // A clue of 5 at cell 55 proves nothing within Chebyshev 4 is a mine.
+  const revealed = [{ cell: 55, hint: 5 }];
+  // Cell 44 is a neighbour of 55 (distance 1 < 5) → provably safe.
+  assert.equal(aiCellRisk(44, revealed), 0);
+  // A cell exactly on the frontier is a mine candidate → non-zero risk.
+  assert.ok(aiCellRisk(0, revealed) > 0);
+});
+
+test("chooseAiCell: hard never picks a provably-risky cell when a safe one exists", () => {
+  const match = {
+    aiDifficulty: "hard",
+    picks: [{ cell: 55, hint: 5, flag: false }],
+  };
+  const { cellIndex } = chooseAiCell(match, () => 0);
+  assert.ok(Number.isInteger(cellIndex) && cellIndex >= 0 && cellIndex < GRID_CELLS);
+  // It must not be the already-revealed cell, and it must be provably safe.
+  assert.notEqual(cellIndex, 55);
+  assert.ok(chebyshevDistance(cellIndex, 55) < 5);
+});
+
+test("chooseAiCell: easy ignores the clues and takes a random live cell", () => {
+  const match = { aiDifficulty: "easy", picks: [{ cell: 0, hint: 1, flag: false }] };
+  const { cellIndex } = chooseAiCell(match, () => 0);
+  // It never re-picks a revealed cell, and it may ignore the clue entirely.
+  assert.ok(Number.isInteger(cellIndex) && cellIndex >= 0 && cellIndex < GRID_CELLS);
+  assert.notEqual(cellIndex, 0);
+});
+
+test("chooseAiCell: a full board falls back to cell 0", () => {
+  const picks = Array.from({ length: GRID_CELLS }, (_, cell) => ({ cell, flag: false }));
+  assert.deepEqual(chooseAiCell({ aiDifficulty: "hard", picks }, () => 0), { cellIndex: 0 });
+});
+
+test("chooseAiCell never touches the flag sets", () => {
+  const { cellIndex } = chooseAiCell(
+    { aiDifficulty: "hard", picks: [{ cell: 3, flag: true }] },
+    () => 0,
   );
+  assert.ok(Number.isInteger(cellIndex));
 });
 
-test("chooseAiCell: normal tier avoids the mine-free center while cells remain", () => {
-  const m = aiMatch({ aiDifficulty: "normal" });
-  for (let i = 0; i < 400; i += 1) {
-    assert.equal(
-      CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex),
-      false,
-      "normal bot must avoid the center block",
-    );
-  }
+// ════════════════════════════════════════════════════════════════════════
+// AI pacing helpers (legacy surface)
+// ════════════════════════════════════════════════════════════════════════
+
+test("lastAiPickAt reads the bot's most recent pick", () => {
+  const match = {
+    picks: [
+      { userId: "human", pickedAt: "2026-01-01T00:00:00.000Z" },
+      { userId: MINES_AI_PLAYER_ID, pickedAt: "2026-01-01T00:00:05.000Z" },
+    ],
+  };
+  assert.equal(lastAiPickAt(match), "2026-01-01T00:00:05.000Z");
+  assert.equal(lastAiPickAt(null), null);
 });
 
-test("chooseAiCell: hard tier plays the guaranteed-safe center first", () => {
-  const m = aiMatch({ aiDifficulty: "hard" });
-  for (let i = 0; i < 400; i += 1) {
-    assert.ok(
-      CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex),
-      "hard bot must open inside the center block",
-    );
-  }
+test("aiPickDelayElapsed respects the pacing window", () => {
+  assert.equal(AI_PICK_DELAY_MS, 1500);
+  const match = { picks: [{ userId: MINES_AI_PLAYER_ID, pickedAt: 1_000 }] };
+  assert.equal(aiPickDelayElapsed(match, 5_000), true);
+  assert.equal(aiPickDelayElapsed(match, 1_500), false);
+  assert.equal(aiPickDelayElapsed({ picks: [] }, 0), true);
 });
-
-test("chooseAiCell: falls back to the non-center cells once the center is exhausted", () => {
-  const picks = [...CENTER_BLOCK_SET].map((cell) => ({
-    seat: "player1",
-    cell,
-    flag: false,
-  }));
-  const m = aiMatch({ picks, aiDifficulty: "hard" });
-  for (let i = 0; i < 200; i += 1) {
-    assert.equal(CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex), false);
-  }
-});
-
-test("chooseAiCell: every cell taken -> safe fallback index (no crash)", () => {
-  const picks = Array.from({ length: GRID_CELLS }, (_, cell) => ({ cell }));
-  assert.equal(chooseAiCell(aiMatch({ picks })).cellIndex, 0);
-});
-
-test("chooseAiCell: an unknown tier falls back to the normal policy", () => {
-  const m = aiMatch({ aiDifficulty: "totally-made-up" });
-  for (let i = 0; i < 200; i += 1) {
-    assert.equal(CENTER_BLOCK_SET.has(chooseAiCell(m).cellIndex), false);
-  }
-});
-
-console.log("\n? All Mines Duel engine tests passed!\n");

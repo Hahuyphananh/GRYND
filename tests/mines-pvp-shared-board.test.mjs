@@ -124,13 +124,17 @@ test("the match route delegates serialisation to the shared matchView module", (
   assert.match(AI_ROUTE, /normaliseMatchForViewer\(result\.match, userId\)/);
 });
 
-test("the viewer serializer exposes p1Flags / p2Flags / winReason / winnerId", () => {
-  for (const field of ["p1Flags", "p2Flags", "winReason", "winnerId"]) {
+test("the viewer serializer exposes the private flag set + public mine counts", () => {
+  for (const field of ["myFlags", "myMinesFound", "opponentMinesFound", "winReason", "winnerId"]) {
     assert.match(MATCH_VIEW, new RegExp(`${field}:`), `payload must expose ${field}`);
   }
-  // Flags are read PER SEAT (independent collections), never one shared list.
-  assert.match(MATCH_VIEW, /p1Flags: flagsForSeat\(match, "player1"\)/);
-  assert.match(MATCH_VIEW, /p2Flags: flagsForSeat\(match, "player2"\)/);
+  // The viewer's OWN flag set is read per seat; the opponent's locations are
+  // never serialised — only their confirmed COUNT.
+  assert.match(MATCH_VIEW, /myFlags: flagsForSeat\(match, viewerSeat\)/);
+  assert.match(MATCH_VIEW, /myMinesFound: minesFoundForSeat\(match, viewerSeat\)/);
+  assert.match(MATCH_VIEW, /opponentMinesFound: minesFoundForSeat\(match, opponentSeat\)/);
+  // The opponent's flag locations are scrubbed from the pick history.
+  assert.match(MATCH_VIEW, /cell:\s*\n?\s*isFlag && !isViewerPick/);
   // Win reason is preserved verbatim (null while the match is active).
   assert.match(MATCH_VIEW, /winReason: match\.winReason \?\? null/);
 });
@@ -141,15 +145,21 @@ test("the server store canonicalises both flag sets onto the scrubbed row", () =
   assert.match(STORE, /p2Flags: flagsForSeat\(match, "player2"\)/);
 });
 
-test("the scrub helper mirrors the same canonical flag reads", () => {
-  assert.match(MATCH_VIEW, /p1Flags: flagsForSeat\(match, "player1"\)/);
-  assert.match(MATCH_VIEW, /p2Flags: flagsForSeat\(match, "player2"\)/);
+test("the scrub helper hides the opponent's flag cell and verdict", () => {
+  // Only the claimant (or a settled replay) sees the flag's cell/verdict.
+  const scrub = MATCH_VIEW.slice(
+    MATCH_VIEW.indexOf("export function scrubPicksForViewer"),
+    MATCH_VIEW.indexOf("export function normaliseMatchForViewer"),
+  );
+  assert.match(scrub, /const reveal = !isFlag \|\| isViewerPick \|\| finished;/);
+  assert.match(scrub, /isFlag && !isViewerPick/);
 });
 
-test("the client match type declares the new state fields", () => {
+test("the client match type declares the private-flag + counter fields", () => {
   assert.match(MATCH_CLIENT, /winReason: string \| null;/);
-  assert.match(MATCH_CLIENT, /p1Flags: number\[\];/);
-  assert.match(MATCH_CLIENT, /p2Flags: number\[\];/);
+  assert.match(MATCH_CLIENT, /myFlags: number\[\];/);
+  assert.match(MATCH_CLIENT, /myMinesFound: number;/);
+  assert.match(MATCH_CLIENT, /opponentMinesFound: number;/);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -174,8 +184,9 @@ test("create endpoints expose the new state with empty defaults", () => {
     "src/app/api/mines-pvp/create-ai/route.js",
   ]) {
     const src = read(rel);
-    assert.match(src, /p1Flags: Array\.isArray\(match\.p1Flags\) \? match\.p1Flags : \[\]/);
-    assert.match(src, /p2Flags: Array\.isArray\(match\.p2Flags\) \? match\.p2Flags : \[\]/);
+    assert.match(src, /myFlags: \[\]/);
+    assert.match(src, /myMinesFound: 0/);
+    assert.match(src, /opponentMinesFound: 0/);
     assert.match(src, /winReason: match\.winReason \?\? null/);
   }
 });
@@ -190,7 +201,10 @@ const CONSTANTS = read("src/lib/mines-pvp/constants.js");
 test("the SHARED CLUE is published to both seats (no per-viewer hint stripping)", () => {
   // The clue is server-computed and belongs to the shared board, so the
   // serializer must NOT gate it on "is this the viewer's own pick".
-  assert.match(MATCH_VIEW, /hint: raw\.hint != null \? Number\(raw\.hint\) : null/);
+  assert.match(
+    MATCH_VIEW,
+    /hint:[\s\S]{0,40}raw\.hint != null \? Number\(raw\.hint\) : null/,
+  );
   assert.doesNotMatch(
     MATCH_VIEW,
     /hint:[\s\S]{0,160}finished \|\| isViewerPick/,
@@ -220,21 +234,23 @@ test("the mine-hit winner is the OPPONENT of the picker", () => {
   assert.match(SERVER_STORE, /function otherSeatId\(match, userId\)/);
 });
 
-test("flagTile claims into the flagger's OWN set and never leaks a verdict", () => {
+test("flagTile keeps only CORRECT flags and reports the outcome to the caller", () => {
   assert.match(SERVER_STORE, /withFlagForSeat\(match, seat, idx\)/);
   assert.match(SERVER_STORE, /hasFlaggedAllMines\(claimedFlags, match\.board\)/);
   assert.match(
     SERVER_STORE,
     /winnerId: userId,[\s\S]{0,40}?reason: WIN_REASON\.ALL_MINES_FLAGGED/,
   );
-  // The flag entry carries NO mine verdict / clue (it is public mid-match).
+  // The verdict is computed server-side and only a CORRECT flag is kept in
+  // the seat's own set; a wrong flag still consumes the turn.
   const flagBody = SERVER_STORE.slice(
     SERVER_STORE.indexOf("export async function flagTile"),
     SERVER_STORE.indexOf("async function advanceTurn"),
   );
-  assert.match(flagBody, /isMine: null/);
+  assert.match(flagBody, /const flagIsMine = isMine\(match\.board, idx\);/);
+  assert.match(flagBody, /flagIsMine \? withFlagForSeat\(match, seat, idx\) : \{\}/);
+  assert.match(flagBody, /wrongFlag: !flagIsMine/);
   assert.doesNotMatch(flagBody, /loserId/);
-  assert.doesNotMatch(flagBody, /isMine\(match\.board, idx\)/);
 });
 
 test("reveal blocking ignores flag claims, and legacy mirrors skip flags", () => {
@@ -245,12 +261,13 @@ test("reveal blocking ignores flag claims, and legacy mirrors skip flags", () =>
   assert.match(CONSTANTS, /export function isFlagEntry\(entry\)/);
 });
 
-test("the flag route reports the real outcome and the caller's claim set", () => {
+test("the flag route reports the caller's own set, the counters and the verdict", () => {
   assert.match(FLAG_ROUTE, /justResolved: Boolean\(result\.justResolved\)/);
-  assert.match(FLAG_ROUTE, /p1Flags: flagsForSeat\(match, "player1"\)/);
+  assert.match(FLAG_ROUTE, /myFlags: flagsForSeat\(match, viewerSeat\)/);
+  assert.match(FLAG_ROUTE, /opponentMinesFound: minesFoundForSeat\(match, opponentSeat\)/);
   assert.match(FLAG_ROUTE, /winReason: match\.winReason \?\? null/);
-  // A claim never reports a verdict.
-  assert.doesNotMatch(FLAG_ROUTE, /isMine:/);
+  // The response tells the CALLER whether their read was right.
+  assert.match(FLAG_ROUTE, /wrongFlag: Boolean\(result\.wrongFlag\)/);
 });
 
 // ════════════════════════════════════════════════════════════════════════

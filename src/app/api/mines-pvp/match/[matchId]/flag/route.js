@@ -39,15 +39,17 @@ import { flagTile } from "../../../../../../lib/mines-pvp/serverStore";
 import {
   GRID_CELLS,
   flagsForSeat,
+  minesFoundForSeat,
 } from "../../../../../../lib/mines-pvp/constants";
 import { broadcastMatchUpdate } from "../../../../../../lib/mines-pvp/rooms";
 
-function normaliseFlagResult(match) {
+function normaliseFlagResult(match, userId) {
   if (!match) return null;
-  // Only return structural fields plus the PUBLIC flag claims — never any
-  // correctness verdict (that would leak the answer before the full
-  // reveal). The client refetches /status right after, which shows the
-  // finished board when the sweep completed.
+  // Return structural fields plus the CALLER'S OWN confirmed mines and the
+  // two public mine counters. The opponent's flag locations are never sent.
+  const viewerIsPlayer1 = match.player1Id === userId;
+  const viewerSeat = viewerIsPlayer1 ? "player1" : "player2";
+  const opponentSeat = viewerIsPlayer1 ? "player2" : "player1";
   return {
     id: match.id,
     status: match.status,
@@ -55,8 +57,9 @@ function normaliseFlagResult(match) {
     p2Pick: match.p2Pick ?? null,
     currentTurnUserId: match.currentTurnUserId,
     roundDeadline: match.roundDeadline,
-    p1Flags: flagsForSeat(match, "player1"),
-    p2Flags: flagsForSeat(match, "player2"),
+    myFlags: flagsForSeat(match, viewerSeat),
+    myMinesFound: minesFoundForSeat(match, viewerSeat),
+    opponentMinesFound: minesFoundForSeat(match, opponentSeat),
     winReason: match.winReason ?? null,
     winnerId: match.winnerId ?? null,
   };
@@ -141,8 +144,13 @@ export async function POST(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normaliseFlagResult(result.match),
+        match: normaliseFlagResult(result.match, userId),
         justResolved: Boolean(result.justResolved),
+        // The caller-only verdict: true when the flagged tile really was a
+        // mine (the mine is confirmed for them), false when the read was
+        // wrong (they are told at once). The location is theirs alone.
+        flagRevealed: Boolean(result.flagRevealed),
+        wrongFlag: Boolean(result.wrongFlag),
       },
     });
   } catch (error) {

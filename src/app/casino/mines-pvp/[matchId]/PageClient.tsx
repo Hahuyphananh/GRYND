@@ -3,8 +3,8 @@
 // src/app/casino/mines-pvp/[matchId]/page.tsx
 //
 // MATCH view for the Mines PvP ("Mines Duel") system — the SHARED-BOARD
-// competitive Minesweeper rules. Both players play the SAME 5×5 board on the
-// existing alternating (server-authoritative) turn order; each turn has a 20 s
+// competitive Minesweeper rules. Both players play the SAME 10×10 board on a
+// strict alternating (server-authoritative) turn order; each turn has a 20 s
 // window.
 //
 // SHARED INFORMATION: a safe reveal belongs to the WHOLE board — the cell and
@@ -14,11 +14,12 @@
 // opponent's. The one thing that never leaves the server mid-match is the
 // hidden mine list itself.
 //
-// ENDINGS: revealing a mine loses instantly (sudden death); correctly flagging
-// EVERY mine wins instantly. Flags are per-player CLAIMS — both seats see both
-// sets — and a wrong claim is never a loss, it just costs a turn.
+// ENDINGS: revealing a mine loses instantly (sudden death); confirming
+// EVERY mine wins instantly. Flags are private per seat — a correct flag
+// reveals the mine to the flagger alone, and the opponent only sees the
+// mine counter drop. A wrong flag is rejected and costs the flagger a turn.
 //
-// Visual design reuses the solo-mines page's 5×5 gameboard
+// Visual design reuses the solo-mines page's gameboard
 // (cyan safe / magenta mine palette, bomb animation,  for
 // unrevealed) and STIPS the left + right sidebars (no bet input,
 // no autoplay, no multiplier readout — those don't apply in the
@@ -78,8 +79,9 @@ import {
 const RESULT_BEAT_MS = 900;
 
 // Finished-reveal sweep step: how far apart two still-hidden cells uncover.
-// 25 cells × 20ms = the last cell starts at 480ms.
-const REVEAL_STEP_MS = 20;
+// 100 cells × 6ms = the last cell starts at ~594ms, so the whole minefield
+// has uncovered itself before the result overlay lands at RESULT_BEAT_MS.
+const REVEAL_STEP_MS = 6;
 
 // ── Animation: bomb glyph (reused from solo mines) ──────────────────
 // `delayMs` exists for the finished reveal only: the bomb animation is the
@@ -91,18 +93,16 @@ function AnimatedBomb({
   exploded?: boolean;
   delayMs?: number;
 }) {
-  return (
-    <span
-      className={`
-        relative text-4xl
+  return (      <span className={`
+        relative text-lg
         ${exploded ? "animate-bomb-explode" : "animate-bomb-fuse"}
       `}
       style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
     >
-      <IconBomb size={32} className="text-red-400" />
+      <IconBomb size={15} className="text-red-400" />
       {!exploded && (
-        <span className="absolute -top-2 -right-2 animate-ping">
-          <IconSparkles size={14} className="text-orange-400" />
+        <span className="absolute -top-1.5 -right-1.5 animate-ping">
+          <IconSparkles size={8} className="text-orange-400" />
         </span>
       )}
     </span>
@@ -218,11 +218,10 @@ type PlayerSeatProps = {
   // Tiles this seat has REVEALED (flag claims are not reveals and are
   // counted separately below).
   reveals: number;
-  // Flag CLAIMS this seat currently holds, out of the match's total mine
-  // count. Claiming every mine wins, so the pair reads as progress; the
-  // actual mine LOCATIONS are never shown while the match is live.
-  flags: number;
-  mineCount: number;
+  // How many mines this seat has CONFIRMED (correctly flagged). Flag locations
+  // are private, so this count is the only public progress signal.
+  minesFound: number;
+  minesTotal: number;
   wagerLabel: string;
   thinking: boolean;
   // Optional label for the opponent's thinking indicator (defaults to
@@ -254,8 +253,8 @@ function PlayerSeat({
   profileFrame,
   nameColor,
   reveals,
-  flags,
-  mineCount,
+  minesFound,
+  minesTotal,
   wagerLabel,
   thinking,
   thinkingLabel,
@@ -269,7 +268,7 @@ function PlayerSeat({
   //
   // `thinking` already means exactly "this seat is the one to act", so the
   // other seat is the quiet one — that is the whole relationship: one card is
-  // emphasised, the other steps back, and the 5×5 board stays the focus.
+  // emphasised, the other steps back, and the board stays the focus.
   // Everything is border / background / opacity / glow, so it rides the card's
   // existing `transition-all`: a turn switch cross-fades instead of snapping,
   // and because these are transitions (not animations) a poll or socket
@@ -381,25 +380,25 @@ function PlayerSeat({
             {reveals}
           </b>
         </span>
-        {mineCount > 0 ? (
+        {minesTotal > 0 ? (
           <span
-            title="This seat's flag claims out of the total mines. Claim every mine to win — a wrong claim only costs a turn."
+            title="Mines this seat has confirmed by correctly flagging them. Flag every mine to win."
             className="inline-flex items-center gap-1"
           >
             <IconFlag
               size={11}
               className={isMe ? "text-cyan-300" : "text-fuchsia-300"}
             />
-            Flags:{" "}
+            Mines found:{" "}
             <b
-              key={`flags-${flags}`}
+              key={`mines-${minesFound}`}
               className={`animate-tile-reveal ${
                 isMe ? "text-cyan-100" : "text-fuchsia-100"
               }`}
             >
-              {flags}
+              {minesFound}
             </b>
-            <span className="text-white/40">/ {mineCount}</span>
+            <span className="text-white/40">/ {minesTotal}</span>
           </span>
         ) : null}
       </div>
@@ -530,13 +529,14 @@ type MatchRow = {
   // the shared-board rules added the all-mines-flagged ending, so the
   // result alone no longer identifies the hand.
   winReason: string | null;
-  // Per-player flag CLAIMS (shared-board rules). Both seats' sets are PUBLIC
-  // shared state and each is an array of unique, sorted 0-24 row-major cell
-  // indices (the same cell may appear in both). Claims never overwrite each
-  // other and never reveal anything about the hidden board — the same cell is
-  // still revealable later.
-  p1Flags: number[];
-  p2Flags: number[];
+  // The viewer's OWN confirmed mines (cells they correctly flagged). Private:
+  // the opponent's flag locations are never sent. Unique, sorted row-major
+  // cell indices.
+  myFlags: number[];
+  // Public per-seat progress: how many mines each player has confirmed. The
+  // side-by-side "5 | 5" counter is driven by these two numbers.
+  myMinesFound: number;
+  opponentMinesFound: number;
   houseFee: string;
   prizePaid: string;
   startedAt: string | null;
@@ -615,6 +615,14 @@ export default function MinesPvpMatchPage({
   // instead of a pick. Only meaningful on your turn (the handler
   // guards `isMyTurn` anyway); auto-resets when the turn passes.
   const [flagMode, setFlagMode] = useState(false);
+  // Transient in-match messages: "(name) revealed a mine" when a player
+  // correctly flags one, plus wrong-flag feedback for the player who tried.
+  const [messages, setMessages] = useState<
+    { id: number; text: string; tone: "mine" | "safe" }[]
+  >([]);
+  // Previous public mine counts, so the reveal notices fire once per
+  // confirmed mine rather than on every poll.
+  const prevMineCountsRef = useRef<{ me: number; opp: number } | null>(null);
 
   // Refs used to anchor the countdown interval + the last-seen
   // deadline timestamp so we don't reset the countdown when the
@@ -768,15 +776,54 @@ export default function MinesPvpMatchPage({
     selfId: myUserId,
   });
 
+  // ── Reveal notices ────────────────────────────────────────────────
+  // A confirmed mine is public ONLY as a count, so the announcement is
+  // derived from the two counters ticking up: "(name) revealed a mine".
+  // The tile itself stays private to whoever found it.
+  const myMinesFoundCount = Number(match?.myMinesFound) || 0;
+  const opponentMinesFoundCount = Number(match?.opponentMinesFound) || 0;
+  const opponentDisplayNameForMessages = useMemo(() => {
+    if (!match) return "Opponent";
+    if (match.isAi) return "GRYND AI";
+    const summary =
+      match.player1Id === myUserId ? match.players?.p2 : match.players?.p1;
+    return summary?.displayName || "Opponent";
+  }, [match, myUserId]);
+  useEffect(() => {
+    if (!match) {
+      prevMineCountsRef.current = null;
+      return;
+    }
+    const prev = prevMineCountsRef.current;
+    prevMineCountsRef.current = {
+      me: myMinesFoundCount,
+      opp: opponentMinesFoundCount,
+    };
+    // First frame for this match: record the baseline, announce nothing.
+    if (!prev) return;
+    const next: { id: number; text: string; tone: "mine" | "safe" }[] = [];
+    if (myMinesFoundCount > prev.me) {
+      next.push({ id: Date.now(), text: "You revealed a mine", tone: "mine" });
+    }
+    if (opponentMinesFoundCount > prev.opp) {
+      next.push({
+        id: Date.now() + 1,
+        text: `${opponentDisplayNameForMessages} revealed a mine`,
+        tone: "mine",
+      });
+    }
+    if (next.length) setMessages((prevMsgs) => [...prevMsgs, ...next].slice(-3));
+  }, [match, myMinesFoundCount, opponentMinesFoundCount, opponentDisplayNameForMessages]);
+
   // Per-seat pick history derived from the chronological `picks`
   // array. Replaces the old single `p1Pick`/`p2Pick` derived
   // fields below. The cell helpers + handleCellClick below use
   // THESE so a player who has picked multiple times still sees
   // every cleared cell.
-  // REVEALED cells per seat. FLAG claims are excluded: under the shared-board
-  // rules a flag never reveals a cell (it may even be claimed by both seats and
-  // still be revealed later), so it must not make a cell look cleared. Claims
-  // are read from the dedicated `p1Flags` / `p2Flags` arrays below.
+  // REVEALED cells per seat. FLAG entries are excluded: a flag never reveals a
+  // cell, so it must not make a cell look cleared. The viewer's own confirmed
+  // mines are read from `myFlags` (the opponent's flag locations are never
+  // sent).
   const myPicks = useMemo(() => {
     if (!match || !myUserId) return [] as number[];
     return (match.picks ?? [])
@@ -789,19 +836,12 @@ export default function MinesPvpMatchPage({
       .filter((p) => p && !p.flag && p.userId !== null && p.userId !== myUserId)
       .map((p) => p.cell);
   }, [match, myUserId]);
-  // Per-seat FLAG claims (public, shared-board state). Both players see both
-  // collections; each is read from its OWN server-side array so neither seat's
-  // claims can ever overwrite the other's.
+  // My OWN confirmed mines (correctly flagged cells). The opponent's flag
+  // locations are never sent — only their confirmed count below.
   const myFlags = useMemo<number[]>(() => {
-    if (!match || !myUserId) return [];
-    const set = match.player1Id === myUserId ? match.p1Flags : match.p2Flags;
-    return Array.isArray(set) ? set : [];
-  }, [match, myUserId]);
-  const opponentFlags = useMemo<number[]>(() => {
-    if (!match || !myUserId) return [];
-    const set = match.player1Id === myUserId ? match.p2Flags : match.p1Flags;
-    return Array.isArray(set) ? set : [];
-  }, [match, myUserId]);
+    if (!match) return [];
+    return Array.isArray(match.myFlags) ? match.myFlags : [];
+  }, [match]);
   // My most-recent pick (for "you just picked this" UI affordances
   // + auto-picked flag display inside the result popup).
   const myLastPick = useMemo(() => {
@@ -1092,9 +1132,9 @@ export default function MinesPvpMatchPage({
       // client UI + server-side dedup (`pickHistoryCells`) agree.
       if (myPicks.includes(cellIndex)) return; // already revealed by me
       if (opponentPicks.includes(cellIndex)) return; // duplicate (opponent already revealed this cell)
-      // Re-claiming your OWN flag is meaningless (the server rejects it with
-      // 409), so swallow the click instead of surfacing an error.
-      if (flagMode && myFlags.includes(cellIndex)) return;
+      // A tile you already CONFIRMED as a mine is a known mine — revealing it
+      // would be instant suicide and re-flagging is rejected, so swallow it.
+      if (myFlags.includes(cellIndex)) return;
       setBusy(true);
       setError(null);
       try {
@@ -1117,6 +1157,21 @@ export default function MinesPvpMatchPage({
         if (!res.ok || !data.success) {
           setError(data?.error || (flagMode ? "Flag failed" : "Pick failed"));
           return;
+        }
+        // A wrong flag is reported to the flagger only: the tile is safe, the
+        // flag is not kept, and the turn still passed. A correct flag is
+        // announced through the mine counters on the next fetch.
+        if (flagMode && data?.data?.wrongFlag) {
+          setMessages((prev) =>
+            [
+              ...prev,
+              {
+                id: Date.now(),
+                text: "That tile is safe — wrong flag, turn lost",
+                tone: "safe" as const,
+              },
+            ].slice(-3),
+          );
         }
         // The odds pattern gives each player two CONSECUTIVE turns
         // (e.g. turns 4-5 for the first player). When the server says
@@ -1300,10 +1355,10 @@ export default function MinesPvpMatchPage({
     // first and the proximity hint arrives as a second, quieter beat.
     return (
       <span className="relative inline-flex items-center justify-center animate-tile-reveal">
-        <IconDiamondFilled size={22} className={diamondColor} />
+        <IconDiamondFilled size={15} className={diamondColor} />
         {hint !== null && (
           <span
-            className={`animate-hint-pop absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-black tabular-nums ${hintBadgeClass(
+            className={`animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] font-black tabular-nums ${hintBadgeClass(
               hint,
             )}`}
           >
@@ -1329,7 +1384,7 @@ export default function MinesPvpMatchPage({
     isMine: boolean;
   } {
     if (!match) {
-      return { content: <IconQuestionMark size={22} className="text-white/30" />, revealed: false, isMine: false };
+      return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false };
     }
     const isFinished = match.status === MATCH_STATUS.FINISHED;
 
@@ -1344,7 +1399,6 @@ export default function MinesPvpMatchPage({
       }
     }
     const claimedByMe = myFlags.includes(cellIndex);
-    const claimedByOpponent = opponentFlags.includes(cellIndex);
 
     // Mid-match: render every revealed cell as a . The board
     // mines themselves stay hidden (we can't server-trust the
@@ -1363,38 +1417,37 @@ export default function MinesPvpMatchPage({
           isMine: false,
         };
       }
-      // Flag mode: an unrevealed cell you have not already claimed shows a
-      // flag target. Re-claiming your own flag is rejected by the server
-      // (409 — there is no unflag), so it is not offered again here.
+      // A CONFIRMED mine — you correctly flagged this tile, so its location is
+      // revealed to YOU (and only you).
+      if (claimedByMe) {
+        return {
+          content: (
+            <span className="relative inline-flex items-center justify-center animate-tile-reveal">
+              <IconBomb size={15} className="text-red-300" />
+              <span className="animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-emerald-300/50 bg-emerald-500/20 text-emerald-200">
+                <CheckIcon className="h-2.5 w-2.5" />
+              </span>
+            </span>
+          ),
+          revealed: true,
+          isMine: true,
+        };
+      }
+      // Flag mode: an unrevealed cell shows a flag target. Re-flagging your
+      // own confirmed mine is rejected by the server, so it is not offered.
       const isFlagTarget =
         flagMode &&
         isMyTurn &&
         !myPicks.includes(cellIndex) &&
-        !opponentPicks.includes(cellIndex) &&
-        !claimedByMe;
-      // Already claimed: BOTH seats' claims are public, so an unrevealed
-      // claimed cell shows the flag with a seat-tinted accent. A claim never
-      // reveals the cell, and the cell is still revealable by either player,
-      // so it stays playable outside flag mode.
-      if (isFlagTarget || claimedByMe || claimedByOpponent) {
+        !opponentPicks.includes(cellIndex);
+      if (isFlagTarget) {
         return {
-          content: (
-            <IconFlag
-              size={22}
-              className={
-                claimedByMe
-                  ? "text-red-300 drop-shadow-[0_0_6px_rgba(248,113,113,0.6)]"
-                  : claimedByOpponent
-                    ? "text-fuchsia-300/90 drop-shadow-[0_0_6px_rgba(255,79,216,0.45)]"
-                    : "text-red-300/70"
-              }
-            />
-          ),
+          content: <IconFlag size={15} className="text-red-300/70" />,
           revealed: false,
           isMine: false,
         };
       }
-      return { content: <IconQuestionMark size={22} className="text-white/30" />, revealed: false, isMine: false };
+      return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false };
     }
 
     // Finished: full board reveal. The board column is now
@@ -1409,34 +1462,31 @@ export default function MinesPvpMatchPage({
     // later (the existing hint-pop timing), so the callout reads as a verdict
     // ON the claim rather than as a second tile reveal. A still-unrevealed
     // claimed cell shows the flag/verdict instead of the board's own reveal.
-    if (!pickedEntry && (claimedByMe || claimedByOpponent)) {
+    if (!pickedEntry && claimedByMe) {
       const calledIt = mines.includes(cellIndex);
       return {
         content: (
           <span className="relative inline-flex items-center justify-center animate-tile-reveal">
             <IconFlag
-              size={22}
+              size={15}
               className={calledIt ? "text-emerald-300" : "text-red-300"}
             />
             <span
-              className={`animate-hint-pop absolute -top-2.5 -right-2.5 flex h-5 w-5 items-center justify-center rounded-full border ${
+              className={`animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border ${
                 calledIt
                   ? "bg-emerald-500/20 text-emerald-200 border-emerald-300/50"
                   : "bg-red-500/20 text-red-200 border-red-400/50"
               }`}
             >
               {calledIt ? (
-                <CheckIcon className="h-3 w-3" />
+                <CheckIcon className="h-2.5 w-2.5" />
               ) : (
-                <CrossIcon className="h-3 w-3" />
+                <CrossIcon className="h-2.5 w-2.5" />
               )}
             </span>
           </span>
         ),
         revealed: true,
-        // The verdict comes from the server's revealed board: a claim on a
-        // cell that really held a mine keeps the mine treatment, a claim on a
-        // safe cell keeps the safe one.
         isMine: calledIt,
       };
     }
@@ -1480,7 +1530,7 @@ export default function MinesPvpMatchPage({
           className="animate-state-in inline-flex items-center justify-center"
           style={revealDelayStyle}
         >
-          <IconDiamondFilled size={22} className="text-cyan-300" />
+          <IconDiamondFilled size={15} className="text-cyan-300" />
         </span>
       ),
       revealed: true,
@@ -1539,7 +1589,8 @@ export default function MinesPvpMatchPage({
     const isPlayable =
       isMyTurn &&
       !myPicks.includes(cellIndex) &&
-      !opponentPicks.includes(cellIndex);
+      !opponentPicks.includes(cellIndex) &&
+      !myFlags.includes(cellIndex);
     if (isFinished) {
       return "bg-[#0c1a33] border border-[#1f3a6a]";
     }
@@ -1705,8 +1756,8 @@ export default function MinesPvpMatchPage({
     }
 
     // WHY the match ended comes straight from the server (`winReason`). A flag
-    // is no longer terminal — a wrong claim only costs a turn — and a claim can
-    // sit mid-history, so the ending can never be inferred from the last entry.
+    // is not terminal (a wrong flag only costs a turn) and a flag can sit
+    // mid-history, so the ending can never be inferred from the last entry.
     const p1Summary = match.players?.p1 ?? null;
     const p2Summary = match.players?.p2 ?? null;
     const oppSummary = isPlayer1 ? p2Summary : p1Summary;
@@ -1970,8 +2021,8 @@ export default function MinesPvpMatchPage({
         profileFrame={mySummary?.profileFrame || null}
         nameColor={mySummary?.nameColor || null}
         reveals={myPicks.length}
-        flags={myFlags.length}
-        mineCount={Number(match?.minesCount) || 0}
+        minesFound={Number(match?.myMinesFound) || 0}
+        minesTotal={Number(match?.minesCount) || 0}
         wagerLabel={wagerLabel}
         thinking={inPickState && isMyTurn}
         emphasisKey={inPickState && isMyTurn ? "me-turn" : undefined}
@@ -1987,8 +2038,8 @@ export default function MinesPvpMatchPage({
         profileFrame={oppSummary?.profileFrame || null}
         nameColor={oppSummary?.nameColor || null}
         reveals={opponentPicks.length}
-        flags={opponentFlags.length}
-        mineCount={Number(match?.minesCount) || 0}
+        minesFound={Number(match?.opponentMinesFound) || 0}
+        minesTotal={Number(match?.minesCount) || 0}
         wagerLabel={wagerLabel}
         thinking={inPickState && !isMyTurn}
         thinkingLabel={isAi ? "AI thinking" : "Picking"}
@@ -2054,8 +2105,8 @@ export default function MinesPvpMatchPage({
         </div>
         {flagMode && (
           <p className="text-[10px] uppercase tracking-widest text-red-300/80 font-bold">
-            Click a tile you believe is a mine. Claim every mine to win —
-            a wrong claim only costs you a turn
+            Click a tile you believe is a mine. Find every mine to win — a
+            wrong flag is rejected and costs you your turn
           </p>
         )}
       </div>
@@ -2099,8 +2150,7 @@ export default function MinesPvpMatchPage({
       </div>
     ) : null;
 
-  // ── The 5×5 gameboard (reused from solo mines) — padding/gaps shrink
-  // on small screens so the cells stay big and thumb-friendly.
+  // ── The 10×10 gameboard (small Minesweeper tiles).
   //
   // `mines-board-frame` opts the board into the shared desktop sizing rule in
   // globals.css: the board is square, so capping its WIDTH caps its height.
@@ -2109,9 +2159,9 @@ export default function MinesPvpMatchPage({
   // still ending above the fold. ───────────────────────────────────
   const boardNode = (
     <div
-      className="mines-board-frame mx-auto mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-3 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-6 lg:mt-2"
+      className="mines-board-frame mx-auto mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-2 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-3 lg:mt-2"
     >
-      <div className="grid grid-cols-5 gap-2 sm:gap-3">
+      <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
         {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
           const display = getCellDisplay(cellIndex);
           // This tile's step in the finished-reveal sweep (0 for every cell
@@ -2122,7 +2172,8 @@ export default function MinesPvpMatchPage({
           const revealDelay = revealDelayMs(cellIndex);
           const cellAlreadyPicked =
             myPicks.includes(cellIndex) ||
-            opponentPicks.includes(cellIndex);
+            opponentPicks.includes(cellIndex) ||
+            myFlags.includes(cellIndex);
           const isMyTurnClickable =
             isMyTurn &&
             !cellAlreadyPicked &&
@@ -2135,7 +2186,7 @@ export default function MinesPvpMatchPage({
               // `group` lets the press response live on the inner span, so it
               // can be a short transform-only beat while the tile's own
               // colour/border state transition keeps its existing 300ms.
-              className={`group w-full aspect-square rounded-none flex items-center justify-center transition-all duration-300 text-3xl ${getCellClass(
+              className={`group w-full aspect-square rounded-none flex items-center justify-center transition-all duration-300 text-sm ${getCellClass(
                 cellIndex,
               )} ${mineHitCell === cellIndex ? "animate-mine-hit" : ""} ${
                 !isMyTurnClickable ? "cursor-not-allowed" : ""
@@ -2164,9 +2215,61 @@ export default function MinesPvpMatchPage({
   // Minesweeper hint legend — the skill mechanic
   const legendNode = (
     <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
-      <span className="inline-flex items-center gap-1"><IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it) · only you see your own</span>
+      <span className="inline-flex items-center gap-1"><IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it)</span>
     </p>
   );
+
+  // ── Side-by-side mine counter ─────────────────────────────────────
+  // "5 | 4": how many mines each player still has to find. A correct flag
+  // ticks the flagger's own number down; the opponent sees it drop without
+  // ever learning WHICH tile was found.
+  const minesTotal = Number(match?.minesCount) || 0;
+  const myMinesRemaining = Math.max(0, minesTotal - myMinesFoundCount);
+  const oppMinesRemaining = Math.max(0, minesTotal - opponentMinesFoundCount);
+  const minesCounterNode = minesTotal > 0 ? (
+    <div className="rounded-xl border border-amber-300/30 bg-[#140f04]/70 px-3 py-2">
+      <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-200/70">
+        <MineIcon className="h-3.5 w-3.5 text-amber-300" /> Mines remaining
+      </div>
+      <div className="mt-1 flex items-center justify-center gap-3">
+        <div className="flex flex-col items-center">
+          <span key={`my-mines-${myMinesRemaining}`} className="animate-tile-reveal text-2xl font-black tabular-nums text-cyan-200">
+            {myMinesRemaining}
+          </span>
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-cyan-300/70">
+            You
+          </span>
+        </div>
+        <span className="text-2xl font-black text-white/25">|</span>
+        <div className="flex flex-col items-center">
+          <span key={`opp-mines-${oppMinesRemaining}`} className="animate-tile-reveal text-2xl font-black tabular-nums text-fuchsia-200">
+            {oppMinesRemaining}
+          </span>
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-fuchsia-300/70">
+            {isAi ? "GRYND AI" : "Opponent"}
+          </span>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // Transient reveal / flag-feedback messages.
+  const messagesNode = messages.length ? (
+    <div className="flex flex-col gap-1">
+      {messages.map((m) => (
+        <div
+          key={m.id}
+          className={`animate-state-in rounded-lg border px-3 py-1.5 text-center text-xs font-bold ${
+            m.tone === "mine"
+              ? "border-amber-300/40 bg-amber-500/10 text-amber-200"
+              : "border-red-400/40 bg-red-900/30 text-red-200"
+          }`}
+        >
+          {m.text}
+        </div>
+      ))}
+    </div>
+  ) : null;
 
   // Host-only cancel button while still in waiting
   const cancelNode = canCancel ? (
@@ -2197,6 +2300,8 @@ export default function MinesPvpMatchPage({
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6">
         <div className="lg:order-2 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-3">
           {seatsNode}
+          {minesCounterNode}
+          {messagesNode}
           <div className="mt-4 lg:mt-0">{renderTurnIndicator()}</div>
           {actionsNode}
           {errorNode}

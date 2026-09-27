@@ -40,9 +40,10 @@ function normaliseMatch(match) {
     roundDeadline: match.roundDeadline,
     p1Pick: match.p1Pick ?? null,
     p2Pick: match.p2Pick ?? null,
-    // Shared-board persistent state (new matches always start empty).
-    p1Flags: Array.isArray(match.p1Flags) ? match.p1Flags : [],
-    p2Flags: Array.isArray(match.p2Flags) ? match.p2Flags : [],
+    // The viewer's own flag set (empty on a brand-new match) + counters.
+    myFlags: [],
+    myMinesFound: 0,
+    opponentMinesFound: 0,
     winReason: match.winReason ?? null,
     startedAt: match.startedAt,
     endedAt: match.endedAt,

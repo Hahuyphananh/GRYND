@@ -7,19 +7,15 @@
 // `src/lib/mines-pvp/serverStore.js`; this page is a thin client.
 //
 // Flow:
-//   1. Pick a stake (preset chips or custom).
-//   2. Pick a mine count (host-only — the joiner inherits whatever
-//      the host chose when they created the lobby).
-//   3. Hit Play → POST /api/mines-pvp/create-or-join
-//        • matches on stake equality (server-authoritative)
-//        • escrow stake on success
+//   1. Hit Play (or Quick Queue) → POST /api/mines-pvp/create-or-join
+//        • matches an open lobby (server-authoritative)
 //        • board generated at match creation
-//   4. Redirect to /casino/mines-pvp/[matchId]
+//   2. Redirect to /casino/mines-pvp/[matchId]
 //
-// The open-lobbies list shows each waiting match with its host-
-// chosen mine count so the joiner knows what they're signing up
-// for. Joiners can't override the mine count — that decision is
-// the host's alone.
+// Stakes are retired and the mine count is a fixed server constant
+// (MINES_PER_MATCH = 10 on the 10×10 board), so the lobby has neither a
+// stake picker nor a mine picker. The open-lobbies list is informational
+// only — every match has the same board.
 //
 // The page chrome (balance strip → stake picker + Play → escrow
 // note → Open Lobbies list) is the shared PvpLobby component in the
@@ -36,20 +32,12 @@ import {
   MINES_PVP_MATCH_UPDATED,
   minesPvpMatchRoom,
 } from "../../../lib/mines-pvp/rooms";
-import {
-  MIN_MINES,
-  MAX_MINES,
-} from "../../../lib/mines-pvp/constants";
+import { MINES_PER_MATCH } from "../../../lib/mines-pvp/constants";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
-
-// Mine-count presets offered to the host in the lobby. Mirrors the
-// preset chip row on the solo mines page (`src/app/casino/mines/
-// page.jsx`) so players don't have to re-learn the UX.
-const MINES_PRESETS = [1, 3, 5, 10, 15, 20];
 
 // Type for a single open-matches list entry returned by
 // /api/mines-pvp/available.
@@ -114,9 +102,10 @@ export default function MinesPvpLobbyPage() {
   const { socket } = useSocket();
 
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
-  // so there is no stake to pick and no token balance to load.
+  // so there is no stake to pick and no token balance to load. The mine count
+  // is FIXED (10 on the 10×10 board), so there is no mine picker either.
   const stake = 0;
-  const [minesCount, setMinesCount] = useState<number>(3);
+  const minesCount = MINES_PER_MATCH;
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
@@ -347,50 +336,23 @@ export default function MinesPvpLobbyPage() {
   const myOpenMatchId = myOpenMatch?.id ?? null;
 
   // ── Validation ────────────────────────────────────────────────────
-  // Pre-flight guard: minesCount in [1, 24] (per constants). The
-  // server re-validates but catching it client-side avoids a 400.
-  const minesCountValid =
-    Number.isInteger(minesCount) && minesCount >= MIN_MINES && minesCount <= MAX_MINES;
-  const canCreate = isSignedIn && !busy && minesCountValid && myOpenMatchId === null;
-  const canPlayAi = isSignedIn && !busy && minesCountValid;
-  // Stakes are retired — the queue only carries the (free) mine count.
+  // Both the stake and the mine count are fixed server-side, so there is
+  // nothing for the client to validate before submitting.
+  const canCreate = isSignedIn && !busy && myOpenMatchId === null;
+  const canPlayAi = isSignedIn && !busy;
+  // Stakes are retired and the mine count is fixed — the queue carries
+  // neither, so this is just an explanation of what Quick Queue will do.
   const quickQueuePreferences = (
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
+    <div className="mt-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
         Quick Queue mines
-        <input
-          type="number"
-          min={MIN_MINES}
-          max={MAX_MINES}
-          value={minesCount}
-          onChange={(event) => setMinesCount(Math.max(MIN_MINES, Math.min(MAX_MINES, Number(event.target.value) || MIN_MINES)))}
-          className="mt-1 w-full rounded-md border border-cyan-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
-        />
-      </label>
+      </p>
+      <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+        Fixed at <b className="text-cyan-300">{minesCount}</b> on the standard
+        10×10 board — Quick Queue drops you into the next free Mines Duel.
+      </p>
     </div>
   );
-
-  // ── No-guess guarantee copy (honest per mine count) ───────────────
-  // The generator guarantees EVERY board keeps the 3×3 center block
-  // mine-free and the game's first pick is always safe. On top of
-  // that, boards are solver-verified to be fully deducible from the
-  // center opening — measured acceptance is ~100% at 1–3 mines, ~90%
-  // at 4, ~72% at 5. Above that, the board is too dense to fully
-  // verify, so the copy steps down honestly instead of over-promising.
-  const noGuessDetail =
-    minesCount <= 3
-      ? "Every board at this mine count is verified to be fully solvable " +
-        "by deduction from the center opening. Open center, read the " +
-        "shared clues, and you'll never be forced to guess — and every " +
-        "clue you uncover is visible to your opponent too."
-      : minesCount <= 5
-        ? "Boards at this mine count are solver-verified for the center " +
-          "opening in the vast majority of games. Open center and the " +
-          "distance hints give you a fully deducible game. A few late " +
-          "pockets may still require a guess."
-        : "At this mine count the board is too dense for a full no-guess " +
-          "guarantee. But your first pick is always safe and the center " +
-          "3×3 never contains a mine, so the opening is never a trap.";
 
   return (
     <PvpLobbyPage
@@ -399,17 +361,13 @@ export default function MinesPvpLobbyPage() {
       title="Mines Duel Lobby"
       subtitle={
         <>
-          You and your opponent share the <b>same 5×5 board</b>. The host
-          picks the mine count; the server rolls the layout. Every
-          layout is generated for <b className="text-emerald-300">
-          pure-deduction play</b>. The center 3×3 is always mine-free,
-          your first pick can never hit a mine, and the board is
-          solver-verified so the center opening is fully solvable by
-          deduction. Each player gets <b>20 seconds</b> to click one tile
-          or flag one you believe is a mine. Reveals and their clues are
-          <b>public</b> — you both see the same board. Click a mine and you
-          lose instantly; correctly flag <b>every</b> mine and you win
-          instantly.
+          A 10×10 Minesweeper field with <b>{minesCount} mines</b>. You and
+          your opponent take turns on the <b>same board</b> — each turn you
+          either reveal one tile (its number tells you how far the nearest
+          mine is) <b>or</b> plant one flag, then the turn passes. Reveals and
+          their numbers are <b>public</b>; your flags are <b>private</b> — the
+          opponent only sees your mine counter drop. Reveal a mine and you
+          lose instantly; confirm <b>every</b> mine and you win.
         </>
       }
       icon={
@@ -420,46 +378,55 @@ export default function MinesPvpLobbyPage() {
         title: "How to Play",
         sections: [
           {
-            heading: "Same board, host picks mines",
+            heading: "10×10, ten mines",
             body: (
               <>
-                You and your opponent share the <b>same 5×5 board</b>.
-                The host picks the mine count; the server rolls the
-                layout.
+                Both players share the <b>same 10×10 board</b>. It always
+                holds <b>{minesCount} mines</b> — one per 10 tiles — and your
+                very first reveal can never hit one.
               </>
             ),
           },
           {
-            heading: "No-guess boards",
+            heading: "One action per turn",
             body: (
               <>
-                The center 3×3 is always mine-free, your first pick is
-                always safe, and layouts are solver-verified for
-                pure-deduction play.
+                On your turn you either <b>reveal a tile</b> or <b>plant a
+                flag</b> — never both. As soon as you act, the turn passes to
+                your opponent.
               </>
             ),
           },
           {
-            heading: "Shared information",
+            heading: "Shared clues, private flags",
             body: (
               <>
-                Every safe tile one of you reveals is revealed for
-                <b>both</b> of you, and the clue on it (how close the
-                nearest mine is) is public — you both read the same board
-                and race to deduce where the mines are.
+                Every revealed tile is revealed for <b>both</b> of you, and
+                its number (how close the nearest mine is) is public. Flags
+                are <b>private</b>: when you correctly flag a mine you see
+                where it was, your opponent only sees your mine counter drop.
+                A wrong flag is rejected and still costs you your turn.
               </>
             ),
           },
           {
-            heading: "Take turns clicking or flagging",
+            heading: "Winning",
             body: (
               <>
-                Each player gets <b>20 seconds</b> to either reveal a tile
-                or flag one they believe is a mine. Clicking a mine loses
-                the match <b>instantly</b>. Flags are your own claims — your
-                opponent has their own set — and a wrong claim never loses
-                you the match, it only costs you the turn. Claim
-                <b>every</b> mine and you win instantly.
+                Reveal a mine and you lose <b>instantly</b>. Confirm
+                <b>every</b> mine with your flags and you win instantly —
+                watch the side counter race to <b>0</b>.
+              </>
+            ),
+          },
+          {
+            heading: "The mine counter",
+            body: (
+              <>
+                Two counters sit side by side (yours and your opponent's),
+                each starting at {minesCount}. Every mine you confirm ticks
+                <b>your</b> number down; the opponent's number stays put
+                until they find one of their own.
               </>
             ),
           },
@@ -531,81 +498,33 @@ export default function MinesPvpLobbyPage() {
       onCancel={(id) => cancelMyMatch(id)}
       cancelling={cancellingId === myOpenMatchId}
       children={
-        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+        <div className="mt-4">
           {/* AI tier — the bot's pick policy, chosen before the match */}
-          <div className="sm:col-span-2">
-            <AiDifficultyPicker
-              gameKey="mines-pvp"
-              value={aiDifficulty}
-              onChange={setAiDifficulty}
-              className="mt-0"
-              hint={{
-                easy: "The bot picks at random, with no board reading at all.",
-                normal: "The bot avoids the mine-free center and takes its chances.",
-                hard: "The bot plays the guaranteed-safe center tiles to survive longest.",
-              }}
-            />
-          </div>
-          {/* Mine-count picker — host-only at create time */}
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-              Mines{" "}
-              <span className="font-normal normal-case tracking-normal text-cyan-300/70">
-                (host)
-              </span>
-              <span
-                title="Every board is generated for pure-deduction play: the center 3×3 is mine-free, your first pick is always safe, and the layout is solver-verified."
-                className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-wider text-emerald-300"
-              >
-                <ShieldCheckIcon className="h-2.5 w-2.5" />
-                No-guess
-              </span>
-            </label>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {MINES_PRESETS.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setMinesCount(v)}
-                  className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${
-                    minesCount === v
-                      ? "border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
-                      : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
-                  }`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-            <input
-              type="number"
-              min={MIN_MINES}
-              max={MAX_MINES}
-              value={minesCount}
-              aria-label="Number of mines"
-              onChange={(e) =>
-                setMinesCount(
-                  Math.max(
-                    MIN_MINES,
-                    Math.min(MAX_MINES, Number(e.target.value) || 0),
-                  ),
-                )
-              }
-              className="mt-1.5 w-full rounded-md border border-cyan-600/50 bg-[#020617] px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
-            />
-            <p className="mt-1 text-[9px] leading-tight text-white/40">
-              Range {MIN_MINES}–{MAX_MINES}. Joiners inherit.
-            </p>
-          </div>
+          <AiDifficultyPicker
+            gameKey="mines-pvp"
+            value={aiDifficulty}
+            onChange={setAiDifficulty}
+            className="mt-0"
+            hint={{
+              easy: "The bot reveals at random, with no board reading at all.",
+              normal: "The bot reads the revealed clues and avoids tiles that are likely mines.",
+              hard: "The bot deduces every provably-safe tile before it risks anything.",
+            }}
+          />
         </div>
       }
       after={
         <div className="mt-6 rounded-lg border border-amber-800/30 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-200/80">
           <p className="mb-1 flex items-center gap-1.5 font-bold text-amber-300">
             <ShieldCheckIcon className="h-4 w-4 text-emerald-300" />
-            No-guess boards.
+            Standard field.
           </p>
-          <p>{noGuessDetail}</p>
+          <p>
+            Every match is played on the same 10×10 field with {minesCount}
+            mines (one per 10 tiles), so nobody gets a denser or sparser board.
+            Your first reveal is always safe, but after that the field is
+            yours to read — and your opponent reads the same clues you do.
+          </p>
         </div>
       }
     />
