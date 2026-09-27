@@ -30,12 +30,20 @@ absent (XP, Battle Pass, Prestige, duration, opponent…).
   detailsContent={<>…game-specific JSX…</>}           // optional extra block
   playAgain={{ label, onClick }}                       // null → button hidden
   rematch={{ label, onClick }}                         // null → button hidden
+  secondaryAction={{ label, href }}                    // optional extra action (internal route)
+  // secondaryAction={{ label, onClick }}              // …or an in-page action
   onReturnToLobby={onClick}
 />
 ```
 
 Notes:
 - Buttons are guarded internally — a double tap can't fire two actions.
+- `secondaryAction` is the single generic "extra action" slot (rendered between
+  Rematch and Return to Lobby). Pass `{ label, href }` for an internal route —
+  rendered through `next/link`, so it prefetches — or `{ label, onClick }` for an
+  in-page action; omit it to hide the button. It is deliberately game-agnostic
+  (the panel never learns which game, or where, it points), so any result screen
+  can reuse it.
 - Win plays confetti (skipped under `prefers-reduced-motion`).
 - The expandable "Match Details" panel holds `details` rows + `detailsContent`.
 - Duration is formatted from `durationSeconds`; pass it only when the match
@@ -79,7 +87,9 @@ Notes:
 - Roulette PvP — `src/app/casino/roulette/[matchId]/PageClient.jsx` (finished banner replaced;
   real points/refund/stake math from the match payload)
 - Chess Arena — `src/app/casino/chess-game/[gameId]/PageClient.jsx` (win/loss/draw screen from
-  game row result/payout; old popup + icons deleted)
+  game row result/payout; old popup + icons deleted). For a finished match it adds a
+  "See Evaluation" `secondaryAction` linking to `/evaluation/chess/[gameId]` (omitted for an
+  `expired` match, which the evaluation API refuses with a 409).
 - Rock Paper Scissors — `src/app/casino/rps/game/[gameId]/PageClient.tsx` (win/loss/draw screen
   from real choose/status settlement; old popup deleted)
 - Four in a Row — `src/app/casino/four-in-a-row/game/[gameId]/PageClient.tsx` (game-over screen

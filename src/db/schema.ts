@@ -4321,3 +4321,55 @@ export const miniGolfShots = pgTable(
     seqIdx: unique("mini_golf_shots_seq_unique").on(table.matchId, table.shotSeq),
   })
 );
+
+// GAME EVALUATION RESULTS — post-match LLM coaching/analysis journal.
+// ==============================================================================
+// One row per evaluation request for a finished match. `objective_data` holds
+// the game-specific stats computed server-side (the ONLY source of truth the
+// LLM is allowed to reason over); `ai_response` holds the structured LLM
+// output once it lands. The row is written first with status 'pending' and
+// updated to 'complete'/'failed' by the evaluation job, so a request is always
+// traceable even if the provider call dies.
+//
+// `match_id` is deliberately a plain string with NO foreign key: it points at
+// a different game-specific table per `game_key` (chess_games.id,
+// mines_pvp_matches.id, ...), so a single FK cannot be expressed. `user_id` is
+// a Clerk id stored as a plain string with no FK, matching every other PvP
+// table.
+//
+// Access paths: the daily-limit check counts a user's rows inside a time
+// window, hence (user_id, created_at); the match lookup fetches an evaluation
+// by (game_key, match_id).
+export const evaluationResults = pgTable(
+  "evaluation_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Clerk id of the evaluated player.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // Canonical game key, e.g. "chess".
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    // The game's own match/game id — polymorphic, so no FK (see above).
+    matchId: varchar("match_id", { length: 255 }).notNull(),
+    // Membership tier the evaluation was requested under: "free" | "pro".
+    tier: varchar("tier", { length: 20 }).notNull(),
+    // Game-specific computed stats fed to the model (not LLM output).
+    objectiveData: jsonb("objective_data").notNull(),
+    // Structured LLM output. Null until the provider call completes.
+    aiResponse: jsonb("ai_response"),
+    // "pending" | "complete" | "failed".
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Daily-limit count query: rows for one user in a rolling window.
+    userCreatedIdx: index("evaluation_results_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    // Match lookup: the evaluation(s) for one game's match id.
+    gameMatchIdx: index("evaluation_results_game_match_idx").on(
+      table.gameKey,
+      table.matchId,
+    ),
+  }),
+);

@@ -19,6 +19,58 @@ const nextConfig = {
     return config;
   },
 
+  // ── Game Evaluation — Stockfish (WASM) ──────────────────────────────
+  // src/lib/evaluation/engine/stockfishEngine.ts runs the single-threaded
+  // Stockfish 16 WASM build in-process (no native binaries, no workers, no
+  // SharedArrayBuffer), which the Node.js runtime supports on Vercel
+  // (vercel.com/docs/functions/runtimes/wasm). Two things have to be true for
+  // that to work in a deployed function:
+  //
+  //   1. The package must stay EXTERNAL. Its Emscripten loader locates the
+  //      .wasm relative to its own `__dirname`; if webpack bundles it, that
+  //      path points into the server chunk and the engine fails to boot.
+  //   2. The .wasm has to be TRACED into the function bundle. The loader reads
+  //      it through a dynamic path, which static analysis cannot see, so
+  //      without this the file is simply absent at runtime.
+  //
+  // Inert for every route that does not import the evaluator, and the tracing
+  // entry is a no-op until an /api route does.
+  serverExternalPackages: ["stockfish"],
+  outputFileTracingIncludes: {
+    "/api/**": [
+      "node_modules/stockfish/src/stockfish-nnue-16-single.js",
+      "node_modules/stockfish/src/stockfish-nnue-16-single.wasm",
+    ],
+  },
+
+  // …and the package ships ~87 MB of things the engine never touches. Being an
+  // external package, Next traces it whole; this trims it to the two files the
+  // single-threaded build actually loads (measured: 87.3 MB → ~0.6 MB).
+  //
+  //   - *.nnue (83.8 MB): the NNUE nets. This build defaults to
+  //     "option name Use NNUE value false", so no net is ever read — verified
+  //     by running an evaluation from a directory containing only the js+wasm.
+  //   - the other three WASM builds (multi-threaded / no-SIMD / no-Worker) and
+  //     their loaders: unusable in serverless anyway (they need
+  //     SharedArrayBuffer or nested workers).
+  //   - the Emscripten/C++ sources, headers and Syzygy sources: build-time
+  //     inputs, not runtime assets.
+  outputFileTracingExcludes: {
+    "/api/**": [
+      "node_modules/**/*.nnue",
+      "node_modules/stockfish/src/stockfish-nnue-16.js",
+      "node_modules/stockfish/src/stockfish-nnue-16.wasm",
+      "node_modules/stockfish/src/stockfish-nnue-16-no-Worker.js",
+      "node_modules/stockfish/src/stockfish-nnue-16-no-Worker.wasm",
+      "node_modules/stockfish/src/stockfish-nnue-16-no-simd.js",
+      "node_modules/stockfish/src/stockfish-nnue-16-no-simd.wasm",
+      "node_modules/stockfish/src/emscripten/**",
+      "node_modules/stockfish/src/nnue/**",
+      "node_modules/stockfish/src/incbin/**",
+      "node_modules/stockfish/src/syzygy/**",
+    ],
+  },
+
   env: {
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY

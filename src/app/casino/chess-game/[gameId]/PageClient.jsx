@@ -1068,6 +1068,10 @@ export default function ChessGamePage() {
         ? `Your ${bet.toFixed(2)} stake back plus ${(winPayout - bet).toFixed(2)} in winnings.`
         : `You lost your ${bet.toFixed(2)} stake.`;
 
+    // The extra action opens this match's engine-backed evaluation at
+    // /evaluation/chess/[gameId]. It is offered ONLY for a genuinely finished
+    // match: an `expired` game cannot be evaluated (the API answers 409), so
+    // the button never sends the player to a guaranteed dead end.
     return (
       <PvpResultScreen
         open
@@ -1089,6 +1093,11 @@ export default function ChessGamePage() {
           { label: "Stake", value: `${bet.toLocaleString()} tokens` },
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : oppName },
         ]}
+        secondaryAction={
+          gameData.status === "finished"
+            ? { label: "See Evaluation", href: `/evaluation/chess/${gameId}` }
+            : null
+        }
         playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/chess") }}
         onReturnToLobby={() => router.push("/casino")}
         onDismiss={() => setShowResultPopup(false)}

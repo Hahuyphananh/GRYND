@@ -97,5 +97,9 @@ qa/reports/**/*.jpeg
 qa/reports/**/*.webp
 qa/reports/**/*.gif
 
+# --- Screenshot workflow ---
+# Local visual captures (see .agents/skills/screenshot-workflow).
+.screenshots/
+
 # Added by ggshield
 .cache_ggshield

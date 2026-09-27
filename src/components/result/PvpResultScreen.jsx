@@ -32,10 +32,15 @@
  *      JSX inside the expandable Match Details panel.
  *   6. Actions: `playAgain`/`rematch` reuse the game's existing
  *      create-match/matchmaking flow; omit `rematch` when a direct rematch
- *      with the same opponent doesn't exist in the architecture.
+ *      with the same opponent doesn't exist in the architecture. A game that
+ *      needs one extra cross-page action (e.g. opening the finished match's
+ *      post-game analysis) passes the generic `secondaryAction` — `{ label, href }` to navigate or
+ *      `{ label, onClick }` for an in-page action. It is deliberately generic
+ *      so every result screen can reuse it, never a game-specific prop.
  */
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   IconChevronDown,
@@ -166,6 +171,12 @@ export default function PvpResultScreen({
   durationSeconds = null,
   playAgain = null,
   rematch = null,
+  // Generic optional extra action, rendered between Rematch and Return to
+  // Lobby. Pass `{ label, href }` to navigate (internal route) or
+  // `{ label, onClick }` for an in-page action; omit/null hides it. Games use
+  // this for a one-off cross-page destination
+  // instead of each game inventing its own button.
+  secondaryAction = null,
   onReturnToLobby = null,
   onDismiss = null,
   dismissLabel = "View Match Results",
@@ -790,7 +801,11 @@ export default function PvpResultScreen({
             )}
 
             {/* Actions */}
-            {(playAgain || rematch || onReturnToLobby || onDismiss) && (
+            {(playAgain ||
+              rematch ||
+              secondaryAction ||
+              onReturnToLobby ||
+              onDismiss) && (
               <div className="mx-auto mt-6 flex w-full max-w-xs flex-col gap-2.5">
                 {playAgain && (
                   <button
@@ -810,6 +825,27 @@ export default function PvpResultScreen({
                     className="w-full rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
                   >
                     {rematch.label || "Rematch"}
+                  </button>
+                )}
+                {/* Generic extra action — navigation (href) uses the router link
+                    so it prefetches like any other in-app route; an in-page
+                    action (onClick) is guarded like the other buttons. */}
+                {secondaryAction && secondaryAction.href && (
+                  <Link
+                    href={secondaryAction.href}
+                    className="flex w-full items-center justify-center rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20"
+                  >
+                    {secondaryAction.label || "Continue"}
+                  </Link>
+                )}
+                {secondaryAction && !secondaryAction.href && (
+                  <button
+                    type="button"
+                    onClick={guard(secondaryAction.onClick)}
+                    disabled={navigating}
+                    className="w-full rounded-xl border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-5 py-3 text-sm font-bold text-[#67f9ff] transition hover:bg-[#00e5ff]/20 disabled:opacity-60"
+                  >
+                    {secondaryAction.label || "Continue"}
                   </button>
                 )}
                 {onReturnToLobby && (
