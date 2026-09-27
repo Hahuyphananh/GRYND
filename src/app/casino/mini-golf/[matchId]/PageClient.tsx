@@ -13,10 +13,15 @@
 // Flow:
 //   poll /api/mini-golf/match/<id>  (adaptive interval, aborted on socket push)
 //   socket `lobby:updated` on `mini-golf:match:<id>` → immediate refetch
-//   aim by dragging the course, set power with the meter or the slider
-//   Shoot → POST /shoot → animate the authoritative trajectory → both seats
+//   aim with the pointer, click to lock the angle, drag to charge power and
+//   release to launch (the Pool Masters interaction — no shoot button, no
+//   slider) → POST /shoot → animate the authoritative trajectory → both seats
 //   resync from the snapshot; a completed hole shows a result interstitial
 //   before the next hole; a finished match hands over to PvpResultScreen.
+//
+// The hole on screen is DERIVED from the snapshot (+ whatever is animating) —
+// never a separate `visibleHole` copy — so the board can neither lag the match
+// nor snap back to a hole it has already left.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -86,7 +91,10 @@ export default function MiniGolfMatchPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // ── Presentation state ────────────────────────────────────────────────
-  const [visibleHole, setVisibleHole] = useState(1);
+  // NOTE: there is deliberately NO `visibleHole` state. The hole on screen is
+  // DERIVED (see `viewHoleNumber` below) from the authoritative snapshot plus
+  // whatever is animating, so the board can never lag the server or snap back
+  // to a hole the match has already left.
   const [renderBalls, setRenderBalls] = useState<Record<Seat, BallView> | null>(null);
   const [anim, setAnim] = useState<{
     seq: number;
@@ -107,6 +115,10 @@ export default function MiniGolfMatchPage() {
 
   // ── Interaction state ─────────────────────────────────────────────────
   const [aim, setAim] = useState({ angle: 270, power: 50 });
+  // Pool Masters two-phase aiming, ported verbatim: a click pins the angle,
+  // then a drag charges power and its release launches the ball. There is no
+  // shoot button and no power slider.
+  const [aimLocked, setAimLocked] = useState(false);
   const [shooting, setShooting] = useState(false);
   const [showForfeitConfirm, setShowForfeitConfirm] = useState(false);
   const [forfeiting, setForfeiting] = useState(false);
@@ -124,6 +136,28 @@ export default function MiniGolfMatchPage() {
   useEffect(() => {
     matchRef.current = match;
   }, [match]);
+
+  // Re-initialise EVERY piece of presentation state when the match changes.
+  //
+  // The App Router reuses this same page instance when only the `[matchId]`
+  // param differs, so without this the view would keep the previous match's
+  // balls, roll animation and aim — which reads to the player as "every match
+  // is the same course".
+  useEffect(() => {
+    hydratedRef.current = false;
+    lastAnimatedSeqRef.current = -1;
+    setMatch(null);
+    setRenderBalls(null);
+    setAnim(null);
+    setHoleOverlay(null);
+    setAim({ angle: 270, power: 50 });
+    setAimLocked(false);
+    setLoadError(null);
+    if (overlayTimerRef.current) {
+      clearTimeout(overlayTimerRef.current);
+      overlayTimerRef.current = null;
+    }
+  }, [matchId]);
 
   // ── Fetching ──────────────────────────────────────────────────────────
   const fetchSnapshot = useCallback(
@@ -206,7 +240,6 @@ export default function MiniGolfMatchPage() {
     if (!hydratedRef.current) {
       hydratedRef.current = true;
       lastAnimatedSeqRef.current = seq;
-      setVisibleHole(Number(match.currentHole) || 1);
       setRenderBalls(cloneBalls(match.balls));
       return;
     }
@@ -214,15 +247,22 @@ export default function MiniGolfMatchPage() {
     if (lastAnimatedSeqRef.current === seq) return;
 
     lastAnimatedSeqRef.current = seq;
-    const hole = Number(last.hole) || Number(match.currentHole) || 1;
+    const holeNumber = Number(last.hole) || Number(match.currentHole) || 1;
     const path: Vec2[] = last.result.path;
-    if (hole !== match.currentHole) setVisibleHole(hole);
+    // A new rollout supersedes any hole-result interstitial still on screen —
+    // including its timer, so a stale callback can never drag the board back
+    // to a hole the match has already left.
+    if (overlayTimerRef.current) {
+      clearTimeout(overlayTimerRef.current);
+      overlayTimerRef.current = null;
+    }
     setHoleOverlay(null);
+    setAimLocked(false);
     setProgress(0);
     setAnim({
       seq,
       seat: last.seat,
-      hole,
+      hole: holeNumber,
       path,
       pocketed: Boolean(last.result?.pocketed),
       duration: animationDurationMs(path),
@@ -255,10 +295,11 @@ export default function MiniGolfMatchPage() {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = setTimeout(() => {
         overlayTimerRef.current = null;
-        const current = matchRef.current;
+        // Dropping the overlay is the ONLY thing that moves the view on: the
+        // rendered hole is derived from the snapshot, so it advances by itself
+        // the moment the interstitial goes away.
         setHoleOverlay(null);
-        setVisibleHole(Number(current?.currentHole) || finished.hole + 1);
-        setRenderBalls(cloneBalls(current?.balls));
+        setRenderBalls(cloneBalls(matchRef.current?.balls));
       }, HOLE_RESULT_MS);
       return;
     }
@@ -299,8 +340,16 @@ export default function MiniGolfMatchPage() {
     !holeOverlay &&
     !showForfeitConfirm;
 
-  const shoot = useCallback(async () => {
+  // The ONLY way a shot is ever requested: a locked power drag released on the
+  // course. It is still just a `{ angle, power }` request — the server decides
+  // everything that follows.
+  const launchShot = useCallback(
+    async ({ angle, power }: { angle: number; power: number }) => {
     if (!match || !canShoot) return;
+    const shotPower = clampPower(power);
+    const shotAngle = ((Math.round(angle) % 360) + 360) % 360;
+    setAimLocked(false);
+    setAim({ angle: shotAngle, power: shotPower });
     setShooting(true);
     setLoadError(null);
     try {
@@ -308,8 +357,8 @@ export default function MiniGolfMatchPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          angle: aim.angle,
-          power: aim.power,
+          angle: shotAngle,
+          power: shotPower,
           expectedVersion: match.version,
         }),
       });
@@ -332,7 +381,9 @@ export default function MiniGolfMatchPage() {
     } finally {
       setShooting(false);
     }
-  }, [match, canShoot, aim, apiMatch, refresh, socket, matchId]);
+    },
+    [match, canShoot, apiMatch, refresh, socket, matchId],
+  );
 
   const forfeit = useCallback(async () => {
     if (!match || forfeiting) return;
@@ -370,12 +421,21 @@ export default function MiniGolfMatchPage() {
   }, [apiMatch, refresh]);
 
   // ── Derived view model ────────────────────────────────────────────────
+  // Which hole's geometry belongs on screen, in priority order:
+  //   1. the hole whose result interstitial is up (it is the finished hole),
+  //   2. the hole the playing shot was SIMULATED on — drawing a server
+  //      trajectory against any other hole's walls is what makes a ball look
+  //      like it flew straight through them,
+  //   3. otherwise the authoritative current hole.
+  const viewHoleNumber =
+    holeOverlay?.hole ?? anim?.hole ?? Math.max(1, Number(match?.currentHole) || 1);
+
   const hole = useMemo(() => {
     const holes = match?.holes;
     if (!Array.isArray(holes) || holes.length === 0) return null;
-    const index = Math.min(Math.max(visibleHole, 1), holes.length) - 1;
+    const index = Math.min(Math.max(viewHoleNumber, 1), holes.length) - 1;
     return holes[index];
-  }, [match?.holes, visibleHole]);
+  }, [match?.holes, viewHoleNumber]);
 
   const aimFrom = useMemo<Vec2 | null>(() => {
     if (!viewerSeat) return null;
@@ -639,12 +699,21 @@ export default function MiniGolfMatchPage() {
                     movingBall={movingBall}
                     aim={aim}
                     aimFrom={aimFrom}
+                    aimLocked={aimLocked}
                     interactive={canShoot}
-                    onAim={(next) => setAim({ angle: Math.round(next.angle), power: clampPower(next.power) })}
+                    onAim={(next) =>
+                      setAim((prev) => ({
+                        angle: Math.round(next.angle),
+                        power: clampPower(next.power),
+                      }))
+                    }
+                    onLock={() => setAimLocked(true)}
+                    onUnlock={() => setAimLocked(false)}
+                    onLaunch={(next) => void launchShot(next)}
                     viewerSeat={viewerSeat}
                   />
                   <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-200">
-                    Hole {visibleHole}
+                    Hole {viewHoleNumber}
                   </span>
                 </div>
 
@@ -675,24 +744,10 @@ export default function MiniGolfMatchPage() {
                     </span>
                   </div>
 
+                  {/* Aim state. Power is charged by dragging on the course —
+                      this bar only mirrors it. */}
                   <div className="mt-3 flex items-center gap-3">
-                    <label className="w-full">
-                      <span className="sr-only">Shot power</span>
-                      <input
-                        data-testid="power-slider"
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={clampPower(aim.power)}
-                        disabled={!canShoot}
-                        onChange={(e) =>
-                          setAim((prev) => ({ ...prev, power: clampPower(Number(e.target.value)) }))
-                        }
-                        className="w-full accent-emerald-400 disabled:opacity-40"
-                      />
-                    </label>
-                    <div className="h-2.5 w-24 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/10">
                       <div
                         data-testid="power-meter"
                         className="h-full transition-all"
@@ -703,31 +758,35 @@ export default function MiniGolfMatchPage() {
                         }}
                       />
                     </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      data-testid="shoot-button"
-                      onClick={shoot}
-                      disabled={!canShoot}
-                      className={`flex-1 rounded-xl border-b-4 py-3 text-base font-extrabold transition ${
-                        canShoot
-                          ? "border-emerald-800 bg-emerald-500 text-black hover:brightness-110 active:translate-y-[2px]"
-                          : "cursor-not-allowed border-white/10 bg-white/10 text-white/40"
+                    <span
+                      data-testid="aim-state"
+                      data-locked={aimLocked ? "true" : "false"}
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                        aimLocked
+                          ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                          : "border-white/15 bg-white/5 text-white/55"
                       }`}
                     >
                       {shooting
-                        ? "Shooting…"
-                        : anim
-                          ? "Ball rolling…"
-                          : match.viewerHasHoledOut
-                            ? "Hole complete"
-                            : canShoot
-                              ? "Shoot"
-                              : isMyTurn
-                                ? "Locked"
-                                : "Waiting…"}
-                    </button>
+                        ? "Sending…"
+                        : aimLocked
+                          ? "🔒 Angle locked"
+                          : "Unlocked"}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="flex-1 text-xs font-semibold text-white/60">
+                      {anim
+                        ? "Ball rolling…"
+                        : match.viewerHasHoledOut
+                          ? "Hole complete"
+                          : !canShoot
+                            ? isMyTurn
+                              ? "Waiting for the board…"
+                              : "Waiting…"
+                            : ""}
+                    </span>
                     {match.status === "playing" && (
                       <button
                         onClick={() => setShowForfeitConfirm(true)}
@@ -740,8 +799,11 @@ export default function MiniGolfMatchPage() {
                     )}
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-white/45">
-                    Drag on the course to aim — the further you drag, the harder the shot. The
-                    preview is only a guide; the server decides where the ball ends up.
+                    {canShoot
+                      ? aimLocked
+                        ? "Angle locked — drag back from the ball to charge, then release to putt. Click without dragging to re-aim."
+                        : "Move over the course to aim, then click to lock the angle."
+                      : "Aim with the pointer and click to lock, like every 1v1 table on GRYND. The preview is only a guide; the server decides where the ball ends up."}
                   </p>
                   {loadError && (
                     <p className="mt-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">

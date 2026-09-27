@@ -422,3 +422,81 @@ test("the shared seed hash matches the Plinko implementation bit-for-bit", () =>
     );
   }
 });
+
+// ── Pass-through guard (a wall can never be crossed) ───────────────────────
+//
+// A substep moves the ball at most `substepMaxPx`, which is far less than the
+// band a wall occupies (a zero-thickness segment colliding within one ball
+// radius, so ~14px across) — overlap resolution alone therefore catches a wall
+// in normal play. The guard makes that a hard invariant instead of an
+// arithmetic coincidence, so a fast ball can never appear to fly through a
+// wall.
+
+test("a wall can never be crossed, even at a deliberately loose substep budget", () => {
+  // A full-height interior wall splits the hole in two. `substepMaxPx: 1000`
+  // forces ONE substep per frame, so a 24px step would sail clean through the
+  // wall's 14px band and out the far side without the guard.
+  const hole = makeHole({
+    tee: { x: 60, y: 280 },
+    cup: { x: 380, y: 120, r: 14 },
+    walls: [{ a: { x: 200, y: 20 }, b: { x: 200, y: 540 } }],
+  });
+
+  for (const power of [40, 60, 80, 100]) {
+    const result = simulateShot({
+      hole,
+      shot: { angle: 0, power },
+      config: { substepMaxPx: 1000 },
+    });
+    const maxX = Math.max(...result.path.map((point) => point.x));
+    assert.ok(
+      maxX <= 200 - BALL_RADIUS + 0.6,
+      `power ${power} crossed the wall (maxX=${maxX.toFixed(2)})`,
+    );
+  }
+});
+
+test("the guard leaves an ordinary bounce untouched", () => {
+  const hole = makeHole();
+  const result = simulateShot({ hole, shot: { angle: 0, power: 100 } });
+  const maxX = Math.max(...result.path.map((point) => point.x));
+
+  assert.ok(maxX <= 400 - BALL_RADIUS + 0.6, `ball must stop at the wall (maxX=${maxX})`);
+  assert.ok(maxX >= 400 - BALL_RADIUS - 1, "ball must actually reach the wall");
+  assert.ok(result.restPosition.x < maxX - 5, "ball must bounce back off the wall");
+  assertInBounds(result, 400, 560);
+});
+
+test("no shot can get inside a wall's collision band", () => {
+  const wall = { a: { x: 200, y: 20 }, b: { x: 200, y: 540 } };
+  const hole = makeHole({
+    tee: { x: 60, y: 280 },
+    cup: { x: 380, y: 120, r: 14 },
+    walls: [wall],
+  });
+  const distToWall = (point) => {
+    const abx = wall.b.x - wall.a.x;
+    const aby = wall.b.y - wall.a.y;
+    const lenSq = abx * abx + aby * aby;
+    const t = Math.max(
+      0,
+      Math.min(1, ((point.x - wall.a.x) * abx + (point.y - wall.a.y) * aby) / lenSq),
+    );
+    return Math.hypot(
+      point.x - (wall.a.x + abx * t),
+      point.y - (wall.a.y + aby * t),
+    );
+  };
+
+  for (let angle = 0; angle < 360; angle += 7) {
+    for (const power of [50, 75, 100]) {
+      const result = simulateShot({ hole, shot: { angle, power } });
+      for (const point of result.path) {
+        assert.ok(
+          distToWall(point) >= BALL_RADIUS - 1e-6,
+          `ball entered the wall at (${point.x.toFixed(2)},${point.y.toFixed(2)}) angle=${angle} power=${power}`,
+        );
+      }
+    }
+  }
+});

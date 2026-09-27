@@ -175,10 +175,10 @@ export default function MiniGolfLobbyPage() {
             heading: "Aim and power",
             body: (
               <>
-                Drag on the course to aim — the line shows your direction and how
-                hard you will hit it. Dial the power meter for precision, then
-                press <b>Shoot</b>. Sand slows the ball; water costs a penalty
-                stroke and replays the shot.
+                Move your pointer over the course to aim — the line shows your
+                direction. <b>Click to lock the angle</b>, then drag back from the
+                ball to charge how hard you will hit it and release to putt. Sand
+                slows the ball; water costs a penalty stroke and replays the shot.
               </>
             ),
           },

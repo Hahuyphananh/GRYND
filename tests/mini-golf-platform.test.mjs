@@ -42,6 +42,8 @@ const LOBBY = "src/app/casino/PageClient.jsx";
 const LOBBY_PAGE = "src/app/casino/mini-golf/PageClient.tsx";
 const MATCH_PAGE = "src/app/casino/mini-golf/[matchId]/PageClient.tsx";
 const PAGE = "src/app/casino/mini-golf/page.tsx";
+const COURSE = "src/components/mini-golf/MiniGolfCourse.tsx";
+const PHYSICS = "src/lib/mini-golf/physics.ts";
 const TRANSLATIONS = "src/lib/appTextTranslations.js";
 
 const KEY = "mini-golf";
@@ -176,4 +178,86 @@ test("metadata: the lobby card copy also carries the format in every locale", ()
 test("ads: the lobby page carries the ad script, the match page carries none", () => {
   assert.match(strip(read(PAGE)), /<AdSenseScript \/>/);
   assert.doesNotMatch(strip(read(MATCH_PAGE)), /AdSense|AdSlot/);
+});
+
+// ── 6. Shot interaction — Pool Masters parity ───────────────────────────
+//
+// Mini Golf deliberately uses the SAME aiming contract as the pool table:
+// moving the pointer aims, a click locks the angle, then a drag charges power
+// and its release launches the ball. The shoot button and the power slider are
+// gone — reintroducing either would fork the game from every other 1v1 table
+// on the platform.
+
+test("interaction: the shoot button and the power slider are gone", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.doesNotMatch(src, /shoot-button/, "the shoot button must be gone");
+  assert.doesNotMatch(src, /power-slider/, "the power slider must be gone");
+  assert.doesNotMatch(src, /type="range"/, "no range input may drive the shot");
+});
+
+test("interaction: the match page drives the two-phase aim lock", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /const \[aimLocked, setAimLocked\] = useState\(false\)/);
+  assert.match(src, /onLock=\{\(\) => setAimLocked\(true\)\}/);
+  assert.match(src, /onUnlock=\{\(\) => setAimLocked\(false\)\}/);
+  assert.match(src, /onLaunch=\{\(next\) => void launchShot\(next\)\}/);
+  assert.match(src, /data-testid="aim-state"/);
+  // The only shot request is the canvas's launch callback.
+  assert.equal((src.match(/\/shoot`, \{/g) ?? []).length, 1);
+});
+
+test("interaction: the canvas implements click-to-lock and drag-to-charge", () => {
+  const src = strip(read(COURSE));
+  // A locked angle draws the pool table's green guide; unlocked stays white.
+  assert.match(src, /rgba\(74,222,128/, "locked aim must use the pool green");
+  assert.match(src, /setLineDash\(\[7, 6\]\)/, "unlocked aim must use the pool dashed guide");
+  // A click with no drag locks; a click while locked unlocks and re-aims.
+  assert.match(src, /LOCK_CLICK_EPSILON/);
+  assert.match(src, /onLock\?\.\(\)/);
+  assert.match(src, /onUnlock\?\.\(\)/);
+  assert.match(src, /onLaunch\?\.\(/);
+});
+
+// ── 7. Course rendering ────────────────────────────────────────────────
+
+test("rendering: the visible hole is DERIVED, never a lagging copy", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.doesNotMatch(src, /const \[visibleHole/, "no visibleHole state may exist");
+  assert.doesNotMatch(src, /setVisibleHole\(/, "nothing may write a separate hole copy");
+  assert.match(src, /const viewHoleNumber =/);
+  // The animating shot outranks the snapshot, so a server trajectory is always
+  // drawn against the geometry it was actually simulated on.
+  assert.match(src, /holeOverlay\?\.hole \?\? anim\?\.hole \?\?/);
+});
+
+test("rendering: presentation state is re-initialised when the match changes", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /\}, \[matchId\]\);/, "a matchId-keyed reset effect must exist");
+  assert.match(src, /hydratedRef\.current = false;/);
+  assert.match(src, /lastAnimatedSeqRef\.current = -1;/);
+  assert.match(src, /setRenderBalls\(null\);/);
+});
+
+test("rendering: a new rollout cancels any pending hole-result timer", () => {
+  const src = strip(read(MATCH_PAGE));
+  const clears = src.match(/clearTimeout\(overlayTimerRef\.current\)/g) ?? [];
+  assert.ok(
+    clears.length >= 3,
+    `a stale result timer must be cleared on start, reset and unmount (found ${clears.length})`,
+  );
+});
+
+test("ball art: the golf ball uses the Pool Masters rendering language", () => {
+  const src = strip(read(COURSE));
+  assert.match(src, /ctx\.ellipse\(/, "the pool ball's contact shadow");
+  assert.match(src, /shadowBlur/, "the pool ball's depth blur");
+  assert.match(src, /createRadialGradient/, "the pool ball's gloss gradient");
+  assert.match(src, /ctx\.rotate\(roll\)/, "rolling dimples driven by travel");
+  assert.match(src, /travelled/, "distance travelled must drive the roll");
+  assert.match(src, /trail/, "a moving ball must leave a motion trail");
+  assert.match(src, /sink/, "a holed ball must sink into the cup");
+});
+
+test("physics: the simulator runs the pass-through guard every substep", () => {
+  assert.match(strip(read(PHYSICS)), /preventSegmentTunneling\(ball, prevPoint/);
 });

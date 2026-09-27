@@ -18,6 +18,8 @@
 //   • linear damping every substep
 //   • adaptive substepping so a fast ball can't tunnel through a thin wall
 //   • wall/bumper collision with velocity reflection + restitution
+//   • a per-substep pass-through guard, so a wall can never be crossed even
+//     if the substep budget were ever loosened (see `preventSegmentTunneling`)
 //   • sand: extra damping while inside
 //   • water: stroke replayed from its start position (+1 stroke, counted by
 //     the caller from `waterHits`)
@@ -50,6 +52,7 @@ import {
   clampBallToCourse,
   isBallInCup,
   isBallInsideCircle,
+  preventSegmentTunneling,
   resolveCircleCollision,
   resolveSegmentCollision,
 } from "./collision";
@@ -216,6 +219,11 @@ export function simulateShot(params: SimulateShotParams): ShotResult {
     for (let s = 0; s < steps && !settled; s++) {
       substeps++;
 
+      // Where the ball was before this substep, so the pass-through guard can
+      // tell a real crossing from an ordinary bounce.
+      const prevX = ball.x;
+      const prevY = ball.y;
+
       // 1. Integrate position, then damp.
       ball.x += ball.vx / steps;
       ball.y += ball.vy / steps;
@@ -230,8 +238,21 @@ export function simulateShot(params: SimulateShotParams): ShotResult {
       ball.vx *= damping;
       ball.vy *= damping;
 
-      // 2. Collisions. Iterate so a ball wedged into a corner resolves both
-      //    walls instead of oscillating between them.
+      // 2. Collisions.
+      //
+      // First the pass-through guard: a single substep must never be able to
+      // carry the ball from one side of a wall to the other. It only fires on
+      // a genuine crossing, so a normal bounce resolves exactly as before.
+      const prevPoint = { x: prevX, y: prevY };
+      for (let i = 0; i < boundary.length; i++) {
+        preventSegmentTunneling(ball, prevPoint, boundary[i], wallRestitution);
+      }
+      for (let i = 0; i < interiorWalls.length; i++) {
+        preventSegmentTunneling(ball, prevPoint, interiorWalls[i], wallRestitution);
+      }
+
+      // Then overlap resolution. Iterate so a ball wedged into a corner
+      // resolves both walls instead of oscillating between them.
       for (let iter = 0; iter < cfg.maxCollisionIterations; iter++) {
         let hit = false;
         for (let i = 0; i < boundary.length; i++) {

@@ -103,6 +103,79 @@ export function resolveSegmentCollision(
 }
 
 /**
+ * PASS-THROUGH GUARD (a one-substep continuous-collision fallback).
+ *
+ * A substep moves the ball at most `substepMaxPx` px, which is deliberately
+ * much smaller than the band a wall occupies (a zero-thickness segment that
+ * collides within `ball.radius`, so ~2×radius across). Overlap resolution is
+ * therefore enough in normal play: the ball is caught while still overlapping.
+ *
+ * This guard makes "a wall can never be crossed" a hard invariant rather than
+ * an arithmetic coincidence. When the ball's centre changes side of a
+ * segment's line WITHIN that segment's span during one substep, the ball is
+ * put back on the side it came from and its normal velocity is reflected.
+ *
+ * `prev` is the ball's centre at the start of the substep. Returns true when a
+ * crossing had to be corrected.
+ *
+ * Only a real crossing triggers it, so an ordinary bounce (where the ball
+ * never gets past the line) is left to `resolveSegmentCollision` and the
+ * resolved trajectory is unchanged.
+ */
+export function preventSegmentTunneling(
+  ball: Ball,
+  prev: Vec2,
+  segment: Segment,
+  restitution: number,
+): boolean {
+  const ex = segment.b.x - segment.a.x;
+  const ey = segment.b.y - segment.a.y;
+  const lenSq = ex * ex + ey * ey;
+  if (lenSq < 1e-12) return false;
+  const len = Math.sqrt(lenSq);
+
+  // Unit normal of the segment's supporting line.
+  const nx = -ey / len;
+  const ny = ex / len;
+
+  const prevSide = (prev.x - segment.a.x) * nx + (prev.y - segment.a.y) * ny;
+  const nowSide = (ball.x - segment.a.x) * nx + (ball.y - segment.a.y) * ny;
+
+  // Same side (or exactly on the line) — nothing crossed.
+  if (prevSide === 0 || nowSide === 0) return false;
+  if (prevSide > 0 === nowSide > 0) return false;
+
+  // Where along the substep path does the line get crossed?
+  const t = prevSide / (prevSide - nowSide);
+  const crossX = prev.x + (ball.x - prev.x) * t;
+  const crossY = prev.y + (ball.y - prev.y) * t;
+
+  // The crossing must land on the segment itself. A ball that swings around
+  // an endpoint legitimately goes from one side to the other without touching
+  // the wall, so allow a radius of slack at each cap.
+  const along =
+    ((crossX - segment.a.x) * ex + (crossY - segment.a.y) * ey) / lenSq;
+  const slack = ball.radius / len;
+  if (along < -slack || along > 1 + slack) return false;
+
+  // Put the ball back on the side it came from, exactly one radius clear of
+  // the wall, then bounce it if it is still travelling into the surface.
+  const sign = prevSide > 0 ? 1 : -1;
+  const outX = nx * sign;
+  const outY = ny * sign;
+  ball.x = crossX + outX * ball.radius;
+  ball.y = crossY + outY * ball.radius;
+
+  const vn = ball.vx * outX + ball.vy * outY;
+  if (vn < 0) {
+    const bounced = reflectVelocity(ball.vx, ball.vy, outX, outY, restitution);
+    ball.vx = bounced.vx;
+    ball.vy = bounced.vy;
+  }
+  return true;
+}
+
+/**
  * Resolve a ball against a circular obstacle (bumper / sand / water treated
  * as a solid disc). Returns true when an overlap was corrected.
  */
