@@ -95,7 +95,7 @@ test("no game page can start with a stake (the default-wager hook is gone)", () 
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 3. The queue chokepoint — all 18 queue games are created through it
+// 3. The queue chokepoint — all 19 queue games are created through it
 // ════════════════════════════════════════════════════════════════════════
 
 const WORKER = "src/lib/quickQueueWorker.ts";

@@ -204,9 +204,6 @@ export const MATCH_STATUS = Object.freeze({
   CANCELLED: "cancelled",
 });
 
-/** States in which a shot may be accepted. */
-export const SHOOTABLE_STATUSES = new Set<string>([MATCH_STATUS.PLAYING]);
-
 /**
  * Advisory-lock namespace for the Mini Golf matchmaking lock (the ASCII bytes
  * "MGLF"). Scoped per-game so a Mini Golf transaction can never contend with
@@ -224,12 +221,6 @@ export const RESULT = Object.freeze({
   PLAYER2: "player2",
   TIE: "tie",
 });
-
-/** Terminal states — no further transitions are possible. */
-export const TERMINAL_STATUSES = new Set<string>([
-  MATCH_STATUS.FINISHED,
-  MATCH_STATUS.CANCELLED,
-]);
 
 /** Stable internal identity for free human-vs-AI matches. Never rated. */
 export const MINI_GOLF_AI_PLAYER_ID = "mini_golf_ai_bot";

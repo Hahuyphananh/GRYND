@@ -12,9 +12,11 @@ import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerifi
 import { logError } from "../../../../../lib/logError";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import {
+  advanceAiTurns,
   fetchMatch,
   fetchMatchShots,
   isMatchId,
+  matchToDto,
 } from "../../../../../lib/mini-golf/serverStore";
 
 function normaliseShot(row: {
@@ -71,8 +73,27 @@ export async function GET(
       );
     }
 
+    // Free practice vs AI is server-driven (the same shape Blackjack uses):
+    // the human's own poll is what wakes the bot, so any read is enough. A
+    // human duel is never touched. Best-effort — a failure falls back to the
+    // un-advanced snapshot and the next poll retries.
+    let match = result.match;
+    let dto = result.dto;
+    if (match.isAi) {
+      try {
+        const advanced = await advanceAiTurns({ userId, matchId });
+        if (!("error" in advanced) && advanced.match) {
+          match = advanced.match;
+          dto = matchToDto(match, userId);
+        }
+      } catch {
+        // Keep the snapshot we already have.
+      }
+    }
+
     // Shot history + seat identity are adornments: a failure here must not
-    // fail the match payload.
+    // fail the match payload. Shots are read AFTER the bot's turn so its
+    // strokes appear in the replay log too.
     let shots: unknown[] = [];
     try {
       const rows = await fetchMatchShots(matchId);
@@ -84,8 +105,8 @@ export async function GET(
     let players = null;
     try {
       players = await getSeatIdentity(
-        result.match.player1Id,
-        result.match.player2Id ?? null,
+        match.player1Id,
+        match.player2Id ?? null,
       );
     } catch {
       players = null;
@@ -94,8 +115,8 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        matchId: result.match.id,
-        ...result.dto,
+        matchId: match.id,
+        ...dto,
         players,
         shots,
       },

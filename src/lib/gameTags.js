@@ -168,6 +168,11 @@ export const GAME_CATALOG = [
     href: "/casino/dots-and-boxes",
     tags: ["pvp", "strategy", "skill"],
   },
+
+  // Turn-based putting on a physics course: aiming and power control are the
+  // whole game (skill), best-of-5 holes with a seconds-short learning curve
+  // (casual), head-to-head against one opponent (pvp).
+  { id: "mini-golf", href: "/casino/mini-golf", tags: ["pvp", "skill", "casual"] },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any

@@ -142,6 +142,7 @@ to their existing "a real session started" edge.
 | odds | `odds` (hook, AI + PvP components) | a duel is live → the duel is decided |
 | precision | `precision/game/[matchId]` | past the waiting room → finished |
 | dots-and-boxes | `dots-and-boxes/game/[gameId]` | `in_progress` → finished/cancelled |
+| mini-golf | `mini-golf/[matchId]` | the match left `waiting` (a real match is live) → finished/cancelled · the result screen is `terminal` |
 
 ### Product decisions
 

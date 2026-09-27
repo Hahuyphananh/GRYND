@@ -81,6 +81,7 @@ const ALLOWED = [
   "src/app/casino/lane-runner/page.jsx",
   "src/app/casino/memory-grid/page.tsx",
   "src/app/casino/mines-pvp/page.tsx",
+  "src/app/casino/mini-golf/page.tsx",
   "src/app/casino/plinko/page.tsx",
   "src/app/casino/pool-masters/page.tsx",
   "src/app/casino/precision/page.tsx",

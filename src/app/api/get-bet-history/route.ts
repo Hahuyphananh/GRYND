@@ -29,6 +29,7 @@ import {
   crashArenaTables,
   crashArenaRounds,
   crashArenaEntries,
+  miniGolfMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -91,6 +92,7 @@ export async function GET(req: NextRequest) {
       minesPvpRows,
       laneRushDuelRows,
       crashArenaRows,
+      miniGolfRows,
     ] = await Promise.all([
       // Column projection + per-table LIMIT. The formatters below only
       // read a handful of fields per row; full-row selects shipped every
@@ -404,6 +406,29 @@ export async function GET(req: NextRequest) {
         .innerJoin(crashArenaRounds, eq(crashArenaEntries.roundId, crashArenaRounds.id))
         .innerJoin(crashArenaTables, eq(crashArenaRounds.tableId, crashArenaTables.id))
         .where(eq(crashArenaEntries.userId, uid))
+        .limit(HISTORY_LIMIT),
+      //  Mini Golf (PvP, clerkId-based — finished-only). Unstaked: it moves
+      //  no tokens, so amount/payout/tokenDiff are all 0 and the entry is a
+      //  pure W/L/draw record. AI/practice matches are labelled and also move
+      //  no tokens.
+      db
+        .select({
+          player1Id: miniGolfMatches.player1Id,
+          player2Id: miniGolfMatches.player2Id,
+          winnerId: miniGolfMatches.winnerId,
+          result: miniGolfMatches.result,
+          status: miniGolfMatches.status,
+          isAi: miniGolfMatches.isAi,
+          endedAt: miniGolfMatches.endedAt,
+          createdAt: miniGolfMatches.createdAt,
+        })
+        .from(miniGolfMatches)
+        .where(
+          or(
+            eq(miniGolfMatches.player1Id, clerkId),
+            eq(miniGolfMatches.player2Id, clerkId),
+          ),
+        )
         .limit(HISTORY_LIMIT),
     ]);
 
@@ -724,6 +749,33 @@ export async function GET(req: NextRequest) {
       })
       .filter(Boolean);
 
+    // Mini Golf — finished matches only. Mini Golf is unstaked (no wagers,
+    // tokens or payouts), so every entry is a 0-token W/L/draw record: the
+    // server-authoritative `winner_id` decides, and a `tie` result (five
+    // holes finished without either seat reaching three) is a draw. AI
+    // practice matches are labelled so they are never confused with ranked
+    // PvP.
+    const miniGolfFormatted = miniGolfRows
+      .map((g) => {
+        if (g.status !== "finished") return null;
+        const isDraw = g.result === "tie" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        return {
+          type: g.isAi ? "Mini Golf vs AI" : "Mini Golf",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          // Unstaked — the record line is decided, not token movement.
+          amount: 0,
+          payout: 0,
+          result: outcome,
+          tokenDiff: 0,
+        };
+      })
+      .filter(Boolean);
+
     // Keno Duel PvP matches — winner's payout is `stake * 1.9` and a
     // loser's is 0; a draw refunds both stakes (payout = stake,
     // tokenDiff = 0). Mirrors the minesPvpFormatted shape.
@@ -776,6 +828,7 @@ export async function GET(req: NextRequest) {
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,
       ...crashArenaFormatted,
+      ...miniGolfFormatted,
       ]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         // Cap the merged list: the profile renders the newest 10 and the

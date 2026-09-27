@@ -195,6 +195,48 @@ export function totalStrokes(holeScores: { player1: number; player2: number }[])
   return out;
 }
 
+// ── Snapshot ordering (stale-state guard) ─────────────────────────────────
+//
+// A match view fetches the authoritative snapshot on a poll AND from several
+// event-driven refreshes (socket push, post-shot resync, reconnect). Those
+// requests can resolve out of order: a poll started BEFORE a shot can land
+// AFTER the shot's response and would otherwise overwrite newer state with
+// older state. `version` is the server's monotonic optimistic-concurrency
+// counter (bumped on every shot), so it is the natural ordering key.
+//
+// Forfeit and cancel are the exception to "the version moves": both finalise
+// the match by setting `phase: "finished"` WITHOUT bumping `version`, so they
+// are ordered by terminality instead — a terminal snapshot (status
+// finished/cancelled) can never be replaced by a non-terminal one at the same
+// version.
+
+/** Statuses that are final and must never be superseded by a live snapshot. */
+const TERMINAL_MATCH_STATUSES = new Set(["finished", "cancelled"]);
+
+/**
+ * True when `incoming` must NOT replace `current` in the view state.
+ *
+ * Pure, so the rule is unit-tested rather than a condition buried in the
+ * fetch callback. A null `current` is never stale (first load). A malformed
+ * `incoming` (no numeric version) is always rejected — it cannot be trusted
+ * to advance the board.
+ */
+export function isIncomingSnapshotStale(
+  current: { version?: unknown; status?: unknown } | null | undefined,
+  incoming: { version?: unknown; status?: unknown } | null | undefined,
+): boolean {
+  if (!current) return false;
+  const incomingVersion = Number(incoming?.version);
+  if (!Number.isFinite(incomingVersion)) return true;
+  const currentVersion = Number(current?.version);
+  if (!Number.isFinite(currentVersion)) return false;
+  if (incomingVersion < currentVersion) return true;
+  if (incomingVersion > currentVersion) return false;
+  const currentTerminal = TERMINAL_MATCH_STATUSES.has(String(current?.status));
+  const incomingTerminal = TERMINAL_MATCH_STATUSES.has(String(incoming?.status));
+  return currentTerminal && !incomingTerminal;
+}
+
 export const DIFFICULTY_LABELS: Record<HoleDifficulty, string> = {
   easy: "Easy",
   "easy-medium": "Easy / Medium",
@@ -222,21 +264,4 @@ export function winPips(wins: number, holesToWin: number): boolean[] {
   const total = Math.max(0, Math.floor(holesToWin));
   const won = Math.max(0, Math.min(total, Math.floor(wins) || 0));
   return Array.from({ length: total }, (_, i) => i < won);
-}
-
-/** The outcome of the current hole as three short columns for the overlay. */
-export function holeScoreLine(
-  holeNumber: number,
-  score: { player1: number; player2: number } | null,
-  winner: HoleWinner | null,
-  viewerSeat: Seat | null,
-): { hole: number; player1: number; player2: number; winner: HoleWinner | null; label: string } {
-  const safe = score ?? { player1: 0, player2: 0 };
-  return {
-    hole: holeNumber,
-    player1: Number(safe.player1) || 0,
-    player2: Number(safe.player2) || 0,
-    winner: winner ?? null,
-    label: winner ? holeResultLabel(winner, viewerSeat) : "In progress",
-  };
 }

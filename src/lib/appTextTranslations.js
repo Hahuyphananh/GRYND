@@ -690,7 +690,7 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       four_in_a_row_desc: "Challenge another player 1v1 and align 4 discs.",
       mini_golf_name: "Mini Golf",
-      mini_golf_desc: "Putt head-to-head over five holes. Fewest strokes wins the hole — best of 5, first to 3.",
+      mini_golf_desc: "A turn-based, physics-based 1v1 duel over five holes. Fewest strokes wins the hole — best of 5, first to 3.",
       dots_and_boxes_name: "Dots & Boxes",
       dots_and_boxes_desc: "A classic pencil-and-paper duel. Take turns drawing lines between dots to claim boxes. Each box scores a point and earns another turn.",
       dots_and_boxes: {
@@ -2412,7 +2412,7 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       four_in_a_row_desc: "Affrontez un joueur en 1v1 et alignez 4 disques.",
       mini_golf_name: "Mini Golf",
-      mini_golf_desc: "Affrontez un adversaire sur cinq trous. Le moins de coups remporte le trou — au meilleur des 5, premier à 3.",
+      mini_golf_desc: "Un duel 1v1 tour à tour sur cinq trous, avec une physique de balle réaliste. Le moins de coups remporte le trou — au meilleur des 5, premier à 3.",
       dots_and_boxes_name: "Points & Cases",
       dots_and_boxes_desc: "Un duel stratégique classique sur papier. Tracez à tour de rôle des lignes entre les points pour revendiquer des cases. Chaque case rapporte un point et vous donne un tour supplémentaire.",
       dots_and_boxes: {
@@ -3767,7 +3767,7 @@ export const APP_TEXT_TRANSLATIONS = {
       },
       four_in_a_row_desc: "Enfréntate 1v1 y alinea 4 fichas.",
       mini_golf_name: "Mini Golf",
-      mini_golf_desc: "Juega cara a cara cinco hoyos. Menos golpes gana el hoyo — al mejor de 5, el primero en llegar a 3.",
+      mini_golf_desc: "Un duelo 1v1 por turnos sobre cinco hoyos, con física real. Menos golpes gana el hoyo — al mejor de 5, el primero en llegar a 3.",
       dots_and_boxes_name: "Puntos y Cuadros",
       dots_and_boxes_desc: "Un duelo clásico de estrategia sobre papel. Dibuja turnos líneas entre los puntos para reclamar cuadros. Cada cuadro suma un punto y te da otro turno.",
       dots_and_boxes: {

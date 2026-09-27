@@ -47,6 +47,7 @@ import {
   clampPower,
   difficultyLabel,
   holeResultLabel,
+  isIncomingSnapshotStale,
   matchFormatLabel,
   samplePath,
   seatColor,
@@ -137,7 +138,13 @@ export default function MiniGolfMatchPage() {
           setLoadError(data?.error || "Unable to load this match");
           return;
         }
-        setMatch(data.data);
+        // Never let a slower snapshot overwrite a newer authoritative one:
+        // several refreshes (poll, socket push, post-shot resync) can be in
+        // flight at once, and `version` is monotonic. A same-version terminal
+        // snapshot (forfeit/cancel) also can never be rolled back.
+        setMatch((prev: any) =>
+          isIncomingSnapshotStale(prev, data.data) ? prev : data.data,
+        );
         setLoadError(null);
       } catch (error: any) {
         if (error?.name === "AbortError") return;
@@ -316,6 +323,9 @@ export default function MiniGolfMatchPage() {
       }
       setMatch(data.data.match);
       socket?.emit("mini-golf:ready", { matchId });
+      // Practice is server-driven: the read advances the bot. Refetching right
+      // away hands the turn to it instead of waiting for the next poll.
+      if (data.data.match?.isAi && !data.data.matchCompleted) refresh();
     } catch {
       setLoadError("Shot failed — retrying");
       refresh();
@@ -394,7 +404,9 @@ export default function MiniGolfMatchPage() {
   const totals = useMemo(() => totalStrokes(scores), [scores]);
 
   const opponentSeat = seats.opponentSeat;
-  const opponentName = seats.opponent?.name || seatLabel(opponentSeat ?? "player2", viewerSeat);
+  const opponentName =
+    seats.opponent?.name ||
+    (match?.isAi ? "Practice Bot" : seatLabel(opponentSeat ?? "player2", viewerSeat));
   const opponentId = opponentSeat === "player1" ? match?.player1Id : match?.player2Id;
 
   const finished = match?.status === "finished";
@@ -425,10 +437,14 @@ export default function MiniGolfMatchPage() {
     : finished || cancelled
       ? "Match over"
       : match.viewerHasHoledOut
-        ? "You're in — waiting for your opponent to finish"
+        ? match.isAi
+          ? "You're in — the practice bot is finishing the hole"
+          : "You're in — waiting for your opponent to finish"
         : isMyTurn
           ? "Your turn"
-          : "Waiting for your opponent…";
+          : match.isAi
+            ? "Practice bot is playing…"
+            : "Waiting for your opponent…";
 
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
@@ -507,8 +523,16 @@ export default function MiniGolfMatchPage() {
                   <IconGolf className="h-7 w-7 text-emerald-400" />
                   Mini Golf
                 </h1>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-emerald-200/70">
-                  {matchFormatLabel(HOLE_COUNT, HOLES_TO_WIN)}
+                <p className="mt-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-emerald-200/70">
+                  <span>{matchFormatLabel(HOLE_COUNT, HOLES_TO_WIN)}</span>
+                  {match.isAi && (
+                    <span
+                      data-testid="practice-badge"
+                      className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200"
+                    >
+                      Practice · unrated
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-2">

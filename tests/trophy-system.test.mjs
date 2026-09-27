@@ -987,6 +987,91 @@ test("TEST UNAUTHORIZED: win/draw are the only outcomes the writer accepts", asy
 });
 
 // ════════════════════════════════════════════════════════════════════════
+// 7b. Mini Golf — a completed competitive match feeds the SAME trophy writer
+// ════════════════════════════════════════════════════════════════════════
+//
+// Mini Golf has NO trophy rule of its own: `src/lib/mini-golf/serverStore.ts`
+// derives the winner from the deterministic shot simulation and calls the
+// shared `applyTrophyResult` with `gameKey: "mini-golf"`.
+
+const MINI_GOLF_ARGS = {
+  gameKey: "mini-golf",
+  matchId: "11111111-1111-4111-8111-111111111111",
+  winnerClerkId: "user_winner",
+  loserClerkId: "user_loser",
+};
+
+test("MINI GOLF: a completed match pays +30 / −30 through the shared writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyTrophyResult({ tx: db.tx, ...MINI_GOLF_ARGS });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.gameKey, "mini-golf");
+  assert.equal(result.winner.trophiesBefore, 0);
+  assert.equal(result.winner.trophiesAfter, 30);
+  assert.equal(result.winner.delta, 30);
+  // The loser is floored at 0 rather than going negative.
+  assert.equal(result.loser.trophiesAfter, 0);
+  assert.equal(result.loser.delta, 0);
+
+  assert.equal(db.state.trophies.get("11:mini-golf").wins, 1);
+  assert.equal(db.state.trophies.get("22:mini-golf").losses, 1);
+  assert.equal(db.eventsFor("mini-golf").length, 2);
+});
+
+test("MINI GOLF: a five-hole draw awards no trophies", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  // Seed both seats above 0 so a non-draw would be observable.
+  seedTrophyRow(db, 11, "mini-golf", 300);
+  seedTrophyRow(db, 22, "mini-golf", 300);
+
+  const result = await applyTrophyResult({
+    tx: db.tx,
+    ...MINI_GOLF_ARGS,
+    result: "draw",
+  });
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.delta, 0);
+  assert.equal(result.loser.delta, 0);
+  assert.equal(db.state.trophies.get("11:mini-golf").trophies, 300);
+  assert.equal(db.state.trophies.get("22:mini-golf").trophies, 300);
+});
+
+test("MINI GOLF: a replayed completion never awards trophies twice", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  await applyTrophyResult({ tx: db.tx, ...MINI_GOLF_ARGS });
+  const writesAfterFirst = db.writes().length;
+
+  const second = await applyTrophyResult({ tx: db.tx, ...MINI_GOLF_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.state.trophies.get("11:mini-golf").trophies, 30);
+  assert.equal(db.eventsFor("mini-golf").length, 2);
+});
+
+test("MINI GOLF SECURITY: trophy counts are never taken from a client-shaped payload", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyTrophyResult({
+    tx: db.tx,
+    ...MINI_GOLF_ARGS,
+    winner: "player1",
+    winnerId: "user_loser",
+    trophies: 9999,
+    winnerTrophies: 9999,
+    loserTrophies: 9999,
+    delta: 500,
+    holeWins: 3,
+    matchResult: "player2",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.trophiesBefore, 0); // not the smuggled 9999
+  assert.equal(result.winner.trophiesAfter, 30); // +30, not 9999
+  assert.equal(result.winner.delta, 30); // not the smuggled 500
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // 8. Writer: cap behaviour
 // ════════════════════════════════════════════════════════════════════════
 

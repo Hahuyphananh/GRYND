@@ -1064,7 +1064,111 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 11. Settlement wiring — every rated game must feed the writer
+// 11. Mini Golf — a completed competitive match rates through the SAME writer
+// ════════════════════════════════════════════════════════════════════════
+//
+// Mini Golf has NO Elo implementation of its own: `src/lib/mini-golf/serverStore.ts`
+// derives the winner from the deterministic shot simulation and then calls the
+// shared `applyRatingResult` with the game key "mini-golf". These tests pin that
+// collaboration down at the writer seam.
+
+const MINI_GOLF_ARGS = {
+  gameKey: "mini-golf",
+  matchId: "11111111-1111-4111-8111-111111111111",
+  winnerClerkId: "user_winner",
+  loserClerkId: "user_loser",
+};
+
+test("MINI GOLF: a completed match settles both seats through the shared writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyRatingResult({ tx: db.tx, ...MINI_GOLF_ARGS });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.gameKey, "mini-golf");
+  // Placement K=64 on equal ratings ⇒ an equal-opponent win is worth 32.
+  assert.equal(result.winner.ratingBefore, 1000);
+  assert.equal(result.winner.ratingAfter, 1032);
+  assert.equal(result.winner.delta, 32);
+  assert.equal(result.loser.ratingAfter, 968);
+  assert.equal(result.loser.delta, -32);
+
+  // Its own independent ladder: the two mini-golf rows exist and nothing else.
+  assert.equal(db.state.ratings.size, 2);
+  assert.equal(db.state.ratings.get("11:mini-golf").wins, 1);
+  assert.equal(db.state.ratings.get("22:mini-golf").losses, 1);
+
+  const events = db.eventsFor("mini-golf");
+  assert.equal(events.length, 2);
+  assert.equal(events[0].outcome, "win");
+  assert.equal(events[1].outcome, "loss");
+});
+
+test("MINI GOLF: a five-hole draw moves neither rating and journals both as draws", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyRatingResult({
+    tx: db.tx,
+    ...MINI_GOLF_ARGS,
+    result: "draw",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.result, "draw");
+  assert.equal(result.winner.delta, 0);
+  assert.equal(result.loser.delta, 0);
+  // A draw is neither a win nor a loss in the counters.
+  assert.equal(db.state.ratings.get("11:mini-golf").wins, 0);
+  assert.equal(db.state.ratings.get("11:mini-golf").draws, 1);
+  assert.equal(db.state.ratings.get("22:mini-golf").draws, 1);
+
+  const events = db.eventsFor("mini-golf");
+  assert.equal(events.length, 2);
+  assert.equal(events[0].outcome, "draw");
+  assert.equal(events[1].outcome, "draw");
+});
+
+test("MINI GOLF: a replayed settlement of the same match rates exactly once", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const first = await applyRatingResult({ tx: db.tx, ...MINI_GOLF_ARGS });
+  assert.equal(first.applied, true);
+  const ratingAfterFirst = db.state.ratings.get("11:mini-golf").rating;
+  const writesAfterFirst = db.writes().length;
+
+  const second = await applyRatingResult({ tx: db.tx, ...MINI_GOLF_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.state.ratings.get("11:mini-golf").rating, ratingAfterFirst);
+  assert.equal(db.eventsFor("mini-golf").length, 2);
+});
+
+test("MINI GOLF SECURITY: a client-supplied winner/rating can never reach the writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  // Everything a cheating client would love to submit alongside a shot: the
+  // outcome and rating would have to come from the CALLER's server-derived
+  // winner, never from any of these fields.
+  const result = await applyRatingResult({
+    tx: db.tx,
+    ...MINI_GOLF_ARGS,
+    winner: "player1",
+    winnerId: "user_loser",
+    elo: 9999,
+    eloDelta: 500,
+    rating: 9999,
+    delta: 500,
+    trophies: 9999,
+    holeWins: 3,
+    matchResult: "player2",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.ratingBefore, 1000); // not the smuggled 9999
+  assert.equal(result.winner.ratingAfter, 1032);
+  assert.equal(result.winner.delta, 32); // not the smuggled 500
+  assert.equal(result.loser.ratingAfter, 968);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 12. Settlement wiring — every rated game must feed the writer
 // ════════════════════════════════════════════════════════════════════════
 
 const WIRING = [
@@ -1086,6 +1190,10 @@ const WIRING = [
   ["odds-pvp", "src/app/api/odds/pvp/pick/route.ts"],
   ["odds-pvp", "src/app/api/odds/pvp/forfeit/route.ts"],
   ["odds-pvp", "src/app/api/odds/pvp/cleanup/route.ts"],
+  // Mini Golf derives its winner server-side from the deterministic shot
+  // simulation (src/lib/mini-golf/rules.ts), so unlike hex-duel it is ratable
+  // from day one and wires the shared Elo writer.
+  ["mini-golf", "src/lib/mini-golf/serverStore.ts"],
 ];
 
 for (const [gameKey, file] of WIRING) {

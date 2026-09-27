@@ -330,10 +330,14 @@ test("missing answers → exactly the default lobby order", () => {
 
 test("incomplete or unknown answers never break the ranking", () => {
   // Partial: only one question answered → personalized, rest keeps order.
+  // The casual games float to the front; everything after them keeps the
+  // featured order. The count is derived from the catalog, never hardcoded,
+  // so adding a casual game cannot silently break this assertion.
+  const casualCount = GAME_CATALOG.filter((game) => game.tags.includes("casual")).length;
   const partial = recommendGames({ game_types: ["casual"] });
   assert.equal(partial.personalized, true);
   assert.deepEqual(
-    partial.recommendations.map((g) => g.id).slice(4),
+    partial.recommendations.map((g) => g.id).slice(casualCount),
     DEFAULT_GAME_ORDER.filter((id) => !GAMES_BY_ID[id].tags.includes("casual"))
   );
 

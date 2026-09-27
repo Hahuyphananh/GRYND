@@ -159,7 +159,6 @@ const DIRECT_TABLES = [
   "chessGames",
   "keno_games",
   "kenoPvpMatches",
-  "diceMatches",
   "poolMatches",
   "fourInARowGames",
   "laneRunnerGames",
@@ -168,6 +167,7 @@ const DIRECT_TABLES = [
   "laneRushDuelMatches",
   "memoryGridMatches",
   "crashArenaEntries",
+  "miniGolfMatches",
 ];
 
 for (const table of DIRECT_TABLES) {
@@ -271,6 +271,13 @@ test("diceFlush formatter exists and is included in allBets", () => {
 test("crashArena formatter exists and is included in allBets", () => {
   assert.match(source, /crashArenaFormatted/, "must have crashArena formatter");
   assert.match(source, /\.\.\.crashArenaFormatted/, "must spread into allBets");
+});
+
+test("miniGolf formatter exists and is included in allBets", () => {
+  assert.match(source, /miniGolfFormatted/, "must have miniGolf formatter");
+  assert.match(source, /\.\.\.miniGolfFormatted/, "must spread into allBets");
+  // Mini Golf is unstaked: its entries record the result, never a token move.
+  assert.match(source, /type: g\.isAi \? "Mini Golf vs AI" : "Mini Golf"/);
 });
 
 // ═══════════════════════════════════════════════════════════════

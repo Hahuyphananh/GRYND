@@ -26,7 +26,14 @@ import { miniGolfMatches, miniGolfShots, users } from "../../db/schema";
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
-import { COURSE_VERSION, MATCH_STATUS, MINI_GOLF_LOCK_NAMESPACE, RESULT } from "./constants";
+import {
+  COURSE_VERSION,
+  MATCH_STATUS,
+  MINI_GOLF_AI_PLAYER_ID,
+  MINI_GOLF_LOCK_NAMESPACE,
+  RESULT,
+} from "./constants";
+import { chooseAiShot } from "./ai";
 import { simulateShot } from "./physics";
 import {
   applyShot,
@@ -97,14 +104,19 @@ export function generateMatchSeed(): number {
 /** Client-facing DTO for a match row, from `viewerId`'s perspective. */
 export function matchToDto(match: MatchRow, viewerId: string | null) {
   const seats = seatsFromRow(match);
-  return normalizeForViewer({
-    state: stateOf(match),
-    seats,
-    viewerId,
-    status: match.status,
-    result: match.result ?? null,
-    winnerId: match.winnerId ?? null,
-  });
+  return {
+    ...normalizeForViewer({
+      state: stateOf(match),
+      seats,
+      viewerId,
+      status: match.status,
+      result: match.result ?? null,
+      winnerId: match.winnerId ?? null,
+    }),
+    // Tells the match view this is a free practice match against the bot (so it
+    // can label the seat and explain why nothing is rated). Never competitive.
+    isAi: Boolean(match.isAi),
+  };
 }
 
 // ── Lobby / matchmaking ───────────────────────────────────────────────────
@@ -259,6 +271,165 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
   });
 
   return { match: updated, joined: true };
+}
+
+// ── Free practice vs AI ───────────────────────────────────────────────────
+
+/**
+ * Create a free practice match against the built-in bot.
+ *
+ * The row is marked `isAi` and seat 2 is the namespaced bot identity, so it
+ * can never be matched into by another human (`listOpenMatches` only ever
+ * returns `waiting` rows with a null `player2_id`) and can never settle a
+ * rating or trophy (`settleMatch` returns early for `isAi`). It starts
+ * immediately in `playing` — there is no opponent to wait for.
+ */
+export async function createAiMatch({ userId }: { userId: string }) {
+  const seed = generateMatchSeed();
+  const state = createInitialState({ seed, courseVersion: COURSE_VERSION });
+  const seats: Seats = { player1Id: userId, player2Id: MINI_GOLF_AI_PLAYER_ID };
+
+  const [match] = await db
+    .insert(miniGolfMatches)
+    .values({
+      player1Id: userId,
+      player2Id: MINI_GOLF_AI_PLAYER_ID,
+      status: statusForState(state),
+      currentHole: state.currentHole,
+      currentTurnUserId: userIdForSeat(seats, state.currentTurn),
+      player1HoleWins: state.player1HoleWins,
+      player2HoleWins: state.player2HoleWins,
+      seed,
+      courseVersion: COURSE_VERSION,
+      gameState: state,
+      isAi: true,
+      startedAt: new Date(),
+    })
+    .returning();
+
+  return { match } as const;
+}
+
+/**
+ * How many bot strokes one poll may resolve before returning. Bounds the work
+ * a single read can do; a later poll simply continues where this left off.
+ */
+const MAX_AI_SHOTS_PER_ADVANCE = 10;
+
+/**
+ * Advance the practice bot's turn, if it owns one.
+ *
+ * Called by the match read route (the server-driven shape the Blackjack bot
+ * uses), so the human's own poll — which the match page already runs — is what
+ * wakes the bot. It is safe to call repeatedly:
+ *
+ *   • only a free `isAi` match is touched, and only for its HUMAN seat
+ *     (`player1Id === userId`); a human duel is a no-op,
+ *   • the row is locked, so concurrent polls serialise and the second one sees
+ *     the turn already handed back to the human,
+ *   • it stops the moment the turn is not the bot's, so a poll that arrives
+ *     mid-human-turn changes nothing,
+ *   • it NEVER settles a rating or trophy — `isAi` matches are excluded from
+ *     competitive progression by design.
+ */
+export async function advanceAiTurns({
+  userId,
+  matchId,
+}: {
+  userId: string;
+  matchId: string;
+}) {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(miniGolfMatches)
+      .where(eq(miniGolfMatches.id, matchId))
+      .for("update");
+
+    if (!match) return { error: "Match not found", status: 404 } as const;
+
+    // Only the human seat of a live free-practice match may advance the bot.
+    if (!match.isAi || match.player1Id !== userId || !match.player2Id) {
+      return { match, advanced: 0 } as const;
+    }
+    if (match.status !== MATCH_STATUS.PLAYING) {
+      return { match, advanced: 0 } as const;
+    }
+
+    let current = match;
+    let advanced = 0;
+
+    for (let i = 0; i < MAX_AI_SHOTS_PER_ADVANCE; i += 1) {
+      const state = stateOf(current);
+      if (current.status !== MATCH_STATUS.PLAYING) break;
+      if (state.currentTurn !== "player2") break;
+      if (state.balls.player2.holedOut) break;
+
+      const seats = seatsFromRow(current);
+      const hole = holeFor(state);
+      const from = state.balls.player2;
+      // The bot only proposes { angle, power }, exactly like a human client —
+      // the server still simulates and applies the shot.
+      const shot = chooseAiShot({ hole, from: { x: from.x, y: from.y } });
+      const shotResult = simulateShot({ hole, from, shot });
+      const applied = applyShot({
+        state,
+        seat: "player2",
+        angle: shot.angle,
+        power: shot.power,
+        shotResult,
+      });
+      const nextState = applied.state;
+
+      await tx.insert(miniGolfShots).values({
+        matchId: current.id,
+        shotSeq: nextState.shotSeq,
+        holeNumber: state.currentHole,
+        playerId: MINI_GOLF_AI_PLAYER_ID,
+        strokeNumber:
+          nextState.holeScores[state.currentHole - 1].player2,
+        angle: String(shot.angle),
+        power: String(shot.power),
+        result: shotResult,
+      });
+
+      const outcome = applied.matchCompleted
+        ? computeMatchResult(nextState)
+        : null;
+
+      const updates: Partial<typeof miniGolfMatches.$inferInsert> = {
+        gameState: nextState,
+        currentHole: nextState.currentHole,
+        currentTurnUserId: userIdForSeat(seats, nextState.currentTurn),
+        player1HoleWins: nextState.player1HoleWins,
+        player2HoleWins: nextState.player2HoleWins,
+        status: outcome ? MATCH_STATUS.FINISHED : statusForState(nextState),
+        updatedAt: new Date(),
+      };
+      if (outcome) {
+        updates.result = outcome.result;
+        updates.winnerId = outcome.winnerSeat
+          ? userIdForSeat(seats, outcome.winnerSeat)
+          : null;
+        updates.endedAt = new Date();
+      }
+
+      const [updated] = await tx
+        .update(miniGolfMatches)
+        .set(updates)
+        .where(eq(miniGolfMatches.id, current.id))
+        .returning();
+
+      current = updated ?? current;
+      advanced += 1;
+
+      // Deliberately NO settleMatch / mirrorQueueTransition here: a practice
+      // match moves no rating, no trophy and no queue state.
+      if (outcome) break;
+    }
+
+    return { match: current, advanced } as const;
+  });
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────
@@ -443,14 +614,20 @@ export async function shoot({
       // match. `applyRatingResult` / `applyTrophyResult` are journal-keyed by
       // (user, game, match) so a retry can never move a rating twice.
       await settleMatch(tx, match, outcome);
-      mirrorQueueTransition({
-        gameKey: "mini-golf",
-        matchId: match.id,
-        status: "completed",
-        playerCount: 2,
-        cancelReason: null,
-        at: new Date(),
-      });
+      // Free practice is excluded from the canonical queue entirely (no
+      // `mirrorQueueCreated` on `createAiMatch`), so it must not mirror a
+      // transition either — `transitionMatchLifecycle` would throw "Match
+      // lifecycle not found" for a row that was never created.
+      if (!match.isAi) {
+        mirrorQueueTransition({
+          gameKey: "mini-golf",
+          matchId: match.id,
+          status: "completed",
+          playerCount: 2,
+          cancelReason: null,
+          at: new Date(),
+        });
+      }
     }
 
     return {
@@ -515,14 +692,18 @@ export async function forfeitMatch({
       .returning();
 
     await settleMatch(tx, match, outcome);
-    mirrorQueueTransition({
-      gameKey: "mini-golf",
-      matchId: match.id,
-      status: "completed",
-      playerCount: 2,
-      cancelReason: null,
-      at: new Date(),
-    });
+    // A conceded free-practice match never had a queue row; skip the mirror
+    // (see the same guard in `shoot`).
+    if (!match.isAi) {
+      mirrorQueueTransition({
+        gameKey: "mini-golf",
+        matchId: match.id,
+        status: "completed",
+        playerCount: 2,
+        cancelReason: null,
+        at: new Date(),
+      });
+    }
 
     return { match: updated ?? match } as const;
   });
@@ -682,14 +863,18 @@ export async function forfeitMatchOnDisconnect({
       .returning();
 
     await settleMatch(tx, match, outcome);
-    mirrorQueueTransition({
-      gameKey: "mini-golf",
-      matchId: match.id,
-      status: "completed",
-      playerCount: 2,
-      cancelReason: null,
-      at: new Date(),
-    });
+    // A disconnected free-practice match never had a queue row; skip the mirror
+    // (see the same guard in `shoot`).
+    if (!match.isAi) {
+      mirrorQueueTransition({
+        gameKey: "mini-golf",
+        matchId: match.id,
+        status: "completed",
+        playerCount: 2,
+        cancelReason: null,
+        at: new Date(),
+      });
+    }
 
     return { match: updated ?? match, forfeited: true, cancelled: false } as const;
   });

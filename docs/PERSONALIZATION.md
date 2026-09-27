@@ -87,6 +87,7 @@ hand-assigned from each game's shipped description:
 | Odds | pvp, strategy, skill | hidden numbers, shrinking range |
 | Precision | pvp, skill, fast_paced, competitive | reaction-timing staked duel |
 | Dots & Boxes | pvp, strategy, skill | pencil-and-paper planning |
+| Mini Golf | pvp, skill, casual | turn-based physics putting — aiming/power are the game; best-of-5, instantly readable |
 
 Two invariants the tests enforce: every tag is used by at least one game, and
 no game is tagged both `chance` and `skill` (a game decided by luck is not also

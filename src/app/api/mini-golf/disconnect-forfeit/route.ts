@@ -19,7 +19,7 @@
 
 import { NextResponse } from "next/server";
 import { verifyToken } from "@clerk/backend";
-import { forfeitMatchOnDisconnect } from "../../../../lib/mini-golf/serverStore";
+import { forfeitMatchOnDisconnect, isMatchId } from "../../../../lib/mini-golf/serverStore";
 import { broadcastMatchUpdate } from "../../../../lib/mini-golf/rooms";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +33,14 @@ export async function POST(req: Request) {
     if (!matchId || !token) {
       return NextResponse.json(
         { success: false, error: "Missing matchId or token" },
+        { status: 400 },
+      );
+    }
+
+    // Guard the uuid cast so a malformed id is a 400, not a Postgres 500.
+    if (!isMatchId(matchId)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid matchId" },
         { status: 400 },
       );
     }

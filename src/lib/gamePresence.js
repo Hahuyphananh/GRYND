@@ -106,6 +106,7 @@ export const GAME_LABEL_TO_GAME_ID = {
   odds: "odds",
   precision: "precision",
   "dots-and-boxes": "dots-and-boxes",
+  "mini-golf": "mini-golf",
 
   // ── alternate labels on the same game (AI / other play surface) ────
   "chess-ai": "chess",

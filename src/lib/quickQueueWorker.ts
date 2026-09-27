@@ -23,6 +23,7 @@ import { createOrJoinHexDuelDestination } from "./quickQueueHexDuel";
 import { createOrJoinChessDestination } from "./quickQueueChess";
 import { createOrJoinDiceFlushDestination } from "./quickQueueDiceFlush";
 import { createOrJoinCrashArenaDestination } from "./quickQueueCrashArena";
+import { createOrJoin as createOrJoinMiniGolfMatch } from "./mini-golf/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -127,6 +128,10 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       "chess": (userId) => createOrJoinChessDestination({ userId, betAmount: sourceStake }),
       "dice-flush": (userId) => createOrJoinDiceFlushDestination({ userId, wager: sourceStake }),
       "crash-arena": (userId) => createOrJoinCrashArenaDestination({ userId, wager: sourceStake }),
+      // Mini Golf is unstaked: its `createOrJoin` takes no stake (the queue's
+      // normalized stake is simply unused) and returns the same waiting lobby
+      // id for both calls, exactly like the other lobby-style destinations.
+      "mini-golf": (userId) => createOrJoinMiniGolfMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

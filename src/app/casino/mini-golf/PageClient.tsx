@@ -39,6 +39,7 @@ export default function MiniGolfLobbyPage() {
   const posthog = usePostHog();
 
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
@@ -103,6 +104,26 @@ export default function MiniGolfLobbyPage() {
       setBusy(false);
     }
   }, [busy, pokeLobby, posthog, router]);
+
+  const playAi = useCallback(async () => {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/mini-golf/create-ai", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to start a practice match");
+        return;
+      }
+      posthog?.capture("mini_golf_match_started", { mode: "practice" });
+      router.push(`/casino/mini-golf/${data.data.matchId}`);
+    } catch {
+      setError("Unable to start a practice match");
+    } finally {
+      setAiBusy(false);
+    }
+  }, [aiBusy, posthog, router]);
 
   const cancelLobby = useCallback(
     async (matchId: string) => {
@@ -169,14 +190,25 @@ export default function MiniGolfLobbyPage() {
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
       extraActions={
-        <button
-          type="button"
-          onClick={createOrJoin}
-          disabled={busy}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
-        >
-          {busy ? "Joining…" : "Quick Join"}
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={createOrJoin}
+            disabled={busy}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-50"
+          >
+            {busy ? "Joining…" : "Quick Join"}
+          </button>
+          <button
+            type="button"
+            onClick={playAi}
+            disabled={aiBusy || !isSignedIn}
+            data-testid="mini-golf-practice"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-2 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/20 disabled:opacity-50"
+          >
+            {aiBusy ? "Starting…" : "Practice vs AI"}
+          </button>
+        </div>
       }
       myOpenId={myOpenId}
       onResume={(id: string) => router.push(`/casino/mini-golf/${id}`)}
