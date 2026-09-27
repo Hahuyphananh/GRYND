@@ -106,7 +106,6 @@ export default function ChessGamePage() {
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [resultText, setResultText] = useState("");
-  const [resultPayout, setResultPayout] = useState("");
   const [showReportModal, setShowReportModal] = useState(false);
   const [turnBanner, setTurnBanner] = useState(null);
   const prevActiveTurnRef = useRef(null);
@@ -335,43 +334,20 @@ export default function ChessGamePage() {
       gameFinishedRef.current = true;
       const myId = color === "white" ? game.whitePlayerId : game.blackPlayerId;
 
+      // Result copy only — no stake/payout figure is produced or shown.
       let text = "Game Over.";
-      let payoutText = "";
 
       if (game.result === "draw") {
         text = "Draw.";
-        payoutText = "Stake returned.";
       } else if (game.result === "timeout") {
-        const iWon = game.winnerId === myId;
-        text = iWon ? "You won on time!" : "You lost on time.";
-        if (iWon) {
-          const houseFee = Number(game.betAmount) * 2 * 0.1;
-          const payout = Number(game.betAmount) * 2 - houseFee;
-          payoutText = `+$${payout.toFixed(2)}`;
-        } else {
-          payoutText = `-$${Number(game.betAmount).toFixed(2)}`;
-        }
+        text = game.winnerId === myId ? "You won on time!" : "You lost on time.";
       } else if (game.winnerId) {
-        const iWon = game.winnerId === myId;
-        text = iWon ? "You won!" : "You lost.";
-        if (iWon) {
-          const payout = game.payout
-            ? Number(game.payout).toFixed(2)
-            : (Number(game.betAmount) * 2 * 0.9).toFixed(2);
-          payoutText = `+$${payout}`;
-        } else {
-          payoutText = `-$${Number(game.betAmount).toFixed(2)}`;
-        }
+        text = game.winnerId === myId ? "You won!" : "You lost.";
       } else if (game.result === "opponent_left") {
-        const iWon = game.winnerId === myId;
-        text = iWon ? "Opponent left. You win!" : "You left the game.";
-        if (iWon && game.payout) {
-          payoutText = `+$${Number(game.payout).toFixed(2)}`;
-        }
+        text = game.winnerId === myId ? "Opponent left. You win!" : "You left the game.";
       }
 
       setResultText(text);
-      setResultPayout(payoutText);
       setStatus(text);
       setShowResultPopup(true);
 
@@ -1029,9 +1005,10 @@ export default function ChessGamePage() {
   // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
   // Rendered when the match finishes (game status finished/expired —
   // gated by the same `showResultPopup` flag the old popup used).
-  // Every number comes from the real game row (betAmount / payout /
-  // winnerId / result) — nothing is invented. Winner/payout logic is
-  // untouched; the old bespoke "MATCH FINISHED" popup is deleted.
+  // Every value comes from the real game row (winnerId / result) —
+  // nothing is invented, and no token/stake figure is ever shown.
+  // Winner logic is untouched; the old bespoke "MATCH FINISHED" popup is
+  // deleted.
   function renderResult() {
     if (!showResultPopup || !gameData) return null;
 
@@ -1041,19 +1018,6 @@ export default function ChessGamePage() {
     const isDraw = gameData.result === "draw";
     const outcome = isDraw ? "draw" : iWon ? "win" : "loss";
 
-    const bet = Number(gameData.betAmount || 0);
-    // Mirror the old popup's settlement math: the winner is credited
-    // the pot minus the house edge (`payout` includes their stake
-    // back); a draw refunds the stake; a loss forfeits it.
-    const winPayout = gameData.payout
-      ? Number(gameData.payout)
-      : Number((bet * 2 * 0.9).toFixed(2));
-    const tokenDelta = isDraw
-      ? 0
-      : iWon
-        ? winPayout - bet
-        : -bet;
-
     const oppName =
       color === "white"
         ? gameData.blackPlayerName || "Opponent"
@@ -1062,11 +1026,6 @@ export default function ChessGamePage() {
     const headline =
       resultText ||
       (isDraw ? "Game drawn" : iWon ? "You win!" : "You lost.");
-    const subline = isDraw
-      ? "Stake returned — no tokens changed hands."
-      : iWon
-        ? `Your ${bet.toFixed(2)} stake back plus ${(winPayout - bet).toFixed(2)} in winnings.`
-        : `You lost your ${bet.toFixed(2)} stake.`;
 
     // The extra action opens this match's engine-backed evaluation at
     // /evaluation/chess/[gameId]. It is offered ONLY for a genuinely finished
@@ -1081,7 +1040,6 @@ export default function ChessGamePage() {
         subline={subline}
         gameName="Chess Arena"
         opponent={{ name: oppName }}
-        tokenDelta={tokenDelta}
         summary={[
           {
             label: "Result",
@@ -1090,7 +1048,6 @@ export default function ChessGamePage() {
         ]}
         details={[
           { label: "Game ID", value: String(gameId) },
-          { label: "Stake", value: `${bet.toLocaleString()} tokens` },
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : oppName },
         ]}
         secondaryAction={

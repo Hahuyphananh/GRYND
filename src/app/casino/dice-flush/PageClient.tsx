@@ -1388,7 +1388,7 @@ export default function DiceFlushPage() {
                 ? "You took the match with the higher total"
                 : "The final total wasn't enough this time"
             }
-            subline={opponent?.isAI ? "Free practice match — no tokens were staked." : undefined}
+            subline={opponent?.isAI ? "Practice match vs GRYND AI." : undefined}
             opponent={{
               name: opponent?.name || "Opponent",
               iconKey: opponent?.iconKey || null,

@@ -23,7 +23,6 @@ import {
 } from "../src/lib/mini-golf/physics.ts";
 import {
   BALL_RADIUS,
-  CAPTURE_MAX_SPEED,
   MAX_FRAMES,
   POWER_MAX,
   POWER_MIN,
@@ -179,7 +178,12 @@ test("a wall collision keeps the ball inside and reverses it", () => {
 });
 
 test("the top wall reverses an upward shot", () => {
-  const hole = makeHole({ tee: { x: 200, y: 120 } });
+  // The cup is moved off the ball's line so this exercises the wall bounce,
+  // not a (now automatic) cup capture straight up the middle.
+  const hole = makeHole({
+    tee: { x: 200, y: 120 },
+    cup: { x: 60, y: 40, r: 14 },
+  });
   const result = simulateShot({ hole, shot: { angle: 270, power: 100 } });
 
   const minY = Math.min(...result.path.map((p) => p.y));
@@ -249,7 +253,7 @@ test("every shot settles without hitting the safety cap", () => {
 
 // ── 9. hole detection ──────────────────────────────────────────────────────
 
-test("a slow ball entering the cup is pocketed and snapped to the cup", () => {
+test("a ball entering the cup is pocketed and snapped to the cup", () => {
   const hole = makeHole();
   const result = simulateShot({
     hole,
@@ -263,30 +267,31 @@ test("a slow ball entering the cup is pocketed and snapped to the cup", () => {
   assert.deepEqual(result.path[result.path.length - 1], { x: CUP.x, y: CUP.y });
 });
 
-test("the cup honours the valid-entry speed threshold", () => {
+test("the cup pockets the ball at ANY speed — no power matching required", () => {
   const hole = makeHole();
-  const args = {
+  const from = { x: CUP.x, y: CUP.y + 120 };
+
+  // A gentle putt and a full-power putt both drop: reaching the cup is enough.
+  const soft = simulateShot({ hole, from, shot: { angle: 270, power: 20 } });
+  const hard = simulateShot({ hole, from, shot: { angle: 270, power: 100 } });
+  assert.equal(soft.pocketed, true);
+  assert.equal(hard.pocketed, true, "a fast ball must drop, not roll over the cup");
+
+  // The speed gate is now opt-in: an explicit cap still restores the old
+  // roll-over behaviour.
+  const gated = simulateShot({
     hole,
-    from: { x: CUP.x, y: CUP.y + 120 },
-    shot: { angle: 270, power: 25 },
-  };
-
-  const captured = simulateShot(args);
-  assert.equal(captured.pocketed, true);
-
-  // Same shot, but entry is impossible: nothing may ever be pocketed.
-  const never = simulateShot({ ...args, config: { captureMaxSpeed: -1 } });
-  assert.equal(never.pocketed, false);
+    from,
+    shot: { angle: 270, power: 100 },
+    config: { captureMaxSpeed: -1 },
+  });
+  assert.equal(gated.pocketed, false);
 });
 
 test("a ball that never reaches the cup is not pocketed", () => {
   const hole = makeHole();
   const result = simulateShot({ hole, shot: { angle: 0, power: 20 } });
   assert.equal(result.pocketed, false);
-});
-
-test("the capture threshold constant is a positive speed", () => {
-  assert.ok(CAPTURE_MAX_SPEED > 0 && CAPTURE_MAX_SPEED < 20);
 });
 
 // ── 10. deterministic identical inputs ─────────────────────────────────────

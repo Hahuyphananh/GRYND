@@ -1106,33 +1106,12 @@ export default function BlackjackPvpMatchPage({
     const draw = match.result === "draw";
     const outcome = draw ? "draw" : won ? "win" : "loss";
 
-    const stake = Number(match.stakeAmount ?? 0);
-    const prizePaid = Number(match.prizePaid ?? 0);
-    const houseFee = Number(match.houseFee ?? 0);
-    const refundEach = Number(match.refundEach ?? 0);
-    const pot = stake * 2;
     const myRounds = viewerIsPlayer1
       ? Number(match.roundsWonPlayer1 || 0)
       : Number(match.roundsWonPlayer2 || 0);
     const oppRounds = viewerIsPlayer1
       ? Number(match.roundsWonPlayer2 || 0)
       : Number(match.roundsWonPlayer1 || 0);
-
-    // Stake is escrowed at matchmaking; at settle the winner is
-    // credited `prizePaid` (= pot − 5% fee = 1.9 × stake, stake
-    // included). Net token change from the viewer's pocket:
-    //   win  → +prizePaid − stake = +0.9 × stake
-    //   loss → −stake
-    //   draw → +refundEach (95% of stake — 5% rake per side on the
-    //          tiebreak tie)
-    // AI practice matches never move tokens.
-    const tokenDelta = isAi
-      ? null
-      : draw
-        ? refundEach
-        : won
-          ? prizePaid - stake
-          : -stake;
 
     // Duration from the existing timestamps (omitted when unavailable).
     let durationSeconds: number | null = null;
@@ -1150,13 +1129,7 @@ export default function BlackjackPvpMatchPage({
       : draw
         ? "Evenly matched — the tiebreak round couldn't split you"
         : `${oppName} took the match ${oppRounds}–${myRounds} rounds`;
-    const subline = isAi
-      ? "Free practice match — no tokens were staked or awarded."
-      : draw
-        ? `Tiebreak round tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% platform fee each).`
-        : won
-          ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
-          : `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`;
+    const subline = isAi ? "Practice match vs GRYND AI." : null;
 
     return (
       <PvpResultScreen
@@ -1172,7 +1145,6 @@ export default function BlackjackPvpMatchPage({
           profileFrame: oppProfileFrame,
           isAi,
         }}
-        tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
           {
@@ -1183,18 +1155,6 @@ export default function BlackjackPvpMatchPage({
         ]}
         details={[
           { label: "Match ID", value: String(match.id) },
-          ...(isAi
-            ? []
-            : [
-                { label: "Stake", value: `${stake.toLocaleString()} tokens` },
-                { label: "Pot", value: `${pot.toLocaleString()} tokens` },
-                ...(won
-                  ? [
-                      { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
-                      { label: "Platform fee", value: `${houseFee.toLocaleString()} tokens` },
-                    ]
-                  : []),
-              ]),
           { label: "Winner", value: draw ? "Draw" : won ? "You" : oppName },
         ]}
         detailsContent={

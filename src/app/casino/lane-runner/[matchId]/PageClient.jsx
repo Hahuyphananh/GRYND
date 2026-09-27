@@ -1382,7 +1382,6 @@ export default function LaneRushDuelMatchPage({ params }) {
   const drawMatch = finished && match?.result === "draw";
   const lostMatch = finished && match?.winnerId && match.winnerId !== user?.id;
   const resignedEnd = wasResigned(match?.actions);
-  const stakeNumber = Number(match?.stakeAmount) || 0;
   const durationSeconds = useMemo(() => {
     if (!match?.startedAt || !match?.endedAt) return null;
     const ms =
@@ -1407,13 +1406,13 @@ export default function LaneRushDuelMatchPage({ params }) {
     ? {
         outcome: drawMatch ? "draw" : wonMatch ? "win" : "loss",
         headline: drawMatch
-          ? "Both players receive their stake back"
+          ? "Neither player crossed — draw"
           : wonMatch
             ? resignedEnd
-              ? "Opponent resigned — the pot is yours"
+              ? "Opponent resigned — you take the win"
               : `You crossed the bridge in ${myRow} rows`
             : resignedEnd
-              ? "You resigned — the pot went to your opponent"
+              ? "You resigned — your opponent takes the win"
               : `${oppDisplayName} crossed row 10 first`,
         gameName: "Lane Rush Duel",
         opponent: {
@@ -1422,11 +1421,6 @@ export default function LaneRushDuelMatchPage({ params }) {
           profileFrame: oppSeatIdentity.profileFrame,
           isAi: isBotMatch,
         },
-        tokenDelta: drawMatch
-          ? 0
-          : wonMatch
-            ? Number(match?.prizePaid || 0) - stakeNumber
-            : -stakeNumber,
         durationSeconds,
         sides: [
           { name: "You", score: `${myRow}/${bridgeRows}`, highlight: !drawMatch && wonMatch },
@@ -1438,7 +1432,6 @@ export default function LaneRushDuelMatchPage({ params }) {
         ],
         details: [
           ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-          { label: "Stake", value: `${stakeNumber.toLocaleString()} tokens` },
           { label: "Winner", value: drawMatch ? "Draw" : wonMatch ? "You" : oppDisplayName },
           {
             label: "Won by",

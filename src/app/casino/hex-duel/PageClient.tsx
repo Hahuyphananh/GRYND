@@ -876,8 +876,6 @@ export default function HexDuelPage() {
   const [wagerError, setWagerError] = useState<string | null>(null);
   const [multiplayerLoading, setMultiplayerLoading] = useState(false);
   const [multiplayerGames, setMultiplayerGames] = useState<Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>>([]);
-  const [payoutResult, setPayoutResult] = useState<{ wager: number; payout: number; multiplier: number } | null>(null);
-  const [payoutLoading, setPayoutLoading] = useState(false);
   const payoutProcessedRef = useRef(false);
   const startedAtRef = useRef<string | null>(null);
   // Single-use proof that the user actually started an AI match on the
@@ -1503,7 +1501,6 @@ export default function HexDuelPage() {
   useEffect(() => {
     if (!effectiveWinner || gameMode === "idle" || payoutProcessedRef.current || isSpectator) return;
     payoutProcessedRef.current = true;
-    setPayoutLoading(true);
 
     const durationSeconds = startedAtRef.current
       ? Math.round((Date.now() - new Date(startedAtRef.current).getTime()) / 1000)
@@ -1553,15 +1550,10 @@ export default function HexDuelPage() {
     })
       .then((r) => r.json())
       .then((d) => {
-        if (d.success && d.data.won) {
-          setPayoutResult({ wager: d.data.wager, payout: d.data.payout, multiplier: d.data.multiplier });
-          if (d.data.newBalance !== undefined) setBalance(Number(d.data.newBalance));
-        } else if (d.success && (gameMode === "real" || gameMode === "multiplayer")) {
-          const lostWager = d.data?.wager ?? wager;
-          setPayoutResult({ wager: lostWager, payout: 0, multiplier: 0 });
-          if (d.data.newBalance !== undefined) setBalance(Number(d.data.newBalance));
-        } else if (gameMode === "for-fun") {
-          setPayoutResult(null);
+        // The result screen never shows a token/stake figure — only the
+        // settled balance is applied here.
+        if (d.success && d.data.newBalance !== undefined) {
+          setBalance(Number(d.data.newBalance));
         }
         // Consume the AI session token client-side once end-game has
         // succeeded. The server already burned it, so a re-fire of this
@@ -1579,8 +1571,7 @@ export default function HexDuelPage() {
           }
         }
       })
-      .catch(() => {})
-      .finally(() => setPayoutLoading(false));
+      .catch(() => {});
   }, [effectiveWinner, winnerOverride, gameMode, wager, aiEnabled, aiDifficulty, p1MoveCount, p2MoveCount, p1Territory, p2Territory, multiplayerGameId]);
 
   // ── Chess clock ──────────────────────────────────────────────────
@@ -2281,7 +2272,7 @@ export default function HexDuelPage() {
 
   const handleRestart = useCallback(() => {
     resetGame(); setGameMode("idle"); setWager(0); setWagerError(null);
-    setPayoutResult(null); payoutProcessedRef.current = false; startedAtRef.current = null;
+    payoutProcessedRef.current = false; startedAtRef.current = null;
     setMultiplayerGameId(null); setOpponentReady(false); opponentReadyRef.current = false; multiplayerJoinedRef.current = false;
     lastKnownActionIdRef.current = 0;
     // Audit reviewer HIGH fix: clear the action queue + dedup set so queued
@@ -3248,9 +3239,6 @@ export default function HexDuelPage() {
 
           const winnerMoves = effectiveWinner === "player1" ? p1MoveCount : p2MoveCount;
           const winnerTerritory = effectiveWinner === "player1" ? p1Territory : p2Territory;
-          // Only real / multiplayer matches carry a token settlement; for-fun
-          // and AI practice games keep payoutInfo null (sections auto-hide).
-          const payoutInfo = payoutLoading ? null : (gameMode === "real" || gameMode === "multiplayer") ? payoutResult : null;
 
           return (
             <PvpResultScreen
@@ -3264,11 +3252,6 @@ export default function HexDuelPage() {
                 iconKey: oppIconKey,
                 isAi: aiEnabled,
               }}
-              tokenDelta={
-                localPlayerWon
-                  ? (payoutInfo && payoutInfo.payout > 0 ? payoutInfo.payout : null)
-                  : (payoutInfo && payoutInfo.wager > 0 ? -payoutInfo.wager : null)
-              }
               summary={[
                 { label: localPlayerWon ? "Moves" : "Their Moves", value: String(winnerMoves) },
                 { label: localPlayerWon ? "Territory" : "Their Territory", value: String(winnerTerritory) },

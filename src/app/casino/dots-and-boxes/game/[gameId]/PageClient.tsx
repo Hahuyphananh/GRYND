@@ -548,23 +548,14 @@ const prefersReducedMotion = useReducedMotion();
 
   // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
   // Rendered as a fixed overlay when the match finishes. Every number
-  // comes from the real game row (winnerClerkId / result / payout /
-  // betAmount / scores / hostName–guestName) — nothing is invented.
-  // Winner/payout logic is untouched; the old win/loss/draw popup is
-  // gone (the cancelled popup above still covers non-result exits).
+  // comes from the real game row (winnerClerkId / result / scores /
+  // hostName–guestName) — nothing is invented, and no token/stake figure
+  // is ever shown. Winner logic is untouched; the old win/loss/draw popup
+  // is gone (the cancelled popup above still covers non-result exits).
   function renderResult() {
     if (!game || game.status !== "finished") return null;
     const isDraw = game.result === "draw";
     const outcome = isDraw ? "draw" : playerWon ? "win" : "loss";
-    const bet = Number(game.betAmount || 0);
-    // Settlement (dotsAndBoxesServer): the winner is credited
-    // `payout` (= bet × 1.9, stake included); a draw refunds both in
-    // full; a loss forfeits the stake.
-    const tokenDelta = isDraw
-      ? 0
-      : playerWon
-        ? Number(game.payout || 0) - bet
-        : -bet;
 
     const myScore = game.role === "host" ? scores.host : scores.guest;
     const oppScore = game.role === "host" ? scores.guest : scores.host;
@@ -573,11 +564,6 @@ const prefersReducedMotion = useReducedMotion();
       : playerWon
         ? `You sealed the last box — ${myScore}–${oppScore}`
         : `${opponentName} sealed the last box — ${oppScore}–${myScore}`;
-    const subline = isDraw
-      ? "Both players refunded in full."
-      : playerWon
-        ? `Your ${bet.toFixed(2)} stake back plus ${(Number(game.payout || 0) - bet).toFixed(2)} in winnings.`
-        : `You lost your ${bet.toFixed(2)} stake.`;
 
     return (
       <PvpResultScreen
@@ -585,14 +571,12 @@ const prefersReducedMotion = useReducedMotion();
         compact
         outcome={outcome}
         headline={headline}
-        subline={subline}
         gameName="Dots & Boxes"
         opponent={{
           name: opponentName,
           iconKey: opponentIconKey || null,
           profileFrame: opponentProfileFrame || null,
         }}
-        tokenDelta={tokenDelta}
         summary={[
           {
             label: "Result",
@@ -602,19 +586,6 @@ const prefersReducedMotion = useReducedMotion();
         ]}
         details={[
           { label: "Game ID", value: String(gameId) },
-          ...(bet > 0
-            ? [
-                { label: "Stake", value: `${bet.toFixed(2)} tokens` },
-                ...(playerWon
-                  ? [
-                      {
-                        label: "Prize paid",
-                        value: `${Number(game.payout || 0).toFixed(2)} tokens`,
-                      },
-                    ]
-                  : []),
-              ]
-            : []),
           { label: "Winner", value: isDraw ? "Draw" : playerWon ? "You" : opponentName },
         ]}
         playAgain={{ label: "RUN IT BACK", onClick: () => router.push("/casino/dots-and-boxes") }}

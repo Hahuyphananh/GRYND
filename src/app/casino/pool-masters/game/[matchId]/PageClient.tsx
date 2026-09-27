@@ -1534,32 +1534,17 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
   );
   // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
   // Rendered as a fixed overlay when the match ends (win/loss). Every
-  // number comes from the real match row (winner seat / wager /
-  // prizePaid / houseFee) — nothing is invented. Winner/payout logic
-  // is untouched; the old win/loss popup is deleted.
+  // value comes from the real match row (winner seat) — nothing is
+  // invented, and no token/stake figure is ever shown. Winner logic is
+  // untouched; the old win/loss popup is deleted.
   const renderResult = () => {
     if (!showWinLossPopup || !gameOverMessage) return null;
     const won = gameOverMessage.won;
-    const wager = Number(matchMeta?.wager || 0);
-    const prizePaid = Number(matchMeta?.prizePaid || 0);
-    const houseFee = Number(matchMeta?.houseFee || 0);
-    // Settlement (pool end/resign routes): the winner is credited
-    // `prizePaid` (= 2 × wager − 5% house fee, stake included); the
-    // loser forfeits the wager. AI matches never move tokens.
-    const tokenDelta = aiMode
-      ? null
-      : won
-        ? prizePaid - wager
-        : -wager;
 
     const headline = won
       ? `You sank the 8-ball — ${oppName} beaten`
       : `${oppName} sank the 8-ball first`;
-    const subline = aiMode
-      ? "Free practice match — no tokens were staked."
-      : won
-        ? `Your ${wager.toFixed(2)} stake back plus ${(prizePaid - wager).toFixed(2)} in winnings.`
-        : `You lost your ${wager.toFixed(2)} stake.`;
+    const subline = aiMode ? "Practice match vs GRYND AI." : null;
 
     return (
       <PvpResultScreen
@@ -1570,25 +1555,11 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
         subline={subline}
         gameName="Pool Masters"
         opponent={{ name: oppName, iconKey: oppIconKey || null, profileFrame: oppProfileFrame || null }}
-        tokenDelta={tokenDelta}
         summary={[
           { label: "Result", value: won ? "Win" : "Loss" },
         ]}
         details={[
           { label: "Match ID", value: String(activeMatchId) },
-          ...(aiMode || wager === 0
-            ? []
-            : [
-                { label: "Stake", value: `${wager.toFixed(2)} tokens` },
-                ...(won
-                  ? [
-                      { label: "Prize paid", value: `${prizePaid.toFixed(2)} tokens` },
-                      ...(houseFee > 0
-                        ? [{ label: "Platform fee", value: `${houseFee.toFixed(2)} tokens` }]
-                        : []),
-                    ]
-                  : []),
-              ]),
           { label: "Winner", value: won ? "You" : oppName },
         ]}
         playAgain={{

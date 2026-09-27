@@ -729,8 +729,6 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             isPlayer1={true}
             userLabel="You"
             oppLabel="AI"
-            wager={0}
-            payout={displayGameState.payout}
             onPlayAgain={handlePlayAgain}
           />
         </div>
@@ -1837,8 +1835,6 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
             oppIconKey={opponentIconKey}
             oppProfileFrame={opponentProfileFrame}
             oppNameColor={opponentNameColor}
-            wager={wagerLocked ?? wager}
-            payout={displayGameState.payout}
             onPlayAgain={reset}
           />
         </div>
@@ -1945,8 +1941,6 @@ function OddsGameDisplay({
   isPlayer1,
   userLabel,
   oppLabel,
-  wager,
-  payout,
   onPlayAgain,
   oppIconKey,
   oppProfileFrame,
@@ -1960,8 +1954,6 @@ function OddsGameDisplay({
   isPlayer1: boolean;
   userLabel: string;
   oppLabel: string;
-  wager: number;
-  payout: number;
   onPlayAgain: () => void;
   oppIconKey?: string | null;
   oppProfileFrame?: unknown;
@@ -2301,27 +2293,10 @@ function OddsGameDisplay({
             profileFrame: oppProfileFrame || null,
             isAi: oppLabel === "AI",
           }}
-          tokenDelta={
-            oppLabel === "AI"
-              ? null
-              : userDrew
-                ? 0
-                : userWon
-                  ? payout - wager
-                  : -wager
-          }
           summary={[
             { label: "Final Score", value: `${userLabel} ${myPts} – ${oppPts} ${oppLabel}` },
             { label: "Rounds", value: String(gameState.totalRounds) },
           ]}
-          details={
-            oppLabel === "AI"
-              ? []
-              : [
-                  { label: "Entry", value: "Free" },
-                  { label: "Pot", value: String(payout) },
-                ]
-          }
           playAgain={{ onClick: onPlayAgain }}
         />
       )}

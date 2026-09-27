@@ -451,7 +451,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
                   ? "You win your first free match!"
                   : "First match done — the AI got you this time."
               }
-              subline="Free practice — no tokens at risk. Finishing your first match earned a one-time Battle Pass bonus."
+              subline="Finishing your first match earned a one-time Battle Pass bonus."
               gameName="RPS vs AI"
               opponent={{ name: "AI", iconKey: null, isAi: true }}
               progress={
@@ -486,7 +486,7 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
               open
               outcome={wonMatch ? "win" : "loss"}
               headline={wonMatch ? "You win the best of 7!" : "The AI wins the best of 7."}
-              subline="Free practice match — no tokens were staked."
+              subline="Practice match vs GRYND AI."
               gameName="RPS vs AI"
               opponent={{ name: "AI", iconKey: null, isAi: true }}
               summary={[

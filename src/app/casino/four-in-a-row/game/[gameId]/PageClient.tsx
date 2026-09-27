@@ -640,25 +640,13 @@ export default function ConnectFourGamePage() {
   // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
   // Rendered as a fixed overlay when the match finishes (no pending
   // rematch). Every number comes from the real game row
-  // (winnerClerkId / result / payout / betAmount / hostName–guestName)
-  // — nothing is invented. Winner/payout logic is untouched; the old
-  // win/loss popup + confetti overlay are gone.
+  // (winnerClerkId / result / hostName–guestName) — nothing is invented,
+  // and no token/stake figure is ever shown. Winner logic is untouched;
+  // the old win/loss popup + confetti overlay are gone.
   function renderResult() {
     if (!showResultPopup || !game) return null;
     const isDraw = game.result === "draw";
     const outcome = isDraw ? "draw" : playerWon ? "win" : "loss";
-    const bet = Number(game.betAmount || 0);
-    // Settlement (settleFourInARowGame): the winner is credited
-    // `payout` (= bet × 1.9, stake included); a draw refunds both in
-    // full; a loss forfeits the stake. AI/free games never move
-    // tokens.
-    const tokenDelta = game.isAiGame
-      ? null
-      : isDraw
-        ? 0
-        : playerWon
-          ? Number(game.payout || 0) - bet
-          : -bet;
 
     const oppName =
       game.role === "host"
@@ -673,13 +661,7 @@ export default function ConnectFourGamePage() {
       : playerWon
         ? `Four in a row! You beat ${oppName}`
         : `${oppName} connected four first`;
-    const subline = game.isAiGame
-      ? "Free practice match — no tokens were staked."
-      : isDraw
-        ? "Board filled with no winner. Both stakes refunded in full."
-        : playerWon
-          ? `Your ${bet.toFixed(2)} stake back plus ${(Number(game.payout || 0) - bet).toFixed(2)} in winnings.`
-          : `You lost your ${bet.toFixed(2)} stake.`;
+    const subline = isDraw ? "Board filled with no winner." : null;
 
     // The deciding line itself, drawn with the game's own <Disc> in the
     // winner's real colours — passed through the result panel's supported
@@ -716,7 +698,6 @@ export default function ConnectFourGamePage() {
         subline={subline}
         gameName="Four in a Row"
         opponent={{ name: oppName, iconKey: oppIconKey || null, profileFrame: oppProfileFrame || null }}
-        tokenDelta={tokenDelta}
         summary={[
           {
             label: "Result",
@@ -725,19 +706,6 @@ export default function ConnectFourGamePage() {
         ]}
         details={[
           { label: "Game ID", value: String(gameId) },
-          ...(game.isAiGame || bet === 0
-            ? []
-            : [
-                { label: "Stake", value: `${bet.toFixed(2)} tokens` },
-                ...(playerWon
-                  ? [
-                      {
-                        label: "Prize paid",
-                        value: `${Number(game.payout || 0).toFixed(2)} tokens`,
-                      },
-                    ]
-                  : []),
-              ]),
           { label: "Winner", value: isDraw ? "Draw" : playerWon ? "You" : oppName },
         ]}
         detailsContent={

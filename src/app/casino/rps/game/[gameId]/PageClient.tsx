@@ -81,9 +81,6 @@ export default function RPSPvpGamePage() {
   const [currentRound, setCurrentRound] = useState(1);
   const [history, setHistory] = useState<RoundHistoryEntry[]>([]);
   const [winner, setWinner] = useState<"you" | "opponent" | "tie" | null>(null);
-  const [winnerPayout, setWinnerPayout] = useState<number | null>(null);
-  const [winnerProfit, setWinnerProfit] = useState<number | null>(null);
-  const [houseFee, setHouseFee] = useState<number | null>(null);
   const [betAmount, setBetAmount] = useState<number>(0);
   const [tokens, setTokens] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -166,9 +163,6 @@ export default function RPSPvpGamePage() {
         setHistory(game.roundHistory || []);
         setBetAmount(game.betAmount || 0);
         setWinner(game.winner || null);
-        setWinnerPayout(typeof game.winnerPayout === "number" ? game.winnerPayout : null);
-        setWinnerProfit(typeof game.winnerProfit === "number" ? game.winnerProfit : null);
-        setHouseFee(typeof game.houseFee === "number" ? game.houseFee : null);
         if (typeof game.newBalance === "number") setTokens(game.newBalance);
 
         if (game.status === "active") {
@@ -303,26 +297,14 @@ export default function RPSPvpGamePage() {
   };
 
   // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
-  // Rendered as a fixed overlay when the match finishes. Every number
-  // comes from the real match payload (winner / winnerPayout /
-  // winnerProfit / houseFee / betAmount / opponentName / history) —
-  // nothing is invented. Winner/payout logic is untouched; the old
-  // inline finished block is gone.
+  // Rendered as a fixed overlay when the match finishes. Every value
+  // comes from the real match payload (winner / opponentName / history)
+  // — nothing is invented, and no token/stake figure is ever shown.
+  // Winner logic is untouched; the old inline finished block is gone.
   function renderResult() {
     if (status !== "finished") return null;
     const outcome =
       winner === "you" ? "win" : winner === "opponent" ? "loss" : "draw";
-    // The server already computes the winner's net profit
-    // (`winnerProfit` = winnerPayout − betAmount); losers forfeit
-    // their stake; a tie refunds both.
-    const tokenDelta =
-      winner === "you"
-        ? typeof winnerProfit === "number"
-          ? winnerProfit
-          : Number(winnerPayout ?? 0) - betAmount
-        : winner === "opponent"
-          ? -betAmount
-          : 0;
 
     const headline =
       winner === "you"
@@ -331,11 +313,9 @@ export default function RPSPvpGamePage() {
           ? "You lose the best-of-7 match."
           : "It's a tie.";
     const subline =
-      winner === "you"
-        ? `You took home ${winnerPayout ?? 0} tokens total (+${winnerProfit ?? 0} profit).`
-        : winner === "opponent"
-          ? `You lost your ${betAmount.toLocaleString()} stake.`
-          : "Evenly matched — the best-of-7 ended tied.";
+      winner === "you" || winner === "opponent"
+        ? null
+        : "Evenly matched — the best-of-7 ended tied.";
 
     return (
       <PvpResultScreen
@@ -350,7 +330,6 @@ export default function RPSPvpGamePage() {
           iconKey: opponentIconKey,
           profileFrame: opponentProfileFrame,
         }}
-        tokenDelta={tokenDelta}
         summary={[
           {
             label: "Result",
@@ -360,15 +339,6 @@ export default function RPSPvpGamePage() {
         ]}
         details={[
           { label: "Match ID", value: String(gameId) },
-          { label: "Stake", value: `${betAmount.toLocaleString()} tokens` },
-          ...(winner === "you"
-            ? [
-                { label: "Prize paid", value: `${winnerPayout ?? 0} tokens` },
-                ...(typeof houseFee === "number"
-                  ? [{ label: "Platform fee", value: `${houseFee} tokens` }]
-                  : []),
-              ]
-            : []),
           {
             label: "Winner",
             value:

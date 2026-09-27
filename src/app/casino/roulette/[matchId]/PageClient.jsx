@@ -1781,26 +1781,6 @@ export default function RoulettePvpGamePage({ params }) {
     const meWon = match.winnerId === user?.id;
     const outcome = isDraw ? "draw" : meWon ? "win" : "loss";
 
-    const stake = Number(match.stakeAmount || 0);
-    const prizePaid = Number(match.prizePaid || 0);
-    const houseFee = Number(match.houseFee || 0);
-    const pot = stake * 2;
-
-    // Stake is escrowed at matchmaking; at settle the winner is
-    // credited `prizePaid` (= pot − 5% fee = 1.9 × stake, stake
-    // included). Net token change from the viewer's pocket:
-    //   win  → +prizePaid − stake = +0.9 × stake
-    //   loss → −stake
-    //   draw → full refund = 0 (mutual wipeout — house takes no fee)
-    // AI practice matches never move tokens.
-    const tokenDelta = isAi
-      ? null
-      : isDraw
-        ? 0
-        : meWon
-          ? prizePaid - stake
-          : -stake;
-
     const oppName = oppDisplayName;
     const headline = isDraw
       ? "Mutual wipeout — both players eliminated"
@@ -1808,12 +1788,10 @@ export default function RoulettePvpGamePage({ params }) {
         ? `You out-bet ${oppName} on the wheel`
         : `${oppName} out-bet you on the wheel`;
     const subline = isAi
-      ? "Free practice match — no tokens were staked or awarded."
+      ? "Practice match vs GRYND AI."
       : isDraw
-        ? "Both players were wiped out on the same spin. Stakes refunded in full."
-        : meWon
-          ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
-          : `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`;
+        ? "Both players were wiped out on the same spin."
+        : null;
 
     return (
       <PvpResultScreen
@@ -1824,7 +1802,6 @@ export default function RoulettePvpGamePage({ params }) {
         subline={subline}
         gameName="Roulette PvP"
         opponent={{ name: oppName, iconKey: oppSeatIcon, profileFrame: oppSeatProfileFrame, isAi }}
-        tokenDelta={tokenDelta}
         summary={[
           {
             label: "Result",
@@ -1837,18 +1814,6 @@ export default function RoulettePvpGamePage({ params }) {
         ]}
         details={[
           { label: "Match ID", value: String(match.id) },
-          ...(isAi
-            ? []
-            : [
-                { label: "Stake", value: `${stake.toLocaleString()} tokens` },
-                { label: "Pot", value: `${pot.toLocaleString()} tokens` },
-                ...(meWon
-                  ? [
-                      { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
-                      { label: "Platform fee", value: `${houseFee.toLocaleString()} tokens` },
-                    ]
-                  : []),
-              ]),
           { label: "Winner", value: isDraw ? "Draw" : meWon ? "You" : oppName },
         ]}
         detailsContent={

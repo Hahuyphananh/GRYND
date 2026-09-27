@@ -1091,10 +1091,7 @@ export default function TowerArenaMatchPage() {
         matchResultShownRef.current = true;
         setResignResult({
           placement: myStanding.placement,
-          payout: Number(myStanding.payout || 0),
-          net: Number(myStanding.net || 0),
           isWinner: Boolean(myStanding.isWinner),
-          wager: Number(data.match.wager || 0),
           isAi: Boolean(data.match.isAi),
           eliminated: true,
         });
@@ -1252,19 +1249,17 @@ export default function TowerArenaMatchPage() {
   const isFinalDuel = isFinished ? false : activePlayers.length === 2;
 
   // ── Result derivation (finish + mid-match resign) ────────────────────
-  // The viewer's own result from the authoritative final rankings (placement,
-  // payout, and the server-computed win/lose verdict) for the result popup.
+  // The viewer's own result from the authoritative final rankings (placement
+  // and the server-computed win/lose verdict) for the result popup. No
+  // token/payout figure is derived here — the popup never shows one.
   const myFinalResult = useMemo(() => {
     if (!isFinished || !match) return null;
     const mine = (match.finalRankings || []).find((r: any) => r.userId === me?.userId);
     if (!mine) return null;
     return {
       placement: mine.placement,
-      payout: Number(mine.payout || 0),
-      net: Number(mine.payout || 0) - Number(match.wager || 0),
       // Server-computed verdict; legacy finished records fall back to 1st.
       isWinner: mine.isWinner != null ? Boolean(mine.isWinner) : mine.placement === 1,
-      wager: Number(match.wager || 0),
       isAi: Boolean(match.isAi),
     };
   }, [isFinished, match, me]);
@@ -1351,10 +1346,7 @@ export default function TowerArenaMatchPage() {
         } else {
           setResignResult({
             placement: data.placement,
-            payout: Number(data.payout || 0),
-            net: Number(data.net || 0),
             isWinner: Boolean(data.isWinner),
-            wager: Number(match?.wager || 0),
             isAi: Boolean(match?.isAi),
           });
           if (data.isWinner) playVictory();
@@ -1897,9 +1889,7 @@ export default function TowerArenaMatchPage() {
         open
         outcome={myFinalResult.isWinner ? "win" : "loss"}
         headline={`${ordinal(myFinalResult.placement)} place`}
-        subline={
-          myFinalResult.isAi ? "Free play — no tokens at stake." : undefined
-        }
+        subline={myFinalResult.isAi ? "Practice match vs GRYND AI." : undefined}
         gameName="Tower Arena"
         opponent={
           rival
@@ -1910,29 +1900,12 @@ export default function TowerArenaMatchPage() {
               }
             : null
         }
-        tokenDelta={myFinalResult.isAi ? null : myFinalResult.net}
         durationSeconds={resultDurationSeconds}
         summary={[
           { label: "Placement", value: ordinal(myFinalResult.placement) },
-          ...(myFinalResult.isAi
-            ? []
-            : [
-                {
-                  label: "Stake",
-                  value: `${Number(myFinalResult.wager || 0).toLocaleString()} tokens`,
-                },
-              ]),
         ]}
         details={[
           ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-          ...(myFinalResult.isAi
-            ? []
-            : [
-                {
-                  label: "Payout",
-                  value: `${Number(myFinalResult.payout || 0).toLocaleString()} tokens`,
-                },
-              ]),
         ]}
         detailsContent={
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -2290,12 +2263,12 @@ export default function TowerArenaMatchPage() {
   );
 
   // Portrait 9:16 creator arrangement — tower on stage filling most of
-  // the height, compact status header, controls + players pinned below.
+  // the height, compact status header, controls + players pinned below.
 
   // Landscape (16:9) / square (1:1) creator arrangement — the tower fills
   // the frame's height with controls + players in a right rail, so the
   // game adapts to any landscape/square ratio instead of scrolling a
-  // desktop-sized column.
+  // desktop-sized column.
 
   return (
     <div
@@ -2350,9 +2323,7 @@ export default function TowerArenaMatchPage() {
                   ? `Eliminated · ${ordinal(resignResult.placement)} place`
                   : `${ordinal(resignResult.placement)} place`
               }
-              subline={
-                resignResult.isAi ? "Free play — no tokens at stake." : undefined
-              }
+              subline={resignResult.isAi ? "Practice match vs GRYND AI." : undefined}
               gameName="Tower Arena"
               opponent={
                 rival
@@ -2363,29 +2334,12 @@ export default function TowerArenaMatchPage() {
                     }
                   : null
               }
-              tokenDelta={resignResult.isAi ? null : resignResult.net}
               durationSeconds={null}
               summary={[
                 { label: "Placement", value: ordinal(resignResult.placement) },
-                ...(resignResult.isAi
-                  ? []
-                  : [
-                      {
-                        label: "Stake",
-                        value: `${Number(resignResult.wager || 0).toLocaleString()} tokens`,
-                      },
-                    ]),
               ]}
               details={[
                 ...(match?.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-                ...(resignResult.isAi
-                  ? []
-                  : [
-                      {
-                        label: "Payout",
-                        value: `${Number(resignResult.payout || 0).toLocaleString()} tokens`,
-                      },
-                    ]),
               ]}
               detailsContent={
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">

@@ -6,9 +6,10 @@
 // the match page's coordinated replay flow (15s window, both-players-
 // agree) keeps working untouched; the old bespoke win/loss/draw modal
 // is deleted. Every number shown comes from the server-resolved
-// `PrecisionEndPopupState` (winnerName / finalScore / payout / wager /
-// prizeMultiplier) — nothing is invented, and any section whose data
-// is absent simply hides.
+// `PrecisionEndPopupState` (winnerName / finalScore) — nothing is
+// invented, and any section whose data is absent simply hides. The
+// platform is free-play, so the popup deliberately shows NO token,
+// stake, prize or multiplier figures.
 
 import React from "react";
 // Shared end-of-match panel (PvpResultScreen adapter).
@@ -19,7 +20,6 @@ import PrecisionRocketRace, {
 import { RESULT_POPUP_REPLAY_WINDOW_MS } from "../../lib/precision/constants";
 import {
   endReasonToLabel,
-  formatTokens,
   getReplaySecondsLeft,
 } from "../../lib/precision/utils";
 import type { PrecisionEndPopupState } from "../../lib/precision/types";
@@ -67,30 +67,6 @@ function PrecisionResultPopupImpl({
   const secondsLeft = getReplaySecondsLeft(popup.openedAt);
   const expired = secondsLeft <= 0;
 
-  const multiplier =
-    typeof popup.prizeMultiplier === "number" && popup.prizeMultiplier > 0
-      ? popup.prizeMultiplier
-      : 1.9;
-  const wager =
-    typeof popup.wager === "number" && Number.isFinite(popup.wager)
-      ? popup.wager
-      : 0;
-  const payout =
-    typeof popup.payout === "number" && Number.isFinite(popup.payout)
-      ? popup.payout
-      : 0;
-
-  // Settlement (processMatchFinishedPayout): the winner is credited
-  // `payout` (= wager × multiplier, stake included); a loss forfeits
-  // the wager. The tokens row is hidden when the numbers aren't on
-  // the payload or on a draw (nothing to show).
-  const tokenDelta =
-    outcome === "win" && payout > 0 && wager > 0
-      ? payout - wager
-      : outcome === "loss" && wager > 0
-        ? -wager
-        : null;
-
   const winnerLine =
     popup.winnerName ?? (outcome === "win" ? "You" : "Opponent");
   const scoreLine = popup.finalScore
@@ -135,7 +111,6 @@ function PrecisionResultPopupImpl({
           </div>
         ) : null
       }
-      tokenDelta={tokenDelta}
       summary={[
         {
           label: "Result",
@@ -146,23 +121,6 @@ function PrecisionResultPopupImpl({
           : []),
         ...(popup.winnerName
           ? [{ label: "Winner", value: popup.winnerName }]
-          : []),
-      ]}
-      details={[
-        ...(wager > 0
-          ? [{ label: "Stake", value: `${formatTokens(wager)} tokens` }]
-          : []),
-        ...(payout > 0
-          ? [
-              {
-                label: "Prize paid",
-                value: `+${formatTokens(payout)} tokens`,
-              },
-              {
-                label: "Multiplier",
-                value: `${multiplier}× on ${formatTokens(wager)} wagered`,
-              },
-            ]
           : []),
       ]}
       detailsContent={

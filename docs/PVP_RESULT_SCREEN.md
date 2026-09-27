@@ -7,9 +7,14 @@ Reference adapter: Mines Duel — `src/app/casino/mines-pvp/[matchId]/PageClient
 
 One polished, shared end-of-match experience (WIN / LOSS / DRAW) across every
 PvP game, replacing each game's bespoke "You Win / You Lose / Match Over"
-popup. All rewards and stats come from the game's **existing** match payload —
+popup. All progression and stats come from the game's **existing** match payload —
 the component never invents values and auto-hides any section whose data is
-absent (XP, Battle Pass, Prestige, duration, opponent…).
+absent (Overall Elo, Battle Pass, duration, opponent…).
+
+**No token copy.** Stakes are retired platform-wide (`src/lib/games/stakes.js`),
+so no result popup shows a token / stake / pot / prize / winnings figure — not
+as a row, not in `subline`, not in `details`. The screen carries the outcome and
+the real match statistics only.
 
 ## The component
 
@@ -17,12 +22,10 @@ absent (XP, Battle Pass, Prestige, duration, opponent…).
 <PvpResultScreen
   open
   outcome="win" | "loss" | "draw"
-  headline="Opponent hit a mine — you take the pot"  // optional narrative
-  subline="You took home 190.00 tokens…"             // optional
+  headline="Opponent hit a mine — you take the win"  // optional narrative
+  subline="Practice match vs GRYND AI."              // optional
   gameName="Mines Duel"
   opponent={{ name, iconKey, isAi }}                  // optional
-  tokenDelta={190}                                    // number | null → hides
-  xp={40}                                             // number | null → hides
   progress={[{ label: "Battle Pass", from: "72", to: "73", percent: 75 }]}
   durationSeconds={154}                               // number | null → hides
   summary={[{ label: "Result", value: "Win" }]}
@@ -44,6 +47,8 @@ Notes:
   in-page action; omit it to hide the button. It is deliberately game-agnostic
   (the panel never learns which game, or where, it points), so any result screen
   can reuse it.
+- There is no `tokenDelta` prop: the token row was removed platform-wide.
+  A game that still computes a payout locally must not pass it here.
 - Win plays confetti (skipped under `prefers-reduced-motion`).
 - The expandable "Match Details" panel holds `details` rows + `detailsContent`.
 - Duration is formatted from `durationSeconds`; pass it only when the match
@@ -53,9 +58,10 @@ Notes:
 
 1. Keep the finished-state detection exactly as today.
 2. Map the existing winner to `outcome` (no winner → `"draw"`).
-3. Compute `tokenDelta` from real payout fields: `win → +prizePaid`,
-   `loss → −stake`, draw → refund/0 as the game defines.
-4. XP / Battle Pass / Prestige: only if the match payload already carries
+3. Show no token/stake/payout figure. If the game's data-fetch still needs the
+   settlement response (balance, analytics), keep the call, but don't render
+   the numbers and don't derive a delta for the popup.
+4. Overall Elo / Battle Pass: only if the match payload already carries
    them — otherwise omit (never fabricate).
 5. Duration from existing `startedAt`/`endedAt`.
 6. Opponent name/icon from the players enrichment already returned.
@@ -68,46 +74,48 @@ Notes:
 - Keno Duel — `src/app/casino/keno-pvp/[matchId]/PageClient.jsx` (`ResultModal` adapter; the
   1.2s `showResult` delay before showing the screen is kept, per-round breakdown moved into
   Match Details)
-- Lane Rush Duel — `src/app/casino/lane-runner/[matchId]/PageClient.jsx` (`matchEndPopup`
-  const, mounted once per layout variant; real `p1Points/p2Points` + winner-only `prizePaid`
-  from the match API; duration from `startedAt/endedAt`)
+- Lane Rush Duel — `src/app/casino/lane-runner/[matchId]/PageClient.jsx` (`resultScreenProps`
+  const, mounted once per layout variant; real `p1Points/p2Points` + resignation state;
+  duration from `startedAt/endedAt`)
 - Tower Arena — `src/app/casino/tower-arena/game/[matchId]/PageClient.tsx` (finished-state
   `PvpResultScreen` + mid-match resign path both use the shared screen; rankings stay visible
-  behind via "View Results" dismiss, resign shows "Watch game"; real placement/payout/net from
-  `finalRankings` and the resign API; old `ResultPopup`/`Stat` components deleted)
+  behind via "View Results" dismiss, resign shows "Watch game"; placement + the server's
+  win/lose verdict from `finalRankings` and the resign API; old `ResultPopup`/`Stat` components
+  deleted)
 - Plinko Duel — `src/app/casino/plinko/[matchId]/PageClient.tsx` (`renderWinnerPopup` now
-  renders the shared screen; real `p1Score–p2Score`, `prizePaid`/`houseFee`/`stakeAmount`,
-  winner-vs-viewer verdict, round-decided label, duration from `startedAt/endedAt`; per-seat
-  score boxes moved into Match Details; old modal + `TrophyIcon` deleted)
+  renders the shared screen; real `p1Score–p2Score`, winner-vs-viewer verdict,
+  round-decided label, duration from `startedAt/endedAt`; per-seat score boxes moved into
+  Match Details; old modal + `TrophyIcon` deleted)
 - Memory Grid — `src/app/casino/memory-grid/[matchId]/PageClient.tsx` (finished-state screen
-  replaces the inline board + separate draw popup; real rounds/score, stake/prizePaid/houseFee
-  delta math, refund copy on draw, duration from `startedAt/endedAt`)
+  replaces the inline board + separate draw popup; real rounds/score, duration from
+  `startedAt/endedAt`)
 - Blackjack PvP — `src/app/casino/blackjack/[matchId]/PageClient.tsx` (match-end screen from
-  real winner/points/payout fields; old `MatchEndModal` + its icons deleted)
+  real winner/rounds; old `MatchEndModal` + its icons deleted)
 - Roulette PvP — `src/app/casino/roulette/[matchId]/PageClient.jsx` (finished banner replaced;
-  real points/refund/stake math from the match payload)
+  real match points + round results from the match payload)
 - Chess Arena — `src/app/casino/chess-game/[gameId]/PageClient.jsx` (win/loss/draw screen from
-  game row result/payout; old popup + icons deleted). For a finished match it adds a
+  the game row's winner/result; old popup + icons deleted). For a finished match it adds a
   "See Evaluation" `secondaryAction` linking to `/evaluation/chess/[gameId]` (omitted for an
   `expired` match, which the evaluation API refuses with a 409).
 - Rock Paper Scissors — `src/app/casino/rps/game/[gameId]/PageClient.tsx` (win/loss/draw screen
   from real choose/status settlement; old popup deleted)
 - Four in a Row — `src/app/casino/four-in-a-row/game/[gameId]/PageClient.tsx` (game-over screen
-  from real winner/fee math; old `gameOverModal` deleted)
+  from the real winner + the winning-four strip; old `gameOverModal` deleted)
 - Dots & Boxes — `src/app/casino/dots-and-boxes/game/[gameId]/PageClient.tsx` (finished screen
-  from real scores/settlement; old result popup + celebration code deleted)
+  from real scores; old result popup + celebration code deleted)
 - Pool Masters — `src/app/casino/pool-masters/game/[matchId]/PageClient.tsx` (win/loss screen
-  from real wager/prize fields; old `creatorPopup` deleted)
+  from the real winner seat; old `creatorPopup` deleted)
 - Precision — `src/components/precision/PrecisionResultPopup.tsx` rewritten as a thin
-  PvpResultScreen adapter (page props unchanged; test IDs kept)
+  PvpResultScreen adapter (page props unchanged; test IDs kept); shows the result, score,
+  winner and the deciding round's frozen rockets only
 - Hex Duel — `src/app/casino/hex-duel/PageClient.tsx` (victory/defeat screen for for-fun, AI,
-  and multiplayer modes; real payout/wager deltas; old `VictoryModal`/`LoseModal`/`ConfettiPiece`
-  + their keyframes/icons deleted)
+  and multiplayer modes; real moves/territory; the end-game settlement call still runs for the
+  balance + analytics, its payout response is simply not displayed; old `VictoryModal`/
+  `LoseModal`/`ConfettiPiece` + their keyframes/icons deleted)
 - Dice Flush — `src/app/casino/dice-flush/PageClient.tsx` (game-over overlay replaced; real
   final scores, free-play subline for AI; old overlay + confetti/`celebrateWin` removed)
 - Odds — `src/app/casino/odds/PageClient.tsx` (`OddsGameDisplay` game-over popup replaced;
-  AI mode hides tokens, PvP nets payout−wager / −wager / draw refund 0; old popup + icons
-  deleted)
+  real final score + rounds; old popup + icons deleted)
 
 ## Games with no match-over result UI (nothing to convert)
 
@@ -121,8 +129,8 @@ Notes:
 
 ## Solo AI practice modes (converted too)
 
-Free-play practice companions of the PvP games — no tokens are ever wagered, so the
-shared screen shows outcome + stats with the token row hidden:
+Free-play practice companions of the PvP games — nothing is ever wagered, so the
+shared screen shows outcome + stats and carries no token/stake copy:
 
 - Chess vs AI — `src/app/casino/chess/ai/ChessAIPageInner.tsx` (win/loss/draw from real
   `gameResult`/`winnerText`; color/moves/difficulty in summary; old modal + `celebrateWin`

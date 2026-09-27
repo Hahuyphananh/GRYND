@@ -23,7 +23,9 @@
 //   • sand: extra damping while inside
 //   • water: stroke replayed from its start position (+1 stroke, counted by
 //     the caller from `waterHits`)
-//   • cup: captured only when centred AND slow enough (valid-entry condition)
+//   • cup: captured as soon as the ball's centre reaches the cup, at ANY speed
+//     — touching the hole is enough. An optional per-hole `captureMaxSpeed`
+//     can reintroduce a valid-entry speed gate.
 //   • stop threshold, plus a hard MAX_FRAMES safety cap
 //
 // Determinism note: only +, -, *, /, Math.hypot, Math.imul, Math.pow and
@@ -33,7 +35,6 @@
 import {
   BALL_RADIUS,
   BUMPER_RESTITUTION,
-  CAPTURE_MAX_SPEED,
   FRICTION,
   MAX_COLLISION_ITERATIONS,
   MAX_FRAMES,
@@ -72,7 +73,6 @@ export const DEFAULT_CONFIG: SimConfig = {
   pathDedupTolerance: PATH_DEDUP_TOLERANCE,
   maxCollisionIterations: MAX_COLLISION_ITERATIONS,
   powerScale: POWER_SCALE,
-  captureMaxSpeed: CAPTURE_MAX_SPEED,
   sandFriction: SAND_FRICTION,
 };
 
@@ -182,6 +182,8 @@ export function simulateShot(params: SimulateShotParams): ShotResult {
   const friction = typeof geo.friction === "number" ? geo.friction : cfg.friction;
   const wallRestitution =
     typeof geo.wallRestitution === "number" ? geo.wallRestitution : cfg.wallRestitution;
+  // No speed gate by default: reaching the cup pockets the ball. A hole (or a
+  // caller) may still set an explicit cap to opt back into a roll-over.
   const captureMaxSpeed =
     typeof geo.cup.captureMaxSpeed === "number" ? geo.cup.captureMaxSpeed : cfg.captureMaxSpeed;
 
@@ -287,9 +289,14 @@ export function simulateShot(params: SimulateShotParams): ShotResult {
         break;
       }
 
-      // 4. Cup — valid entry requires centre-inside AND slow enough.
+      // 4. Cup — reaching the cup pockets the ball, at any speed. An explicit
+      // `captureMaxSpeed` (per hole, or per call) opts back into the old
+      // "must be slow enough to drop" behaviour.
       const currentSpeed = Math.hypot(ball.vx, ball.vy);
-      if (isBallInCup(ball, geo.cup) && currentSpeed <= captureMaxSpeed) {
+      const capturedIntoCup =
+        isBallInCup(ball, geo.cup) &&
+        (typeof captureMaxSpeed !== "number" || currentSpeed <= captureMaxSpeed);
+      if (capturedIntoCup) {
         pocketed = true;
         ball.x = geo.cup.x;
         ball.y = geo.cup.y;

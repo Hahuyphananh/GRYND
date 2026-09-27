@@ -1740,11 +1740,6 @@ export default function MinesPvpMatchPage({
       match.winnerId && myUserId && match.winnerId !== myUserId;
     const isDrawResult = !iWon && !iLost;
 
-    const stake = Number(match.stakeAmount);
-    const houseFee = Number(match.houseFee);
-    const prizePaid = Number(match.prizePaid);
-    const tokenDelta = iWon ? prizePaid : iLost ? -stake : 0;
-
     // Duration from the existing timestamps (omitted when unavailable).
     let durationSeconds: number | null = null;
     if (match.startedAt && match.endedAt) {
@@ -1775,7 +1770,7 @@ export default function MinesPvpMatchPage({
           : `${oppName} correctly flagged all mines`
         : winReason === "resign"
           ? iWon
-            ? `${oppName} resigned - you take the pot`
+            ? `${oppName} resigned — you take the win`
             : "You resigned"
           : iWon
             ? `${oppName} hit a mine`
@@ -1789,11 +1784,7 @@ export default function MinesPvpMatchPage({
         : iLost
           ? "The GRYND AI won this round."
           : null
-      : iWon
-        ? `You took home ${prizePaid.toFixed(2)} tokens (your stake + 90% of opponent's).`
-        : iLost
-          ? `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`
-          : null;
+      : null;
 
     const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
 
@@ -1813,7 +1804,6 @@ export default function MinesPvpMatchPage({
                 profileFrame: oppSummary?.profileFrame || null,
               }
         }
-        tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
           {
@@ -1824,9 +1814,6 @@ export default function MinesPvpMatchPage({
         ]}
         details={[
           { label: "Match ID", value: String(match.id) },
-          { label: "Stake", value: `${stake.toFixed(2)} tokens` },
-          { label: "Prize", value: `${prizePaid.toFixed(2)} tokens` },
-          { label: "Platform fee", value: `${houseFee.toFixed(2)} tokens` },
           { label: "Winner", value: iWon ? "You" : iLost ? "Opponent" : "Draw" },
         ]}
         playAgain={{ onClick: () => router.push("/casino/mines-pvp") }}

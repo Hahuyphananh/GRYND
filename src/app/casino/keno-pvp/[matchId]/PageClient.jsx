@@ -1425,8 +1425,9 @@ function RulesModal({ onClose }) {
 }
 
 // ── Result screen — shared PvpResultScreen ──────────────────────
-// End-of-match adapter: maps the real match result / payout / survival
-// fields onto the shared result screen. No invented values.
+// End-of-match adapter: maps the real match result / survival fields
+// onto the shared result screen. No invented values, and no token /
+// stake / pot figure is ever shown.
 function ResultModal({
   match,
   me,
@@ -1444,15 +1445,8 @@ function ResultModal({
   const iWon = result === me;
   const drew = result === "draw";
 
-  const net = drew
-    ? -(Number(match.houseFee) || 0) / 2
-    : iWon
-      ? Number(match.prizePaid) - Number(match.stakeAmount)
-      : -Number(match.stakeAmount);
-
   const winnerName = iWon ? myName : oppName;
   const outcome = drew ? "draw" : iWon ? "win" : "loss";
-  const stakeTokens = Number(match.stakeAmount) || 0;
   const log = Array.isArray(match.tileLog) ? match.tileLog : [];
 
   const seats = match.viewerIsPlayer1
@@ -1463,10 +1457,14 @@ function ResultModal({
     <PvpResultScreen
       open
       outcome={outcome}
-      headline={drew ? "Both eliminated — stake refunded" : `${myTiles} – ${oppTiles} tiles claimed`}
+      headline={
+        drew
+          ? "Both eliminated on the same tile — draw"
+          : `${myTiles} – ${oppTiles} tiles claimed`
+      }
       subline={
         outcome === "loss"
-          ? `${winnerName} took the pot.`
+          ? `${winnerName} survived the duel.`
           : drew
             ? undefined
             : "You survived the duel."
@@ -1477,22 +1475,12 @@ function ResultModal({
           ? { name: "GRYND AI", isAi: true }
           : { name: oppName, iconKey: oppSeatSummary?.iconKey || null }
       }
-      tokenDelta={net}
       summary={[
         { label: "Lives left", value: `${myLives} – ${oppLives}` },
         { label: "Tiles claimed", value: `${myTiles} – ${oppTiles}` },
       ]}
       details={[
         ...(match.id != null ? [{ label: "Match ID", value: String(match.id) }] : []),
-        { label: "Stake", value: `${stakeTokens.toLocaleString()} tokens` },
-        ...(iWon
-          ? [
-              {
-                label: "Payout",
-                value: `${(Number(match.prizePaid) || 0).toLocaleString()} tokens`,
-              },
-            ]
-          : []),
         { label: "Winner", value: drew ? "Draw" : winnerName },
       ]}
       detailsContent={

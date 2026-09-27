@@ -985,8 +985,7 @@ export default function FourInARowVsAiPage() {
             ? "The AI got you this round."
             : "Board is full. It's a draw."
       }
-      subline="Free practice match — no tokens were staked."
-      gameName="Four-in-a-Row vs AI"
+      gameName="Four-in-A-Row vs AI"
       opponent={{ name: "AI", iconKey: null, isAi: true }}
       summary={[
         { label: "Session", value: `${score.wins}W – ${score.losses}L – ${score.draws}D` },

@@ -2941,27 +2941,6 @@ export default function PlinkoPvpMatchPage({
     const isAi = Boolean(match.isAi);
     const pointDiff = Math.abs((match.p1Score || 0) - (match.p2Score || 0));
 
-    // Stake was escrowed at matchmaking; at settle the winner is
-    // credited `prizePaid` (= stake + 90% of the loser's stake). The
-    // net token change from the viewer's pocket:
-    //   win  → +prizePaid − stake = +0.9 × stake
-    //   loss → −stake
-    //   draw → full refund = 0, or −(houseFee/2) for a 5%-fee
-    //          overtime tie (houseFee = 10% of one stake total)
-    // AI practice matches never move tokens.
-    const stake = Number(match.stakeAmount) || 0;
-    const prizePaid = Number(match.prizePaid) || 0;
-    const houseFee = Number(match.houseFee) || 0;
-    const tokenDelta = isAi
-      ? null
-      : isDraw
-        ? houseFee > 0
-          ? -(houseFee / 2)
-          : 0
-        : iWon
-          ? prizePaid - stake
-          : -stake;
-
     // Duration from the existing timestamps (omitted when unavailable).
     let durationSeconds: number | null = null;
     if (match.startedAt && match.endedAt) {
@@ -2984,16 +2963,12 @@ export default function PlinkoPvpMatchPage({
     const oppName = oppHead?.displayName || (isViewerP1 ? p2Name : p1Name);
 
     const headline = isDraw
-      ? "Evenly matched — both players refunded"
+      ? "Evenly matched — the match ends level"
       : iWon
         ? `You out-scored ${oppName} by ${pointDiff} point${pointDiff !== 1 ? "s" : ""}`
         : `${winnerName} won by ${pointDiff} point${pointDiff !== 1 ? "s" : ""}`;
 
-    const subline = isAi
-      ? "Free practice match — no tokens were staked or paid out."
-      : isDraw && houseFee > 0
-        ? `Each player refunded ${(stake * 0.95).toFixed(2)} tokens (5% platform fee).`
-        : undefined;
+    const subline = isAi ? "Practice match vs GRYND AI." : undefined;
 
     const decidedRound = match.currentBall > REQUIRED_BALLS
       ? `Overtime · Round ${match.currentBall}`
@@ -3026,7 +3001,6 @@ export default function PlinkoPvpMatchPage({
           iconKey: oppHead?.iconKey || null,
           isAi,
         }}
-        tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
           { label: "Result", value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw" },
@@ -3035,15 +3009,6 @@ export default function PlinkoPvpMatchPage({
         ]}
         details={[
           { label: "Match ID", value: String(match.id) },
-          ...(isAi || isDraw
-            ? []
-            : [
-                { label: "Stake", value: `${stake.toFixed(2)} tokens` },
-                { label: "Prize paid", value: `${prizePaid.toFixed(2)} tokens` },
-                ...(houseFee > 0
-                  ? [{ label: "Platform fee", value: `${houseFee.toFixed(2)} tokens` }]
-                  : []),
-              ]),
           { label: "Winner", value: isDraw ? "Draw" : iWon ? "You" : winnerName || "Opponent" },
         ]}
         detailsContent={

@@ -74,9 +74,6 @@ export const PATH_DEDUP_TOLERANCE = 0.75;
 /** Max passes resolving wall/bumper overlaps per substep (corners need > 1). */
 export const MAX_COLLISION_ITERATIONS = 4;
 
-/** A ball must be slower than this to drop into the cup. */
-export const CAPTURE_MAX_SPEED = 6;
-
 // ──────────────────────────────────────────────────────────────────────────
 // Hazards
 // ──────────────────────────────────────────────────────────────────────────

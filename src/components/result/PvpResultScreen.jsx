@@ -22,9 +22,11 @@
  *   1. Detect the finished state exactly as today (status === "finished",
  *      a result phase, etc.) and keep rendering the game page underneath.
  *   2. Map the existing winner/result to `outcome` ("win" | "loss" | "draw").
- *   3. Map existing payout fields to `tokenDelta`; Battle Pass /
- *      Prestige go in `progress` only if the match payload carries
- *      them — otherwise omit (sections auto-hide, no fake numbers).
+ *   3. Battle Pass / Prestige go in `progress` only if the match payload
+ *      carries them — otherwise omit (sections auto-hide, no fake numbers).
+ *      Token/payout figures are deliberately NOT part of this screen: the
+ *      platform is free-play, so no result popup talks about tokens,
+ *      stakes, pots or winnings.
  *   4. Compute `durationSeconds` from existing startedAt/endedAt when both
  *      exist, else omit.
  *   5. Keep game-specific info (payout breakdowns, pick audits, per-round
@@ -44,7 +46,6 @@ import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   IconChevronDown,
-  IconCoins,
   IconHeartHandshake,
   IconRobot,
   IconTrophy,
@@ -62,43 +63,8 @@ function formatDuration(totalSeconds) {
   return `${m}:${sec}`;
 }
 
-function formatTokens(n) {
-  return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
 function formatNumber(n) {
   return Number(n || 0).toLocaleString();
-}
-
-/**
- * Counts a number up from 0 to `value` once, so a payout/token change reads
- * as a gain or loss instead of a static figure. Reduced motion shows the final
- * value immediately. This runs once per mount — the result screen mounts once
- * per settled match — so it never replays when status is refreshed.
- */
-function AnimatedNumber({ value, reduce, duration = 450 }) {
-  const target = Number(value) || 0;
-  const [display, setDisplay] = useState(reduce ? target : 0);
-
-  useEffect(() => {
-    if (reduce) {
-      setDisplay(target);
-      return undefined;
-    }
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setDisplay(target * eased);
-      if (t < 1) raf = requestAnimationFrame(tick);
-      else setDisplay(target);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, reduce, duration]);
-
-  return <>{formatTokens(display)}</>;
 }
 
 const OUTCOME_STYLES = {
@@ -159,10 +125,9 @@ export default function PvpResultScreen({
   open,
   outcome,
   headline,
-  subline,
+  subline = null,
   opponent = null,
   gameName,
-  tokenDelta = null,
   xp = null,
   progress = [],
   summary = [],
@@ -362,8 +327,9 @@ export default function PvpResultScreen({
   const showRank =
     outcome === "win" && displayRank !== null && Number(displayRank) > 0;
 
-  const hasRewards =
-    tokenDelta !== null ||
+  // Progression is the only "after the result" block left — no token/payout
+  // row exists on this screen.
+  const hasProgression =
     displayOverall !== null ||
     (Array.isArray(progress) && progress.length > 0);
 
@@ -568,7 +534,7 @@ export default function PvpResultScreen({
             {/* Final score — hierarchy step 1.5: after the outcome hero, the
                 winner's score is emphasised and the loser's is muted but still
                 fully readable. Draw passes no highlight, so both read evenly.
-                Sequenced (delay) between the hero and the payout. */}
+                Sequenced (delay) between the hero and the progression. */}
             {Array.isArray(sides) && sides.length > 0 && (
               <motion.div
                 {...withReducedMotion(shouldReduce, {
@@ -626,14 +592,14 @@ export default function PvpResultScreen({
               </motion.div>
             )}
 
-            {/* Rewards — only rows whose data actually exists.
+            {/* Progression — only rows whose data actually exists.
                 Sequenced AFTER the outcome, never with it: the win/loss hero
-                lands first, then the payout (token delta, progression)
+                lands first, then progression (Overall Elo, Battle Pass)
                 registers one short beat later, so the order the player reads
-                is result → money → details. A rise + fade with a hair of
-                scale, 0.22s, gated through the shared helper — with reduced
+                is result → progression → details. A rise + fade with a hair
+                of scale, 0.22s, gated through the shared helper — with reduced
                 motion it appears in place with no movement and no delay. */}
-            {hasRewards && (
+            {hasProgression && (
               <motion.div
                 {...withReducedMotion(shouldReduce, {
                   initial: { opacity: 0, y: 8, scale: 0.97 },
@@ -642,29 +608,6 @@ export default function PvpResultScreen({
                 })}
                 className="mx-auto mt-5 w-full max-w-xs space-y-2"
               >
-                {tokenDelta !== null && (
-                  <div className={`flex items-center justify-between rounded-xl border border-white/10 bg-black/25 ${compact ? "px-3 py-2" : "px-4 py-2.5"}`}>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
-                      Tokens
-                    </span>
-                    <motion.span
-                      initial={shouldReduce ? false : { scale: 1.12 }}
-                      animate={{ scale: 1 }}
-                      transition={{ duration: 0.25, ease: "easeOut", delay: 0.24 }}
-                      className={`inline-flex items-center gap-1.5 font-black ${compact ? "text-base" : "text-lg"} ${
-                        tokenDelta > 0
-                          ? "text-emerald-300"
-                          : tokenDelta < 0
-                            ? "text-red-300"
-                            : "text-white/80"
-                      }`}
-                    >
-                      {tokenDelta > 0 ? "+" : ""}
-                      <AnimatedNumber value={tokenDelta} reduce={shouldReduce === true} />
-                      <IconCoins size={18} className="text-[#f5ff3b]" aria-hidden="true" />
-                    </motion.span>
-                  </div>
-                )}
                 {displayOverall !== null && (
                   <div className="rounded-xl border border-[#f5ff3b]/30 bg-black/25 px-4 py-2.5">
                     <div className="flex items-center justify-between text-sm">

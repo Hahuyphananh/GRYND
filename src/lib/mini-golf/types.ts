@@ -35,10 +35,12 @@ export type Sand = { x: number; y: number; r: number };
 export type Water = { x: number; y: number; r: number };
 
 /**
- * The hole/cup. `r` is the capture radius and `captureMaxSpeed` the
- * valid-entry condition: the server only counts an entry when the ball's
- * centre is inside the cup AND the ball is slow enough, so a fast putt can
- * roll across the cup without dropping.
+ * The hole/cup. `r` is the capture radius. Reaching it pockets the ball at ANY
+ * speed — touching the hole is enough, so no power matching is required.
+ *
+ * `captureMaxSpeed` is an optional opt-in: set it and the ball must also be
+ * slower than that value to drop, restoring the old "a fast putt can roll
+ * across the cup" behaviour for this hole.
  */
 export type Cup = {
   x: number;
@@ -129,7 +131,11 @@ export type SimConfig = {
   pathDedupTolerance: number;
   maxCollisionIterations: number;
   powerScale: number;
-  captureMaxSpeed: number;
+  /**
+   * Optional speed cap for cup capture. Omitted (the default) means the ball
+   * drops into the cup at any speed; a number restores the speed-gated entry.
+   */
+  captureMaxSpeed?: number;
   sandFriction: number;
 };
 

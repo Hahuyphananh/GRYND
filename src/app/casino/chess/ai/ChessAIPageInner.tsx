@@ -998,7 +998,7 @@ export default function ChessAIPageInner() {
           open
           outcome={gameResult === "win" ? "win" : gameResult === "draw" ? "draw" : "loss"}
           headline={winnerText || undefined}
-          subline="Free practice match — no tokens were staked."
+          subline="Practice match vs GRYND AI."
           gameName="Chess vs AI"
           opponent={{ name: "AI", iconKey: null, isAi: true }}
           summary={[

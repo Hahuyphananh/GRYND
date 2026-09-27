@@ -1041,34 +1041,14 @@ export default function MemoryGridMatchPage({
   // Rendered as a fixed overlay when the match finishes (the final
   // board reveal stays underneath, reachable via "View Match
   // Results"). Every number comes from the real match row
-  // (winnerId / p1Total–p2Total / prizePaid / houseFee / refundEach
-  // / players / startedAt→endedAt) — nothing is invented. Winner /
-  // payout logic is untouched; the old inline result panel + draw
+  // (winnerId / p1Total–p2Total / players / startedAt→endedAt) —
+  // nothing is invented, and no token/stake figure is ever shown.
+  // Winner logic is untouched; the old inline result panel + draw
   // popup are gone.
   function renderResult() {
     if (!match || !isFinished || !showResult) return null;
 
-    const stake = Number(match.stakeAmount ?? 0);
-    const prizePaid = Number(match.prizePaid ?? 0);
-    const houseFee = Number(match.houseFee ?? 0);
-    const refundEach = Number(match.refundEach ?? 0);
     const isAi = Boolean(match.isAi);
-
-    // Stake is escrowed at matchmaking; at settle the winner is
-    // credited `prizePaid` (= stake + 90% of the loser's stake). Net
-    // token change from the viewer's pocket:
-    //   win  → +prizePaid − stake = +0.9 × stake
-    //   loss → −stake
-    //   draw → +refundEach (95% of stake — 5% rake per side on the
-    //          tiebreak tie)
-    // AI practice matches never move tokens.
-    const tokenDelta = isAi
-      ? null
-      : viewerWon
-        ? prizePaid - stake
-        : viewerLost
-          ? -stake
-          : refundEach;
 
     // Duration from the existing timestamps (omitted when unavailable).
     let durationSeconds: number | null = null;
@@ -1086,13 +1066,7 @@ export default function MemoryGridMatchPage({
       : viewerLost
         ? `${oppName} out-remembered you ${oppScore ?? 0}–${myScore ?? 0}`
         : "Evenly matched — the tiebreak couldn't split you";
-    const subline = isAi
-      ? "Free practice match — no tokens were staked."
-      : viewerWon
-        ? `Your ${stake.toFixed(2)} stake back plus ${(prizePaid - stake).toFixed(2)} in winnings.`
-        : viewerLost
-          ? `You lost your ${stake.toFixed(2)} stake. Platform fee: ${houseFee.toFixed(2)}.`
-          : `Tiebreak tied. Both players refunded ${refundEach.toFixed(2)} (95%, 5% platform fee each).`;
+    const subline = isAi ? "Practice match vs GRYND AI." : null;
 
     return (
       <PvpResultScreen
@@ -1103,7 +1077,6 @@ export default function MemoryGridMatchPage({
         subline={subline}
         gameName="Memory Grid"
         opponent={{ name: oppName, iconKey: oppIconKey, profileFrame: oppProfileFrame, isAi }}
-        tokenDelta={tokenDelta}
         durationSeconds={durationSeconds}
         summary={[
           {
@@ -1115,17 +1088,6 @@ export default function MemoryGridMatchPage({
         ]}
         details={[
           { label: "Match ID", value: String(match.id) },
-          ...(isAi
-            ? []
-            : [
-                { label: "Stake", value: `${stake.toLocaleString()} tokens` },
-                ...(viewerWon
-                  ? [
-                      { label: "Prize paid", value: `${prizePaid.toLocaleString()} tokens` },
-                      { label: "Platform fee", value: `${houseFee.toLocaleString()} tokens` },
-                    ]
-                  : []),
-              ]),
           { label: "Winner", value: isDraw ? "Draw" : viewerWon ? "You" : oppName },
         ]}
         detailsContent={
