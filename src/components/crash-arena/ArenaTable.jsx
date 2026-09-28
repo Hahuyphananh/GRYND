@@ -18,6 +18,7 @@ import PlayerSidebar from "./PlayerSidebar";
 import IconAvatar from "../IconAvatar";
 import { frameWrapperProps } from "../FrameAvatar";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
+import { CRASH_ARENA_SEATS } from "../../lib/crash-poker/constants";
 import PotDisplay from "./PotDisplay";
 import TableBalance from "./TableBalance";
 import RoundTimer from "./RoundTimer";
@@ -123,7 +124,7 @@ export default function ArenaTable({
     wager,
     minBuyIn,
     maxBuyIn,
-    maxPlayers = 6,
+    maxPlayers = CRASH_ARENA_SEATS,
   } = table;
   // Free practice table (human vs the GRYND AI bot). Chips are virtual.
   const isAi = Boolean(table?.isAi);

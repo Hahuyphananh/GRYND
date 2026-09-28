@@ -20,8 +20,10 @@ import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { IconGolf } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocket } from "../../../context/SocketProvider";
 import { MINI_GOLF_LOBBY_ROOM, MINI_GOLF_MATCH_UPDATED } from "../../../lib/mini-golf/rooms";
+import { readStoredAiDifficulty, type AiDifficulty } from "../../../lib/aiDifficulty";
 
 const POLL_MS = 3000;
 
@@ -43,6 +45,12 @@ export default function MiniGolfLobbyPage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
+  // Mini Golf shipped ONE strong bot before tiers existed, so its default pick
+  // is `hard` — picking Easy/Normal is what weakens it. The choice is
+  // remembered per game, so a returning player keeps their tier.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("mini-golf", "hard"),
+  );
 
   const fetchLobbies = useCallback(async () => {
     try {
@@ -118,20 +126,24 @@ export default function MiniGolfLobbyPage() {
       const res = await fetch("/api/mini-golf/create-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) {
         setError(data?.error || "Unable to start a practice match");
         return;
       }
-      posthog?.capture("mini_golf_match_started", { mode: "practice" });
+      posthog?.capture("mini_golf_match_started", {
+        mode: "practice",
+        difficulty: aiDifficulty,
+      });
       router.push(`/casino/mini-golf/${data.data.matchId}`);
     } catch {
       setError("Unable to start a practice match");
     } finally {
       setAiBusy(false);
     }
-  }, [aiBusy, posthog, router]);
+  }, [aiBusy, aiDifficulty, posthog, router]);
 
   const cancelLobby = useCallback(
     async (matchId: string) => {
@@ -183,12 +195,23 @@ export default function MiniGolfLobbyPage() {
             ),
           },
           {
-            heading: "Both balls, one cup",
+            heading: "Play out your ball",
             body: (
               <>
-                Each player putts their own ball, taking turns. A hole finishes
-                only when <b>both</b> balls are in the cup, so the trailing
-                player always gets the strokes to catch up.
+                Players take a whole <b>turn</b> at the hole: you keep putting
+                your own ball until it is in the cup, then your opponent plays
+                theirs. A hole finishes only when <b>both</b> balls are holed,
+                so the trailing player always gets the strokes to catch up.
+              </>
+            ),
+          },
+          {
+            heading: "Practice vs AI",
+            body: (
+              <>
+                Free practice matches are unrated. Pick a bot difficulty in the
+                lobby — <b>Easy</b> and <b>Normal</b> miss more often and pick
+                weaker lines, while <b>Hard</b> is the sharpest bot.
               </>
             ),
           },
@@ -200,6 +223,19 @@ export default function MiniGolfLobbyPage() {
       playLabel="Find a Match"
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
+      children={
+        <AiDifficultyPicker
+          gameKey="mini-golf"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          disabled={!isSignedIn}
+          hint={{
+            easy: "Loose aim and weak pace — miss plenty, but still finish the hole.",
+            normal: "A decent club player: fewer lines, the odd miss.",
+            hard: "The sharpest bot: fine aim, bank shots and near-perfect pace.",
+          }}
+        />
+      }
       extraActions={
         <div className="flex w-full flex-col gap-2 sm:flex-row">
           <button

@@ -1,5 +1,5 @@
 /**
- * Tower Arena — realtime / sync contract tests.
+ * Tower Arena — realtime / sync contract tests (1v1).
  *
  * The realtime layer broadcasts server-authoritative *signals* (lobby +
  * match events) and clients always reconcile by re-fetching the authoritative
@@ -8,15 +8,18 @@
  *   • simultaneous / stale / duplicate submissions never double-consume
  *   • an expired deadline resolves via the deterministic fallback, not an
  *     instant elimination
- *   • an eliminated player can no longer act
+ *   • the eliminated seat can no longer act
  *   • a resource refill happens while clients are connected WITHOUT resetting
  *     the tower
- *   • elimination order → placement, sole survivor = 1st, match completion.
+ *   • ceiling breach → placement, sole survivor = 1st, match completion.
  *
  * Because the DB store + Socket.IO server aren't unit-testable here, these
  * tests drive the pure `turnResolver` through the same authz gates the store
  * enforces (current-turn-only, active-only, expired-deadline → fallback) and
- * assert the contract stays deterministic and idempotent for 2 and 6 "clients".
+ * assert the contract stays deterministic and idempotent.
+ *
+ * Tower Arena is strictly 1v1, so the "N clients" sweeps are gone: there are
+ * exactly two seats, and the ceiling ends the duel.
  *
  * Run:  node --import tsx --test tests/tower-arena-realtime.test.mjs
  */
@@ -24,7 +27,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildResourcePool, simulatePlacement } from "../src/lib/tower-arena/engine.ts";
+import {
+  buildResourcePool,
+  simulatePlacement,
+  CEILING_HEIGHT,
+  SEATS,
+} from "../src/lib/tower-arena/engine.ts";
 import {
   resolvePlacement,
   safeFallbackIntent,
@@ -35,7 +43,7 @@ import { TOWER_ARENA_EVENTS } from "../src/lib/tower-arena/realtimeRelay.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function makePlayers(ids) {
+function makePlayers(ids = ["u1", "u2"]) {
   return ids.map((id, i) => ({
     userId: id,
     seat: i + 1,
@@ -50,20 +58,13 @@ function stable() {
   return { shape: "square", positionX: 2, rotation: 0, actionType: "PLACE" };
 }
 
-/** Tallest column height at `col` (0 when empty). */
-function heightAt(tower, col) {
-  let h = 0;
-  for (const b of tower || []) for (const c of b.cells || []) if (c.x === col) h = Math.max(h, c.z);
-  return h;
-}
-
 /** A tower with a single 1-cell pillar of `n` cubes at column 0. */
-function pillarTower(n = 2) {
+function pillarTower(n = 2, x = 0) {
   let t = [];
   for (let i = 1; i <= n; i += 1) {
     t = simulatePlacement(t, {
       shape: "short",
-      x: 0,
+      x,
       rotation: 0,
       blockId: `pre:${i}`,
       placedByUserId: "u1",
@@ -73,26 +74,19 @@ function pillarTower(n = 2) {
   return t;
 }
 
-/**
- * Deterministic drive intent: grow a 1-cell pillar at column 0 until it is
- * tall enough, then drop a 3-wide I onto it. An I needs ceil(3/2)=2 touching
- * cells; the single pillar cell cannot support it, so it tips into the void
- * and the dropper is eliminated — matches the old "topple" contract.
- */
-function topple(state) {
-  return heightAt(state.towerState, 0) >= 1
-    ? { shape: "I", positionX: 0, rotation: 0, actionType: "PLACE" }
-    : { shape: "short", positionX: 0, rotation: 0, actionType: "PLACE" };
+/** A tower whose column `x` already sits at the ceiling (the next drop breaches). */
+function ceilingTower(x = 2) {
+  return pillarTower(CEILING_HEIGHT, x);
 }
 
 function snapshot(opts = {}) {
-  const maxPlayers = opts.maxPlayers ?? 2;
-  const pool = opts.pool ?? buildResourcePool(maxPlayers, `${opts.nonce || "rx"}:cycle:1`);
+  const nonce = opts.nonce || "rx";
+  const pool = opts.pool ?? buildResourcePool(`${nonce}:cycle:1`);
   return {
     id: "m1",
     status: "active",
     phase: "placement",
-    maxPlayers,
+    maxPlayers: SEATS,
     resourceCycle: 1,
     turnNumber: 0,
     currentTurnPlayerId: "u1",
@@ -110,9 +104,13 @@ function ok(r) {
   return r.resolved;
 }
 
-// Store-style authz gate shared by the tests: only the current ACTIVE turn
-// holder's submission may advance state; everyone else's is discarded.
+// Store-style authz gate shared by the tests: the match must still be in
+// placement, and only the current ACTIVE turn holder's submission may advance
+// state; everyone else's is discarded.
 function step(state, plist, intent, actor) {
+  if (state.status !== "active" || state.phase !== "placement") {
+    return { rejected: "match is not active" };
+  }
   if (actor !== state.currentTurnPlayerId) return { rejected: "not your turn" };
   const p = plist.find((x) => x.userId === actor);
   if (!p || p.status !== "active") return { rejected: "not an active participant" };
@@ -123,7 +121,7 @@ function step(state, plist, intent, actor) {
 
 function applyResolved(state, plist, res) {
   // Mirrors the store: eliminated players immediately persist their assigned
-  // placement (the resolver skips taken slots on later eliminations).
+  // placement.
   const pl = plist.map((p) => {
     const e = res.eliminations.find((x) => x.userId === p.userId);
     return e ? { ...p, status: "eliminated", placement: e.placement } : p;
@@ -145,24 +143,23 @@ function applyResolved(state, plist, res) {
 }
 
 /**
- * Drive a match to completion where every current player topples (eliminates
- * themselves) in turn. Asserts the elimination-order → placement contract and
- * that a single survivor (placement 1) finishes the match.
+ * Drive a 1v1 match to completion with the engine's own safe policy (which
+ * only ever asks for a shape the pool holds). Asserts that a non-current
+ * client can never advance the match, and that the loser takes 2nd.
  */
-function driveSixClients() {
-  const ids = ["u1", "u2", "u3", "u4", "u5", "u6"];
-  let state = snapshot({ maxPlayers: 6 });
-  let plist = makePlayers(ids);
+function driveTwoClients(maxTurns = 500) {
+  let state = snapshot();
+  let plist = makePlayers();
   const eliminations = [];
   let finished = false;
   let guards = 0;
 
-  for (let i = 0; i < 200; i += 1) {
+  for (let i = 0; i < maxTurns; i += 1) {
     const actor = state.currentTurnPlayerId;
     const p = plist.find((x) => x.userId === actor);
     assert.ok(p && p.status === "active", "current holder is an active participant");
 
-    // A non-current client must never advance the match.
+    // The other seat must never advance the match.
     const intruder = plist.find((x) => x.userId !== actor && x.status === "active");
     if (intruder) {
       const g = step(state, plist, stable(), intruder.userId);
@@ -170,8 +167,10 @@ function driveSixClients() {
       guards += 1;
     }
 
-    const res = ok(resolvePlacement(state, plist, topple(state), actor));
-    for (const e of res.eliminations) eliminations.push({ userId: e.userId, placement: e.placement });
+    const res = ok(resolvePlacement(state, plist, safeFallbackIntent(state), actor));
+    for (const e of res.eliminations) {
+      eliminations.push({ userId: e.userId, placement: e.placement });
+    }
     ({ players: plist, state } = applyResolved(state, plist, res));
     if (res.finished) {
       finished = true;
@@ -205,7 +204,7 @@ test("realtime event names are defined and cover the spec's events", () => {
 
 // ── Ready gate (pre-game) ─────────────────────────────────────────────
 
-test("ready gate: every human must ready up; AI seats are always ready", () => {
+test("ready gate: both humans must ready up; the AI seat is always ready", () => {
   const human = (ready) => ({
     userId: "u1",
     seat: 1,
@@ -223,32 +222,28 @@ test("ready gate: every human must ready up; AI seats are always ready", () => {
     ready: true,
   };
 
-  // All humans ready → gate met.
+  // Both humans ready → gate met.
   assert.equal(isReadyGateMet([human(true), human(true)]), true);
   // One human not ready → gate not met.
   assert.equal(isReadyGateMet([human(true), human(false)]), false);
   assert.equal(isReadyGateMet([human(false), human(false)]), false);
   // Empty roster is never "all ready".
   assert.equal(isReadyGateMet([]), false);
-  // Bots count as ready without a click (human-vs-bot free play).
+  // The bot counts as ready without a click (human-vs-bot free play).
   assert.equal(isReadyGateMet([human(true), bot]), true);
   assert.equal(isReadyGateMet([human(false), bot]), false);
   // Eliminated players do not participate in the gate.
   assert.equal(
-    isReadyGateMet([
-      { ...human(false), status: "eliminated" },
-      human(true),
-      bot,
-    ]),
+    isReadyGateMet([{ ...human(false), status: "eliminated" }, human(true), bot]),
     true,
   );
 });
 
 // ── Two clients ────────────────────────────────────────────────────────
 
-test("two clients: only the current hold is accepted; the match advances cleanly", () => {
-  const state = snapshot({ maxPlayers: 2 });
-  const plist = makePlayers(["u1", "u2"]);
+test("two clients: only the current holder is accepted; the match advances cleanly", () => {
+  const state = snapshot();
+  const plist = makePlayers();
 
   // u2 tries while it is u1's turn → discarded.
   assert.equal(step(state, plist, stable(), "u2").rejected, "not your turn");
@@ -267,25 +262,21 @@ test("two clients: only the current hold is accepted; the match advances cleanly
   assert.equal(step(s1, plist, stable(), "u2").rejected, undefined);
 });
 
-// ── Six clients ────────────────────────────────────────────────────────
-
-test("six clients: elimination order → placement, sole survivor = 1st, finishes", () => {
-  const { eliminations, survivor, guards } = driveSixClients();
-  // First toppled gets placement 6 … last gets 2; survivor implicitly 1.
-  assert.deepEqual(
-    eliminations.map((e) => e.placement),
-    [6, 5, 4, 3, 2],
-  );
-  assert.equal(eliminations.length, 5);
-  assert.ok(survivor, "exactly one survivor");
-  assert.ok(guards > 0, "non-current clone submissions were discarded");
+test("a full 1v1 match: the breach dropper is 2nd, the other seat survives, intruders never advance it", () => {
+  const { eliminations, survivor, guards } = driveTwoClients();
+  assert.equal(eliminations.length, 1, "exactly one elimination ends the duel");
+  assert.equal(eliminations[0].placement, 2, "the dropper takes 2nd");
+  assert.ok(survivor, "exactly one survivor (placement 1)");
+  assert.equal(survivor.status, "active");
+  assert.notEqual(survivor.userId, eliminations[0].userId);
+  assert.ok(guards > 0, "non-current seat submissions were discarded");
 });
 
 // ── Simultaneous stale requests / duplicate placement ─────────────────
 
 test("simultaneous stale submissions cannot double-consume or double-advance", () => {
-  const state = snapshot({ maxPlayers: 2 });
-  const plist = makePlayers(["u1", "u2"]);
+  const state = snapshot();
+  const plist = makePlayers();
 
   // Two racing clients: u1 (current) and u2 (intruder) both submit from the
   // same snapshot. Only u1 is accepted; u2's is discarded.
@@ -305,9 +296,9 @@ test("simultaneous stale submissions cannot double-consume or double-advance", (
 });
 
 test("duplicate / stale submissions never double-consume or double-advance", () => {
-  const pool = buildResourcePool(2, "dup:cycle:1");
-  const state = snapshot({ maxPlayers: 2, pool });
-  const plist = makePlayers(["u1", "u2"]);
+  const pool = buildResourcePool("dup:cycle:1");
+  const state = snapshot({ pool });
+  const plist = makePlayers();
   const originalLength = pool.length;
 
   // First submission consumes from a COPY — the original snapshot pool is
@@ -328,8 +319,8 @@ test("duplicate / stale submissions never double-consume or double-advance", () 
 // ── Reconnect reconciliation ───────────────────────────────────────────
 
 test("reconnect: reconnected client reconciles to authoritative state, never stale", () => {
-  const state = snapshot({ maxPlayers: 2 });
-  const plist = makePlayers(["u1", "u2"]);
+  const state = snapshot();
+  const plist = makePlayers();
 
   // Server processed u1's move: authoritative state now on u2.
   const a = step(state, plist, stable(), "u1");
@@ -347,10 +338,9 @@ test("reconnect: reconnected client reconciles to authoritative state, never sta
 
 test("placement after timer expiry uses deterministic fallback, not instant elimination", () => {
   const state = snapshot({
-    maxPlayers: 2,
     overrides: { turnDeadline: new Date(Date.now() - 5000).toISOString() },
   });
-  const plist = makePlayers(["u1", "u2"]);
+  const plist = makePlayers();
 
   // The human's PLACE is no longer accepted once the window has expired
   // (store gate: turn expired → safe fallback settles it first). We model the
@@ -374,33 +364,52 @@ test("placement after timer expiry uses deterministic fallback, not instant elim
 
 // ── Placement after elimination ────────────────────────────────────────
 
-test("placement after elimination: the eliminated player can no longer act", () => {
-  const state = snapshot({ maxPlayers: 3 });
-  state.towerState = pillarTower(2);
-  const plist = makePlayers(["u1", "u2", "u3"]);
+test("after the breach the losing seat can no longer act (the duel is over)", () => {
+  const state = snapshot({ overrides: { towerState: ceilingTower(2) } });
+  const plist = makePlayers();
 
-  // u1's block tips into the void → eliminated (placement 3), 2 active left.
-  const r = ok(resolvePlacement(state, plist, topple(state), "u1"));
+  // u1's block crosses the ceiling → eliminated (placement 2) → match over.
+  const r = ok(
+    resolvePlacement(
+      state,
+      plist,
+      { shape: "short", positionX: 2, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
+  );
   assert.equal(r.eliminations[0].userId, "u1");
-  assert.equal(r.finished, false);
-  assert.equal(r.activeRemaining, 2);
+  assert.equal(r.eliminations[0].placement, 2);
+  assert.equal(r.finished, true);
+  assert.equal(r.activeRemaining, 1);
+  assert.equal(r.nextTurnPlayerId, null, "no turn is handed over");
 
-  const plAfter = plist.map((p) => (p.userId === "u1" ? { ...p, status: "eliminated" } : p));
-  const s1 = { ...state, currentTurnPlayerId: r.nextTurnPlayerId, towerState: r.towerState };
+  const plAfter = plist.map((p) =>
+    p.userId === "u1" ? { ...p, status: "eliminated", placement: 2 } : p,
+  );
+  // The store flips the row to finished as part of the finishing placement.
+  const s1 = {
+    ...state,
+    status: "finished",
+    phase: "finished",
+    currentTurnPlayerId: r.nextTurnPlayerId,
+    towerState: r.towerState,
+  };
 
-  // In the live match the eliminated player is no longer the current holder,
-  // so their submission is discarded as not-their-turn.
-  assert.equal(step(s1, plAfter, stable(), "u1").rejected, "not your turn");
-
-  // Even if (defensively) the eliminated player were still tokenized as the
-  // current holder, the active-participant gate rejects them.
+  // No seat may act once the match is finished — every submission is rejected,
+  // including one aimed at the losing seat.
   assert.equal(
     step({ ...s1, currentTurnPlayerId: "u1" }, plAfter, stable(), "u1").rejected,
+    "match is not active",
+  );
+  assert.equal(
+    step({ ...s1, currentTurnPlayerId: "u2" }, plAfter, stable(), "u2").rejected,
+    "match is not active",
+  );
+  // And with the row still nominally active, the eliminated seat is gated too.
+  assert.equal(
+    step({ ...state, currentTurnPlayerId: "u1" }, plAfter, stable(), "u1").rejected,
     "not an active participant",
   );
-
-  // A remaining active player continues normally.
-  assert.equal(step(s1, plAfter, stable(), r.nextTurnPlayerId).rejected, undefined);
 });
 
 // ── Resource refill while clients are connected ────────────────────────
@@ -408,8 +417,8 @@ test("placement after elimination: the eliminated player can no longer act", () 
 test("resource refill happens on pool-emptied while sessions stay connected — tower preserved", () => {
   // A single-square pool so the first placement empties it.
   const pool = [{ id: "one-square", shape: "square" }];
-  const state = snapshot({ maxPlayers: 2, pool });
-  const plist = makePlayers(["u1", "u2"]);
+  const state = snapshot({ pool });
+  const plist = makePlayers();
 
   const res = ok(resolvePlacement(state, plist, stable(), "u1"));
   assert.equal(res.refilled, true, "emptied pool triggers an immediate refill");
@@ -417,20 +426,29 @@ test("resource refill happens on pool-emptied while sessions stay connected — 
   assert.ok(res.pool.length > 0, "the refill repopulates the shared pool");
   // The tower is NOT reset by a resource refill.
   assert.equal(res.towerState.length, 1, "placed block stays on the tower");
-  assert.equal(res.nextPhase, "reserve", "a fresh cycle opens the reserve window");
+  assert.equal(res.nextPhase, "placement", "play continues in the placement phase");
 });
 
 // ── Match completion ───────────────────────────────────────────────────
 
 test("match completion: finished clears turn/deadline and keeps a single winner", () => {
-  const state = snapshot({ maxPlayers: 2 });
-  state.towerState = pillarTower(2);
-  const plist = makePlayers(["u1", "u2"]);
-  const res = ok(resolvePlacement(state, plist, topple(state), "u1"));
+  const state = snapshot({ overrides: { towerState: ceilingTower(2) } });
+  const plist = makePlayers();
+  const res = ok(
+    resolvePlacement(
+      state,
+      plist,
+      { shape: "short", positionX: 2, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
+  );
   assert.equal(res.finished, true);
   assert.equal(res.nextTurnPlayerId, null);
   assert.equal(res.nextDeadlineMs, null);
   assert.equal(res.eliminations[0].placement, 2); // responsible player last
   // Sole survivor holds placement 1 implicitly.
   assert.equal(res.activeRemaining, 1);
+  // The tower is trimmed to a coherent stack (first elimination keeps the
+  // bottom half), never left with floating cells.
+  assert.ok(res.towerState.length > 0 && res.towerState.length < CEILING_HEIGHT);
 });

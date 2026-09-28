@@ -19,9 +19,8 @@
 //   The only game facts an engine needs are: which game, where does it live,
 //   and what is it like. That last one is `tags`.
 //
-// TAG VOCABULARY (all eight are used; nothing is tagged arbitrarily)
-//   pvp         head-to-head 1v1 duel       — EXACTLY the lobby's pvpMode "1v1"
-//   multiplayer 3–6 player shared table     — EXACTLY the lobby's pvpMode "multi"
+// TAG VOCABULARY (all seven are used; nothing is tagged arbitrarily)
+//   pvp         head-to-head 1v1 duel       — the lobby's pvpMode "1v1"
 //   strategy    the match turns on planning / reading the opponent
 //   fast_paced  short rounds decided by timing, reflexes or a quick sequence
 //   casual      shallow learning curve — jump in and play
@@ -29,10 +28,18 @@
 //   competitive positioned around rank/stake climbing rather than a pick-up game
 //   skill       the outcome turns primarily on player ability
 //
-//   `pvp` and `multiplayer` are not opinions: tests/game-recommendations.test.mjs
-//   extracts every `pvpMode` from the lobby's games array and asserts the tags
-//   match one-for-one, so a new 1v1 game can't be added without being tagged,
-//   and a tag can't drift away from the lobby.
+//   `pvp` is not an opinion: tests/game-recommendations.test.mjs extracts every
+//   `pvpMode` from the lobby's games array and asserts the tags match the
+//   lobby exactly, so a game can't be added without being tagged, and a tag
+//   can't drift away from the lobby.
+//
+//   Every GRYND game is 1v1: the shared 3–6 player tables (Crash Arena's
+//   six-seat tables, Tower Arena's 2–6 player towers) were retired and the
+//   lobby's "Multiplayer" filter went with them, so `pvp` is on the WHOLE
+//   catalog. It remains in the vocabulary because it is still literally true
+//   and still what the questionnaire's "PvP duels" answer asks for — but it
+//   no longer discriminates, so a `pvp` signal alone never reorders the lobby
+//   (every game gains the same weight).
 //
 //   The remaining six are hand-assigned, one per game, from the game's own
 //   shipped description (the `games.*_desc` copy shown on the lobby card) —
@@ -46,7 +53,6 @@ import { WAGER_GAME_KEYS } from "./defaultWagers";
  *  uses values from this list. */
 export const GAME_TAGS = [
   "pvp",
-  "multiplayer",
   "strategy",
   "fast_paced",
   "casual",
@@ -86,12 +92,12 @@ export const GAME_CATALOG = [
   // (fast_paced).
   { id: "plinko", href: "/casino/plinko", tags: ["pvp", "chance", "fast_paced"] },
 
-  // Shared-table last-player-standing on a random crash curve: the curve is
-  // chance, the rounds are short (fast_paced), the table is competitive.
+  // Head-to-head last-player-standing on a random crash curve: the curve is
+  // chance, the rounds are short (fast_paced), the duel is competitive.
   {
     id: "crash",
     href: "/casino/crash-arena",
-    tags: ["multiplayer", "chance", "fast_paced", "competitive"],
+    tags: ["pvp", "chance", "fast_paced", "competitive"],
   },
 
   // "Outthink your opponent move by move": the archetypal strategy/skill game,
@@ -111,12 +117,12 @@ export const GAME_CATALOG = [
   // is nothing to learn (casual).
   { id: "rps", href: "/casino/rps", tags: ["pvp", "fast_paced", "casual"] },
 
-  // Shared-tower survival for 2–6 players: placement planning (strategy) and
-  // collapse-risk reading (skill) on a ranked table (competitive).
+  // Head-to-head tower survival: placement planning (strategy) and
+  // collapse-risk reading (skill) in a ranked 1v1 duel (competitive).
   {
     id: "tower-arena",
     href: "/casino/tower-arena",
-    tags: ["multiplayer", "strategy", "skill", "competitive"],
+    tags: ["pvp", "strategy", "skill", "competitive"],
   },
 
   // Align 4 discs: pure planning (strategy) against one opponent (skill).

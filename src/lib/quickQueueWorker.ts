@@ -97,18 +97,6 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     const sourceMines = Number(pair.source.row?.minesCount ?? 3);
     const partnerStake = normalizeStake(pair.partner.row?.minesStakeAmount);
     const partnerMines = Number(pair.partner.row?.minesCount ?? sourceMines);
-    // Tower Arena supports 2–6 players. The pair worker matches exactly two
-    // candidates (a 2-player Tower Arena), but the mode string may carry an
-    // explicit seat count when a distinct quick-queue grouping is configured.
-    const towerArenaPlayers = Number(pair.candidate.mode === "3p"
-      ? 3
-      : pair.candidate.mode === "4p"
-        ? 4
-        : pair.candidate.mode === "5p"
-          ? 5
-          : pair.candidate.mode === "6p"
-            ? 6
-            : pair.source.playerCount || 2);
     const createMatch = {
       "mines-pvp": (userId) => createOrJoinMinesMatch({ userId, stakeAmount: sourceStake, minesCount: sourceMines }),
       "plinko-pvp": (userId) => createOrJoinPlinkoMatch({ userId, stakeAmount: sourceStake }),
@@ -121,7 +109,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       "dots-and-boxes": (userId) => createOrJoinDotsAndBoxesDestination({ userId, betAmount: sourceStake }),
       "rps-pvp": (userId) => createOrJoinRpsDestination({ userId, betAmount: sourceStake }),
       "uno": (userId) => createOrJoinUnoDestination({ userId, betAmount: sourceStake }),
-      "tower-arena": (userId) => createOrJoinTowerArenaDestination({ userId, wager: sourceStake, maxPlayers: towerArenaPlayers }),
+      "tower-arena": (userId) => createOrJoinTowerArenaDestination({ userId, wager: sourceStake }),
       "pool-masters": (userId) => createOrJoinPoolDestination({ userId, wager: sourceStake }),
       "precision": (userId) => createOrJoinPrecisionDestination({ userId, wager: sourceStake }),
       "hex-duel": (userId) => createOrJoinHexDuelDestination({ userId, wager: sourceStake }),
@@ -158,7 +146,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
                 : pair.candidate.gameKey === "uno"
                 ? await createOrJoinUnoDestination({ userId: pair.partner.userId, betAmount: sourceStake })
                 : pair.candidate.gameKey === "tower-arena"
-                    ? await createOrJoinTowerArenaDestination({ userId: pair.partner.userId, wager: sourceStake, maxPlayers: towerArenaPlayers })
+                    ? await createOrJoinTowerArenaDestination({ userId: pair.partner.userId, wager: sourceStake })
                   : pair.candidate.gameKey === "pool-masters"
                     ? await createOrJoinPoolDestination({ userId: pair.partner.userId, wager: sourceStake })
                     : pair.candidate.gameKey === "precision"

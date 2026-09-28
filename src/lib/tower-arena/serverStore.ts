@@ -40,6 +40,7 @@ import { getFrameDecorations } from "../cosmetics";
 import {
   buildResourcePool,
   BLOCK_SHAPES,
+  SEATS,
   dropInBounds,
   type BlockShape,
   type ResourcePiece,
@@ -52,9 +53,13 @@ import {
   AI_RESERVE_WINDOW_MS,
   MAX_RESERVE_USES,
   BOT_THINK_MS,
-  activeStanding,
 } from "./turnResolver";
-import { computePotPrize, payoutsByPlacement, paidPlacementsFor } from "./payout";
+import {
+  computePotPrize,
+  payoutsByPlacement,
+  paidPlacementsFor,
+  type TowerArenaPlacement,
+} from "./payout";
 import { applyPlacementTrophies } from "../trophyStore";
 import {
   towerArenaStarted,
@@ -201,9 +206,9 @@ export async function toggleMatchPause({
 
 // ── Small helpers ──────────────────────────────────────────────────────
 
-function hashMatchmakeKey(wager: number, maxPlayers: number): number {
+function hashMatchmakeKey(wager: number): number {
   let h = 2166136261;
-  const s = `${Math.trunc(wager)}:${maxPlayers}`;
+  const s = `${Math.trunc(wager)}:${SEATS}`;
   for (let i = 0; i < s.length; i += 1) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
@@ -270,44 +275,38 @@ function placements(match: any): any[] {
 // Build a fresh pool + reset reserve bookkeeping for a new cycle.
 function newCycleState(match: any, idx: number) {
   const nonce = `${match.id}:cycle:${idx}`;
-  const pool = buildResourcePool(match.maxPlayers, nonce);
+  const pool = buildResourcePool(nonce);
   return { pool, nonce };
 }
 
 // ── Create / join (matchmaking + manual join), wager escrow ────────────
 
-function validateParams(wager: number, maxPlayers: number) {
+function validateParams(wager: number) {
   const w = Math.trunc(Number(wager) || 0);
-  const m = Math.trunc(Number(maxPlayers) || 0);
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a free lobby (wager 0) is
   // the only legal entry, so the positive-integer rule no longer rejects it.
   if (!STAKES_RETIRED && w <= 0) return { ok: false as const, error: "Wager must be a positive integer", status: 400 };
-  if (!Number.isInteger(m) || m < 2 || m > 6) {
-    return { ok: false as const, error: "maxPlayers must be an integer from 2 to 6", status: 400 };
-  }
-  return { ok: true as const, wager: w, maxPlayers: m };
+  return { ok: true as const, wager: w };
 }
 
 /**
  * Matchmaking entry point used by quick-queue and the tower arena lobby
- * "play" flow: fill an open waiting lobby with the same wager + seat
- * count, or create a new one. Escrows the wager on join. Returns the
- * match (waiting until seats fill, then started).
+ * "play" flow: fill an open waiting lobby with the same wager, or create a
+ * new one. Escrows the wager on join. Returns the match (waiting until the
+ * second seat fills, then started).
  */
 export async function createOrJoinTowerArena({
   userId,
   wager,
-  maxPlayers,
 }: {
   userId: string;
   wager: number;
-  maxPlayers: number;
 }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
-  const v = validateParams(wager, maxPlayers);
+  const v = validateParams(wager);
   if (!v.ok) return { error: v.error, status: v.status };
 
-  const lockKey = hashMatchmakeKey(v.wager, v.maxPlayers);
+  const lockKey = hashMatchmakeKey(v.wager);
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${TOWER_ARENA_LOCK_NAMESPACE}, ${lockKey})`);
 
@@ -317,7 +316,7 @@ export async function createOrJoinTowerArena({
       .where(
         and(
           eq(towerArenaMatches.wager, v.wager),
-          eq(towerArenaMatches.maxPlayers, v.maxPlayers),
+          eq(towerArenaMatches.maxPlayers, SEATS),
           eq(towerArenaMatches.status, "waiting"),
         ),
       )
@@ -327,31 +326,29 @@ export async function createOrJoinTowerArena({
     for (const cand of candidates) {
       const cur = await fetchPlayers(tx, cand.id);
       if (cur.some((p) => p.userId === userId)) return { match: cand, joined: false };
-      if (cur.length < cand.maxPlayers) {
+      if (cur.length < SEATS) {
         return await joinLobbyTx(tx, cand, userId);
       }
     }
 
-    return await createLobbyTx(tx, userId, v.wager, v.maxPlayers);
+    return await createLobbyTx(tx, userId, v.wager);
   });
 }
 
-/** Manual create lobby (explicit player count). */
+/** Manual create lobby. Tower Arena is 1v1, so there is no seat count to pick. */
 export async function createTowerArenaLobby({
   userId,
   wager,
-  maxPlayers,
 }: {
   userId: string;
   wager: number;
-  maxPlayers: number;
 }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
-  const v = validateParams(wager, maxPlayers);
+  const v = validateParams(wager);
   if (!v.ok) return { error: v.error, status: v.status };
-  const res = await db.transaction(async (tx) => createLobbyTx(tx, userId, v.wager, v.maxPlayers));
+  const res = await db.transaction(async (tx) => createLobbyTx(tx, userId, v.wager));
   if (res.match?.id) {
-    void relayTowerArenaLobbyUpdate(res.match.id, { event: "created", wager: v.wager, maxPlayers: v.maxPlayers, playerCount: 1 });
+    void relayTowerArenaLobbyUpdate(res.match.id, { event: "created", wager: v.wager, maxPlayers: SEATS, playerCount: 1 });
   }
   return res;
 }
@@ -382,13 +379,13 @@ export async function joinTowerArenaLobby({ userId, lobbyId }: { userId: string;
   });
 }
 
-async function createLobbyTx(tx: any, userId: string, wager: number, maxPlayers: number) {
+async function createLobbyTx(tx: any, userId: string, wager: number) {
   const [match] = await tx
     .insert(towerArenaMatches)
     .values({
       hostUserId: userId,
       wager,
-      maxPlayers,
+      maxPlayers: SEATS,
       status: "waiting",
       phase: "waiting",
     })
@@ -407,26 +404,19 @@ async function createLobbyTx(tx: any, userId: string, wager: number, maxPlayers:
 }
 
 /**
- * Free-play human-vs-AI match. No tokens move; `maxPlayers - 1` bot
- * seats are added but the match does NOT start yet — the human lands in
- * the ready room and clicks READY (bots are always ready), which opens
- * the 10s start countdown. Uses the placement-only stacker (bots place via
- * playAiTurn).
+ * Free-play human-vs-AI match. No tokens move; ONE bot seat is added but the
+ * match does NOT start yet — the human lands in the ready room and clicks
+ * READY (bots are always ready), which opens the 10s start countdown. Uses
+ * the placement-only stacker (bots place via playAiTurn).
  */
 export async function createAiTowerArenaMatch({
   userId,
-  maxPlayers = 2,
   difficulty,
 }: {
   userId: string;
-  maxPlayers?: number;
   difficulty?: unknown;
 }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
-  const m = Math.trunc(Number(maxPlayers) || 0);
-  if (!Number.isInteger(m) || m < 2 || m > 6) {
-    return { error: "maxPlayers must be an integer from 2 to 6", status: 400 };
-  }
   // The lobby's AI tier, stored on the row so the bot's placement policy
   // (see safeFallbackPlacement) reads it on every turn.
   const aiDifficulty = coerceAiDifficulty(difficulty);
@@ -436,9 +426,9 @@ export async function createAiTowerArenaMatch({
       .values({
         hostUserId: userId,
         wager: 0,
-        maxPlayers: m,
+        maxPlayers: SEATS,
         status: "waiting",
-        // Lobby is "full" the moment it is created (the bot seats exist),
+        // Lobby is "full" the moment it is created (the bot seat exists),
         // so it opens directly in the ready gate.
         phase: "ready",
         isAi: true,
@@ -455,17 +445,15 @@ export async function createAiTowerArenaMatch({
       ready: false,
       reserveUsesRemaining: MAX_RESERVE_USES,
     });
-    for (let seat = 2; seat <= m; seat += 1) {
-      await tx.insert(towerArenaPlayers).values({
-        matchId: match.id,
-        userId: `AI_BOT_${seat}`,
-        seat,
-        status: "active",
-        isAi: true,
-        ready: true,
-        reserveUsesRemaining: MAX_RESERVE_USES,
-      });
-    }
+    await tx.insert(towerArenaPlayers).values({
+      matchId: match.id,
+      userId: "AI_BOT_2",
+      seat: 2,
+      status: "active",
+      isAi: true,
+      ready: true,
+      reserveUsesRemaining: MAX_RESERVE_USES,
+    });
 
     return { match, joined: true, started: false };
   });
@@ -525,7 +513,7 @@ async function joinLobbyTx(tx: any, match: any, userId: string) {
 
   let updated = match;
   let becameReady = false;
-  if (nextSeat >= match.maxPlayers) {
+  if (nextSeat >= SEATS) {
     // Lobby is full — do NOT auto-start. Move to the ready gate so every
     // player clicks READY; the match starts after the 10s countdown.
     const [u] = await tx
@@ -598,7 +586,7 @@ export async function toggleTowerArenaReady({
     let deadline = match.turnDeadline;
     let countdownStarted = false;
     let countdownCancelled = false;
-    if (nextReady && isReadyGateMet(after) && after.length >= match.maxPlayers) {
+    if (nextReady && isReadyGateMet(after) && after.length >= SEATS) {
       // Everyone (incl. the just-readied player) is ready and the lobby is
       // full → begin the 10-second start countdown.
       phase = "countdown";
@@ -609,7 +597,7 @@ export async function toggleTowerArenaReady({
       phase = "ready";
       deadline = null;
       countdownCancelled = true;
-    } else if (!nextReady && phase !== "countdown" && match.maxPlayers > 0 && after.length >= match.maxPlayers) {
+    } else if (!nextReady && phase !== "countdown" && after.length >= SEATS) {
       phase = "ready";
     }
 
@@ -653,7 +641,7 @@ export async function toggleTowerArenaReady({
  * Flip a full waiting match into active play: pick a randomized starting
  * player, open placement, and build the pool.
  */
-async function startMatchTx(tx: any, matchId: string, _opts: { finalMaxPlayers?: number }) {
+async function startMatchTx(tx: any, matchId: string) {
   const match = await fetchMatchForUpdate(tx, matchId);
   const players = await fetchPlayers(tx, matchId);
   const startId = pickStartId(players);
@@ -1030,9 +1018,9 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
   const pot = 0;
   const isPaid = false;
 
-  // Win/lose verdict per player (drives the result popups): a seat that landed
-  // in a paid slot is a winner.
-  const paidSlots = paidPlacementsFor(match.maxPlayers);
+  // Win/lose verdict per player (drives the result popups): the seat that
+  // landed in a paid slot is the winner. In 1v1 that is placement 1 exactly.
+  const paidSlots = paidPlacementsFor();
   ranked.forEach((r) => {
     r.isWinner = r.placement <= paidSlots;
   });
@@ -1057,15 +1045,11 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
 
   if (!updated) return { match, alreadyFinished: true };
 
-  // ── Trophies: the symmetric placement ladder ────────────────────────
+  // ── Trophies: the 1v1 ladder ────────────────────────────────────────
   // `ranked` is the server-derived final standing (clients can never supply
   // it, and the engine's collapse/elimination order is what produces it), so
-  // the human seats are read straight into the ladder: the top of the table
-  // banks the full +30, the bottom pays the full −30, and every seat between
-  // them trades the even shares (a 4-seat table pays +30/+10/−10/−30, a 6-seat
-  // table +30/+18/+6/−6/−18/−30). Seats level on the same placement — which the
-  // engine can produce when two players are eliminated by one collapse — share
-  // the average of the ranks they span.
+  // the two human seats are read straight into the ladder: the winner banks
+  // the full +30 and the loser pays the full −30.
   //
   // This is a REAL PvP match (`match.isAi` is an AI-filled practice match) whose
   // win was decided on the server. It deliberately does NOT depend on the
@@ -1137,24 +1121,20 @@ async function finishMatchTx(tx: any, match: any, players: any[]) {
 // ── Decided standing (read-only) ───────────────────────────────────────
 //
 // The viewer's placement + payout for a seat whose result is ALREADY
-// decided while the match is still running — an eliminated player in a
-// 3+ seat game. Pure read-only mirror of the settlement math in
-// `finishMatchTx` and the resign branch of `removeParticipant`, so the
-// client can show the losing popup the moment a player is out without
-// inventing (or altering) any number: the real credit still happens once,
-// at finish, from the same helpers.
+// decided while the match is still running — a player eliminated by a
+// collapse. Pure read-only mirror of the settlement math in `finishMatchTx`
+// and the resign branch of `removeParticipant`, so the client can show the
+// losing popup the moment a player is out without inventing (or altering)
+// any number: the real credit still happens once, at finish, from the same
+// helpers.
 function decidedStanding(match: any, player: any) {
   const placement = Number(player?.placement);
   if (!Number.isInteger(placement) || placement < 1) return null;
   const isPaid = !match.isAi && match.wager > 0;
   let payout = 0;
   if (isPaid) {
-    const cfg = computePotPrize({ maxPlayers: match.maxPlayers, wager: match.wager });
-    const byPlacement = payoutsByPlacement({
-      maxPlayers: match.maxPlayers,
-      wager: match.wager,
-      prizePool: cfg.prizePool,
-    });
+    const cfg = computePotPrize({ wager: match.wager });
+    const byPlacement = payoutsByPlacement({ prizePool: cfg.prizePool });
     payout = Math.min(
       byPlacement[Math.max(0, placement - 1)] ?? 0,
       cfg.prizePool,
@@ -1164,9 +1144,7 @@ function decidedStanding(match: any, player: any) {
     placement,
     payout,
     net: payout - match.wager,
-    isWinner: match.isAi
-      ? placement <= paidPlacementsFor(match.maxPlayers)
-      : payout > match.wager,
+    isWinner: match.isAi ? placement <= paidPlacementsFor() : payout > match.wager,
   };
 }
 
@@ -1233,16 +1211,10 @@ export async function removeParticipant({
       if (p.status === "eliminated") return { match, alreadyTerminal: true };
       if (p.isAi) return { error: "AI seat cannot resign", status: 403 };
       const activeBefore = players.filter(isActive).length;
-      // Resignation placement = the player's CURRENT standing among the
-      // active roster (blocks they hold in the tower), NOT always last: a
-      // player who resigns while in 2nd place keeps 2nd (and its payout),
-      // while someone who never contributed ranks last. Depends on how many
-      // players are in the match and where the resigner sits at the time.
-      // A resigner can NEVER take 1st place — resigning means you give up the
-      // win (2-player: resigning always loses your money, per spec); the best
-      // a resigner can hold is the place they currently stand at, capped at
-      // 2nd, so the true survivor keeps 1st.
-      const placement = Math.max(2, activeStanding(players, match.towerState, userId));
+      // In 1v1 a resignation is simply a loss: the resigner takes 2nd and
+      // the survivor keeps 1st. (Resigning means you give up the win, per
+      // spec — resigning always loses your money.)
+      const placement: TowerArenaPlacement = 2;
       await tx
         .update(towerArenaPlayers)
         .set({
@@ -1269,21 +1241,13 @@ export async function removeParticipant({
       // The resigner's payout is fully determined by their placement — the
       // client shows the win/lose popup immediately from these values.
       const resignCfg =
-        !match.isAi && match.wager > 0
-          ? computePotPrize({ maxPlayers: match.maxPlayers, wager: match.wager })
-          : null;
+        !match.isAi && match.wager > 0 ? computePotPrize({ wager: match.wager }) : null;
       const resignPayouts = resignCfg
-        ? payoutsByPlacement({
-            maxPlayers: match.maxPlayers,
-            wager: match.wager,
-            prizePool: resignCfg.prizePool,
-          })
+        ? payoutsByPlacement({ prizePool: resignCfg.prizePool })
         : null;
       const payout = resignPayouts ? (resignPayouts[Math.max(0, placement - 1)] ?? 0) : 0;
       const net = payout - match.wager;
-      const isWinner = match.isAi
-        ? placement <= paidPlacementsFor(match.maxPlayers)
-        : payout > match.wager;
+      const isWinner = match.isAi ? placement <= paidPlacementsFor() : payout > match.wager;
 
       const reserve = reserveMap(match);
       if (reserve[userId]) reserve[userId] = null;
@@ -1405,7 +1369,7 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
         }
         if (match.turnDeadline && new Date(match.turnDeadline).getTime() > now) return { match };
         // Countdown finished → the match really starts (reserve phase + pool).
-        const started = await startMatchTx(tx, match.id, { finalMaxPlayers: match.maxPlayers });
+        const started = await startMatchTx(tx, match.id);
         return { match: started, started: true };
       }
       if (match.phase === "ready") {
@@ -1413,7 +1377,7 @@ export async function advanceMatchOnPoll(matchId: string, userId?: string) {
         // race or a lost relay left a full+all-ready lobby stuck in "ready",
         // start the countdown here so the game can never deadlock.
         const players = await fetchPlayers(tx, matchId);
-        if (isReadyGateMet(players) && players.length >= match.maxPlayers) {
+        if (isReadyGateMet(players) && players.length >= SEATS) {
           await tx
             .update(towerArenaMatches)
             .set({ phase: "countdown", turnDeadline: new Date(Date.now() + READY_COUNTDOWN_MS) })
@@ -1712,7 +1676,7 @@ export async function listOpenTowerArenaMatches({
     // seats, so it must not appear as a joinable row in the public grid.
     .filter((m) => (countByMatch.get(m.id) ?? 0) < m.maxPlayers)
     .map((m) => {
-      const cfg = computePotPrize({ maxPlayers: m.maxPlayers, wager: m.wager });
+      const cfg = computePotPrize({ wager: m.wager });
       const host = hostDisplay.get(m.hostUserId);
       return {
         id: m.id,

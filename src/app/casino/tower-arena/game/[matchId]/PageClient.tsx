@@ -389,7 +389,7 @@ export function TowerScene({
   const cellY = (z: number) => yFor(z + 1);
   const ceilingY = yFor(CEILING_HEIGHT + 1);
 
-  // The floating platform reads LONGER than the 16 playable columns: it
+  // The floating platform reads LONGER than the 8 playable columns: it
   // overhangs past each end into the void (purely visual — drop columns
   // stay 0..GRID_WIDTH-1, only the art extends). The stage is framed a
   // little wider than the platform so the longer floor is fully visible.
@@ -1281,9 +1281,9 @@ export default function TowerArenaMatchPage() {
     if (isFinished && !showResults) setShowResults(true);
   }, [isFinished, showResults]);
 
-  // Duration + rival (for the shared result screen) — real values only;
-  // a multi-player arena (>2 seats) has no single "opponent", so the
-  // opponent block is limited to the final 1v1 duel.
+  // Duration + rival (for the shared result screen) — real values only.
+  // Every tower is a 1v1 duel now (SEATS = 2), so there is always exactly
+  // one opponent to name.
   let resultDurationSeconds: number | null = null;
   if (match?.startedAt && match?.endedAt) {
     const t0 = new Date(match.startedAt).getTime();
@@ -1752,7 +1752,7 @@ export default function TowerArenaMatchPage() {
             <p className="mt-1 text-sm text-white/60">Drop blocks onto a tiny floating platform — don't let yours fall into the void.</p>
           </div>
           <div className="rounded-2xl border border-cyan-800 bg-black/30 p-6">
-            <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 items-start gap-3">
               {seats.map((seat) => {
                 const isReady = Boolean(seat.player && (seat.player.isAi || seat.player.ready));
                 return (
@@ -1805,7 +1805,9 @@ export default function TowerArenaMatchPage() {
 
             <div className="mt-6 text-center">
               <span className="text-2xl font-black text-cyan-300">{activeCount} / {match?.maxPlayers}</span>
-              <span className="ml-2 text-xs uppercase tracking-widest text-white/50">players</span>
+              <span className="ml-2 text-xs uppercase tracking-widest text-white/50">
+                player{activeCount === 1 ? "" : "s"} ready
+              </span>
             </div>
             <div className="mt-4 flex items-center justify-center gap-6 text-sm">
               <span>
@@ -1829,10 +1831,10 @@ export default function TowerArenaMatchPage() {
               {!isLobbyFull
                 ? `Waiting for ${(match?.maxPlayers ?? 0) - activeCount} more player${(match?.maxPlayers ?? 0) - activeCount === 1 ? "" : "s"} to join…`
                 : isCountdown
-                  ? "All players ready — get set!"
+                  ? "Both players ready — get set!"
                   : isReadyPhase
-                    ? "Everyone’s here. Click READY to start — the match begins with a 10-second countdown once all players are ready."
-                    : "Waiting for more players to join before the ready-up phase…"}
+                    ? "Your opponent is here. Click READY to start — the match begins with a 10-second countdown once both players are ready."
+                    : "Waiting for an opponent to join…"}
             </p>
 
             {/* Ready / unready toggle (humans only) */}

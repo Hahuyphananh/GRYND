@@ -14,6 +14,7 @@ import {
   CRASH_WAGERS,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
+import { CRASH_ARENA_SEATS } from "../../../../lib/crash-poker/constants";
 import {
   isMissingCrashArenaColumn,
   CRASH_ARENA_SCHEMA_HINT,
@@ -23,12 +24,12 @@ import {
   resolveCrashArenaAiBotIds,
 } from "../../../../lib/crash-arena/aiBot";
 
-/** Default tables to seed if none exist. Min buy-in = 5× wager. */
+/** Default tables to seed if none exist. Min buy-in = 5× wager, 1v1. */
 const DEFAULT_TABLES = CRASH_WAGERS.map((wager) => ({
   name: `$${wager} Crash Arena`,
   wager: wager,
   minBuyIn: wager * CRASH_MIN_BUYIN_MULTIPLIER,
-  maxPlayers: 6,
+  maxPlayers: CRASH_ARENA_SEATS,
 }));
 
 async function ensureDefaultTables() {

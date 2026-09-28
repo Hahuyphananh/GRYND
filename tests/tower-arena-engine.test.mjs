@@ -8,6 +8,9 @@
  * their footprint), the hard ceiling elimination rule, tower trimming after
  * an elimination, and payout bounds are tested explicitly.
  *
+ * Tower Arena is 1v1: the board is eight columns wide and the payout table
+ * has a single (winner-takes-all) row.
+ *
  * Run:  node --import tsx --test tests/tower-arena-engine.test.mjs
  */
 
@@ -16,6 +19,7 @@ import assert from "node:assert/strict";
 
 import {
   GRID_WIDTH,
+  SEATS,
   CEILING_HEIGHT,
   BLOCK_SHAPES,
   BLOCK_DIMS,
@@ -39,6 +43,7 @@ import {
   buildResourcePool,
   takeFromPool,
   refillResourcePool,
+  PIECES_PER_SHAPE_PER_SEAT,
 } from "../src/lib/tower-arena/engine.ts";
 import {
   computePotPrize,
@@ -52,10 +57,12 @@ import {
 // Block definitions + grid
 // ═══════════════════════════════════════════════════════════════════
 
-test("the floor and ceiling grew to fit the bigger shapes", () => {
-  assert.equal(GRID_WIDTH, 16);
+test("the 1v1 board is eight columns wide under the 24-cell ceiling", () => {
+  assert.equal(SEATS, 2);
+  assert.equal(GRID_WIDTH, 8);
   assert.equal(CEILING_HEIGHT, 24);
-  // Every shape (incl. the 4-wide long beam) fits the line and leaves room.
+  // Every shape (incl. the 4-wide long beam) fits the narrower line and
+  // still leaves a column of room to bank.
   for (const s of BLOCK_SHAPES) {
     assert.ok(BLOCK_DIMS[s].w <= GRID_WIDTH - 1, `${s} width ${BLOCK_DIMS[s].w} leaves floor room`);
     assert.ok(BLOCK_DIMS[s].h <= CEILING_HEIGHT, `${s} height ${BLOCK_DIMS[s].h} fits under the ceiling`);
@@ -75,7 +82,7 @@ test("every block shape is a solid rectangle of integer cells", () => {
   }
   // Variety: at least four distinct widths exist (narrow = safe, wide = risky).
   assert.ok(new Set(BLOCK_SHAPES.map((s) => BLOCK_DIMS[s].w)).size >= 4, "width variety");
-  // The two new larger shapes are actually in the shipped pool.
+  // The two larger shapes are actually in the shipped pool.
   assert.equal(BLOCK_DIMS.long.w, 4, "long beam spans 4 columns");
   assert.equal(BLOCK_DIMS.big.w * BLOCK_DIMS.big.h, 6, "big block is 3×2");
 });
@@ -283,7 +290,7 @@ test("the same ceiling rule applies to the taller shapes (long beam vertical = 4
 test("aiming fully off the floor is rejected up front (out of bounds = no block)", () => {
   const block = applyPlacementBlock([], {
     shape: "square",
-    x: GRID_WIDTH - 1, // 2-wide square would spill past column 15
+    x: GRID_WIDTH - 1, // 2-wide square would spill past the last column
     rotation: 0,
     blockId: "b:1",
     placedByUserId: "u1",
@@ -445,23 +452,39 @@ test("findSafeDrop refuses any shape that would cross the ceiling", () => {
   assert.equal(probe.collapsed, false, "ceiling-level short cube is stable");
 });
 
-test("buildResourcePool is deterministic for the same nonce and scales with players", () => {
-  const a1 = buildResourcePool(2, "m1:cycle:1");
-  const a2 = buildResourcePool(2, "m1:cycle:1");
+test("buildResourcePool is deterministic and sized for exactly two seats", () => {
+  const a1 = buildResourcePool("m1:cycle:1");
+  const a2 = buildResourcePool("m1:cycle:1");
   assert.deepEqual(a1, a2, "same nonce → same pool");
-  const p6 = buildResourcePool(6, "m1:cycle:1");
-  assert.ok(p6.length > a1.length, "6 players get more resources than 2");
+  // SEATS × PIECES_PER_SHAPE_PER_SEAT = 2 pieces of every shape.
+  const perShape = SEATS * PIECES_PER_SHAPE_PER_SEAT;
+  assert.equal(a1.length, BLOCK_SHAPES.length * perShape, "pool covers every shape twice");
+  for (const shape of BLOCK_SHAPES) {
+    assert.equal(
+      a1.filter((p) => p.shape === shape).length,
+      perShape,
+      `${shape} appears ${perShape}×`,
+    );
+  }
   assert.ok(
-    p6.every((p) => BLOCK_SHAPES.includes(p.shape)),
+    a1.every((p) => BLOCK_SHAPES.includes(p.shape)),
     "pool pieces use known shapes",
   );
-  // The pool includes the newly added large shapes too.
+  // The larger shapes are in the pool too.
   assert.ok(a1.some((p) => p.shape === "long"), "long beams appear in pools");
   assert.ok(a1.some((p) => p.shape === "big"), "big blocks appear in pools");
+  // A different nonce reshuffles but keeps the same composition.
+  const b1 = buildResourcePool("m1:cycle:2");
+  assert.equal(b1.length, a1.length);
+  assert.notDeepEqual(
+    b1.map((p) => p.shape),
+    a1.map((p) => p.shape),
+    "a new cycle reshuffles the pool",
+  );
 });
 
 test("takeFromPool removes exactly one piece of the requested shape", () => {
-  const pool = buildResourcePool(4, "nonce");
+  const pool = buildResourcePool("nonce");
   const count = pool.filter((p) => p.shape === "square").length;
   const { pool: after, piece } = takeFromPool(pool, "square");
   assert.ok(piece, "a square was available");
@@ -475,9 +498,9 @@ test("takeFromPool removes exactly one piece of the requested shape", () => {
 });
 
 test("refillResourcePool appends fresh pieces without touching existing ones", () => {
-  const base = buildResourcePool(3, "x");
+  const base = buildResourcePool("x");
   const before = base.length;
-  const refilled = refillResourcePool(base, 3, "y");
+  const refilled = refillResourcePool(base, "y");
   assert.ok(refilled.length > before, "pool grew");
   // Every original piece is still present (no mutation).
   for (const p of base) assert.ok(refilled.some((r) => r.id === p.id));
@@ -488,95 +511,70 @@ test("refillResourcePool appends fresh pieces without touching existing ones", (
 // ═══════════════════════════════════════════════════════════════════
 
 test("pot / rake / prize pool math follows the 5% house rake", () => {
-  // 6 × 100 = 600; house = floor(600*0.05) = 30; prize = 570.
-  const cfg = computePotPrize({ maxPlayers: 6, wager: 100 });
-  assert.equal(cfg.pot, 600);
-  assert.equal(cfg.houseFee, 30);
-  assert.equal(cfg.prizePool, 570);
+  // 2 × 100 = 200; house = floor(200*0.05) = 10; prize = 190.
+  const cfg = computePotPrize({ wager: 100 });
+  assert.equal(cfg.maxPlayers, SEATS);
+  assert.equal(cfg.pot, 200);
+  assert.equal(cfg.houseFee, 10);
+  assert.equal(cfg.prizePool, 190);
 });
 
-test("2 players: winner takes the entire prize pool, 2nd gets 0", () => {
-  const cfg = computePotPrize({ maxPlayers: 2, wager: 100 });
+test("the winner takes the entire prize pool, the runner-up gets 0", () => {
+  const cfg = computePotPrize({ wager: 100 });
   assert.equal(cfg.prizePool, 190);
-  const payouts = payoutsByPlacement({
-    maxPlayers: 2,
-    wager: 100,
-    prizePool: cfg.prizePool,
-  });
+  const payouts = payoutsByPlacement({ prizePool: cfg.prizePool });
   assert.equal(payouts[0], 190);
   assert.equal(payouts[1], 0);
   assert.equal(payouts.reduce((a, b) => a + b, 0), cfg.prizePool);
 });
 
-test("6 players at a 100 entry reproduce the spec economics", () => {
-  const cfg = computePotPrize({ maxPlayers: 6, wager: 100 });
-  const payouts = payoutsByPlacement({
-    maxPlayers: 6,
-    wager: 100,
-    prizePool: cfg.prizePool,
-  });
-  // The spec's 300 / 160 / 110 goals at a 570 prize pool.
-  assert.ok(Math.abs(payouts[0] - 300) <= 5, `winner ≈ 300 (got ${payouts[0]})`);
-  assert.ok(Math.abs(payouts[1] - 160) <= 5, `2nd ≈ 160 (got ${payouts[1]})`);
-  assert.ok(Math.abs(payouts[2] - 110) <= 5, `3rd ≈ 110 (got ${payouts[2]})`);
-  assert.equal(payouts[3], 0);
-  assert.equal(payouts[4], 0);
-  assert.equal(payouts[5], 0);
-  // All of the prize pool is handed out — never more.
-  assert.equal(payouts.reduce((a, b) => a + b, 0), cfg.prizePool);
-  // 1st / 2nd / 3rd profit at a 100 entry.
-  assert.equal(netForPlacement({ maxPlayers: 6, wager: 100, prizePool: cfg.prizePool, placement: 1 }) > 0, true);
-  assert.equal(netForPlacement({ maxPlayers: 6, wager: 100, prizePool: cfg.prizePool, placement: 2 }) > 0, true);
-  assert.equal(netForPlacement({ maxPlayers: 6, wager: 100, prizePool: cfg.prizePool, placement: 3 }) > 0, true);
-});
-
-test("payouts never exceed the prize pool for every seat count", () => {
-  for (let n = 2; n <= 6; n += 1) {
-    // A spread of stakes incl. awkward amounts.
-    for (const w of [1, 7, 100, 333, 1000]) {
-      const cfg = computePotPrize({ maxPlayers: n, wager: w });
-      const payouts = payoutsByPlacement({
-        maxPlayers: n,
-        wager: w,
-        prizePool: cfg.prizePool,
-      });
-      assert.equal(payouts.length, n);
-      assert.equal(payouts.reduce((a, b) => a + b, 0), cfg.prizePool, `N=${n} W=${w} sums to prize pool`);
-      assert.ok(
-        payouts.every((p) => p >= 0 && p <= cfg.prizePool),
-        `N=${n} payout in bounds`,
-      );
-    }
+test("payouts never exceed the prize pool at any stake", () => {
+  // A spread of stakes incl. awkward amounts.
+  for (const w of [0, 1, 7, 100, 333, 1000]) {
+    const cfg = computePotPrize({ wager: w });
+    const payouts = payoutsByPlacement({ prizePool: cfg.prizePool });
+    assert.equal(payouts.length, SEATS);
+    assert.equal(payouts.reduce((a, b) => a + b, 0), cfg.prizePool, `W=${w} sums to prize pool`);
+    assert.ok(
+      payouts.every((p) => p >= 0 && p <= cfg.prizePool),
+      `W=${w} payout in bounds`,
+    );
   }
 });
 
-test("placement payouts are monotonic (winner ≥ 2nd ≥ …) within paid places", () => {
-  const cfg = computePotPrize({ maxPlayers: 5, wager: 50 });
-  const payouts = payoutsByPlacement({ maxPlayers: 5, wager: 50, prizePool: cfg.prizePool });
+test("placement payouts are monotonic (winner ≥ runner-up)", () => {
+  const cfg = computePotPrize({ wager: 50 });
+  const payouts = payoutsByPlacement({ prizePool: cfg.prizePool });
   for (let i = 0; i < payouts.length - 1; i += 1) {
     assert.ok(payouts[i] >= payouts[i + 1], `placement ${i + 1} >= ${i + 2}`);
   }
 });
 
 test("payout helpers agree and clamp placement defensively", () => {
-  const cfg = computePotPrize({ maxPlayers: 4, wager: 25 });
-  const all = payoutsByPlacement({ maxPlayers: 4, wager: 25, prizePool: cfg.prizePool });
+  const cfg = computePotPrize({ wager: 25 });
+  const all = payoutsByPlacement({ prizePool: cfg.prizePool });
   for (let i = 0; i < all.length; i += 1) {
     assert.equal(
-      payoutForPlacement({ maxPlayers: 4, wager: 25, prizePool: cfg.prizePool, placement: (i + 1) }),
+      payoutForPlacement({ prizePool: cfg.prizePool, placement: (i + 1) }),
       all[i],
     );
   }
   assert.equal(
-    payoutForPlacement({ maxPlayers: 4, wager: 25, prizePool: cfg.prizePool, placement: 99 }),
+    payoutForPlacement({ prizePool: cfg.prizePool, placement: 99 }),
     all[all.length - 1],
     "clamps to the last placement",
   );
 });
 
-test("payout weight tables exist for every supported seat count", () => {
-  for (let n = 2; n <= 6; n += 1) {
-    assert.ok(PAYOUT_WEIGHTS[n], `weights for ${n} players`);
-    assert.equal(PAYOUT_WEIGHTS[n].length, n);
-  }
+test("the payout weight table is 1v1 only", () => {
+  assert.deepEqual(Object.keys(PAYOUT_WEIGHTS), [String(SEATS)]);
+  assert.deepEqual(PAYOUT_WEIGHTS[SEATS], [1, 0]);
+  assert.equal(
+    netForPlacement({ wager: 100, prizePool: computePotPrize({ wager: 100 }).prizePool, placement: 1 }),
+    90,
+  );
+  assert.equal(
+    netForPlacement({ wager: 100, prizePool: computePotPrize({ wager: 100 }).prizePool, placement: 2 }),
+    -100,
+  );
 });

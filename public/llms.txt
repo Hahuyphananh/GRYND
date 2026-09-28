@@ -1,7 +1,7 @@
 # GRYND
-> GRYND is a skill-based multiplayer gaming platform. Players compete in skill games using virtual tokens. Tokens have no real-world monetary value and are not redeemable for cash. GRYND is 18+ only and promotes responsible play.
+> GRYND is a skill-based gaming platform. Players compete in 1v1 skill games using virtual tokens. Tokens have no real-world monetary value and are not redeemable for cash. GRYND is 18+ only and promotes responsible play.
 
-GRYND covers dozens of arcade and table games playable solo, against AI, or against other players in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
+GRYND covers dozens of arcade and table games, every one of them 1v1: playable against AI or against another player in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
 
 ## Skill Games
 - [Game Hub](https://www.grynd.dedyn.io/games): Browse all skill games
@@ -11,7 +11,7 @@ GRYND covers dozens of arcade and table games playable solo, against AI, or agai
 - [Slots](https://www.grynd.dedyn.io/games/slots): Themed slot machines with bonus rounds
 - [Plinko](https://www.grynd.dedyn.io/games/plinko): Ball-drop payout game, solo or PvP
 - [Mines](https://www.grynd.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
-- [Crash Arena](https://www.grynd.dedyn.io/games/crash-arena): Multiplayer cash-out racing game
+- [Crash Arena](https://www.grynd.dedyn.io/games/crash-arena): 1v1 cash-out racing game
 - [Crash](https://www.grynd.dedyn.io/games/crash): Classic crash multiplier game
 - [Dice Flush](https://www.grynd.dedyn.io/games/dice-flush): Dice-based skill game
 - [Coin Flip](https://www.grynd.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP

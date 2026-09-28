@@ -7,17 +7,19 @@
  * is unit-tested here without a database:
  *
  *   • valid / invalid drop (out of aim bounds, unavailable shape)
- *   • wrong player / wrong phase (authz lives in the store, but the guard
- *     helpers + next-turn determination are verified)
+ *   • turn alternation between the two seats
  *   • timeout fallback (safeFallbackIntent — picks a stable drop when one exists)
- *   • resource consumption (shared pool) + reserve usage
+ *   • resource consumption from the shared pool
  *   • resource refill (elimination-always, else on empty) — never resets tower
- *   • void-fall (block tips off support) → elimination + tower preserved
- *   • elimination (placement values) + final player / match finish
- *   • turn order stability (eliminated players skipped)
- *   • duplicate requests / race-safety (pure multiple applications never
- *     double-consume: replaying a stale snapshot is rejected by the store's
- *     FOR UPDATE gate; here we assert idempotence of the pure outcomes)
+ *   • ceiling breach → elimination + placement + match finish in 1v1
+ *   • turn order stability
+ *   • duplicate requests / race-safety (pure outcomes are idempotent)
+ *
+ * The shared-table tests (3–6 seats, reserves, the old slip/contact-shock
+ * physics, and the "no ceiling" stack) went with the multiplayer mode: Tower
+ * Arena is strictly 1v1, and a placement either rests on the stack or crosses
+ * the ceiling. Out-of-board aims are rejected up front, so a "void fall" is
+ * not a reachable state.
  *
  * Run:  node --import tsx --test tests/tower-arena-turns.test.mjs
  */
@@ -29,6 +31,8 @@ import {
   buildResourcePool,
   simulatePlacement,
   GRID_WIDTH,
+  SEATS,
+  CEILING_HEIGHT,
 } from "../src/lib/tower-arena/engine.ts";
 import {
   resolvePlacement,
@@ -46,7 +50,8 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function players(ids = ["u1", "u2", "u3"]) {
+/** The two seats of a 1v1 match. */
+function players(ids = ["u1", "u2"]) {
   return ids.map((id, i) => ({
     userId: id,
     seat: i + 1,
@@ -56,33 +61,22 @@ function players(ids = ["u1", "u2", "u3"]) {
   }));
 }
 
-function markEliminated(list, id) {
-  return list.map((p) =>
-    p.userId === id ? { ...p, status: "eliminated" } : p,
-  );
-}
-
-/**
- * Build a snapshot with a fully deterministic pool whose composition is
- * guaranteed by the pool builder (each cycle contains every shape).
- */
-function snapshot(opts, overrides = {}) {
-  const maxPlayers = opts.maxPlayers ?? 2;
+/** A snapshot with a fully deterministic pool. */
+function snapshot(opts = {}, overrides = {}) {
   const nonce = opts.nonce ?? "m1";
-  const pool = opts.pool ?? buildResourcePool(maxPlayers, `${nonce}:cycle:1`);
-  const reserveState = opts.reserveState ?? {};
+  const pool = opts.pool ?? buildResourcePool(`${nonce}:cycle:1`);
   return {
     id: "m1",
     status: "active",
     phase: "placement",
-    maxPlayers,
+    maxPlayers: SEATS,
     resourceCycle: 1,
     turnNumber: 0,
     currentTurnPlayerId: "u1",
     turnDeadline: null,
     resourcePool: pool,
     towerState: [],
-    reserveState,
+    reserveState: {},
     placements: [],
     ...overrides,
   };
@@ -90,29 +84,19 @@ function snapshot(opts, overrides = {}) {
 
 /**
  * A stable placement: 2-wide `square` at x=2, which lands flat on the floor
- * line and never tips while building a flat column (cols 2–3 grow evenly).
+ * line (columns 2–3) and keeps building a flat column.
  */
 function stablePlacement() {
   return { shape: "square", positionX: 2, rotation: 0, actionType: "PLACE" };
 }
 
-/**
- * A deterministic void-fall placement: drop a 3-wide `I` onto a 1-cell
- * pillar at column 0. Requires the tower under column 0 to be non-empty
- * (see `pillarTower`). An I needs ceil(3/2)=2 touching cells; the single
- * pillar cell cannot support it, so it tips into the void.
- */
-function topplePlacement() {
-  return { shape: "I", positionX: 0, rotation: 0, actionType: "PLACE" };
-}
-
-/** A tower with a single 1-cell pillar of `n` cubes at column 0. */
-function pillarTower(n = 2, seed = "b", by = "u1") {
+/** A tower with a single column of `n` cubes at column `x`. */
+function pillarTower(n = 2, x = 0, seed = "b", by = "u1") {
   let t = [];
   for (let i = 1; i <= n; i += 1) {
     t = simulatePlacement(t, {
       shape: "short",
-      x: 0,
+      x,
       rotation: 0,
       blockId: `${seed}:${i}`,
       placedByUserId: by,
@@ -137,13 +121,11 @@ function okResult(r) {
 // Valid / invalid placement
 // ═══════════════════════════════════════════════════════════════════
 
-test("valid placement consumes exactly one shared-pool block and advances the turn", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const squareCount = pool.filter((p) => p.shape === "square").length;
-  const snap = snapshot({ maxPlayers: 2, pool });
-  const players2 = players(["u1", "u2"]);
-
-  const resolved = okResult(resolvePlacement(snap, players2, stablePlacement(), "u1"));
+test("valid placement consumes one shared-pool block and hands the turn to the other seat", () => {
+  const pool = buildResourcePool("m1:cycle:1");
+  const resolved = okResult(
+    resolvePlacement(snapshot({ pool }), players(), stablePlacement(), "u1"),
+  );
 
   assert.equal(resolved.collapsed, false);
   assert.equal(resolved.fromReserve, false);
@@ -152,13 +134,17 @@ test("valid placement consumes exactly one shared-pool block and advances the tu
   // Tower gained exactly one block (the freshly placed square).
   assert.equal(resolved.towerState.length, 1);
   assert.equal(resolved.placements === undefined, true);
+  // 1v1: the turn goes straight back to the other seat.
   assert.equal(resolved.nextTurnPlayerId, "u2");
+  assert.equal(resolved.activeRemaining, SEATS);
 });
 
 test("shared pool decremented by exactly one piece of the placed shape", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
+  const pool = buildResourcePool("m1:cycle:1");
   const before = shapeCounts(pool);
-  const resolved = okResult(resolvePlacement(snapshot({ maxPlayers: 2, pool }), players(["u1", "u2"]), stablePlacement(), "u1"));
+  const resolved = okResult(
+    resolvePlacement(snapshot({ pool }), players(), stablePlacement(), "u1"),
+  );
   const after = shapeCounts(resolved.pool);
   assert.equal(after.square, before.square - 1, "one square taken from pool");
   for (const k of Object.keys(before)) {
@@ -166,19 +152,18 @@ test("shared pool decremented by exactly one piece of the placed shape", () => {
   }
 });
 
-test("null pool / empty pool resolves an unavailable-shape failure", () => {
-  const snap = snapshot({ maxPlayers: 2, pool: [] });
-  const r = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
+test("empty pool resolves an unavailable-shape failure", () => {
+  const r = resolvePlacement(snapshot({ pool: [] }), players(), stablePlacement(), "u1");
   assert.equal("resolved" in r, false);
   assert.equal(r.error.includes("not available"), true);
 });
 
 test("out-of-bounds drop aim is rejected (never mutates pool or tower)", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
+  const pool = buildResourcePool("m1:cycle:1");
   const before = pool.length;
   const r = resolvePlacement(
-    snapshot({ maxPlayers: 2, pool }),
-    players(["u1", "u2"]),
+    snapshot({ pool }),
+    players(),
     { shape: "square", positionX: GRID_WIDTH + 5, rotation: 0, actionType: "PLACE" },
     "u1",
   );
@@ -187,12 +172,27 @@ test("out-of-bounds drop aim is rejected (never mutates pool or tower)", () => {
   assert.equal(pool.length, before, "pool untouched on invalid placement");
 });
 
+test("an aim that runs off the board edge is rejected, not resolved as a void fall", () => {
+  // The engine has no side walls, but the aim itself must be a legal drop
+  // column: x = GRID_WIDTH puts a 2-wide block's right cell past the last
+  // column, so the placement is refused before anything is simulated.
+  const pool = buildResourcePool("m1:cycle:1");
+  const r = resolvePlacement(
+    snapshot({ pool }),
+    players(),
+    { shape: "square", positionX: GRID_WIDTH, rotation: 0, actionType: "PLACE" },
+    "u1",
+  );
+  assert.equal("resolved" in r, false);
+  assert.equal(r.error.includes("bounds"), true);
+});
+
 test("requesting a shape absent from the pool fails without consuming", () => {
   // Pool that contains NO 'L' pieces.
-  const pool = buildResourcePool(2, "x:cycle:1").filter((p) => p.shape !== "L");
+  const pool = buildResourcePool("x:cycle:1").filter((p) => p.shape !== "L");
   const r = resolvePlacement(
-    snapshot({ maxPlayers: 2, pool }),
-    players(["u1", "u2"]),
+    snapshot({ pool }),
+    players(),
     { shape: "L", positionX: 2, rotation: 0, actionType: "PLACE" },
     "u1",
   );
@@ -201,122 +201,134 @@ test("requesting a shape absent from the pool fails without consuming", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Reserve usage
-// ═══════════════════════════════════════════════════════════════════
-
-test("using a held reservation does NOT consume the shared pool", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const before = pool.length;
-  const reserveState = { u1: { blockId: "held:1", shape: "square" } };
-  const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 2, pool, reserveState }), players(["u1", "u2"]), stablePlacement(), "u1"),
-  );
-  assert.equal(resolved.fromReserve, true);
-  assert.equal(resolved.pool.length, before, "pool unchanged when placing from reserve");
-  assert.equal(resolved.reserveState.u1, null, "reservation consumed");
-});
-
-test("a mismatched reservation is skipped and the pool is drawn instead", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const reserveState = { u1: { blockId: "held:1", shape: "square" } };
-  const resolved = okResult(
-    resolvePlacement(
-      snapshot({ maxPlayers: 2, pool, reserveState }),
-      players(["u1", "u2"]),
-      { shape: "I", positionX: 2, rotation: 0, actionType: "PLACE" },
-      "u1",
-    ),
-  );
-  assert.equal(resolved.fromReserve, false, "drew from pool for the requested shape");
-  assert.equal(resolved.reserveState.u1.shape, "square", "mismatched hold retained");
-});
-
-// ═══════════════════════════════════════════════════════════════════
 // Turn order + final player
 // ═══════════════════════════════════════════════════════════════════
 
-test("nextActiveAfter wraps around and skips eliminated players", () => {
-  assert.equal(nextActiveAfter(players(["u1", "u2"]), "u1"), "u2");
-  assert.equal(nextActiveAfter(players(["u1", "u2"]), "u2"), "u1");
-  const withElim = markEliminated(players(["u1", "u2", "u3"]), "u2");
-  assert.equal(nextActiveAfter(withElim, "u1"), "u3");
-  assert.equal(nextActiveAfter(withElim, "u3"), "u1");
+test("nextActiveAfter alternates between the two seats and returns null when only one remains", () => {
+  assert.equal(nextActiveAfter(players(), "u1"), "u2");
+  assert.equal(nextActiveAfter(players(), "u2"), "u1");
   // Only one active remains → no wrap.
-  const solo = markEliminated(players(["u1", "u2"]), "u2");
+  const solo = [{ ...players()[0] }, { ...players()[1], status: "eliminated" }];
   assert.equal(nextActiveAfter(solo, "u1"), null);
+  // An unknown actor has no successor.
+  assert.equal(nextActiveAfter(players(), "ghost"), null);
 });
 
-test("a void fall eliminates the responsible player and assigns the placement", () => {
-  const tower = pillarTower(2);
+test("a ceiling breach eliminates the dropper as 2nd and finishes the 1v1 match", () => {
+  // A column already at the ceiling: the next cube crosses it.
+  const tower = pillarTower(CEILING_HEIGHT, 2, "pre");
   const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 3 }, { towerState: tower }), players(["u1", "u2", "u3"]), topplePlacement(), "u1"),
+    resolvePlacement(
+      snapshot({}, { towerState: tower }),
+      players(),
+      { shape: "short", positionX: 2, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
   );
   assert.equal(resolved.collapsed, true);
   assert.equal(resolved.eliminations.length, 1);
   assert.equal(resolved.eliminations[0].userId, "u1");
-  // 3 players active before → u1 takes 3rd place.
-  assert.equal(resolved.eliminations[0].placement, 3);
-  assert.equal(resolved.activeRemaining, 2);
-  assert.equal(resolved.finished, false);
-  // The tower is PRESERVED — a void fall removes nothing from the stack.
-  assert.deepEqual(resolved.towerState, tower, "tower unchanged by the void fall");
-});
-
-test("eliminating the second-to-last player finishes the match (final player)", () => {
-  // 2 players: the responsible player's void fall leaves exactly 1 → finished.
-  const tower = pillarTower(2);
-  const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 2 }, { towerState: tower }), players(["u1", "u2"]), topplePlacement(), "u1"),
-  );
-  assert.equal(resolved.collapsed, true);
-  assert.equal(resolved.eliminations.length, 1);
-  assert.equal(resolved.finished, true, "one survivor remains → match finished");
-  assert.equal(resolved.activeRemaining, 1);
-  // Winner keeps placement 1; the eliminated player got placement 2.
+  // 1v1: the dropper takes the only losing placement.
   assert.equal(resolved.eliminations[0].placement, 2);
+  assert.equal(resolved.activeRemaining, 1);
+  assert.equal(resolved.finished, true, "one survivor remains → finished");
 });
 
 test("a finish leaves no next turn or deadline", () => {
-  const tower = pillarTower(2);
+  const tower = pillarTower(CEILING_HEIGHT, 2, "pre");
   const resolved = okResult(
-    resolvePlacement(snapshot({ maxPlayers: 2 }, { towerState: tower }), players(["u1", "u2"]), topplePlacement(), "u1"),
+    resolvePlacement(
+      snapshot({}, { towerState: tower }),
+      players(),
+      { shape: "short", positionX: 2, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
   );
   assert.equal(resolved.finished, true);
   assert.equal(resolved.nextTurnPlayerId, null);
   assert.equal(resolved.nextDeadlineMs, null);
 });
 
-// ═══════════════════════════════════════════════════════════════════
-// Tower preservation
-// ═══════════════════════════════════════════════════════════════════
-
-test("even flat play grows the tower forever — there is NO ceiling", () => {
-  let tower = [];
-  for (let i = 1; i <= 40; i += 1) {
-    const snap = snapshot({ maxPlayers: 2, pool: buildResourcePool(2, `m:cycle:1`) });
-    snap.towerState = tower;
-    snap.turnNumber = i - 1;
-    snap.currentTurnPlayerId = "u1";
-    const r = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
-    assert.equal("resolved" in r, true, `turn ${i} resolves`);
-    const resolved = r.resolved;
-    assert.equal(resolved.collapsed, false, `safe square ${i} never tips (no ceiling)`);
-    tower = resolved.towerState;
-  }
-  assert.equal(tower.length, 40, "the tower keeps stacking past any old height limit");
+test("a ceiling breach trims the tower and records the entry", () => {
+  const tower = pillarTower(CEILING_HEIGHT, 0, "pre");
+  const resolved = okResult(
+    resolvePlacement(
+      snapshot({}, { towerState: tower }),
+      players(),
+      { shape: "short", positionX: 0, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
+  );
+  assert.equal(resolved.collapsed, true);
+  // The doomed block is reported (alongside the trimmed upper half).
+  assert.equal(
+    resolved.entry.removedBlockIds.includes(resolved.entry.blockId),
+    true,
+    "the doomed block is in removedBlockIds",
+  );
+  // Its resolved cells are recorded so every viewer animates the same drop.
+  assert.equal(resolved.entry.placedCells.length, 1);
+  assert.equal(resolved.entry.resolvedX, 0, "resolved as aimed (the engine has no slip)");
+  // First elimination keeps the bottom half, rebased to the floor.
+  assert.ok(resolved.towerState.length > 0 && resolved.towerState.length < CEILING_HEIGHT);
+  assert.equal(Math.min(...resolved.towerState.flatMap((b) => b.cells.map((c) => c.z))), 1);
 });
 
-test("resource refill never resets the tower (void fall keeps the stable stack)", () => {
-  const tower = pillarTower(4, "pre");
-  const snap = snapshot({ maxPlayers: 4, pool: buildResourcePool(4, `m:cycle:1`) });
+// ═══════════════════════════════════════════════════════════════════
+// Tower growth / preservation
+// ═══════════════════════════════════════════════════════════════════
+
+test("stable play grows the tower to the 24-cell ceiling, and the next block ends it", () => {
+  let tower = [];
+  // 24 cubes in one column reach exactly the ceiling line and are stable.
+  for (let i = 1; i <= CEILING_HEIGHT; i += 1) {
+    const snap = snapshot({});
+    snap.towerState = tower;
+    snap.turnNumber = i - 1;
+    const r = resolvePlacement(snap, players(), {
+      shape: "short",
+      positionX: 2,
+      rotation: 0,
+      actionType: "PLACE",
+    }, i % 2 === 0 ? "u2" : "u1");
+    assert.equal("resolved" in r, true, `turn ${i} resolves`);
+    assert.equal(r.resolved.collapsed, false, `cube ${i} stays under the ceiling`);
+    tower = r.resolved.towerState;
+  }
+  assert.equal(tower.length, CEILING_HEIGHT);
+
+  // The 25th crosses the ceiling and ends the duel.
+  const snap = snapshot({});
   snap.towerState = tower;
-  const resolved = okResult(resolvePlacement(snap, players(["u1", "u2", "u3", "u4"]), topplePlacement(), "u1"));
-  assert.equal(resolved.collapsed, true);
-  assert.equal(resolved.eliminations.length, 1, "void fall eliminates the dropper");
-  assert.ok(resolved.resourceCycle > 1, "cycle incremented on elimination");
-  assert.equal(resolved.refilled, true, "elimination refills the pool");
-  assert.ok(resolved.towerState.length > 0, "tower kept its stable portion");
-  assert.deepEqual(resolved.towerState, tower, "tower identical before refill");
+  snap.turnNumber = CEILING_HEIGHT;
+  const doomed = okResult(
+    resolvePlacement(
+      snap,
+      players(),
+      { shape: "short", positionX: 2, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
+  );
+  assert.equal(doomed.collapsed, true);
+  assert.equal(doomed.finished, true);
+});
+
+test("resource refill never resets the tower", () => {
+  const tower = pillarTower(2, 0, "pre");
+  const snap = snapshot({});
+  snap.towerState = tower;
+  const resolved = okResult(
+    resolvePlacement(
+      snap,
+      players(),
+      { shape: "square", positionX: 3, rotation: 0, actionType: "PLACE" },
+      "u1",
+    ),
+  );
+  assert.equal(resolved.collapsed, false);
+  assert.equal(resolved.refilled, false, "pool intact after one draw");
+  assert.equal(resolved.towerState.length, tower.length + 1, "the pillar survives the placement");
+  assert.ok(resolved.towerState.some((b) => b.id === "b:1"), "original blocks retained");
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -326,12 +338,14 @@ test("resource refill never resets the tower (void fall keeps the stable stack)"
 test("pool refills when it empties (no elimination), without resetting the tower", () => {
   // Pool with a single piece → one placement empties it → refill.
   const onePiecePool = [{ id: "p:0", shape: "square" }];
-  const snap = snapshot({ maxPlayers: 2, pool: onePiecePool.slice() });
-  snap.towerState = pillarTower(1, "pre");
-  const resolved = okResult(resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1"));
+  const snap = snapshot({ pool: onePiecePool.slice() });
+  snap.towerState = pillarTower(1, 0, "pre");
+  const resolved = okResult(
+    resolvePlacement(snap, players(), { shape: "square", positionX: 3, rotation: 0, actionType: "PLACE" }, "u1"),
+  );
   assert.equal(resolved.refilled, true, "empty pool refilled");
   assert.ok(resolved.pool.length > 0, "pool no longer empty");
-  assert.equal(resolved.towerState.length >= 2, true, "tower retained through refill");
+  assert.equal(resolved.towerState.length, 2, "tower retained through refill");
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -339,11 +353,11 @@ test("pool refills when it empties (no elimination), without resetting the tower
 // ═══════════════════════════════════════════════════════════════════
 
 test("timeout fallback picks a stable drop when one exists (no instant elimination)", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const intent = safeFallbackIntent(snapshot({ maxPlayers: 2, pool }));
+  const pool = buildResourcePool("m1:cycle:1");
+  const intent = safeFallbackIntent(snapshot({ pool }));
   assert.equal(intent.actionType, "TIMEOUT");
   assert.equal(["short", "square", "I", "L"].includes(intent.shape), true);
-  const resolved = okResult(resolvePlacement(snapshot({ maxPlayers: 2, pool }), players(["u1", "u2"]), intent, "u1"));
+  const resolved = okResult(resolvePlacement(snapshot({ pool }), players(), intent, "u1"));
   // On an empty board every drop settles on the floor line.
   assert.equal(resolved.collapsed, false);
   assert.equal(resolved.entry.turnNumber, 1);
@@ -351,20 +365,13 @@ test("timeout fallback picks a stable drop when one exists (no instant eliminati
 });
 
 test("timeout fallback stays safe on a jagged tower when the pool allows it", () => {
-  const tower = pillarTower(2, "pre");
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const state = snapshot({ maxPlayers: 2, pool });
+  const tower = pillarTower(2, 0, "pre");
+  const pool = buildResourcePool("m1:cycle:1");
+  const state = snapshot({ pool });
   state.towerState = tower;
   const intent = safeFallbackIntent(state);
-  const resolved = okResult(resolvePlacement(state, players(["u1", "u2"]), intent, "u1"));
+  const resolved = okResult(resolvePlacement(state, players(), intent, "u1"));
   assert.equal(resolved.collapsed, false, "fallback chose a block that balances on the pillar");
-});
-
-test("timeout prefers a held safe reservation when present", () => {
-  const pool = [{ id: "p:1", shape: "L" }];
-  const reserveState = { u1: { blockId: "held:1", shape: "short" } };
-  const intent = safeFallbackIntent(snapshot({ maxPlayers: 2, pool, reserveState }));
-  assert.equal(intent.shape, "short", "uses the held small block");
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -372,113 +379,70 @@ test("timeout prefers a held safe reservation when present", () => {
 // ═══════════════════════════════════════════════════════════════════
 
 test("a duplicate placement against the SAME snapshot is deterministic and non-double-consuming", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const snap = snapshot({ maxPlayers: 2, pool });
+  const pool = buildResourcePool("m1:cycle:1");
+  const snap = snapshot({ pool });
 
-  const first = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
+  const first = resolvePlacement(snap, players(), stablePlacement(), "u1");
   assert.equal("resolved" in first, true);
 
   // Replaying the STALE snapshot resolves to the same outcome — pure
   // idempotence. The store additionally gates replays via its FOR UPDATE row
   // lock + conditional phase update (see store tests).
-  const second = resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1");
+  const second = resolvePlacement(snap, players(), stablePlacement(), "u1");
   assert.equal("resolved" in second, true);
   assert.deepEqual(first.resolved.towerState, second.resolved.towerState);
   assert.deepEqual(first.resolved.pool, second.resolved.pool);
-  assert.equal(pool.length, buildResourcePool(2, "m1:cycle:1").length, "original pool array never mutated");
+  assert.equal(pool.length, buildResourcePool("m1:cycle:1").length, "original pool array never mutated");
 });
 
-test("concurrent reserve + placement on the same snapshot cannot double-consume (pure copy semantics)", () => {
-  const pool = buildResourcePool(2, "m1:cycle:1");
+test("the resolver never mutates the caller's snapshot", () => {
+  const pool = buildResourcePool("m1:cycle:1");
   const originalLength = pool.length;
-  const shared = snapshot({ maxPlayers: 2, pool });
+  const shared = snapshot({ pool });
 
-  const a = resolvePlacement(shared, players(["u1", "u2"]), stablePlacement(), "u1").resolved;
+  const a = resolvePlacement(shared, players(), stablePlacement(), "u1").resolved;
   assert.ok(a.pool.length === originalLength - 1);
   assert.equal(pool.length, originalLength, "original pool unmutated by resolver");
+  assert.deepEqual(shared.towerState, [], "original tower unmutated");
 });
 
-test("repeat applications advance turnNumber monotonically", () => {
-  let snap = snapshot({ maxPlayers: 3 });
+test("repeat applications advance turnNumber monotonically and alternate seats", () => {
+  let snap = snapshot({});
   let cur = "u1";
   const turns = [];
-  const ample = () => buildResourcePool(3, `m:cycle:1`);
+  const seats = [];
   for (let i = 0; i < 5; i += 1) {
-    snap.resourcePool = ample(); // ample squares each iteration so we never starve
+    snap.resourcePool = buildResourcePool(`m:cycle:${i}`); // ample pieces each iteration
     snap.currentTurnPlayerId = cur;
     snap.phase = "placement";
-    const r = resolvePlacement(snap, players(["u1", "u2", "u3"]), stablePlacement(), cur);
+    const r = resolvePlacement(snap, players(), stablePlacement(), cur);
     assert.equal("resolved" in r, true, `turn ${i + 1} resolved`);
     const resolved = r.resolved;
     turns.push(resolved.entry.turnNumber);
+    seats.push(resolved.entry.seat);
     snap = {
       ...snap,
       towerState: resolved.towerState,
       turnNumber: resolved.entry.turnNumber,
       resourceCycle: resolved.resourceCycle,
-      reserveState: resolved.reserveState,
     };
     cur = resolved.nextTurnPlayerId;
-    assert.ok(cur, "turn always advances while >1 remain");
+    assert.ok(cur, "turn always alternates while both seats are active");
   }
   assert.deepEqual(turns, [1, 2, 3, 4, 5]);
+  assert.deepEqual(seats, [1, 2, 1, 2, 1]);
 });
 
-// ── Turn window + no-side-walls aims ──────────────────────────────────
+// ── Turn window + aim bounds ──────────────────────────────────────────
 
 test("placement and reserve windows are at least 60 seconds", () => {
   assert.ok(TURN_PLACEMENT_WINDOW_MS >= 60000, "placement window ≥ 60s");
   assert.ok(RESERVE_WINDOW_MS >= 60000, "reserve window ≥ 60s");
 });
 
-test("aiming fully beside the platform is legal and resolves as a void fall (no walls)", () => {
-  // x=5 with a 2-wide block puts both columns over the void — previously
-  // rejected as out of bounds, now a legal aim that collapses the dropper.
-  const pool = buildResourcePool(2, "m1:cycle:1");
-  const before = pool.length;
-  const r = resolvePlacement(
-    snapshot({ maxPlayers: 3, pool }),
-    players(["u1", "u2", "u3"]),
-    { shape: "square", positionX: GRID_WIDTH, rotation: 0, actionType: "PLACE" },
-    "u1",
-  );
-  const res = okResult(r);
-  assert.equal(res.collapsed, true, "full miss = void fall");
-  assert.equal(res.entry.removedBlockIds.length, 1);
-  assert.equal(res.entry.placedCells.length, 0, "no resolved cells on a full miss");
-  assert.equal(res.entry.resolvedX, GRID_WIDTH);
-  assert.equal(res.finished, false, "more players remain — match continues");
-  // Elimination refills the pool to a fresh cycle (never resets the tower).
-  assert.equal(res.refilled, true, "a fresh reserve cycle opens after the void fall");
-  assert.equal(res.resourceCycle, 2);
-});
-
-test("entry records the resolved placement incl. slips and contact-shock sheds", () => {
-  // Jenga: floor beam + brick overhanging its edge; the drop's beam tips the
-  // brick — both fall together and the entry carries both blocks' cells so
-  // every viewer animates the same shock.
-  const u = players(["u1", "u2", "u3"]);
-  const snap = snapshot({ maxPlayers: 3 });
-  let b1 = okResult(resolvePlacement(snap, u, { shape: "I", positionX: 0, rotation: 0, actionType: "PLACE" }, "u1"));
-  snap.towerState = b1.towerState;
-  snap.turnNumber = b1.entry.turnNumber;
-  snap.currentTurnPlayerId = "u2";
-  snap.phase = "placement";
-  snap.resourcePool = buildResourcePool(3, "m1:cycle:1");
-  let b2 = okResult(resolvePlacement(snap, u, { shape: "L", positionX: 2, rotation: 1, actionType: "PLACE" }, "u2"));
-  assert.equal(b2.collapsed, false);
-  snap.towerState = b2.towerState;
-  snap.turnNumber = b2.entry.turnNumber;
-  snap.currentTurnPlayerId = "u3";
-  snap.phase = "placement";
-  snap.resourcePool = buildResourcePool(3, "m1:cycle:1");
-  const drop = okResult(resolvePlacement(snap, u, { shape: "I", positionX: 2, rotation: 0, actionType: "PLACE" }, "u3"));
-  assert.equal(drop.collapsed, true, "beam on the brick's far end tips it");
-  assert.equal(drop.removedBlockIds.length, 2, "brick + dropped beam fell together");
-  assert.equal(drop.entry.removedBlocks.length, 2, "entry carries both fallen blocks");
-  assert.ok(drop.entry.removedBlocks.every((b) => (b.cells || []).length > 0), "fallen blocks keep their cells for animation");
-  assert.equal(drop.entry.resolvedX, 2, "no slip here — resolved as aimed");
-  assert.equal(drop.entry.placedCells.length, 3, "the dropped beam's cells are recorded");
+test("free-play (AI) matches get a short reserve window so bots never stall", () => {
+  assert.ok(AI_RESERVE_WINDOW_MS < RESERVE_WINDOW_MS, "AI reserve window is shorter than PvP");
+  assert.ok(BOT_THINK_MS < TURN_PLACEMENT_WINDOW_MS, "bots think for a beat, not a whole turn");
 });
 
 // ── parseReserveMap stays a plain passthrough ─────────────────────────
@@ -491,26 +455,10 @@ test("parseReserveMap tolerates junk and passes through records", () => {
   });
 });
 
-// ── Resignation placement + per-match windows ──────────────────────────
-
-test("a resignation holds the resigner's placement; later eliminations skip taken slots", () => {
-  // 6-player match where u2 already resigned in 2nd place (standing-based
-  // resignation placement). u1 now collapses → takes the worst FREE slot,
-  // so the final rankings stay a clean 1..6 bijection.
-  const roster = players(["u1", "u2", "u3", "u4", "u5", "u6"]).map((p) =>
-    p.userId === "u2" ? { ...p, status: "eliminated", placement: 2 } : p,
-  );
-  const snap = snapshot({ maxPlayers: 6, pool: buildResourcePool(6, "m1:cycle:1") });
-  snap.towerState = pillarTower(2);
-  const resolved = okResult(resolvePlacement(snap, roster, topplePlacement(), "u1"));
-  assert.equal(resolved.collapsed, true);
-  assert.equal(resolved.eliminations.length, 1);
-  assert.equal(resolved.eliminations[0].placement, 6, "worst free placement (2 already taken)");
-  assert.equal(resolved.activeRemaining, 4);
-});
+// ── Standing + per-match windows ──────────────────────────────────────
 
 test("activeStanding ranks by blocks held in the tower (ties by earlier seat)", () => {
-  // Tower: u2 built 3 blocks, u1 built 2, u3 none → standings 1st / 2nd / last.
+  // Tower: u2 built 3 blocks, u1 built 2 → u2 1st, u1 2nd.
   let tower = [];
   for (let i = 0; i < 3; i += 1) {
     tower = simulatePlacement(tower, {
@@ -522,15 +470,10 @@ test("activeStanding ranks by blocks held in the tower (ties by earlier seat)", 
       shape: "short", x: 2, rotation: 0, blockId: `b${i}`, placedByUserId: "u1", turnNumber: 10 + i,
     }).tower;
   }
-  const roster = players(["u1", "u2", "u3"]);
+  const roster = players();
   assert.equal(activeStanding(roster, tower, "u2"), 1);
   assert.equal(activeStanding(roster, tower, "u1"), 2);
-  assert.equal(activeStanding(roster, tower, "u3"), 3, "never contributed → last place");
-  assert.equal(activeStanding(roster, null, "u1"), 3, "empty tower → last place (no cheese)");
-
-  // Eliminated players are excluded from the standing roster.
-  const withElim = markEliminated(roster, "u3");
-  assert.equal(activeStanding(withElim, tower, "u2"), 1);
+  assert.equal(activeStanding(roster, null, "u1"), 2, "empty tower → last place (no cheese)");
 
   // Tie-break: equal blocks → earlier seat ranks higher.
   let tieTower = [];
@@ -546,21 +489,16 @@ test("activeStanding ranks by blocks held in the tower (ties by earlier seat)", 
   assert.equal(activeStanding(roster, tieTower, "u2"), 2);
 });
 
-test("free-play (AI) matches get a short reserve window so bots never stall", () => {
-  assert.ok(AI_RESERVE_WINDOW_MS < RESERVE_WINDOW_MS, "AI reserve window is shorter than PvP");
-});
-
 test("resolvePlacement honors per-match (AI) turn windows", () => {
-  const snap = snapshot({ maxPlayers: 2 });
+  const snap = snapshot({});
   const before = Date.now();
   const resolved = okResult(
-    resolvePlacement(snap, players(["u1", "u2"]), stablePlacement(), "u1", {
+    resolvePlacement(snap, players(), stablePlacement(), "u1", {
       reserveWindowMs: AI_RESERVE_WINDOW_MS,
       placementWindowMs: AI_TURN_PLACEMENT_WINDOW_MS,
     }),
   );
   assert.ok(resolved.nextDeadlineMs != null, "next turn has a deadline");
-  // No refill on a stable placement → the next window is the placement one.
   const expected = before + AI_TURN_PLACEMENT_WINDOW_MS;
   assert.ok(
     Math.abs(resolved.nextDeadlineMs - expected) < 1000,
@@ -573,7 +511,7 @@ test("the turn after a bot gets the short think window; humans keep the full win
     { userId: "u1", seat: 1, status: "active", isAi: false, reserveUsesRemaining: MAX_RESERVE_USES },
     { userId: "AI_BOT_2", seat: 2, status: "active", isAi: true, reserveUsesRemaining: MAX_RESERVE_USES },
   ];
-  const snap = snapshot({ maxPlayers: 2 });
+  const snap = snapshot({});
 
   // u1 (human) places → the next holder is the bot → short think window, so
   // viewers see the bot's planned-placement ghost before it acts.

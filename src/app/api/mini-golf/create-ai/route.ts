@@ -12,7 +12,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { logError } from "../../../../lib/logError";
 import { createAiMatch } from "../../../../lib/mini-golf/serverStore";
 
-export async function POST() {
+export async function POST(req: Request) {
   const gate = await requireAgeVerifiedUser();
   if (gate.response) return gate.response;
   const userId = gate.userId;
@@ -23,11 +23,23 @@ export async function POST() {
     );
   }
 
+  // The lobby's AI-difficulty pick. Absent/invalid coerces to the mini-golf
+  // default, so an older client still starts a practice match.
+  const body = (await req.json().catch(() => ({}))) as { difficulty?: unknown };
+
   try {
-    const { match } = await createAiMatch({ userId });
+    const { match } = await createAiMatch({
+      userId,
+      difficulty: body?.difficulty,
+    });
     return NextResponse.json({
       success: true,
-      data: { matchId: match.id, status: match.status, practice: true },
+      data: {
+        matchId: match.id,
+        status: match.status,
+        practice: true,
+        aiDifficulty: match.aiDifficulty ?? null,
+      },
     });
   } catch (error) {
     await logError({

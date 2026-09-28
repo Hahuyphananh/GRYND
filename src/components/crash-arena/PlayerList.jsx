@@ -4,6 +4,7 @@ import { IconBomb, IconCircleCheck, IconFlag, IconRocket } from "@tabler/icons-r
 import IconAvatar from "../IconAvatar";
 import { frameWrapperProps } from "../FrameAvatar";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
+import { CRASH_ARENA_SEATS } from "../../lib/crash-poker/constants";
 
 
 /**
@@ -12,7 +13,7 @@ import { cosmeticEffectClass } from "../../lib/profileCosmetics";
  * Props:
  *   players  — array of { name, iconKey, balance, isYou?, isSittingOut?,
  *                        allIn?, folded?, foldedAtMultiplier?, busted?, isPlaying? }
- *   maxSeats — total seats at the table
+ *   maxSeats — total seats at the table (Crash Arena is 1v1, so 2)
  *   phase    — current round phase ("waiting" | "running" | "crashed" | "settling")
  *   readyUserIds — ids of seated players who pressed Start Round (the ready
  *                  vote). AI bots never vote, so they are simply absent.
@@ -22,7 +23,7 @@ import { cosmeticEffectClass } from "../../lib/profileCosmetics";
  *   onRenameAi — (player) => void — the HOST's control to rename an AI
  *              seat (only rendered on bot cards when provided)
  */
-export default function PlayerList({ players = [], maxSeats = 6, phase = "waiting", readyUserIds = [], onReport, onRemoveAi, onRenameAi }) {
+export default function PlayerList({ players = [], maxSeats = CRASH_ARENA_SEATS, phase = "waiting", readyUserIds = [], onReport, onRemoveAi, onRenameAi }) {
   const seats = Array.from({ length: maxSeats }, (_, i) => players[i] || null);
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";
 

@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db/client";
 import { crashArenaPlayers, crashArenaTables, crashArenaTransactions, users } from "../db/schema";
 import { CRASH_MAX_BUYIN, CRASH_MIN_WAGER, CRASH_MAX_WAGER, CRASH_MIN_BUYIN_MULTIPLIER } from "./games/crash/constants";
+import { CRASH_ARENA_SEATS } from "./crash-poker/constants";
 import { normalizeStake } from "./games/stakes";
 
 export async function createOrJoinCrashArenaDestination({ userId, wager = 10, buyInAmount }: { userId: string; wager?: number; buyInAmount?: number }) {
@@ -33,7 +34,7 @@ export async function createOrJoinCrashArenaDestination({ userId, wager = 10, bu
         return { match: { id: open.id, tableId: open.id, playerId: player.id }, joined: true };
       }
 
-      const [table] = await tx.insert(crashArenaTables).values({ name: `$${wagerNum} Crash Arena`, wagerAmount: wagerNum.toFixed(2), minimumBuyin: minimumBuyin.toFixed(2), maxPlayers: 6, hostId: user.id, status: "waiting", isAi: false, isPrivate: false }).returning();
+      const [table] = await tx.insert(crashArenaTables).values({ name: `$${wagerNum} Crash Arena`, wagerAmount: wagerNum.toFixed(2), minimumBuyin: minimumBuyin.toFixed(2), maxPlayers: CRASH_ARENA_SEATS, hostId: user.id, status: "waiting", isAi: false, isPrivate: false }).returning();
       const [player] = await tx.insert(crashArenaPlayers).values({ tableId: table.id, userId: user.id, balance: buyIn.toFixed(2), status: "seated" }).returning();
       await tx.insert(crashArenaTransactions).values({ userId: user.id, tableId: table.id, amount: buyIn.toFixed(2), type: "BUY_IN", reason: `Created ${table.name}` });
       return { match: { id: table.id, tableId: table.id, playerId: player.id }, joined: false };

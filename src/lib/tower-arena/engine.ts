@@ -3,8 +3,18 @@
 // Deterministic, server-authoritative Tower Arena engine.
 // Blocks fall vertically onto the highest support below their footprint and
 // become fixed. The only losing placement is one that crosses the ceiling.
+//
+// The game is strictly 1v1 (two seats, alternating turns). Two facts follow
+// from that and are load-bearing here:
+//   • the board is HALF the width it was when a shared table of up to six
+//     players built the tower, so the stack fills the line and collapses far
+//     sooner — see GRID_WIDTH;
+//   • the shared pool is sized for exactly two players, so a cycle offers two
+//     pieces of every shape (SEATS_PER_SHAPE_PER_CYCLE).
 
-export const GRID_WIDTH = 16;
+export const SEATS = 2;
+
+export const GRID_WIDTH = 8;
 export const GRID_DEPTH = 1;
 export const CEILING_HEIGHT = 24;
 export const BLOCK_HEIGHT = 1;
@@ -328,11 +338,15 @@ export interface ResourcePiece {
   shape: BlockShape;
 }
 
-const CYCLE_SHAPES_PER_PLAYER: Record<number, number> = { 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 };
+/**
+ * How many pieces of each shape one cycle of the shared pool offers PER SEAT.
+ * Two seats × one piece each = two of every shape, which is the piece budget
+ * the shared pool has always used for a 1v1 tower.
+ */
+export const PIECES_PER_SHAPE_PER_SEAT = 1;
 
-function poolComposition(maxPlayers: number): BlockShape[] {
-  const playerCount = Math.max(2, Math.min(6, Math.trunc(maxPlayers)));
-  const perShape = CYCLE_SHAPES_PER_PLAYER[playerCount] ?? 2;
+function poolComposition(): BlockShape[] {
+  const perShape = Math.max(1, PIECES_PER_SHAPE_PER_SEAT) * SEATS;
   const shapes: BlockShape[] = [];
   for (const shape of BLOCK_SHAPES) {
     for (let i = 0; i < perShape; i += 1) shapes.push(shape);
@@ -349,9 +363,9 @@ function seededRandom(seed: string): () => number {
   };
 }
 
-export function buildResourcePool(maxPlayers: number, nonce: string): ResourcePiece[] {
-  const shapes = poolComposition(maxPlayers);
-  const random = seededRandom(`tower-arena:${nonce}:${maxPlayers}`);
+export function buildResourcePool(nonce: string): ResourcePiece[] {
+  const shapes = poolComposition();
+  const random = seededRandom(`tower-arena:${nonce}`);
   for (let i = shapes.length - 1; i > 0; i -= 1) {
     const j = Math.floor(random() * (i + 1));
     [shapes[i], shapes[j]] = [shapes[j], shapes[i]];
@@ -367,6 +381,6 @@ export function takeFromPool(pool: ResourcePiece[], shape: BlockShape): { pool: 
   return { pool: next, piece };
 }
 
-export function refillResourcePool(pool: ResourcePiece[], maxPlayers: number, nonce: string): ResourcePiece[] {
-  return [...pool, ...buildResourcePool(maxPlayers, nonce)];
+export function refillResourcePool(pool: ResourcePiece[], nonce: string): ResourcePiece[] {
+  return [...pool, ...buildResourcePool(nonce)];
 }

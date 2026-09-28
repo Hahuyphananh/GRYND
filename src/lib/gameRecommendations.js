@@ -36,6 +36,13 @@
 //                              "variety" (play different games) is a breadth
 //                              preference, so it is order-neutral and
 //                              deliberately produces NO signal.
+//                              NOTE: every GRYND game is a 1v1 duel (the
+//                              shared tables were retired), so `pvp` is on
+//                              the whole catalog. The signal is still honest
+//                              and still recorded as a reason, but because it
+//                              matches every game it adds the same weight
+//                              everywhere and never reorders anything on its
+//                              own — the other preferences decide.
 //   Q4 priorities  ( 4 each) — the goals signal: winning→skill,
 //                              ranking_up→competitive, earning_tokens→token
 //                              wager support, improving_skills→skill,

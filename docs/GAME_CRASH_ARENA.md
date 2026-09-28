@@ -1,15 +1,19 @@
 # Crash Arena — Game Guide
 
-Crash Arena is a **crash-curve game of chicken**. A multiplier curve climbs
-while a hand is live; everyone antes the same amount, and anyone can **Fold
-at any moment** — the last player to fold takes the biggest share of the
-pot, and anyone still in when the curve crashes gets nothing. It rewards
-reading the curve and outlasting the other players.
+Crash Arena is a **heads-up crash-curve game of chicken**. A multiplier curve
+climbs while a hand is live; both seats ante the same amount, and either can
+**Fold at any moment** — the last player to fold takes the pot, and whoever is
+still in when the curve crashes gets nothing. It rewards reading the curve and
+outlasting your opponent.
+
+Every table is strictly heads-up (two seats). The shared three-to-six seat
+table mode was retired: a table now opens with two seats, and the hand resolver
+only ever ranks two placements.
 
 ## How a match works
 
-1. **Table & rounds** — players sit at a crash-arena table (multi-player,
-   with AI seats available). Each round follows a state machine:
+1. **Table & rounds** — two players sit at a crash-arena table (an AI seat is
+   available for practice). Each round follows a state machine:
    - **Waiting** — players opt in (**Play**) or sit out (**Sit Out**).
    - **Running** — the hand is live: everyone has antes, and the crash
      curve climbs underneath.

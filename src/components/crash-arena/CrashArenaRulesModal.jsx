@@ -40,12 +40,12 @@ const RULES = [
   },
   {
     icon: <IconCards size={24} />,
-    title: "Everyone antes",
+    title: "Both players ante",
     body: (
       <>
-        At the start of every hand, <strong className="text-white/90">every player
-        posts the same ante</strong> — the table wager. No blinds, no dealer, no
-        roles. The pot is simply the antes (plus any carry-over).
+        At the start of every hand, <strong className="text-white/90">both players
+        post the same ante</strong> — the table wager. No blinds, no dealer, no
+        roles. The pot is simply the two antes (plus any carry-over).
       </>
     ),
   },
@@ -80,12 +80,11 @@ const RULES = [
     title: "Ranked payouts",
     body: (
       <>
-        The <strong className="text-white/90">last player to fold</strong> before the
-        crash takes 1st place, the second-to-last takes 2nd, and so on. The pot
-        (minus a 5% fee) is split by rank: 1st gets the biggest share, every
-        folder gets something, and{" "}
-        <strong className="text-red-400">players still in when it crashes get
-        nothing</strong>. The longer you dare to ride, the bigger your rank.
+        Fold later than your opponent and you take 1st place — and with it the
+        bigger share of the pot (minus a 5% fee). The player who folds first
+        takes 2nd and still recovers part of their ante, so{" "}
+        <strong className="text-amber-300">folding late beats folding
+        early</strong>. The longer you dare to ride, the more you take home.
       </>
     ),
   },
@@ -96,7 +95,7 @@ const RULES = [
       <>
         If a fold leaves <strong className="text-white/90">exactly one player still
         in</strong>, that player wins the hand immediately — no need to survive the
-        crash. Everyone else ranks by fold order.
+        crash. In a head-to-head duel that is what ends almost every hand.
       </>
     ),
   },
@@ -105,11 +104,10 @@ const RULES = [
     title: "The crash",
     body: (
       <>
-        If <strong className="text-red-400">two or more players are still in</strong>{" "}
-        when it crashes, they all lose their ante. The folders keep their ranked
-        shares. If <strong className="text-white/90">nobody folded</strong>, no one
-        wins and the whole pot <strong className="text-amber-300">carries over</strong>{" "}
-        to the next hand.
+        If you <strong className="text-red-400">both ride into the crash</strong>,
+        you both lose your ante. Because nobody folded, no one wins and the whole
+        pot <strong className="text-amber-300">carries over</strong> to the next
+        hand — so the ante you just lost is playing for a bigger pot next time.
       </>
     ),
   },
@@ -131,83 +129,58 @@ const EXAMPLE_STEPS = [
   {
     icon: <IconArmchair size={22} />,
     tag: "Setup",
-    title: "4 players take a seat",
+    title: "Two players take a seat",
     body: (
       <>
-        Alice, Bob, Carol and Dave join a <strong className="text-amber-300">$10</strong>{" "}
-        table (min buy-in $50). No blinds, no dealer — everyone plays the same game.
+        Alice and Bob join a <strong className="text-amber-300">$10</strong> table
+        (min buy-in $50). Crash Arena is head-to-head, so the table is full — no
+        blinds, no dealer, both players on the same game.
       </>
     ),
   },
   {
     icon: <IconCards size={22} />,
     tag: "Ante",
-    title: "Everyone antes $10",
+    title: "Both players ante $10",
     body: (
       <>
-        All four players post the <strong className="text-amber-300">$10 ante</strong>.
+        Both players post the <strong className="text-amber-300">$10 ante</strong>.
         The curve starts climbing from 1.00x.{" "}
-        <strong className="text-cyan-300">Pot = $40</strong>
+        <strong className="text-cyan-300">Pot = $20</strong>
       </>
     ),
   },
   {
     icon: <IconFlag size={22} />,
     tag: "1.40x",
-    title: "Dave folds first",
-    body: (
-      <>
-        Dave bails out at <strong className="text-amber-300">1.40x</strong> — his $10
-        stays in the pot as dead money, but he&apos;s now guaranteed last place among
-        the folders.
-      </>
-    ),
-  },
-  {
-    icon: <IconFlag size={22} />,
-    tag: "1.90x",
-    title: "Carol folds",
-    body: (
-      <>
-        Carol folds at <strong className="text-amber-300">1.90x</strong> — she outlasted
-        Dave, so she ranks above him. Alice and Bob stay in.
-      </>
-    ),
-  },
-  {
-    icon: <IconFlag size={22} />,
-    tag: "2.40x",
     title: "Bob folds",
     body: (
       <>
-        Bob folds at <strong className="text-amber-300">2.40x</strong> — the latest fold
-        so far, which means he&apos;s currently in 1st place… if Alice doesn&apos;t
-        outlast him.
+        Bob bails out at <strong className="text-amber-300">1.40x</strong> — his $10
+        stays in the pot as dead money, and he&apos;s locked into 2nd place.
       </>
     ),
   },
   {
-    icon: <IconBomb size={22} />,
-    crash: true,
-    tag: "2.60x",
-    title: "CRASH!",
+    icon: <IconBolt size={22} />,
+    tag: "Fold-out",
+    title: "Alice is the last player standing",
     body: (
       <>
-        The curve crashes at <strong className="text-amber-300">2.60x</strong> with Alice
-        still in — she <strong className="text-red-400">gets nothing</strong>. The folders
-        rank by fold order: Bob (2.40x) 1st, Carol (1.90x) 2nd, Dave (1.40x) 3rd.
+        Bob&apos;s fold left exactly <strong className="text-white/90">one player
+        still in</strong>, so the hand ends right there — Alice wins it without ever
+        having to survive a crash. Had <em>she</em> folded instead, the two
+        finishes would simply swap.
       </>
     ),
   },
 ];
 
 const EXAMPLE_RESULT = [
-  { label: "Pot", value: "$40", tone: "text-cyan-300" },
-  { label: "5% fee", value: "−$2.00", tone: "text-white/60" },
-  { label: "Bob (1st)", value: "+$19.00", tone: "text-emerald-300" },
-  { label: "Carol (2nd)", value: "+$12.67", tone: "text-emerald-300" },
-  { label: "Dave (3rd)", value: "+$6.33", tone: "text-emerald-300" },
-  { label: "Alice (crashed)", value: "−$10.00", tone: "text-red-400" },
+  { label: "Pot", value: "$20", tone: "text-cyan-300" },
+  { label: "5% fee", value: "−$1.00", tone: "text-white/60" },
+  { label: "Alice (1st)", value: "+$12.67", tone: "text-emerald-300" },
+  { label: "Bob (2nd, folded)", value: "+$6.33", tone: "text-emerald-300" },
 ];
 
 /**
@@ -330,12 +303,12 @@ export default function CrashArenaRulesModal({ onClose }) {
                   <IconBolt size={14} className="mb-0.5 mr-1 inline" /> Quick recap
                 </h3>
                 <ul className="text-sm text-gray-300 space-y-1.5 list-disc list-inside">
-                  <li>Everyone antes the wager each hand — no blinds.</li>
+                  <li>Both players ante the wager each hand — no blinds.</li>
                   <li>One decision: <strong className="text-amber-300">Fold</strong>, any time.</li>
-                  <li>The <strong className="text-amber-300">last player to fold</strong> takes 1st; every folder ranks below; crash victims get nothing.</li>
+                  <li>Fold <strong className="text-amber-300">later</strong> than your opponent → 1st; fold first → 2nd and still part of your ante back.</li>
                   <li>Last one standing wins the hand immediately.</li>
                   <li>Pot split by rank, <strong className="text-amber-300">minus 5%</strong>.</li>
-                  <li>Nobody folded + crash → pot <strong className="text-amber-300">carries over</strong>.</li>
+                  <li>Both riders crash → pot <strong className="text-amber-300">carries over</strong>.</li>
                 </ul>
               </div>
             </div>
@@ -344,10 +317,10 @@ export default function CrashArenaRulesModal({ onClose }) {
               {/* Hand summary header */}
               <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-center">
                 <h3 className="text-sm font-black text-amber-300">
-                  <IconDeviceGamepad size={18} className="mb-1 mr-1.5 inline" /> Example Hand: $10 Table, 4 Players
+                  <IconDeviceGamepad size={18} className="mb-1 mr-1.5 inline" /> Example Hand: $10 Table, Head-to-Head
                 </h3>
                 <p className="text-xs text-white/60 mt-1">
-                  Follow one full hand from the ante to the ranked payouts.
+                  Follow one full duel from the ante to the ranked payouts.
                 </p>
               </div>
 
@@ -406,9 +379,10 @@ export default function CrashArenaRulesModal({ onClose }) {
                   ))}
                 </div>
                 <p className="text-xs text-cyan-100/70 text-center mt-3">
-                  $40 pot − $2 fee = $38 split by rank weights (3 : 2 : 1) —
-                  Bob 19, Carol 12.67, Dave 6.33. Alice rode into the crash and
-                  lost her ante. Folding later beat folding earlier.
+                  $20 pot − $1 fee = $19 split by rank weights (2 : 1) — Alice
+                  12.67, Bob 6.33. Neither player crashed: Bob bowed out early
+                  and still recovered part of his ante, while Alice rode to the
+                  fold-out and took the bigger share.
                 </p>
               </div>
             </div>

@@ -178,8 +178,8 @@ export function safeFallbackIntent(snapshot: MatchSnapshot): PlacementIntent {
   return { shape, positionX: centerXFor(shape, 0), rotation: 0, actionType: "TIMEOUT" };
 }
 
-export function freshPoolForCycle(maxPlayers: number, matchId: string, cycle: number): ResourcePiece[] {
-  return buildResourcePool(maxPlayers, `${matchId}:cycle:${cycle}`);
+export function freshPoolForCycle(matchId: string, cycle: number): ResourcePiece[] {
+  return buildResourcePool(`${matchId}:cycle:${cycle}`);
 }
 
 export function clearReserves(reserve: ReserveMap): ReserveMap {
@@ -254,8 +254,8 @@ export function resolvePlacement(
   if (eliminations.length > 0 || nextPool.length === 0) {
     nextCycle += 1;
     nextPool = eliminations.length > 0
-      ? freshPoolForCycle(snapshot.maxPlayers, snapshot.id, nextCycle)
-      : refillResourcePool(nextPool, snapshot.maxPlayers, `${snapshot.id}:cycle:${nextCycle}`);
+      ? freshPoolForCycle(snapshot.id, nextCycle)
+      : refillResourcePool(nextPool, `${snapshot.id}:cycle:${nextCycle}`);
     refilled = true;
   }
 

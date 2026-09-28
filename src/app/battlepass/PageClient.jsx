@@ -415,13 +415,9 @@ export default function BattlepassPageClient({ adSlot = null }) {
                   <div>
                     <div className="font-medium text-white">Win ranked matches</div>
                     <div className="mt-0.5 text-sm text-[#9dd8ff]">
-                      A ranked win pays {formatSigned(trophyConfig.win)} trophies
-                      and a loss costs {formatSigned(trophyConfig.loss)}. At a
-                      multi-player table the swing follows your placement —
-                      first place takes the full {formatSigned(trophyConfig.win)},
-                      last place pays the full {formatSigned(trophyConfig.loss)},
-                      and the seats in between split the difference. Every game
-                      caps at {formatNumber(trophyConfig.perGameCap)}, so the
+                      A ranked 1v1 win pays {formatSigned(trophyConfig.win)} trophies
+                      and a loss costs {formatSigned(trophyConfig.loss)}. Every
+                      game caps at {formatNumber(trophyConfig.perGameCap)}, so the
                       whole track is {formatNumber(trophyConfig.overallMax)}
                       across all {formatNumber(trophyConfig.gameCount)} rated
                       games.

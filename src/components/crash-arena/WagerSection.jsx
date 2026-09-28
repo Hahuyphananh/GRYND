@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import { CRASH_WAGERS, CRASH_MIN_WAGER, CRASH_MAX_WAGER, CRASH_MIN_BUYIN_MULTIPLIER } from "../../lib/games/crash/constants";
+import { CRASH_ARENA_SEATS } from "../../lib/crash-poker/constants";
 
 /**
  * WagerSection — Create Table card with custom wager input.
@@ -157,7 +158,9 @@ export default function WagerSection({
           </div>
           <div className="flex flex-col">
             <span className="text-cyan-100/50 text-xs">Capacity</span>
-            <span className="text-white/90 font-semibold">6 players</span>
+            <span className="text-white/90 font-semibold">
+              {CRASH_ARENA_SEATS} players
+            </span>
           </div>
         </div>
 

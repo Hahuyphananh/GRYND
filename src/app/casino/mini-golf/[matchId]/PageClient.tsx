@@ -53,19 +53,39 @@ import {
   difficultyLabel,
   holeResultLabel,
   isIncomingSnapshotStale,
+  lastBotTurnRecap,
   matchFormatLabel,
+  rollingProgress,
   samplePath,
   seatColor,
   seatLabel,
   totalStrokes,
   winPips,
+  type BotShotRecap,
   type HoleWinner,
 } from "../../../../lib/mini-golf/ui";
 import { HOLES_TO_WIN, HOLE_COUNT } from "../../../../lib/mini-golf/constants";
+import {
+  AI_DIFFICULTY_LABELS,
+  coerceAiDifficulty,
+} from "../../../../lib/aiDifficulty";
 import type { Vec2 } from "../../../../lib/mini-golf/types";
 
 type Seat = "player1" | "player2";
 type BallView = { x: number; y: number; holedOut?: boolean };
+
+/** One authoritative trajectory being played back on the board. */
+type Rollout = {
+  seq: number;
+  seat: Seat;
+  hole: number;
+  path: Vec2[];
+  pocketed: boolean;
+  /** Simulated frame count, used to pace the deceleration. */
+  frames: number;
+  duration: number;
+  startedAt: number;
+};
 
 const ACTIVE_POLL_MS = 1800;
 const IDLE_POLL_MS = 5000;
@@ -89,6 +109,11 @@ export default function MiniGolfMatchPage() {
 
   const [match, setMatch] = useState<any>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A recap of the practice bot's most recent turn. Under the whole-turn model
+  // the server resolves the bot's whole run inside ONE poll, so the client only
+  // receives (and only animates) the last shot; this is what tells the human
+  // what actually happened.
+  const [botRecap, setBotRecap] = useState<BotShotRecap | null>(null);
 
   // ── Presentation state ────────────────────────────────────────────────
   // NOTE: there is deliberately NO `visibleHole` state. The hole on screen is
@@ -96,15 +121,7 @@ export default function MiniGolfMatchPage() {
   // whatever is animating, so the board can never lag the server or snap back
   // to a hole the match has already left.
   const [renderBalls, setRenderBalls] = useState<Record<Seat, BallView> | null>(null);
-  const [anim, setAnim] = useState<{
-    seq: number;
-    seat: Seat;
-    hole: number;
-    path: Vec2[];
-    pocketed: boolean;
-    duration: number;
-    startedAt: number;
-  } | null>(null);
+  const [anim, setAnim] = useState<Rollout | null>(null);
   const [progress, setProgress] = useState(1);
   const [holeOverlay, setHoleOverlay] = useState<{
     hole: number;
@@ -129,6 +146,18 @@ export default function MiniGolfMatchPage() {
   const hydratedRef = useRef(false);
   const lastAnimatedSeqRef = useRef(-1);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What owns the board right now. `animRef`/`overlayRef` are read inside the
+  // RAF loop and the timers so they never see a stale closure; `queuedAnimRef`
+  // holds the NEXT authoritative shot so a newer snapshot can never abort a
+  // rollout mid-flight — dropping that in-flight shot is exactly what used to
+  // swallow the hole-result popup. `shownHolesRef` makes the interstitial
+  // idempotent per hole.
+  const animRef = useRef<Rollout | null>(null);
+  const overlayRef = useRef<{ hole: number } | null>(null);
+  const queuedAnimRef = useRef<Rollout | null>(null);
+  const shownHolesRef = useRef<Set<number>>(new Set());
+  /** The shot sequence the bot recap was last built for (dedupes the effect). */
+  const botRecapSeqRef = useRef(-1);
 
   // Keep the latest snapshot in a ref for callbacks that outlive a render
   // (the animation-completion timer in particular). Declared BEFORE the
@@ -146,6 +175,12 @@ export default function MiniGolfMatchPage() {
   useEffect(() => {
     hydratedRef.current = false;
     lastAnimatedSeqRef.current = -1;
+    animRef.current = null;
+    overlayRef.current = null;
+    queuedAnimRef.current = null;
+    shownHolesRef.current = new Set();
+    botRecapSeqRef.current = -1;
+    setBotRecap(null);
     setMatch(null);
     setRenderBalls(null);
     setAnim(null);
@@ -229,9 +264,109 @@ export default function MiniGolfMatchPage() {
   }, [socket, matchId, refresh]);
 
   // ── Authoritative trajectory playback ─────────────────────────────────
-  // Any snapshot carrying an as-yet-unplayed `lastShot` starts an animation.
-  // A shot that belongs to an earlier hole is played on THAT hole first, so
-  // the opponent sees exactly what the shooter saw before the board advances.
+  // Any snapshot carrying an as-yet-unplayed `lastShot` is played back. A shot
+  // that belongs to an earlier hole is played on THAT hole first, so the
+  // opponent sees exactly what the shooter saw before the board advances.
+  //
+  // Playback is QUEUED, never pre-empted: a snapshot that lands while a rollout
+  // or its hole-result interstitial is on screen is held back instead of
+  // cancelling what is playing. Cancelling was the bug behind the missing
+  // hole-result popup — the interrupted shot was usually the one that had just
+  // completed a hole, so its result interstitial never got shown.
+  const startRollout = useCallback((rollout: Rollout) => {
+    animRef.current = rollout;
+    setAimLocked(false);
+    setProgress(0);
+    setAnim(rollout);
+  }, []);
+
+  const playQueuedRollout = useCallback(() => {
+    if (animRef.current || overlayRef.current) return;
+    const next = queuedAnimRef.current;
+    if (!next) return;
+    queuedAnimRef.current = null;
+    const currentHole = Number(matchRef.current?.currentHole) || 0;
+    // A rollout for a hole whose result has already been shown, and which the
+    // board has already left, has nothing left to tell the player.
+    if (shownHolesRef.current.has(next.hole) && next.hole < currentHole) return;
+    startRollout(next);
+  }, [startRollout]);
+
+  const showHoleResult = useCallback(
+    (
+      hole: number,
+      score: { player1: number; player2: number } | null | undefined,
+      winner: HoleWinner | null,
+    ) => {
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      // Idempotent per hole: the shooter's shot and the opponent's completing
+      // shot can both resolve to the SAME hole, and it must read once.
+      shownHolesRef.current.add(hole);
+      const overlay = {
+        hole,
+        player1: Number(score?.player1) || 0,
+        player2: Number(score?.player2) || 0,
+        winner,
+      };
+      overlayRef.current = overlay;
+      setHoleOverlay(overlay);
+      overlayTimerRef.current = setTimeout(() => {
+        overlayTimerRef.current = null;
+        overlayRef.current = null;
+        // Dropping the overlay is what moves the view on when nothing else is
+        // queued: the rendered hole is derived from the snapshot, so it
+        // advances by itself the moment the interstitial goes away. Anything
+        // that arrived while it was up then plays.
+        setHoleOverlay(null);
+        setRenderBalls(cloneBalls(matchRef.current?.balls));
+        playQueuedRollout();
+      }, HOLE_RESULT_MS);
+    },
+    [playQueuedRollout],
+  );
+
+  const finishAnimation = useCallback(
+    (finished: Rollout) => {
+      animRef.current = null;
+      setAnim(null);
+      setProgress(1);
+      const latest = matchRef.current;
+      const path = finished.path;
+      const end = path.length ? path[path.length - 1] : { x: 0, y: 0 };
+      const currentHole = Number(latest?.currentHole) || finished.hole;
+      const holeCompleted = Boolean(latest) && finished.hole < currentHole;
+
+      if (holeCompleted) {
+        // The result interstitial is idempotent per hole: the human's shot and
+        // the bot's completing shot can both resolve on the SAME hole, and it
+        // must read once.
+        if (!shownHolesRef.current.has(finished.hole)) {
+          // Hold the completed hole on screen with its final ball positions,
+          // show the result, then let the snapshot advance the board.
+          setRenderBalls((prev) =>
+            prev
+              ? { ...prev, [finished.seat]: { x: end.x, y: end.y, holedOut: finished.pocketed } }
+              : prev,
+          );
+          showHoleResult(
+            finished.hole,
+            latest.holeScores?.[finished.hole - 1],
+            latest.holeWinners?.[finished.hole - 1] ?? null,
+          );
+          return;
+        }
+        setRenderBalls(cloneBalls(latest?.balls));
+        playQueuedRollout();
+        return;
+      }
+
+      // Same hole: adopt the authoritative rest positions (and holed-out flags).
+      setRenderBalls(cloneBalls(latest?.balls) ?? null);
+      playQueuedRollout();
+    },
+    [playQueuedRollout, showHoleResult],
+  );
+
   useEffect(() => {
     if (!match) return;
     const seq = Number(match.shotSeq) || 0;
@@ -247,66 +382,29 @@ export default function MiniGolfMatchPage() {
     if (lastAnimatedSeqRef.current === seq) return;
 
     lastAnimatedSeqRef.current = seq;
-    const holeNumber = Number(last.hole) || Number(match.currentHole) || 1;
     const path: Vec2[] = last.result.path;
-    // A new rollout supersedes any hole-result interstitial still on screen —
-    // including its timer, so a stale callback can never drag the board back
-    // to a hole the match has already left.
-    if (overlayTimerRef.current) {
-      clearTimeout(overlayTimerRef.current);
-      overlayTimerRef.current = null;
-    }
-    setHoleOverlay(null);
-    setAimLocked(false);
-    setProgress(0);
-    setAnim({
+    const frames = Number(last.result?.frames) || 0;
+    const rollout: Rollout = {
       seq,
       seat: last.seat,
-      hole: holeNumber,
+      hole: Number(last.hole) || Number(match.currentHole) || 1,
       path,
       pocketed: Boolean(last.result?.pocketed),
-      duration: animationDurationMs(path),
+      frames,
+      duration: animationDurationMs(path, { frames }),
       startedAt:
         typeof performance !== "undefined" ? performance.now() : Date.now(),
-    });
-  }, [match]);
+    };
 
-  const finishAnimation = useCallback((finished: NonNullable<typeof anim>) => {
-    setAnim(null);
-    setProgress(1);
-    const latest = matchRef.current;
-    const path = finished.path;
-    const end = path.length ? path[path.length - 1] : { x: 0, y: 0 };
-    const advancedToNextHole = Boolean(latest) && finished.hole !== latest.currentHole;
-
-    if (advancedToNextHole) {
-      // Hold the completed hole on screen with its final ball positions, show
-      // the result interstitial, then advance.
-      setRenderBalls((prev) =>
-        prev ? { ...prev, [finished.seat]: { x: end.x, y: end.y, holedOut: finished.pocketed } } : prev,
-      );
-      const score = latest.holeScores?.[finished.hole - 1] ?? { player1: 0, player2: 0 };
-      setHoleOverlay({
-        hole: finished.hole,
-        player1: Number(score.player1) || 0,
-        player2: Number(score.player2) || 0,
-        winner: latest.holeWinners?.[finished.hole - 1] ?? null,
-      });
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-      overlayTimerRef.current = setTimeout(() => {
-        overlayTimerRef.current = null;
-        // Dropping the overlay is the ONLY thing that moves the view on: the
-        // rendered hole is derived from the snapshot, so it advances by itself
-        // the moment the interstitial goes away.
-        setHoleOverlay(null);
-        setRenderBalls(cloneBalls(matchRef.current?.balls));
-      }, HOLE_RESULT_MS);
+    // Something is already on screen (a rollout, or a hole-result interstitial):
+    // hold this shot back rather than aborting the one playing. Only the newest
+    // held shot matters, so a plain single-slot queue is enough.
+    if (animRef.current || overlayRef.current) {
+      queuedAnimRef.current = rollout;
       return;
     }
-
-    // Same hole: adopt the authoritative rest positions (and holed-out flags).
-    setRenderBalls(cloneBalls(latest?.balls) ?? null);
-  }, []);
+    startRollout(rollout);
+  }, [match, startRollout]);
 
   useEffect(() => {
     if (!anim) return undefined;
@@ -349,6 +447,8 @@ export default function MiniGolfMatchPage() {
     const shotPower = clampPower(power);
     const shotAngle = ((Math.round(angle) % 360) + 360) % 360;
     setAimLocked(false);
+    // The viewer is taking their turn: the bot's recap has served its purpose.
+    setBotRecap(null);
     setAim({ angle: shotAngle, power: shotPower });
     setShooting(true);
     setLoadError(null);
@@ -446,8 +546,14 @@ export default function MiniGolfMatchPage() {
 
   const movingBall = useMemo<Vec2 | null>(() => {
     if (!anim) return null;
-    return samplePath(anim.path, progress);
-  }, [anim, progress]);
+    // Play the trajectory with the simulator's own exponential deceleration, so
+    // the ball glides to a stop instead of sliding at a constant speed and then
+    // stopping dead.
+    return samplePath(
+      anim.path,
+      rollingProgress(progress, anim.frames, hole?.geometry?.friction),
+    );
+  }, [anim, progress, hole]);
 
   const seats = useMemo(() => {
     const players = match?.players ?? {};
@@ -474,6 +580,44 @@ export default function MiniGolfMatchPage() {
     seats.opponent?.name ||
     (match?.isAi ? "Practice Bot" : seatLabel(opponentSeat ?? "player2", viewerSeat));
   const opponentId = opponentSeat === "player1" ? match?.player1Id : match?.player2Id;
+  // The practice bot's tier (null on a human duel). Surfaced on the header
+  // badge, the sidebar and the result screen so the picked difficulty is
+  // always legible while the match runs and after it settles.
+  const botDifficulty = match?.isAi ? coerceAiDifficulty(match.aiDifficulty) : null;
+
+  // ── Practice-bot recap ────────────────────────────────────────────────
+  // The bot resolves its whole turn inside ONE poll, so its intermediate shots
+  // are never animated client-side. When the turn comes back to the viewer,
+  // summarise the run it just took (and where its ball stopped). The recap is
+  // dropped the moment the viewer takes their own shot.
+  useEffect(() => {
+    if (!match) return;
+    if (!match.isAi || !viewerSeat || !opponentSeat) {
+      setBotRecap(null);
+      return;
+    }
+    if (match.status === "finished" || match.status === "cancelled") {
+      setBotRecap(null);
+      return;
+    }
+    // Only meaningful once the bot has handed the turn back to the viewer.
+    if (match.currentTurn !== viewerSeat) return;
+    if (match.lastShot?.seat === viewerSeat) {
+      setBotRecap(null);
+      return;
+    }
+    if (match.lastShot?.seat !== opponentSeat) return;
+    const seq = Number(match.shotSeq) || 0;
+    if (seq === botRecapSeqRef.current) return;
+    botRecapSeqRef.current = seq;
+    setBotRecap(
+      lastBotTurnRecap({
+        shots: match.shots,
+        botPlayerId: opponentId,
+        holes: match.holes,
+      }),
+    );
+  }, [match, viewerSeat, opponentSeat, opponentId]);
 
   const finished = match?.status === "finished";
   const cancelled = match?.status === "cancelled";
@@ -591,12 +735,13 @@ export default function MiniGolfMatchPage() {
                 </h1>
                 <p className="mt-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-emerald-200/70">
                   <span>{matchFormatLabel(HOLE_COUNT, HOLES_TO_WIN)}</span>
-                  {match.isAi && (
+                  {match.isAi && botDifficulty && (
                     <span
                       data-testid="practice-badge"
+                      data-difficulty={botDifficulty}
                       className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-emerald-200"
                     >
-                      Practice · unrated
+                      Practice · {AI_DIFFICULTY_LABELS[botDifficulty]} bot · unrated
                     </span>
                   )}
                 </p>
@@ -744,6 +889,31 @@ export default function MiniGolfMatchPage() {
                     </span>
                   </div>
 
+                  {/* Bot's last turn — its whole run is batched into one poll
+                      server-side, so this is the only place the human sees
+                      what it did after the fact. */}
+                  {botRecap && botDifficulty && (
+                    <div
+                      data-testid="bot-turn-summary"
+                      role="status"
+                      aria-live="polite"
+                      className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100"
+                    >
+                      <span className="font-bold uppercase tracking-wider text-cyan-300">
+                        {AI_DIFFICULTY_LABELS[botDifficulty]} bot's turn
+                      </span>
+                      <span className="text-white/80">
+                        Hole {botRecap.hole} · {botRecap.strokes}{" "}
+                        {botRecap.strokes === 1 ? "shot" : "shots"}
+                        {botRecap.pocketed
+                          ? " · holed out"
+                          : botRecap.restDistance != null
+                            ? ` · finished ${Math.round(botRecap.restDistance)}px from the cup`
+                            : " · settled"}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Aim state. Power is charged by dragging on the course —
                       this bar only mirrors it. */}
                   <div className="mt-3 flex items-center gap-3">
@@ -824,6 +994,12 @@ export default function MiniGolfMatchPage() {
                     <Row label="Holes won" value={`${match.player1HoleWins} — ${match.player2HoleWins}`} />
                     <Row label="Total strokes" value={`${totals.player1} — ${totals.player2}`} />
                     <Row label="Opponent" value={opponentName} />
+                    {botDifficulty && (
+                      <Row
+                        label="Bot difficulty"
+                        value={AI_DIFFICULTY_LABELS[botDifficulty]}
+                      />
+                    )}
                   </div>
                 </section>
 
@@ -1004,6 +1180,9 @@ export default function MiniGolfMatchPage() {
                 { label: "Result", value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw" },
                 { label: "Holes won", value: `${match.player1HoleWins} — ${match.player2HoleWins}` },
                 { label: "Total strokes", value: `${totals.player1} — ${totals.player2}` },
+                ...(botDifficulty
+                  ? [{ label: "Bot difficulty", value: AI_DIFFICULTY_LABELS[botDifficulty] }]
+                  : []),
               ]}
               details={[
                 { label: "Match ID", value: String(matchId) },

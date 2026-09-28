@@ -214,18 +214,21 @@ test("a shot bumps the version, the shot sequence and the stroke count", () => {
 
 test("client-supplied stroke and winner fields are ignored", () => {
   const s = createInitialState({ seed: 1 });
-  let cur = s;
-  for (let i = 0; i < 2; i += 1) {
-    // Smuggle in the fields a cheating client would love to control.
-    cur = step(cur, cur.currentTurn, {
-      pocketed: false,
-      strokes: 0,
-      winner: "player2",
-      winnerId: "user_b",
-      holedOut: true,
-    }).state;
-  }
-  assert.equal(cur.holeScores[0].player1, 1);
+  // Smuggle in the fields a cheating client would love to control on every
+  // stroke; the engine still derives everything from the server's shot result.
+  const tampered = {
+    pocketed: false,
+    strokes: 0,
+    winner: "player2",
+    winnerId: "user_b",
+    holedOut: true,
+  };
+  // player1 owns the whole turn until holing out, so both of these are theirs.
+  let cur = step(s, "player1", tampered).state;
+  cur = step(cur, "player1", tampered).state;
+  // Then player2 gets the tee.
+  cur = step(cur, "player2", tampered).state;
+  assert.equal(cur.holeScores[0].player1, 2);
   assert.equal(cur.holeScores[0].player2, 1);
   assert.equal(cur.holeWinners[0], null);
   assert.equal(cur.player1HoleWins, 0);
@@ -233,16 +236,50 @@ test("client-supplied stroke and winner fields are ignored", () => {
   assert.equal(cur.balls.player1.holedOut, false);
 });
 
-test("the turn alternates and a holed-out seat cannot play again", () => {
+test("a seat keeps the turn until it holes out, then the opponent takes over", () => {
   const s = createInitialState({ seed: 1 });
-  let r = step(s, "player1", { pocketed: true });
+  // A miss keeps the shooter on the tee.
+  let r = step(s, "player1");
+  assert.equal(
+    r.state.currentTurn,
+    "player1",
+    "the shooter keeps the turn while it has not holed out",
+  );
+
+  // Holing out hands the tee to the opponent.
+  r = step(r.state, "player1", { pocketed: true });
   assert.equal(r.state.currentTurn, "player2");
 
+  // The opponent then owns their whole turn too.
   r = step(r.state, "player2");
-  assert.equal(r.state.currentTurn, "player2", "the finished seat keeps the turn");
+  assert.equal(
+    r.state.currentTurn,
+    "player2",
+    "the shooter keeps the turn while it has not holed out",
+  );
 
+  // Both balls are in, so the hole completes.
   r = step(r.state, "player2", { pocketed: true });
   assert.equal(r.holeCompleted, true);
+});
+
+test("a hole is two full turns: the starter finishes it, then the opponent tees off", () => {
+  const s = createInitialState({ seed: 5 });
+  // The starter takes five strokes (the last holes out); the opponent must not
+  // touch the ball until then.
+  let cur = s;
+  for (let i = 0; i < 5; i += 1) {
+    const r = step(cur, "player1", { pocketed: i === 4 });
+    cur = r.state;
+    if (i < 4) {
+      assert.equal(cur.currentTurn, "player1", `player1 keeps the turn after stroke ${i + 1}`);
+      assert.equal(r.holeCompleted, false);
+      assert.equal(cur.holeScores[0].player2, 0, "the opponent has not played yet");
+    }
+  }
+  assert.equal(cur.currentTurn, "player2", "the opponent tees off only once the starter is in");
+  assert.equal(cur.holeScores[0].player1, 5);
+  assert.equal(cur.holeScores[0].player2, 0);
 });
 
 test("water adds a one-stroke penalty on top of the shot", () => {

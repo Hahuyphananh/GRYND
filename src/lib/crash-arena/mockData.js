@@ -1,8 +1,10 @@
 /**
  * Crash Arena — shared mock table data.
  * Used by both the lobby and the table room pages.
- * Each table's minBuyIn = 5 × wager (arena rule).
+ * Each table's minBuyIn = 5 × wager (arena rule), and every table is 1v1.
  */
+
+import { CRASH_ARENA_SEATS } from "../crash-poker/constants.js";
 
 const MOCK_TABLES = [
   {
@@ -11,7 +13,7 @@ const MOCK_TABLES = [
     wager: 1,
     minBuyIn: 5,        // 5 × wager
     maxBuyIn: 50,
-    maxPlayers: 6,
+    maxPlayers: CRASH_ARENA_SEATS,
     status: "waiting",
     roundNumber: 4,
     pot: 24,
@@ -27,7 +29,7 @@ const MOCK_TABLES = [
     wager: 5,
     minBuyIn: 25,       // 5 × wager
     maxBuyIn: 250,
-    maxPlayers: 6,
+    maxPlayers: CRASH_ARENA_SEATS,
     status: "flying",
     roundNumber: 12,
     pot: 625,
@@ -46,7 +48,7 @@ const MOCK_TABLES = [
     wager: 10,
     minBuyIn: 50,       // 5 × wager
     maxBuyIn: 500,
-    maxPlayers: 6,
+    maxPlayers: CRASH_ARENA_SEATS,
     status: "waiting",
     roundNumber: 8,
     pot: 400,
@@ -63,7 +65,7 @@ const MOCK_TABLES = [
     wager: 25,
     minBuyIn: 125,      // 5 × wager
     maxBuyIn: 1250,
-    maxPlayers: 6,
+    maxPlayers: CRASH_ARENA_SEATS,
     status: "waiting",
     roundNumber: 3,
     pot: 750,
@@ -78,7 +80,7 @@ const MOCK_TABLES = [
     wager: 100,
     minBuyIn: 500,      // 5 × wager
     maxBuyIn: 5000,
-    maxPlayers: 6,
+    maxPlayers: CRASH_ARENA_SEATS,
     status: "waiting",
     roundNumber: 15,
     pot: 4250,
@@ -97,7 +99,7 @@ const MOCK_TABLES = [
     wager: 50,
     minBuyIn: 250,      // 5 × wager
     maxBuyIn: 2500,
-    maxPlayers: 6,
+    maxPlayers: CRASH_ARENA_SEATS,
     status: "waiting",
     roundNumber: 1,
     pot: 1500,

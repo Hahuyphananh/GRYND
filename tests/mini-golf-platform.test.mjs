@@ -238,13 +238,23 @@ test("rendering: presentation state is re-initialised when the match changes", (
   assert.match(src, /setRenderBalls\(null\);/);
 });
 
-test("rendering: a new rollout cancels any pending hole-result timer", () => {
+test("rendering: a newer shot is queued behind an in-flight rollout, never cancels it", () => {
   const src = strip(read(MATCH_PAGE));
+  // A stale result timer must still be cleared wherever the overlay is
+  // replaced or torn down (a new result, and unmount) — a fired callback would
+  // drag the board back to a hole the match has already left.
   const clears = src.match(/clearTimeout\(overlayTimerRef\.current\)/g) ?? [];
   assert.ok(
-    clears.length >= 3,
-    `a stale result timer must be cleared on start, reset and unmount (found ${clears.length})`,
+    clears.length >= 2,
+    `a stale result timer must be cleared on replacement and teardown (found ${clears.length})`,
   );
+  // The bug fix: a snapshot that lands while a rollout or its hole-result
+  // interstitial is on screen is QUEUED. Aborting the in-flight shot was what
+  // swallowed the hole-result popup, because the interrupted shot was usually
+  // the one that had just completed the hole.
+  assert.match(src, /queuedAnimRef\.current = rollout;/);
+  assert.match(src, /if \(animRef\.current \|\| overlayRef\.current\) \{/);
+  assert.match(src, /playQueuedRollout/);
 });
 
 test("ball art: the golf ball uses the Pool Masters rendering language", () => {

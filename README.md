@@ -1,18 +1,18 @@
-# GRYND | Multiplayer Skill Gaming Platform
+# GRYND | Skill Gaming Platform
 
-Welcome to **GRYND**, a multiplayer skill gaming platform where players compete in fast-paced games using **virtual tokens**.
+Welcome to **GRYND**, a skill gaming platform where players compete in fast-paced games using **virtual tokens**.
 
-GRYND brings competitive PvP games, multiplayer experiences, AI opponents, strategy games, arcade-style challenges, and classic games together on one platform. Players can discover games based on their preferences and compete across desktop and mobile.
+GRYND brings competitive 1v1 duels, AI opponents, strategy games, arcade-style challenges, and classic games together on one platform. Every game is strictly head-to-head: one player against one opponent. Players can discover games based on their preferences and compete across desktop and mobile.
 
 ---
 
 ## Features
 
 * **20 Games**: A growing collection of competitive, strategy, arcade, and classic games.
-* **PvP Gameplay**: Compete against other players in real-time head-to-head and multiplayer matches.
+* **PvP Gameplay**: Compete against other players in real-time 1v1 duels.
 * **AI Opponents**: Play supported games against AI opponents for practice.
 * **Virtual Token System**: Play using virtual tokens. Tokens have no real-world monetary value and cannot be redeemed for cash.
-* **Competitive Matches**: Compete in duels, multiplayer tables, races, strategy matches, and skill-based challenges.
+* **Competitive Matches**: Compete in duels, races, strategy matches, and skill-based challenges.
 * **Personalized Game Recommendations**: GRYND uses a game-preference questionnaire to create a personalized **FOR YOU** section.
 * **Live Player Counts**: Game cards show how many players are currently playing each game.
 * **Player Progression**: Track gameplay, wins, streaks, rankings, and other player statistics.
@@ -37,13 +37,13 @@ GRYND currently features 20 games:
 | **Mines**               | Risk-based PvP tile game                      |
 | **Memory Grid**         | Memory and pattern-recall duel                |
 | **Plinko**              | Physics-based PvP ball-drop game              |
-| **Poker**               | Multiplayer No-Limit Texas Hold'em            |
-| **Crash**               | Multiplayer crash and cash-out game           |
+| **Poker**               | Heads-up No-Limit Texas Hold'em                |
+| **Crash**               | 1v1 crash and cash-out game                   |
 | **Chess**               | Strategic PvP and AI chess                    |
 | **Keno**                | Fast-paced number and reaction game           |
-| **UNO**                 | Multiplayer card game                         |
+| **UNO**                 | Fast head-to-head card duel                   |
 | **Rock Paper Scissors** | Best-of-7 PvP duel                            |
-| **Tower Arena**         | Multiplayer physics-based tower-stacking game |
+| **Tower Arena**         | 1v1 physics-based tower-stacking game         |
 | **Four in a Row**       | Strategic Connect Four-style duel             |
 | **Lane Rush Duel**      | Shared 10-row glass-bridge memory duel        |
 | **Pool Masters**        | Physics-based 8-ball pool                     |
@@ -53,7 +53,7 @@ GRYND currently features 20 games:
 | **Precision**           | Fast-paced reaction and timing duel           |
 | **Dots & Boxes**        | Classic territory and strategy game           |
 
-Each game has its own gameplay mechanics and competitive format, ranging from fast reaction challenges to strategic board games and multiplayer table games.
+Each game has its own gameplay mechanics and competitive format, ranging from fast reaction challenges to strategic board games, all played 1v1.
 
 ---
 
@@ -122,7 +122,7 @@ See `docs/resend-webhooks.md` for the complete webhook configuration checklist.
 
 ## About GRYND
 
-GRYND is built around competitive skill gaming, giving players a single platform to discover games, challenge opponents, practice against AI, compete in multiplayer matches, and find games tailored to their preferences.
+GRYND is built around competitive skill gaming, giving players a single platform to discover games, challenge opponents, practice against AI, compete in 1v1 matches, and find games tailored to their preferences.
 
 GRYND uses **virtual tokens only**. Tokens have no real-world monetary value and are not redeemable for cash.
 

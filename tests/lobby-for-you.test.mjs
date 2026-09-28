@@ -158,10 +158,13 @@ test("All Games, its filters and its sorting are untouched", () => {
   assert.match(lobby, /\{displayedGames\.map\(\(game, index\) => \(/);
   assert.match(lobby, /t\("home\.all_games"\)/);
   assert.match(lobby, /t\("home\.casino_lobby\.no_results_title"\)/);
-  // Filters…
-  for (const key of ["filter_all", "filter_duels", "filter_multiplayer", "filter_popular"]) {
+  // Filters… every game is 1v1, so the retired "Multiplayer" filter is gone.
+  for (const key of ["filter_all", "filter_duels", "filter_popular"]) {
     assert.match(lobby, new RegExp(`labelKey: "home\\.casino_lobby\\.${key}"`));
   }
+  assert.doesNotMatch(lobby, /filter_multiplayer/);
+  assert.doesNotMatch(lobby, /pvp_multi_badge/);
+  assert.doesNotMatch(lobby, /pvpMode === "multi"/);
   // …and sorts, including the real play-count data behind "Most Played".
   for (const key of ["sort_featured", "sort_most_played", "sort_az", "sort_newest"]) {
     assert.match(lobby, new RegExp(`labelKey: "home\\.casino_lobby\\.${key}"`));

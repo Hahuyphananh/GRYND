@@ -20,6 +20,7 @@ import {
   getOrCreateCrashArenaAiBot,
 } from "../../../../lib/crash-arena/aiBot";
 import { toCrashAiDifficulty } from "../../../../lib/crash-arena/botStrategy";
+import { CRASH_ARENA_SEATS } from "../../../../lib/crash-poker/constants";
 
 /** Free practice stack the human starts with (chips are virtual). */
 const AI_PRACTICE_STACK_MULTIPLIER = 20; // 20× wager — ~20 rounds of practice
@@ -33,7 +34,7 @@ const AI_PRACTICE_STACK_MULTIPLIER = 20; // 20× wager — ~20 rounds of practic
  *
  *   1. Ensures the reserved bot user exists (idempotent).
  *   2. Closes the caller's stale practice tables so they don't pile up.
- *   3. Creates an `is_ai` table (max 2 seats: the human + the bot) with
+ *   3. Creates an `is_ai` table (both seats: the human + the bot) with
  *      the chosen difficulty (mirrors the poker table AIs).
  *   4. Seats BOTH players with free virtual balances — the wallet is
  *      never touched, no BUY_IN transaction is recorded.
@@ -115,7 +116,7 @@ export async function POST(req: Request) {
         name: `$${roundedWager} Crash Arena (AI)`,
         wagerAmount: roundedWager.toFixed(2),
         minimumBuyin: (roundedWager * CRASH_MIN_BUYIN_MULTIPLIER).toFixed(2),
-        maxPlayers: 2,
+        maxPlayers: CRASH_ARENA_SEATS,
         hostId,
         status: "waiting",
         isAi: true,

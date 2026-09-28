@@ -16,6 +16,7 @@ import {
   BALL_RADIUS,
   COURSE_HEIGHT,
   COURSE_WIDTH,
+  FRICTION,
   POWER_MAX,
   POWER_MIN,
 } from "./constants";
@@ -154,22 +155,68 @@ export function samplePath(path: readonly Vec2[], t: number): Vec2 {
 }
 
 /**
- * How long to animate a server trajectory. Proportional to its length so a
- * long roll reads slower than a tap-in, clamped so neither extreme is jarring.
+ * Map linear animation time onto the fraction of the trajectory a ball under
+ * the SAME exponential damping the simulator uses has actually covered.
+ *
+ * The server trajectory is stored as an evenly spaced polyline, so walking it
+ * by arc length alone plays every shot at a constant speed and then stops dead
+ * — the ball never visibly slows, which is what made Mini Golf feel unlike the
+ * pool table. Damping is geometric (`FRICTION` per frame), so the distance
+ * covered after `t` of the roll is `(1 − f^(t·T)) / (1 − f^T)`, with `T` the
+ * simulated frame count. Easing with that curve reproduces the real glide: the
+ * ball covers most of its distance early, then creeps to a stop.
+ *
+ * Pure, and a no-op at both ends (`0 → 0`, `1 → 1`).
+ */
+export function rollingProgress(
+  t: number,
+  frames: number,
+  friction: number = FRICTION,
+): number {
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0));
+  const total = Math.max(1, Math.floor(Number(frames)) || 1);
+  const decay = Math.pow(friction, total);
+  const remaining = Math.pow(friction, clamped * total);
+  const span = 1 - decay;
+  if (!(span > 1e-9)) return clamped;
+  return Math.min(1, Math.max(0, (1 - remaining) / span));
+}
+
+/**
+ * How long to animate a server trajectory.
+ *
+ * Long rolls are given more time than a tap-in, but the simulated frame count
+ * (compressed to ~40% of real time) is what sets the pace: the ball was
+ * simulated over `frames` frames at ~60Hz, and playing that back near its own
+ * tempo is what lets `rollingProgress`'s deceleration read as a glide rather
+ * than a fast-forward. Both estimates are clamped so neither extreme jars.
  */
 export function animationDurationMs(
   path: readonly Vec2[],
-  { min = 380, max = 2400, pxPerMs = 0.9 } = {},
+  { min = 400, max = 2600, pxPerMs = 0.6, frames = 0 } = {},
 ): number {
   const len = polylineLength(path);
-  if (len <= 0) return min;
-  return Math.round(Math.min(max, Math.max(min, len / pxPerMs)));
+  const byLength = len <= 0 ? min : len / pxPerMs;
+  const byFrames = frames > 0 ? frames * (1000 / 60) * 0.4 : 0;
+  return Math.round(Math.min(max, Math.max(min, Math.max(byLength, byFrames))));
 }
 
 // ── Scorecard / copy ──────────────────────────────────────────────────────
 
 export type Seat = "player1" | "player2";
 export type HoleWinner = Seat | "tie";
+
+/** A recap of the practice bot's most recent turn, for the match view. */
+export type BotShotRecap = {
+  /** The hole the bot's last turn was played on. */
+  hole: number;
+  /** How many strokes the bot took in that turn. */
+  strokes: number;
+  /** True when the bot's ball finished in the cup. */
+  pocketed: boolean;
+  /** Distance (px) from the cup where the bot's ball came to rest, if known. */
+  restDistance: number | null;
+};
 
 /** "You" / "Opponent" — never infers a name the server did not send. */
 export function seatLabel(seat: Seat, viewerSeat: Seat | null): string {
@@ -180,6 +227,74 @@ export function seatLabel(seat: Seat, viewerSeat: Seat | null): string {
 export function holeResultLabel(winner: HoleWinner, viewerSeat: Seat | null): string {
   if (winner === "tie") return "Hole halved";
   return `${seatLabel(winner, viewerSeat)} won the hole`;
+}
+
+/**
+ * Summarise the practice bot's most recent TURN from the authoritative shot
+ * log, so the human can see what happened.
+ *
+ * Under the whole-turn model the server resolves the bot's entire run on a hole
+ * inside ONE poll (`advanceAiTurns`), so the client only ever receives the last
+ * shot — the intermediate strokes are never animated. The chronological `shots`
+ * history is the only place they survive, so the summary is derived here:
+ * the trailing run of shots taken by `botPlayerId` on the LAST hole the bot
+ * played (a run can span a hole boundary when the bot both finishes one hole
+ * and opens the next, so it is scoped to the final hole).
+ *
+ * Pure, and null-safe on a partial payload (the `/shoot` response carries no
+ * `shots`), so the caller can call it on every snapshot.
+ */
+export function lastBotTurnRecap({
+  shots,
+  botPlayerId,
+  holes,
+}: {
+  shots?: readonly {
+    playerId?: unknown;
+    holeNumber?: unknown;
+    result?: { restPosition?: Vec2; pocketed?: unknown } | null;
+  }[] | null;
+  botPlayerId?: string | null;
+  holes?: readonly Hole[] | null;
+}): BotShotRecap | null {
+  if (!botPlayerId || !Array.isArray(shots) || shots.length === 0) return null;
+
+  let end = -1;
+  for (let i = shots.length - 1; i >= 0; i -= 1) {
+    if (shots[i]?.playerId === botPlayerId) {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) return null;
+
+  const holeNumber = Number(shots[end]?.holeNumber) || 0;
+  // Walk back over the bot's contiguous run ON THAT HOLE only, so a run that
+  // also opened the next hole does not inflate this hole's stroke count.
+  let start = end;
+  while (
+    start - 1 >= 0 &&
+    shots[start - 1]?.playerId === botPlayerId &&
+    Number(shots[start - 1]?.holeNumber) === holeNumber
+  ) {
+    start -= 1;
+  }
+
+  const last = shots[end];
+  const hole = holeNumber > 0 ? holes?.[holeNumber - 1] : null;
+  const cup = hole?.geometry?.cup;
+  const rest = last?.result?.restPosition;
+  const restDistance =
+    cup && rest && Number.isFinite(rest.x) && Number.isFinite(rest.y)
+      ? Math.hypot(rest.x - cup.x, rest.y - cup.y)
+      : null;
+
+  return {
+    hole: holeNumber,
+    strokes: end - start + 1,
+    pocketed: Boolean(last?.result?.pocketed),
+    restDistance,
+  };
 }
 
 /** Total strokes each seat has taken across the whole match. */

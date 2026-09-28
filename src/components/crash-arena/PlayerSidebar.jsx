@@ -15,6 +15,7 @@ import {
 import IconAvatar from "../IconAvatar";
 import { frameWrapperProps } from "../FrameAvatar";
 import { cosmeticEffectClass } from "../../lib/profileCosmetics";
+import { CRASH_ARENA_SEATS } from "../../lib/crash-poker/constants";
 
 /**
  * PlayerSidebar — poker-style player panel shown beside the game canvas.
@@ -29,7 +30,7 @@ import { cosmeticEffectClass } from "../../lib/profileCosmetics";
  *   readyUserIds  — ids of seated players who pressed Start Round (ready
  *                   vote); AI bots never vote, so they are simply absent
  *   phase         — current round phase
- *   maxPlayers    — table seat capacity (defaults to 6)
+ *   maxPlayers    — table seat capacity (defaults to 2 — Crash Arena is 1v1)
  *   onExitToLobby — () => void — for a wait-listed player to cash out
  *                   and return to the lobby
  */
@@ -38,7 +39,7 @@ export default function PlayerSidebar({
   waitingPlayers = [],
   readyUserIds = [],
   phase = "waiting",
-  maxPlayers = 6,
+  maxPlayers = CRASH_ARENA_SEATS,
   onExitToLobby,
 }) {
   const isLive = phase === "running" || phase === "crashed" || phase === "settling";

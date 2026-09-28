@@ -8,14 +8,11 @@ export async function POST(req: Request) {
     const gate = await requireAgeVerifiedUser();
     if (gate.response) return gate.response;
     const userId = gate.userId;
-    const { maxPlayers = 2, difficulty } = await req.json().catch(() => ({}));
-    // AI matches are free play — no tokens move. `difficulty` is the
-    // lobby picker's tier; the store coerces it (absent/invalid → normal).
-    const res: any = await createAiTowerArenaMatch({
-      userId,
-      maxPlayers: Number(maxPlayers),
-      difficulty,
-    });
+    const { difficulty } = await req.json().catch(() => ({}));
+    // AI matches are free play — no tokens move, and there is no seat count:
+    // a 1v1 practice match is always the human plus one bot. `difficulty` is
+    // the lobby picker's tier; the store coerces it (absent/invalid → normal).
+    const res: any = await createAiTowerArenaMatch({ userId, difficulty });
     if (res.error) {
       return NextResponse.json({ ok: false, message: res.error }, { status: res.status || 400 });
     }

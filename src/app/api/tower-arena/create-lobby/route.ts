@@ -9,11 +9,13 @@ export async function POST(req: Request) {
     const gate = await requireAgeVerifiedUser();
     if (gate.response) return gate.response;
     const userId = gate.userId;
-    const { wager = 10, maxPlayers = 2 } = await req.json().catch(() => ({}));
+    // A seat count is no longer part of the request: Tower Arena is 1v1, so
+    // the store always opens a two-seat lobby.
+    const { wager = 10 } = await req.json().catch(() => ({}));
     // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
     // The requested wager is normalized to 0, so the host escrow is a no-op
     // and the match settles with no prize pool.
-    const res: any = await createTowerArenaLobby({ userId, wager: normalizeStake(wager), maxPlayers: Number(maxPlayers) });
+    const res: any = await createTowerArenaLobby({ userId, wager: normalizeStake(wager) });
     return NextResponse.json({ ok: !res.error, match: res.match ?? null, error: res.error, message: res.error }, { status: res.status || 200 });
   } catch (error) {
     await logError({

@@ -1464,11 +1464,12 @@ export const dicePlayerStats = pgTable("dice_player_stats", {
 
 // ── Tower Arena ──────────────────────────────────────────────────────
 //
-// 2–6 player shared-tower stacking game. The server is fully
+// Strictly 1v1 tower-stacking duel (SEATS = 2; the 2–6 player shared
+// table mode was retired). The server is fully
 // authoritative: every match/tower/resource/placement value is owned
 // by the server and stored here; clients only submit intent (block
 // shape + x + rotation) and render back the state the server persists.
-// No fixed player seats — seats live in `tower_arena_players`.
+// Seats live in `tower_arena_players` (always two rows per match).
 //
 // `status` lifecycle: waiting (lobby open) → active (play began) →
 // finished | cancelled.
@@ -1872,7 +1873,10 @@ export const crashArenaTables = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     wagerAmount: numeric("wager_amount", { precision: 10, scale: 2 }).notNull(),
     minimumBuyin: numeric("minimum_buyin", { precision: 10, scale: 2 }).notNull(),
-    maxPlayers: integer("max_players").notNull().default(6),
+    // Seats at the table. Crash Arena is strictly 1v1 (the shared table mode
+    // was retired), so every table opens with two seats — see
+    // CRASH_ARENA_SEATS in src/lib/crash-poker/constants.js.
+    maxPlayers: integer("max_players").notNull().default(2),
     // Creator of the table (null for system-seeded default tables).
     hostId: integer("host_id").references(() => users.id, {
       onDelete: "set null",
@@ -4277,6 +4281,9 @@ export const miniGolfMatches = pgTable(
     gameState: jsonb("game_state").notNull(),
     // Marked on every future AI match so settlement can skip rating/stats.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier for a free vs-AI match: easy | normal | hard (NULL = the
+    // mini-golf default, `hard`). Ignored on human duels.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // 'player1' | 'player2' | 'tie'. Null until the match settles.
     result: varchar("result", { length: 20 }),
     startedAt: timestamp("started_at"),

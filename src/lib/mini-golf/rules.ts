@@ -5,11 +5,14 @@
 // state, which makes the turn/hole/match lifecycle unit-testable in isolation
 // and keeps the API routes/store thin.
 //
-// Model (and why): each seat plays its OWN ball toward the same cup, taking
-// strokes in turn. `balls` therefore holds one ball per seat, and `currentBall`
-// is the ball of the seat whose turn it is. A shared single ball could not
-// express "the hole is won by the player with fewer strokes", which is the
-// scoring rule, so per-seat balls are required to make the rule meaningful.
+// Model (and why): each seat plays its OWN ball toward the same cup, taking a
+// whole TURN at the hole at a time. A "turn" is one seat's complete run: the
+// seat whose turn it is keeps shooting until its ball is in the cup, and only
+// then does the other seat get the tee. `balls` therefore holds one ball per
+// seat, and `currentBall` is the ball of the seat whose turn it is. A shared
+// single ball could not express "the hole is won by the player with fewer
+// strokes", which is the scoring rule, so per-seat balls are required to make
+// the rule meaningful.
 //
 // Both seats must hole out before a hole is complete. That is deliberate: if a
 // hole ended as soon as the leader holed out, the trailing player would be
@@ -59,7 +62,9 @@ export type ShotPhase = "aiming" | "resolving" | "finished";
  *   SHOT_RESOLVING  → the shot was accepted and the server is applying it
  *   BALL_SETTLED    → the deterministic simulation returned the final ball
  *   HOLE_COMPLETED  → both seats holed out, the hole was scored
- *   NEXT_PLAYER_TURN→ the turn was handed to the other seat on the same hole
+ *   NEXT_PLAYER_TURN→ the same hole continues: either the shooter keeps the
+ *                     tee (still not holed out) or the other seat takes over
+ *                     because the shooter has holed out
  *   NEXT_HOLE       → the next hole was started (balls reset, starter swapped)
  *   MATCH_COMPLETED → a seat reached HOLES_TO_WIN (or all holes were played)
  *
@@ -449,15 +454,14 @@ export function applyShot({
       stages.push("HOLE_COMPLETED", "NEXT_HOLE");
     }
   } else {
-    // Hand the turn on. A seat that has holed out cannot play again, so the
-    // other seat keeps the turn until it also holes out.
-    if (seatBall.holedOut) {
-      next.currentTurn = opponent;
-    } else if (next.balls[opponent].holedOut) {
-      next.currentTurn = seat;
-    } else {
-      next.currentTurn = opponent;
-    }
+    // Hand the turn on ONLY once the shooter has holed out. A "turn" is one
+    // seat's whole run at the hole: the shooter keeps the tee until its ball is
+    // in the cup, and only then does the opponent start its own run. (Passing
+    // the turn on after every stroke — the previous behaviour — made the two
+    // seats trade single shots instead of finishing a ball.) The
+    // both-holed-out case is already handled above, so when the shooter has
+    // holed out the opponent is necessarily the one still to play.
+    next.currentTurn = seatBall.holedOut ? opponent : seat;
     syncActive(next);
     stages.push("NEXT_PLAYER_TURN");
   }

@@ -265,27 +265,37 @@ test("a replayed shot is rejected by the version guard and never double-counts",
   assert.equal(first.error, undefined);
   assert.equal(first.state.holeScores[0].player1, 1);
   assert.equal(first.state.version, 2);
-  assert.equal(first.state.currentTurn, "player2");
+  assert.equal(
+    first.state.currentTurn,
+    "player1",
+    "the shooter keeps the turn until it has holed out",
+  );
 
-  // The exact same request replayed: the turn has moved on, so it is rejected
-  // and — critically — never counted a second time.
+  // The exact same request replayed: the version has moved on, so it is
+  // rejected — and never counted a second time.
   const replay = server.shoot(P1, request);
   assert.equal(replay.status, 409);
+  assert.match(replay.error, /stale/i);
   assert.equal(server.snapshot().gameState.holeScores[0].player1, 1);
   assert.equal(server.snapshot().gameState.shotSeq, 1);
   assert.equal(server.shots.length, 1);
 
   // A stale tab acting on the pre-shot snapshot is rejected by the optimistic
   // concurrency guard…
-  const stale = server.shoot(P2, { angle: 90, power: 40, expectedVersion: 1 });
+  const stale = server.shoot(P1, { angle: 90, power: 40, expectedVersion: 1 });
   assert.equal(stale.status, 409);
   assert.match(stale.error, /stale/i);
+
+  // …and only the shooter can act on the current version — the opponent is
+  // locked out until player1's ball is in the cup.
+  const wrongTurn = server.shoot(P2, { angle: 90, power: 40, expectedVersion: 2 });
+  assert.equal(wrongTurn.status, 409);
+  assert.match(wrongTurn.error, /turn/i);
   assert.equal(server.snapshot().gameState.holeScores[0].player2, 0);
 
-  // …while the current version is accepted exactly once.
-  const fresh = server.shoot(P2, { angle: 90, power: 40, expectedVersion: 2 });
+  const fresh = server.shoot(P1, { angle: 90, power: 40, expectedVersion: 2 });
   assert.equal(fresh.error, undefined);
-  assert.equal(fresh.state.holeScores[0].player2, 1);
+  assert.equal(fresh.state.holeScores[0].player1, 2);
   assert.equal(server.snapshot().gameState.shotSeq, 2);
   assert.equal(server.shots.length, 2);
 });
@@ -400,7 +410,11 @@ test("a player cannot shoot after the match is complete", () => {
 // ── Reconnect / state synchronisation ─────────────────────────────────────
 
 test("both seats resynchronise to the identical authoritative snapshot", () => {
-  const server = createServer({ seed: 42 });
+  // player1 plays out the hole in one stroke, which hands the tee to player2.
+  const server = createServer({
+    seed: 42,
+    simulate: planSimulator({ 1: { player1: 1, player2: 1 } }),
+  });
 
   server.shoot(P1, { angle: 90, power: 40, expectedVersion: 1 });
 

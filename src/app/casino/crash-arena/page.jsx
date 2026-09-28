@@ -5,7 +5,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 export const metadata = {
   title: "Crash Arena | GRYND",
   description:
-    "Join a Crash Arena table on GRYND. Post the blinds, then fold, call or raise at every betting checkpoint as the multiplier climbs. Last player standing takes the pot.",
+    "Play Crash Arena on GRYND, a head-to-head crash duel. Both players ante, the multiplier climbs, and one button folds you out — fold later than your opponent to take the pot.",
   openGraph: { images: [ogImageUrl("/images/og/crash-arena.jpg")] },
 };
 

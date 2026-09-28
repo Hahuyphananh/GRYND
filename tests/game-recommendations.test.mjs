@@ -5,7 +5,8 @@
 //
 // What is pinned here:
 //   * the tag catalog cannot drift from the casino lobby (ids, hrefs,
-//     featured ORDER, and pvpMode 1v1/multi → pvp/multiplayer one-for-one);
+//     featured ORDER, and pvpMode → tag one-for-one — every game is a 1v1
+//     duel, and the retired `multiplayer` tag is gone from both);
 //   * the tag vocabulary is honest — every tag discriminates, and skill/chance
 //     can never both describe one game;
 //   * every questionnaire option is either wired to the engine or explicitly
@@ -122,15 +123,23 @@ test("the tag catalog mirrors the casino lobby exactly (ids, hrefs, order)", () 
   for (const id of ids) assert.ok(GAMES_BY_ID[id], `GAMES_BY_ID is missing ${id}`);
 });
 
-test("pvp / multiplayer tags match the lobby's pvpMode one-for-one", () => {
+test("every game is a 1v1 duel, and the multiplayer concept is fully retired", () => {
   const { ids, pvpModes } = lobbyGames();
   assert.equal(pvpModes.length, ids.length);
-  const expected = ids.map((id, i) => (pvpModes[i] === "multi" ? "multiplayer" : "pvp"));
+  // The lobby declares no shared tables at all: every card is 1v1.
+  assert.deepEqual(
+    [...new Set(pvpModes)],
+    ["1v1"],
+    "the lobby must not declare a non-1v1 pvpMode",
+  );
   for (const game of GAME_CATALOG) {
-    const want = expected[ids.indexOf(game.id)];
-    assert.ok(game.tags.includes(want), `${game.id} should be tagged ${want}`);
-    const other = want === "pvp" ? "multiplayer" : "pvp";
-    assert.ok(!game.tags.includes(other), `${game.id} must not be tagged ${other}`);
+    assert.ok(game.tags.includes("pvp"), `${game.id} should be tagged pvp`);
+  }
+  // The tag vocabulary no longer knows about shared tables, so no game can
+  // silently re-introduce one and no tag can drift away from the lobby.
+  assert.ok(!GAME_TAGS.includes("multiplayer"), "the multiplayer tag must be retired");
+  for (const game of GAME_CATALOG) {
+    assert.ok(!game.tags.includes("multiplayer"), `${game.id} is still tagged multiplayer`);
   }
 });
 
@@ -147,7 +156,8 @@ test("the tag vocabulary is used honestly", () => {
       `${game.id} is tagged both chance and skill`
     );
   }
-  // Every declared tag is actually used — otherwise it is dead vocabulary.
+  // Every declared tag is actually used — otherwise it is dead vocabulary
+  // (which is why `multiplayer` was removed when the shared tables retired).
   const used = new Set(GAME_CATALOG.flatMap((game) => game.tags));
   for (const tag of GAME_TAGS) assert.ok(used.has(tag), `tag "${tag}" is never used`);
 });
@@ -191,11 +201,27 @@ test("every questionnaire option is either wired up or documented as analytics-o
 
 // ── 2. Each preference floats its own slice to the top ───────────────────
 
-test("PvP preference ranks head-to-head duels first", () => {
-  assertTagFloatsToTop({ game_types: ["pvp_duels"] }, "pvp");
-  assert.equal(idsOf({ game_types: ["pvp_duels"] })[0], "roulette");
-  // Same signal from Q1 ("playing against other players").
-  assertTagFloatsToTop({ motivation: ["versus_players"] }, "pvp");
+test("the PvP preference is honest but uniform: every game is a 1v1 duel", () => {
+  // With the shared tables retired, `pvp` tags the WHOLE catalog. The answer
+  // is still a real, recorded signal — it just cannot discriminate any more,
+  // so it must leave the featured order exactly as it was.
+  for (const [answers, weight, reason] of [
+    [{ game_types: ["pvp_duels"] }, RECOMMENDATION_WEIGHTS.gameType, "game_type:pvp_duels"],
+    [{ motivation: ["versus_players"] }, RECOMMENDATION_WEIGHTS.motivation, "motivation:versus_players"],
+  ]) {
+    const result = recommendGames(answers);
+    assert.equal(result.personalized, true, "the answer is still a usable signal");
+    assert.deepEqual(
+      result.recommendations.map((g) => g.id),
+      DEFAULT_GAME_ORDER,
+      "a uniform signal leaves the featured order untouched",
+    );
+    for (const game of result.recommendations) {
+      assert.ok(game.tags.includes("pvp"), `${game.id} is not tagged pvp`);
+      assert.equal(game.score, weight, `${game.id} takes the uniform weight`);
+      assert.deepEqual(game.reasons, [reason]);
+    }
+  }
 });
 
 test("strategy preference ranks strategy games first", () => {
@@ -254,18 +280,23 @@ test("combination: pvp + strategy + competitive puts the ranked strategists on t
     priorities: ["ranking_up"],
   }).recommendations;
   // pvp(10) + strategy(10) + competitive(10) + competition(4) + ranking_up(4)
-  // + experienced(2) = 40; only Chess and Hex Duel are tagged all three.
+  // + experienced(2) = 40. Chess, Hex Duel and Tower Arena are the three games
+  // tagged all three, so they lead — Tower Arena included, because it is now a
+  // ranked 1v1 duel like the other two (it used to lose the pvp weight as a
+  // shared-table game).
+  // Ties break by the lobby's featured order: chess, then tower-arena, then
+  // hex-duel.
   assert.deepEqual(
-    ranked.slice(0, 2).map((g) => g.id),
-    ["chess", "hex-duel"]
+    ranked.slice(0, 3).map((g) => g.id),
+    ["chess", "tower-arena", "hex-duel"]
   );
   assert.equal(ranked[0].score, 40);
   for (const tag of ["pvp", "strategy", "competitive"]) {
     assert.ok(ranked[0].tags.includes(tag));
   }
-  // Multiplayer strategists score lower — the pvp preference is respected.
-  const towerArena = ranked.find((g) => g.id === "tower-arena");
-  assert.ok(towerArena.score < ranked[0].score);
+  // …and the next block down is the competitively-tagged non-strategists.
+  assert.equal(ranked[3].score, 30);
+  assert.ok(!ranked[3].tags.includes("strategy"));
 });
 
 test("combination: chance + fun puts the casual lucky game on top", () => {

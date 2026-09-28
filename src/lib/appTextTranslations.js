@@ -314,9 +314,9 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Best-of-3 PvP Blackjack table",
         blackjack_desc:
           "Best-of-3 head-to-head. Read the table, time your swaps, outplay the seat across from you.",
-        tower_arena_alt: "Tower Arena blocks stacked on a shared table",
+        tower_arena_alt: "Tower Arena blocks stacked in a head-to-head tower",
         tower_arena_desc:
-          "Two to six players, one shared tower. Build, block, and outlast the collapse.",
+          "Two players, one head-to-head tower. Build, block, and outlast the collapse.",
         plinko_alt: "Plinko game with falling chips",
         plinko_desc:
           "Duel on the same peg field — 3 balls each. Pick your launch and out-score your rival.",
@@ -432,7 +432,6 @@ export const APP_TEXT_TRANSLATIONS = {
         sort_by: "Sort By",
         filter_all: "All Games",
         filter_duels: "1v1 Duels",
-        filter_multiplayer: "Multiplayer",
         filter_popular: "Popular Games",
         sort_featured: "Featured",
         sort_most_played: "Most Played",
@@ -444,7 +443,6 @@ export const APP_TEXT_TRANSLATIONS = {
         play_vs_ai: "Play vs AI",
         badge_hot: "HOT",
         badge_new: "NEW",
-        pvp_multi_badge: "Multiplayer",
         recently_played: "Recently Played",
         play_again: "Play again",
         recently_played_empty: "Games you play will show up here.",
@@ -496,7 +494,7 @@ export const APP_TEXT_TRANSLATIONS = {
         "Fast card duels. Match colors and numbers to outplay your rival — online or vs the AI.",
       rps_desc:
         "Best-of-7 mind games. Predict, counter, and out-psych your rival.",
-      tower_arena_desc: "Competitive shared-tower survival for 2–6 players. Place blocks, avoid the collapse, and be the last one standing.",
+      tower_arena_desc: "Competitive head-to-head tower survival. Place blocks, avoid the collapse, and be the last one standing.",
       yahtzee_desc: "Server-authoritative Yahtzee with PvP wagering or instant AI battles.",
       dice_flush_desc: "Roll five dice, lock in combos, and outscore your rival in this strategic dice showdown.",
       odds_desc: "Each player picks a hidden number, then predicts the opponent's. Closest predictions earn points. Range shrinks 100 → 50 → 25 → 12 → 6 → 3.",
@@ -2035,9 +2033,9 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Table de Blackjack PvP en Best of 3",
         blackjack_desc:
           "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
-        tower_arena_alt: "Blocs de Tower Arena empilés sur une table partagée",
+        tower_arena_alt: "Blocs de Tower Arena empilés dans une tour en duel",
         tower_arena_desc:
-          "De deux à six joueurs, une tour partagée. Construis, bloque et survis à l'effondrement.",
+          "Deux joueurs, une tour. Construis, bloque et survis à l'effondrement.",
         plinko_alt: "Jeu Plinko avec des jetons qui tombent",
         plinko_desc:
           "Duel sur le même champ de picots — 3 balles chacun. Choisis ton tir et bats ton rival.",
@@ -2155,7 +2153,6 @@ export const APP_TEXT_TRANSLATIONS = {
         sort_by: "Trier par",
         filter_all: "Tous les jeux",
         filter_duels: "Duels 1v1",
-        filter_multiplayer: "Multijoueur",
         filter_popular: "Jeux populaires",
         sort_featured: "En vedette",
         sort_most_played: "Les plus joués",
@@ -2167,7 +2164,6 @@ export const APP_TEXT_TRANSLATIONS = {
         play_vs_ai: "Jouer contre l'IA",
         badge_hot: "HOT",
         badge_new: "NOUVEAU",
-        pvp_multi_badge: "Multijoueur",
         recently_played: "Récemment joués",
         play_again: "Rejouer",
         recently_played_empty: "Les jeux auxquels vous jouez apparaîtront ici.",
@@ -2219,7 +2215,7 @@ export const APP_TEXT_TRANSLATIONS = {
       rps_desc:
         "Jeux d'esprit en best of 7. Prédit, contre et prends ton rival au piège.",
       tower_arena_desc:
-        "Survie de tour partagée en compétition pour 2 à 6 joueurs. Placez des blocs, évitez l'effondrement et soyez le dernier debout.",
+        "Survie de tour en compétition en duel. Placez des blocs, évitez l'effondrement et soyez le dernier debout.",
       yahtzee_desc:
         "Yahtzee autoritaire côté serveur avec mises JcJ ou affrontements IA instantanés.",
       dice_flush_desc:
@@ -3391,9 +3387,9 @@ export const APP_TEXT_TRANSLATIONS = {
         blackjack_alt: "Mesa de Blackjack PvP al mejor de 3",
         blackjack_desc:
           "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
-        tower_arena_alt: "Bloques de Tower Arena apilados en una mesa compartida",
+        tower_arena_alt: "Bloques de Tower Arena apilados en una torre de duelo",
         tower_arena_desc:
-          "De dos a seis jugadores, una torre compartida. Construye, bloquea y sobrevive al derrumbe.",
+          "Dos jugadores, una torre. Construye, bloquea y sobrevive al derrumbe.",
         plinko_alt: "Juego Plinko con fichas cayendo",
         plinko_desc:
           "Duelo en el mismo campo de clavijas: 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
@@ -3512,7 +3508,6 @@ export const APP_TEXT_TRANSLATIONS = {
         sort_by: "Ordenar por",
         filter_all: "Todos los juegos",
         filter_duels: "Duelos 1v1",
-        filter_multiplayer: "Multijugador",
         filter_popular: "Juegos populares",
         sort_featured: "Destacados",
         sort_most_played: "Más jugados",
@@ -3523,7 +3518,6 @@ export const APP_TEXT_TRANSLATIONS = {
         no_results_hint: "Prueba con otra palabra clave o cambia el filtro.",
         play_vs_ai: "Jugar contra la IA",
         badge_hot: "POPULAR",
-        pvp_multi_badge: "Multijugador",
         badge_new: "NUEVO",
         recently_played: "Jugados recientemente",
         play_again: "Jugar de nuevo",
@@ -3575,7 +3569,7 @@ export const APP_TEXT_TRANSLATIONS = {
         "Duelos de cartas rápidos. Iguala colores y números para superar a tu rival — en línea o contra la IA.",
       rps_desc:
         "Juego mental al mejor de 7. Predice, contraataca y supera a tu rival.",
-      tower_arena_desc: "Supervivencia competitiva de torre compartida para 2 a 6 jugadores. Coloca bloques, evita el derrumbe y sé el último en pie.",
+      tower_arena_desc: "Supervivencia competitiva de torre en duelo. Coloca bloques, evita el derrumbe y sé el último en pie.",
       yahtzee_desc:
         "Yahtzee autoritativo del servidor con apuestas JcJ o partidas instantáneas contra IA.",
       dice_flush_desc:

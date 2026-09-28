@@ -12,15 +12,11 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 
-// Any 2–6 is supported; the creator's pick decides when the lobby is full.
-const PLAYER_COUNT_OPTIONS = [2, 3, 4, 5, 6];
-
 export default function TowerArenaLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
   // so there is no wager to pick and no token balance to load.
   const wager = 0;
-  const [maxPlayers, setMaxPlayers] = useState(6);
   // The AI tier the bots place at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
@@ -45,12 +41,13 @@ export default function TowerArenaLobbyPage() {
   };
 
   // The prize pool preview is computed server-side (centralized payout config).
+  // Tower Arena is 1v1, so the pot is always two entries — no seat count is
+  // part of the request.
   const loadPreview = async () => {
     try {
-      const res = await fetch(
-        `/api/tower-arena/payout-preview?wager=${wager}&maxPlayers=${maxPlayers}`,
-        { cache: "no-store" },
-      );
+      const res = await fetch(`/api/tower-arena/payout-preview?wager=${wager}`, {
+        cache: "no-store",
+      });
       const data = await res.json();
       if (data.ok) setPreview(data.preview);
     } catch {
@@ -58,12 +55,12 @@ export default function TowerArenaLobbyPage() {
     }
   };
 
-  // Recompute preview whenever the wager or player count changes.
+  // Recompute preview whenever the wager changes.
   useEffect(() => {
     const t = setTimeout(loadPreview, 120);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wager, maxPlayers]);
+  }, [wager]);
 
   useEffect(() => {
     load();
@@ -95,7 +92,7 @@ export default function TowerArenaLobbyPage() {
       const res = await fetch("/api/tower-arena/create-lobby", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wager, maxPlayers }),
+        body: JSON.stringify({ wager }),
       });
       const data = await res.json();
       if (!data.match?.id) {
@@ -103,7 +100,7 @@ export default function TowerArenaLobbyPage() {
         return;
       }
       posthog?.capture("tower_arena_lobby_created", {
-        playerCount: maxPlayers,
+        playerCount: 2,
         wagerTier: wager,
         lobbyType: "pvp",
       });
@@ -120,12 +117,12 @@ export default function TowerArenaLobbyPage() {
       const res = await fetch("/api/tower-arena/create-ai-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxPlayers, difficulty: aiDifficulty }),
+        body: JSON.stringify({ difficulty: aiDifficulty }),
       });
       const data = await res.json();
       if (data.matchId) {
         posthog?.capture("tower_arena_lobby_created", {
-          playerCount: maxPlayers,
+          playerCount: 2,
           wagerTier: 0,
           lobbyType: "ai_freeplay",
         });
@@ -153,7 +150,7 @@ export default function TowerArenaLobbyPage() {
         return;
       }
       posthog?.capture("tower_arena_lobby_joined", {
-        playerCount: maxPlayers,
+        playerCount: 2,
         wagerTier: lobby.wager,
         lobbyType: "pvp",
       });
@@ -166,7 +163,7 @@ export default function TowerArenaLobbyPage() {
   return (
     <PvpLobbyPage
       title="Tower Arena"
-      subtitle="Shared 2D Tower Survival — for 2 to 6 players. Drop blocks from the sky onto a tiny floating platform and outlast every rival."
+      subtitle="Head-to-head 2D Tower Survival — 1v1. Drop blocks from the sky onto a narrow floating platform and outlast your rival."
       icon={
         <IconBuildingSkyscraper className="h-9 w-9 flex-shrink-0 text-cyan-400 drop-shadow-[0_0_12px_rgba(34,211,238,0.6)] sm:h-10 sm:w-10" />
       }
@@ -178,14 +175,14 @@ export default function TowerArenaLobbyPage() {
             heading: "Drop & stack",
             body: (
               <>
-                Tower Arena is a competitive survival game for{" "}
-                <b>2–6 players</b>. The board is a 2D line: everyone builds
-                one shared tower on a small floating platform with open sky
-                around it. On your turn, pick a block (the shared pool, or
-                your reserved one) and <b>drop it from the sky</b> — aim it
-                at the top of the board, rotate with R, then click to let it
-                fall. Blocks are slightly slippery: an off-balance landing
-                slips a little before it settles.
+                Tower Arena is a 1v1 survival duel. The board is a narrow 2D
+                line — <b>eight columns wide</b>, sized for two players — and
+                you build one shared tower on the floating platform with open
+                sky around it. On your turn, pick a block from the shared pool
+                and <b>drop it from the sky</b> — aim it at the top of the
+                board, rotate with R, then click to let it fall. Blocks are
+                slightly slippery: an off-balance landing slips a little
+                before it settles.
               </>
             ),
           },
@@ -222,9 +219,9 @@ export default function TowerArenaLobbyPage() {
             heading: "Win & payout",
             body: (
               <>
-                Final placement follows elimination order — the last player
-                standing wins the match. Nothing is staked and no prize pool
-                is paid; free play only.
+                The first block to fall ends it: the player who dropped it is
+                out and the other player wins the duel. Nothing is staked and
+                no prize pool is paid; free play only.
               </>
             ),
           },
@@ -271,7 +268,7 @@ export default function TowerArenaLobbyPage() {
       joinBusyId={joiningId}
       onRefresh={load}
       error={error}
-      waitingSubtitle={`Waiting for a ${maxPlayers}-player Tower Arena to fill…`}
+      waitingSubtitle="Waiting for an opponent to join…"
     >
       <AiDifficultyPicker
         gameKey="tower-arena"
@@ -283,27 +280,10 @@ export default function TowerArenaLobbyPage() {
           hard: "The bots place their safest available block.",
         }}
       />
-      {/* Player-count selector (2–6) — the creator pick determines when full */}
+      {/* Prize preview — computed server-side from the centralized 1v1 payout
+          config. There is no seat count to choose: the pot is always two
+          entries. */}
       <div className="mt-4">
-        <label className="text-[10px] font-semibold uppercase tracking-wider text-white/60">
-          Players
-        </label>
-        <div className="mt-1 flex flex-wrap gap-1">
-          {PLAYER_COUNT_OPTIONS.map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setMaxPlayers(v)}
-              className={`rounded-full border px-3 py-1 text-[11px] font-bold transition ${
-                maxPlayers === v
-                  ? "border-cyan-400 bg-cyan-500/20 text-cyan-200"
-                  : "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-cyan-600/50 hover:text-cyan-200"
-              }`}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
         {preview && (
           <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-cyan-700/30 bg-black/30 p-3 text-xs sm:grid-cols-4">
             <div>

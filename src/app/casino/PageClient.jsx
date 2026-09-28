@@ -86,7 +86,9 @@ function MainComponent({ adSlot = null }) {
   const [activeFilter, setActiveFilter] = useState(() => {
     const stored = readStored(LOBBY_FILTER_KEY, "all");
     console.log("[LOBBYDBG] filter init from storage:", stored);
-    return ["all", "duels", "multiplayer", "popular"].includes(stored) ? stored : "all";
+    // Every game is 1v1 now, so the retired "multiplayer" filter is no longer
+    // a choice — a stored value from an old session falls back to "all".
+    return ["all", "duels", "popular"].includes(stored) ? stored : "all";
   });
   // Sort is a separate concern from filtering: filters narrow the set
   // (kind of game), sort reorders it. Persisted per session like the
@@ -389,7 +391,7 @@ function MainComponent({ adSlot = null }) {
       image: Img6,
       imageClassName: "group-hover:scale-[1.03]",
       descriptionKey: "games.crash_arena_desc",
-      pvpMode: "multi",
+      pvpMode: "1v1",
     },
     {
       name: "Échecs",
@@ -440,7 +442,7 @@ function MainComponent({ adSlot = null }) {
       playsKey: "tower-arena",
       image: ImgTowerArena,
       descriptionKey: "games.tower_arena_desc",
-      pvpMode: "multi",
+      pvpMode: "1v1",
     },
     {
       name: "Four-In-A-Row",
@@ -583,8 +585,6 @@ function MainComponent({ adSlot = null }) {
   // Filters narrow the set — kind of game. Sorts reorder it (below).
   if (activeFilter === "duels") {
     displayedGames = displayedGames.filter((g) => g.pvpMode === "1v1");
-  } else if (activeFilter === "multiplayer") {
-    displayedGames = displayedGames.filter((g) => g.pvpMode === "multi");
   } else if (activeFilter === "popular") {
     displayedGames = displayedGames.filter((g) => g.popular);
   }
@@ -800,12 +800,10 @@ function MainComponent({ adSlot = null }) {
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
             className={`h-full w-full object-cover object-center transition-transform group-hover:scale-110 ${game.imageClassName || ""}`}
           />
-          {/* PvP mode badge — real product data: every GRYND game is
-              competitive. 1v1 duels vs multiplayer tables. */}
+          {/* PvP badge — real product data: every GRYND game is a competitive
+              1v1 duel (the shared multiplayer tables were retired). */}
           <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-            {game.pvpMode === "multi"
-              ? t("home.casino_lobby.pvp_multi_badge")
-              : t("home.pvp_badge")}
+            {t("home.pvp_badge")}
           </span>
           {/* Popular / New badges — brand neon pills over the card art.
               Purely informational chrome: aria-hidden so screen readers
@@ -1066,10 +1064,6 @@ function MainComponent({ adSlot = null }) {
               {[
                 { key: "all", labelKey: "home.casino_lobby.filter_all" },
                 { key: "duels", labelKey: "home.casino_lobby.filter_duels" },
-                {
-                  key: "multiplayer",
-                  labelKey: "home.casino_lobby.filter_multiplayer",
-                },
                 { key: "popular", labelKey: "home.casino_lobby.filter_popular" },
               ].map((btn) => (
                 <button
@@ -1191,9 +1185,7 @@ function MainComponent({ adSlot = null }) {
                           className="h-full w-full object-cover object-center transition-transform group-hover:scale-110"
                         />
                         <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-                          {game.pvpMode === "multi"
-                            ? t("home.casino_lobby.pvp_multi_badge")
-                            : t("home.pvp_badge")}
+                          {t("home.pvp_badge")}
                         </span>
                       </div>
                       <div className="px-3 py-2">
@@ -1216,11 +1208,9 @@ function MainComponent({ adSlot = null }) {
             <h2 className="mb-6 text-2xl font-extrabold tracking-tight text-[#00e5ff] sm:text-3xl">
               {activeFilter === "duels"
                 ? t("home.casino_lobby.filter_duels")
-                : activeFilter === "multiplayer"
-                  ? t("home.casino_lobby.filter_multiplayer")
-                  : activeFilter === "popular"
-                    ? t("home.casino_lobby.filter_popular")
-                    : t("home.all_games")}
+                : activeFilter === "popular"
+                  ? t("home.casino_lobby.filter_popular")
+                  : t("home.all_games")}
             </h2>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4 stagger-container">

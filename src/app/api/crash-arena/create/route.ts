@@ -12,6 +12,7 @@ import {
   CRASH_MAX_WAGER,
   CRASH_MIN_BUYIN_MULTIPLIER,
 } from "../../../../lib/games/crash/constants";
+import { CRASH_ARENA_SEATS } from "../../../../lib/crash-poker/constants";
 import {
   broadcastLobbyUpdate,
   broadcastTableUpdate,
@@ -27,9 +28,10 @@ import {
  *
  * Body: { wager: number }
  *
- * Creates a brand-new Crash Arena table with the given round wager so
- * other players can join it from the lobby. The creator is recorded as
- * the table's host (host_id).
+ * Creates a brand-new Crash Arena table with the given round wager so an
+ * opponent can join it from the lobby. The creator is recorded as the
+ * table's host (host_id). Crash Arena is strictly 1v1, so the table opens
+ * with two seats and fills after one join.
  *
  * Per-user anti-spam: before creating, the caller's own stale tables
  * (waiting, empty, older than 30 min) are closed so a user can't pile up
@@ -122,7 +124,7 @@ export async function POST(req: Request) {
         name: `$${roundedWager} Crash Arena`,
         wagerAmount: roundedWager.toFixed(2),
         minimumBuyin: minBuyIn.toFixed(2),
-        maxPlayers: 6,
+        maxPlayers: CRASH_ARENA_SEATS,
         hostId,
         status: "waiting",
         // Private tables are hidden from the public lobby grid — the host

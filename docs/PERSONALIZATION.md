@@ -52,8 +52,7 @@ Each game carries traits from a fixed vocabulary in `src/lib/gameTags.js`:
 
 | Tag | Meaning |
 |---|---|
-| `pvp` | head-to-head 1v1 duel |
-| `multiplayer` | 3–6 player shared table |
+| `pvp` | head-to-head 1v1 duel — **every** game carries this |
 | `strategy` | the match turns on planning / reading the opponent |
 | `fast_paced` | short rounds decided by timing, reflexes or a quick sequence |
 | `casual` | shallow learning curve — jump in and play |
@@ -61,10 +60,15 @@ Each game carries traits from a fixed vocabulary in `src/lib/gameTags.js`:
 | `competitive` | positioned around rank/stake climbing rather than a pick-up game |
 | `skill` | the outcome turns primarily on player ability |
 
-`pvp` / `multiplayer` are not opinions — a test reads the casino lobby's
-`games` array and asserts the tags match `pvpMode` one-for-one, and that the
-catalog's ids, hrefs and **order** equal the lobby's. The other six are
-hand-assigned from each game's shipped description:
+Every GRYND game is a 1v1 duel: the shared 3–6 player tables (Crash Arena's
+six-seat tables, Tower Arena's 2–6 player towers) were retired, and the
+`multiplayer` tag and the lobby's "Multiplayer" filter went with them. `pvp`
+is therefore on the whole catalog, so a `pvp` signal alone never reorders the
+lobby — it adds the same weight everywhere. A test reads the casino lobby's
+`games` array and asserts the tags match `pvpMode` one-for-one (and that no
+mode other than `"1v1"` exists), and that the catalog's ids, hrefs and
+**order** equal the lobby's. The other six tags are hand-assigned from each
+game's shipped description:
 
 | Game | Tags | Why |
 |---|---|---|
@@ -73,12 +77,12 @@ hand-assigned from each game's shipped description:
 | Mines Duel | pvp, chance, competitive | hidden mines are luck; the staked duel is the core |
 | Memory Grid | pvp, skill, casual | memory is ability; rules take seconds |
 | Plinko | pvp, chance, fast_paced | the drop is chance; 3 balls each, quick |
-| Crash Arena | multiplayer, chance, fast_paced, competitive | random crash curve, last standing |
+| Crash Arena | pvp, chance, fast_paced, competitive | random crash curve, last standing, 1v1 |
 | Chess | pvp, strategy, skill, competitive | "outthink your opponent move by move" |
 | Keno | pvp, chance, fast_paced, casual | same draw for both; timed taps; no teaching needed |
 | Neon Flush (UNO) | pvp, fast_paced, casual | fast card duels, instantly readable |
 | Rock-Paper-Scissors | pvp, fast_paced, casual | best-of-7 mind games, one click per round |
-| Tower Arena | multiplayer, strategy, skill, competitive | placement planning + collapse risk, 2–6 players |
+| Tower Arena | pvp, strategy, skill, competitive | placement planning + collapse risk, head-to-head |
 | Four-In-A-Row | pvp, strategy, skill | pure alignment planning |
 | Lane Rush Duel | pvp, skill, competitive, fast_paced | climb-and-bank reads; staked race |
 | Pool Masters | pvp, skill, strategy | aiming + table planning |

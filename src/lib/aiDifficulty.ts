@@ -184,13 +184,25 @@ function storageKey(gameKey: string): string {
   return `${STORAGE_PREFIX}${gameKey}`;
 }
 
-/** The stored tier for a game, or the default. Safe on the server. */
-export function readStoredAiDifficulty(gameKey: string): AiDifficulty {
-  if (typeof window === "undefined") return DEFAULT_AI_DIFFICULTY;
+/**
+ * The stored tier for a game, or `fallback` (the shared default when omitted).
+ * Safe on the server.
+ *
+ * The fallback exists for games whose pre-tier behaviour was NOT `normal`:
+ * mini-golf shipped one fixed, strong bot, so its lobby defaults to `hard` and
+ * only weakens once the player picks a tier. Storage still wins, so an explicit
+ * choice is never overridden.
+ */
+export function readStoredAiDifficulty(
+  gameKey: string,
+  fallback: AiDifficulty = DEFAULT_AI_DIFFICULTY
+): AiDifficulty {
+  if (typeof window === "undefined") return fallback;
   try {
-    return coerceAiDifficulty(window.localStorage.getItem(storageKey(gameKey)));
+    const stored = window.localStorage.getItem(storageKey(gameKey));
+    return stored === null ? fallback : coerceAiDifficulty(stored);
   } catch {
-    return DEFAULT_AI_DIFFICULTY;
+    return fallback;
   }
 }
 

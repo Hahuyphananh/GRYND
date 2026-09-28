@@ -33,7 +33,12 @@ import {
   MINI_GOLF_LOCK_NAMESPACE,
   RESULT,
 } from "./constants";
-import { chooseAiShot } from "./ai";
+import {
+  DEFAULT_MINI_GOLF_AI_DIFFICULTY,
+  chooseAiShot,
+  type MiniGolfAiDifficulty,
+} from "./ai";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import { simulateShot } from "./physics";
 import {
   applyShot,
@@ -101,6 +106,19 @@ export function generateMatchSeed(): number {
   return randomInt(0, 0x100000000);
 }
 
+/**
+ * The practice bot's tier for a row. `NULL` (a legacy or human match) reads
+ * back as the mini-golf default, `hard` — the bot that shipped before tiers.
+ * A human duel carries no bot tier at all.
+ */
+export function aiDifficultyForMatch(match: {
+  aiDifficulty?: unknown;
+  isAi?: boolean | null;
+}): MiniGolfAiDifficulty | null {
+  if (!match?.isAi) return null;
+  return coerceAiDifficulty(match.aiDifficulty ?? DEFAULT_MINI_GOLF_AI_DIFFICULTY);
+}
+
 /** Client-facing DTO for a match row, from `viewerId`'s perspective. */
 export function matchToDto(match: MatchRow, viewerId: string | null) {
   const seats = seatsFromRow(match);
@@ -116,6 +134,8 @@ export function matchToDto(match: MatchRow, viewerId: string | null) {
     // Tells the match view this is a free practice match against the bot (so it
     // can label the seat and explain why nothing is rated). Never competitive.
     isAi: Boolean(match.isAi),
+    // The bot's tier, so the match view can label it (null on a human duel).
+    aiDifficulty: aiDifficultyForMatch(match),
   };
 }
 
@@ -283,11 +303,25 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
  * returns `waiting` rows with a null `player2_id`) and can never settle a
  * rating or trophy (`settleMatch` returns early for `isAi`). It starts
  * immediately in `playing` — there is no opponent to wait for.
+ *
+ * `difficulty` is the lobby's tier pick (easy | normal | hard); it is stored on
+ * the row and drives `advanceAiTurns`. Anything unusable falls back to the
+ * mini-golf default, `hard` — the bot that shipped before tiers existed.
  */
-export async function createAiMatch({ userId }: { userId: string }) {
+export async function createAiMatch({
+  userId,
+  difficulty,
+}: {
+  userId: string;
+  /** The lobby's tier pick; anything unrecognised falls back to the default. */
+  difficulty?: unknown;
+}) {
   const seed = generateMatchSeed();
   const state = createInitialState({ seed, courseVersion: COURSE_VERSION });
   const seats: Seats = { player1Id: userId, player2Id: MINI_GOLF_AI_PLAYER_ID };
+  const aiDifficulty = coerceAiDifficulty(
+    difficulty ?? DEFAULT_MINI_GOLF_AI_DIFFICULTY,
+  );
 
   const [match] = await db
     .insert(miniGolfMatches)
@@ -303,6 +337,7 @@ export async function createAiMatch({ userId }: { userId: string }) {
       courseVersion: COURSE_VERSION,
       gameState: state,
       isAi: true,
+      aiDifficulty,
       startedAt: new Date(),
     })
     .returning();
@@ -369,8 +404,14 @@ export async function advanceAiTurns({
       const hole = holeFor(state);
       const from = state.balls.player2;
       // The bot only proposes { angle, power }, exactly like a human client —
-      // the server still simulates and applies the shot.
-      const shot = chooseAiShot({ hole, from: { x: from.x, y: from.y } });
+      // the server still simulates and applies the shot. The tier the player
+      // picked in the lobby (NULL/legacy → the mini-golf default) is what it
+      // plays to.
+      const shot = chooseAiShot({
+        hole,
+        from: { x: from.x, y: from.y },
+        difficulty: aiDifficultyForMatch(current) ?? DEFAULT_MINI_GOLF_AI_DIFFICULTY,
+      });
       const shotResult = simulateShot({ hole, from, shot });
       const applied = applyShot({
         state,

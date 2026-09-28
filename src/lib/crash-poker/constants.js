@@ -139,6 +139,15 @@ export const FOLD_PAUSE_MS = 3000;
 export const CRASH_MIN = 1.2;
 export const CRASH_MAX = 9.2;
 
+/**
+ * Seats at a Crash Arena table. The shared six-seat table mode was retired:
+ * every table is a head-to-head duel, so a table opens with exactly two
+ * seats (the host and one opponent — a human, an invite, or the AI bot).
+ * The hand engine itself is seat-count agnostic; this is the capacity every
+ * create/seed/UI path uses.
+ */
+export const CRASH_ARENA_SEATS = 2;
+
 /** Platform fee applied to the pot (same rake as before). */
 export const PLATFORM_FEE = 0.05;
 
