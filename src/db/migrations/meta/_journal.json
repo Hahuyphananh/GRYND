@@ -1198,6 +1198,20 @@
       "when": 1800000033000,
       "tag": "0189_drop_roulette_plinko_blackjack_crash",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1800000034000,
+      "tag": "0190_speed_typing",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1800000035000,
+      "tag": "0191_speed_typing_race",
+      "breakpoints": true
     }
   ]
 }

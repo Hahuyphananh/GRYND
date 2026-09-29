@@ -1042,12 +1042,18 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "tower-arena",
     "hex-duel",
     "mini-golf",
+    "speed-typing",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a
   // rated key. Poker, plinko, blackjack, roulette, crash arena were removed
   // from the game entirely, so their keys must NOT be rated any more.
   assert.equal(isRatedGame("mini-golf"), true);
+  // Speed Typing is a 1v1 race with no randomness during play, so its winner is
+  // derivable server-side and it is ratable like the other duels.
+  assert.equal(isRatedGame("speed-typing"), true);
+  assert.equal(normalizeRatingGameKey("speed-typing"), "speed-typing");
+  assert.equal(getRatingGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isRatedGame("hex-duel"), true);
   assert.equal(isRatedGame("tower-arena"), true);
   assert.equal(isRatedGame("uno"), true);
@@ -1166,6 +1172,100 @@ test("MINI GOLF SECURITY: a client-supplied winner/rating can never reach the wr
 });
 
 // ════════════════════════════════════════════════════════════════════════
+//
+// Speed Typing has NO Elo implementation of its own: its store's
+// `settleSpeedTypingMatch` derives the winner from the authoritative race and
+// then calls the shared `applyRatingResult` with the game key "speed-typing".
+// These tests pin that collaboration down at the writer seam.
+
+const SPEED_TYPING_ARGS = {
+  gameKey: "speed-typing",
+  matchId: "22222222-2222-4222-8222-222222222222",
+  winnerClerkId: "user_winner",
+  loserClerkId: "user_loser",
+};
+
+test("SPEED TYPING: a completed race settles both seats through the shared writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyRatingResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.gameKey, "speed-typing");
+  // Placement K=64 on equal ratings ⇒ an equal-opponent win is worth 32, the
+  // same number every other duel gets. Nothing Speed Typing-specific.
+  assert.equal(result.winner.ratingBefore, 1000);
+  assert.equal(result.winner.ratingAfter, 1032);
+  assert.equal(result.winner.delta, 32);
+  assert.equal(result.loser.ratingAfter, 968);
+  assert.equal(result.loser.delta, -32);
+
+  // Its own independent ladder: the two speed-typing rows exist and nothing else.
+  assert.equal(db.state.ratings.size, 2);
+  assert.equal(db.state.ratings.get("11:speed-typing").wins, 1);
+  assert.equal(db.state.ratings.get("22:speed-typing").losses, 1);
+
+  const events = db.eventsFor("speed-typing");
+  assert.equal(events.length, 2);
+  assert.equal(events[0].outcome, "win");
+  assert.equal(events[1].outcome, "loss");
+});
+
+test("SPEED TYPING: a dead-heat draw moves neither rating and journals both", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyRatingResult({
+    tx: db.tx,
+    ...SPEED_TYPING_ARGS,
+    result: "draw",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.result, "draw");
+  assert.equal(result.winner.delta, 0);
+  assert.equal(result.loser.delta, 0);
+  assert.equal(db.state.ratings.get("11:speed-typing").wins, 0);
+  assert.equal(db.state.ratings.get("11:speed-typing").draws, 1);
+  assert.equal(db.state.ratings.get("22:speed-typing").draws, 1);
+  assert.equal(db.eventsFor("speed-typing").length, 2);
+});
+
+test("SPEED TYPING: a replayed settlement of the same match rates exactly once", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const first = await applyRatingResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+  assert.equal(first.applied, true);
+  const ratingAfterFirst = db.state.ratings.get("11:speed-typing").rating;
+  const writesAfterFirst = db.writes().length;
+
+  const second = await applyRatingResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.state.ratings.get("11:speed-typing").rating, ratingAfterFirst);
+  assert.equal(db.eventsFor("speed-typing").length, 2);
+});
+
+test("SPEED TYPING: the ranking is independent of every other game's ladder", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  // A Chess match on the same pair of accounts must not touch the Speed Typing
+  // rows: ratings are per game, and this is the property the whole system rests
+  // on.
+  await applyRatingResult({
+    tx: db.tx,
+    gameKey: "chess",
+    matchId: "33333333-3333-4333-8333-333333333333",
+    winnerClerkId: "user_winner",
+    loserClerkId: "user_loser",
+  });
+
+  assert.equal(db.state.ratings.has("11:speed-typing"), false);
+  assert.equal(db.state.ratings.has("11:chess"), true);
+
+  await applyRatingResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+  // Both codes coexisted, each on its own row, and each still starts at 1000.
+  assert.equal(db.state.ratings.get("11:speed-typing").rating, 1032);
+  assert.equal(db.state.ratings.get("11:chess").rating, 1032);
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // 12. Settlement wiring — every rated game must feed the writer
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1190,6 +1290,9 @@ const WIRING = [
   // simulation (src/lib/mini-golf/rules.ts), so unlike hex-duel it is ratable
   // from day one and wires the shared Elo writer.
   ["mini-golf", "src/lib/mini-golf/serverStore.ts"],
+  // Speed Typing has no rating formula of its own either: its store derives the
+  // winner from the authoritative race and then calls the SAME shared writer.
+  ["speed-typing", "src/lib/speed-typing/serverStore.ts"],
 ];
 
 for (const [gameKey, file] of WIRING) {

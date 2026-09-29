@@ -23,6 +23,7 @@ import {
   minesPvpMatches,
   laneRushDuelMatches,
   miniGolfMatches,
+  speedTypingMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -81,6 +82,7 @@ export async function GET(req: NextRequest) {
       minesPvpRows,
       laneRushDuelRows,
       miniGolfRows,
+      speedTypingRows,
     ] = await Promise.all([
       // Column projection + per-table LIMIT. The formatters below only
       // read a handful of fields per row; full-row selects shipped every
@@ -356,6 +358,30 @@ export async function GET(req: NextRequest) {
           or(
             eq(miniGolfMatches.player1Id, clerkId),
             eq(miniGolfMatches.player2Id, clerkId),
+          ),
+        )
+        .limit(HISTORY_LIMIT),
+      //  Speed Typing (PvP, clerkId-based — finished-only). Unstaked, exactly
+      //  like Mini Golf: it moves no tokens, so amount/payout/tokenDiff are all
+      //  0 and the entry is a pure W/L/draw record decided by the
+      //  server-authoritative `winner_id`. Practice matches are labelled and
+      //  also move no tokens.
+      db
+        .select({
+          player1Id: speedTypingMatches.player1Id,
+          player2Id: speedTypingMatches.player2Id,
+          winnerId: speedTypingMatches.winnerId,
+          result: speedTypingMatches.result,
+          status: speedTypingMatches.status,
+          isAi: speedTypingMatches.isAi,
+          endedAt: speedTypingMatches.endedAt,
+          createdAt: speedTypingMatches.createdAt,
+        })
+        .from(speedTypingMatches)
+        .where(
+          or(
+            eq(speedTypingMatches.player1Id, clerkId),
+            eq(speedTypingMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -663,6 +689,32 @@ export async function GET(req: NextRequest) {
       })
       .filter(Boolean);
 
+    // Speed Typing — finished matches only. Like Mini Golf it is unstaked (no
+    // wagers, tokens or payouts), so every entry is a 0-token W/L/draw record:
+    // the server-authoritative `winner_id` decides, and `tie` (a genuine dead
+    // heat on the race) is a draw. Practice matches are labelled so they are
+    // never confused with ranked PvP.
+    const speedTypingFormatted = speedTypingRows
+      .map((g) => {
+        if (g.status !== "finished") return null;
+        const isDraw = g.result === "tie" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        return {
+          type: g.isAi ? "Speed Typing vs AI" : "Speed Typing",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          // Unstaked — the record line is decided, not token movement.
+          amount: 0,
+          payout: 0,
+          result: outcome,
+          tokenDiff: 0,
+        };
+      })
+      .filter(Boolean);
+
     // Keno Duel PvP matches — winner's payout is `stake * 1.9` and a
     // loser's is 0; a draw refunds both stakes (payout = stake,
     // tokenDiff = 0). Mirrors the minesPvpFormatted shape.
@@ -711,6 +763,7 @@ export async function GET(req: NextRequest) {
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,
       ...miniGolfFormatted,
+      ...speedTypingFormatted,
       ]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         // Cap the merged list: the profile renders the newest 10 and the

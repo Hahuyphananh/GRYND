@@ -14,6 +14,7 @@ export const QUICK_QUEUE_GAME_KEYS = [
   "chess",
   "dice-flush",
   "mini-golf",
+  "speed-typing",
 ] as const;
 
 export type QuickQueueGameKey = (typeof QUICK_QUEUE_GAME_KEYS)[number];

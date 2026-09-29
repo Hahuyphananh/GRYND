@@ -68,6 +68,7 @@ export async function GET(request: Request) {
   await purge("lane_rush_duel_matches", FINISHED);
   await purge("lane_runner_pvp_matches", FINISHED);
   await purge("precision_matches", FINISHED);
+  await purge("speed_typing_matches", FINISHED);
   await purge("odds_games", FINISHED);
   await purge("dots_and_boxes_games", FINISHED);
   await purge("rps_pvp_games", FINISHED);

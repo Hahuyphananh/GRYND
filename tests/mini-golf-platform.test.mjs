@@ -71,7 +71,11 @@ test("discovery: the catalog and the lobby agree on Mini Golf's position", () =>
     lobbyIds,
     "the catalog must mirror the lobby's featured order",
   );
-  assert.equal(lobbyIds.at(-1), KEY, "Mini Golf is the newest lobby card");
+  // The ordering rule both lists share is "the newest card is appended last" —
+  // Mini Golf held that slot until Speed Typing shipped, and a game must never
+  // be inserted ahead of an older one to look newer.
+  assert.equal(lobbyIds.at(-1), "speed-typing", "Speed Typing is the newest lobby card");
+  assert.equal(lobbyIds.at(-2), KEY, "Mini Golf is the card Speed Typing shipped after");
 });
 
 test("discovery: the lobby card links to the Mini Golf lobby and records plays", () => {

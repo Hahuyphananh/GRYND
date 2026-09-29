@@ -18,6 +18,7 @@ import Img19 from "../../images/dice-flush.svg";
 import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import ImgMiniGolf from "../../images/mini-golf-card.svg";
+import ImgSpeedTyping from "../../images/speed-typing-card.svg";
 import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
@@ -491,6 +492,16 @@ function MainComponent({ adSlot = null }) {
       nameKey: "games.mini_golf_name",
       pvpMode: "1v1",
     },
+    {
+      name: "Speed Typing",
+      href: "/casino/speed-typing",
+      leaderboardKey: "speed-typing",
+      playsKey: "speed-typing",
+      image: ImgSpeedTyping,
+      descriptionKey: "games.speed_typing_desc",
+      nameKey: "games.speed_typing_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -511,6 +522,7 @@ function MainComponent({ adSlot = null }) {
   );
 
   const newestOrder = [
+    "speed-typing",
     "mini-golf",
     "memory-grid",
     "mines-pvp",

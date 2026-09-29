@@ -7,6 +7,13 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      # Port the service binds. Render also assigns PORT to a web service; this
+      # value is kept because it is the one the production service has been
+      # verified against, and the code falls back to it for local `npm run dev`.
+      # CAVEAT: Render's router expects the process to bind the port it assigns,
+      # so if Render ever hands this service a different PORT, removing this key
+      # (and letting `process.env.PORT || 3001` do the work) is the fix —
+      # see docs/PROD_REALTIME_AND_NEON_TASKS.md.
       - key: PORT
         value: 3001
       - key: CLIENT_URL
@@ -14,4 +21,11 @@ services:
       - key: CLERK_SECRET_KEY
         sync: false
       - key: REALTIME_INTERNAL_SECRET
+        sync: false
+      # The Render → Vercel half of the split: every callback this service makes
+      # (disconnect forfeit, admin socket verify, crash-arena cleanup, quick-queue
+      # assignment) goes to this base URL. It defaults to http://localhost:3000 in
+      # code, so leaving it unset in production fails SILENTLY — the service stays
+      # up, the health check stays green, and every callback is lost.
+      - key: NEXTJS_INTERNAL_URL
         sync: false

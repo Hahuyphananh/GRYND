@@ -3285,6 +3285,98 @@ export const miniGolfShots = pgTable(
   })
 );
 
+// ── Speed Typing (PvP, rated) ────────────────────────────────────────────
+//
+// Server-authoritative 1v1 typing race: both seats receive the EXACT same text
+// and the first to complete it correctly wins. No randomness during play, no
+// wagers, no tokens, no balances, no payouts.
+//
+// Matchmaking follows the Mini Golf pattern rather than Pool Masters' / Precision's
+// lobby+match pair: a single row with a nullable `player2_id` and a `waiting`
+// status IS the open lobby, so `create-or-join` matches two players under one
+// advisory lock (SPEED_TYPING_LOCK_NAMESPACE) with no second table to keep in
+// sync — and no per-wager queue bucket, because the game is unstaked.
+//
+// HOUSE COLUMNS ONLY, ON PURPOSE. This table currently carries the match's
+// IDENTITY and LIFECYCLE — everything matchmaking, the lobby list, the
+// canonical queue mirror and the match-history formatter need — and nothing
+// else. The race's own state (the shared passage + its server-only text, the
+// GO instant, the per-seat finish/progress columns, the race envelope) arrives
+// with the gameplay migration as additive columns, exactly as Mini Golf gained
+// its `ai_difficulty` column in 0182 after shipping in 0179.
+//
+// There is deliberately NO stake_amount / prize_paid / house_fee column: the
+// game is unstaked, so no money is ever moved by settlement.
+//
+// Player ids are stored as plain clerk-id strings with no FK to `users`,
+// matching every other PvP table.
+export const speedTypingMatches = pgTable(
+  "speed_typing_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    /** waiting | ready | playing | finished | cancelled — the shared house
+     *  vocabulary the retention sweep, the queue mirror and the match-history
+     *  formatter all read. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // Marked on every practice match so settlement can skip rating/stats.
+    isAi: boolean("is_ai").notNull().default(false),
+    // AI tier for a practice match (NULL = the documented default). Ignored on
+    // human duels. Present from day one so the practice bot needs no migration.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
+    // 'player1' | 'player2' | 'tie'. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    // ── The race (migration 0191) ──────────────────────────────────────────
+    // Server-generated race seed, bigint because the 32-bit unsigned range
+    // (up to 4294967295) overflows int4. Deterministic selection — see
+    // `passageIndexFromSeed` in src/lib/speed-typing/passages.ts.
+    raceSeed: bigint("race_seed", { mode: "number" }),
+    // The passage pair this match races on. The TEXT lives in code, derived
+    // from this pair, so the server always verifies against its own copy.
+    passageId: varchar("passage_id", { length: 64 }),
+    passageVersion: integer("passage_version"),
+    // The ABSOLUTE server instant typing opens (join instant + countdown).
+    goAt: timestamp("go_at"),
+    // Monotonic per authoritative write: the concurrency field a stale client
+    // compares against, incremented by every accepted checkpoint/finish/
+    // forfeit/resolution.
+    revision: integer("revision").notNull().default(0),
+    // 'finish' | 'deadline' | 'forfeit' | 'draw' — how the server ended it.
+    resolutionReason: varchar("resolution_reason", { length: 32 }),
+    // The authoritative race state (see src/lib/speed-typing/rules.ts):
+    // { version, seats: { player1, player2 }, resolvedAtMs, resolutionReason }.
+    // Never null — a legacy/unarmed row coerces to an empty race.
+    raceState: jsonb("race_state").notNull().default(sql`'{}'::jsonb`),
+    // Authoritative progress + correct/incorrect counts, per seat: the mirror
+    // of race_state.seats.* that indexed reads (boards, history) can use
+    // without parsing JSONB.
+    player1CharsTyped: integer("player1_chars_typed").notNull().default(0),
+    player1Errors: integer("player1_errors").notNull().default(0),
+    player2CharsTyped: integer("player2_chars_typed").notNull().default(0),
+    player2Errors: integer("player2_errors").notNull().default(0),
+    // Authoritative completion per seat: the SERVER instant of the verified
+    // finish. Null = this seat has not completed the passage.
+    player1CompletedAt: timestamp("player1_completed_at"),
+    player2CompletedAt: timestamp("player2_completed_at"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // Lobby list: "the oldest waiting row with no opponent".
+    statusIdx: index("speed_typing_matches_status_idx").on(table.status, table.createdAt),
+    // Match history: "my finished matches, newest first" per seat.
+    player1Idx: index("speed_typing_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("speed_typing_matches_player2_idx").on(table.player2Id, table.createdAt),
+    // The scheduler: "armed races past their hard limit, still unresolved".
+    dueIdx: index("speed_typing_matches_due_idx").on(table.status, table.goAt),
+  })
+);
+
 // GAME EVALUATION RESULTS — post-match LLM coaching/analysis journal.
 // ==============================================================================
 // One row per evaluation request for a finished match. `objective_data` holds

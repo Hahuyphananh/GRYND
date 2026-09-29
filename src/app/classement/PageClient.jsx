@@ -46,6 +46,7 @@ const RATED_GAMES_FALLBACK = [
   { key: "tower-arena", label: "Tower Arena" },
   { key: "hex-duel", label: "Hex Duel" },
   { key: "mini-golf", label: "Mini Golf" },
+  { key: "speed-typing", label: "Speed Typing" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Every

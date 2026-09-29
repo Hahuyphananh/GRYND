@@ -1180,6 +1180,45 @@ io.on("connection", (socket) => {
     logThrottled("mini-golf:leave", "[mini-golf] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Speed Typing room-participant tracking ──────────────────────
+  // Same pattern as mini-golf / keno-pvp so a `speed-typing:ready` poke can
+  // only come from a tracked participant of that match, and so disconnect
+  // handling can forfeit an abandoned race to the seat still present (or
+  // cancel an empty lobby). Keyed by matchId (a uuid).
+  const SPEED_TYPING_MATCH_ROOM_PREFIX = "speed-typing:match:";
+  if (!global.__speedTypingRoomParticipants) {
+    global.__speedTypingRoomParticipants = new Map();
+  }
+  const speedTypingRoomParticipants = global.__speedTypingRoomParticipants;
+
+  function trackSpeedTypingJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SPEED_TYPING_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SPEED_TYPING_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!speedTypingRoomParticipants.has(matchId)) {
+      speedTypingRoomParticipants.set(matchId, new Set());
+    }
+    speedTypingRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`speed-typing:${matchId}:${userId}`);
+    logThrottled("speed-typing:join", "[speed-typing] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackSpeedTypingLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SPEED_TYPING_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SPEED_TYPING_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = speedTypingRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) speedTypingRoomParticipants.delete(matchId);
+    logThrottled("speed-typing:leave", "[speed-typing] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -1231,6 +1270,7 @@ io.on("connection", (socket) => {
     trackRpsPvpJoin(String(roomId), socket.data.userId);
     trackTowerArenaJoin(String(roomId), socket.data.userId);
     trackMiniGolfJoin(String(roomId), socket.data.userId);
+    trackSpeedTypingJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1278,6 +1318,7 @@ io.on("connection", (socket) => {
     trackRpsPvpLeave(String(roomId), socket.data.userId);
     trackTowerArenaLeave(String(roomId), socket.data.userId);
     trackMiniGolfLeave(String(roomId), socket.data.userId);
+    trackSpeedTypingLeave(String(roomId), socket.data.userId);
   });
 
   // The first round is armed by an HTTP ready call, and this broadcast is the
@@ -1751,6 +1792,43 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Speed Typing: ready ───────────────────────────────────────
+  // The client emits `speed-typing:ready` after a successful checkpoint /
+  // finish / forfeit POST so the opponent gets an instant refresh push instead
+  // of waiting for the next poll. The handler validates that the caller is a
+  // tracked participant of that match, then relays `lobby:updated` to the room
+  // (excluding the sender).
+  //
+  // The relayed payload is a BARE INVALIDATION HINT (match id + who moved), so
+  // no client-supplied progress/score ever reaches the opponent as game state.
+  // The authoritative `speed-typing:opponent-progress` / `speed-typing:match-finished`
+  // events are emitted by the BACKEND, with values the store derived from the
+  // canonical prompt — never by a client and never from a client's numbers.
+  socket.on("speed-typing:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = speedTypingRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "speed-typing:rejectReady",
+        "[speed-typing] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${SPEED_TYPING_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Crash Arena: table update ─────────────────────────────────
   // The client emits `crashArena:updated` after a successful API
   // mutation (start-round, fold, crash/settle, join, leave) so
@@ -2124,6 +2202,44 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[mini-golf] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Speed Typing: same pattern as Mini Golf — a race abandoned past the
+    // grace window is forfeited to the seat still present (or an empty lobby is
+    // cancelled) via /api/speed-typing/disconnect-forfeit. A reconnect inside
+    // the window cancels the timer (see trackSpeedTypingJoin), so a refresh can
+    // never cost a rated race.
+    const speedTypingMatchesForUser = [];
+    for (const [mid, set] of speedTypingRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) speedTypingMatchesForUser.push(mid);
+    }
+    for (const mid of speedTypingMatchesForUser) {
+      const roomId = `${SPEED_TYPING_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = speedTypingRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) speedTypingRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`speed-typing:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/speed-typing/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[speed-typing] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

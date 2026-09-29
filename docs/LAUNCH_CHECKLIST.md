@@ -31,13 +31,23 @@ dashboard actions) or are **should-fix** polish.
    add a build step or run it manually — there is **no auto-migration** in
    the deploy pipeline today.
 
-2. **Set env vars on the real hosts** (Vercel project + Render service):
+2. **Set env vars on the real hosts** (Vercel project + Render service).
+   The full per-side matrix is in `docs/PROD_REALTIME_AND_NEON_TASKS.md`;
+   value-free templates are `.env.example` and `realtime-server/.env.example`.
+   The four that break things SILENTLY when missed:
    - Vercel: `NEXT_PUBLIC_BASE_URL=https://www.grynd.dedyn.io`,
      `NEXT_PUBLIC_SOCKET_URL=https://casino-app-2wnk.onrender.com`,
-     `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, etc.
+     `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`,
+     `REALTIME_INTERNAL_URL`, `REALTIME_INTERNAL_SECRET`.
    - Render (realtime server): `CLIENT_URL` must include
      `https://www.grynd.dedyn.io` **or realtime connections from the new
-     domain will be CORS-rejected**, and `CLERK_SECRET_KEY`.
+     domain will be CORS-rejected**; `CLERK_SECRET_KEY`;
+     `REALTIME_INTERNAL_SECRET` (the SAME value as Vercel, or every realtime
+     push is 401'd); and `NEXTJS_INTERNAL_URL= https://www.grynd.dedyn.io`,
+     without which every Render→Vercel callback — including the Speed Typing
+     disconnect forfeit — is sent to `localhost` and lost.
+   - Verify with `curl -i https://<render-host>/health`: `clerkConfigured`
+     must be `true` and `allowedOrigins` must contain the live Vercel origin.
 
 3. **Run the socket load test** against the deployed realtime server with a
    real session token:

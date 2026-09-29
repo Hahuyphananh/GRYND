@@ -21,6 +21,7 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["chess", "Chess"],
   ["dice-flush", "Dice Flush"],
   ["mini-golf", "Mini Golf"],
+  ["speed-typing", "Speed Typing"],
 ];
 
 const EMPTY_READINESS_BODY = Object.freeze({});
@@ -41,6 +42,7 @@ const GAME_ROUTES = {
   "chess": "/casino/chess-game",
   "dice-flush": "/casino/dice-flush",
   "mini-golf": "/casino/mini-golf",
+  "speed-typing": "/casino/speed-typing",
 };
 
 export function quickQueueGameRoute(gameKey, matchId) {

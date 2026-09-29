@@ -159,6 +159,16 @@ export const GAME_CATALOG = [
   // whole game (skill), best-of-5 holes with a seconds-short learning curve
   // (casual), head-to-head against one opponent (pvp).
   { id: "mini-golf", href: "/casino/mini-golf", tags: ["pvp", "skill", "casual"] },
+
+  // Both seats race the SAME server-selected passage and the first to type it
+  // correctly wins: raw ability (skill) decided under a clock (fast_paced), in
+  // a ranked 1v1 duel (competitive). Nothing is drawn during play, so it is not
+  // tagged `chance`, and it is not a pick-up game (no `casual`).
+  {
+    id: "speed-typing",
+    href: "/casino/speed-typing",
+    tags: ["pvp", "skill", "fast_paced", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any

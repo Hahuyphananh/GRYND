@@ -265,14 +265,19 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  assert.equal(TROPHY_CONFIG.gameCount, 16);
+  assert.equal(TROPHY_CONFIG.gameCount, 17);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 16);
+  assert.equal(TROPHY_GAMES.length, 17);
   assert.equal(isTrophyGame("mini-golf"), true);
+  // Speed Typing is a rated 1v1 duel, so it is a trophy game by the same rule
+  // (TROPHY_GAMES IS RATED_GAMES — one list, no drift).
+  assert.equal(isTrophyGame("speed-typing"), true);
+  assert.equal(normalizeTrophyGameKey("speed-typing"), "speed-typing");
+  assert.equal(getTrophyGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
   // The 6 formerly-excluded games are now REGISTERED (their trophy/rating
@@ -1026,6 +1031,95 @@ test("MINI GOLF SECURITY: trophy counts are never taken from a client-shaped pay
 });
 
 // ════════════════════════════════════════════════════════════════════════
+// 7c. Speed Typing — a completed race feeds the SAME trophy writer
+// ════════════════════════════════════════════════════════════════════════
+//
+// Speed Typing has NO trophy rule of its own (not even a game-specific ±30):
+// `src/lib/speed-typing/serverStore.ts` derives the winner from the
+// authoritative race and calls the shared `applyTrophyResult` with
+// `gameKey: "speed-typing"`.
+
+const SPEED_TYPING_ARGS = {
+  gameKey: "speed-typing",
+  matchId: "22222222-2222-4222-8222-222222222222",
+  winnerClerkId: "user_winner",
+  loserClerkId: "user_loser",
+};
+
+test("SPEED TYPING: a completed race pays +30 / −30 through the shared writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyTrophyResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.gameKey, "speed-typing");
+  assert.equal(result.winner.trophiesBefore, 0);
+  assert.equal(result.winner.trophiesAfter, 30);
+  assert.equal(result.winner.delta, 30);
+  // The loser is floored at 0 rather than going negative.
+  assert.equal(result.loser.trophiesAfter, 0);
+  assert.equal(result.loser.delta, 0);
+
+  assert.equal(db.state.trophies.get("11:speed-typing").wins, 1);
+  assert.equal(db.state.trophies.get("22:speed-typing").losses, 1);
+  assert.equal(db.eventsFor("speed-typing").length, 2);
+});
+
+test("SPEED TYPING: a dead-heat draw awards no trophies", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  seedTrophyRow(db, 11, "speed-typing", 300);
+  seedTrophyRow(db, 22, "speed-typing", 300);
+
+  const result = await applyTrophyResult({
+    tx: db.tx,
+    ...SPEED_TYPING_ARGS,
+    result: "draw",
+  });
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.delta, 0);
+  assert.equal(result.loser.delta, 0);
+  assert.equal(db.state.trophies.get("11:speed-typing").trophies, 300);
+  assert.equal(db.state.trophies.get("22:speed-typing").trophies, 300);
+});
+
+test("SPEED TYPING: a replayed completion never awards trophies twice", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  await applyTrophyResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+  const writesAfterFirst = db.writes().length;
+
+  const second = await applyTrophyResult({ tx: db.tx, ...SPEED_TYPING_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.state.trophies.get("11:speed-typing").trophies, 30);
+  assert.equal(db.eventsFor("speed-typing").length, 2);
+});
+
+test("SPEED TYPING SECURITY: trophy counts are never taken from a client-shaped payload", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyTrophyResult({
+    tx: db.tx,
+    ...SPEED_TYPING_ARGS,
+    // Everything a cheating typist would love to submit alongside a finish:
+    // the outcome, the counts and the delta must come from the CALLER's
+    // server-derived race result, never from any of these fields.
+    winner: "player1",
+    winnerId: "user_loser",
+    trophies: 9999,
+    winnerTrophies: 9999,
+    loserTrophies: 9999,
+    delta: 500,
+    wpm: 9999,
+    accuracy: 100,
+    matchResult: "player2",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.trophiesBefore, 0); // not the smuggled 9999
+  assert.equal(result.winner.trophiesAfter, 30); // +30, not 9999
+  assert.equal(result.winner.delta, 30); // not the smuggled 500
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // 8. Writer: no cap
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1217,6 +1311,9 @@ const WIRING = [
   // Mini Golf is a 1v1 duel; its winner is derived server-side from the
   // deterministic shot simulation, so it uses the original 1v1 writer.
   ["mini-golf", "src/lib/mini-golf/serverStore.ts"],
+  // Speed Typing is a 1v1 race whose winner is derived server-side from the
+  // authoritative race, so it uses the same original 1v1 writer.
+  ["speed-typing", "src/lib/speed-typing/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

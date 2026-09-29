@@ -108,6 +108,14 @@ export const RATED_GAMES = Object.freeze([
   // deterministic shot simulation in src/lib/mini-golf/rules.ts), so unlike
   // hex-duel it is ratable from day one.
   "mini-golf",
+  // Speed Typing is a 1v1 race over one shared passage: both players type the
+  // exact same server-selected text and the first to complete it correctly
+  // wins. No randomness during play, no wager, so the outcome is fully
+  // server-derivable — the same property that makes mini-golf ratable.
+  // Registering the key HERE is what makes the game ratable and trophied:
+  // src/lib/trophies.js reuses this list as TROPHY_GAMES, so there is no
+  // second registry to keep in sync.
+  "speed-typing",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -128,6 +136,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "tower-arena": "Tower Arena",
   "hex-duel": "Hex Duel",
   "mini-golf": "Mini Golf",
+  "speed-typing": "Speed Typing",
 });
 
 /** True when a game key is eligible for Elo. */

@@ -20,6 +20,7 @@ import { createOrJoinHexDuelDestination } from "./quickQueueHexDuel";
 import { createOrJoinChessDestination } from "./quickQueueChess";
 import { createOrJoinDiceFlushDestination } from "./quickQueueDiceFlush";
 import { createOrJoin as createOrJoinMiniGolfMatch } from "./mini-golf/serverStore";
+import { createOrJoin as createOrJoinSpeedTypingMatch } from "./speed-typing/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -112,6 +113,11 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // normalized stake is simply unused) and returns the same waiting lobby
       // id for both calls, exactly like the other lobby-style destinations.
       "mini-golf": (userId) => createOrJoinMiniGolfMatch({ userId }),
+      // Speed Typing is unstaked too, and identical in shape: one lobby-style
+      // destination whose `createOrJoin` returns the SAME waiting-lobby id for
+      // both paired seats. It takes no stake at all, so the queue's normalized
+      // stake can never reach it — and therefore never a debit or a payout.
+      "speed-typing": (userId) => createOrJoinSpeedTypingMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

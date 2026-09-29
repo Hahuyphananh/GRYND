@@ -8,6 +8,7 @@ for (const adapter of [
   "createOrJoinKenoMatch",
   "createOrJoinLaneRushMatch",
   "createOrJoinMiniGolfMatch",
+  "createOrJoinSpeedTypingMatch",
   "createOrJoinFourInARowDestination",
   "createOrJoinMemoryGridDestination",
 ]) {
@@ -15,7 +16,7 @@ for (const adapter of [
 }
 
 test("all supported game keys have adapters", () => {
-  for (const game of ["mines-pvp", "keno-pvp", "lane-rush-duel", "four-in-a-row", "memory-grid", "mini-golf"]) {
+  for (const game of ["mines-pvp", "keno-pvp", "lane-rush-duel", "four-in-a-row", "memory-grid", "mini-golf", "speed-typing"]) {
     assert.match(worker, new RegExp(`\\"${game}\\"`));
   }
 });

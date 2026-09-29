@@ -17,6 +17,7 @@ import {
   towerArenaMatches,
   rpsPvpGames,
   kenoPvpMatches,
+  speedTypingMatches,
   unoGames,
   userStats,
 } from "../db/schema";
@@ -93,6 +94,7 @@ const GAME_PAGES: {
   { path: "/games/tower-arena", source: [towerArenaMatches, towerArenaMatches.createdAt] },
   { path: "/games/odds", source: [oddsGames, oddsGames.createdAt] },
   { path: "/games/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
+  { path: "/games/speed-typing", source: [speedTypingMatches, speedTypingMatches.createdAt] },
 ];
 
 const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility", "/faq"];
