@@ -33,6 +33,7 @@
 //   House:   10% rake on loser's stake only
 
 import { chooseAiOption, coerceAiDifficulty } from "../aiDifficulty";
+import { randomInt } from "crypto";
 
 // ── Board geometry ────────────────────────────────────────────────────
 // 10×10 grid, row-major indexing (cell 0 = top-left, cell 99 =
@@ -709,7 +710,12 @@ export function aiCellRisk(cell, revealed) {
 }
 
 // Returns `{ cellIndex }` with a valid unpicked cell.
-export function chooseAiCell(match, random = Math.random) {
+function secureRandom() {
+  // Uniform float in [0, 1) from CSPRNG, preserving existing call pattern.
+  return randomInt(0x100000000) / 0x100000000;
+}
+
+export function chooseAiCell(match, random = secureRandom) {
   const picks = Array.isArray(match?.picks) ? match.picks : [];
   const exclude = new Set();
   const revealed = [];
