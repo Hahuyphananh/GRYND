@@ -1,8 +1,12 @@
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
+// nodemailer 10 ships its own declarations and exports them BY NAME (its
+// default export is a value, not a namespace), so the transporter and options
+// types are imported directly rather than reached through `nodemailer.*`.
+import type { Transporter, TransportOptions } from "nodemailer";
 
 let resendClient: Resend | null = null;
-let smtpTransport: nodemailer.Transporter | null = null;
+let smtpTransport: Transporter | null = null;
 
 function getResendClient() {
   if (resendClient) return resendClient;
@@ -28,7 +32,7 @@ function getSmtpTransport() {
       family: Number(process.env.SMTP_FAMILY || "4"),
     },
     tls: process.env.SMTP_TLS_INSECURE === "true" ? { rejectUnauthorized: false } : undefined,
-  } as nodemailer.TransportOptions);
+  } as TransportOptions);
   return smtpTransport;
 }
 
