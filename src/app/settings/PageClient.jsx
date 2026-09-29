@@ -654,14 +654,6 @@ export default function SettingsPageClient() {
                     My Profile →
                   </Link>
                 </li>
-                <li>
-                  <Link
-                    href="/battlepass"
-                    className="inline-flex items-center gap-1.5 text-[#9dd8ff] hover:text-[#00e5ff]"
-                  >
-                    Battlepass →
-                  </Link>
-                </li>
                 <li className="pt-1">
                   {/* GRYND PRO replaced the Shop entry point. The button reads
                       the caller's entitlement from the server, so it shows

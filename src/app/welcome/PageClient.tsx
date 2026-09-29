@@ -9,15 +9,15 @@
 // (server-authoritative via users.onboarding_completed_at, written through
 // /api/onboarding/complete) and launches the player straight into the
 // EXISTING Free Play vs AI tutorial match (Rock Paper Scissors — reused
-// as-is, no duplicate game), whose finish grants the one-time onboarding
-// reward through the existing Battle Pass pipeline.
+// as-is, no duplicate game), whose finish records the one-time onboarding
+// completion flag.
 //
 // This page only renders the flow, it never decides "is this user new" on
 // its own. Refreshing resumes the current step (sessionStorage, per user +
 // tab); completing or skipping marks the account done permanently, so
 // logout/login, refresh and other tabs can never re-trigger onboarding.
 //
-// The copy reuses the repo's actual token/PvP/Battle Pass terminology (see
+// The copy reuses the repo's actual token/PvP terminology (see
 // src/lib/appTextTranslations.js → onboarding.*).
 //
 // Order inside the onboarding flow (see src/lib/onboardingFlow.js for the

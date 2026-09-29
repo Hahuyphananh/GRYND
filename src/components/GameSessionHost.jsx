@@ -16,7 +16,7 @@
 //   <GameSessionHost
 //     autoStart={matchStarted}   // true when the actual game starts
 //     autoStop={matchEnded}      // true when the game reaches its result
-//     gameLabel="plinko-duel"    // recently-played key + presence game id
+//     gameLabel="mines-duel"    // recently-played key + presence game id
 //     presenceEnabled={!isSpectator} // false when the viewer is NOT playing
 //   >
 //     {gameContent}

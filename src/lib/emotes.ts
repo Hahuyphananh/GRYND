@@ -206,61 +206,6 @@ export async function getEquippedEmoteKeys(clerkId: string): Promise<string[]> {
   return sanitizeLoadoutKeys(userRow?.equippedEmotes, ownedKeys);
 }
 
-/** Battle Pass level → emote key map for every emote reward in the track. */
-export async function battlepassEmoteRewardMap(): Promise<Map<number, string>> {
-  const { rewardsForLevel } = await import("./battlepassRewards.js");
-  const map = new Map<number, string>();
-  for (let level = 1; level <= 100; level += 1) {
-    const rewards = rewardsForLevel(level);
-    if (!Array.isArray(rewards)) continue;
-    for (const reward of rewards as Array<{ type?: string; key?: unknown }>) {
-      if (reward.type === "emote" && typeof reward.key === "string") {
-        map.set(level, reward.key);
-      }
-    }
-  }
-  return map;
-}
-
-/**
- * Battle Pass level keyed by emote key (used to tell players where a locked
- * emote unlocks). Built from the single battlepass rewards config.
- */
-async function battlepassEmoteLevelByKeyMap(): Promise<Map<string, number>> {
-  const map = await battlepassEmoteRewardMap();
-  const byKey = new Map<string, number>();
-  for (const [level, key] of map.entries()) byKey.set(key, level);
-  return byKey;
-}
-
-/**
- * Grant every emote Battle Pass reward at or below `level`, idempotently
- * (duplicate grants are no-ops via the user_emotes unique constraint).
- * Called from the same Battle Pass reconciliation points as the title /
- * glow grants (addExp, the /api/battlepass page load, and the leaderboard
- * counters). An emote that unlocks becomes OWNED but is never
- * auto-equipped — the player chooses to add it to their loadout.
- */
-export async function grantBattlepassEmotes(userId: number, level: number) {
-  const { rewardsForLevel } = await import("./battlepassRewards.js");
-  const granted: string[] = [];
-  const maxLevel = Math.max(1, Math.min(100, Math.floor(Number(level) || 1)));
-
-  for (let rewardLevel = 1; rewardLevel <= maxLevel; rewardLevel += 1) {
-    const rewards = rewardsForLevel(rewardLevel);
-    if (!Array.isArray(rewards)) continue;
-    for (const reward of rewards as Array<{ type?: string; key?: unknown }>) {
-      if (reward.type !== "emote") continue;
-      const key = normalizeEmoteKey(reward.key);
-      if (!key) continue;
-      const catalog = await getEmoteByKey(key);
-      if (!catalog) continue;
-      if (await unlockEmote(userId, key)) granted.push(key);
-    }
-  }
-  return granted;
-}
-
 export type EmoteStateEmote = {
   key: string;
   name: string;
@@ -269,15 +214,14 @@ export type EmoteStateEmote = {
   sortOrder: number;
   owned: boolean;
   equipped: boolean;
-  /** Battle Pass level this emote unlocks at (null when not a BP reward). */
+  /** Legacy field — the Battle Pass is gone, so this is always null. */
   unlockLevel: number | null;
   assetUrl: string;
 };
 
 /**
  * Full emote state for the profile manager + game picker:
- *   * every enabled catalog emote with ownership / equipped flags and
- *     Battle Pass unlock info for locked entries,
+ *   * every enabled catalog emote with its ownership / equipped flags,
  *   * the ordered equipped loadout (already sanitized server-side).
  */
 export async function getEmoteState(clerkId: string): Promise<{
@@ -303,7 +247,6 @@ export async function getEmoteState(clerkId: string): Promise<{
   const equippedSet = new Set(equippedKeys);
 
   const catalog = await getEnabledEmotes();
-  const levelByKey = await battlepassEmoteLevelByKeyMap();
   const emotesOut: EmoteStateEmote[] = catalog.map((row) => ({
     key: row.key,
     name: row.name,
@@ -312,7 +255,7 @@ export async function getEmoteState(clerkId: string): Promise<{
     sortOrder: row.sortOrder,
     owned: ownedKeys.has(row.key),
     equipped: equippedSet.has(row.key),
-    unlockLevel: levelByKey.get(row.key) ?? null,
+    unlockLevel: null,
     assetUrl: emoteAssetUrl(row.key) ?? row.assetPath,
   }));
 

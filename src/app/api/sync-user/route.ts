@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { logError } from "../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../lib/icons";
 import { reconcileEmoteState } from "../../../lib/emotes";
+import { grantAllCosmeticsToUser } from "../../../lib/cosmetics";
 import { searchNameFor } from "../../../lib/searchName";
 import { validateObject } from "../../../lib/security/validation";
 
@@ -242,6 +243,12 @@ async function seedPlayerStats(user: { id: number; balance: string | null }) {
   // account sync (the picker re-reconciles on first read anyway).
   await reconcileEmoteState(user.id).catch((err) =>
     console.warn("[sync-user] emote grant failed:", err),
+  );
+
+  // New player also owns the ENTIRE cosmetic catalog for free — the Battle
+  // Pass that used to gate it has been removed. Idempotent + best-effort.
+  await grantAllCosmeticsToUser(user.id).catch((err) =>
+    console.warn("[sync-user] cosmetic grant failed:", err),
   );
 
   await db.execute(sql`

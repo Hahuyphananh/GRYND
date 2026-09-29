@@ -826,7 +826,7 @@ async function applyBridgeJump(tx, match, { entry, seat, outcome }) {
 
   if (turn.ended) {
     // Crossed the last row → winner, immediately. `resolveMatch` handles the
-    // settlement (winner credited, 10% rake, stats/prestige).
+    // settlement (winner credited, 10% rake, stats/Elo).
     return await resolveMatch(
       tx,
       { ...match, ...shared, [turn.rowField]: BRIDGE_ROWS },

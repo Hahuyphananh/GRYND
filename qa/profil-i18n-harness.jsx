@@ -39,7 +39,7 @@ const RESPONSES = {
   "/api/get-bet-history": {
     success: true,
     bets: [
-      { date: now, type: "Crash", amount: 10, result: "won", tokenDiff: 20 },
+      { date: now, type: "Chess", amount: 10, result: "won", tokenDiff: 20 },
       { date: now, type: "Keno", amount: 5, result: "lost", tokenDiff: -5 },
     ],
   },

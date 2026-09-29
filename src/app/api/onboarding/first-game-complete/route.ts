@@ -3,27 +3,22 @@
 // POST /api/onboarding/first-game-complete
 //
 // Called once, from the Free Play vs AI tutorial match, only when the match
-// reaches its real terminal state (the result screen is shown). It:
+// reaches its real terminal state (the result screen is shown). It
+// atomically claims the one-time completion: UPDATE ... WHERE
+// first_game_completed_at IS NULL. Whichever request wins (double-taps,
+// refreshes, several tabs) sets the timestamp; every loser sees the
+// already-completed branch and grants nothing.
 //
-//   1. Atomically claims the one-time completion: UPDATE ... WHERE
-//      first_game_completed_at IS NULL. Whichever request wins (double-taps,
-//      refreshes, several tabs) sets the timestamp; every loser sees the
-//      already-completed branch and grants nothing.
-//   2. Grants the one-time FIRST_GAME_BONUS_XP through the existing
-//      src/lib/battlepass.js addExp pipeline (users + user_stats, level
-//      recomputed by the shared formula). Free-play matches otherwise award
-//      zero XP — this is the single explicit onboarding exception, and it is
-//      separate from wagered-game rewards in both direction and amount.
+// The Battle Pass (and its one-time FIRST_GAME_BONUS_XP) has been removed, so
+// this endpoint now only records the completion flags and reports the stored
+// legacy level/xp unchanged.
 //
-// Returns the pre/post Battle Pass level + XP so the client can render the
-// "first XP" progression moment from real server numbers. Idempotent: the
-// bonus is granted at most once per account, ever.
+// Idempotent: the flags are set at most once per account, ever.
 
 import { auth } from "@clerk/nextjs/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { users } from "../../../../db/schema";
-import { addExp, FIRST_GAME_BONUS_XP } from "../../../../lib/battlepass";
 
 export async function POST() {
   try {
@@ -35,7 +30,7 @@ export async function POST() {
       );
     }
 
-    // ── Step 1: atomic one-time claim ────────────────────────────────
+    // ── Atomic one-time claim ────────────────────────────────────────
     // Only a request that finds the flag NULL wins the claim; concurrent
     // duplicate submissions (two tabs, refresh races) get zero rows back.
     const claimed = await db
@@ -50,34 +45,9 @@ export async function POST() {
       .where(
         and(eq(users.clerkId, userId), isNull(users.firstGameCompletedAt)),
       )
-      .returning({ id: users.id, level: users.level, xp: users.xp });
+      .returning({ id: users.id });
 
-    // ── Step 2a: first completion → grant the one-time XP bonus ───────
-    if (claimed[0]) {
-      const before = {
-        level: Number(claimed[0].level ?? 1),
-        xp: Number(claimed[0].xp ?? 0),
-      };
-
-      const after = await addExp(claimed[0].id, FIRST_GAME_BONUS_XP);
-      const to = {
-        level: Number(after?.level ?? before.level),
-        xp: Number(after?.xp ?? before.xp + FIRST_GAME_BONUS_XP),
-      };
-
-      return Response.json({
-        success: true,
-        alreadyCompleted: false,
-        xpGranted: FIRST_GAME_BONUS_XP,
-        fromLevel: before.level,
-        fromXp: before.xp,
-        toLevel: to.level,
-        toXp: to.xp,
-        leveledUp: to.level > before.level,
-      });
-    }
-
-    // ── Step 2b: already completed → no-op, report current standing ───
+    // Report the player's stored (legacy) standing. No progression is granted.
     const rows = await db
       .select({ level: users.level, xp: users.xp })
       .from(users)
@@ -89,7 +59,7 @@ export async function POST() {
 
     return Response.json({
       success: true,
-      alreadyCompleted: true,
+      alreadyCompleted: claimed.length === 0,
       xpGranted: 0,
       fromLevel: level,
       fromXp: xp,

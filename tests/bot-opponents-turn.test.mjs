@@ -10,13 +10,12 @@
 //
 // There are three valid shapes of wiring, and each game below has to pick one
 // and be internally consistent about it:
-//   • server-driven — the human's read route runs the bot, so any poll is
-//     enough (Blackjack);
 //   • client-driven — the page must POST the bot's turn itself, and must
-//     retry/resync when that POST does not land (Plinko, Keno, Mines, Lane
-//     Rush);
+//     retry/resync when that POST does not land (Keno, Mines, Lane Rush);
 //   • think-window games — the client's ask has to land AFTER the server's
-//     window or the server rejects it (Tower Arena, Keno).
+//     window or the server rejects it (Tower Arena, Keno);
+//   • poll-driven — the read route itself advances the bot, so a client poll
+//     is enough (Tower Arena's poll backstop).
 //
 // The assertions read the real sources rather than running a DB, matching the
 // existing per-game contract suites (keno-pvp-survival, lane-rush-duel-ui,
@@ -26,166 +25,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-import {
-  ACTION_TYPE,
-  PLAYER_STATE,
-  chooseAiAction,
-} from "../src/lib/blackjack-pvp/constants.js";
-
 // Normalise CRLF so the structural assertions behave the same on any OS.
 const read = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 const num = (raw) => Number(String(raw).replace(/_/g, ""));
-
-const plinkoPage = read("src/app/casino/plinko/[matchId]/PageClient.tsx");
-const plinkoStore = read("src/lib/plinko-pvp/serverStore.js");
-const plinkoRoute = read("src/app/api/plinko-pvp/match/[matchId]/route.js");
-
-const blackjackPage = read("src/app/casino/blackjack/[matchId]/PageClient.tsx");
-const blackjackStore = read("src/lib/blackjack-pvp/serverStore.js");
-const blackjackRead = read("src/app/api/blackjack-pvp/match/[matchId]/route.js");
-const blackjackContinue = read(
-  "src/app/api/blackjack-pvp/match/[matchId]/continue/route.js",
-);
 
 const towerPage = read("src/app/casino/tower-arena/game/[matchId]/PageClient.tsx");
 const towerStore = read("src/lib/tower-arena/serverStore.ts");
 const towerResolver = read("src/lib/tower-arena/turnResolver.ts");
 const towerRoute = read("src/app/api/tower-arena/ai-turn/route.ts");
 const towerGetMatch = read("src/app/api/tower-arena/get-match/route.ts");
-
-// ── Plinko ────────────────────────────────────────────────────────────
-
-test("plinko: the page itself wakes the bot for every ball of a free AI match", () => {
-  const start = plinkoPage.indexOf("AI launch recovery");
-  assert.ok(start > 0, "the page must carry a bot-launch effect");
-  const body = plinkoPage.slice(start, plinkoPage.indexOf("Socket subscription"));
-
-  // Scoped to a free AI match with a launchable ball and an uncommitted bot —
-  // so a human duel keeps its plain poll and never posts /ai-turn.
-  assert.ok(body.includes("!match?.isAi"), "only free AI matches wake the bot");
-  assert.ok(body.includes("MATCH_STATUS.BALL_1"), "the ask is gated on a live ball");
-  assert.ok(
-    body.includes("match.p2CurrentInputs"),
-    "the page stops asking once the bot has committed",
-  );
-  assert.ok(
-    body.includes("`/api/plinko-pvp/match/${matchId}/ai-turn`"),
-    "the page drives the bot through the dedicated ai-turn route",
-  );
-  // One ask per ball: keying on (matchId, currentBall) is what stops the effect
-  // from re-posting on every render while the ball is open.
-  assert.ok(
-    body.includes("`${matchId}:${match.currentBall}`"),
-    "the ask must be keyed per ball, not per render",
-  );
-  assert.ok(
-    body.includes("setAiRetry((value) => value + 1)"),
-    "a failed ask must be retried, not swallowed",
-  );
-  assert.ok(
-    body.includes("await fetchStatus()"),
-    "a successful ask repaints the board instead of waiting for the poll",
-  );
-});
-
-test("plinko: the page is the only trigger, so the bot turn has no server gate to miss", () => {
-  const start = plinkoStore.indexOf("export async function playAiTurn({ userId, matchId })");
-  assert.ok(start > 0, "the store must expose playAiTurn");
-  const body = plinkoStore.slice(start, plinkoStore.indexOf("export async function createOrJoin"));
-
-  // If the store ever grows a "the caller asked too early/late" gate, the
-  // page's fixed 900ms delay has to be re-derived against it.
-  assert.ok(
-    !/Date\.now\(\)/.test(body),
-    "playAiTurn must not gate itself on a clock the page cannot see",
-  );
-  assert.ok(body.includes("LAUNCHABLE_STATES.has(match.status)"));
-  assert.ok(body.includes("isFreeAiMatch(match)") && body.includes("match.player1Id !== userId"));
-  assert.ok(body.includes("asAi: true"), "the bot must ride the same launch path as a human");
-
-  // Free AI matches are untimed, which also opts them out of the AFK
-  // auto-launch backstop. Nothing else launches the bot's ball — so the page's
-  // per-ball POST above is load-bearing for the match to resolve at all.
-  assert.ok(
-    plinkoStore.includes("!isFreeAiMatch(match) &&"),
-    "AI matches are exempt from the AFK auto-launch, so the page's ask is the only path",
-  );
-  assert.ok(
-    !plinkoRoute.includes("playAiTurn({"),
-    "the read route does not run the bot either — the page is the sole trigger",
-  );
-});
-
-// ── Blackjack ─────────────────────────────────────────────────────────
-
-test("blackjack: the bot is driven by the human's own reads, not a client endpoint", () => {
-  assert.ok(
-    !blackjackPage.includes("ai-turn"),
-    "the page never posts /ai-turn — the server runs the bot on read",
-  );
-
-  const readBody = blackjackRead.slice(blackjackRead.indexOf("export async function GET"));
-  assert.ok(
-    readBody.includes("if (match.isAi && match.player1Id === userId)"),
-    "the read route runs the bot only for the human seat of a free AI match",
-  );
-  assert.ok(
-    readBody.includes("await playAiTurn({ userId, matchId })"),
-    "the read route is what actually advances the bot",
-  );
-  assert.ok(
-    blackjackContinue.includes("if (match.isAi && match.player1Id === userId)") &&
-      blackjackContinue.includes("playAiTurn"),
-    "the between-rounds continue must also run the bot, or round 2 never opens",
-  );
-
-  // A poll is therefore sufficient. Without one, a human who sits still would
-  // leave the bot mid-hand.
-  assert.ok(
-    blackjackPage.includes("setInterval(() => fetchStatus({ silent: true }), 5000)"),
-    "the match page must poll so the bot's hand advances while the human sits still",
-  );
-  assert.ok(
-    /await fetchStatus\(\{ silent: true \}\);/.test(blackjackPage),
-    "the page refetches after its own action, which is when the bot must respond",
-  );
-});
-
-test("blackjack: playAiTurn has no clock gate and always reaches a terminal state", () => {
-  const start = blackjackStore.indexOf("export async function playAiTurn({ userId, matchId })");
-  assert.ok(start > 0);
-  const body = blackjackStore.slice(start, blackjackStore.indexOf("// ── Action validators"));
-
-  assert.ok(!/Date\.now\(\)/.test(body), "the bot must not wait on a server-side clock");
-  assert.ok(body.includes("while (actions < 16)"), "the bot plays until it is done");
-  assert.ok(body.includes("chooseAiAction(latest)"));
-
-  // The policy has to terminate, or the round can only resolve via the AFK
-  // sweep — the human would watch the bot hold a hand forever.
-  const hand = (values) => values.map((value) => ({ suit: "♠", value }));
-  const match = (values, state = PLAYER_STATE.PLAYING, extras = {}) => ({
-    player2Hand: hand(values),
-    player2State: state,
-    player2UsedSwap: 0,
-    player2FrozenCard: null,
-    player2HeldResolved: null,
-    ...extras,
-  });
-
-  assert.equal(chooseAiAction(match(["2", "3"])).action, ACTION_TYPE.HIT, "hits below 17");
-  assert.equal(chooseAiAction(match(["10", "7"])).action, ACTION_TYPE.STAND, "stands on 17");
-  assert.equal(chooseAiAction(match(["10", "K"])).action, ACTION_TYPE.STAND, "stands on 20");
-  assert.equal(
-    chooseAiAction(match(["10", "K"], PLAYER_STATE.BUSTED, { player2UsedSwap: 1 })).action,
-    ACTION_TYPE.STAND,
-    "a busted bot that has spent its swap finalises the hand so the round can resolve",
-  );
-  assert.equal(
-    chooseAiAction(match(["10", "K"], PLAYER_STATE.STOOD)),
-    null,
-    "a settled bot is done — no action, no loop",
-  );
-});
 
 // ── Tower Arena ───────────────────────────────────────────────────────
 

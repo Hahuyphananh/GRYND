@@ -2,10 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
 import { users, userStats } from "../../../../db/schema";
 import { eq, sql } from "drizzle-orm";
-import {
-  getLevelFromTrophies,
-} from "../../../../lib/battlepass";
-import { getPrestigeStatus } from "../../../../lib/prestige";
 import { getTrophiesForUser } from "../../../../lib/trophyStore";
 import {
   RATED_GAMES,
@@ -26,8 +22,6 @@ export async function GET() {
       name: users.name,
       level: users.level,
       xp: users.xp,
-      prestigeLevel: users.prestigeLevel,
-      prestigeNetWins: users.prestigeNetWins,
       totalWagered: users.totalWagered,
       totalWon: users.totalWon,
       biggestWin: users.biggestWin,
@@ -60,11 +54,8 @@ export async function GET() {
     .limit(1);
 
   if (!row) return Response.json({ error: "User not found" }, { status: 404 });
-  // Battlepass level is derived from TROPHIES (ranked wins), not the
-  // possibly-stale stored level column. Prestige read-shape mirrors the
-  // battlepass endpoint so every consumer sees one consistent contract.
-  // Per-game trophies + the derived Prestige (Elo−1000, only for games at the
-  // per-game trophy cap). Both are read-only views over the same rows below.
+  // Per-game trophies, plus the total across games. Read-only views over the
+  // same rows below.
   const trophies = (await getTrophiesForUser(row.clerkId)) as Record<
     string,
     { trophies?: number }
@@ -89,8 +80,6 @@ export async function GET() {
   // provisional game rating never counts. It is derived on read, never
   // stored, so a game rating change is reflected automatically.
   const overall = overallEloFromRatingsMap(ratings);
-  // Re-derive Prestige now that `ratings` is loaded (Elo−1000, capped games).
-  const prestigeWithElos = getPrestigeStatus({ ratings, trophies });
   // How the aggregate moved across the player's most recent rated match,
   // reconstructed on read from the rating_events journal (Overall Elo stores
   // no history of its own). The result screen reads these with a freshness
@@ -104,7 +93,7 @@ export async function GET() {
     userStats: {
       ...row,
       ratings,
-      // Per-game trophies + the total the Battle Pass level derives from.
+      // Per-game trophies + the overall trophy total.
       trophies,
       totalTrophies,
       overallElo: overall.overallElo,
@@ -134,14 +123,6 @@ export async function GET() {
           ...provisionalProgress(0),
         }),
       })),
-      // Battle Pass level derives from TROPHIES (OVERALL_TROPHY_MAX = level 100).
-      level: getLevelFromTrophies(totalTrophies),
-      prestige: prestigeWithElos.prestige,
-      prestigeGameKey: prestigeWithElos.prestigeGameKey,
-      prestigeNetWins: prestigeWithElos.prestigeNetWins,
-      nextPrestigeRequirement: prestigeWithElos.nextPrestigeRequirement,
-      prestigeProgressPercent: prestigeWithElos.prestigeProgressPercent,
-      prestigeUnlocked: prestigeWithElos.prestigeUnlocked,
     },
   });
 }

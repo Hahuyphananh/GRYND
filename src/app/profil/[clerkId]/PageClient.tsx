@@ -49,8 +49,6 @@ type PublicUser = {
   selectedTitle: string | null;
   highestTitle: string | null;
   selectedSpecialTitle: string | null;
-  prestigeBadge: string | null;
-  prestigeUnlocked: boolean;
   dailyStreakCurrent: number;
   dailyStreakBest: number;
   // Leaderboard-style record (same shape the /classement boards read).
@@ -255,7 +253,7 @@ export default function PublicProfilePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8 ${profileGlowClass || ""} ${profile.prestigeUnlocked ? "prestige-aura" : ""}`}
+          className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] mb-8 ${profileGlowClass || ""}`}
           style={
             profile.profileAccent
               ? {
@@ -267,7 +265,7 @@ export default function PublicProfilePage() {
         >
           <div className="flex items-center gap-4">
             <span
-              className={`relative inline-flex shrink-0 rounded-full ${frame.cssClass} ${avatarEffectClass || ""} ${profile.prestigeUnlocked ? "prestige-crown" : ""}`}
+              className={`relative inline-flex shrink-0 rounded-full ${frame.cssClass} ${avatarEffectClass || ""}`}
               style={frame.style}
             >
               <IconAvatar
@@ -280,19 +278,9 @@ export default function PublicProfilePage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className={`text-2xl font-bold ${usernameEffectClass || ""}`}>{profile.name}</h1>
-                {(profile.prestigeBadge ||
-                  profile.selectedSpecialTitle ||
-                  profile.selectedTitle) && (
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-xs ${
-                      profile.prestigeBadge
-                        ? "border-violet-400/70 bg-violet-500/15 text-violet-300"
-                        : "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 text-[#f5ff3b]"
-                    }`}
-                  >
-                    {profile.prestigeBadge ||
-                      profile.selectedSpecialTitle ||
-                      profile.selectedTitle}
+                {(profile.selectedSpecialTitle || profile.selectedTitle) && (
+                  <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
+                    {profile.selectedSpecialTitle || profile.selectedTitle}
                   </span>
                 )}
                 {/* Overall Elo badge — the server-computed cross-game
@@ -307,7 +295,7 @@ export default function PublicProfilePage() {
                 )}
               </div>
               <p className="text-sm text-gray-400 mt-1">
-                Level {profile.level} · Battle Pass
+                Level {profile.level}
               </p>
               {/* Competitive identity strip — every number is real
                   leaderboard-record data (same source as /classement). */}

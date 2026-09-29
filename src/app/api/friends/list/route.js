@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
-import { resolvePrestigeBadge } from "../../../../lib/prestige";
 
 export async function GET() {
   const sql = getNeonSql();
@@ -44,16 +43,14 @@ export async function GET() {
         u.selected_streak_type,
         u.selected_title,
         u.selected_special_title,
-        u.xp,
-        u.prestige_level AS prestige_level,
-        u.show_prestige_badge
+        u.xp
       FROM friend_relations fr
       JOIN users u ON u.id = fr.friend_id
       WHERE fr.user_id = ${meId}
       ORDER BY u.name ASC, u.id ASC
     `;
 
-    // Compute streak + server-resolved prestige badges for each friend
+    // Compute the streak title for each friend
     const friendsWithStreak = friends.map((f) => {
       const streakInfo = computeEquippedStreakTitle({
         selectedStreakType: f.selected_streak_type,
@@ -63,11 +60,6 @@ export async function GET() {
       return {
         ...f,
         streakTitle: streakInfo.title,
-        prestigeBadge: resolvePrestigeBadge({
-          xp: f.xp,
-          prestigeLevel: f.prestige_level,
-          showPrestigeBadge: f.show_prestige_badge,
-        }),
       };
     });
 

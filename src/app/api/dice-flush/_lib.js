@@ -40,7 +40,7 @@ export function initialState(roomId, creatorId, creatorName, wager) {
  *  then naturally rejected by `validateMove` ("Not your turn"). Returns the
  *  resolved state plus whether a timeout occurred and who was timed out.
  *  If the auto-bank filled the final category the match is settled here
- *  (payout + leaderboard + prestige) — previously the game was left stuck
+ *  (trophies + leaderboard) — previously the game was left stuck
  *  in `playing` with a full scorecard and never paid out. */
 export async function resolveExpiredTurn(tx, roomRow, state) {
   const { state: resolved, didTimeout } = autoBankIfExpired(state);

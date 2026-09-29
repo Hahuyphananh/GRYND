@@ -8,9 +8,6 @@ import { QuickQueueStatus } from "./QuickQueueStatus";
 export const QUICK_QUEUE_GAME_OPTIONS = [
   ["keno-pvp", "Keno"],
   ["mines-pvp", "Mines"],
-  ["plinko-pvp", "Plinko"],
-  ["blackjack-pvp", "Blackjack"],
-  ["roulette-pvp", "Roulette"],
   ["lane-rush-duel", "Lane Rush"],
   ["four-in-a-row", "Four-In-A-Row"],
   ["memory-grid", "Memory Grid"],
@@ -23,7 +20,6 @@ export const QUICK_QUEUE_GAME_OPTIONS = [
   ["hex-duel", "Hex Duel"],
   ["chess", "Chess"],
   ["dice-flush", "Dice Flush"],
-  ["crash-arena", "Crash Arena"],
   ["mini-golf", "Mini Golf"],
 ];
 
@@ -32,9 +28,6 @@ const EMPTY_READINESS_BODY = Object.freeze({});
 const GAME_ROUTES = {
   "keno-pvp": "/casino/keno-pvp",
   "mines-pvp": "/casino/mines-pvp",
-  "plinko-pvp": "/casino/plinko",
-  "blackjack-pvp": "/casino/blackjack",
-  "roulette-pvp": "/casino/roulette",
   "lane-rush-duel": "/casino/lane-runner",
   "four-in-a-row": "/casino/four-in-a-row/game",
   "memory-grid": "/casino/memory-grid",
@@ -47,7 +40,6 @@ const GAME_ROUTES = {
   "hex-duel": "/casino/hex-duel/game",
   "chess": "/casino/chess-game",
   "dice-flush": "/casino/dice-flush",
-  "crash-arena": "/casino/crash-arena/table",
   "mini-golf": "/casino/mini-golf",
 };
 

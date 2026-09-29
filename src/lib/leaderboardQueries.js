@@ -365,26 +365,6 @@ export function normalizeWeeklyLeaderboardCategory(value) {
 }
 
 /**
- * Server-authoritative prestige badge decoration for a leaderboard row.
- * The raw prestige columns never leave this module — only the resolved
- * label (or nothing) is returned, so a client can never render an unearned
- * badge. Shared by every board (stats boards + per-game boards).
- */
-function decoratePrestigeBadge(item) {
-  if (!item) return item;
-  const { show_prestige_badge, best_prestige, ...rest } = item;
-  // Prestige is DERIVED (max(0, elo−1000) for a game whose trophies reached
-  // the per-game cap) and computed in SQL by the lateral join below, so the raw
-  // columns never leave the server — only the resolved label does. Same label
-  // format as resolvePrestigeBadge in src/lib/prestige.js.
-  const prestige = Number(best_prestige);
-  if (show_prestige_badge === true && Number.isFinite(prestige) && prestige >= 1) {
-    return { ...rest, prestigeBadge: `Prestige ${prestige}` };
-  }
-  return rest;
-}
-
-/**
  * Attach each row's equipped profile frame (server-owned name + visual) and
  * drop the raw `equipped_cosmetics` map so it never leaves the server. One
  * catalog query decorates the whole page (see src/lib/cosmetics.ts).
@@ -415,15 +395,6 @@ async function fetchRankedRows({
   const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
   const nameField = userIdentityField(columns, "name", "'Unknown'");
   const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
-  // Prestige opt-in — guarded by the introspection so boards keep working on
-  // databases that predate migration 0137. The value itself is derived in SQL
-  // below from the player_trophies + player_ratings rows (no prestige column
-  // exists any more).
-  const showPrestigeBadgeField = userIdentityField(
-    columns,
-    "show_prestige_badge",
-    "false",
-  );
   const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   const meClause =
@@ -440,8 +411,6 @@ async function fetchRankedRows({
           s.user_id,
           ${nameField} AS name,
           ${iconKeyField} AS icon_key,
-          ${showPrestigeBadgeField} AS show_prestige_badge,
-          p.best_prestige AS best_prestige,
           ${equippedField} AS equipped_cosmetics,
           o.overall_elo AS overall_elo,
           COALESCE(o.overall_games, 0) AS overall_games,
@@ -453,19 +422,6 @@ async function fetchRankedRows({
         FROM user_stats s
         INNER JOIN users u ON u.id = s.user_id
         ${OVERALL_ELO_JOIN}
-        -- Derived Prestige: the highest (rating − 1000) among the player's
-        -- games whose trophies have reached the per-game cap, or NULL. Same
-        -- definition as bestPrestige in src/lib/prestige.js, so the board
-        -- badge and the profile can never disagree.
-        LEFT JOIN LATERAL (
-          SELECT MAX(pr.rating - 1000)::int AS best_prestige
-          FROM player_trophies t
-          INNER JOIN player_ratings pr
-            ON pr.user_id = t.user_id AND pr.game_key = t.game_key
-          WHERE t.user_id = s.user_id
-            AND t.trophies >= 10000
-            AND pr.rating > 1000
-        ) p ON true
         ${whereClause ? `WHERE ${whereClause}` : ""}
       ),
       paged AS (
@@ -484,7 +440,7 @@ async function fetchRankedRows({
 
   const row = result?.[0];
 
-  const decorate = (item) => decoratePrestigeBadge(decorateOverallElo(item));
+  const decorate = (item) => decorateOverallElo(item);
   const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
   const me = row?.me ? decorate(row.me) : null;
 

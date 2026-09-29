@@ -13,10 +13,10 @@ export type TitleMilestone = {
   rarity: TitleRarity;
 };
 
-// The battlepass replaced the wager-based VIP levels (which ran to level
-// 500, making everything past ~level 20 unreachable) with a 100-level EXP
-// track, so the milestones are re-mapped onto levels 1–100. The full
-// rarity ladder is now actually earnable.
+// The milestones were re-mapped onto the current 1–100 level range: the
+// original wager-based VIP ladder ran to level 500, which made everything
+// past ~level 20 unreachable. The full rarity ladder is reachable within
+// levels 1–100.
 export const TITLE_MILESTONES: TitleMilestone[] = [
   { level: 1, title: "Fresh Contender", rarity: "Common" },
   { level: 2, title: "New Challenger", rarity: "Common" },

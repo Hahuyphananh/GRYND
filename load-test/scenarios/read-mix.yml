@@ -1,6 +1,6 @@
 # Grynd read-mix load test (S2 in docs/load-testing.md).
 # Read-heavy feeds: leaderboards (Redis-cached, recompute on purge), bet
-# history (21 fan-out queries), user stats, crash-arena polling, recent games.
+# history (fan-out queries), user stats, recent games.
 #
 # Token-frugal by design: total VUs ≈ arrivals below (~85). Each VU loops its
 # flow ~40x, so request volume stays high without minting thousands of
@@ -87,26 +87,6 @@ scenarios:
             - get:
                 url: "/api/user-stats"
             - think: 1
-
-  - name: "crash-arena lobby poll"
-    weight: 20
-    flow:
-      - loop:
-          count: 40
-          over:
-            - get:
-                url: "/api/crash-arena/tables?mode=lobby"
-            - think: 2
-
-  - name: "crash-arena table detail"
-    weight: 5
-    flow:
-      - loop:
-          count: 40
-          over:
-            - get:
-                url: "/api/crash-arena/tables"
-            - think: 3
 
   - name: "recent games feed"
     weight: 10

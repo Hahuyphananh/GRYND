@@ -7,7 +7,7 @@ import { verifyCronRequest } from "../../../../lib/security/cronAuth";
  *
  * Daily storage-retention sweep to keep Neon Free (0.5 GB) from filling up
  * as finished matches accumulate. The infrastructure audit found that the
- * server-authoritative PvP match/round tables and Crash Arena grow
+ * server-authoritative PvP match/round tables grow
  * unboundedly. Child rows (rounds, actions, moves, entries) have
  * `ON DELETE CASCADE` from their parent match rows, so deleting a terminal
  * match row cleans the whole subtree in one statement — no per-round scans.
@@ -65,9 +65,6 @@ export async function GET(request: Request) {
   await purge("mines_pvp_matches", FINISHED);
   await purge("memory_grid_matches", FINISHED);
   await purge("keno_pvp_matches", FINISHED);
-  await purge("plinko_pvp_matches", FINISHED);
-  await purge("roulette_pvp_matches", FINISHED);
-  await purge("blackjack_pvp_matches", FINISHED);
   await purge("lane_rush_duel_matches", FINISHED);
   await purge("lane_runner_pvp_matches", FINISHED);
   await purge("precision_matches", FINISHED);
@@ -79,9 +76,6 @@ export async function GET(request: Request) {
 
   // ── Chess games → cascades to chess_moves (also terminal 'expired') ──
   await purge("chess_games", ["finished", "cancelled", "expired"]);
-
-  // ── Crash Arena: closed tables cascade players/rounds/entries/txns ────
-  await purge("crash_arena_tables", ["closed"], "created_at");
 
   // ── Presence: drop rows nobody has touched for a day ──────────────────
   // The lobby's "N playing" badge only counts rows inside a 3-minute activity

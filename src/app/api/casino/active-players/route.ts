@@ -1,7 +1,7 @@
 // app/api/casino/active-players/route.ts
 //
 // GET /api/casino/active-players
-//   → { success: true, counts: { roulette: 12, crash: 8, rps: 5 }, generatedAt }
+//   → { success: true, counts: { chess: 12, keno: 8, rps: 5 }, generatedAt }
 //
 // The only reader of the presence table: AGGREGATE COUNTS ONLY, keyed by the
 // canonical game id (the lobby's `leaderboardKey`, so /casino renders it with a

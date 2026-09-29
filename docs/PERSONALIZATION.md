@@ -60,9 +60,8 @@ Each game carries traits from a fixed vocabulary in `src/lib/gameTags.js`:
 | `competitive` | positioned around rank/stake climbing rather than a pick-up game |
 | `skill` | the outcome turns primarily on player ability |
 
-Every GRYND game is a 1v1 duel: the shared 3–6 player tables (Crash Arena's
-six-seat tables, Tower Arena's 2–6 player towers) were retired, and the
-`multiplayer` tag and the lobby's "Multiplayer" filter went with them. `pvp`
+Every GRYND game is a 1v1 duel: the shared 3–6 player tables were retired, and
+the `multiplayer` tag and the lobby's "Multiplayer" filter went with them. `pvp`
 is therefore on the whole catalog, so a `pvp` signal alone never reorders the
 lobby — it adds the same weight everywhere. A test reads the casino lobby's
 `games` array and asserts the tags match `pvpMode` one-for-one (and that no
@@ -72,12 +71,8 @@ game's shipped description:
 
 | Game | Tags | Why |
 |---|---|---|
-| Roulette | pvp, chance, fast_paced | decided by the spin; quick shared-wheel rounds |
-| Blackjack | pvp, strategy, skill | "read the table, time your swaps", best-of-3 |
 | Mines Duel | pvp, chance, competitive | hidden mines are luck; the staked duel is the core |
 | Memory Grid | pvp, skill, casual | memory is ability; rules take seconds |
-| Plinko | pvp, chance, fast_paced | the drop is chance; 3 balls each, quick |
-| Crash Arena | pvp, chance, fast_paced, competitive | random crash curve, last standing, 1v1 |
 | Chess | pvp, strategy, skill, competitive | "outthink your opponent move by move" |
 | Keno | pvp, chance, fast_paced, casual | same draw for both; timed taps; no teaching needed |
 | Neon Flush (UNO) | pvp, fast_paced, casual | fast card duels, instantly readable |

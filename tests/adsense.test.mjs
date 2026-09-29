@@ -4,7 +4,7 @@
 //
 // AdSense is the one third-party script we deliberately do NOT load everywhere.
 // It is scoped to the pages a player browses *between* games — the home page,
-// the game hub, the leaderboard, the battlepass and the game lobbies — and it
+// the game hub, the leaderboard, the profile and the game lobbies — and it
 // must stay off:
 //
 //   1. every match page (the `[matchId]` / `game/[gameId]` / `table/[tableId]`
@@ -69,12 +69,9 @@ const ALLOWED = [
   "src/app/page.jsx",
   "src/app/casino/page.jsx",
   "src/app/classement/page.jsx",
-  "src/app/battlepass/page.jsx",
   "src/app/profil/page.jsx",
   // game lobbies (lobby route only — the board lives elsewhere)
-  "src/app/casino/blackjack/page.tsx",
   "src/app/casino/chess/page.jsx",
-  "src/app/casino/crash-arena/page.jsx",
   "src/app/casino/dots-and-boxes/page.tsx",
   "src/app/casino/four-in-a-row/page.tsx",
   "src/app/casino/hex-duel/multiplayer/page.tsx",
@@ -82,10 +79,8 @@ const ALLOWED = [
   "src/app/casino/memory-grid/page.tsx",
   "src/app/casino/mines-pvp/page.tsx",
   "src/app/casino/mini-golf/page.tsx",
-  "src/app/casino/plinko/page.tsx",
   "src/app/casino/pool-masters/page.tsx",
   "src/app/casino/precision/page.tsx",
-  "src/app/casino/roulette/page.jsx",
   "src/app/casino/rps/page.tsx",
   "src/app/casino/tower-arena/page.tsx",
   "src/app/casino/uno/page.jsx",

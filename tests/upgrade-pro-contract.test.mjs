@@ -114,7 +114,6 @@ test("checkout, portal and success URLs all return to /upgrade-pro", () => {
 
 test("the Checkout page is GRYND-branded and its back button returns to /upgrade-pro", () => {
   const BRANDING = read("src/lib/stripe/checkoutBranding.ts");
-  const BATTLEPASS_ROUTE = read("src/app/api/battlepass/claim/route.js");
 
   // The page carries our palette (dark navy backdrop, brand-yellow CTA) and
   // our name, so a member never lands on Stripe's stock white form.
@@ -126,20 +125,12 @@ test("the Checkout page is GRYND-branded and its back button returns to /upgrade
   // Every Checkout Session we create goes through the branded helper, which
   // degrades instead of ever blocking a payment.
   assert.match(SUBSCRIBE_ROUTE, /createBrandedCheckoutSession\(/);
-  assert.match(BATTLEPASS_ROUTE, /createBrandedCheckoutSession\(/);
 
   // The Checkout back button is `cancel_url`, so it points at the GRYND PRO
   // page AND is built from the origin the customer checked out from — a stored
   // env value is only the fallback, never a hardcoded host.
   assert.match(SUBSCRIBE_ROUTE, /getReturnBaseUrl\(req\)/);
   assert.match(PORTAL_ROUTE, /getReturnBaseUrl\(req\)/);
-  assert.match(BATTLEPASS_ROUTE, /getReturnBaseUrl\(req\)/);
-
-  // The Battle Pass free-trial checkout shares the same way back: cancelling
-  // lands on the GRYND PRO page (the only surface with a cancelled notice),
-  // while the success redirect stays on the page that re-reads the claim.
-  assert.match(BATTLEPASS_ROUTE, /cancel_url: `\$\{baseUrl\}\/upgrade-pro\?checkout=cancelled`/);
-  assert.match(BATTLEPASS_ROUTE, /success_url: `\$\{baseUrl\}\/battlepass\?checkout=success`/);
   assert.ok(
     !SUBSCRIBE_ROUTE.includes("getBaseUrl()") &&
       !PORTAL_ROUTE.includes("getBaseUrl()"),
@@ -274,13 +265,7 @@ test("the upgrade landing page is public and never prerendered for one user", ()
   assert.match(PAGE, /getProPlanDisplay/);
 });
 
-test("the retired High Roller title is renamed in the track and migrated", () => {
-  const rewards = read("src/lib/battlepassRewards.js");
-  assert.ok(
-    !rewards.includes("bp_high_roller_legend") && !rewards.includes("High Roller"),
-    "no High Roller tier copy may remain in the reward track",
-  );
-  assert.match(rewards, /bp_apex_legend/);
+test("the retired High Roller title is renamed in the migration", () => {
   const migration = read("src/db/migrations/0169_battlepass_title_apex.sql");
   assert.match(migration, /UPDATE "user_special_titles"/);
   assert.match(migration, /DELETE FROM "special_titles" WHERE "key" = 'bp_high_roller_legend'/);

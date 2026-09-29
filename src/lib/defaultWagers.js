@@ -7,9 +7,6 @@
 // with these exact keys.
 
 export const WAGER_GAMES = [
-  { key: "blackjack", label: "Blackjack", fallback: 50 },
-  { key: "roulette", label: "Roulette", fallback: 50 },
-  { key: "plinko", label: "Plinko", fallback: 50 },
   { key: "mines", label: "Mines", fallback: 50 },
   { key: "memory-grid", label: "Memory Grid", fallback: 50 },
   { key: "keno", label: "Keno", fallback: 50 },

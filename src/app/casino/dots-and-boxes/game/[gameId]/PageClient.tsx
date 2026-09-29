@@ -947,11 +947,6 @@ const prefersReducedMotion = useReducedMotion();
                       <span style={game?.hostNameColor ? { color: game.hostNameColor } : undefined}>
                         {hostSeatName}
                       </span>
-                      {game?.hostPrestigeBadge && (
-                        <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                          {game.hostPrestigeBadge}
-                        </span>
-                      )}
                       <EmoteBubble emote={game?.role === "host" ? myEmote : incomingEmote} side={game?.role === "host" ? "mine" : "incoming"} />
                     </span>
                     <span className="text-3xl font-extrabold text-amber-400 tabular-nums">
@@ -971,11 +966,6 @@ const prefersReducedMotion = useReducedMotion();
                       <span style={game?.guestNameColor ? { color: game.guestNameColor } : undefined}>
                         {guestSeatName}
                       </span>
-                      {game?.guestPrestigeBadge && (
-                        <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                          {game.guestPrestigeBadge}
-                        </span>
-                      )}
                       <EmoteBubble emote={game?.role === "guest" ? myEmote : incomingEmote} side={game?.role === "guest" ? "mine" : "incoming"} />
                     </span>
                     <span className="text-3xl font-extrabold text-cyan-400 tabular-nums">

@@ -13,12 +13,6 @@ import {
   getStreakTitle,
   getAllStreakTitles,
 } from "../../../lib/streakTitles";
-import {
-  getPrestigeStatus,
-  resolvePrestigeBadge,
-} from "../../../lib/prestige";
-import { getRatingsForUser } from "../../../lib/rating";
-import { getTrophiesForUser } from "../../../lib/trophyStore";
 
 export async function GET() {
   const { userId } = await auth();
@@ -39,8 +33,6 @@ export async function GET() {
       columns: {
         level: true,
         xp: true,
-        prestigeLevel: true,
-        showPrestigeBadge: true,
         selectedTitle: true,
         highestTitle: true,
         selectedSpecialTitle: true,
@@ -78,28 +70,10 @@ export async function GET() {
     const equippedStreak = computeEquippedStreakTitle(dbUser);
     const streakTitle = equippedStreak.title;
 
-    // Server-resolved Prestige state — used by the navbar for the badge
-    // chip and the global "Prestige unlocked" notice. Prestige is DERIVED
-    // from the player's Elo ratings + per-game trophies (max(0, elo−1000)
-    // once a game's trophies reach the per-game cap); no column is read.
-    const [ratings, trophies] = await Promise.all([
-      getRatingsForUser(userId),
-      getTrophiesForUser(userId),
-    ]);
-    const prestigeStatus = getPrestigeStatus({ ratings, trophies });
-    const prestigeBadge = resolvePrestigeBadge({
-      showPrestigeBadge: Boolean(dbUser.showPrestigeBadge),
-      ratings,
-      trophies,
-    });
-
     return new Response(
       JSON.stringify({
         success: true,
         level,
-        prestige: prestigeStatus.prestige,
-        prestigeUnlocked: prestigeStatus.prestigeUnlocked,
-        prestigeBadge,
         unlockedTitles,
         selectedTitle: dbUser.selectedTitle || null,
         highestTitle: dbUser.highestTitle || computedHighest?.title || null,

@@ -37,8 +37,8 @@ type Action = { label: string; href?: string; onClick?: () => void };
  * no data, no error and nothing reported in-flight (e.g. the global
  * `mutate(() => true, undefined)` that OfflineBanner fires on reconnect
  * clears every cache entry before the refetch restarts) used to fall through
- * to `children`, so a page like /battlepass dereferenced a null model and
- * crashed the whole route into the error screen.
+ * to `children`, so a data-bound page dereferenced a null model and crashed
+ * the whole route into the error screen.
  *
  * Retry is automatic on reconnect; the manual button is a shortcut for when
  * the connection came back but the browser hasn't fired `online` (captive

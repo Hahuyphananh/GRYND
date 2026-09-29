@@ -71,12 +71,10 @@ test("the French-only and English-only labels are all in the bundle now", () => 
   // token currency, so there is no `balance` entry here any more.
   const sections = {
     "personal info": ["info.title", "info.settings", "info.memberSince", "info.unknownUser"],
-    battlepass: ["battlepass.title", "battlepass.level", "battlepass.earn"],
     "grynd+": ["membership.title", "membership.active", "membership.resetDone"],
     customization: ["customization.title", "customization.accent"],
     emotes: ["emotes.title", "emotes.manage"],
     titles: ["titles.title", "titles.tabStreak", "titles.lockedSecret"],
-    prestige: ["titles.prestigeBadge", "titles.showPrestige", "titles.prestigeLocked"],
     referral: ["referral.title", "referral.copy", "referral.redeemed"],
     friends: ["friends.addTitle", "friends.title", "friends.noInvites", "friends.spectate"],
     statistics: ["stats.title"],

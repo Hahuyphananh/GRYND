@@ -126,10 +126,9 @@ export async function POST(req: Request) {
     }
 
     // TOTAL TROPHIES — the sum of the player's per-game trophy counts. This is
-    // the headline competitive number the navbar shows (it replaced Overall
-    // Elo there) and the value the Battle Pass level derives from. Read-only,
-    // never client-supplied; a failure degrades to 0 rather than breaking the
-    // navbar.
+    // the headline competitive number the navbar shows and one of the two
+    // numbers ranked matchmaking matches on. Read-only, never client-supplied;
+    // a failure degrades to 0 rather than breaking the navbar.
     let totalTrophies = 0;
     try {
       totalTrophies = await getTotalTrophiesForUser(clerkId);
@@ -176,13 +175,13 @@ export async function POST(req: Request) {
           email: user.email,
           selectedIcon,
           // Equipped name color for the client-only (vs-AI) game seats —
-          // same precedence as the chat route: an equipped battlepass glow
+          // same precedence as the chat route: an equipped catalog glow
           // wins; the GRYND PRO custom chat color only surfaces for active
           // members.
           nameColor:
             user.glowColor ||
             (Boolean(user.isPremium) ? user.chatColor || null : null),
-          // The equipped BATTLE PASS name glow on its own — the catalog hex of
+          // The equipped catalog name glow on its own — the catalog hex of
           // `users.selectedGlow` (already left-joined below), or null when
           // nothing is equipped. `nameColor` above cannot be used for this: it
           // deliberately falls back to the GRYND PRO chat colour, which is a chat

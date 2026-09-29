@@ -102,7 +102,7 @@ export default function ChooseGlowModal({ open, onClose, onEquipped }) {
               Choose Your Name Glow
             </h2>
             <p className="mt-0.5 text-xs text-[#9dd8ff]/80">
-              Battlepass-earned glow shown on your name in chat.
+              Equipped glow shown on your name in chat.
             </p>
           </div>
           <button

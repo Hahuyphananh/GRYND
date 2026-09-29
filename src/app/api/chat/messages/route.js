@@ -5,7 +5,6 @@ import { db } from "../../../../db/client";
 import { chatMessages, glows, specialTitles, tokenSubscriptions, users } from "../../../../db/schema";
 import { checkUnlocks } from "../../../../lib/specialTitles";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
-import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import {
   getFrameDecorations,
   getCosmeticsByKeysForCategory,
@@ -108,8 +107,6 @@ export async function GET(req) {
         premiumStatus: tokenSubscriptions.status,
         planKey: tokenSubscriptions.planKey,
         xp: users.xp,
-        prestigeLevel: users.prestigeLevel,
-        showPrestigeBadge: users.showPrestigeBadge,
         equippedCosmetics: users.equippedCosmetics,
       })
       .from(chatMessages)
@@ -162,15 +159,9 @@ export async function GET(req) {
 
       const regularTitle = msg.selectedTitle;
 
-      // Build equippedTitle: primary title only. An equipped Prestige badge
-      // (resolved server-side — never client text) outranks special/regular
-      // titles. Streak title stays a separate field for its own badge.
-      const prestigeBadge = resolvePrestigeBadge({
-        xp: msg.xp,
-        prestigeLevel: msg.prestigeLevel,
-        showPrestigeBadge: msg.showPrestigeBadge,
-      });
-      const primaryTitle = prestigeBadge || specialTitle || regularTitle || null;
+      // Build equippedTitle: primary title only. Streak title stays a
+      // separate field for its own badge.
+      const primaryTitle = specialTitle || regularTitle || null;
       // Membership from the joined subscription row: ANY active subscription
       // is GRYND PRO (legacy plan keys included), so a paying member is never
       // silently downgraded. There are no tiers.
@@ -186,8 +177,6 @@ export async function GET(req) {
         premiumStatus,
         planKey,
         xp,
-        prestigeLevel,
-        showPrestigeBadge,
         equippedCosmetics,
         ...cleanMsg
       } = msg;
@@ -201,7 +190,7 @@ export async function GET(req) {
         premium,
         tier: premium ? "pro" : null,
         premiumTitle: premium ? MEMBERSHIP_TITLE : null,
-        // Name color precedence: an equipped battlepass glow (any member,
+        // Name color precedence: an equipped catalog glow (any member,
         // catalog hex) outranks the GRYND PRO free-form chat color. The custom
         // chat color stays a membership perk — only surfaced for members
         // (the column is only ever set through the premium-gated API, but
@@ -261,8 +250,6 @@ export async function POST(req) {
         glowColor: glows.color,
         balance: users.balance,
         xp: users.xp,
-        prestigeLevel: users.prestigeLevel,
-        showPrestigeBadge: users.showPrestigeBadge,
         equippedCosmetics: users.equippedCosmetics,
       })
       .from(users)
@@ -295,14 +282,7 @@ export async function POST(req) {
       dailyStreakBest: appUser?.dailyStreakBest,
     }).title;
 
-    // An equipped Prestige badge (resolved server-side) outranks the
-    // special / regular titles; streak title stays separate.
-    const prestigeBadge = resolvePrestigeBadge({
-      xp: appUser?.xp,
-      prestigeLevel: appUser?.prestigeLevel,
-      showPrestigeBadge: appUser?.showPrestigeBadge,
-    });
-    const primaryTitle = prestigeBadge || specialTitleRow?.name || selectedTitle;
+    const primaryTitle = specialTitleRow?.name || selectedTitle;
     // Streak title is separate — primary title goes into equippedTitle
     const equippedTitle = primaryTitle;
 

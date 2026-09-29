@@ -12,10 +12,7 @@ import IconAvatar from "../components/IconAvatar";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
-import Img1 from "../images/roulette.webp";
-import Img2 from "../images/blackjack-div.webp";
 import Img3 from "../images/towers.webp";
-import Img4 from "../images/plinko-div.webp";
 import {
   fadeIn,
   fadeUp,
@@ -32,10 +29,6 @@ import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
 import UpgradeProButton from "../components/UpgradeProButton";
 import GryndProWidget from "../components/GryndProWidget";
-import {
-  REWARD_RARITIES,
-  REWARD_TYPES,
-} from "../lib/battlepassRewards";
 
 // `adSlot` is a server-rendered <AdSlot /> handed down by app/page.jsx. It is
 // rendered above the footer and carries its OWN server-side entitlement check —
@@ -48,11 +41,6 @@ function MainComponent({ adSlot = null }) {
   // home page deliberately does NOT fetch /api/get-user-tokens itself — the
   // navbar already does that on every page, and a duplicate fetch here was
   // pure waste (its state was never read by any UI).
-  // Battlepass widget — level, next reward and progress toward it.
-  const [showBattlepass, setShowBattlepass] = useState(false);
-  const [battlepass, setBattlepass] = useState(null);
-  const [battlepassLoading, setBattlepassLoading] = useState(false);
-  const [battlepassError, setBattlepassError] = useState(null);
   const [friendPresenceByGame, setFriendPresenceByGame] = useState({});
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
@@ -110,34 +98,6 @@ function MainComponent({ adSlot = null }) {
       </div>
     );
   };
-
-  const loadBattlepass = async () => {
-    if (!user || !isSignedIn) return;
-    setBattlepassLoading(true);
-    setBattlepassError(null);
-    try {
-      const res = await fetch("/api/battlepass", {
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setBattlepassError(data.error || "Failed to load battlepass");
-        return;
-      }
-      setBattlepass(data.pass);
-    } catch (err) {
-      console.error("[BATTLEPASS_LOAD_ERROR]", err);
-      setBattlepassError("Failed to load battlepass");
-    } finally {
-      setBattlepassLoading(false);
-    }
-  };
-
-  // Load the battlepass widget data once signed in.
-  useEffect(() => {
-    if (isLoaded && isSignedIn) loadBattlepass();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, isSignedIn]);
 
   // ── Check Terms & Conditions acceptance ──
   useEffect(() => {
@@ -345,23 +305,6 @@ function MainComponent({ adSlot = null }) {
   };
 
   useRevealOnScroll([]);
-
-  // Derived battlepass widget values — the next reward is the first reward
-  // of the upcoming level (reserved-empty levels show "soon").
-  const battlepassLevel = battlepass?.level ?? 1;
-  const battlepassMaxed = battlepass
-    ? battlepass.level >= battlepass.maxLevel
-    : false;
-  const nextBattlepassLevel =
-    battlepass?.levels?.find((l) => l.level === battlepassLevel + 1) || null;
-  const nextBattlepassReward = nextBattlepassLevel?.rewards?.[0] || null;
-  const nextRewardColor = nextBattlepassReward
-    ? nextBattlepassReward.type === "color" && nextBattlepassReward.value
-      ? nextBattlepassReward.value
-      : REWARD_RARITIES[nextBattlepassReward.rarity] ||
-        REWARD_TYPES[nextBattlepassReward.type]?.color ||
-        "#9ca3af"
-    : "#9ca3af";
 
   return (
     <div className="relative min-h-screen cyberpunk-grid pb-32 md:pb-0">
@@ -654,76 +597,6 @@ function MainComponent({ adSlot = null }) {
               viewport={{ once: true, amount: 0.25 }}
               whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
               transition={{ duration: 0.25 }}
-              href="/games/roulette"
-              aria-label="Play Roulette"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
-            >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
-                <Image
-                  src={Img1}
-                  alt={t("home.game_cards.roulette_alt")}
-                  loading="lazy"
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                />
-                {/* PvP badge — this game is a real 1v1 duel */}
-                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-                  {t("home.pvp_badge")}
-                </span>
-              </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
-                {t("games.roulette_name")}
-              </h3>
-              <p className="text-[#9dd8ff]">{t("home.game_cards.roulette_desc")}</p>
-              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
-                <span>{t("home.play_pvp")}</span>
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </div>
-              {renderFriendWidget("roulette")}
-            </motion.a>
-
-            <motion.a
-              initial={{ opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
-              transition={{ duration: 0.25 }}
-              href="/games/blackjack"
-              aria-label="Play Blackjack"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
-            >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
-                <Image
-                  src={Img2}
-                  alt={t("home.game_cards.blackjack_alt")}
-                  loading="lazy"
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                />
-                {/* PvP badge — this game is a real 1v1 duel */}
-                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-                  {t("home.pvp_badge")}
-                </span>
-              </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">
-                {t("games.blackjack_name")}
-              </h3>
-              <p className="text-[#9dd8ff]">
-                {t("home.game_cards.blackjack_desc")}
-              </p>
-              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
-                <span>{t("home.play_pvp")}</span>
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </div>
-              {renderFriendWidget("blackjack")}
-            </motion.a>
-
-            <motion.a
-              initial={{ opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
-              transition={{ duration: 0.25 }}
               href="/games/tower-arena"
               aria-label="Play Tower Arena"
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
@@ -750,40 +623,6 @@ function MainComponent({ adSlot = null }) {
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </div>
               {renderFriendWidget("tower-arena")}
-            </motion.a>
-
-            <motion.a
-              initial={{ opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.25 }}
-              whileHover={{ scale: shouldReduceMotion ? 1 : 1.02 }}
-              transition={{ duration: 0.25 }}
-              href="/games/plinko"
-              aria-label="Play Plinko"
-              className="group relative cursor-pointer overflow-hidden rounded-xl border border-[#00e5ff]/35 bg-[#040d24] p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_0_20px_rgba(0,229,255,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]"
-            >
-              <div className="mb-4 h-48 overflow-hidden rounded-lg relative">
-                <Image
-                  src={Img4}
-                  alt={t("home.game_cards.plinko_alt")}
-                  loading="lazy"
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  className="h-full w-full object-cover transition-transform group-hover:scale-110"
-                />
-                {/* PvP badge — this game is a real 1v1 duel */}
-                <span className="absolute left-2 top-2 rounded-full border border-[#00e5ff]/60 bg-[#0b1b3f]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.45)] backdrop-blur-sm">
-                  {t("home.pvp_badge")}
-                </span>
-              </div>
-              <h3 className="mb-2 text-xl font-bold text-[#f5ff3b]">{t("games.plinko_name")}</h3>
-              <p className="text-[#9dd8ff]">
-                {t("home.game_cards.plinko_desc")}
-              </p>
-              <div className="mt-4 flex items-center gap-1.5 text-sm font-bold text-[#00e5ff]">
-                <span>{t("home.play_pvp")}</span>
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </div>
-              {renderFriendWidget("plinko")}
             </motion.a>
           </div>
 
@@ -876,11 +715,6 @@ function MainComponent({ adSlot = null }) {
                       />
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#c9f7ff]">
                         {item.user?.name || item.name}
-                        {item.prestigeBadge && (
-                          <span className="ml-2 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">
-                            {item.prestigeBadge}
-                          </span>
-                        )}
                       </span>
                       <span className="shrink-0 text-sm font-bold text-green-300">
                         {Number(item.weekly_wins || 0).toLocaleString()}{" "}
@@ -970,150 +804,6 @@ function MainComponent({ adSlot = null }) {
         </div>
       </section>
 
-      {/* Battlepass widget — a pill anchored on the right side, tooltip-style:
-          it opens on hover (and on tap for touch devices). Shows the
-          player's level, progress toward the next one, the next reward,
-          and a link to the full battlepass page. */}
-      {isSignedIn && (
-        <div
-          className="fixed right-4 top-20 z-50"
-          onMouseEnter={() => setShowBattlepass(true)}
-          onMouseLeave={() => setShowBattlepass(false)}
-        >
-          <div className="relative">
-            <button
-              onClick={() => setShowBattlepass(!showBattlepass)}
-              aria-expanded={showBattlepass}
-              className="group relative flex items-center gap-2 rounded-full bg-black/70 border border-[#f5ff3b]/40 px-3 py-2 text-sm text-[#f5ff3b] backdrop-blur-sm hover:border-[#f5ff3b] hover:bg-black/85 transition-all shadow-[0_0_12px_rgba(245,255,59,0.15)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
-            >
-              <span className="text-lg">
-                <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2-6.4-4.8-6.4 4.8 2.4-7.2-6-4.8h7.6z"/></svg>
-              </span>
-              <span className="font-bold">{t("nav.battlepass")}</span>
-              {battlepass && (
-                <span className="hidden sm:inline text-xs text-[#f5ff3b]/70">
-                  Lv {battlepass.level}
-                </span>
-              )}
-              <span className="text-[10px] text-[#f5ff3b]/50">
-                {showBattlepass ? "▲" : "▼"}
-              </span>
-            </button>
-            {/* pt-2 (not mt-2) keeps the gap between the pill and the
-                panel inside the hoverable area, so moving the cursor
-                down into the panel doesn't close it. */}
-            {showBattlepass && (
-              <div className="absolute right-0 w-64 pt-2">
-                <div className="rounded-xl border border-[#f5ff3b]/30 bg-black/85 backdrop-blur-md p-3 text-xs text-amber-100 shadow-[0_0_20px_rgba(245,255,59,0.2)]">
-                {battlepassLoading ? (
-                  <div className="py-4 text-center text-[11px] text-[#f5ff3b]/70">
-                    {t("ui.loading")}
-                  </div>
-                ) : battlepassError ? (
-                  <p className="py-4 text-center text-[11px] text-red-300">
-                    {battlepassError}
-                  </p>
-                ) : battlepass ? (
-                  <>
-                    {/* Level + total trophies */}
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="font-bold text-[#f5ff3b]">
-                        {t("nav.battlepass")}
-                      </span>
-                      <span className="font-bold text-[#f5ff3b]">
-                        Level {battlepass.level}
-                      </span>
-                    </div>
-
-                    {/* Progress toward the next level */}
-                    <div className="mb-1 flex justify-between text-[10px] text-amber-200/70">
-                      <span>
-                        {battlepassMaxed
-                          ? "Max level reached"
-                          : `Progress to level ${Math.min(
-                              battlepass.maxLevel,
-                              battlepass.level + 1,
-                            )}`}
-                      </span>
-                      <span>
-                        {battlepassMaxed
-                          ? "100%"
-                          : `${battlepass.progressPercent}%`}
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#f5ff3b] to-amber-400 transition-all duration-500"
-                        style={{
-                          width: `${
-                            battlepassMaxed ? 100 : battlepass.progressPercent
-                          }%`,
-                        }}
-                      />
-                    </div>
-
-                    {/* Total trophies + trophies needed for the next level */}
-                    <div className="mt-1.5 flex justify-between text-[10px] text-amber-200/60">
-                      <span>{Number(battlepass.trophies).toLocaleString()} trophies</span>
-                      <span>
-                        {battlepassMaxed
-                          ? "Max level"
-                          : `${Number(battlepass.remainingToNext).toLocaleString()} to level ${
-                              battlepass.level + 1
-                            }`}
-                      </span>
-                    </div>
-
-                    {/* Next reward */}
-                    <div className="mt-2 rounded-lg border border-[#f5ff3b]/20 bg-white/5 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-wider text-amber-200/60">
-                        Next reward
-                      </p>
-                      {battlepassMaxed ? (
-                        <p className="mt-0.5 font-semibold text-[#f5ff3b]">
-                          Max level reached — all rewards unlocked!
-                        </p>
-                      ) : nextBattlepassReward ? (
-                        <div className="mt-1 flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{
-                              background: nextRewardColor,
-                              boxShadow: `0 0 6px ${nextRewardColor}`,
-                            }}
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-[11px] font-semibold text-white">
-                              {nextBattlepassReward.name}
-                            </p>
-                            <p className="truncate text-[10px] text-amber-200/60">
-                              {nextBattlepassReward.desc}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="mt-0.5 text-[11px] text-amber-200/70">
-                          Icons & cosmetics soon
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Link to the full battlepass page */}
-                    <Link
-                      href="/battlepass"
-                      onClick={() => setShowBattlepass(false)}
-                      className="mt-2 block rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/15 px-3 py-2 text-center text-[11px] font-bold text-[#f5ff3b] transition-all hover:bg-[#f5ff3b]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
-                    >
-                      Open Battlepass →
-                    </Link>
-                  </>
-                ) : null}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {/* GRYND PRO widget — replaces the old Daily Reward claim button in
           this corner. Free accounts see the membership pitch; PRO members
           see a small status card. Home page only (never inside gameplay). */}

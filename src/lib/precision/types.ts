@@ -41,10 +41,6 @@ export interface PrecisionPlayer {
   nameColor?: string | null;
   isReady: boolean;
   isConnected: boolean;
-  /** Server-resolved prestige badge label, only present when the player
-   * has one equipped and earned. Raw prestige columns never reach the
-   * client. */
-  prestigeBadge?: string | null;
 }
 
 export interface PrecisionLobby {

@@ -3,8 +3,7 @@
 // SERVER-AUTHORITATIVE ELO — one independent rating per game, per player.
 //
 // This is the ONLY module allowed to read or write `player_ratings` /
-// `rating_events`. It is modelled directly on the Prestige hook
-// (src/lib/prestige.js), which is the platform's existing pattern for
+// `rating_events`. It follows the platform's existing settlement pattern for
 // "an authoritative match result happened — apply progression exactly once":
 //
 //   * Each game settles inside a row-locked transaction.
@@ -20,9 +19,9 @@
 // it is not a rating and cannot move an individual game's Elo.
 //
 // WHAT NEVER ENTERS THE CALCULATION (by construction — see src/lib/elo.js):
-// token balance, winnings/payout, wagered amount, XP, Battle Pass level,
-// Prestige, streaks, cosmetics, membership. The only inputs are the
-// two current ratings, the two rated-games counts, and the outcome.
+// token balance, winnings/payout, wagered amount, XP, level, streaks,
+// cosmetics, membership. The only inputs are the two current ratings, the two
+// rated-games counts, and the outcome.
 //
 // WHAT THE CLIENT CAN NEVER DO:
 //   * submit a rating (there is no write path that accepts one),
@@ -65,8 +64,8 @@ import {
 // ── Game registry (the full rated-game space) ──────────────────────────────
 //
 // The keys are deliberately identical to the settlement `source`/`gameKey`
-// values each game already passes, so one vocabulary covers ratings, trophies
-// and Prestige and the journals line up row-for-row.
+// values each game already passes, so one vocabulary covers ratings and
+// trophies and the journals line up row-for-row.
 //
 // SETTLEMENT STATUS:
 //   * The original 14 duel games (chess … odds-pvp) settle through
@@ -79,8 +78,8 @@ import {
 //     is a two-seat table, so that ladder is simply ±30. See
 //     src/lib/trophyStore.js. None of them have Elo wiring yet.
 //   * The "pending" games are REGISTERED here so the rated-game space — and
-//     thus OVERALL_TROPHY_MAX and Overall Prestige — stays complete, but they
-//     are not settled by the writers yet.
+//     thus the Overall Trophies sum — stays complete, but they are not settled
+//     by the writers yet.
 //
 // DELIBERATELY UNSETTLED FOR NOW:
 //   * hex-duel            — /api/hex-duel/multiplayer/end accepts a
@@ -98,14 +97,10 @@ export const RATED_GAMES = Object.freeze([
   "precision",
   "mines-pvp",
   "keno-pvp",
-  "plinko-pvp",
   "lane-rush-duel",
-  "blackjack-pvp",
   "dice-flush",
   "rps-pvp",
   "odds-pvp",
-  "roulette-pvp",
-  "crash-arena",
   "uno",
   "tower-arena",
   "hex-duel",
@@ -125,14 +120,10 @@ export const RATING_GAME_LABELS = Object.freeze({
   precision: "Precision",
   "mines-pvp": "Mines Duel",
   "keno-pvp": "Keno Duel",
-  "plinko-pvp": "Plinko Duel",
   "lane-rush-duel": "Lane Rush Duel",
-  "blackjack-pvp": "Blackjack",
   "dice-flush": "Dice Flush",
   "rps-pvp": "Rock Paper Scissors",
   "odds-pvp": "Odds",
-  "roulette-pvp": "Roulette",
-  "crash-arena": "Crash Arena",
   uno: "Neon Flush",
   "tower-arena": "Tower Arena",
   "hex-duel": "Hex Duel",
@@ -193,7 +184,7 @@ export function identityHashForEmail(email) {
     .digest("hex");
 }
 
-/** The journal/game-key shape guard (mirrors prestige's SOURCE_REGEX). */
+/** The journal/game-key shape guard (shared rated-game key vocabulary). */
 const GAME_KEY_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 /** Max length of a match id we will journal. */
@@ -304,7 +295,7 @@ export async function getRatingsForUser(clerkId) {
  * quick-queue matcher. One query instead of one per queued request.
  *
  * Returns `{ [clerkId]: { [gameKey]: rating } }`. A player with no rating rows
- * is simply absent, which the matcher treats as "no prestige signal". Only the
+ * is simply absent, which the matcher treats as "no Elo signal". Only the
  * raw `rating` number is returned — the queue needs a sortable skill value,
  * not the full read shape.
  */

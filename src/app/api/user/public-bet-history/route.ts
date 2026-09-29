@@ -3,12 +3,8 @@ import { db } from "../../../../db";
 import { eq, or } from "drizzle-orm";
 import {
   users,
-  rouletteGames,
-  blackjackGames,
   minesGames,
-  plinkoGames,
   rpsGames,
-  crashGames,
   unoGames,
   chessGames,
   keno_games,
@@ -102,11 +98,7 @@ export async function GET(req: NextRequest) {
     };
 
     const [
-      roulette,
-      blackjack,
       mines,
-      plinko,
-      crash,
       rps,
       uno,
       chess,
@@ -121,35 +113,11 @@ export async function GET(req: NextRequest) {
       // Full-row selects shipped every table's deck/hand/seed/state columns
       // to unauthenticated visitors. fetchLimit already caps pagination at 100.
       db.select({
-        betAmount: rouletteGames.betAmount,
-        payout: rouletteGames.payout,
-        result: rouletteGames.result,
-        createdAt: rouletteGames.createdAt,
-      }).from(rouletteGames).where(eq(rouletteGames.userId, uid)).limit(fetchLimit),
-      db.select({
-        betAmount: blackjackGames.betAmount,
-        payout: blackjackGames.payout,
-        result: blackjackGames.result,
-        createdAt: blackjackGames.createdAt,
-      }).from(blackjackGames).where(eq(blackjackGames.userId, uid)).limit(fetchLimit),
-      db.select({
         betAmount: minesGames.betAmount,
         payout: minesGames.payout,
         result: minesGames.result,
         createdAt: minesGames.createdAt,
       }).from(minesGames).where(eq(minesGames.userId, uid)).limit(fetchLimit),
-      db.select({
-        betAmount: plinkoGames.betAmount,
-        payout: plinkoGames.payout,
-        result: plinkoGames.result,
-        createdAt: plinkoGames.createdAt,
-      }).from(plinkoGames).where(eq(plinkoGames.userId, clerkId)).limit(fetchLimit),
-      db.select({
-        betAmount: crashGames.betAmount,
-        payout: crashGames.payout,
-        result: crashGames.result,
-        createdAt: crashGames.createdAt,
-      }).from(crashGames).where(eq(crashGames.userId, uid)).limit(fetchLimit),
       db.select({
         betAmount: rpsGames.betAmount,
         payout: rpsGames.payout,
@@ -286,11 +254,7 @@ export async function GET(req: NextRequest) {
       });
 
     const allBets = [
-  ...roulette.map((b: any) => formatBet("Roulette", b)),
-  ...blackjack.map((b: any) => formatBet("Blackjack", b)),
   ...mines.map((b: any) => formatBet("Mines", b)),
-  ...plinko.map((b: any) => formatBet("Plinko", b)),
-  ...crash.map((b: any) => formatBet("Crash", b)),
   ...rps.map((b: any) => formatBet("Rock Paper Scissors", b)),
   ...uno.map((b: any) => formatBet("UNO", b)),
   ...chess.map((b: any) => formatBet("Chess", b)),

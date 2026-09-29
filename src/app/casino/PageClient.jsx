@@ -5,10 +5,6 @@ import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { useUser } from "@clerk/nextjs";
 import React, { useEffect, useState } from "react";
 import FrameAvatar from "../../components/FrameAvatar";
-import Img1 from "../../images/rouletteimage.png";
-import Img2 from "../../images/blackjackimage.png";
-import Img4 from "../../images/plinkoimage.png";
-import Img6 from "../../images/crashimage.png";
 import Img7 from "../../images/chessimage.png";
 import Img10 from "../../images/kenoimage.png";
 import Img11 from "../../images/uno game div.webp";
@@ -324,28 +320,6 @@ function MainComponent({ adSlot = null }) {
   // in the codebase; the play-count sort only works if these line up.
   const games = [
     {
-      name: "Roulette",
-      href: "/casino/roulette",
-      leaderboardKey: "roulette",
-      playsKey: "roulette",
-      image: Img1,
-      imageClassName: "group-hover:scale-[1.03]",
-      descriptionKey: "games.roulette_desc",
-      pvpMode: "1v1",
-      popular: true,
-    },
-    {
-      name: "Blackjack",
-      href: "/casino/blackjack",
-      leaderboardKey: "blackjack",
-      playsKey: "blackjack",
-      image: Img2,
-      imageClassName: "group-hover:scale-[1.03]",
-      descriptionKey: "games.blackjack_desc",
-      pvpMode: "1v1",
-      popular: true,
-    },
-    {
       name: "Mines Duel",
       href: "/casino/mines-pvp",
       leaderboardKey: "mines-pvp",
@@ -371,28 +345,6 @@ function MainComponent({ adSlot = null }) {
       popular: true,
     },
 
-    {
-      name: "Plinko",
-      href: "/casino/plinko",
-      leaderboardKey: "plinko",
-      recencyKey: "plinko-duel",
-      playsKey: "plinko-duel",
-      image: Img4,
-      imageClassName: "group-hover:scale-[1.03]",
-      descriptionKey: "games.plinko_desc",
-      pvpMode: "1v1",
-      popular: true,
-    },
-    {
-      name: "Crash Arena",
-      href: "/casino/crash-arena",
-      leaderboardKey: "crash",
-      playsKey: "crash-arena",
-      image: Img6,
-      imageClassName: "group-hover:scale-[1.03]",
-      descriptionKey: "games.crash_arena_desc",
-      pvpMode: "1v1",
-    },
     {
       name: "Échecs",
       href: "/casino/chess",
@@ -574,10 +526,6 @@ function MainComponent({ adSlot = null }) {
     "neon-flush",
     "keno",
     "chess",
-    "crash",
-    "plinko",
-    "blackjack",
-    "roulette",
   ];
 
   let displayedGames = [...filteredGames];
@@ -1281,7 +1229,7 @@ function MainComponent({ adSlot = null }) {
       `}</style>
       {adSlot}
       <Footer />
-      <StickyMobileCta playHref="/casino/roulette" />
+      <StickyMobileCta playHref="/casino/mines-pvp" />
     </div>
   );
 }

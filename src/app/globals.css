@@ -143,9 +143,8 @@ body {
   animation: scaleIn 0.35s ease-out;
 }
 
-/* Player-state feedback (crash-arena) — every state badge / banner that
-   represents a player changing state (folded, busted, all-in, in flight, the
-   fold-pause card) lands with one short rise + fade instead of snapping into
+/* Player-state feedback — every state badge / banner that represents a player
+   changing state lands with one short rise + fade instead of snapping into
    place. One-shot, 180ms (game-action tier). It plays when the class is first
    applied or the element's React key changes — a re-render from a poll or
    socket snapshot carrying the same state does neither, so it never replays.
@@ -166,46 +165,6 @@ body {
   animation: stateIn 0.18s ease-out both;
 }
 
-/* Crash moment (crash-engine / crash-arena) — the read-out stamps into its
-   CRASHED state, the bomb punches in at the crash point, and the canvas takes
-   one short impact shake. All one-shot (no looping, no re-trigger); the
-   reduced-motion block above collapses each to its end state, so the crash
-   stays fully readable with motion off. */
-@keyframes crashStamp {
-  0% {
-    opacity: 0.4;
-    transform: scale(1.18);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(0.97);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-.animate-crash-stamp {
-  animation: crashStamp 0.24s ease-out both;
-}
-
-@keyframes crashImpact {
-  0% {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.12);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-.animate-crash-impact {
-  animation: crashImpact 0.26s ease-out both;
-}
 
 /* One-shot impact shake. The canvas is scaled a hair past its container while
    it shakes (the game area clips), so the 6px travel never uncovers an edge. */
@@ -1899,146 +1858,6 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   }
 }
 
-/* Plinko PvP — brief peg impact. Applied by the match view only when the
-   ball's authoritative trajectory actually passes a peg, and removed within
-   ~110ms so it never lingers. Deliberately subtle (tiny pop + brightness) so
-   it never competes with the ball. */
-@keyframes plinkoPegHit {
-  0% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-  35% {
-    transform: scale(1.35);
-    filter: brightness(1.8);
-  }
-  100% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-}
-
-.plinko-peg-hit {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: plinkoPegHit 110ms ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plinko-peg-hit {
-    animation: none;
-  }
-}
-
-/* Plinko PvP — bucket landing. Fired once per resolved ball from the server's
-   bucket index/points. Layered and short: a bucket pop, a multiplier/points
-   reveal, and a ball settle. The stronger variants are used only for the
-   high-value (precision) buckets so the visual hierarchy stays controlled
-   instead of celebrating every landing. */
-@keyframes plinkoBucketLand {
-  0% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-  40% {
-    transform: scale(1.06);
-    filter: brightness(1.7);
-  }
-  100% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-}
-
-@keyframes plinkoBucketLandStrong {
-  0% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-  40% {
-    /* Same geometry as the base variant on purpose: the buckets are 98 units
-       wide with a 1px gutter inside a 500-unit viewBox, so anything past
-       ~1.06 spills into the neighbouring bucket and below the board's bottom
-       edge (the SVG root clips). The high-value hierarchy is carried by the
-       brighter flash instead of a bigger pop. */
-    transform: scale(1.06);
-    filter: brightness(2.4);
-  }
-  100% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-}
-
-.plinko-bucket-land,
-.plinko-bucket-land-strong,
-.plinko-bucket-points-reveal,
-.plinko-bucket-points-reveal-strong,
-.plinko-ball-settle {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.plinko-bucket-land {
-  animation: plinkoBucketLand 170ms ease-out;
-}
-
-.plinko-bucket-land-strong {
-  animation: plinkoBucketLandStrong 200ms ease-out;
-}
-
-@keyframes plinkoBucketPoints {
-  0% {
-    transform: scale(0.72);
-    filter: brightness(1.6);
-  }
-  45% {
-    transform: scale(1.35);
-    filter: brightness(2.2);
-  }
-  100% {
-    transform: scale(1);
-    filter: brightness(1);
-  }
-}
-
-.plinko-bucket-points-reveal {
-  animation: plinkoBucketPoints 280ms ease-out;
-}
-
-.plinko-bucket-points-reveal-strong {
-  animation: plinkoBucketPoints 340ms ease-out;
-}
-
-@keyframes plinkoBallSettle {
-  0% {
-    transform: scale(1);
-  }
-  35% {
-    transform: scale(1.16, 0.84);
-  }
-  70% {
-    transform: scale(0.94, 1.06);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.plinko-ball-settle {
-  animation: plinkoBallSettle 140ms ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plinko-bucket-land,
-  .plinko-bucket-land-strong,
-  .plinko-bucket-points-reveal,
-  .plinko-bucket-points-reveal-strong,
-  .plinko-ball-settle {
-    animation: none;
-  }
-}
-
 /* ── Token-shop profile effects ──────────────────────────────────────
    Backs the non-frame `cosmetics.visual.cssClass` values (migration 0156):
    avatar effects, username/chat shimmers and the profile-card glow.
@@ -2103,16 +1922,16 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: 0 0 28px 4px rgba(16, 185, 129, 0.35);
 }
 
-.prestige-aura {
+.elite-aura {
   position: relative;
   box-shadow: 0 0 28px 4px rgba(139, 92, 246, 0.4);
 }
 
-.prestige-crown {
+.elite-crown {
   position: relative;
 }
 
-.prestige-crown::before {
+.elite-crown::before {
   content: "\1F451";
   position: absolute;
   top: -14px;

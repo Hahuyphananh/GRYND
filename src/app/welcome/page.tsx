@@ -4,7 +4,7 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   title: "Welcome to Grynd | GRYND",
   description:
-    "Welcome to GRYND — the competitive PvP skill-gaming platform. Learn how tokens, PvP matches and the Battle Pass work before you jump in.",
+    "Welcome to GRYND — the competitive PvP skill-gaming platform. Learn how tokens, PvP matches and ranked trophies work before you jump in.",
 };
 
 export default async function Page({

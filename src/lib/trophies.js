@@ -9,7 +9,7 @@
 // flow; this module only answers "given this player's trophies and this
 // outcome, what is the new count?".
 //
-// THE RULE (Phase 1 of the trophy system):
+// THE RULE:
 //
 //   Ranked win  = +30 trophies
 //   Ranked loss = −30 trophies
@@ -30,34 +30,24 @@
 //
 //   * Trophies are PER GAME and INDEPENDENT — a Chess count and a Precision
 //     count are separate rows and are never combined.
-//   * The count can never fall below TROPHY_MIN (0).
-//   * The count is capped at TROPHY_MAX (1,000) PER GAME. Reaching the cap
-//     completes trophy progression for that game and unlocks that game's
-//     PRESTIGE ladder (Elo, revealed at the cap).
-//   * Trophies are the primary visible competitive progression and the primary
-//     matchmaking signal below the cap. There are 20 eligible games, so the
-//     additive overall maximum is OVERALL_TROPHY_MAX (the per-game cap times
-//     the number of rated games).
+//   * The count can never fall below TROPHY_MIN (0). There is NO upper cap —
+//     trophies are unbounded and keep climbing for as long as a player wins.
+//   * Trophies are the primary visible competitive progression and, together
+//     with per-game Elo, one of the two matchmaking signals (see
+//     src/lib/quickQueue.ts).
 //
 // WHAT IS DELIBERATELY ABSENT
-//   Nothing about tokens, winnings, XP, Battle Pass, streaks, cosmetics or
-//   membership may influence a trophy change. The only inputs are the player's
-//   current trophies and the authoritative outcome. Trophies are a result
-//   measure, never an economy.
+//   Nothing about tokens, winnings, XP, streaks, cosmetics or membership may
+//   influence a trophy change. The only inputs are the player's current
+//   trophies and the authoritative outcome. Trophies are a result measure,
+//   never an economy.
 //
 // GAME ELIGIBILITY
 //   Trophies use EXACTLY the Elo registry (`RATED_GAMES` in src/lib/rating.js)
 //   as their single source of truth, so the two systems can never disagree
 //   about which games are competitive and server-authoritative. There is
 //   deliberately no second game list here that could drift.
-//
-// PRESTIGE (derived, never stored)
-//   Prestige is the endgame representation of Elo progress once a game's
-//   trophies reach the cap: `prestige = max(0, elo − STARTING_RATING)`. It is a
-//   pure read of the existing Elo value — no column, no writer, no history —
-//   so it cannot duplicate or move a rating.
 
-import { STARTING_RATING } from "./elo";
 import {
   RATED_GAMES,
   RATING_GAME_LABELS,
@@ -83,33 +73,14 @@ export const TROPHY_LOSS = -30;
 /** Trophies moved by a draw — deliberately zero. */
 export const TROPHY_DRAW = 0;
 
-/** Floor: a trophy count can never go below this. */
+/** Floor: a trophy count can never go below this. There is no upper cap. */
 export const TROPHY_MIN = 0;
-
-/**
- * Cap: the maximum trophy progression for ONE game. At the cap, trophy
- * progression is complete for that game and the player unlocks that game's
- * PRESTIGE ladder — Elo, tracked silently from the first rated match and
- * revealed as Prestige once the cap is reached.
- *
- * Every game caps at 1,000. With 20 eligible games the additive overall
- * maximum is OVERALL_TROPHY_MAX; see below.
- */
-export const TROPHY_MAX = 1000;
 
 /**
  * The eligible games — EXACTLY the Elo registry, re-exported so every trophy
  * surface reads one list and cannot drift from the rating system.
  */
 export const TROPHY_GAMES = RATED_GAMES;
-
-/**
- * The maximum OVERALL trophies: every eligible game capped. Trophies are
- * additive across games (never averaged), so this is simply
- * `TROPHY_MAX × games`. The Battle Pass spans this value across its 100 levels,
- * so its per-level cost moves with the size of the rated-game roster.
- */
-export const OVERALL_TROPHY_MAX = TROPHY_MAX * TROPHY_GAMES.length;
 
 /** Display labels, shared with the rating boards. */
 export const TROPHY_GAME_LABELS = RATING_GAME_LABELS;
@@ -146,12 +117,13 @@ function toFiniteInt(value, fallback = 0) {
 }
 
 /**
- * Clamp a trophy count into the legal band [TROPHY_MIN, TROPHY_MAX].
- * Non-finite input falls back to TROPHY_START (never NaN).
+ * Clamp a trophy count to the legal floor (TROPHY_MIN). There is no upper
+ * bound — trophies are unbounded. Non-finite input falls back to TROPHY_START
+ * (never NaN).
  */
 export function clampTrophies(value) {
   const n = toFiniteInt(value, TROPHY_START);
-  return Math.min(TROPHY_MAX, Math.max(TROPHY_MIN, n));
+  return Math.max(TROPHY_MIN, n);
 }
 
 // ── The rule ───────────────────────────────────────────────────────────────
@@ -172,8 +144,8 @@ export function trophyDeltaForOutcome(outcome) {
  * Apply one outcome to a player's current trophy count.
  *
  * Returns the pre/post count and the delta ACTUALLY applied — which differs
- * from the nominal ±30 at the bounds (a loss at 0 applies 0; a win at the cap
- * applies 0). `clamped` flags that the nominal delta was cut short.
+ * from the nominal ±30 only at the FLOOR (a loss at 0 applies 0). `clamped`
+ * flags that the nominal delta was cut short.
  *
  * @param {number} current
  * @param {"win"|"loss"|"draw"} outcome
@@ -188,11 +160,11 @@ export function applyTrophyDelta(current, outcome) {
  *
  * This is what the multi-seat placement ladder uses (each seat's share of the
  * ±30 spread), while a duel goes through `applyTrophyDelta` above. Both end in
- * the same place: clamp the bound, report what actually moved.
+ * the same place: clamp the floor, report what actually moved.
  *
  * Returns the pre/post count and the delta ACTUALLY applied — which differs
- * from the nominal value at the bounds (a seat on the floor loses nothing; a
- * seat at the cap gains nothing). `clamped` flags that cut.
+ * from the nominal value only at the floor (a seat on the floor loses nothing).
+ * `clamped` flags that cut.
  *
  * @param {number} current
  * @param {number} nominalDelta  the ladder share, e.g. +30, +10, −10, −30
@@ -376,14 +348,13 @@ export function placementLadder(seats) {
  * `groups` describes the WHOLE finishing order, best first. Each inner array is
  * one placement group and contains the CURRENT trophy counts of the seats that
  * finished level (crash victims with no surviving bankroll). A tied group is
- * awarded the AVERAGE of the ranks
- * it spans, so being level with two other players never silently rewards or
- * punishes whoever the server happened to list first.
+ * awarded the AVERAGE of the ranks it spans, so being level with two other
+ * players never silently rewards or punishes whoever the server happened to
+ * list first.
  *
  * The ladder is zero-sum before clamping: a table redistributes trophies, and
- * clamping only ever moves less than the nominal spread at the bounds (a seat on
- * the floor loses nothing, a seat
- * at the cap gains nothing), so a match can move less than the nominal spread.
+ * clamping only ever moves less than the nominal spread at the floor (a seat on
+ * the floor loses nothing), so a match can move less than the nominal spread.
  *
  * `position`/`place` in the result are 1-based placement, and `outcome` is the
  * placement read as a result: first place is a WIN, every other seat is a LOSS
@@ -471,67 +442,24 @@ export function computePlacementTrophies({ groups }) {
   };
 }
 
-// ── Progression phase + Prestige (derived) ────────────────────────────────
-
-/** True once a game's trophy progression is complete (at the cap). */
-export function isTrophyComplete(trophies) {
-  return clampTrophies(trophies) >= TROPHY_MAX;
-}
+// ── Read shape ────────────────────────────────────────────────────────────
 
 /**
- * The player's competitive phase for one game:
- *   * "trophies" — below the cap; trophies are the primary progression and the
- *      primary matchmaking signal.
- *   * "elo"      — at the cap; Elo (and its derived Prestige) take over.
- */
-export function trophyPhase(trophies) {
-  return isTrophyComplete(trophies) ? "elo" : "trophies";
-}
-
-/**
- * Prestige points for one game — simply the player's Elo VALUE for that game.
- * Elo IS the Prestige ladder: it starts at STARTING_RATING (1000), is tracked
- * silently from the first rated match, and is revealed once the game's trophies
- * reach the cap, moving like chess Elo from there.
- *
- * Returns STARTING_RATING for a non-finite rating. This is a display helper
- * only; it does not gate on trophies (callers show it only once the game is
- * complete — see src/lib/prestige.js).
- */
-export function prestigeFromRating(rating) {
-  return toFiniteInt(rating, STARTING_RATING);
-}
-
-/**
- * The full read shape for one game's trophy progress, used by APIs and UI.
+ * The read shape for one game's trophy progress, used by APIs and UI.
+ * Trophies are unbounded, so there is no maximum, remaining or completion
+ * field — the count itself is the whole story.
  *
  * @param {number} trophies
- * @returns {{
- *   trophies: number,
- *   maxTrophies: number,
- *   remaining: number,
- *   progressPercent: number,
- *   complete: boolean,
- *   phase: "trophies"|"elo",
- * }}
+ * @returns {{ trophies: number }}
  */
 export function trophyProgress(trophies) {
-  const value = clampTrophies(trophies);
-  const complete = value >= TROPHY_MAX;
-  return {
-    trophies: value,
-    maxTrophies: TROPHY_MAX,
-    remaining: Math.max(0, TROPHY_MAX - value),
-    progressPercent: Math.round((value / TROPHY_MAX) * 100),
-    complete,
-    phase: complete ? "elo" : "trophies",
-  };
+  return { trophies: clampTrophies(trophies) };
 }
 
 /**
  * Normalize a raw `player_trophies` row into the shape every surface uses.
- * `gameKey` is always the game the row belongs to; the derived Prestige and
- * progress fields come from this game's own numbers, never a combination.
+ * `gameKey` is always the game the row belongs to; every field comes from this
+ * game's own numbers, never a combination.
  *
  * @param {string} gameKey
  * @param {object} row raw row (snake_case or camelCase aliases both accepted)
@@ -616,8 +544,6 @@ export const TROPHY_CONFIG = Object.freeze({
   loss: TROPHY_LOSS,
   draw: TROPHY_DRAW,
   min: TROPHY_MIN,
-  max: TROPHY_MAX,
-  overallMax: OVERALL_TROPHY_MAX,
   gameCount: TROPHY_GAMES.length,
   outcomes: TROPHY_OUTCOMES,
   overallMinGames: OVERALL_TROPHY_MIN_GAMES,

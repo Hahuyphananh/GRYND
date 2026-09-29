@@ -145,7 +145,7 @@ documents forfeit rules — the UX doesn't warn).
 **Change:** when a match is active (`MATCH_STATUS` beyond waiting), intercept
 route-change/`beforeunload` with the P0-3 confirm modal ("Leave match? You'll forfeit").
 Implement in the shared `CreatorModeHost`-adjacent lifecycle or a small
-`useLeaveMatchGuard` hook, wire into one reference game first (plinko), then the rest.
+`useLeaveMatchGuard` hook, wire into one reference game first (mines-pvp), then the rest.
 **Effort:** M–L (per-game wiring).
 
 ### P3-2. In-game quick-wager chips  *(Laws 8, 13 — Fitts/Hick)*

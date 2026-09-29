@@ -17,7 +17,6 @@
     "test:elo": "node --import tsx --test tests/elo-rating.test.mjs",
     "test:elo-leaderboard": "node --import tsx --test tests/leaderboard-rating.test.mjs",
     "test:trophies": "node --import tsx --test tests/trophy-system.test.mjs tests/trophy-leaderboard.test.mjs tests/quick-queue-trophy.test.mjs",
-    "test:prestige-retired": "node --import tsx --test tests/prestige-retirement.test.mjs",
     "test:overall-elo": "node --import tsx --test tests/overall-elo.test.mjs",
     "test:icon-system": "node --import tsx --test tests/iconAssets.test.mjs tests/icons-db.test.mjs",
     "test:states": "node --import tsx --test tests/persistent-swr-cache.test.mjs tests/session-cleanup.test.mjs",
@@ -104,17 +103,10 @@
     "verify:precision-mobile": "node qa/precision-mobile-check.mjs",
     "verify:precision-flow": "node qa/precision-flow-check.mjs",
     "verify:complete-profile": "node qa/complete-profile-check.mjs",
-    "test:plinko-pvp-ai": "node --import tsx --test tests/plinko-pvp-ai.test.mjs",
-    "test:battlepass": "node --import tsx --test tests/battlepass.test.mjs tests/battlepass-page-contract.test.mjs",
     "test:upgrade-pro": "node --import tsx --test tests/upgrade-pro-contract.test.mjs",
     "test:bot-turns": "node --import tsx --test tests/bot-opponents-turn.test.mjs",
-    "test:crash-arena-ai": "node --import tsx --test tests/crash-arena-ai.test.mjs",
     "test:tower-arena": "node --import tsx --test tests/tower-arena-engine.test.mjs tests/tower-arena-turns.test.mjs tests/tower-arena-settlement.test.mjs tests/tower-arena-realtime.test.mjs tests/tower-arena-qa.test.mjs",
-    "test:crash-poker-engine": "node --test tests/crash-poker-engine.test.mjs",
-    "test:crash-arena-fold-out": "node --test tests/crash-arena-fold-out-settle.test.mjs tests/crash-poker-engine.test.mjs",
-    "test:crash-signals": "node --import tsx --test tests/crash-signals.test.mjs",
-    "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml",
-    "loadtest:wagering": "npx --yes artillery@2.0.34 run load-test/scenarios/wagering.yml"
+    "loadtest:read-mix": "npx --yes artillery@2.0.34 run load-test/scenarios/read-mix.yml"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.3",

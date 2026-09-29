@@ -32,15 +32,15 @@ test("starts empty", () => {
 });
 
 test("records plays newest-first", () => {
-  recordPlayedGame("plinko-duel");
-  recordPlayedGame("roulette");
+  recordPlayedGame("mines-pvp");
+  recordPlayedGame("keno");
   recordPlayedGame("chess");
-  assert.deepEqual(getPlayedGames(), ["chess", "roulette", "plinko-duel"]);
+  assert.deepEqual(getPlayedGames(), ["chess", "keno", "mines-pvp"]);
 });
 
 test("replaying a game moves it to the front without duplicating", () => {
-  recordPlayedGame("plinko-duel");
-  assert.deepEqual(getPlayedGames(), ["plinko-duel", "chess", "roulette"]);
+  recordPlayedGame("mines-pvp");
+  assert.deepEqual(getPlayedGames(), ["mines-pvp", "chess", "keno"]);
 });
 
 test("caps the list at 10 entries", () => {

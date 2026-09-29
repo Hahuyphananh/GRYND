@@ -1,6 +1,5 @@
 /**
- * Official Grynd animated emote system — resolver + security + migration +
- * Battle Pass integration tests.
+ * Official Grynd animated emote system — resolver + security + migration tests.
  *
  * The pure resolver tests import src/lib/emoteAssets.ts directly (no DB).
  * Everything else is static analysis of the migration / routes / lib source,
@@ -33,10 +32,6 @@ const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
 const journalEntries = journal.entries || [];
 const emotesLib = read("src/lib/emotes.ts");
 const getRoute = read("src/app/api/user/emotes/route.ts");
-const battlepassRewards = read("src/lib/battlepassRewards.js");
-const battlepassRoute = read("src/app/api/battlepass/route.js");
-const leaderboardCounters = read("src/lib/leaderboardCounters.js");
-const battlepassLib = read("src/lib/battlepass.js");
 const picker = read("src/components/game/EmotePicker.jsx");
 const clerkWebhook = read("src/app/api/webhooks/clerk/route.js");
 const syncUser = read("src/app/api/sync-user/route.ts");
@@ -44,7 +39,7 @@ const syncUser = read("src/app/api/sync-user/route.ts");
 const DEFINITION_KEYS = OFFICIAL_EMOTE_DEFINITIONS.map((d) => d.key);
 
 // ═════════════════════════════════════════════════════════════════════
-// Catalog shape: exactly 15 official emotes — 8 free + 7 Battle Pass
+// Catalog shape: exactly 15 official emotes, all owned by every player
 // ═════════════════════════════════════════════════════════════════════
 
 test("catalog has exactly 15 official emotes with unique lowercase keys", () => {
@@ -181,10 +176,11 @@ test("emote state/loadout reads go through an authenticated API", () => {
   assert.match(getRoute, /equippedEmotes/);
   assert.match(getRoute, /emotes: state\.emotes/);
   assert.match(getRoute, /maxLoadout: MAX_EQUIPPED_EMOTES/);
-  // The server payload exposes ownership + equipped + Battle Pass unlock
-  // level per catalog emote so the profile manager can render locked items.
+  // The server payload exposes ownership + equipped per catalog emote. With
+  // the Battle Pass gone (migration 0185) every emote is simply owned, so
+  // there is no unlock level to report any more.
   assert.match(emotesLib, /unlockLevel: number \| null/);
-  assert.match(emotesLib, /unlockLevel: levelByKey\.get\(row\.key\) \?\? null/);
+  assert.match(emotesLib, /unlockLevel: null/);
 });
 
 test("loadout writes validate ownership, catalog, duplicates, and the 9 cap server-side", () => {
@@ -198,8 +194,8 @@ test("loadout writes validate ownership, catalog, duplicates, and the 9 cap serv
   assert.match(emotesLib, /a maximum of \$\{MAX_EQUIPPED_EMOTES\} emotes/);
   assert.match(emotesLib, /MAX_EQUIPPED_EMOTES/);
   // Ownership is never client-supplied: grants come only from reconciliation
-  // paths (free emotes / battle pass) — the API route never inserts
-  // user_emotes rows or grants ownership itself.
+  // (free emotes) and the account-creation catalog grant — the API route never
+  // inserts user_emotes rows or grants ownership itself.
   assert.match(emotesLib, /reconcileEmoteState\(userId\)/);
   assert.doesNotMatch(getRoute, /insert\(userEmotes\)/);
   assert.doesNotMatch(getRoute, /unlockEmote\(/);
@@ -234,62 +230,32 @@ test("loadout lives in the DB across devices — no localStorage source of truth
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// Battle Pass integration — 7 emote rewards, idempotent grants
+// Every emote is owned by every player (the Battle Pass is gone)
 // ═════════════════════════════════════════════════════════════════════
 
-test("the 7 Battle Pass emotes sit at the specified reserved cosmetic levels", () => {
-  const expected = [
-    [6, "hype"],
-    [13, "victory"],
-    [22, "party"],
-    [31, "skull"],
-    [42, "thumbsup"],
-    [56, "clap"],
-    [81, "star"],
-  ];
-  for (const [level, key] of expected) {
-    const row = new RegExp(`\\[${level}, \\[\\{ type: "emote", key: "${key}"`);
-    assert.match(battlepassRewards, row, `level ${level} -> emote ${key}`);
-  }
+test("the Battle Pass emote grant path is gone from the codebase", () => {
+  assert.doesNotMatch(emotesLib, /grantBattlepassEmotes/);
+  assert.doesNotMatch(emotesLib, /battlepassEmoteRewardMap/);
+  assert.ok(!fs.existsSync("src/lib/battlepass.js"), "the battle pass library must be deleted");
+  assert.ok(
+    !fs.existsSync("src/lib/battlepassRewards.js"),
+    "the battle pass reward track must be deleted"
+  );
+  assert.ok(
+    !fs.existsSync("src/app/api/battlepass"),
+    "the battle pass API must be deleted"
+  );
 });
 
-test("emote rewards reuse the existing Battle Pass system (no second pass)", () => {
-  assert.match(battlepassRewards, /emote: \{ label: "Animated Emote"/);
-  // Rewards are NEVER auto-granted anymore — the player claims them on
-  // the battlepass page, and the claim endpoint grants exactly one emote.
-  assert.doesNotMatch(
-    battlepassLib,
-    /grantBattlepassEmotes\(userId, result\.level\)/,
-    "XP credit must not auto-grant battlepass emotes",
-  );
-  assert.doesNotMatch(
-    leaderboardCounters,
-    /grantBattlepassEmotes\(updatedUserId, updatedLevel\)/,
-    "settlement must not auto-grant battlepass emotes",
-  );
-  assert.doesNotMatch(
-    battlepassRoute,
-    /grantBattlepassEmotes\(/,
-    "battlepass GET must not auto-grant rewards",
-  );
-  const claimRoute = read("src/app/api/battlepass/claim/route.js");
-  assert.match(claimRoute, /unlockEmote\(dbUserId, key\)/);
-  // grantBattlepassEmotes only ever grants ownership — it never auto-equips.
-  const grantFn = emotesLib.slice(
-    emotesLib.indexOf("export async function grantBattlepassEmotes"),
-    emotesLib.indexOf("export type EmoteStateEmote")
-  );
-  assert.match(grantFn, /unlockEmote\(userId, key\)\) granted\.push\(key\)/);
-  assert.doesNotMatch(grantFn, /equippedEmotes/, "battle pass grant must not touch the loadout");
-});
-
-test("battle pass rewards report claimed from user_emotes (idempotent page refresh)", () => {
-  assert.match(battlepassRoute, /ownedEmoteKeys/);
-  assert.match(battlepassRoute, /SELECT emote_key FROM user_emotes WHERE user_id/);
-  assert.match(battlepassRoute, /isEmote && dbUserId/);
-  assert.match(battlepassRoute, /ownedEmoteKeys\.has\(reward\.key\)/);
-  // Reached-but-unowned rewards surface as claimable — never auto-granted.
-  assert.match(battlepassRoute, /claimable/);
+test("account creation grants the whole cosmetic catalog, emotes included", () => {
+  // The Battle Pass was the only way to earn the 7 non-free emotes; with it
+  // removed, every new account owns every enabled emote (and glow, cosmetic
+  // and special title) outright.
+  assert.match(clerkWebhook, /grantAllCosmeticsToUser\(newUserId\)/);
+  assert.match(syncUser, /grantAllCosmeticsToUser\(user\.id\)/);
+  const cosmeticsLib = read("src/lib/cosmetics.ts");
+  assert.match(cosmeticsLib, /INSERT INTO "user_emotes"/);
+  assert.match(cosmeticsLib, /WHERE NOT EXISTS/, "the grant must stay idempotent");
 });
 
 // ═════════════════════════════════════════════════════════════════════
@@ -331,10 +297,8 @@ test("bubbles render words as text and animated emotes as official assets only",
 });
 
 test("the legacy inline .value bubbles in game pages now render via EmoteArtwork", () => {
-  const roulette = read("src/app/casino/roulette/[matchId]/PageClient.jsx");
   const chess = read("src/app/casino/chess-game/[gameId]/PageClient.jsx");
-  const blackjack = read("src/app/casino/blackjack/[matchId]/PageClient.tsx");
-  for (const file of [roulette, chess, blackjack]) {
+  for (const file of [chess]) {
     assert.match(file, /EmoteArtwork/);
     assert.ok(
       !/>\{.*emote\.value\}<\/span>/.test(file) &&

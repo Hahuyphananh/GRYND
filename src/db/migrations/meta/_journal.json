@@ -1156,6 +1156,48 @@
       "when": 1800000027000,
       "tag": "0183_crash_arena_tables_1v1",
       "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1800000028000,
+      "tag": "0184_remove_trophy_cap",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1800000029000,
+      "tag": "0185_drop_prestige_and_battlepass",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1800000030000,
+      "tag": "0186_grant_all_cosmetics",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1800000031000,
+      "tag": "0187_emote_descriptions_no_battlepass",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1800000032000,
+      "tag": "0188_debrand_battlepass_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1800000033000,
+      "tag": "0189_drop_roulette_plinko_blackjack_crash",
+      "breakpoints": true
     }
   ]
 }

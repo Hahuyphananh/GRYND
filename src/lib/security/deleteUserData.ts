@@ -2,13 +2,10 @@ import { eq, inArray, or } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import {
-  blackjackGames,
-  blackjackPvpMatches,
   chatMessages,
   chessGames,
   chessMoves,
   fourInARowGames,
-  crashGames,
   diceFlushActions,
   diceFlushPlayers,
   diceFlushRooms,
@@ -28,16 +25,12 @@ import {
   minesGames,
   minesPvpMatches,
   oddsGames,
-  plinkoGames,
-  plinkoPvpMatches,
   playerReports,
   poolLobbies,
   poolMatches,
   poolPlayerStats,
   poolShots,
   precisionMatches,
-  rouletteGames,
-  roulettePvpMatches,
   rpsGames,
   rpsPvpGames,
   stripeCheckoutSessions,
@@ -80,11 +73,10 @@ async function getExistingTables(): Promise<Set<string>> {
  * their Clerk id.
  *
  * The `users` row delete cascades to all tables with an integer FK to
- * `users.id` (stats, friends, titles, daily streaks, crash arena entries,
- * etc.). The one non-cascading integer FK (`user_login_rewards`) and the
- * solo-game tables whose integer `user_id` has no FK at all
- * (`uno_games`, `blackjack_games`, `keno_games`, ...) are deleted
- * explicitly here.
+ * `users.id` (stats, friends, titles, daily streaks, etc.). The one
+ * non-cascading integer FK (`user_login_rewards`) and the solo-game tables
+ * whose integer `user_id` has no FK at all (`uno_games`, `keno_games`, ...)
+ * are deleted explicitly here.
  *
  * PvP match history stores players as varchar Clerk ids with no FK
  * (`player1_id` / `player2_id`), so every match a deleted user took part
@@ -140,12 +132,8 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
 
     // ── Solo games: integer user_id, no FK (rows would orphan). ──
     await tx.delete(unoGames).where(eq(unoGames.userId, localUserId));
-    await tx.delete(blackjackGames).where(eq(blackjackGames.userId, localUserId));
-    await tx.delete(crashGames).where(eq(crashGames.userId, localUserId));
     await tx.delete(minesGames).where(eq(minesGames.userId, localUserId));
     await tx.delete(laneRunnerGames).where(eq(laneRunnerGames.userId, localUserId));
-    await tx.delete(plinkoGames).where(eq(plinkoGames.userId, clerkId));
-    await tx.delete(rouletteGames).where(eq(rouletteGames.userId, localUserId));
     await tx.delete(keno_games).where(eq(keno_games.user_id, localUserId));
 
     // ── Solo games: varchar user_id (Clerk id), no FK. ──
@@ -235,16 +223,6 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
         );
     }
     await tx
-      .delete(roulettePvpMatches)
-      .where(
-        or(eq(roulettePvpMatches.player1Id, clerkId), eq(roulettePvpMatches.player2Id, clerkId))
-      );
-    await tx
-      .delete(blackjackPvpMatches)
-      .where(
-        or(eq(blackjackPvpMatches.player1Id, clerkId), eq(blackjackPvpMatches.player2Id, clerkId))
-      );
-    await tx
       .delete(minesPvpMatches)
       .where(or(eq(minesPvpMatches.player1Id, clerkId), eq(minesPvpMatches.player2Id, clerkId)));
     await tx
@@ -257,9 +235,6 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
       .where(
         or(eq(laneRushDuelMatches.player1Id, clerkId), eq(laneRushDuelMatches.player2Id, clerkId))
       );
-    await tx
-      .delete(plinkoPvpMatches)
-      .where(or(eq(plinkoPvpMatches.player1Id, clerkId), eq(plinkoPvpMatches.player2Id, clerkId)));
     await tx
       .delete(kenoPvpMatches)
       .where(or(eq(kenoPvpMatches.player1Id, clerkId), eq(kenoPvpMatches.player2Id, clerkId)));

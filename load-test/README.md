@@ -1,15 +1,12 @@
 # Grynd HTTP load tests (Artillery)
 
-Drives the **wagering** and **read** hot paths from `docs/load-testing.md`
-against a staging environment. Never point these at production.
+Drives the **read** hot paths from `docs/load-testing.md` against a staging
+environment. Never point these at production.
 
 ## Files
 
 - `scenarios/read-mix.yml`  — steady read load: leaderboards, bet history, user
-  stats, crash-arena lobby/table polls, recent games.
-- `scenarios/wagering.yml` — the money path: `create` (table) → `join`
-  (atomic balance buy-in). Add `cashout`/`settle` steps once staging has
-  reliably auto-cycling tables (see the plan doc §7).
+  stats, recent games.
 - `tokens.example.csv` — copy to `tokens.csv` (gitignored) and fill with one
   Clerk `__session` cookie per virtual user.
 
@@ -33,8 +30,7 @@ against a staging environment. Never point these at production.
    `localStorage.getItem("__session")`. Clerk tokens are short-lived — mint
    fresh ones per run and create **at least as many tokens as peak VUs**
    (Artillery assigns one payload row per VU; see "Concurrency math" below).
-3. Fund every test account (starting balance ≥ wagers the run will place) and
-   seed a production-like dataset — empty tables hide every index problem.
+3. Seed a production-like dataset — empty tables hide every index problem.
 4. Set `BASE_URL` to the staging origin (no trailing slash).
 
 ## Run
@@ -45,9 +41,6 @@ set -a; source load-test/.env.local; set +a
 
 # Read mix — ~50 VUs, 90 s (needs >= ~60 tokens; duplicates OK, reads only)
 npx artillery run load-test/scenarios/read-mix.yml
-
-# Wagering — create + atomic buy-in cycles (needs >= ~35 unique tokens, funded)
-npx artillery run load-test/scenarios/wagering.yml
 
 # Save a JSON report for later comparison
 npx artillery run -o load-test/reports/run-$(date +%s).json load-test/scenarios/read-mix.yml
@@ -64,9 +57,6 @@ Add `npm` scripts any time by editing `package.json` (pattern:
 - Correlate a slow run with the DB: check `pg_stat_activity` for long queries,
   `pg_locks` for waits, Redis `grynd:lb:*` hit rates. Slow leaderboards right
   after settlement traffic = cache purge → recompute (plan §4.3).
-- Run the money-integrity SQL from `docs/load-testing.md` §6 **before and
-  after** every wagering run — a load test that corrupts a balance is a
-  failing test.
 
 ## Concurrency math (Artillery arrivals vs tokens)
 

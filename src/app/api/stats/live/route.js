@@ -33,11 +33,7 @@ export async function GET() {
         async () => {
           const result = await sql`
         SELECT (
-          COALESCE((SELECT COUNT(*) FROM roulette_games  WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM blackjack_games WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM crash_games     WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM mines_games     WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
-          COALESCE((SELECT COUNT(*) FROM plinko_games    WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM rps_games       WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM keno_games      WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +
           COALESCE((SELECT COUNT(*) FROM keno_pvp_matches WHERE created_at >= CURRENT_DATE AND created_at < CURRENT_DATE + INTERVAL '1 day'), 0) +

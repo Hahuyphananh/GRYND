@@ -189,10 +189,13 @@ test("4. finishing the tutorial flips only onboarding_completed_at", () => {
 
 test("5. the existing first-game completion semantics are untouched", () => {
   const route = read(FIRST_GAME_ROUTE);
-  // The atomic one-time claim + XP grant stay exactly as they were.
+  // The atomic one-time claim stays exactly as it was. The Battle Pass (and
+  // its FIRST_GAME_BONUS_XP grant) has been removed, so the endpoint now only
+  // records the completion flags and reports the stored level unchanged.
   assert.match(route, /isNull\(users\.firstGameCompletedAt\)/);
-  assert.match(route, /FIRST_GAME_BONUS_XP/);
-  assert.match(route, /addExp\(/);
+  assert.match(route, /xpGranted: 0/);
+  assert.match(route, /leveledUp: false/);
+  assert.doesNotMatch(route, /addExp\(/);
   // Nothing in this feature writes first_game_completed_at.
   for (const file of [QUESTIONNAIRE_ROUTE, DISMISS_ROUTE]) {
     assert.doesNotMatch(read(file), /firstGameCompletedAt:\s*new Date\(\)/);

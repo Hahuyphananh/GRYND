@@ -167,11 +167,11 @@ page.on("response", response => {
  * src/app/casino/page.jsx
  * src/app/casino/chess/page.jsx
  * src/app/casino/keno/page.jsx
- * src/app/casino/blackjack/page.tsx
+ * src/app/casino/mines-pvp/page.tsx
  *
  * Dynamic routes such as:
  *
- * src/app/casino/blackjack/[matchId]/...
+ * src/app/casino/mines-pvp/[matchId]/...
  *
  * are skipped because we cannot safely invent a real match ID.
  */
@@ -312,12 +312,6 @@ const criticalRoutes = [
 
   "/casino/keno",
   "/casino/keno-pvp",
-
-  "/casino/blackjack",
-
-  "/casino/plinko",
-
-  "/casino/roulette",
 
   "/casino/rps",
 

@@ -185,7 +185,6 @@ type Match = {
   name: string;
   iconKey: string;
   profileFrame?: unknown;
-  prestigeBadge?: string | null;
 };
 
 // ── Countdown hook ─────────────────────────────────────────────────────
@@ -2123,11 +2122,6 @@ export default function TowerArenaMatchPage() {
                   <p className="truncate text-sm font-bold">
                     {p.name}
                     {p.userId === me?.userId ? " (you)" : ""}
-                    {p.prestigeBadge && (
-                      <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
-                        {p.prestigeBadge}
-                      </span>
-                    )}
                   </p>
                   <p className="text-[10px] uppercase tracking-wider text-white/50">
                     {eliminated
@@ -2641,11 +2635,6 @@ function ResultsView({ match, players, meUserId, onBack }: any) {
                   <div className="min-w-0 flex-1">                    <p className="truncate text-sm font-bold">
                       {p?.name}
                       {r.userId === meUserId ? " (you)" : ""}
-                      {p?.prestigeBadge && (
-                        <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
-                          {p.prestigeBadge}
-                        </span>
-                      )}
                     </p>
 
                     <p className="text-[10px] uppercase tracking-wider text-white/50">

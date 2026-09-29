@@ -6,11 +6,6 @@ import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
 import { getCosmeticByKey, resolveEquippedCosmetic } from "../../../../lib/cosmetics";
-import { getLevelFromTrophies } from "../../../../lib/battlepass";
-import {
-  getPrestigeStatus,
-  resolvePrestigeBadge,
-} from "../../../../lib/prestige";
 import { getTrophiesForUser } from "../../../../lib/trophyStore";
 import {
   getRatingsForUser,
@@ -52,9 +47,7 @@ export async function GET(req: NextRequest) {
         // resolved + exposed below; other slots stay private to the owner.
         equippedCosmetics: users.equippedCosmetics,
         level: users.level,
-        // Legacy XP — no longer drives the Battle Pass level (trophies do).
         xp: users.xp,
-        showPrestigeBadge: users.showPrestigeBadge,
         gamesWon: users.gamesWon,
         gamesLost: users.gamesLost,
         totalWagered: users.totalWagered,
@@ -116,9 +109,6 @@ export async function GET(req: NextRequest) {
       if (!catalog) safeIcon = DEFAULT_ICON_KEY;
     }
 
-    // Battle Pass level and Prestige are DERIVED from the player's trophies +
-    // ratings, loaded below — the legacy xp / prestige columns are never read
-    // any more.
     // Equipped profile frame — resolved through the official catalog so a
     // disabled/unknown/weird key can never render. Every value the client
     // gets is server-owned (name + visual).
@@ -151,7 +141,7 @@ export async function GET(req: NextRequest) {
     // renders "Unrated". Each rating is independent; Overall Elo is a
     // separate aggregate value derived from the established ones.
     const ratings = await getRatingsForUser(clerkId);
-    // Per-game trophies + the derived total the Battle Pass level reads.
+    // Per-game trophies, plus the total across games.
     const trophies = (await getTrophiesForUser(clerkId)) as Record<
       string,
       { trophies?: number }
@@ -160,19 +150,6 @@ export async function GET(req: NextRequest) {
       (sum, entry) => sum + (Number(entry?.trophies) || 0),
       0,
     );
-    // Battle Pass level — derived from TROPHIES (OVERALL_TROPHY_MAX = level 100).
-    const battlepassLevel = getLevelFromTrophies(totalTrophies);
-    // Prestige — DERIVED from the ratings + trophies above (max(0, elo−1000)
-    // for each game whose trophies reached the per-game cap). No column read or
-    // written; can never be set through this or any other client-facing API.
-    const prestige = getPrestigeStatus({ ratings, trophies });
-    // Server-resolved "Prestige N" badge — only present when the player
-    // equipped it AND genuinely earned it (a capped game + rating > 1000).
-    const prestigeBadge = resolvePrestigeBadge({
-      showPrestigeBadge: user.showPrestigeBadge,
-      ratings,
-      trophies,
-    });
     // Overall Elo — server-derived aggregate of the established ratings
     // above. Null until at least OVERALL_MIN_GAMES different games are
     // established; provisional games never count. Never stored, never
@@ -183,7 +160,6 @@ export async function GET(req: NextRequest) {
       success: true,
       user: {
         ...safeUser,
-        level: battlepassLevel,
         selectedIcon: safeIcon,
         profileFrame,
         avatarEffect,
@@ -191,13 +167,6 @@ export async function GET(req: NextRequest) {
         profileGlow,
         trophies,
         totalTrophies,
-        prestige: prestige.prestige,
-        prestigeGameKey: prestige.prestigeGameKey,
-        prestigeNetWins: prestige.prestigeNetWins,
-        nextPrestigeRequirement: prestige.nextPrestigeRequirement,
-        prestigeProgressPercent: prestige.prestigeProgressPercent,
-        prestigeUnlocked: prestige.prestigeUnlocked,
-        prestigeBadge,
         // gameKey → { rating, peakRating, gamesRated, wins, losses, draws,
         // lastDelta, lastRatedAt, provisional }. Server-derived only.
         ratings,

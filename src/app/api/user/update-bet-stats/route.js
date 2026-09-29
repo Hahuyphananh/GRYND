@@ -8,8 +8,8 @@
 //
 // Stats can only be updated server-side by game-settlement code that derives
 // bet/payout from authoritative game state:
-//   * server-authoritative game routes (play-plinko, crash arena settle,
-//     chess end-game, dice-flush, hex-duel, uno determine-winner, ...),
+//   * server-authoritative game routes (mines settle, chess end-game,
+//     dice-flush, hex-duel, uno determine-winner, ...),
 //   * all of which funnel through lib/leaderboardCounters.applyLeaderboardCounters
 //     with server-verified amounts.
 //

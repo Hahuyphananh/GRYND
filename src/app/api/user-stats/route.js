@@ -1,10 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../db/neon";
-import {
-  getBattlepassProgressFromTrophies,
-  getLevelFromTrophies,
-} from "../../../lib/battlepass";
-import { getTotalTrophiesForUser } from "../../../lib/trophyStore";
 import { getHighestTitle } from "../../../lib/titles";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
@@ -15,12 +10,8 @@ import { db } from "../../../db";
 import { and, count, eq, or, sql as drizzleSql } from "drizzle-orm";
 import {
   users,
-  rouletteGames,
-  blackjackGames,
   minesGames,
-  plinkoGames,
   rpsGames,
-  crashGames,
   unoGames,
   chessGames,
   keno_games,
@@ -96,20 +87,8 @@ export async function GET() {
       };
 
       const counts = await Promise.all([
-        safeCount("roulette", () =>
-          db.select({ n: count() }).from(rouletteGames).where(eq(rouletteGames.userId, uid)),
-        ),
-        safeCount("blackjack", () =>
-          db.select({ n: count() }).from(blackjackGames).where(eq(blackjackGames.userId, uid)),
-        ),
         safeCount("mines", () =>
           db.select({ n: count() }).from(minesGames).where(eq(minesGames.userId, uid)),
-        ),
-        safeCount("plinko", () =>
-          db.select({ n: count() }).from(plinkoGames).where(eq(plinkoGames.userId, clerkId)),
-        ),
-        safeCount("crash", () =>
-          db.select({ n: count() }).from(crashGames).where(eq(crashGames.userId, uid)),
         ),
         safeCount("rps", () =>
           db.select({ n: count() }).from(rpsGames).where(eq(rpsGames.userId, clerkId)),
@@ -209,23 +188,19 @@ export async function GET() {
       ]);
 
       const gameCounts = [
-        ["Roulette", counts[0]],
-        ["Blackjack", counts[1]],
-        ["Mines", counts[2]],
-        ["Plinko", counts[3]],
-        ["Crash", counts[4]],
-        ["RPS", counts[5]],
-        ["UNO", counts[6]],
-        ["Chess", counts[7]],
-        ["Keno Duel", counts[8]],
-        ["Keno", counts[9]],
-        ["Four-In-A-Row", counts[10]],
-        ["Lane Runner", counts[11]],
-        ["Lane Rush Duel", counts[12]],
-        ["Memory Grid", counts[13]],
-        ["Hex Duel", counts[14]],
-        ["Odds", counts[15]],
-        ["Dice Flush", counts[16]],
+        ["Mines", counts[0]],
+        ["RPS", counts[1]],
+        ["UNO", counts[2]],
+        ["Chess", counts[3]],
+        ["Keno Duel", counts[4]],
+        ["Keno", counts[5]],
+        ["Four-In-A-Row", counts[6]],
+        ["Lane Runner", counts[7]],
+        ["Lane Rush Duel", counts[8]],
+        ["Memory Grid", counts[9]],
+        ["Hex Duel", counts[10]],
+        ["Odds", counts[11]],
+        ["Dice Flush", counts[12]],
       ];
       const favoriteGame =
         gameCounts.sort((a, b) => b[1] - a[1])[0]?.[1] > 0
@@ -261,6 +236,7 @@ export async function GET() {
             referral_count,
             referral_earnings,
             total_wagered,
+            level,
             xp
           FROM users
           WHERE clerk_id = ${userId}
@@ -271,16 +247,14 @@ export async function GET() {
         console.error("[user-stats] Failed to fetch user meta:", selectErr);
       }
 
-      // Battlepass level is DERIVED from TROPHIES (OVERALL_TROPHY_MAX = level 100),
-      // not XP. The stored level/xp columns are legacy and no longer drive
-      // progression; nothing is overwritten here.
-      const totalTrophies = await getTotalTrophiesForUser(userId);
-      const computedLevel = getLevelFromTrophies(totalTrophies);
-      const progress = getBattlepassProgressFromTrophies(totalTrophies);
+      // The Battle Pass has been removed. The stored level column is retained
+      // for the legacy level-milestone titles only; nothing derives it from
+      // trophies any more.
+      const computedLevel = Number(row?.level ?? 1);
       const computedHighestTitle = getHighestTitle(computedLevel)?.title || null;
 
       // Titles still unlock by level — keep the highest unlocked title in
-      // sync with the battlepass level.
+      // sync with the stored level.
       try {
         await sql`
           UPDATE users
@@ -343,7 +317,7 @@ export async function GET() {
         referralCode: row?.referral_code || "",
         totalWagered: Number(row?.total_wagered || 0),
         currentLevel: computedLevel,
-        levelProgress: progress,
+        levelProgress: null,
         record,
       };
     });

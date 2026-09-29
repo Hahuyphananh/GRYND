@@ -275,22 +275,11 @@ export const users = pgTable("users", {
     .notNull(),
   totalWagered: bigint("total_wagered", { mode: "number" }).default(0).notNull(),
   totalWon: bigint("total_won", { mode: "number" }).default(0).notNull(),
+  // Legacy progression counters. The Battle Pass that drove them has been
+  // removed; the columns remain for historical data and are no longer
+  // advanced by any progression system.
   level: integer("level").default(1).notNull(),
   xp: integer("xp").default(0).notNull(),
-  // Permanent Prestige progression layered on the permanent Battle Pass
-  // (Level 1-100). Only server-authoritative game results write these —
-  // see src/lib/prestige.js and migration 0136. `prestige_level` is
-  // monotonic (losses can reduce net-win progress, never a tier);
-  // `prestige_net_wins` is the current tier's progress, clamped >= 0 and
-  // reset to 0 when the next tier's requirement is met. Both are gated to
-  // players who have reached the permanent Level 100 cap.
-  prestigeLevel: integer("prestige_level").default(0).notNull(),
-  prestigeNetWins: integer("prestige_net_wins").default(0).notNull(),
-  // Equip preference: show the "Prestige N" badge instead of the normal
-  // title. This is only a preference — the displayed N is always derived
-  // server-side from prestige_level (see resolvePrestigeBadge in
-  // src/lib/prestige.js), so an unearned badge can never be shown.
-  showPrestigeBadge: boolean("show_prestige_badge").notNull().default(false),
   biggestWin: integer("biggest_win").default(0).notNull(),
   bestMultiplier: numeric("best_multiplier", { precision: 10, scale: 4 }).default("0").notNull(),
   currentStreak: integer("current_streak").default(0).notNull(),
@@ -340,7 +329,7 @@ export const users = pgTable("users", {
   // Defaults to the official default icon key; NULL/invalid/disabled
   // values fall back to the default at read time.
   selectedIcon: varchar("selected_icon", { length: 120 }).default("default"),
-  // Official Grynd name glow the user has equipped (battlepass-earned,
+  // Official Grynd name glow the user has equipped (catalog-granted,
   // catalog-backed). NULL = no glow. Resolved through the `glows` catalog
   // (src/lib/glows.ts) — never an arbitrary client-supplied color.
   selectedGlow: varchar("selected_glow", { length: 120 }),
@@ -587,46 +576,15 @@ export const userItemEffects = pgTable(
   })
 );
 
-// PER-LEVEL BATTLEPASS CLAIM JOURNAL
-// ==============================================================================
-// Records which functional battlepass rewards (xp_boost / quest_boost /
-// shield) a player has claimed at each level. Emote/title ownership lives
-// in their own tables (user_emotes / user_special_titles); the functional
-// rewards have no other home, and
-// since the track contains many identical items at different levels (ten
-// streak shields), the (user, level, type) uniqueness is what makes each
-// one claimable exactly once. Written only by POST /api/battlepass/claim.
-export const battlepassClaims = pgTable(
-  "battlepass_claims",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    level: integer("level").notNull(),
-    rewardType: varchar("reward_type", { length: 32 }).notNull(),
-    rewardKey: varchar("reward_key", { length: 64 }),
-    claimedAt: timestamp("claimed_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    uniqUserLevelType: unique("battlepass_claims_user_level_type_unique").on(
-      table.userId,
-      table.level,
-      table.rewardType
-    ),
-    userIdx: index("battlepass_claims_user_idx").on(table.userId),
-  })
-);
-
 // COSMETIC CATALOG + OWNERSHIP (token-priced, server-authoritative)
 // ==============================================================================
 // Catalog rows are display-only to the client (GET /api/cosmetics); purchase
 // (POST /api/cosmetics/buy) and equip (POST /api/cosmetics/equip) always
 // re-resolve the row server-side. `price_tokens` IS NULL on non-shop items
-// (battlepass / prestige-gated); `unlock_condition` records that gate for
-// display. Categories are the shop's "Cosmetics" section and the profile/
-// chat/render surfaces: profile_frame, badge, avatar_effect, username_effect,
-// chat_effect, profile_glow, prestige_effect.
+// catalog items are `price_tokens IS NULL` non-shop items. Categories are the
+// shop's "Cosmetics" section and the profile/chat/render surfaces:
+// profile_frame, badge, avatar_effect, username_effect, chat_effect,
+// profile_glow, elite_effect.
 export const cosmetics = pgTable(
   "cosmetics",
   {
@@ -650,7 +608,7 @@ export const cosmetics = pgTable(
 );
 
 // Cosmetic ownership. Written only by server-side grants (shop purchase /
-// battlepass claim / eligible grants) — never by the client.
+// account-creation catalog grant) — never by the client.
 export const userCosmetics = pgTable(
   "user_cosmetics",
   {
@@ -785,8 +743,8 @@ export const userIcons = pgTable(
 // sale).
 export const glows = pgTable("glows", {
   id: serial("id").primaryKey(),
-  // Stable slug used to claim + equip the glow (matches the `key` on the
-  // battlepass `color` rewards).
+  // Stable slug used to own + equip the glow (matches the `key` in the glow
+  // catalog).
   key: varchar("key", { length: 120 }).notNull().unique(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description").notNull().default(""),
@@ -892,39 +850,6 @@ export const userSecretStats = pgTable("user_secret_stats", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// PERMANENT PRESTIGE — IDEMPOTENCY JOURNAL
-// ==============================================================================
-// Server-side journal of authoritative match results that flowed through the
-// Prestige hook (src/lib/prestige.js). (user_id, source, source_id) is unique
-// so a duplicate / replayed / concurrent settlement of the same match can
-// never apply Prestige progress twice. Written only from server settlement
-// code; the client can never insert rows here.
-export const prestigeResults = pgTable("prestige_results", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  // Game key that produced the result, e.g. "mines-pvp".
-  source: varchar("source", { length: 64 }).notNull(),
-  // Authoritative match/game id in that game's own table.
-  sourceId: varchar("source_id", { length: 128 }).notNull(),
-  // Authoritative outcome: "win" | "loss" | "draw".
-  outcome: varchar("outcome", { length: 8 }).notNull(),
-  // Applied net-win delta for this event (+1 / -1 / 0 when ineligible, draw,
-  // or maxed). Stored for auditability of the journal row.
-  delta: integer("delta").default(0).notNull(),
-  prestigeLevelAfter: integer("prestige_level_after").default(0).notNull(),
-  prestigeNetWinsAfter: integer("prestige_net_wins_after").default(0).notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => ({
-  uniqPrestigeEvent: unique("prestige_results_unique_event").on(
-    table.userId,
-    table.source,
-    table.sourceId,
-  ),
-  userPrestigeIdx: index("prestige_results_user_idx").on(table.userId, table.createdAt),
-}));
-
 // PER-GAME ELO RATINGS
 // ==============================================================================
 // One independent Elo rating per (player, game). A Chess rating and a
@@ -941,7 +866,7 @@ export const prestigeResults = pgTable("prestige_results", {
 // accepted for a rating, a delta or an outcome.
 //
 // NOTE: this table is intentionally NOT a child of the token economy. Ratings
-// are never affected by balance, winnings, XP, Battle Pass or cosmetics.
+// are never affected by balance, winnings, XP, level or cosmetics.
 export const playerRatings = pgTable(
   "player_ratings",
   {
@@ -949,7 +874,7 @@ export const playerRatings = pgTable(
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // Rated game key — identical vocabulary to the Prestige `source` keys
+    // Rated game key — identical vocabulary to the rated-game registry
     // (see RATED_GAMES in src/lib/rating.js).
     gameKey: varchar("game_key", { length: 64 }).notNull(),
     // Current Elo for this game. Starts at STARTING_RATING and is clamped to
@@ -1053,8 +978,8 @@ export const ratingEvents = pgTable(
 // The email itself is never stored — only a domain-separated sha256 hex digest
 // — so the ledger is not directly identifying.
 //
-// NOT part of the token economy: no balance, winnings, XP, Battle Pass,
-// Prestige or cosmetic value is stored or derived here.
+// NOT part of the token economy: no balance, winnings, XP or cosmetic value
+// is stored or derived here.
 export const ratingIdentities = pgTable(
   "rating_identities",
   {
@@ -1093,19 +1018,16 @@ export const ratingIdentities = pgTable(
 // reads as "no trophies yet" instead of a fabricated row. Every player starts
 // at TROPHY_START (0) on their first ranked match in a game.
 //
-// THE RULE (src/lib/trophies.js): win = +30, loss = −30, draw = 0, clamped to
-// [0, 1000] PER GAME. Reaching the cap completes trophy progression for that
-// game and unlocks its PRESTIGE ladder — the game's Elo, tracked silently from
-// the first rated match and revealed at the cap (src/lib/prestige.js). The
-// additive overall maximum is OVERALL_TROPHY_MAX — the per-game cap times the
-// number of rated games (TROPHY_GAMES), never a hardcoded total.
+// THE RULE (src/lib/trophies.js): win = +30, loss = −30, draw = 0, floored at 0
+// and otherwise UNBOUNDED per game. Together with the per-game Elo rating these
+// are the two matchmaking signals (src/lib/quickQueue.ts).
 //
 // Written ONLY from server-side match settlement via applyTrophyResult under
 // SELECT ... FOR UPDATE in ascending user_id order. No client input is ever
 // accepted for a trophy count, a delta or an outcome.
 //
 // NOTE: this table is intentionally NOT a child of the token economy. Trophy
-// counts are never affected by balance, winnings, XP, Battle Pass or cosmetics.
+// counts are never affected by balance, winnings, XP or cosmetics.
 export const playerTrophies = pgTable(
   "player_trophies",
   {
@@ -1116,7 +1038,7 @@ export const playerTrophies = pgTable(
     // Trophy game key — identical vocabulary to RATED_GAMES (src/lib/rating.js),
     // so trophies and Elo can never disagree about which games are competitive.
     gameKey: varchar("game_key", { length: 64 }).notNull(),
-    // Current trophy count for this game, clamped to [0, TROPHY_MAX].
+    // Current trophy count for this game — floored at 0, otherwise unbounded.
     trophies: integer("trophies").notNull().default(0),
     // Highest count ever reached — monotonic, so a bad run can never erase a peak.
     peakTrophies: integer("peak_trophies").notNull().default(0),
@@ -1202,8 +1124,8 @@ export const trophyEvents = pgTable(
 // Refreshed on every ranked match from the just-updated `player_trophies` row.
 // The email itself is never stored — only a domain-separated sha256 hex digest.
 //
-// NOT part of the token economy: no balance, winnings, XP, Battle Pass,
-// Prestige or cosmetic value is stored or derived here.
+// NOT part of the token economy: no balance, winnings, XP or cosmetic value is
+// stored or derived here.
 export const trophyIdentities = pgTable(
   "trophy_identities",
   {
@@ -1260,56 +1182,6 @@ export const chatMessages = pgTable(
 );
 
 // GAMES TABLES
-export const rouletteGames = pgTable(
-  "roulette_games",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
-    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-    result: varchar("result", { length: 10 }).notNull(),
-    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Per-user history lookups (bet history / daily-loss guard).
-    userIdx: index("roulette_games_user_idx").on(table.userId, desc(table.createdAt)),
-  })
-);
-
-export const crashGames = pgTable(
-  "crash_games",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
-    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-    cashedOutAt: numeric("cashed_out_at", { precision: 10, scale: 2 }),
-    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-    result: varchar("result", { length: 10 }).default("pending").notNull(),
-    status: varchar("status", { length: 20 }).default("active").notNull(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Per-user history lookups (bet history / daily-loss guard).
-    userIdx: index("crash_games_user_idx").on(table.userId, desc(table.createdAt)),
-  })
-);
-
-export const blackjackGames = pgTable(
-  "blackjack_games",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
-    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-    result: varchar("result", { length: 10 }).notNull(),
-    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Per-user history lookups (bet history / daily-loss guard).
-    userIdx: index("blackjack_games_user_idx").on(table.userId, desc(table.createdAt)),
-  })
-);
-
 export const minesGames = pgTable(
   "mines_games",
   {
@@ -1346,24 +1218,6 @@ export const laneRunnerGames = pgTable("lane_runner_games", {
   status: varchar("status", { length: 20 }).notNull().default("completed"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
-
-export const plinkoGames = pgTable(
-  "plinko_games",
-  {
-    id: serial("id").primaryKey(),
-    userId: varchar("user_id", { length: 255 }).notNull(),
-    betAmount: numeric("bet_amount", { precision: 10, scale: 2 }).notNull(),
-    resultMultiplier: varchar("result_multiplier", { length: 255 }).notNull(), // changed from numeric to varchar
-    payout: numeric("payout", { precision: 10, scale: 2 }).notNull(),
-    result: varchar("result", { length: 10 }).default("pending").notNull(),
-    status: varchar("status", { length: 20 }).default("active").notNull(),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Per-user history lookups (bet history / daily-loss guard).
-    userIdx: index("plinko_games_user_idx").on(table.userId, desc(table.createdAt)),
-  })
-);
 
 export const chessGames = pgTable("chess_games", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -1851,236 +1705,13 @@ export const diceFlushActions = pgTable(
   })
 );
 
-// CRASH ARENA TABLES
-// ==========================================================================
-
-export const crashArenaStatusEnum = pgEnum("crash_arena_status", ["waiting", "active", "closed"]);
-
-export const crashArenaTransactionTypeEnum = pgEnum("crash_arena_transaction_type", [
-  "BUY_IN",
-  "WIN",
-  "LEAVE",
-  "RAKE",
-  "RETURN",
-]);
-
-// ── Table (lobby) ──────────────────────────────────────────────────────────
-
-export const crashArenaTables = pgTable(
-  "crash_arena_tables",
-  {
-    id: serial("id").primaryKey(),
-    name: varchar("name", { length: 255 }).notNull(),
-    wagerAmount: numeric("wager_amount", { precision: 10, scale: 2 }).notNull(),
-    minimumBuyin: numeric("minimum_buyin", { precision: 10, scale: 2 }).notNull(),
-    // Seats at the table. Crash Arena is strictly 1v1 (the shared table mode
-    // was retired), so every table opens with two seats — see
-    // CRASH_ARENA_SEATS in src/lib/crash-poker/constants.js.
-    maxPlayers: integer("max_players").notNull().default(2),
-    // Creator of the table (null for system-seeded default tables).
-    hostId: integer("host_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    status: crashArenaStatusEnum("status").notNull().default("waiting"),
-    // Free practice tables (human vs GRYND AI) — no real money moves.
-    isAi: boolean("is_ai").notNull().default(false),
-    // Practice difficulty chosen in the lobby (easy/medium/hard). NULL on
-    // real tables; defaults to "medium" for AI tables created before the
-    // column existed.
-    aiDifficulty: varchar("ai_difficulty", { length: 20 }),
-    // Crash Poker: pot carried over from a hand that ended with no winner
-    // (crash with 2+ players still active). Server-authoritative; feeds the
-    // next hand's pot and is paid out to a fold-out winner or carried again.
-    carryOver: numeric("carry_over", { precision: 14, scale: 2 }).notNull().default("0.00"),
-    // Configurable Small Blind for this table. NULL (the default) means
-    // the standard ratio applies: round(wager / 2) — the value is resolved
-    // once at table creation and can be overridden per table without code
-    // changes.
-    smallBlind: numeric("small_blind", { precision: 10, scale: 2 }),
-    // Host-created private table: hidden from the public lobby grid; only
-    // the host may add AI seats (AIs are private-only, as in
-    // tables). Joining still works via the table URL.
-    isPrivate: boolean("is_private").notNull().default(false),
-    // Server-authoritative wall-clock deadline for the next round start,
-    // written when a hand settles. Every client counts down to the SAME
-    // moment and start-round rejects early starts, so a round can never
-    // fire before a client's countdown ends.
-    nextRoundAt: timestamp("next_round_at"),
-    // Invite code for PRIVATE tables (NULL on public / AI-practice tables):
-    // joining requires it, so the table URL alone no longer grants access.
-    // Returned only to the host for sharing.
-    joinCode: varchar("join_code", { length: 12 }),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    statusIdx: index("idx_crash_arena_tables_status").on(table.status, table.createdAt),
-    hostIdx: index("idx_crash_arena_tables_host").on(table.hostId, table.status, table.createdAt),
-  })
-);
-
-// ── Players at a table ─────────────────────────────────────────────────────
-
-export const crashArenaPlayers = pgTable(
-  "crash_arena_players",
-  {
-    id: serial("id").primaryKey(),
-    tableId: integer("table_id")
-      .notNull()
-      .references(() => crashArenaTables.id, { onDelete: "cascade" }),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    balance: numeric("balance", { precision: 14, scale: 2 }).notNull().default("0.00"),
-    status: varchar("status", { length: 20 }).notNull().default("seated"),
-    // Per-bot difficulty (easy/medium/hard) chosen in the Add-AI dialog.
-    // NULL for human seats; the practice-table bot uses the table-level
-    // ai_difficulty instead.
-    aiDifficulty: varchar("ai_difficulty", { length: 20 }),
-    // Optional per-seat display-name override — the host's custom name for
-    // an AI bot (the shared users row is never touched). NULL = the bot's
-    // default name from the users table.
-    nickname: varchar("nickname", { length: 40 }),
-    joinedAt: timestamp("joined_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    tablePlayerIdx: index("idx_crash_arena_players_table_user").on(table.tableId, table.userId),
-  })
-);
-
-// ── Rounds ─────────────────────────────────────────────────────────────────
-
-export const crashArenaRounds = pgTable(
-  "crash_arena_rounds",
-  {
-    id: serial("id").primaryKey(),
-    tableId: integer("table_id")
-      .notNull()
-      .references(() => crashArenaTables.id, { onDelete: "cascade" }),
-    seed: varchar("seed", { length: 255 }),
-    seedHash: varchar("seed_hash", { length: 255 }),
-    crashPoint: numeric("crash_point", { precision: 6, scale: 2 }),
-    // ── Crash Poker hand state ──────────────────────────────────────────
-    // Blinds posted at the start of the hand. big_blind = table wager;
-    // small_blind = round(wager / 2).
-    smallBlind: numeric("small_blind", { precision: 10, scale: 2 }),
-    bigBlind: numeric("big_blind", { precision: 10, scale: 2 }),
-    // Seat index of the dealer button; SB = dealer + 1, BB = dealer + 2
-    // (wrapping). Rotates every hand: (round_number - 1) % seated_count.
-    dealerPosition: integer("dealer_position"),
-    // Currently open betting checkpoint: 0 = 1.25x, 1 = 1.50x, ...
-    // -1 before the first checkpoint opens. Server-authoritative.
-    checkpointIndex: integer("checkpoint_index").notNull().default(-1),
-    // Total contribution an active player must have committed to stay in
-    // (call = top up to this). Starts at big_blind; raises raise it.
-    requiredBet: numeric("required_bet", { precision: 14, scale: 2 }).notNull().default("0"),
-    // Whether the current checkpoint window accepts fold/call/raise actions.
-    bettingOpen: boolean("betting_open").notNull().default(false),
-    // Compact hand snapshot: roles, acted flags, action log. The per-player
-    // money truth lives in crash_arena_entries; this is the transient
-    // betting-window state + audit trail.
-    handState: jsonb("hand_state"),
-    status: varchar("status", { length: 20 }).notNull().default("waiting"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    tableRoundIdx: index("idx_crash_arena_rounds_table").on(table.tableId, table.createdAt),
-  })
-);
-
-// ── Round entries — one per player per round ──────────────────────────────
-
-export const crashArenaEntries = pgTable(
-  "crash_arena_entries",
-  {
-    id: serial("id").primaryKey(),
-    roundId: integer("round_id")
-      .notNull()
-      .references(() => crashArenaRounds.id, { onDelete: "cascade" }),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    // Legacy solo-crash field — unused by Crash Poker hands (kept for
-    // compatibility with cleanup/refund code and older rows).
-    cashoutMultiplier: numeric("cashout_multiplier", { precision: 6, scale: 2 }),
-    cashoutTimestamp: timestamp("cashout_timestamp"),
-    // ── Crash Poker hand state ──────────────────────────────────────────
-    // Total committed to the pot this hand (blinds/ante + calls/raises).
-    contributed: numeric("contributed", { precision: 14, scale: 2 }).notNull().default("0"),
-    // Checkpoint multiplier where the player folded (null until folded).
-    foldedAtMultiplier: numeric("folded_at_multiplier", { precision: 6, scale: 2 }),
-    // Last betting action: ante/sb/bb/call/check/raise/fold.
-    lastAction: varchar("last_action", { length: 20 }),
-    // Still in the hand (false after fold or when the hand settles).
-    isActive: boolean("is_active").notNull().default(true),
-    // Committed their whole remaining stack to the pot — can no longer act
-    // (fold/call/raise) at later checkpoints and is treated as matched.
-    allIn: boolean("all_in").notNull().default(false),
-    // pending | won | lost | folded
-    result: varchar("result", { length: 20 }).notNull().default("pending"),
-  },
-  (table) => ({
-    roundEntryIdx: index("idx_crash_arena_entries_round_user").on(table.roundId, table.userId),
-  })
-);
-
-// ── Transactions (buy-in, win, leave, rake) ───────────────────────────────
-
-export const crashArenaTransactions = pgTable(
-  "crash_arena_transactions",
-  {
-    id: serial("id").primaryKey(),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    tableId: integer("table_id")
-      .notNull()
-      .references(() => crashArenaTables.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-    type: crashArenaTransactionTypeEnum("type").notNull(),
-    reason: text("reason"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    userTxIdx: index("idx_crash_arena_tx_user").on(table.userId, table.createdAt),
-    tableTxIdx: index("idx_crash_arena_tx_table").on(table.tableId, table.createdAt),
-  })
-);
-
 //
 // RELATIONS
 //
 
 export const usersRelations = relations(users, ({ many }) => ({
-  rouletteGames: many(rouletteGames),
-  crashGames: many(crashGames),
-  blackjackGames: many(blackjackGames),
   minesGames: many(minesGames),
-  plinkoGames: many(plinkoGames),
   laneRunnerGames: many(laneRunnerGames),
-  crashArenaPlayers: many(crashArenaPlayers),
-  crashArenaEntries: many(crashArenaEntries),
-  crashArenaTransactions: many(crashArenaTransactions),
-}));
-
-export const rouletteGamesRelations = relations(rouletteGames, ({ one }) => ({
-  user: one(users, {
-    fields: [rouletteGames.userId],
-    references: [users.id],
-  }),
-}));
-
-export const crashGamesRelations = relations(crashGames, ({ one }) => ({
-  user: one(users, {
-    fields: [crashGames.userId],
-    references: [users.id],
-  }),
-}));
-
-export const blackjackGamesRelations = relations(blackjackGames, ({ one }) => ({
-  user: one(users, {
-    fields: [blackjackGames.userId],
-    references: [users.id],
-  }),
 }));
 
 export const minesGamesRelations = relations(minesGames, ({ one }) => ({
@@ -2093,62 +1724,6 @@ export const minesGamesRelations = relations(minesGames, ({ one }) => ({
 export const laneRunnerGamesRelations = relations(laneRunnerGames, ({ one }) => ({
   user: one(users, {
     fields: [laneRunnerGames.userId],
-    references: [users.id],
-  }),
-}));
-
-export const plinkoGamesRelations = relations(plinkoGames, ({ one }) => ({
-  user: one(users, {
-    fields: [plinkoGames.userId],
-    references: [users.id],
-  }),
-}));
-
-// ── Crash Arena relations ──────────────────────────────────────────────────
-
-export const crashArenaTablesRelations = relations(crashArenaTables, ({ many }) => ({
-  players: many(crashArenaPlayers),
-  rounds: many(crashArenaRounds),
-  transactions: many(crashArenaTransactions),
-}));
-
-export const crashArenaPlayersRelations = relations(crashArenaPlayers, ({ one, many }) => ({
-  table: one(crashArenaTables, {
-    fields: [crashArenaPlayers.tableId],
-    references: [crashArenaTables.id],
-  }),
-  user: one(users, {
-    fields: [crashArenaPlayers.userId],
-    references: [users.id],
-  }),
-}));
-
-export const crashArenaRoundsRelations = relations(crashArenaRounds, ({ one, many }) => ({
-  table: one(crashArenaTables, {
-    fields: [crashArenaRounds.tableId],
-    references: [crashArenaTables.id],
-  }),
-  entries: many(crashArenaEntries),
-}));
-
-export const crashArenaEntriesRelations = relations(crashArenaEntries, ({ one }) => ({
-  round: one(crashArenaRounds, {
-    fields: [crashArenaEntries.roundId],
-    references: [crashArenaRounds.id],
-  }),
-  user: one(users, {
-    fields: [crashArenaEntries.userId],
-    references: [users.id],
-  }),
-}));
-
-export const crashArenaTransactionsRelations = relations(crashArenaTransactions, ({ one }) => ({
-  table: one(crashArenaTables, {
-    fields: [crashArenaTransactions.tableId],
-    references: [crashArenaTables.id],
-  }),
-  user: one(users, {
-    fields: [crashArenaTransactions.userId],
     references: [users.id],
   }),
 }));
@@ -2467,205 +2042,6 @@ export const laneRunnerPvpMatches = pgTable(
   })
 );
 
-// ROULETTE PvP MATCHES — server-authoritative two-player roulette
-// Match flow:
-//   waiting → ready → round_1 → round_2 → round_3 → sudden_death → finished
-//
-// Win rule per round (single shared spin):
-//   Both players start the match with `starting_points` (default 100).
-//   Points PERSIST across rounds: each round's net = (payout − total_bet)
-//   is debited/credited directly from/to the player's match balance.
-//   Players may only bet up to their current match balance, never reset
-//   to `starting_points` between rounds. The same spin result is used
-//   for both players' bets. The player with the higher net wins the
-//   round (DRAW on identical net result). After 3 rounds with a tied
-//   round-win score, match → sudden_death; otherwise → finished.
-//
-// Per-round detail (bets placed, spin result, payouts, draw flag) lives
-// on `roulette_pvp_rounds` so the full match history is replayable.
-export const roulettePvpStatusEnum = pgEnum("roulette_pvp_status", [
-  "waiting",
-  "ready",
-  "round_1",
-  "round_2",
-  "round_3",
-  "sudden_death",
-  "finished",
-  "cancelled",
-]);
-
-export const roulettePvpMatches = pgTable(
-  "roulette_pvp_matches",
-  {
-    id: serial("id").primaryKey(),
-    player1Id: varchar("player1_id", { length: 255 }).notNull(),
-    player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
-    status: roulettePvpStatusEnum("status").notNull().default("waiting"),
-    // True for free human-vs-server matches. The AI occupies player 2,
-    // but never participates in user-balance or payout accounting.
-    isAi: boolean("is_ai").notNull().default(false),
-    // AI tier the lobby picked before starting (migration 0166). NULL =
-    // nothing chosen, which reads back as the `normal` default.
-    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
-    currentRound: integer("current_round").notNull().default(1),
-    // Round wins (best of 3 + sudden death). Each round contributes 0
-    // (draw), +1 to player1, or +1 to player2.
-    scorePlayer1: integer("score_player1").notNull().default(0),
-    scorePlayer2: integer("score_player2").notNull().default(0),
-    // Live transient state per round (stored on the match row so
-    // intermediate submissions survive across the second player's
-    // /bet call). The server's `submitBets` writes both seats in
-    // place; `resolveRound` clears them at round end. Treat
-    // `IS NOT NULL` as "this player has locked in for the current
-    // round". Stored on the match row (not the round-history row)
-    // because the in-flight round's bets are live state, not
-    // history.
-    player1Bets: jsonb("player1_bets"),
-    player2Bets: jsonb("player2_bets"),
-    // ── Skill layer (elimination market + opponent call) ──────────
-    // Numbers the server killed for the CURRENT round before betting
-    // opened (round 2: 13–24, round 3: 13–36; [] for round 1 and
-    // sudden death). Cleared/re-set each round transition.
-    serverEliminated: jsonb("server_eliminated"),
-    // Player-bought removals for the CURRENT round: { "17": "player1" }
-    // (number key → remover side). Shared and visible to both players
-    // immediately; cleared at round end.
-    eliminations: jsonb("eliminations"),
-    // Current round's "call their bet" guesses: { player1: "red",
-    // player2: null }. Each player's call is stored when they lock in
-    // their bets; resolved (and cleared) when the round resolves.
-    calls: jsonb("calls"),
-    // Per-round transient state (cleared between rounds). bet_deadline
-    // enforces a server-side timer so a disconnected player can be
-    // auto-treated as having submitted empty bets.
-    roundDeadline: timestamp("round_deadline"),
-    // Latest spin primitives — exposed via /status so both clients can
-    // render the same wheel animation in sync without each having to
-    // roll its own random number.
-    lastSpinResultIndex: integer("last_spin_result_index"),
-    lastSpinResult: integer("last_spin_result"),
-    // Final match bookkeeping.
-    winnerId: varchar("winner_id", { length: 255 }),
-    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    // ── Persistent match "points" balance
-    // Each player starts the match with `starting_points` (default
-    // 100) and that balance PERSISTS across rounds — bets debit it,
-    // spin payouts credit it. No inter-round reset.
-    startingPoints: numeric("starting_points", {
-      precision: 10,
-      scale: 2,
-    })
-      .notNull()
-      .default("100.00"),
-    playerOnePoints: numeric("player_one_points", {
-      precision: 10,
-      scale: 2,
-    })
-      .notNull()
-      .default("100.00"),
-    playerTwoPoints: numeric("player_two_points", {
-      precision: 10,
-      scale: 2,
-    })
-      .notNull()
-      .default("100.00"),
-    // Round-deadline countdown duration in seconds. Match-flow
-    // constant: the per-round `round_deadline` timestamp is computed
-    // as `now() + round_timer_seconds` whenever a new betting window
-    // opens. Surfaced as a column so future admin tooling can tweak
-    // a match's pacing without changing code.
-    roundTimerSeconds: integer("round_timer_seconds").notNull().default(25),
-    // Match-level sudden-death flag (mirrors the per-round
-    // `is_sudden_death` on roulette_pvp_rounds so admin / status
-    // queries don't have to walk child rows).
-    suddenDeath: boolean("sudden_death").notNull().default(false),
-    startedAt: timestamp("started_at"),
-    endedAt: timestamp("ended_at"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("roulette_pvp_status_idx").on(table.status, table.createdAt),
-    player1Idx: index("roulette_pvp_player1_idx").on(table.player1Id, table.createdAt),
-    player2Idx: index("roulette_pvp_player2_idx").on(table.player2Id, table.createdAt),
-    // Stake matchmaking — finding a waiting lobby whose stake matches
-    // the joiner's request. `stake` + `status='waiting'` + player2 null
-    // is the canonical query for "join any open match of this stake".
-    stakeIdx: index("roulette_pvp_stake_open_idx").on(table.stakeAmount, table.status),
-  })
-);
-
-// One row per round of a Roulette PvP match. Cascade-deleted with the
-// parent match so history stays tidy. Per-round winner is nullable
-// because rounds that end in a draw leave it null.
-export const roulettePvpRounds = pgTable(
-  "roulette_pvp_rounds",
-  {
-    id: serial("id").primaryKey(),
-    matchId: integer("match_id")
-      .notNull()
-      .references(() => roulettePvpMatches.id, { onDelete: "cascade" }),
-    roundNumber: integer("round_number").notNull(),
-    isSuddenDeath: boolean("is_sudden_death").notNull().default(false),
-    spinResultIndex: integer("spin_result_index").notNull(),
-    spinResult: integer("spin_result").notNull(),
-    player1Bets: jsonb("player1_bets")
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    player2Bets: jsonb("player2_bets")
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    player1TotalBet: numeric("player1_total_bet", {
-      precision: 10,
-      scale: 2,
-    })
-      .notNull()
-      .default("0.00"),
-    player2TotalBet: numeric("player2_total_bet", {
-      precision: 10,
-      scale: 2,
-    })
-      .notNull()
-      .default("0.00"),
-    player1Payout: numeric("player1_payout", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    player2Payout: numeric("player2_payout", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    // net = payout − total_bet. Persisted for fast round-resolution
-    // queries (the live match state is in roulette_pvp_matches but
-    // history is in this table).
-    player1Net: numeric("player1_net", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    player2Net: numeric("player2_net", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    // Round winner — null when the round ended in a draw (identical
-    // net result for both players).
-    roundWinner: varchar("round_winner", { length: 10 }), // 'player1' | 'player2' | null
-    // ── Skill-layer snapshots (what this round looked like) ────────
-    serverEliminated: jsonb("server_eliminated"),
-    eliminations: jsonb("eliminations"),
-    calls: jsonb("calls"),
-    callResults: jsonb("call_results"), // { player1: {correct, transfer}, ... }
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    matchRoundIdx: index("roulette_pvp_rounds_match_round_idx").on(
-      table.matchId,
-      table.roundNumber
-    ),
-  })
-);
-
-export const roulettePvpMatchesRelations = relations(roulettePvpMatches, ({ many }) => ({
-  rounds: many(roulettePvpRounds),
-}));
-
-export const roulettePvpRoundsRelations = relations(roulettePvpRounds, ({ one }) => ({
-  match: one(roulettePvpMatches, {
-    fields: [roulettePvpRounds.matchId],
-    references: [roulettePvpMatches.id],
-  }),
-}));
-
 // DOTS & BOXES PvP GAME TABLE
 export const dotsAndBoxesGames = pgTable(
   "dots_and_boxes_games",
@@ -2696,225 +2072,6 @@ export const dotsAndBoxesGames = pgTable(
     dotsGuestIdx: index("dots_and_boxes_guest_idx").on(table.guestClerkId),
   })
 );
-
-// BLACKJACK PvP MATCHES — server-authoritative Best-of-3 simultaneous
-// blackjack between two real players (no dealer).
-//
-// Match flow:
-//   waiting → ready → round_1 → round_2 → round_3 → finished
-//
-// Per-round flow:
-//   Both players are dealt 2 starting cards from `deck`.
-//   The 2-card deal is also snapshotted to `player1OriginalCards` /
-//   `player2OriginalCards` so the round-end reveal + post-match
-//   replay can show what was dealt independent of any later SWAP
-//   that corrupted the live `player1Hand` / `player2Hand`.
-//   Each player independently hits / stands. A round resolves when
-//   BOTH players have reached a terminal per-round state (`stood` or
-//   `busted`). When `round_deadline` elapses, any player still in
-//   `playing` is force-marked `stood` so the round can resolve.
-//
-// Round winner: closer to 21 without busting. Both bust → draw.
-// Match winner: first to rounds_won_player = 2; otherwise decided by
-// round_3. Tied after round_3 → match result is `draw` (full refund).
-//
-// Hands are kept hidden from the opponent during the round —
-// `player1Hand` / `player2Hand` are stored server-side in their
-// real form on the match row, but the match state API scrubs the
-// opponent's hand before returning it to the requesting seat.
-//
-// `player1Standing` / `player2Standing` are NOT columns — they are
-// computed on read by the API route as `player{N}_state !== 'playing'`.
-// Storing them as a denormalized boolean would introduce split-brain
-// risk with the `player_state` enum.
-export const blackjackPvpStatusEnum = pgEnum("blackjack_pvp_status", [
-  "waiting",
-  "ready",
-  "round_1",
-  "round_2",
-  "round_3",
-  // TIEBREAK round — dealt only when the best-of-3 ends with tied
-  // round-wins (migration 0075). Whoever wins it takes the match; a
-  // tie on it is a draw refunding 95% per player.
-  "round_4",
-  "between_rounds",
-  "finished",
-  "cancelled",
-]);
-
-export const blackjackPvpPlayerStateEnum = pgEnum("blackjack_pvp_player_state", [
-  "playing",
-  "stood",
-  "busted",
-]);
-
-export const blackjackPvpMatches = pgTable(
-  "blackjack_pvp_matches",
-  {
-    id: serial("id").primaryKey(),
-    player1Id: varchar("player1_id", { length: 255 }).notNull(),
-    player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
-    status: blackjackPvpStatusEnum("status").notNull().default("waiting"),
-    // True for free human-vs-server matches. The bot occupies seat 2
-    // but never participates in user-balance or payout accounting.
-    isAi: boolean("is_ai").notNull().default(false),
-    // AI tier the lobby picked before starting (migration 0166). NULL =
-    // nothing chosen, which reads back as the `normal` default.
-    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
-    roundNumber: integer("round_number").notNull().default(1),
-    roundsWonPlayer1: integer("rounds_won_player1").notNull().default(0),
-    roundsWonPlayer2: integer("rounds_won_player2").notNull().default(0),
-    // Live per-round transient state — both hands stored server-side
-    // in JSONB. The match state route scrubs the OPPONENT's hand
-    // before returning so cards stay hidden until the round resolves.
-    player1Hand: jsonb("player1_hand")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    player2Hand: jsonb("player2_hand")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    // ── Original 2-card deal snapshot. Stamped the moment cards are
-    // dealt (ready → round_1, between_rounds → round_(N+1)). NOT
-    // updated by SWAP because a swap modifies the LIVE hand but the
-    // originals stay fixed per spec. Mirrored onto rounds history
-    // for post-match replays. ────────────────────────────────────────
-    player1OriginalCards: jsonb("player1_original_cards")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    player2OriginalCards: jsonb("player2_original_cards")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    // Per-seat round action state.
-    player1State: blackjackPvpPlayerStateEnum("player1_state").notNull().default("playing"),
-    player2State: blackjackPvpPlayerStateEnum("player2_state").notNull().default("playing"),
-    // Server-authoritative shoe. `deck[0]` is the next available card.
-    deck: jsonb("deck")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    // ── Swap + Freeze (1 use per round, per seat) ──────────────────
-    // The Swap action targets one of the hand's TWO ORIGINAL starting
-    // cards (always at indices 0 and 1 because Hit pushes to the end).
-    // The Freeze action stores the most-recently drawn card into the
-    // side-slot below; Use Frozen Card resolves it to 'add' or
-    // 'discard'.
-    // ALL of these columns are SERVER-ONLY state — the GET match
-    // route SCRUBS the opponent's columns before returning so neither
-    // side ever sees the other's swaps / freezes / frozen card.
-    // Column types remain integer for forward compatibility with a
-    // hypothetical future cap > 1 (SWAP_LIMIT_PER_ROUND == 1 today).
-    player1UsedSwap: integer("player1_used_swap").notNull().default(0),
-    player2UsedSwap: integer("player2_used_swap").notNull().default(0),
-    player1UsedFreeze: integer("player1_used_freeze").notNull().default(0),
-    player2UsedFreeze: integer("player2_used_freeze").notNull().default(0),
-    player1UsedPeek: integer("player1_used_peek").notNull().default(0),
-    player2UsedPeek: integer("player2_used_peek").notNull().default(0),
-    player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
-    player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
-    player1HeldResolved: varchar("player1_held_resolved", { length: 10 }).default(sql`NULL`),
-    player2HeldResolved: varchar("player2_held_resolved", { length: 10 }).default(sql`NULL`),
-    roundDeadline: timestamp("round_deadline"),
-    // Final match bookkeeping. `winner` stores the userId of the
-    // winning player (replaces the pre-refactor `winner_id`). The
-    // side identifier "player1" | "player2" | "draw" continues to
-    // live on `result`.
-    winner: varchar("winner", { length: 255 }),
-    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    // Per-round turn-window duration in seconds (mirrors
-    // roulette-pvp's `round_timer_seconds`). Match-flow constant:
-    // `round_deadline` is computed as `now() + round_timer_seconds`
-    // whenever a new betting window opens. Surfaced as a column so
-    // future admin tooling can tweak a match's pacing without code.
-    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
-    startedAt: timestamp("started_at"),
-    endedAt: timestamp("ended_at"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("blackjack_pvp_status_idx").on(table.status, table.createdAt),
-    player1Idx: index("blackjack_pvp_player1_idx").on(table.player1Id, table.createdAt),
-    player2Idx: index("blackjack_pvp_player2_idx").on(table.player2Id, table.createdAt),
-    // Stake matchmaking — finding a waiting lobby whose stake matches
-    // the joiner's request.
-    stakeIdx: index("blackjack_pvp_stake_open_idx").on(table.stakeAmount, table.status),
-  })
-);
-
-// Per-round final snapshots for replay/history. Cascades from the
-// parent match. round_winner is null when the round ended in a draw.
-//
-// Player1Standing / Player2Standing are computed from the per-round
-// `player1State` / `player2State` enum columns above (they live on
-// every rows so post-match replays can render them without rejoin).
-// The standing boolean is intentionally NOT a column.
-export const blackjackPvpRounds = pgTable(
-  "blackjack_pvp_rounds",
-  {
-    id: serial("id").primaryKey(),
-    matchId: integer("match_id")
-      .notNull()
-      .references(() => blackjackPvpMatches.id, { onDelete: "cascade" }),
-    roundNumber: integer("round_number").notNull(),
-    player1Hand: jsonb("player1_hand")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    player2Hand: jsonb("player2_hand")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    // Hand value as scored by `calcHandValue`; -1 for busted hands so a
-    // busted hand always loses to a non-busted hand regardless of score.
-    player1Score: integer("player1_score").notNull(),
-    player2Score: integer("player2_score").notNull(),
-    player1State: blackjackPvpPlayerStateEnum("player1_state").notNull(),
-    player2State: blackjackPvpPlayerStateEnum("player2_state").notNull(),
-    // ── Round-start deal snapshot mirrored onto history rows so
-    // post-match replays can show what was dealt, even after a SWAP
-    // corrupted the live hand. ──────────────────────────────────────
-    player1OriginalCards: jsonb("player1_original_cards")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    player2OriginalCards: jsonb("player2_original_cards")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    // ── Snapshot of the Swap/Freeze usage + frozen-card at the
-    // moment the round resolved — used for post-match history
-    // replay. NOT scrubbed on join: history rows are public so
-    // replays can show actions truthfully. ──────────────────────────
-    player1UsedSwap: integer("player1_used_swap").notNull().default(0),
-    player2UsedSwap: integer("player2_used_swap").notNull().default(0),
-    player1UsedFreeze: integer("player1_used_freeze").notNull().default(0),
-    player2UsedFreeze: integer("player2_used_freeze").notNull().default(0),
-    player1UsedPeek: integer("player1_used_peek").notNull().default(0),
-    player2UsedPeek: integer("player2_used_peek").notNull().default(0),
-    player1FrozenCard: jsonb("player1_frozen_card").default(sql`NULL`),
-    player2FrozenCard: jsonb("player2_frozen_card").default(sql`NULL`),
-    player1HeldResolved: varchar("player1_held_resolved", { length: 10 }).default(sql`NULL`),
-    player2HeldResolved: varchar("player2_held_resolved", { length: 10 }).default(sql`NULL`),
-    // 'player1' | 'player2' | 'draw' | null
-    roundWinner: varchar("round_winner", { length: 10 }),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    matchRoundIdx: index("blackjack_pvp_rounds_match_round_idx").on(
-      table.matchId,
-      table.roundNumber
-    ),
-  })
-);
-
-export const blackjackPvpMatchesRelations = relations(blackjackPvpMatches, ({ many }) => ({
-  rounds: many(blackjackPvpRounds),
-}));
-
-export const blackjackPvpRoundsRelations = relations(blackjackPvpRounds, ({ one }) => ({
-  match: one(blackjackPvpMatches, {
-    fields: [blackjackPvpRounds.matchId],
-    references: [blackjackPvpMatches.id],
-  }),
-}));
 
 // MINES PvP MATCHES — server-authoritative two-player "Mines Duel",
 // played under the SHARED-BOARD competitive Minesweeper rules. Both
@@ -3522,207 +2679,6 @@ export const laneRushDuelMatches = pgTable(
   })
 );
 
-// PLINKO PvP MATCHES — server-authoritative two-player "Plinko Duel".
-// Both players launch 3 balls on the SAME shared board. The player
-// with the higher cumulative base-points across all 3 balls wins
-// the match. Per ball, each player commits (start_x, power, angle)
-// inputs; the server-side physics engine simulates both balls and
-// decides the per-ball outcome (bucket resolution + fall-out
-// detection).
-//
-// Match flow:
-//   waiting → ready → ball_1 → ball_2 → ball_3 → finished
-//   (waiting/ready/active → cancelled for AFK cancels)
-//
-// Per-ball scoring (bucket table from `lib/plinko-pvp/constants.js`):
-//   Far left safe  (x ∈ [0,100))   → 100 points
-//   Left precision (x ∈ [100,200)) → 140 points
-//   Center trap    (x ∈ [200,300)) →  40 points
-//   Right precision(x ∈ [300,400)) → 140 points
-//   Far right safe (x ∈ [400,500)) → 100 points
-//   FELL OUT (x < 0 || x > 500 before y reaches bucket row) → 0 points
-//
-// Payout (90/10 split, mirrors mines-pvp / roulette-pvp):
-//   Winner: own stake back + 90% of loser's stake (1.9× net)
-//   Loser:   loses entire stake
-//   House:   10% rake on loser's stake only
-//   Tied:    both refunded, no rake
-//
-// Schema conventions identical to other PvP tables:
-//   * clerkIds stored as varchar(255), no FK to `users`
-//   * stake/financials as numeric(10, 2)
-//   * pgEnum for `status` keeps the 7 match states strongly typed
-//   * `plinko_pvp_rounds` cascades from `plinko_pvp_matches`
-//
-// Live transient state per ball (p1_current_inputs / p2_current_inputs)
-// lives server-side on the match row so turn-mutations are atomic.
-// The match state API scrubs the OPPONENT's current_inputs from the
-// /status response until status='finished'. Treat
-// `p1_current_inputs IS NOT NULL` as "this player has submitted for
-// the current ball"; reset to NULL whenever status advances to the
-// next ball.
-//
-// `plinko_pvp_rounds` is a strict HISTORY snapshot — written only
-// after a ball resolves. ballNumber ∈ {1, 2, 3}. The per-ball
-// `ball_winner` is 'player1' | 'player2' | 'draw'.
-export const plinkoPvpStatusEnum = pgEnum("plinko_pvp_status", [
-  "waiting",
-  "ready",
-  "ball_1",
-  "ball_2",
-  "ball_3",
-  "ball_4",
-  "finished",
-  "cancelled",
-]);
-
-// Per-ball outcome (who scored more points for this ball, or tie).
-// Distinct from the match-level `winner_id` (which is a clerkId).
-// Stored on each `plinko_pvp_rounds` row at resolution time.
-export const plinkoPvpBallOutcomeEnum = pgEnum("plinko_pvp_ball_outcome", ["p1", "p2", "tie"]);
-
-export const plinkoPvpMatches = pgTable(
-  "plinko_pvp_matches",
-  {
-    id: serial("id").primaryKey(),
-    player1Id: varchar("player1_id", { length: 255 }).notNull(),
-    player2Id: varchar("player2_id", { length: 255 }),
-    stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
-    // Free practice match against the reserved AI seat. AI matches never
-    // escrow tokens, pay out, or update PvP statistics.
-    isAi: boolean("is_ai").notNull().default(false),
-    // AI tier the lobby picked before starting (migration 0166). NULL =
-    // nothing chosen, which reads back as the `normal` default.
-    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
-    status: plinkoPvpStatusEnum("status").notNull().default("waiting"),
-    // 1 / 2 / 3 — which ball the match is collecting inputs for
-    // right now. Stamped at match creation and advance+stamp at
-    // each ball resolution.
-    currentBall: integer("current_ball").notNull().default(1),
-    // 3-ball cumulative base-points sums. Live, advanced at each
-    // ball resolution. Compared at match end to decide winner.
-    p1Score: integer("p1_score").notNull().default(0),
-    p2Score: integer("p2_score").notNull().default(0),
-    // Live per-ball launch inputs — server-only state. Treat
-    // `IS NOT NULL` as "this player has submitted for the current
-    // ball". Reset to NULL when status advances to the next ball
-    // so the column doubles as a "submitted" boolean.
-    p1CurrentInputs: jsonb("p1_current_inputs").default(sql`NULL`),
-    p2CurrentInputs: jsonb("p2_current_inputs").default(sql`NULL`),
-    // Per-seat "Ready" booleans. Each player clicks Ready in the
-    // commit panel; when both are true the ball resolves immediately
-    // (server runs `simulateDualBalls` so balls can ball-collide).
-    // Reset to false when the match advances to the next ball. The
-    // AFK auto-launch path also flips both flags true so resolve
-    // fires on the next /status tick — the 20-second timer still
-    // acts as a back-stop for players who never click Ready.
-    p1Ready: boolean("p1_ready").notNull().default(false),
-    p2Ready: boolean("p2_ready").notNull().default(false),
-    // Per-ball decision-window deadline. The match-flow constant:
-    // `round_deadline` is computed as `now() + round_timer_seconds`
-    // whenever a new ball window opens. Surfaced as a column so
-    // future admin tooling can tweak per-match pacing without
-    // code changes (mirrors mines-pvp / roulette-pvp /
-    // blackjack-pvp).
-    roundDeadline: timestamp("round_deadline"),
-    roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
-    // Final match bookkeeping.
-    winnerId: varchar("winner_id", { length: 255 }),
-    result: varchar("result", { length: 20 }), // 'player1' | 'player2' | 'draw' | null
-    houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
-    startedAt: timestamp("started_at"),
-    endedAt: timestamp("ended_at"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    // Lobby listing — `status='waiting'` AND player2_id IS NULL.
-    statusIdx: index("plinko_pvp_status_idx").on(table.status, table.createdAt),
-    // Per-player history (matches the mines-pvp / blackjack-pvp
-    // / roulette-pvp convention).
-    player1Idx: index("plinko_pvp_player1_idx").on(table.player1Id, table.createdAt),
-    player2Idx: index("plinko_pvp_player2_idx").on(table.player2Id, table.createdAt),
-    // Stake matchmaking — finding a waiting lobby whose stake
-    // matches the joiner's request. Same shape as the other PvP
-    // stake_open_idx columns.
-    stakeIdx: index("plinko_pvp_stake_open_idx").on(table.stakeAmount, table.status),
-  })
-);
-
-// One row per ball of a Plinko Duel match (3 rows per match).
-// Cascade-deleted with the parent match so history stays tidy.
-// Inputs/result jsonb shapes (kept in sync with the physics
-// engine contract in `lib/plinko-pvp/physics.js`):
-//   inputs:  { start_x, power, angle, autoLaunched }
-//   result:  { bucket: 0..4|null, points: 0|40|100|140,
-//              fellOut, finalX, finalY, path: [{ x, y }, ...] }
-export const plinkoPvpRounds = pgTable(
-  "plinko_pvp_rounds",
-  {
-    id: serial("id").primaryKey(),
-    matchId: integer("match_id")
-      .notNull()
-      .references(() => plinkoPvpMatches.id, { onDelete: "cascade" }),
-    // 1 / 2 / 3. Composite index on (match_id, ball_number) is
-    // the canonical lookup so per-ball history reads stay O(1).
-    ballNumber: integer("ball_number").notNull(),
-    // Inputs in their pre-simulation form. Stored exactly as the
-    // player committed them so replay can show the original
-    // inputs even after a future feature changes bucketing rules.
-    player1Inputs: jsonb("player1_inputs")
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    player2Inputs: jsonb("player2_inputs")
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    // Per-ball result snapshots — bucket index, base points,
-    // fall-out flag, final x/y, and full animation path. The
-    // `path` array lets the client re-play the ball drop
-    // identically without re-running the physics simulation.
-    player1Result: jsonb("player1_result")
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    player2Result: jsonb("player2_result")
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    // True when the server auto-launched because round_deadline
-    // elapsed before the player committed. Persisted for history
-    // and replay so a spectator can see when a player went AFK.
-    player1AutoLaunched: boolean("player1_auto_launched").notNull().default(false),
-    player2AutoLaunched: boolean("player2_auto_launched").notNull().default(false),
-    // Per-ball base-points awarded. Same values as
-    // player{1,2}_result.points at resolution time, exposed as
-    // a column so aggregate-totals queries can sum without
-    // unpacking jsonb.
-    ballPointsPlayer1: integer("ball_points_player1").notNull().default(0),
-    ballPointsPlayer2: integer("ball_points_player2").notNull().default(0),
-    // Per-ball outcome ('player1' | 'player2' | 'draw') — null
-    // while the ball is in flight. NOTE: match-level `result`
-    // is the AGGREGATE across all 3 balls, so per-ball `draw`
-    // here does NOT mean the whole match is a tie.
-    ballOutcome: plinkoPvpBallOutcomeEnum("ball_outcome"), // 'p1' | 'p2' | 'tie' | null
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => ({
-    matchBallIdx: index("plinko_pvp_rounds_match_ball_idx").on(table.matchId, table.ballNumber),
-  })
-);
-
-// Drizzle relations — declared after the tables so all symbols
-// are bound before `relations(...)` runs. Relations are read at
-// query time, not module-load, so the position is purely about
-// lexical ordering for the TS compiler.
-export const plinkoPvpMatchesRelations = relations(plinkoPvpMatches, ({ many }) => ({
-  rounds: many(plinkoPvpRounds),
-}));
-
-export const plinkoPvpRoundsRelations = relations(plinkoPvpRounds, ({ one }) => ({
-  match: one(plinkoPvpMatches, {
-    fields: [plinkoPvpRounds.matchId],
-    references: [plinkoPvpMatches.id],
-  }),
-}));
-
 // ── KENO PvP ("Keno Survival Duel") ─────────────────────────────────
 // 1v1 survival keno: both players start with 3 lives and ONE tile is lit
 // for both at a time. The first player to tap the live tile claims it and
@@ -4028,7 +2984,7 @@ export const tokenSubscriptionPlans = pgTable(
     // Benefit list rendered on the Shop membership card (sales copy). GRYND
     // PRO perks are non-competitive only: ad-free, advanced statistics /
     // analytics, detailed match history, profile cosmetics, priority support.
-    // No tokens, no XP/quest/prestige multipliers, no matchmaking advantages.
+    // No tokens, no XP/quest multipliers, no matchmaking advantages.
     perks: text("perks").array().notNull().default([]),
     enabled: boolean("enabled").notNull().default(true),
     // Marketing flag to highlight the recommended plan. Cosmetic only.

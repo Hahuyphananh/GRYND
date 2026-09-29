@@ -1,7 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { usePathname } from "next/navigation";
 import { SignOutButton } from "./SignOutButton";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
@@ -11,7 +10,6 @@ import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animation
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import BattlepassClaimBadge from "./BattlepassClaimBadge";
 import { IconDeviceMobile, IconFlame, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
@@ -33,7 +31,6 @@ const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
   "/games": "nav.casino",
   "/classement": "nav.leaderboard",
-  "/battlepass": "nav.battlepass",
   "/contact": "nav.contact",
 };
 
@@ -41,7 +38,6 @@ function NavigationBar({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { theme, toggleTheme } = useTheme();
   const { t } = useTranslation();
-  const pathname = usePathname();
   const shouldReduceMotion = useReducedMotion();
   // Today's net (responsible-play) chip — rendered on the home page (mobile
   // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
@@ -68,18 +64,13 @@ function NavigationBar({ currentPath = "" }) {
       // Equipped profile frame (token-shop `profile_frame`), or null.
       profileFrame: null,
       usernameEffect: null,
-      // Equipped NAME GLOW (a Battle Pass reward) — the catalog hex this
+      // Equipped NAME GLOW (a catalog cosmetic) — the catalog hex this
       // display name is coloured + haloed with, or null for none. Comes from
       // the `glowColor` field of /api/get-user-tokens (the glow row joined on
       // `users.selectedGlow`), not from `nameColor`.
       glowColor: null,
       selectedTitle: "",
       streakTitle: null,
-      // Server-resolved prestige badge (null unless equipped + earned) plus
-      // the raw prestige tier for the global unlock notice.
-      prestigeBadge: null,
-      prestige: 0,
-      prestigeUnlocked: false,
       // TOTAL TROPHIES — the server-computed sum of the player's per-game
       // trophy counts (see src/lib/trophies.js / trophyStore.js). This is the
       // headline competitive number in the navbar (it replaced Overall Elo
@@ -94,8 +85,6 @@ function NavigationBar({ currentPath = "" }) {
     trophyFirstPaint.current = false;
   }, []);
   const [, setError] = useState(null);
-  // Prestige tier being celebrated by the global in-app notice (null = none).
-  const [prestigeNotice, setPrestigeNotice] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [level, setLevel] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -151,17 +140,11 @@ function NavigationBar({ currentPath = "" }) {
       if (!titlesData.success) return;
       setProfile((prev) => ({
         ...prev,
-        // The equipped-title chip shows the Prestige badge first —
-        // always the server-resolved string, never client text.
         selectedTitle:
-          titlesData.prestigeBadge ||
           titlesData.selectedSpecialTitle ||
           titlesData.selectedTitle ||
           "",
         streakTitle: titlesData.streakTitle || null,
-        prestigeBadge: titlesData.prestigeBadge || null,
-        prestige: Number(titlesData.prestige) || 0,
-        prestigeUnlocked: Boolean(titlesData.prestigeUnlocked),
       }));
       // Invalidate the cached meta so the next mount/refresh fetches
       // fresh values instead of the pre-change title.
@@ -279,15 +262,6 @@ function NavigationBar({ currentPath = "" }) {
                     ...prev,
                     selectedTitle: meta.selectedTitle,
                     streakTitle: meta.streakTitle ?? prev.streakTitle,
-                    prestigeBadge: meta.prestigeBadge ?? prev.prestigeBadge,
-                    prestige:
-                      typeof meta.prestige === "number"
-                        ? meta.prestige
-                        : prev.prestige,
-                    prestigeUnlocked:
-                      typeof meta.prestigeUnlocked === "boolean"
-                        ? meta.prestigeUnlocked
-                        : prev.prestigeUnlocked,
                   }));
               }
             } catch {}
@@ -295,9 +269,6 @@ function NavigationBar({ currentPath = "" }) {
             let nextLevel = null;
             let nextTitle = "";
             let nextStreak = null;
-            let nextPrestige = 0;
-            let nextPrestigeUnlocked = false;
-            let nextPrestigeBadge = null;
             try {
               const statsRes = await fetch("/api/user-stats");
               const statsData = await statsRes.json();
@@ -310,17 +281,11 @@ function NavigationBar({ currentPath = "" }) {
               });
               const titlesData = await titlesRes.json();
               if (titlesData.success) {
-                // The equipped-title chip shows the Prestige badge first —
-                // always the server-resolved string, never client text.
                 nextTitle =
-                  titlesData.prestigeBadge ||
                   titlesData.selectedSpecialTitle ||
                   titlesData.selectedTitle ||
                   "";
                 nextStreak = titlesData.streakTitle || null;
-                nextPrestige = Number(titlesData.prestige) || 0;
-                nextPrestigeUnlocked = Boolean(titlesData.prestigeUnlocked);
-                nextPrestigeBadge = titlesData.prestigeBadge || null;
               }
             } catch {}
 
@@ -331,9 +296,6 @@ function NavigationBar({ currentPath = "" }) {
               // to the previous title, or unequipping would never clear.
               selectedTitle: nextTitle,
               streakTitle: nextStreak,
-              prestigeBadge: nextPrestigeBadge,
-              prestige: nextPrestige,
-              prestigeUnlocked: nextPrestigeUnlocked,
             }));
 
             // Store the cache regardless of partial failures; next reload
@@ -349,9 +311,6 @@ function NavigationBar({ currentPath = "" }) {
                   level: nextLevel,
                   selectedTitle: nextTitle,
                   streakTitle: nextStreak,
-                  prestige: nextPrestige,
-                  prestigeUnlocked: nextPrestigeUnlocked,
-                  prestigeBadge: nextPrestigeBadge,
                 }),
               );
             } catch {}
@@ -413,31 +372,6 @@ function NavigationBar({ currentPath = "" }) {
 
   const isCasinoPath =
     currentPath.startsWith("/casino") || currentPath.startsWith("/games");
-
-  // In-app "Prestige unlocked" notice — an app-wide notification surface
-  // alongside the Battle Pass page modal. Fires once per tier-up on any page
-  // except /battlepass (that page shows its own larger modal). The tier
-  // always comes from the server (/api/titles via fetchBalance); the shared
-  // localStorage watermark means an advancement is celebrated exactly once
-  // app-wide, and the client can never fabricate the tier.
-  useEffect(() => {
-    if (!profile.prestigeUnlocked || profile.prestige < 1) return;
-    if (pathname && pathname.startsWith("/battlepass")) return;
-    const STORAGE_KEY = "grynd.prestige.celebrated.v1";
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      const seen = raw ? Math.max(0, Number(JSON.parse(raw)) || 0) : 0;
-      if (profile.prestige > seen) {
-        setPrestigeNotice(profile.prestige);
-        window.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(profile.prestige),
-        );
-      }
-    } catch {
-      // Storage unavailable — skip the notice; never crash the page.
-    }
-  }, [pathname, profile.prestige, profile.prestigeUnlocked]);
 
   // The equipped name glow: the same treatment the profile card gives the
   // display name — the catalog hex as the text colour plus its halo.
@@ -503,7 +437,7 @@ function NavigationBar({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-4 md:flex"
             >
-              {["/", "/games", "/classement", "/battlepass", "/contact"].map((path) => (
+              {["/", "/games", "/classement", "/contact"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -516,8 +450,6 @@ function NavigationBar({ currentPath = "" }) {
                     className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
                   >
                     {t(NAV_TRANSLATION_KEYS[path])}
-                    {/* Unclaimed-reward nudge — count pill + one-time toast */}
-                    {path === "/battlepass" && <BattlepassClaimBadge />}
                   </Link>
                 </motion.div>
               ))}
@@ -624,16 +556,8 @@ function NavigationBar({ currentPath = "" }) {
                             t("nav.user_fallback")}
                           {isAdmin && <AdminBadge />}
                         </span>
-                        <span
-                          className={`text-[10px] ${
-                            profile?.prestigeBadge
-                              ? "text-violet-300"
-                              : "text-[#f5ff3b]"
-                          }`}
-                        >
-                          {profile?.prestigeBadge ||
-                            profile?.selectedTitle ||
-                            "No title equipped"}
+                        <span className="text-[10px] text-[#f5ff3b]">
+                          {profile?.selectedTitle || "No title equipped"}
                         </span>
                         {profile?.streakTitle && (
                           <span className="text-[10px] text-amber-400">
@@ -718,14 +642,8 @@ function NavigationBar({ currentPath = "" }) {
                       {profile?.name || "User"}
                       {isAdmin && <AdminBadge />}
                     </div>
-                    <div
-                      className={`text-xs ${
-                        profile?.prestigeBadge
-                          ? "text-violet-300"
-                          : "text-[#f5ff3b]"
-                      }`}
-                    >
-                      {profile?.prestigeBadge || profile?.selectedTitle}
+                    <div className="text-xs text-[#f5ff3b]">
+                      {profile?.selectedTitle}
                     </div>
                     {profile?.streakTitle && (
                       <div className="text-xs text-amber-400">
@@ -755,7 +673,7 @@ function NavigationBar({ currentPath = "" }) {
 
               {/* NAV LINKS */}
               <div className="space-y-2">
-                {["/", "/games", "/classement", "/battlepass", "/contact"].map((path) => (
+                {["/", "/games", "/classement", "/contact"].map((path) => (
                   <Link
                     key={path}
                     href={path}
@@ -821,44 +739,6 @@ function NavigationBar({ currentPath = "" }) {
         )}
       </motion.nav>
 
-      {/* Global "Prestige unlocked" notice — dismissed once per tier-up. */}
-      {prestigeNotice !== null && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed right-4 top-24 z-[95] w-[330px] max-w-[calc(100vw-2rem)] rounded-xl border border-violet-400/50 bg-[#0b224f]/95 p-4 shadow-[0_0_40px_rgba(139,92,246,0.45)] backdrop-blur"
-        >
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-300/60 bg-violet-500/20 text-lg">
-              👑
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs uppercase tracking-[0.25em] text-violet-300">
-                Prestige {prestigeNotice} unlocked
-              </p>
-              <p className="mt-0.5 text-sm text-[#9dd8ff]">
-                You reached a new permanent Prestige tier. It never resets
-                and can never be lost.
-              </p>
-              <Link
-                href="/battlepass"
-                onClick={() => setPrestigeNotice(null)}
-                className="mt-2 inline-flex rounded-lg border border-[#00e5ff]/50 bg-[#00e5ff]/15 px-3 py-1.5 text-xs font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25"
-              >
-                View Battlepass
-              </Link>
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss"
-              onClick={() => setPrestigeNotice(null)}
-              className="text-white/50 transition hover:text-white"
-            >
-              <IconX size={16} />
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

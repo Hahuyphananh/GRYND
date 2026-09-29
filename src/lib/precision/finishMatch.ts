@@ -19,7 +19,7 @@
 //
 // Why a SEPARATE helper rather than rolling payout into `recordRoundStop`?
 //   1. `recordRoundStop` is the latency-critical gameplay path — settlement
-//      (balances, stats, leaderboards, prestige) stays out of it.
+//      (balances, stats, leaderboards, Elo/trophies) stays out of it.
 //   2. The route handler at `/api/precision/finish-match` (or its
 //      socket equivalent) is the natural seam for re-introducing the
 //      auth boundary, leaderboard updates, and DB transactions.

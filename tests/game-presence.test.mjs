@@ -85,7 +85,7 @@ test("canonical ids are the existing catalog ids — no new identifier space", (
   // And they all exist in the lobby, so a count can always be rendered.
   const lobby = source(LOBBY);
   const lobbyKeys = [...lobby.matchAll(/leaderboardKey: "([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(lobbyKeys.length >= 19);
+  assert.ok(lobbyKeys.length >= 16);
   for (const id of PRESENCE_GAME_IDS) {
     assert.ok(lobbyKeys.includes(id), `${id} is not a lobby leaderboardKey`);
   }
@@ -108,9 +108,10 @@ test("every label the repo actually reports maps to a game (drift guard)", () =>
   }
 
   // Sanity: the inventory is the real thing (the game pages plus the hook
-  // callers). The Neon Flush multiplayer table was retired, removing the
-  // `uno-multiplayer` label, so the floor is one lower than before.
-  assert.ok(labels.size >= 23, `expected >= 23 labels, found ${labels.size}`);
+  // callers). The Roulette / Blackjack / Plinko / Crash Arena games were
+  // retired, taking their labels with them, so the floor reflects the
+  // surviving catalog.
+  assert.ok(labels.size >= 18, `expected >= 18 labels, found ${labels.size}`);
 
   for (const label of labels) {
     if (label === "precision-test") continue; // deliberately excluded below
@@ -142,7 +143,7 @@ test("resolveGameId accepts labels and ids, normalizes, rejects the rest", () =>
   assert.equal(resolveGameId("mines-duel"), "mines-pvp");
   assert.equal(resolveGameId("mines-pvp"), "mines-pvp");
   assert.equal(resolveGameId("  ROCK-PAPER-SCISSORS  "), "rps");
-  assert.equal(resolveGameId("Crash-Arena"), "crash");
+  assert.equal(resolveGameId("Crash-Arena"), null, "Crash Arena was retired");
   assert.equal(resolveGameId("nope"), null);
   assert.equal(resolveGameId(""), null);
   assert.equal(resolveGameId("   "), null);
@@ -194,21 +195,21 @@ test("a row stops counting exactly when it leaves the window (no leave needed)",
 
 test("counts are grouped by game, drop zeroes, and only surface real games", () => {
   const counts = toActivePlayerCounts([
-    { gameId: "roulette", players: 12 },
-    { gameId: "crash", players: 8 },
+    { gameId: "mines-pvp", players: 12 },
+    { gameId: "keno", players: 8 },
     { gameId: "rps", players: 5 },
     { gameId: "tower-arena", players: 0 }, // nobody playing → absent, not 0
     { gameId: "not-a-game", players: 99 }, // legacy/manual row → never surfaced
     { gameId: null, players: 4 },
     { gameId: "chess", players: "3" }, // driver may hand back a numeric string
-    { gameId: "keno", players: 2 },
-    { gameId: "keno", players: 1 }, // defensive: duplicate rows sum
-    { gameId: "odds", players: NaN },
-    { gameId: "odds" },
+    { gameId: "odds", players: 2 },
+    { gameId: "odds", players: 1 }, // defensive: duplicate rows sum
+    { gameId: "hex-duel", players: NaN },
+    { gameId: "hex-duel" },
     null,
   ]);
 
-  assert.deepEqual(counts, { roulette: 12, crash: 8, rps: 5, chess: 3, keno: 3 });
+  assert.deepEqual(counts, { "mines-pvp": 12, keno: 8, rps: 5, chess: 3, odds: 3 });
   assert.equal("tower-arena" in counts, false);
   assert.equal("not-a-game" in counts, false);
   // Every key is a game the lobby can actually render.
@@ -753,8 +754,8 @@ test("the shared host is the single wiring point, and every game feeds it", () =
   // harness route that resolveGameId deliberately rejects.
   // The tag must open a line (a prose mention in a comment is not a mount).
   const pages = walk("src/app").filter((file) => /^\s*<GameSessionHost/m.test(source(file)));
-  // The Neon Flush multiplayer table was retired, so one surface is gone.
-  assert.ok(pages.length >= 19, `expected >= 19 game surfaces, found ${pages.length}`);
+  // The Roulette / Blackjack / Plinko / Crash Arena surfaces were retired.
+  assert.ok(pages.length >= 17, `expected >= 17 game surfaces, found ${pages.length}`);
   for (const file of pages) {
     const src = source(file);
     assert.match(src, /autoStart=/, `${file} must pass autoStart`);
@@ -767,7 +768,7 @@ test("the 4 pages without the host wire the same hook next to their play edge", 
     (file) => /useRecordPlayedGame\(\s*"/.test(source(file))
   );
 
-  assert.equal(callers.length, 4, "hex-duel, pool-masters, odds, crash-arena");
+  assert.equal(callers.length, 3, "hex-duel, pool-masters, odds");
 
   for (const file of callers) {
     const src = source(file);
@@ -825,16 +826,6 @@ test("each direct integration stops counting when its game reaches a final state
   );
   const odds = source("src/app/casino/odds/PageClient.tsx");
   assert.equal((odds.match(/terminal: gameOver/g) ?? []).length, 2, "AI duel + PvP duel");
-
-  // Crash Arena deliberately has no `terminal`: a table runs endless rounds
-  // and the wait between them is part of playing, so the gap is absorbed by
-  // the server window rather than dropping the player between rounds.
-  const crash = source("src/app/casino/crash-arena/table/[tableId]/PageClient.jsx");
-  assert.match(
-    crash,
-    /useActiveGamePresence\("crash-arena", roundState\?\.phase === "running"\)/
-  );
-  assert.doesNotMatch(crash, /terminal:/);
 });
 
 // ── 11. Lobby badge (phase 4): counts on the existing game cards ─────────

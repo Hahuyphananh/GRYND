@@ -17,7 +17,6 @@ Disallow: /profile
 
 # Dynamic live sessions / match tables (opaque IDs, not meaningful to index)
 Disallow: /casino/poker/multi/
-Disallow: /casino/crash-arena/table/
 Disallow: /casino/chess/ai
 
 Sitemap: https://www.grynd.dedyn.io/sitemap.xml

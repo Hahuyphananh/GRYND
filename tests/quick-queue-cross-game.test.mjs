@@ -4,10 +4,10 @@ import { findCompatibleQuickQueuePair, normalizeQuickQueueRequest } from "../src
 
 test("finds a shared game across two platform-ready requests", () => {
   const pair = findCompatibleQuickQueuePair([
-    { ...normalizeQuickQueueRequest({ userId: "u1", preferredGames: ["mines-pvp", "plinko-pvp"], playerCount: 2 }), requestId: "r1", queuedAt: 999000 },
-    { ...normalizeQuickQueueRequest({ userId: "u2", preferredGames: ["plinko-pvp"], playerCount: 2 }), requestId: "r2", queuedAt: 999500 },
+    { ...normalizeQuickQueueRequest({ userId: "u1", preferredGames: ["mines-pvp", "keno-pvp"], playerCount: 2 }), requestId: "r1", queuedAt: 999000 },
+    { ...normalizeQuickQueueRequest({ userId: "u2", preferredGames: ["keno-pvp"], playerCount: 2 }), requestId: "r2", queuedAt: 999500 },
   ], 1000000);
-  assert.equal(pair?.candidate.gameKey, "plinko-pvp");
+  assert.equal(pair?.candidate.gameKey, "keno-pvp");
   assert.deepEqual([pair?.source.requestId, pair?.partner.requestId], ["r1", "r2"]);
 });
 

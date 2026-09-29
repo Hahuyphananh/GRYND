@@ -9,10 +9,9 @@ test("platform Ready exposes all supported game choices", () => {
   assert.match(controller, /QUICK_QUEUE_GAME_OPTIONS/);
   assert.match(controller, /Keno/);
   assert.match(controller, /Mines/);
-  assert.match(controller, /Plinko/);
-  assert.match(controller, /Blackjack/);
-  assert.match(controller, /Roulette/);
   assert.match(controller, /Lane Rush/);
+  assert.match(controller, /Mini Golf/);
+  assert.match(controller, /Chess/);
 });
 
 test("game choices are toggleable and sent to readiness", () => {

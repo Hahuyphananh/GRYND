@@ -3,10 +3,8 @@ import { max } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { db } from "../db";
 import {
-  blackjackGames,
   chessGames,
   fourInARowGames,
-  crashArenaRounds,
   diceFlushRooms,
   dotsAndBoxesGames,
   hexDuelGames,
@@ -14,11 +12,9 @@ import {
   memoryGridMatches,
   minesGames,
   oddsGames,
-  plinkoGames,
   poolMatches,
   precisionMatches,
   towerArenaMatches,
-  rouletteGames,
   rpsPvpGames,
   kenoPvpMatches,
   unoGames,
@@ -73,17 +69,12 @@ function latestOf(table: AnyPgTable, column: AnyPgColumn): Promise<Date | null> 
 // each game: /games/:path* rewrites to the /casino/:path* app routes and
 // stays in the address bar, while /casino/:path* 308-redirects to /games/*
 // (see next.config.js). Listing /casino URLs would send crawlers through a
-// redirect chain. `/games/crash` is intentionally omitted: it's a redirect to
-// `/games/crash-arena` (already listed) and shouldn't be indexed separately.
+// redirect chain.
 const GAME_PAGES: {
   path: string;
   source?: [AnyPgTable, AnyPgColumn];
 }[] = [
-  { path: "/games/blackjack", source: [blackjackGames, blackjackGames.createdAt] },
-  { path: "/games/roulette", source: [rouletteGames, rouletteGames.createdAt] },
-  { path: "/games/plinko", source: [plinkoGames, plinkoGames.createdAt] },
   { path: "/games/mines-pvp", source: [minesGames, minesGames.createdAt] },
-  { path: "/games/crash-arena", source: [crashArenaRounds, crashArenaRounds.createdAt] },
   { path: "/games/dice-flush", source: [diceFlushRooms, diceFlushRooms.createdAt] },
   { path: "/games/keno", source: [kenoPvpMatches, kenoPvpMatches.createdAt] },
   { path: "/games/rps", source: [rpsPvpGames, rpsPvpGames.createdAt] },

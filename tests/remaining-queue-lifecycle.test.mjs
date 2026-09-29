@@ -4,7 +4,7 @@ import fs from "node:fs";
 
 for (const [name, path, gameKey] of [
   ["lane rush", "src/lib/lane-rush-duel/serverStore.js", "lane-rush-duel"],
-  ["blackjack", "src/lib/blackjack-pvp/serverStore.js", "blackjack-pvp"],
+  ["mini golf", "src/lib/mini-golf/serverStore.ts", "mini-golf"],
 ]) {
   test(`${name} imports the shared lifecycle adapter`, () => {
     const source = fs.readFileSync(path, "utf8");

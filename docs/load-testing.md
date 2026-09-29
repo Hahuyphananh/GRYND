@@ -39,11 +39,11 @@ Load-test surfaces:
 |---|---|---|---|
 | `users` | Wallet + stats on ONE wide row | Wager: conditional atomic `UPDATE balance = balance − x WHERE clerk_id = ? AND balance >= x … RETURNING` (per game serverStore, e.g. `src/lib/tower-arena/serverStore.ts:376`). Settlement: `balance + payout` again. **Every settled bet additionally runs `applyLeaderboardCounters` (`src/lib/leaderboardCounters.js`)**: one big CTE updating `total_wagered`, `weekly_*`, streaks, XP/level on the same `users` row + upserting `user_stats`. Battle-pass grants may update the row again. | **High.** Same row updated ≥2× per wager. Same-user concurrent sessions serialize on the row lock. |
 | `user_stats` | Per-user aggregated counters | Upsert on every settlement (see above) | **High.** PK only; upsert from the CTE; no rankable indexes (see §4). |
-| `crash_arena_*` / PvP match tables (`*_matches`, `*_rounds`, `*_entries`, `*_players`) | Round/match state + money | Join = buy-in deduction + player row + transaction insert; `start-round` = one `db.transaction` (round row + N entry rows + N balance deductions + table flip); crash = mass payout updates across `users`/`crash_arena_players`/transactions; fold (`action`) and `settle` are client-driven POSTs | **High burst.** N players settle within seconds of each other (round-end spike). Tables are indexed well (status/created, per-user); risk is write volume, not lookups. |
+| PvP match tables (`*_matches`, `*_rounds`) | Round/match state | Join = player row + match row; a round settles with the counter/stat updates (`applyLeaderboardCounters`) | **High burst.** Players settle within seconds of each other (round-end spike). Tables are indexed well (status/created, per-user); risk is write volume, not lookups. |
 | `chat_messages` | Global chat | Insert per message; read-back by `(roomType, roomId, createdAt)` | **Medium.** Well indexed (`chat_messages_room_idx`); grows fastest of any table. Soak test watches index bloat. |
 | Leaderboards (reads) | `users`/`user_stats` + per-game tables | `fetchRankedRows` / `fetchGameLeaderboard` (`src/lib/leaderboardQueries.js`) — full-table window/aggregate when cache misses | **Medium-high on cache miss.** Cached 5 min with debounced (60 s) purge on settlement → under heavy settle load the full-table sorts recompute up to once/minute. |
 | `token_transactions` | Money-movement audit | Insert on purchase/spend/refund | Low; append-only, indexed `(clerk_id, created_at)`. |
-| Solo game tables (`crash_games`, `plinko_games`, `mines_games`, `roulette_games`, `blackjack_games`, `keno_games`, `uno_games`, `lane_runner_games`, `rps_games`) | Historical game rows | Insert on play; read in `GET /api/get-bet-history` | **Medium.** Per-user reads are unindexed seq scans (see §4) and grow forever. |
+| Solo game tables (`mines_games`, `keno_games`, `uno_games`, `lane_runner_games`, `rps_games`, `chess_games`) | Historical game rows | Insert on play; read in `GET /api/get-bet-history` | **Medium.** Per-user reads are unindexed seq scans (see §4) and grow forever. |
 
 **The two money-movement invariants to protect under load:**
 1. Balance changes are atomic conditional `UPDATE … RETURNING` — never
@@ -61,14 +61,7 @@ Auth: every route below uses Clerk; send the session cookie header
 
 | Operation | Endpoint | Method/Body | DB work |
 |---|---|---|---|
-| Lobby poll | `/api/crash-arena/tables?mode=lobby` | GET | `crash_arena_tables` + per-table latest-round status |
-| Table detail | `/api/crash-arena/tables` | GET | + latest round + entries (N+1 per table) |
-| **Wager (create)** | `/api/crash-arena/create` | POST `{wager}` | insert table; stale-table cleanup |
-| **Wager (buy-in)** | `/api/crash-arena/join` | POST `{tableId, buyInAmount, joinCode?}` | **atomic balance debit + player row + transaction insert** |
-| Round start | `/api/crash-arena/start-round` | POST `{tableId}` | one tx: ante debit all seated, round row, N entries |
-| Fold | `/api/crash-arena/action` | POST `{tableId, action: "fold"}` | entry update (foldedAtMultiplier) + fold-out broadcast |
-| **Settle** | `/api/crash-arena/settle` | POST `{roundId}` | `settleCrashPokerHand`: ranked pot resolution, balance credits, counters (via `applyLeaderboardCounters`) |
-| History | `/api/get-bet-history` | GET | **21 fan-out queries** across game tables |
+| History | `/api/get-bet-history` | GET | **16 fan-out queries** across game tables |
 | Leaderboard | `/api/leaderboard/all-time` etc. | GET `?category=&limit=&offset=` | Redis-cached; recompute on miss |
 | Per-game board | `/api/leaderboard/game?game=` | GET | cache; miss = full scan+group of that game table |
 | My stats | `/api/user-stats` | GET | cached 3 min |
@@ -76,7 +69,7 @@ Auth: every route below uses Clerk; send the session cookie header
 
 Other games follow the same shape (each PvP game has `create-or-join` /
 `join` / turn-action / settle routes, e.g. `mines-pvp`, `keno-pvp`,
-`tower-arena`, `blackjack-pvp`). Add their routes to the Artillery scenarios as
+`tower-arena`). Add their routes to the Artillery scenarios as
 they stabilize; the pattern to replicate is **join/wager → actions → settle**.
 
 ---
@@ -88,14 +81,14 @@ production-ish row counts before trusting the mitigations.
 
 ### 4.1 Risky queries
 
-1. **`GET /api/get-bet-history` — 21 parallel per-table queries**
+1. **`GET /api/get-bet-history` — 16 parallel per-table queries**
    (`src/app/api/get-bet-history/route.ts`). Every request fires one query per
    game table (`… WHERE user_id = ? [AND created_at >= ?] LIMIT 200`).
    **Index-gap caveat (verified live):** the migration chain never recorded a
    `(user_id, created_at)` index on the legacy solo tables, but the live DB
    carried ad-hoc ones created directly on Neon and carried into Supabase via
-   the schema dump (`idx_*_user_id` on all 8, plus `*_user_created_idx
-   (user_id, created_at DESC)` on 7 — `uno_games` lacked the composite). So
+   the schema dump (`idx_*_user_id` on each, plus `*_user_created_idx
+   (user_id, created_at DESC)` on most — `uno_games` lacked the composite). So
    **production was already indexed**; migration 0139 ships the canonical
    `*_user_idx` so fresh environments built purely from the chain match, and
    per-user history is index-backed everywhere. On prod, 0139 duplicated the
@@ -103,7 +96,7 @@ production-ish row counts before trusting the mitigations.
 2. **Per-game leaderboard recompute** (`fetchGameLeaderboard` in
    `src/lib/leaderboardQueries.js`): `COUNT(*) FILTER … FROM <game_table> …
    GROUP BY clerk_id` — a **full scan + hash aggregate of the entire game
-   table** (e.g. every `crash_games` row) on every cache miss. Cache is purged
+   table** (e.g. every `mines_games` row) on every cache miss. Cache is purged
    by settlements (debounced ≤60 s) → recompute cost grows linearly with
    table size and spikes under settle load.
 3. **All-time/weekly leaderboard recompute** (`fetchRankedRows`):
@@ -125,7 +118,7 @@ Verified against index declarations in `src/db/schema.ts`:
 
 | Table | Gap | Suggested index |
 |---|---|---|
-| `crash_games`, `plinko_games`, `mines_games`, `roulette_games`, `blackjack_games`, `keno_games`, `uno_games`, `rps_games` | Migration chain had **no `(user_id, created_at)` index** (only `lane_runner_games` had one, from `0014`). Live prod carries ad-hoc equivalents (`idx_*_user_id` on all 8; `*_user_created_idx` composite on 7 — `uno_games` composite was genuinely missing). **Fixed by migration 0139** (`*_user_idx (user_id, created_at DESC)` on all 8, now also declared in `schema.ts`). **Prod cleanup:** 0139 duplicated existing composites on 7 tables — drop the ad-hoc `*_user_created_idx` + single-column `idx_*_user_id` so each table keeps exactly one canonical index | Keep exactly one composite per table |
+| `mines_games`, `keno_games`, `uno_games`, `rps_games`, `chess_games` | Migration chain had **no `(user_id, created_at)` index** (only `lane_runner_games` had one, from `0014`). Live prod carries ad-hoc equivalents (`idx_*_user_id`; `*_user_created_idx` composite on most — `uno_games` composite was genuinely missing). **Fixed by migration 0139** (`*_user_idx (user_id, created_at DESC)`, now also declared in `schema.ts`). **Prod cleanup:** 0139 duplicated existing composites — drop the ad-hoc `*_user_created_idx` + single-column `idx_*_user_id` so each table keeps exactly one canonical index | Keep exactly one composite per table |
 | `user_stats` | Only PK on `user_id` | For the most-viewed boards, targeted partial indexes help some categories (e.g. `(wins DESC)` where losses tracked); for the rest prefer §4.3 snapshot |
 | Per-game boards | full-scan aggregate | Prefer a **materialized snapshot** (§4.3) over indexes — you cannot index a `GROUP BY clerk_id` over a growing fact table cheaply |
 | `users.search_name` | none | Confirm the search-player query uses it; if it ILIKEs `name`, note that an index only helps with `pg_trgm` |
@@ -149,10 +142,10 @@ server-time budgets for a single request *excluding* think time.
 
 | # | Scenario | What it proves | Shape (see `load-test/scenarios/*.yml`) | Pass criteria |
 |---|---|---|---|---|
-| S1 | Ramp — wager path | Throughput ceiling of **create + buy-in (atomic balance debit)** under rising concurrency | `wagering.yml`: 0→80 VUs over 3 min | p95 ≤ 600 ms; error rate ≤ 1%; zero `400` beyond expected validation |
+| S1 | Ramp — create/join path | Throughput ceiling of **PvP match create/join** under rising concurrency | drive the `create-or-join` routes (e.g. `mines-pvp`, `keno-pvp`): 0→80 VUs over 3 min | p95 ≤ 600 ms; error rate ≤ 1%; zero `400` beyond expected validation |
 | S2 | Sustained — read mix | Feeds under steady user load, incl. cache-hit leaderboards/history | `read-mix.yml`: 40 VUs, 5 min | p95 ≤ 800 ms reads; cache-hit ratio high (watch `grynd:lb:*` Redis misses) |
-| S3 | **Settlement burst** | Round-end spike: N players settle concurrently | Drive real full-table rounds (socket + HTTP driver, see §7); alternatively hit fold (`action`)+`settle` on staging rounds | p95 settle ≤ 1 s at 5× normal round-end rate; **no deadlocks/lock timeouts in logs** |
-| S4 | Same-user contention | Two concurrent sessions on one account (double-tap wager) | 20 accounts × 2 concurrent sessions placing wagers | Final balances consistent; no lost update (`balance` never < 0); both settlements credited exactly once |
+| S3 | **Settlement burst** | Round-end spike: N players settle concurrently | Drive real PvP rounds (socket + HTTP driver, see §7), or hit a game's settle route on staging rounds | p95 settle ≤ 1 s at 5× normal round-end rate; **no deadlocks/lock timeouts in logs** |
+| S4 | Same-user contention | Two concurrent sessions on one account (double-tap action) | 20 accounts × 2 concurrent sessions playing | Final stat rows consistent; both settlements recorded exactly once |
 | S5 | Cache stampede | Leaderboard recompute right after a purge | `read-mix.yml` with settlements firing (trigger purge) | p95 on boards ≤ 2 s (recompute cost bounded — validates §4.3 need) |
 | S6 | Soak | 30+ min at 2× expected peak | extended read-mix + wagers | No monotonic latency drift; connection pool not exhausted; no index bloat surprises |
 
@@ -178,9 +171,12 @@ JOIN (
   FROM token_transactions GROUP BY clerk_id
 ) t ON t.clerk_id = u.clerk_id
 WHERE abs(u.balance - 1000000 - t.ledger) > 0.01; -- adjust starting balance
--- 3. Settlements applied exactly once per round (no double payouts)
-SELECT round_id, count(*) FROM crash_arena_entries
-WHERE result <> 'pending' GROUP BY round_id HAVING count(*) <> count(*);
+-- 3. Settlements applied exactly once per match (no double counting). Run per
+--    game against its own match table (e.g. mines_pvp_matches, keno_pvp_matches,
+--    memory_grid_matches, lane_rush_duel_matches): each settled match must have
+--    exactly one settled row and its counters applied once.
+SELECT id, count(*) FROM mines_pvp_matches
+WHERE status = 'finished' GROUP BY id HAVING count(*) > 1;
 ```
 
 Run these **before** the test (baseline) and **after**; diff the totals. A load
@@ -211,19 +207,15 @@ Required staging setup before the first run:
 
 ### Extending to round/settlement-driven scenarios (S3, S5)
 
-The HTTP-only driver cannot know when a crash round settles (the crash point
-is server-secret until it happens, revealed via socket broadcast). The
-realistic drivers for S3/S5 are:
-- a k6/Node script that opens a socket per VU (pattern already in
-  `realtime-server/loadtest.js`), joins a seeded table, buys in, and settles
-  when the broadcast curve reaches the crash point — several such VUs per
-  table to create the N-player settle burst; or
-- pairing Artillery VUs with a "settle-caller" that polls
-  `GET /api/crash-arena/tables` until `latestRound.status = crashed`, then
-  POSTs `/api/crash-arena/settle`.
+The HTTP-only driver cannot know when a live PvP round settles (the turn order
+and round outcome are server-authoritative, surfaced via socket broadcast). The
+realistic driver for S3/S5 is a k6/Node script that opens a socket per VU
+(pattern already in `realtime-server/loadtest.js`), joins a seeded match, and
+plays its turns as the broadcasts arrive — several such VUs per match to create
+the N-player settle burst.
 
 Add these as `load-test/scenarios/settlement.yml` once staging has reliably
-auto-cycling tables.
+cycling PvP matches.
 
 ---
 

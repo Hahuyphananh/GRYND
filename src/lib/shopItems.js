@@ -12,9 +12,9 @@
 //   * streak_shield — absorbs one missed day so the player's login streak
 //     survives. The daily rewards that once made the streak valuable are
 //     retired, so this is a low-value convenience item retained for
-//     inventory/battlepass compatibility; priced at 800.
+//     inventory compatibility; priced at 800.
 //
-//   * xp_boost_2x_24h — EV ≈ extra battlepass XP for 24h (+200–500 XP for
+//   * xp_boost_2x_24h — EV ≈ extra XP for 24h (+200–500 XP for
 //     an average active day). XP is progression-only (rewards are
 //     cosmetics + functional items, not cashable tokens), so its EV is
 //     soft; 500 stays the cheap impulse price but is still a real sink
@@ -30,9 +30,9 @@
 // ── Membership XP integration ──────────────────────────────────────────────
 // Membership adds NO XP multiplier (GRYND PRO is non-competitive — see
 // src/lib/stripe/subscriptions.ts). Only timed boosts from the item inventory
-// multiply XP, and they are applied HERE so every XP source (settled wagers,
-// onboarding, Battle Pass claims) honors them without each caller doing its
-// own resolution. This is pure progression — boosts never
+// multiply XP, and they are applied HERE so every XP source honors them
+// without each caller doing its own resolution. This is pure progression —
+// boosts never
 // touch RNG, odds or win payouts.
 
 export const SHOP_ITEMS = [
@@ -185,9 +185,9 @@ export async function hasItem(userId, itemKey, qty = 1) {
 /**
  * Parses the multiplier out of an XP-boost effect key. Keys are encoded as
  * `xp_boost_{multiplier}x_{hours}h` (e.g. "xp_boost_2x_24h",
- * "xp_boost_3x_48h") so one table can hold every 2×/3× variant the
- * battlepass grants. Returns the multiplier or 1 when the key isn't an
- * XP boost.
+ * "xp_boost_3x_48h") so one table can hold every 2×/3× variant the item
+ * inventory grants. Returns the multiplier or 1 when the key isn't an XP
+ * boost.
  */
 export function xpBoostMultiplierFromKey(effectKey) {
   const match = /^xp_boost_(\d+)x_\d+h$/.exec(String(effectKey || ""));
@@ -198,7 +198,7 @@ export function xpBoostMultiplierFromKey(effectKey) {
  * Returns the highest XP multiplier among the user's active timed boosts
  * (2 for a 2× boost, 3 for a 3× boost, 1 when none is active). Membership
  * grants NO XP multiplier — GRYND PRO is non-competitive, so only the timed
- * boosts from the Battle Pass / item inventory count. Checks by local user id.
+ * boosts from the item inventory count. Checks by local user id.
  */
 export async function getActiveXpMultiplier(userId) {
   const { db } = await import("../db");
@@ -248,8 +248,7 @@ export async function getActiveXpMultiplierByClerkId(clerkId) {
 
 /**
  * Grant `qty` of a consumable into a user's inventory (upsert, additive).
- * Used by the battlepass claim route — same write shape as the shop buy
- * route.
+ * Same write shape as the shop buy route.
  */
 export async function grantItem(userId, itemKey, qty = 1) {
   const { db } = await import("../db");
@@ -269,8 +268,8 @@ export async function grantItem(userId, itemKey, qty = 1) {
 
 /**
  * Activate (or extend) a timed effect. Effect keys are e.g.
- * "xp_boost_2x_24h" — repurchasing/claiming EXTENDS the window rather
- * than stacking a second row. Used by the battlepass claim route.
+ * "xp_boost_2x_24h" — repurchasing EXTENDS the window rather than stacking a
+ * second row.
  */
 export async function activateTimedEffect(userId, effectKey, hours) {
   const { db } = await import("../db");

@@ -2,7 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { computeEquippedStreakTitle } from "../../../../lib/streakTitles";
-import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { searchNameFor } from "../../../../lib/searchName";
 
 export async function POST(request) {
@@ -78,7 +77,7 @@ export async function POST(request) {
     const found = currentUserId
       ? await sql`
   SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best,
-    xp, prestige_level, show_prestige_badge
+    xp
   FROM users
   WHERE REPLACE(LOWER(COALESCE(NULLIF(search_name, ''), name)), ' ', '') LIKE '%' || ${queryString} || '%'
     AND id != ${currentUserId}
@@ -87,7 +86,7 @@ export async function POST(request) {
 `
       : await sql`
   SELECT id, name, selected_icon AS icon_key, selected_streak_type, daily_streak_current, daily_streak_best,
-    xp, prestige_level, show_prestige_badge
+    xp
   FROM users
   WHERE REPLACE(LOWER(COALESCE(NULLIF(search_name, ''), name)), ' ', '') LIKE '%' || ${queryString} || '%'
   ORDER BY name ASC
@@ -96,7 +95,7 @@ export async function POST(request) {
 
     const users = found ?? [];
 
-    // Compute streak titles + server-resolved prestige badges for each user
+    // Compute the streak title for each user
     const usersWithStreak = users.map((u) => {
       const streakInfo = computeEquippedStreakTitle({
         selectedStreakType: u.selected_streak_type,
@@ -106,11 +105,6 @@ export async function POST(request) {
       return {
         ...u,
         streakTitle: streakInfo.title,
-        prestigeBadge: resolvePrestigeBadge({
-          xp: u.xp,
-          prestigeLevel: u.prestige_level,
-          showPrestigeBadge: u.show_prestige_badge,
-        }),
       };
     });
 

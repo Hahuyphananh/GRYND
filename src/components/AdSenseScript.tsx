@@ -1,6 +1,6 @@
 /**
  * Google AdSense loader, for the pages we monetise: the home page, the game
- * hub, the leaderboard, the profile, the battlepass and the game lobbies.
+ * hub, the leaderboard, the profile and the game lobbies.
  *
  * Deliberately NOT in the root layout. AdSense pays for impressions on the
  * pages a player browses *between* games, and an ad on a live board is both an

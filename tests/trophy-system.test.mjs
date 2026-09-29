@@ -31,7 +31,6 @@ import {
   TROPHY_LOSS,
   TROPHY_DRAW,
   TROPHY_MIN,
-  TROPHY_MAX,
   TROPHY_GAMES,
   TROPHY_OUTCOMES,
   TROPHY_CONFIG,
@@ -46,9 +45,6 @@ import {
   placementDeltaForRank,
   PLACEMENT_TOP,
   PLACEMENT_BOTTOM,
-  isTrophyComplete,
-  trophyPhase,
-  prestigeFromRating,
   trophyProgress,
   toTrophyShape,
   isTrophyGame,
@@ -264,20 +260,18 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   assert.equal(TROPHY_DRAW, 0);
   assert.equal(TROPHY_START, 0);
   assert.equal(TROPHY_MIN, 0);
-  assert.equal(TROPHY_MAX, 1000);
   assert.equal(TROPHY_CONFIG.win, 30);
   assert.equal(TROPHY_CONFIG.loss, -30);
-  assert.equal(TROPHY_CONFIG.max, 1000);
-  // 20 rated games × 1,000 = 20,000 additive overall maximum (Mini Golf joined
-  // the rated registry, and the Battle Pass is derived from this value).
-  assert.equal(TROPHY_CONFIG.overallMax, 20000);
-  assert.equal(TROPHY_CONFIG.gameCount, 20);
+  // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
+  assert.equal(TROPHY_CONFIG.max, undefined);
+  assert.equal(TROPHY_CONFIG.overallMax, undefined);
+  assert.equal(TROPHY_CONFIG.gameCount, 16);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 20);
+  assert.equal(TROPHY_GAMES.length, 16);
   assert.equal(isTrophyGame("mini-golf"), true);
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
@@ -285,8 +279,7 @@ test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   // distribution is wired later), so they are trophy games here too.
   assert.equal(isTrophyGame("hex-duel"), true);
   assert.equal(isTrophyGame("uno"), true);
-  // Poker was removed from the game entirely — it must no longer be a trophy
-  // game, which is also what keeps OVERALL_TROPHY_MAX honest.
+  // Poker was removed from the game entirely — it must not be a trophy game.
   assert.equal(isTrophyGame("poker"), false);
   assert.equal(normalizeTrophyGameKey("nope"), RATED_GAMES[0]);
   assert.equal(getTrophyGameLabel("pool"), "Pool Masters");
@@ -347,26 +340,20 @@ test("applyTrophyDelta: the count can never go below 0", () => {
   assert.equal(nearZero.clamped, true);
 });
 
-test("applyTrophyDelta: the count can never exceed 1,000", () => {
-  const atCap = applyTrophyDelta(1000, "win");
-  assert.equal(atCap.before, 1000);
-  assert.equal(atCap.after, 1000);
-  assert.equal(atCap.delta, 0);
-  assert.equal(atCap.nominalDelta, 30);
-  assert.equal(atCap.clamped, true);
-
-  // 990 plus 30 caps at 1,000, applying only +10.
-  const nearCap = applyTrophyDelta(990, "win");
-  assert.equal(nearCap.after, 1000);
-  assert.equal(nearCap.delta, 10);
-  assert.equal(nearCap.clamped, true);
+test("applyTrophyDelta: the count has no upper bound", () => {
+  const atThousand = applyTrophyDelta(1000, "win");
+  assert.equal(atThousand.before, 1000);
+  assert.equal(atThousand.after, 1030);
+  assert.equal(atThousand.delta, 30);
+  assert.equal(atThousand.nominalDelta, 30);
+  assert.equal(atThousand.clamped, false);
 });
 
-test("clampTrophies: floor, cap and garbage input", () => {
+test("clampTrophies: floor and garbage input (unbounded above)", () => {
   assert.equal(clampTrophies(-500), 0);
   assert.equal(clampTrophies(0), 0);
   assert.equal(clampTrophies(432), 432);
-  assert.equal(clampTrophies(999999), 1000);
+  assert.equal(clampTrophies(999999), 999999);
   assert.equal(clampTrophies("nope"), 0); // never NaN
   assert.equal(clampTrophies(undefined), 0);
 });
@@ -405,47 +392,14 @@ test("computeMatchTrophies: a draw moves neither side", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 4. Phase + derived Prestige
+// 4. Trophy progress shape
 // ════════════════════════════════════════════════════════════════════════
 
-test("phase: below the cap trophies lead; at the cap Elo leads", () => {
-  assert.equal(isTrophyComplete(999), false);
-  assert.equal(isTrophyComplete(1000), true);
-  assert.equal(trophyPhase(0), "trophies");
-  assert.equal(trophyPhase(999), "trophies");
-  assert.equal(trophyPhase(1000), "elo");
-});
-
-test("prestigeFromRating: prestige IS the Elo value (starts at 1000)", () => {
-  assert.equal(prestigeFromRating(1000), 1000);
-  assert.equal(prestigeFromRating(1100), 1100);
-  assert.equal(prestigeFromRating(1500), 1500);
-  assert.equal(prestigeFromRating(2000), 2000);
-  assert.equal(prestigeFromRating(900), 900);
-  assert.equal(prestigeFromRating(0), 0);
-  // Non-finite falls back to the 1000 baseline.
-  assert.equal(prestigeFromRating(undefined), 1000);
-});
-
-test("trophyProgress: the exact fields the UI reads", () => {
-  const fresh = trophyProgress(0);
-  assert.equal(fresh.trophies, 0);
-  assert.equal(fresh.maxTrophies, 1000);
-  assert.equal(fresh.remaining, 1000);
-  assert.equal(fresh.progressPercent, 0);
-  assert.equal(fresh.complete, false);
-  assert.equal(fresh.phase, "trophies");
-
-  const mid = trophyProgress(250);
-  assert.equal(mid.remaining, 750);
-  assert.equal(mid.progressPercent, 25);
-  assert.equal(mid.phase, "trophies");
-
-  const done = trophyProgress(1000);
-  assert.equal(done.remaining, 0);
-  assert.equal(done.progressPercent, 100);
-  assert.equal(done.complete, true);
-  assert.equal(done.phase, "elo");
+test("trophyProgress: reports the count only (unbounded)", () => {
+  assert.deepEqual(trophyProgress(0), { trophies: 0 });
+  assert.deepEqual(trophyProgress(250), { trophies: 250 });
+  assert.deepEqual(trophyProgress(1000), { trophies: 1000 });
+  assert.deepEqual(trophyProgress(123456), { trophies: 123456 });
 });
 
 test("toTrophyShape: normalizes a row (camelCase and snake_case)", () => {
@@ -467,8 +421,6 @@ test("toTrophyShape: normalizes a row (camelCase and snake_case)", () => {
   assert.equal(shape.games, 11); // decided = wins + losses
   assert.equal(shape.winRate, 54.55);
   assert.equal(shape.lastDelta, 30);
-  assert.equal(shape.maxTrophies, 1000);
-  assert.equal(shape.phase, "trophies");
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -681,13 +633,13 @@ test("computePlacementTrophies: tied seats share the ranks they span", () => {
   // Ties never break the zero sum, whichever seats are level.
   assert.equal(r.nominalDeltas.reduce((sum, d) => sum + d, 0), 0);
 
-  // Crash Arena: one survivor and three players who crashed. The victims are
-  // all level for last, so they share ranks 2..4: (10 − 10 − 30) / 3 = −10.
-  const crash = computePlacementTrophies({ groups: [[100], [100, 100, 100]] });
-  assert.deepEqual(crash.nominalDeltas, [30, -10, -10, -10]);
-  assert.equal(crash.nominalDeltas.reduce((sum, d) => sum + d, 0), 0);
-  assert.equal(crash.seats[1].place, 2);
-  assert.equal(crash.seats[3].placeTo, 4);
+  // A multi-seat table: one survivor and three players level for last. The
+  // victims share ranks 2..4: (10 − 10 − 30) / 3 = −10.
+  const tied = computePlacementTrophies({ groups: [[100], [100, 100, 100]] });
+  assert.deepEqual(tied.nominalDeltas, [30, -10, -10, -10]);
+  assert.equal(tied.nominalDeltas.reduce((sum, d) => sum + d, 0), 0);
+  assert.equal(tied.seats[1].place, 2);
+  assert.equal(tied.seats[3].placeTo, 4);
 });
 
 test("computePlacementTrophies: a lone seat settles nothing", () => {
@@ -697,16 +649,18 @@ test("computePlacementTrophies: a lone seat settles nothing", () => {
   assert.deepEqual(r.nominalDeltas, []);
 });
 
-test("applyTrophyChange: an explicit delta clamps at the bounds like a duel", () => {
-  // The ladder share is applied to the seat's OWN count, so a 2nd place at the
-  // floor loses nothing and a 2nd place at the cap gains nothing.
+test("applyTrophyChange: an explicit delta clamps only at the floor", () => {
+  // The ladder share is applied to the seat's OWN count, so a seat on the
+  // floor loses nothing. There is no upper cap: a win above 1,000 keeps
+  // climbing.
   const floored = applyTrophyChange(0, -30);
   assert.equal(floored.delta, 0);
   assert.equal(floored.nominalDelta, -30);
   assert.equal(floored.clamped, true);
-  const capped = applyTrophyChange(TROPHY_MAX, 30);
-  assert.equal(capped.delta, 0);
-  assert.equal(capped.clamped, true);
+  const climbing = applyTrophyChange(1000, 30);
+  assert.equal(climbing.after, 1030);
+  assert.equal(climbing.delta, 30);
+  assert.equal(climbing.clamped, false);
   const middle = applyTrophyChange(500, -10);
   assert.equal(middle.after, 490);
   assert.equal(middle.clamped, false);
@@ -720,7 +674,7 @@ const TABLE_USERS = [
 ];
 
 const TABLE_ARGS = {
-  gameKey: "crash-arena",
+  gameKey: "tower-arena",
   matchId: "hand-1",
   placements: ["user_first", "user_second", "user_third", "user_fourth"],
 };
@@ -745,10 +699,10 @@ test("PLACEMENT WRITER: the ladder pays +30/+10/−10/−30 across a 4-seat tabl
   const db = makeFakeDb({ users: TABLE_USERS });
   // Seed distinct counts so every rung of the ladder is observable — a seat on
   // the floor legitimately moves 0, which would hide the share it was given.
-  seedTrophyRow(db, 11, "crash-arena", 500);
-  seedTrophyRow(db, 22, "crash-arena", 500);
-  seedTrophyRow(db, 33, "crash-arena", 140);
-  seedTrophyRow(db, 44, "crash-arena", 20);
+  seedTrophyRow(db, 11, "tower-arena", 500);
+  seedTrophyRow(db, 22, "tower-arena", 500);
+  seedTrophyRow(db, 33, "tower-arena", 140);
+  seedTrophyRow(db, 44, "tower-arena", 20);
 
   const result = await applyPlacementTrophies({ tx: db.tx, ...TABLE_ARGS });
   assert.equal(result.applied, true);
@@ -769,15 +723,15 @@ test("PLACEMENT WRITER: the ladder pays +30/+10/−10/−30 across a 4-seat tabl
 
   // Only first place is a WIN; every other seat lost the table, even the one
   // the ladder still paid for placing 2nd.
-  assert.equal(db.state.trophies.get("11:crash-arena").wins, 1);
-  assert.equal(db.state.trophies.get("11:crash-arena").losses, 0);
+  assert.equal(db.state.trophies.get("11:tower-arena").wins, 1);
+  assert.equal(db.state.trophies.get("11:tower-arena").losses, 0);
   for (const userId of [22, 33, 44]) {
-    assert.equal(db.state.trophies.get(`${userId}:crash-arena`).losses, 1);
-    assert.equal(db.state.trophies.get(`${userId}:crash-arena`).wins, 0);
+    assert.equal(db.state.trophies.get(`${userId}:tower-arena`).losses, 1);
+    assert.equal(db.state.trophies.get(`${userId}:tower-arena`).wins, 0);
   }
 
   // One journal row per human seat, all on the same match id.
-  const events = db.eventsFor("crash-arena").filter((e) => e.match_id === "hand-1");
+  const events = db.eventsFor("tower-arena").filter((e) => e.match_id === "hand-1");
   assert.equal(events.length, 4);
   assert.equal(events.filter((e) => e.outcome === "win").length, 1);
   assert.equal(events.filter((e) => e.outcome === "loss").length, 3);
@@ -795,7 +749,7 @@ test("PLACEMENT WRITER: the ladder pays +30/+10/−10/−30 across a 4-seat tabl
 
 test("PLACEMENT WRITER: tied seats share the average of the ranks they span", async () => {
   const db = makeFakeDb({ users: TABLE_USERS });
-  for (const user of TABLE_USERS) seedTrophyRow(db, user.id, "crash-arena", 100);
+  for (const user of TABLE_USERS) seedTrophyRow(db, user.id, "tower-arena", 100);
 
   // One survivor (rank 1) and the three players who crashed, all level for
   // last: they share ranks 2..4 → (10 − 10 − 30) / 3 = −10 each.
@@ -835,7 +789,7 @@ test("PLACEMENT WRITER: replaying the same table writes nothing", async () => {
   assert.equal(second.applied, false);
   assert.equal(second.reason, "duplicate");
   assert.equal(db.writes().length, writesAfterFirst);
-  assert.equal(db.eventsFor("crash-arena").length, 4);
+  assert.equal(db.eventsFor("tower-arena").length, 4);
 });
 
 test("PLACEMENT WRITER: a partial replay is refused for the whole table", async () => {
@@ -895,10 +849,10 @@ test("PLACEMENT WRITER: the ladder share can never come from the caller", async 
   });
   assert.equal(result.applied, true);
   assert.deepEqual(result.places.map((p) => p.nominalDelta), [30, 10, -10, -30]);
-  assert.equal(db.state.trophies.get("11:crash-arena").trophies, 30);
+  assert.equal(db.state.trophies.get("11:tower-arena").trophies, 30);
   // The unseeded seats start at 0, so both losses clamp to nothing.
-  assert.equal(db.state.trophies.get("33:crash-arena").trophies, 0);
-  assert.equal(db.state.trophies.get("44:crash-arena").trophies, 0);
+  assert.equal(db.state.trophies.get("33:tower-arena").trophies, 0);
+  assert.equal(db.state.trophies.get("44:tower-arena").trophies, 0);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1072,15 +1026,15 @@ test("MINI GOLF SECURITY: trophy counts are never taken from a client-shaped pay
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 8. Writer: cap behaviour
+// 8. Writer: no cap
 // ════════════════════════════════════════════════════════════════════════
 
-test("WRITER CAP: a win at 1,000 stays at 1,000 and reports the cap", async () => {
+test("WRITER: a win at the old 1,000 ceiling keeps climbing", async () => {
   const db = makeFakeDb({
     users: TWO_USERS,
     seededEvents: [],
   });
-  // Seed a near-cap row directly through the fake state.
+  // Seed a row at the number that used to be the hard ceiling.
   db.state.trophies.set("11:chess", {
     user_id: 11,
     game_key: "chess",
@@ -1097,10 +1051,8 @@ test("WRITER CAP: a win at 1,000 stays at 1,000 and reports the cap", async () =
   const result = await applyTrophyResult({ tx: db.tx, ...WIN_ARGS });
   assert.equal(result.applied, true);
   assert.equal(result.winner.trophiesBefore, 1000);
-  assert.equal(result.winner.trophiesAfter, 1000);
-  assert.equal(result.winner.delta, 0);
-  assert.equal(result.winner.complete, true);
-  assert.equal(result.winner.phase, "elo");
+  assert.equal(result.winner.trophiesAfter, 1030); // +30 — no ceiling
+  assert.equal(result.winner.delta, 30);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1170,12 +1122,14 @@ test("MIGRATION: 0173/0174/0175 are present and registered in the drizzle journa
   ]) {
     assert.ok(fs.existsSync(file), `${file} must exist`);
   }
-  // The cap must be enforced at the database level too. 0177 lowers it to 1,000.
-  const table = fs.readFileSync(
-    "src/db/migrations/0177_trophy_cap_and_prestige_regate.sql",
+  // The 1,000 cap is removed: migration 0184 rebuilds the constraint as a
+  // floor-only guard so a trophy count can keep climbing without limit.
+  const cap = fs.readFileSync(
+    "src/db/migrations/0184_remove_trophy_cap.sql",
     "utf8",
   );
-  assert.match(table, /trophies.*<= 1000|<= 1000.*trophies/s);
+  assert.match(cap, /DROP CONSTRAINT IF EXISTS "player_trophies_band"/);
+  assert.match(cap, /"trophies" >= 0 AND "peak_trophies" >= 0/);
 });
 
 test("INVARIANT: trophies.js never imports the economy/XP/battlepass modules", () => {
@@ -1250,9 +1204,7 @@ const WIRING = [
   ["precision", "src/lib/precision/finishMatch.ts"],
   ["mines-pvp", "src/lib/mines-pvp/serverStore.js"],
   ["keno-pvp", "src/lib/keno-pvp/serverStore.js"],
-  ["plinko-pvp", "src/lib/plinko-pvp/serverStore.js"],
   ["lane-rush-duel", "src/lib/lane-rush-duel/serverStore.js"],
-  ["blackjack-pvp", "src/lib/blackjack-pvp/serverStore.js"],
   ["dice-flush", "src/app/api/dice-flush/_lib.js"],
   ["rps-pvp", "src/lib/rps-pvp/serverStore.js"],
   ["odds-pvp", "src/app/api/odds/pvp/pick/route.ts"],
@@ -1261,10 +1213,7 @@ const WIRING = [
   // The multi-seat tables use the placement form of the SAME ±30 (first place
   // wins, every other human seat loses), which is a separate writer because it
   // settles N seats in one idempotent journal write.
-  ["crash-arena", "src/lib/crash-poker/settleHand.ts", "applyPlacementTrophies"],
   ["tower-arena", "src/lib/tower-arena/serverStore.ts", "applyPlacementTrophies"],
-  // Roulette is a duel (two seats), so it uses the original 1v1 writer.
-  ["roulette-pvp", "src/lib/roulette-pvp/serverStore.js"],
   // Mini Golf is a 1v1 duel; its winner is derived server-side from the
   // deterministic shot simulation, so it uses the original 1v1 writer.
   ["mini-golf", "src/lib/mini-golf/serverStore.ts"],

@@ -7,8 +7,6 @@
  * Verifies:
  *  - /api/user/daily-loss reads the maintained users counters (one indexed
  *    row) instead of scanning game history tables
- *  - /api/user/daily-loss keeps crash-arena parity (entries → rounds →
- *    tables join, settled only, same pot/rake math as bet-history)
  *  - applyLeaderboardCounters is outcome-driven and moves ONLY the skill
  *    counters the leaderboards read (wins/losses/win_rate/streaks/pvp_wins)
  *    — it never touches a token- or XP-denominated column
@@ -86,11 +84,7 @@ test("endpoint returns { success: true, net }", () => {
 
 test("endpoint does NOT fan out across game history tables", () => {
   const fanOutTables = [
-    "rouletteGames",
-    "blackjackGames",
     "minesGames",
-    "plinkoGames",
-    "crashGames",
     "kenoPvpMatches",
     "poolMatches",
     "hexDuelGames",
@@ -107,28 +101,6 @@ test("endpoint does NOT fan out across game history tables", () => {
       `must NOT query ${table} — the counters replace the history fan-out`,
     );
   }
-});
-
-test("endpoint keeps crash-arena parity via entries → rounds → tables join", () => {
-  assert.match(endpoint, /from\(crashArenaEntries\)/, "must read crash_arena_entries");
-  assert.match(endpoint, /innerJoin\(\s*crashArenaRounds/, "must join crash_arena_rounds");
-  assert.match(endpoint, /innerJoin\(\s*crashArenaTables/, "must join crash_arena_tables");
-  assert.match(
-    endpoint,
-    /eq\(crashArenaRounds\.status,\s*"settled"\)/,
-    "must only count settled rounds (same as bet-history)",
-  );
-  assert.match(
-    endpoint,
-    /gte\(crashArenaRounds\.createdAt,\s*startOfTodayUtc\(\)\)/,
-    "must filter to today's rounds",
-  );
-});
-
-test("endpoint applies the same pot/rake math as bet-history for crash arena", () => {
-  assert.match(endpoint, /pot\s*\*\s*0\.05/, "must subtract the 5% rake from the pot");
-  assert.match(endpoint, /payout\s*-\s*wager/, "winner net must be payout minus wager");
-  assert.match(endpoint, /net\s*-=\s*wager/, "loser/folded net must be minus wager");
 });
 
 test("endpoint response is marked private (never CDN-cached)", () => {

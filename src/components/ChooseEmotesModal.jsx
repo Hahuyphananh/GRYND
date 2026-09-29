@@ -10,8 +10,6 @@
 //     order, plus the permanent GG / NICE MOVE text emotes),
 //   * every OWNED emote (click to equip — appended at the end; click an
 //     equipped emote or one of its slots to unequip),
-//   * locked Battle Pass emotes with the level they unlock at (never
-//     equipable here — ownership is server-authoritative),
 //   * an "X / 9 equipped" counter and clear-all.
 //
 // Edits are staged locally and saved in ONE request:
@@ -22,7 +20,7 @@
 // pickers refresh their equipped list.
 
 import { useEffect, useRef, useState } from "react";
-import { IconCheck, IconLock, IconX } from "@tabler/icons-react";
+import { IconCheck, IconX } from "@tabler/icons-react";
 import { emoteAssetUrl, MAX_EQUIPPED_EMOTES } from "../lib/emoteAssets";
 
 const RARITY_COLORS = {
@@ -143,7 +141,6 @@ export default function ChooseEmotesModal({ open, onClose }) {
 
   const byKey = new Map(catalog.map((entry) => [entry.key, entry]));
   const owned = catalog.filter((entry) => entry.owned);
-  const locked = catalog.filter((entry) => !entry.owned);
 
   // Slot tiles [1..9] filled by the current draft order.
   const slotEntries = Array.from({ length: MAX_EQUIPPED_EMOTES }, (_, index) =>
@@ -335,44 +332,6 @@ export default function ChooseEmotesModal({ open, onClose }) {
                 )}
               </section>
 
-              {/* Locked (Battle Pass) emotes */}
-              {locked.length > 0 && (
-                <section>
-                  <h3 className="mb-2 text-sm font-bold uppercase tracking-[0.16em] text-[#f5ff3b]/80">
-                    Locked Emotes
-                  </h3>
-                  <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-                    {locked.map((entry) => (
-                      <div
-                        key={entry.key}
-                        className="relative flex flex-col items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] p-2.5 opacity-70"
-                        title={
-                          entry.unlockLevel
-                            ? `Battle Pass Level ${entry.unlockLevel} reward`
-                            : "Locked"
-                        }
-                      >
-                        <span className="relative grayscale">
-                          {tileArtwork(entry, "h-14 w-14 sm:h-16 sm:w-16")}
-                          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-[#f5ff3b]/50 bg-[#1a1a2e] text-[#f5ff3b]">
-                            <IconLock size={11} />
-                          </span>
-                        </span>
-                        <span className="max-w-full truncate text-[10px] font-semibold text-white/50">
-                          {entry.name}
-                        </span>
-                        <span className="text-[9px] text-[#9dd8ff]/60">
-                          {entry.unlockLevel ? `Battle Pass Lv ${entry.unlockLevel}` : entry.rarity}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-[11px] text-[#9dd8ff]/60">
-                    Unlock these animated emotes by reaching their Battle Pass level. Unlocked
-                    emotes appear here and can be equipped — nothing auto-equips.
-                  </p>
-                </section>
-              )}
             </div>
           )}
         </div>

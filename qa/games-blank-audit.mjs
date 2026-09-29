@@ -62,11 +62,9 @@ const CONSOLE_NOISE =
 // multiplayer and history pages that hang off them.
 const ROUTES = [
   { game: "Hub", path: "/casino" },
-  { game: "Blackjack", path: "/games/blackjack" },
   { game: "Chess", path: "/games/chess" },
   { game: "Chess vs AI", path: "/games/chess/ai" },
   { game: "Chess game", path: "/games/chess-game/1" },
-  { game: "Crash Arena", path: "/games/crash-arena" },
   { game: "Dice Flush", path: "/games/dice-flush" },
   { game: "Dots and Boxes", path: "/games/dots-and-boxes" },
   { game: "Four-In-A-Row", path: "/games/four-in-a-row" },
@@ -81,11 +79,9 @@ const ROUTES = [
   { game: "Mines PvP", path: "/games/mines-pvp" },
   { game: "Neon Flush", path: "/games/neon-flush" },
   { game: "Odds", path: "/games/odds" },
-  { game: "Plinko", path: "/games/plinko" },
   { game: "Pool Masters", path: "/games/pool-masters" },
   { game: "Precision", path: "/games/precision" },
   { game: "Precision test", path: "/games/precision/test" },
-  { game: "Roulette", path: "/games/roulette" },
   { game: "RPS", path: "/games/rps" },
   { game: "RPS vs AI", path: "/games/rps/play-ai" },
   { game: "Tower Arena", path: "/games/tower-arena" },
@@ -98,19 +94,15 @@ const ROUTES = [
 // a synthetic id so the "no such match" / failed-fetch render path is exercised
 // — that path must still paint something (a message, not a blank shell).
 const MATCH_ROUTES = [
-  { game: "Blackjack match", path: "/games/blackjack/1" },
   { game: "Chess table", path: "/games/chess/10" },
-  { game: "Crash Arena table", path: "/games/crash-arena/table/1" },
   { game: "Dots and Boxes game", path: "/games/dots-and-boxes/game/1" },
   { game: "Four-In-A-Row game", path: "/games/four-in-a-row/game/1" },
   { game: "Keno PvP match", path: "/games/keno-pvp/1" },
   { game: "Lane Runner match", path: "/games/lane-runner/1" },
   { game: "Memory Grid match", path: "/games/memory-grid/1" },
   { game: "Mines PvP match", path: "/games/mines-pvp/1" },
-  { game: "Plinko match", path: "/games/plinko/1" },
   { game: "Pool Masters game", path: "/games/pool-masters/game/1" },
   { game: "Precision game", path: "/games/precision/game/1" },
-  { game: "Roulette match", path: "/games/roulette/1" },
   { game: "RPS game", path: "/games/rps/game/1" },
   { game: "Tower Arena game", path: "/games/tower-arena/game/1" },
   { game: "Uno game", path: "/games/uno/game/1" },

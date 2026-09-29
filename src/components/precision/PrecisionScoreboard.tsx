@@ -183,11 +183,6 @@ function PrecisionScoreboardImpl({
             >
               {seat1Player?.name ?? t("games.precision.seat_alpha")}
             </span>
-            {seat1Player?.prestigeBadge && (
-              <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                {seat1Player.prestigeBadge}
-              </span>
-            )}
           </p>
           {lastRoundStops && (
             <RankBadge
@@ -228,11 +223,6 @@ function PrecisionScoreboardImpl({
             >
               {seat2Player?.name ?? t("games.precision.seat_bravo")}
             </span>
-            {seat2Player?.prestigeBadge && (
-              <span className="ml-1 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[8px] font-semibold uppercase tracking-wide text-violet-300">
-                {seat2Player.prestigeBadge}
-              </span>
-            )}
           </p>
 
           {lastRoundStops && (

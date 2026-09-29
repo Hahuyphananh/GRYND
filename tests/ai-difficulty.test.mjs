@@ -30,12 +30,6 @@ import {
   readStoredAiDifficulty,
 } from "../src/lib/aiDifficulty.ts";
 import { BASE_AI_AIM_SPREAD_RAD, poolAiAimSpreadRad } from "../src/lib/pool/ai.ts";
-import {
-  CRASH_AI_DIFFICULTIES,
-  crashAiDifficultyLabel,
-  getCrashBotFoldTarget,
-  toCrashAiDifficulty,
-} from "../src/lib/crash-arena/botStrategy.js";
 
 // pool-masters' in-match planner is a separate, lightweight planner from the
 // full engine in `lib/pool/ai.ts`, and it used a flat ±0.035 rad aim jitter that
@@ -57,57 +51,6 @@ test("pool's in-match planner gets a per-tier aim spread that leaves normal unto
   assert.equal(poolAiAimSpreadRad(null), normal);
   assert.equal(poolAiAimSpreadRad(undefined), normal);
   assert.equal(poolAiAimSpreadRad("hard"), hard);
-});
-
-// Crash Arena's seats and rows already store `medium` from before the shared
-// scale existed, so the lobby picker's canonical `normal` has to arrive at the
-// SAME tier — otherwise a player who picks Normal in the lobby gets a different
-// bot than the `medium` they used to get.
-test("crash-arena accepts the canonical tier names as its own stored ones", () => {
-  // The canonical spelling and this game's stored spelling are one tier.
-  assert.equal(toCrashAiDifficulty("normal"), "medium");
-  assert.equal(toCrashAiDifficulty("medium"), "medium");
-  assert.equal(toCrashAiDifficulty("easy"), "easy");
-  assert.equal(toCrashAiDifficulty("hard"), "hard");
-  // Anything unexpected must land on the middle tier, never on `easy` — an
-  // unrecognised value must not quietly hand the player a weaker bot.
-  assert.equal(toCrashAiDifficulty(undefined), "medium");
-  assert.equal(toCrashAiDifficulty(null), "medium");
-  assert.equal(toCrashAiDifficulty(""), "medium");
-  assert.equal(toCrashAiDifficulty("bogus"), "medium");
-  // Every stored key the game already has must still resolve to itself, or an
-  // existing row would change tier on the next round.
-  for (const key of CRASH_AI_DIFFICULTIES) {
-    assert.equal(toCrashAiDifficulty(key), key);
-  }
-  // The player never sees two names for one tier: `medium` renders as Normal.
-  assert.equal(crashAiDifficultyLabel("medium"), "Normal");
-  assert.equal(crashAiDifficultyLabel("normal"), "Normal");
-  assert.equal(crashAiDifficultyLabel("easy"), "Easy");
-  assert.equal(crashAiDifficultyLabel("hard"), "Hard");
-});
-
-test("crash-arena's bot still folds per tier when handed a canonical tier name", () => {
-  // The bug this guards: the routes used to test membership in the STORED list,
-  // so a canonical `normal` from the shared picker failed the check and fell
-  // back — fine for `normal`, silently wrong if the lists ever diverge.
-  for (const tier of ["easy", "normal", "hard"]) {
-    const target = getCrashBotFoldTarget(tier);
-    assert.equal(typeof target, "number");
-    assert.ok(Number.isFinite(target), `${tier} must produce a fold target`);
-  }
-  // The bands are ordered, so the tiers are genuinely different; a fixed
-  // algorithm over many draws must separate them.
-  const mean = (tier) => {
-    let sum = 0;
-    for (let i = 0; i < 400; i += 1) sum += getCrashBotFoldTarget(tier);
-    return sum / 400;
-  };
-  const easy = mean("easy");
-  const normal = mean("normal");
-  const hard = mean("hard");
-  assert.ok(easy < normal, "easy must fold earlier than normal");
-  assert.ok(normal < hard, "hard must fold later than normal");
 });
 
 test("the canonical scale is easy | normal | hard, with normal as the default", () => {

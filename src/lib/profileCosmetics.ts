@@ -65,7 +65,7 @@ export type FrameRing = {
 
 /**
  * Render className for a NON-frame cosmetic effect (avatar effect, username
- * shimmer, chat shimmer, profile glow, prestige effect). These are pure CSS
+ * shimmer, chat shimmer, profile glow, elite effect). These are pure CSS
  * classes shipped in globals.css, keyed by the catalog `cssClass`; anything
  * unknown or malformed renders nothing. Returns null when there is no usable
  * class so callers can omit the prop entirely.

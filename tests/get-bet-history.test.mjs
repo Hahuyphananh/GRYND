@@ -149,11 +149,7 @@ test("returns 404 when user not found in DB", () => {
 
 // Tables queried directly via db.select().from(<table>)
 const DIRECT_TABLES = [
-  "rouletteGames",
-  "blackjackGames",
   "minesGames",
-  "plinkoGames",
-  "crashGames",
   "rpsGames",
   "unoGames",
   "chessGames",
@@ -166,7 +162,6 @@ const DIRECT_TABLES = [
   "oddsGames",
   "laneRushDuelMatches",
   "memoryGridMatches",
-  "crashArenaEntries",
   "miniGolfMatches",
 ];
 
@@ -184,14 +179,6 @@ for (const table of DIRECT_TABLES) {
 test("queries diceFlush via players → rooms join", () => {
   assert.match(source, /from\(diceFlushPlayers\)/, "must use diceFlushPlayers in from()");
   assert.match(source, /innerJoin\(diceFlushRooms/, "must join diceFlushRooms");
-});
-
-// Crash Arena queried via entries → rounds → tables join (so AI practice
-// rounds can be labeled "Crash Arena vs AI").
-test("queries crashArena via entries → rounds → tables join", () => {
-  assert.match(source, /from\(crashArenaEntries\)/, "must use crashArenaEntries in from()");
-  assert.match(source, /innerJoin\(crashArenaRounds/, "must join crashArenaRounds");
-  assert.match(source, /innerJoin\(crashArenaTables/, "must join crashArenaTables");
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -229,11 +216,12 @@ test("no currentStreak recalculation variable", () => {
 // Verify drizzle-orm imports
 // ═══════════════════════════════════════════════════════════════
 
-test("sql IS imported from drizzle-orm (needed for the jsonb game queries)", () => {
+test("drizzle-orm imports stay minimal (sql is gone with the jsonb game queries)", () => {
   const importMatch = source.match(/import\s*\{([^}]+)\}\s*from\s*"drizzle-orm"/);
   assert.ok(importMatch, "drizzle-orm import must exist");
   const imports = importMatch[1];
-  assert.match(imports, /\bsql\b/, "sql must be imported (used by the jsonb game queries)");
+  assert.doesNotMatch(imports, /\bsql\b/, "sql must not be imported once unused");
+  assert.doesNotMatch(imports, /\binArray\b/, "inArray must not be imported once unused");
   assert.match(imports, /\beq\b/, "eq must still be imported");
   assert.match(imports, /\bor\b/, "or must still be imported");
   assert.match(imports, /\band\b/, "and must be imported (used by hex duel query)");
@@ -268,9 +256,20 @@ test("diceFlush formatter exists and is included in allBets", () => {
   assert.match(source, /\.\.\.diceFlushFormatted/, "must spread into allBets");
 });
 
-test("crashArena formatter exists and is included in allBets", () => {
-  assert.match(source, /crashArenaFormatted/, "must have crashArena formatter");
-  assert.match(source, /\.\.\.crashArenaFormatted/, "must spread into allBets");
+test("roulette / blackjack / plinko / crash are gone: no formatters, no tables", () => {
+  for (const name of ["roulette", "blackjack", "plinko", "crash"]) {
+    assert.doesNotMatch(
+      source,
+      new RegExp(`${name}Formatted`, "i"),
+      `${name} formatter must be removed`,
+    );
+    assert.doesNotMatch(
+      source,
+      new RegExp(`\\b${name}Games\\b`, "i"),
+      `${name}_games must not be queried`,
+    );
+  }
+  assert.doesNotMatch(source, /\bcrashArena\w*/i, "crash arena must be removed entirely");
 });
 
 test("miniGolf formatter exists and is included in allBets", () => {

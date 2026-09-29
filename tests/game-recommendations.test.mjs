@@ -226,13 +226,13 @@ test("the PvP preference is honest but uniform: every game is a 1v1 duel", () =>
 
 test("strategy preference ranks strategy games first", () => {
   assertTagFloatsToTop({ game_types: ["strategy"] }, "strategy");
-  // Catalog order breaks the tie: Blackjack is the first strategy game.
-  assert.equal(idsOf({ game_types: ["strategy"] })[0], "blackjack");
+  // Catalog order breaks the tie: Chess is the first strategy game.
+  assert.equal(idsOf({ game_types: ["strategy"] })[0], "chess");
 });
 
 test("fast-paced preference ranks fast games first", () => {
   assertTagFloatsToTop({ game_types: ["fast_paced"] }, "fast_paced");
-  assert.equal(idsOf({ game_types: ["fast_paced"] })[0], "roulette");
+  assert.equal(idsOf({ game_types: ["fast_paced"] })[0], "keno");
 });
 
 test("casual preference ranks pick-up-and-play games first", () => {
@@ -244,7 +244,7 @@ test("casual preference ranks pick-up-and-play games first", () => {
 
 test("luck/chance preference ranks high-variance games first", () => {
   assertTagFloatsToTop({ game_types: ["luck_chance"] }, "chance");
-  assert.equal(idsOf({ game_types: ["luck_chance"] })[0], "roulette");
+  assert.equal(idsOf({ game_types: ["luck_chance"] })[0], "mines-pvp");
 });
 
 test("competitive preference ranks ladder-style games first", () => {
@@ -313,7 +313,7 @@ test("combination: chance + fun puts the casual lucky game on top", () => {
   // Then the remaining chance games, in featured order, ahead of casual-only.
   assert.deepEqual(
     ranked.slice(1, 6).map((g) => g.id),
-    ["roulette", "mines-pvp", "plinko", "crash", "yahtzee"]
+    ["mines-pvp", "yahtzee", "memory-grid", "uno", "rps"]
   );
 });
 
@@ -391,7 +391,7 @@ test("incomplete or unknown answers never break the ranking", () => {
   const mixed = recommendGames({ game_types: ["strategy"], experience: "wizard" });
   assert.equal(mixed.personalized, true);
   assert.equal(mixed.experienceMessageKey, null);
-  assert.equal(mixed.recommendations[0].id, "blackjack");
+  assert.equal(mixed.recommendations[0].id, "chess");
 });
 
 test("answers that only express breadth or discovery do not reorder anything", () => {
@@ -464,9 +464,9 @@ test("scores are the sum of the stated weights, and every score is explained", (
   assert.equal(chess.score, RECOMMENDATION_WEIGHTS.gameType + RECOMMENDATION_WEIGHTS.priority);
   assert.deepEqual(chess.reasons, ["game_type:strategy", "priority:ranking_up"]);
   // A game nothing matched is explained as such.
-  const roulette = ranked.find((g) => g.id === "roulette");
-  assert.equal(roulette.score, 0);
-  assert.deepEqual(roulette.reasons, []);
+  const unmatched = ranked.find((g) => g.id === "memory-grid");
+  assert.equal(unmatched.score, 0);
+  assert.deepEqual(unmatched.reasons, []);
   // Every reason code names its question and its answer value.
   for (const game of ranked) {
     for (const reason of game.reasons) {
@@ -567,7 +567,7 @@ test("a partial answer set still ranks, but is not complete", () => {
   assert.equal(partial.personalized, true);
   assert.equal(partial.complete, false);
   assert.equal(partial.source, "questionnaire");
-  assert.equal(partial.recommendations[0].id, "blackjack");
+  assert.equal(partial.recommendations[0].id, "chess");
 
   const full = recommendGames(FULL_ANSWERS);
   assert.equal(full.personalized, true);

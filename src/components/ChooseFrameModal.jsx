@@ -8,7 +8,7 @@ import { cosmeticFrameRing } from "../lib/profileCosmetics";
 //
 // Previously the profile edit popup opened a separate picker per category
 // (frame, badge, avatar effect, username effect, chat effect, profile glow,
-// prestige effect). That spread a single "dress up my profile" job across
+// elite effect). That spread a single "dress up my profile" job across
 // seven modals, and a row only appeared when the user already owned something
 // in that category. This picker lists EVERY category the user owns items in —
 // frames and effects together — and equips the chosen one through the
@@ -27,7 +27,7 @@ const CATEGORY_ORDER = [
   "username_effect",
   "chat_effect",
   "profile_glow",
-  "prestige_effect",
+  "elite_effect",
 ];
 
 const CATEGORY_META = {
@@ -46,9 +46,9 @@ const CATEGORY_META = {
     label: "Profile Glow",
     hint: "Rings your whole profile card.",
   },
-  prestige_effect: {
-    label: "Prestige Effect",
-    hint: "Reserved for prestige players.",
+  elite_effect: {
+    label: "Elite Effect",
+    hint: "A distinguished aura for veteran profiles.",
   },
 };
 
@@ -224,11 +224,8 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
             </div>
           ) : owned.length === 0 ? (
             <div className="rounded-lg border border-[#00e5ff]/20 bg-[#00e5ff]/5 px-4 py-6 text-center text-sm text-[#9dd8ff]">
-              You don&apos;t own any cosmetics yet. Earn them on the{" "}
-              <a href="/battlepass" className="font-semibold text-[#00e5ff] underline">
-                Battle Pass
-              </a>{" "}
-              to unlock a frame, badge or effect.
+              You don&apos;t own any cosmetics yet. Play games to unlock a
+              frame, badge or effect.
             </div>
           ) : (
             <div className="space-y-5">

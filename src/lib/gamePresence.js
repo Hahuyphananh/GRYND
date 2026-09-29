@@ -88,12 +88,8 @@ export const PRESENCE_GAME_IDS = GAME_CATALOG.map((game) => game.id);
  */
 export const GAME_LABEL_TO_GAME_ID = {
   // ── lobby playsKey / gameLabel values ──────────────────────────────
-  roulette: "roulette",
-  blackjack: "blackjack",
   "mines-duel": "mines-pvp",
   "memory-grid": "memory-grid",
-  "plinko-duel": "plinko",
-  "crash-arena": "crash",
   chess: "chess",
   keno: "keno",
   "rock-paper-scissors": "rps",

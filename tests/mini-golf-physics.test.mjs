@@ -29,7 +29,6 @@ import {
   POWER_SCALE,
 } from "../src/lib/mini-golf/constants.ts";
 import { hashSeed } from "../src/lib/physics2d/deterministic.ts";
-import { hashSeed as plinkoHashSeed } from "../src/lib/plinko-pvp/physics.js";
 
 /**
  * A hand-built hole so assertions can be exact. `friction`/`wallRestitution`
@@ -408,24 +407,24 @@ test("default config mirrors the exported tuning constants", () => {
   assert.equal(DEFAULT_CONFIG.ballRadius, BALL_RADIUS);
 });
 
-// ── Shared-layer parity (guards the extraction) ────────────────────────────
+// ── Shared-layer (guards the extraction) ────────────────────────────────────
 
-test("the shared seed hash matches the Plinko implementation bit-for-bit", () => {
+test("the shared seed hash is deterministic and collision-resistant enough", () => {
   const samples = [
     "",
     "a",
     "mini-golf:course:1:1",
-    "plinko:13:p1:ball1:manual",
+    "mini-golf:13:p1:shot1:manual",
     "unicode-\u00e9\u00e0\u4e2d\u6587",
     "x".repeat(200),
   ];
-  for (const sample of samples) {
-    assert.equal(
-      hashSeed(sample),
-      plinkoHashSeed(sample),
-      "physics2d.hashSeed drifted from plinko-pvp.hashSeed",
-    );
+  const hashes = samples.map((sample) => hashSeed(sample));
+  for (let i = 0; i < samples.length; i += 1) {
+    // Same input → same seed, every time.
+    assert.equal(hashSeed(samples[i]), hashes[i]);
   }
+  // Distinct inputs should not collapse onto one seed.
+  assert.equal(new Set(hashes).size, hashes.length);
 });
 
 // ── Pass-through guard (a wall can never be crossed) ───────────────────────

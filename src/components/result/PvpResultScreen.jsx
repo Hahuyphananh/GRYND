@@ -7,8 +7,8 @@
  * Every PvP game replaces its bespoke WIN/LOSS/DRAW popup with this shared
  * full-screen result overlay. It never computes or invents rewards — games
  * pass the REAL values already returned by their existing match APIs, and
- * any section (Battle Pass, Prestige, duration, opponent, details…) is
- * simply hidden when its data is absent.
+ * any section (Elo / trophies, duration, opponent, details…) is simply hidden
+ * when its data is absent.
  *
  * Two live progression values are read from the platform's OWN endpoints
  * when the game doesn't pass them explicitly: the player's current win
@@ -22,8 +22,8 @@
  *   1. Detect the finished state exactly as today (status === "finished",
  *      a result phase, etc.) and keep rendering the game page underneath.
  *   2. Map the existing winner/result to `outcome` ("win" | "loss" | "draw").
- *   3. Battle Pass / Prestige go in `progress` only if the match payload
- *      carries them — otherwise omit (sections auto-hide, no fake numbers).
+ *   3. Elo / trophy progress goes in `progress` only if the match payload
+ *      carries it — otherwise omit (sections auto-hide, no fake numbers).
  *      Token/payout figures are deliberately NOT part of this screen: the
  *      platform is free-play, so no result popup talks about tokens,
  *      stakes, pots or winnings.
@@ -115,7 +115,7 @@ const panelMotion = {
 
 /**
  * @typedef {Object} ResultProgress
- * @property {string} label   e.g. "Battle Pass"
+ * @property {string} label   e.g. "Overall Elo"
  * @property {string} from    e.g. "72"
  * @property {string} to      e.g. "73"
  * @property {number} percent 0–100 fill for the bar
@@ -594,7 +594,7 @@ export default function PvpResultScreen({
 
             {/* Progression — only rows whose data actually exists.
                 Sequenced AFTER the outcome, never with it: the win/loss hero
-                lands first, then progression (Overall Elo, Battle Pass)
+                lands first, then progression (Overall Elo, trophies)
                 registers one short beat later, so the order the player reads
                 is result → progression → details. A rise + fade with a hair
                 of scale, 0.22s, gated through the shared helper — with reduced

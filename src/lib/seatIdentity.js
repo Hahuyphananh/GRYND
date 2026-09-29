@@ -4,7 +4,7 @@
 // display identity in ONE query:
 //   * name       — the real username
 //   * iconKey    — the official Grynd icon key (users.selected_icon)
-//   * nameColor  — the equipped name color (battlepass glow takes
+//   * nameColor  — the equipped name color (an owned catalog glow takes
 //                  precedence; the GRYND PRO custom chat color only surfaces
 //                  for active members — mirroring the chat message route)
 //

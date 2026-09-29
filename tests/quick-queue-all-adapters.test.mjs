@@ -5,18 +5,17 @@ import fs from "node:fs";
 const worker = fs.readFileSync("src/lib/quickQueueWorker.ts", "utf8");
 for (const adapter of [
   "createOrJoinMinesMatch",
-  "createOrJoinPlinkoMatch",
-  "createOrJoinBlackjackMatch",
-  "createOrJoinRouletteMatch",
   "createOrJoinKenoMatch",
   "createOrJoinLaneRushMatch",
+  "createOrJoinMiniGolfMatch",
   "createOrJoinFourInARowDestination",
+  "createOrJoinMemoryGridDestination",
 ]) {
   test(`${adapter} is registered`, () => assert.match(worker, new RegExp(adapter)));
 }
 
 test("all supported game keys have adapters", () => {
-  for (const game of ["mines-pvp", "plinko-pvp", "blackjack-pvp", "roulette-pvp", "keno-pvp", "lane-rush-duel", "four-in-a-row"]) {
+  for (const game of ["mines-pvp", "keno-pvp", "lane-rush-duel", "four-in-a-row", "memory-grid", "mini-golf"]) {
     assert.match(worker, new RegExp(`\\"${game}\\"`));
   }
 });

@@ -11,12 +11,11 @@
 // patterns. No tokens are ever wagered.
 //
 // ?onboarding=1 (from the /welcome first-match step) reuses this exact game
-// as the first-game tutorial: a one-line hint before the first throw, then
-// at the terminal state the shared PvpResultScreen shows the one-time
-// first-match Battle Pass bonus + progress with a "View Battle Pass"
-// next step. Completion is claimed server-side exactly once
-// (/api/onboarding/first-game-complete) so refresh/double-taps can never
-// double-grant the bonus. Everyone else — including replays after onboarding —
+// as the first-game tutorial: a one-line hint before the first throw, then at
+// the terminal state the shared PvpResultScreen shows the result. Completion
+// is claimed server-side exactly once (/api/onboarding/first-game-complete)
+// so refresh/double-taps can never double-claim. Everyone else — including
+// replays after onboarding —
 // gets plain free practice, unchanged.
 
 import { useEffect, useRef, useState } from "react";
@@ -273,8 +272,8 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
   }, [tutorial]);
 
   // Real terminal state only (matchOver, not merely opening the game): claim
-  // the one-time completion + Battle Pass bonus. The server-side claim is atomic and
-  // idempotent, so refresh / double-taps / extra tabs can never double-grant.
+  // the one-time completion. The server-side claim is atomic and idempotent,
+  // so refresh / double-taps / extra tabs can never double-claim.
   useEffect(() => {
     if (tutorial.mode !== "active" || !matchOver) return;
     if (bonusPostedRef.current) return;
@@ -440,43 +439,6 @@ export default function RPSPlayAiPage({ onboarding = false }: { onboarding?: boo
                 <p className="text-sm font-semibold text-[#9dd8ff]">Finishing your first match…</p>
               </div>
             </div>
-          ) : tutorial.mode === "complete" && tutorial.bonus && !tutorial.bonus.alreadyCompleted ? (
-            // First-match progression moment: real server numbers for the
-            // Battle Pass row, then a clear next step.
-            <PvpResultScreen
-              open
-              outcome={wonMatch ? "win" : "loss"}
-              headline={
-                wonMatch
-                  ? "You win your first free match!"
-                  : "First match done — the AI got you this time."
-              }
-              subline="Finishing your first match earned a one-time Battle Pass bonus."
-              gameName="RPS vs AI"
-              opponent={{ name: "AI", iconKey: null, isAi: true }}
-              progress={
-                tutorial.bonus.leveledUp
-                  ? [
-                      {
-                        label: "Battle Pass",
-                        from: String(tutorial.bonus.fromLevel),
-                        to: String(tutorial.bonus.toLevel),
-                        percent: 100,
-                      },
-                    ]
-                  : []
-              }
-              summary={[
-                { label: "Final Score", value: `${myWins} – ${aiWins}` },
-                { label: "Rounds", value: `${history.length} of ${TOTAL_ROUNDS}` },
-              ]}
-              playAgain={{
-                label: "View Battle Pass",
-                onClick: () => router.push("/battlepass"),
-              }}
-              rematch={{ label: "RUN IT BACK", onClick: restartAfterFirstMatch }}
-              onReturnToLobby={() => router.push("/casino/rps")}
-            />
           ) : (
             // Default result — plain free practice. In tutorial mode this
             // also covers the "bonus claim pending/failed" fallback, so Play

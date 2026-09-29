@@ -7,7 +7,7 @@ result. See *Lobby badge* for the UI half.
 ## What it answers
 
 ```
-game → number of currently active players        e.g. { roulette: 12, crash: 8, rps: 5 }
+game → number of currently active players        e.g. { mines-pvp: 12, keno: 8, rps: 5 }
 ```
 
 Aggregate counts **only**. No user ids, emails, usernames, session ids or
@@ -22,7 +22,7 @@ with the columns this feature needs:
 | Column | Meaning |
 |---|---|
 | `user_id` | `users.id`, from the Clerk session — never a client value |
-| `game_key` | **canonical game id** (the lobby's `leaderboardKey`, e.g. `mines-pvp`, `rps`, `crash`) |
+| `game_key` | **canonical game id** (the lobby's `leaderboardKey`, e.g. `mines-pvp`, `rps`, `keno`) |
 | `game_id` | reserved integer (0012); unused today |
 | `session_id` | client tab/session id — informational, **not** part of the unique key |
 | `last_seen_at` | last heartbeat; the activity window is measured from here |
@@ -83,7 +83,7 @@ immune either way: it deletes on a one-day threshold.
 | `GET /api/casino/active-players` | public | `{ success, counts, generatedAt }`; Redis-cached 10s (`CacheKeys.activePlayers()`), `s-maxage=10`; fails closed to `{}` |
 
 `gameLabel` is the value game pages **already** pass to `<CreatorModeHost>` /
-`useRecordPlayedGame` (`mines-duel`, `rock-paper-scissors`, `crash-arena`, …).
+`useRecordPlayedGame` (`mines-duel`, `rock-paper-scissors`, `four-in-a-row`, …).
 The label → id map lives in exactly one place, `src/lib/gamePresence.js`, so a
 page needs no changes and an unknown label can never create a row.
 `precision-test` is intentionally not in the map (developer harness, not a
@@ -104,7 +104,7 @@ Two files carry the client half; no game page implements presence itself.
 | Edge | Behaviour |
 |---|---|
 | `active` turns true | one beat immediately, then every `PRESENCE_HEARTBEAT_MS`; also re-beats on `visibilitychange`/`online` so a tab the browser throttled is current the moment the player returns |
-| `active` turns false | beats stop. **No leave is sent** — the 180s window absorbs a transient gap (that is what keeps a Crash Arena player counted between rounds) |
+| `active` turns false | beats stop. **No leave is sent** — the 180s window absorbs a transient gap between rounds |
 | `terminal` turns true | beats stop **and** a scoped leave is sent, so a finished match leaves the count at once instead of up to 3 minutes later |
 | component unmounts | scoped leave (sent whenever **this mount beat**, even if it was opted out later), so navigating away is instant |
 | tab/browser closed or crashed | nothing is sent — the server window expires the row |
@@ -123,12 +123,8 @@ to their existing "a real session started" edge.
 
 | Game (canonical id) | Surface(s) | Counts while |
 |---|---|---|
-| roulette | `roulette/[matchId]` | the match is bettable/ready (not the waiting room) → finished/cancelled |
-| blackjack | `blackjack/[matchId]` | the match left `waiting` → finished/cancelled |
 | mines-pvp | `mines-pvp/[matchId]` (`mines-duel`) | past `waiting` → finished/cancelled |
 | memory-grid | `memory-grid/[matchId]` | past `waiting` → until the match is finished or cancelled |
-| plinko | `plinko/[matchId]` (`plinko-duel`) | ready or launchable → finished/cancelled |
-| crash | `crash-arena/table/[tableId]` (hook) | a round is `running`; the gap between rounds is absorbed by the window, leaving the table clears |
 | chess | `chess/ai` (`chess-ai`) and `chess-game/[gameId]` | the game is live → game over / finished / expired |
 | keno | `keno-pvp/[matchId]` | a round is in play → finished/cancelled |
 | uno | `uno/game/[gameId]` (`neon-flush`) | a game is on screen (never the lobby) → end popup |
@@ -149,10 +145,8 @@ to their existing "a real session started" edge.
 - **Waiting rooms / matchmaking do not count.** Every signal above starts past
   the waiting takeover: a player queueing for an opponent is not yet playing.
   Where a game's own `autoStart` already counts its post-matchmaking ready step
-  (roulette, blackjack) that step counts too — the rule is "reuse what the game
-  itself calls a live session", not a new definition per game. The one genuine
-  exception is Crash Arena, where the table itself is the session and the wait
-  between rounds is part of playing.
+  that step counts too — the rule is "reuse what the game itself calls a live
+  session", not a new definition per game.
 - **Finished games stop.** `autoStop` (or the direct `terminal` signal) ends the
   beats and clears the row, so a result screen never keeps a match "playing".
 - **Spectators are never counted.** Every surface that exposes a view-only

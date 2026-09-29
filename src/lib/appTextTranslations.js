@@ -114,145 +114,6 @@ export const APP_TEXT_TRANSLATIONS = {
       colorMint: "Mint",
       colorGold: "Gold",
     },
-    blackjackPvp: {
-        awardRoundDraw: "Round {n} tied",
-        awardRoundOpp: "Round {n} awarded to Opponent",
-        awardRoundYou: "Round {n} awarded to You",
-        betweenRounds: {
-          auto: "Auto",
-          continue: "Continue",
-          continueNow: "Continue now",
-          matchScore: "Score: {p1} – {p2}",
-          nextRoundHint: "Next round starts shortly…",
-          scoreCaption: "Best of 3",
-          subtitle: "Round {n} of {total} starts in {seconds}s…",
-          title: "Round {n} incoming"
-        },
-        bustedPrefix: "Busted!",
-        bustedRecoverHint: "Swap or freeze to recover.",
-        bustedScore: "Busted",
-        forbidden: {
-          desc: "This match is not yours to view.",
-          title: "Not allowed"
-        },
-        aiPlaying: "GRYND AI is playing…",
-        cancelled: {
-          detail:
-            "This match was cancelled. If an opponent had not yet joined, your stake was refunded."
-        },
-        continue: "Continue",
-        errorActionRejected: "Action rejected",
-        errorMatchUnavailable: "Match unavailable",
-        errorNetwork: "Network error",
-        freeMatch: "Free AI match",
-        hit: "Hit",
-        opponentDone: "Opponent's hand hidden",
-        opponentPlaying: "Opponent is playing…",
-        freeze: "Freeze",
-        freezeHint: "Stash your most recently drawn card aside for later",
-        heldAdded: "(added to hand)",
-        heldDiscarded: "(discarded)",
-        heldReserved: "(reserved)",
-        historyDraw: "Tied",
-        historyLose: "Lost",
-        historyRow: "Round {n}, {me}: {myScore} pts vs {opp}: {oppScore} pts",
-        historyTitle: "Round history",
-        historyWin: "Won",
-        invalidId: "Invalid match id",
-        leave: {
-          body: "This is a free practice match — nothing is at stake. Leave and play again any time.",
-          button: "Leave match",
-          confirm: "Leave match",
-          title: "Leave this match?"
-        },
-        lobby: {
-          back: "Back to lobby",
-          cancel: "Cancel lobby",
-          hostId: "Host #{id}",
-          lobbyId: "Lobby #{id}",
-          waitingMatch: "Your lobby #{id} is waiting for an opponent…"
-        },
-        lockedAfterStand: "Hand locked. Both hands reveal when the round ends",
-        matchEndHeader: "Match over",
-        peek: "Peek",
-        peekHint: "Peek at the top of the shoe: the next card you’d HIT",
-        peekOverlayLabel: "Next card",
-        priority: {
-          rule1: "1. Highest score ≤ 21 wins",
-          rule2: "2. Bust loses automatically",
-          rule3: "3. Equal score = tied round",
-          title: "Winner priority"
-        },
-        ptsUnit: "pts",
-        ready: "Ready",
-        resign: {
-          body: "You will forfeit your {amount} stake. Your opponent wins the match.",
-          button: "Resign & return to lobby",
-          cancel: "Keep playing",
-          confirm: "Resign",
-          error: "Unable to resign",
-          loading: "Resigning…",
-          title: "Resign match?"
-        },
-        result: {
-          draw: "Draw",
-          lose: "You lost",
-          win: "You won"
-        },
-        revealTeaser: "Revealing hands…",
-        revealTeaserHint: "Both hands flip simultaneously",
-        roundResult: {
-          drawSubtitle: "No winner — scores are level",
-          drawTitle: "Tied round",
-          loseTitle: "{winner} wins round {n}",
-          rule: "Closest to 21 without going over wins; over 21 = bust.",
-          scoreLine: "Score: {me} {mine} – {theirs} {them}",
-          winTitle: "{winner} wins round {n}"
-        },
-        roundResultHeader: "Round {n} result",
-        scoreboard: {
-          opponent: "Opponent",
-          player: "Player",
-          roundLabel: "Round",
-          roundsUnit: "rd"
-        },
-        roundTimer: "{seconds}s",
-        roundTimerUrgent: "{seconds}s, act now",
-        seat: {
-          ai: "GRYND AI",
-          opponent: "Opponent",
-          player1: "Player 1",
-          player2: "Player 2"
-        },
-        skipReveal: "Skip reveal",
-        stake: "Stake: {amount}",
-        stand: "Stand",
-        status: {
-          activePlay: "In play",
-          betweenRounds: "Round {n} won. Round {m} next",
-          cancelled: "Match cancelled",
-          finishedDraw: "Match ended in a draw",
-          finishedLose: "You lost the match",
-          finishedWin: "You won the match",
-          loading: "Loading…",
-          ready: "Get ready…",
-          roundN: "Round {n} / 3",
-          waiting: "Waiting for an opponent…"
-        },
-        swap: "Swap",
-        swapChosenHint: "Card #{n} marked. Press Swap to draw a random replacement",
-        swapHint: "Replace your selected card with a random draw from the shoe",
-        swapHintPick: "Click a card first, then press Swap",
-        swapHintRandom: "Replace card #{n} with a random draw from the shoe",
-        swapPickHint: "Click any card to mark it for swap",
-        swapSelectedBadge: "Swap",
-        title: "Blackjack PvP",
-        useHeldAdd: "Use frozen card",
-        useHeldDiscard: "Discard frozen",
-        waitingBusted: "Waiting…",
-        waitingStood: "Stood, waiting for opponent",
-        you: "You"
-    },
     
     
     
@@ -264,7 +125,6 @@ export const APP_TEXT_TRANSLATIONS = {
       home: "Home",
       casino: "Games",
       leaderboard: "Leaderboard",
-      battlepass: "Battlepass",
       contact: "Contact",
       settings: "Settings",
       sign_out: "Sign Out",
@@ -308,18 +168,9 @@ export const APP_TEXT_TRANSLATIONS = {
         opponent_label: "OPPONENT",
       },
       game_cards: {
-        roulette_alt: "Roulette table with chips",
-        roulette_desc:
-          "Same wheel, one winner. Remove numbers and deny your opponent's targets.",
-        blackjack_alt: "Best-of-3 PvP Blackjack table",
-        blackjack_desc:
-          "Best-of-3 head-to-head. Read the table, time your swaps, outplay the seat across from you.",
         tower_arena_alt: "Tower Arena blocks stacked in a head-to-head tower",
         tower_arena_desc:
           "Two players, one head-to-head tower. Build, block, and outlast the collapse.",
-        plinko_alt: "Plinko game with falling chips",
-        plinko_desc:
-          "Duel on the same peg field — 3 balls each. Pick your launch and out-score your rival.",
       },
       errors: {
         manage_tokens: "Unable to manage your tokens",
@@ -471,23 +322,13 @@ export const APP_TEXT_TRANSLATIONS = {
       },
     },
     games: {
-      roulette_desc:
-        "Shared wheel, shrinking board. Remove numbers, steal points, and outplay your opponent.",
-      blackjack_name: "Blackjack",
       tower_arena_name: "Tower Arena",
-      plinko_name: "Plinko",
-      blackjack_desc:
-        "Best-of-3 head-to-head. Read the table, time your swaps, and outplay the seat across from you.",
       mines_pvp_name: "Mines Duel",
       mines_pvp_desc:
         "Stake tokens and face another player on a shared 5×5 board. Host picks the mine count. Winner takes 1.9× their stake; a 5% platform fee applies.",
       memory_grid_name: "Memory Grid",
       memory_grid_desc:
         "Stake tokens and race another player on a shared 4×4 memory grid. Flip two cards to match pairs. A match keeps your turn, winner takes 1.9× their stake; a 5% platform fee applies.",
-      plinko_desc:
-        "Same peg field, 3 balls each. Pick your launch and out-score your rival.",
-      crash_arena_desc:
-        "Join a table, post the blinds, and hold against the crash curve. Last player standing takes the pot.",
       chess_desc: "Outthink your opponent move by move.",
       keno_desc: "1v1 Keno Survival Duel. 3 lives each, one lit tile and the same window for both: tap it in time and you keep your life — beat your rival to it and it costs them nothing. Miss it and the life is yours to lose. Take the pot.",
       uno_desc:
@@ -722,8 +563,7 @@ export const APP_TEXT_TRANSLATIONS = {
         host_default: "Host",
         guest_default: "Guest",
         // The AI seat has no users row, so it resolves no name of its own.
-        // Brand mark, so it stays identical across locales (like
-        // `blackjackPvp.seat.ai`).
+        // Brand mark, so it stays identical across locales.
         ai_label: "GRYND AI",
         legend_label: "Claimed lines",
         open_challenges_title: "Open Challenges",
@@ -782,135 +622,8 @@ export const APP_TEXT_TRANSLATIONS = {
         "Race a rival up the same tower — every safe pick either of you makes narrows the odds. Pick safe tiles to climb, or hold to bank your score before the bad tile finds you.",
       pool_masters_desc: "Compete in a strategic game of pool. Sink the 8-ball to win!",
       pool_masters_name: "Pool Masters",
-      roulette_name: "Roulette",
       chess_name: "Chess",
       rps_name: "Rock-Paper-Scissors",
-      // ── Roulette page chrome ─────────────────────────
-      roulette: {
-        title: "Roulette Royale",
-        tokens_label: "Tokens",
-        chip_value: "Chip value",
-        half: "½",
-        all_in: "ALL-IN",
-        spin: "Spin the Wheel",
-        spinning: "Wheel spinning…",
-        reset_bets: "Reset bets",
-        auto_bet: "Auto-bet",
-        auto_mode_finite: "Finite count",
-        auto_mode_infinite: "Infinite",
-        start: "Start",
-        stop: "Stop",
-        rules_button: "Game Rules",
-        rules_hide: "Hide Rules ▲",
-        rules_show: "Show Rules ▼",
-        rules_title: "How to Play",
-        rules_objective: "Objective",
-        rules_objective_body: "Guess where the ball will land on the wheel.",
-        rules_bets: "Bets",
-        rules_bets_body: "Single number (×35) · Red/Black/Even/Odd (×2) · Dozens (×3)",
-        rules_warning: "Rule",
-        rules_warning_body: "The 0 (green) loses most bets.",
-        result_label: "Result",
-        result_win: "Won {amount} tokens",
-        result_loss: "Lost",
-        balance_error: "Insufficient balance for this bet.",
-        play_error: "Failed to start game",
-        auto_bet_insufficient: "Auto-bet stopped: insufficient balance",
-        stats_spins: "Spins played",
-        stats_wins: "Wins",
-        stats_biggest: "Biggest win",
-        hot_history: "Hot numbers",
-        numbers_label: "Numbers",
-        even: "Even",
-        odd: "Odd",
-        red: "Red",
-        black: "Black",
-        green: "Green",
-      },
-      // ── Blackjack page chrome ──────────────────────────
-      blackjack: {
-        title: "Blackjack",
-        tokens_label: "Tokens",
-        rules_button: "{action} Rules",
-        rules_show: "Show Rules ▼",
-        rules_hide: "Hide Rules ▲",
-        rules_title: "Blackjack Rules",
-        rules_objective: "Objective",
-        rules_objective_body: "Beat the dealer by getting close to 21 without busting.",
-        rules_values: "Values",
-        rules_values_body: "2-10 = face value · J/Q/K = 10 · Ace = 1 or 11",
-        rules_actions: "Actions",
-        rules_actions_body: "Hit (draw), Stand (stop), Double (×2 bet + 1 card), Split (pairs into 2 hands)",
-        rules_payout: "Payouts",
-        rules_payout_body: "Natural Blackjack = ×2.5 · Standard win = ×2 · Push = bet returned",
-        stats_title: "Statistics",
-        stats_played: "Played",
-        stats_wins: "Wins",
-        stats_losses: "Losses",
-        stats_pushes: "Pushes",
-        dealer_label: "Dealer",
-        your_cards: "Your cards",
-        bet_label: "Bet",
-        start_button: "Bet",
-        hit_button: "Hit",
-        stand_button: "Stand",
-        double_button: "Double",
-        split_button: "Split",
-        next_hand: "Next hand",
-        stay_for_hand: "Stand",
-        blackjack_msg: "Blackjack!",
-        win_msg: "You won!",
-        push_msg: "Push!",
-        bust_msg: "Busted over 21!",
-        lose_msg: "You lost!",
-        modal_won: "WON!",
-        modal_push: "PUSH",
-        modal_lost: "LOST",
-        replay: "Play again",
-        settle_error: "Settle failed",
-        bet_error: "Bet failed",
-        deal_error: "Deal failed",
-        connection_error: "Connection error",
-        start_error: "Failed to start",
-        double_error: "Insufficient balance",
-        split_error: "Cannot split",
-        settle_failure: "Failed to settle game",
-        tokens_error: "Insufficient balance",
-      },
-      // ── Plinko page chrome ────────────────────────────
-      plinko: {
-        title: "Plinko",
-        risk_label: "Risk level",
-        risk_low: "Low risk",
-        risk_medium: "Medium risk",
-        risk_high: "High risk",
-        bet_label: "Bet amount",
-        launch: "Launch",
-        launching: "Launching…",
-        auto_bet_title: "Auto Bet",
-        auto_bet_count: "Bet count",
-        auto_bet_infinite: "Infinite",
-        auto_bet_delay: "Delay (ms)",
-        auto_bet_stop_loss: "Stop loss (optional)",
-        auto_bet_take_profit: "Take profit (optional)",
-        auto_bet_start: "Start auto",
-        auto_bet_stop: "Stop",
-        rules_title: "Plinko Rules",
-        rules_line_1: "Drop a ball from the top and watch it bounce through the pins.",
-        rules_line_2: "The slot where the ball lands determines your multiplier.",
-        rules_line_3: "Higher multipliers are on the edges, but are harder to hit.",
-        rules_line_4: "Choose a risk level to change the multiplier distribution.",
-        rules_line_5: "Use Auto Bet to automatically drop multiple balls.",
-        rules_line_6: "You can configure stop loss and take profit for safer autoplay.",
-        last_win: "Last win",
-        total_won: "Total won",
-        session_label: "Session",
-        tokens_suffix: "tokens",
-        not_signed_in: "You must be signed in to play.",
-        balance_error: "Insufficient balance",
-        play_error: "Failed to start game",
-        insufficient_general: "Insufficient balance",
-      },
       // ── Mines page chrome ─────────────────────────────
       mines: {
         title: "Mines",
@@ -1352,7 +1065,7 @@ export const APP_TEXT_TRANSLATIONS = {
         outplayTitle: "Outplay",
         outplayDesc: "Skill, timing and strategy decide every match.",
         progressTitle: "Progress",
-        progressDesc: "Every ranked match earns trophies toward your Battle Pass, cosmetics and rewards.",
+        progressDesc: "Every ranked match earns trophies that raise your ladder position and Elo.",
       },
       tokens: {
         kicker: "Quick guide",
@@ -1390,8 +1103,6 @@ export const APP_TEXT_TRANSLATIONS = {
         gamesDesc: "Browse the full lobby and jump into any match.",
         profileTitle: "Profile",
         profileDesc: "Your stats, titles and look.",
-        battlepassTitle: "Battle Pass",
-        battlepassDesc: "100 levels of trophy-driven rewards.",
         shopTitle: "Shop",
         shopDesc: "Cosmetics and token packages.",
         settingsTitle: "Settings",
@@ -1531,15 +1242,6 @@ export const APP_TEXT_TRANSLATIONS = {
         title: "Token balance",
         amount: "{amount} tokens",
       },
-      battlepass: {
-        title: "Battlepass Level",
-        level: "Level {level}",
-        xp: "{amount} trophies",
-        percent: "{percent}%",
-        nextLevel: "{amount} trophies to the next level",
-        earn: "Earn trophies by winning ranked matches.",
-        view: "View Battlepass →",
-      },
       membership: {
         title: "GRYND PRO Membership",
         active: "Active",
@@ -1585,7 +1287,6 @@ export const APP_TEXT_TRANSLATIONS = {
         tabSpecial: "Special Titles",
         tabVip: "VIP Titles",
         tabStreak: "Streak Titles",
-        tabPrestige: "Prestige",
         hidden: "?????",
         lockedSecret: "Locked secret title",
         clickToUnequip: "Click again to unequip",
@@ -1599,13 +1300,7 @@ export const APP_TEXT_TRANSLATIONS = {
         unequipStreak: "Unequip streak title",
         milestones: "All Streak Milestones",
         daysCount: "{count} days",
-        prestigeBadge: "Prestige badge",
-        prestigeFallback: "Prestige {level}",
-        prestigeDesc: "Show your permanent Prestige tier next to your name instead of a normal title. The tier always comes from your real server progress — you can only ever display the Prestige you actually earned, and your existing titles stay available whenever you switch back.",
-        hidePrestige: "Click to hide the Prestige badge",
-        showPrestige: "Display Prestige badge",
         equippedTag: "Equipped",
-        prestigeLocked: "🔒 Prestige unlocks at Level 100 — keep climbing the Battle Pass to earn your first Prestige tier.",
         badgeFailed: "Could not update your badge",
       },
       referral: {
@@ -1834,144 +1529,6 @@ export const APP_TEXT_TRANSLATIONS = {
       colorMint: "Menthe",
       colorGold: "Or",
     },
-    blackjackPvp: {
-        awardRoundDraw: "Manche {n} : égalité",
-        awardRoundOpp: "Manche {n} remportée par l’Adversaire",
-        awardRoundYou: "Manche {n} remportée par Vous",
-        betweenRounds: {
-          auto: "Auto",
-          continue: "Continuer",
-          continueNow: "Continuer maintenant",
-          matchScore: "Score : {p1} – {p2}",
-          nextRoundHint: "La prochaine manche commence bientôt…",
-          scoreCaption: "Meilleur des 3",
-          subtitle: "Manche {n} sur {total} : début dans {seconds} s…",
-          title: "Manche {n} à venir"
-        },
-        bustedPrefix: "Vous avez sauté !",
-        bustedRecoverHint: "Échangez ou figez pour vous en sortir.",
-        bustedScore: "Dépassement",
-        forbidden: {
-          desc: "Ce match n’est pas le vôtre.",
-          title: "Accès refusé"
-        },
-        aiPlaying: "GRYND AI joue…",
-        cancelled: {
-          detail:
-            "La partie a été annulée. Si un adversaire n'avait pas encore rejoint, votre mise vous a été remboursée."
-        },
-        continue: "Continuer",
-        errorActionRejected: "Action refusée",
-        errorMatchUnavailable: "Match indisponible",
-        errorNetwork: "Erreur réseau",
-        freeMatch: "Match IA gratuit",
-        hit: "Tirer",
-        opponentDone: "Adversaire. Main cachée",
-        opponentPlaying: "Adversaire joue…",
-        freeze: "Geler",
-        freezeHint: "Mettre de côté votre carte tirée pour plus tard",
-        heldAdded: "(ajouté à la main)",
-        heldDiscarded: "(défaussé)",
-        heldReserved: "(réservé)",
-        historyDraw: "Égalité",
-        historyLose: "Perdue",
-        historyRow: "Manche {n}, {me} : {myScore} pts vs {opp} : {oppScore} pts",
-        historyTitle: "Historique des manches",
-        historyWin: "Gagnée",
-        invalidId: "Identifiant de match invalide",
-        leave: {
-          body: "C'est un match d'entraînement gratuit — rien n'est en jeu. Quittez et rejouez quand vous voulez.",
-          button: "Quitter la partie",
-          confirm: "Quitter la partie",
-          title: "Quitter cette partie ?"
-        },
-        lobby: {
-          back: "Retour au salon",
-          cancel: "Annuler la lobby",
-          hostId: "Hôte #{id}",
-          lobbyId: "Lobby #{id}",
-          waitingMatch: "Votre lobby #{id} attend un adversaire…"
-        },
-        lockedAfterStand: "Main verrouillée. Les deux mains se révèlent à la fin de la manche",
-        matchEndHeader: "Match terminé",
-        peek: "Espionner",
-        peekHint: "Voir le dessus du sabot : la prochaine carte que vous tireriez",
-        peekOverlayLabel: "Prochaine carte",
-        priority: {
-          rule1: "1. Le score le plus élevé ≤ 21 gagne",
-          rule2: "2. Dépassement = perte automatique",
-          rule3: "3. Score égal = manche nulle",
-          title: "Priorité du gagnant"
-        },
-        ptsUnit: "pts",
-        ready: "Prêt",
-        resign: {
-          body: "Vous perdrez votre mise de {amount}. Votre adversaire remporte la partie.",
-          button: "Abandonner et retourner au salon",
-          cancel: "Continuer à jouer",
-          confirm: "Abandonner",
-          error: "Impossible d'abandonner",
-          loading: "Abandon en cours…",
-          title: "Abandonner la partie ?"
-        },
-        result: {
-          draw: "Égalité",
-          lose: "Vous avez perdu",
-          win: "Vous avez gagné"
-        },
-        revealTeaser: "Révélation des mains…",
-        revealTeaserHint: "Les deux mains se découvrent simultanément",        roundResult: {
-          drawSubtitle: "Aucune manche gagnée. Score identique",
-          drawTitle: "Manche nulle",
-          loseTitle: "{winner} remporte la manche {n}",
-          rule: "Le score le plus proche de 21 sans dépasser gagne; au-delà de 21 = sauté.",
-          scoreLine: "Score : {me} {mine} – {theirs} {them}",
-          winTitle: "{winner} remporte la manche {n}"
-        },
-        roundResultHeader: "Résultat de la manche {n}",
-        scoreboard: {
-          opponent: "Adversaire",
-          player: "Joueur",
-          roundLabel: "Manche",
-          roundsUnit: "v."
-        },
-        roundTimer: "{seconds}s",
-        roundTimerUrgent: "{seconds}s, agissez vite",
-        seat: {
-          ai: "GRYND AI",
-          opponent: "Adversaire",
-          player1: "Joueur 1",
-          player2: "Joueur 2"
-        },
-        skipReveal: "Passer la révélation",
-        stake: "Mise : {amount}",
-        stand: "Rester",
-        status: {
-          activePlay: "En jeu",
-          betweenRounds: "Manche {n} gagnée. Manche {m} suivante",
-          cancelled: "Match annulé",
-          finishedDraw: "Match nul",
-          finishedLose: "Vous avez perdu le match",
-          finishedWin: "Vous avez gagné le match",
-          loading: "Chargement…",
-          ready: "Prêt…",
-          roundN: "Manche {n} / 3",
-          waiting: "En attente d'un adversaire…"
-        },
-        swap: "Permuter",
-        swapChosenHint: "Carte n°{n} marquée. Appuyez sur Permuter",
-        swapHint: "Remplacer la carte sélectionnée par un tirage aléatoire",
-        swapHintPick: "Cliquez d’abord sur une carte, puis appuyez sur Permuter",
-        swapHintRandom: "Remplacer la carte n°{n} par un tirage aléatoire du sabot",
-        swapPickHint: "Cliquez sur une carte pour la marquer pour l’échange",
-        swapSelectedBadge: "Permuter",
-        title: "Blackjack PvP",
-        useHeldAdd: "Ajouter la carte gelée",
-        useHeldDiscard: "Jeter la carte gelée",
-        waitingBusted: "En attente…",
-        waitingStood: "Resté, en attente de l’adversaire",
-        you: "vous"
-    },
     
     
     
@@ -1983,7 +1540,6 @@ export const APP_TEXT_TRANSLATIONS = {
       home: "Accueil",
       casino: "Jeux",
       leaderboard: "Classement",
-      battlepass: "Battlepass",
       contact: "Contact",
       settings: "Paramètres",
       sign_out: "Déconnexion",
@@ -2027,18 +1583,9 @@ export const APP_TEXT_TRANSLATIONS = {
         opponent_label: "ADVERSAIRE",
       },
       game_cards: {
-        roulette_alt: "Table de roulette avec jetons",
-        roulette_desc:
-          "Même roue, un seul gagnant. Retire des numéros et bloque les cibles de ton adversaire.",
-        blackjack_alt: "Table de Blackjack PvP en Best of 3",
-        blackjack_desc:
-          "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
         tower_arena_alt: "Blocs de Tower Arena empilés dans une tour en duel",
         tower_arena_desc:
           "Deux joueurs, une tour. Construis, bloque et survis à l'effondrement.",
-        plinko_alt: "Jeu Plinko avec des jetons qui tombent",
-        plinko_desc:
-          "Duel sur le même champ de picots — 3 balles chacun. Choisis ton tir et bats ton rival.",
       },
       errors: {
         manage_tokens: "Impossible de gérer vos tokens",
@@ -2191,23 +1738,13 @@ export const APP_TEXT_TRANSLATIONS = {
       },
     },
     games: {
-      roulette_desc:
-        "Roue partagée, plateau qui rétrécit. Retirez des numéros, volez des points et dépassez votre adversaire.",
-      blackjack_name: "Blackjack",
       tower_arena_name: "Tower Arena",
-      plinko_name: "Plinko",
-      blackjack_desc:
-        "Best of 3 face à face. Lis le jeu, choisis le bon moment pour swap et domine le siège d'en face.",
       mines_pvp_name: "Mines Duel",
       mines_pvp_desc:
         "Misez des tokens et affrontez un autre joueur sur un plateau 5×5 partagé. L'hôte choisit le nombre de mines. Le gagnant remporte 1,9× sa mise ; des frais de plateforme de 5 % s'appliquent.",
       memory_grid_name: "Memory Grid",
       memory_grid_desc:
         "Misez des tokens et affrontez un autre joueur sur une grille mémoire 4×4 partagée. Retournez deux cartes pour trouver des paires. Une paire garde votre tour, le gagnant remporte 1,9× sa mise ; des frais de plateforme de 5 % s'appliquent.",
-      plinko_desc:
-        "Même champ de picots, 3 balles chacun. Choisis ton tir et bats ton rival.",
-      crash_arena_desc:
-        "Rejoignez une table, postez les blinds et tenez face à la courbe du crash. Le dernier joueur en lice remporte le pot.",
       chess_desc: "Dépasse ton adversaire coup par coup.",
       keno_desc: "Duel de survie Keno 1v1. 3 vies chacun, une seule case allumée et la même fenêtre pour les deux : touchez-la à temps et vous gardez votre vie — la prendre avant votre rival ne lui coûte rien. Ratez-la et la vie est pour vous. Empochez le pot.",
       uno_desc:
@@ -2504,7 +2041,6 @@ export const APP_TEXT_TRANSLATIONS = {
       pool_masters_desc: "Affrontez un adversaire au billard stratégique. Empochez la boule 8 pour gagner !",
       hex_duel_name: "HEX DUEL",
       hex_duel_desc: "Conquérez le plateau hexagonal. Capturez des cases, dominez votre adversaire et contrôlez le territoire !",
-      roulette_name: "Roulette",
       join: "Rejoindre",
       create_game: "Créer une partie",
       play_vs_ai: "Jouer contre l’IA",
@@ -2713,7 +2249,7 @@ export const APP_TEXT_TRANSLATIONS = {
         outplayDesc: "La compétence, le timing et la stratégie décident de chaque match.",
         progressTitle: "Progresse",
         progressDesc:
-          "Chaque match classé rapporte des trophées vers ton Battle Pass, des cosmétiques et des récompenses.",
+          "Chaque match classé rapporte des trophées qui font grimper ton classement et ton Elo.",
       },
       tokens: {
         kicker: "Guide express",
@@ -2751,8 +2287,6 @@ export const APP_TEXT_TRANSLATIONS = {
         gamesDesc: "Parcours le lobby complet et lance un match.",
         profileTitle: "Profil",
         profileDesc: "Tes stats, tes titres et ton look.",
-        battlepassTitle: "Battle Pass",
-        battlepassDesc: "100 niveaux de récompenses liées aux trophées.",
         shopTitle: "Boutique",
         shopDesc: "Cosmétiques et packs de tokens.",
         settingsTitle: "Paramètres",
@@ -2884,15 +2418,6 @@ export const APP_TEXT_TRANSLATIONS = {
         title: "Solde de jetons",
         amount: "{amount} jetons",
       },
-      battlepass: {
-        title: "Niveau Battlepass",
-        level: "Niveau {level}",
-        xp: "{amount} trophies",
-        percent: "{percent}%",
-        nextLevel: "{amount} trophées avant le prochain niveau",
-        earn: "Gagne des trophées en remportant des matchs classés.",
-        view: "Voir le Battlepass →",
-      },
       membership: {
         title: "Abonnement GRYND PRO",
         active: "Actif",
@@ -2938,7 +2463,6 @@ export const APP_TEXT_TRANSLATIONS = {
         tabSpecial: "Titres spéciaux",
         tabVip: "Titres VIP",
         tabStreak: "Titres de série",
-        tabPrestige: "Prestige",
         hidden: "?????",
         lockedSecret: "Titre secret verrouillé",
         clickToUnequip: "Clique à nouveau pour retirer",
@@ -2952,13 +2476,7 @@ export const APP_TEXT_TRANSLATIONS = {
         unequipStreak: "Retirer le titre de série",
         milestones: "Tous les paliers de série",
         daysCount: "{count} jours",
-        prestigeBadge: "Badge Prestige",
-        prestigeFallback: "Prestige {level}",
-        prestigeDesc: "Affiche ton palier Prestige permanent à côté de ton pseudo au lieu d'un titre normal. Le palier vient toujours de ta progression réelle sur le serveur — tu ne peux afficher que le Prestige réellement gagné, et tes titres restent disponibles quand tu reviens en arrière.",
-        hidePrestige: "Cliquer pour masquer le badge Prestige",
-        showPrestige: "Afficher le badge Prestige",
         equippedTag: "Équipé",
-        prestigeLocked: "🔒 Le Prestige se débloque au niveau 100 — continue le Battle Pass pour gagner ton premier palier Prestige.",
         badgeFailed: "Impossible de mettre à jour ton badge",
       },
       referral: {
@@ -3187,145 +2705,6 @@ export const APP_TEXT_TRANSLATIONS = {
       colorMint: "Menta",
       colorGold: "Oro",
     },
-    blackjackPvp: {
-        awardRoundDraw: "Ronda {n}: empate",
-        awardRoundOpp: "Ronda {n} adjudicada al Oponente",
-        awardRoundYou: "Ronda {n} adjudicada a Ti",
-        betweenRounds: {
-          auto: "Auto",
-          continue: "Continuar",
-          continueNow: "Continuar ahora",
-          matchScore: "Marcador: {p1} – {p2}",
-          nextRoundHint: "La siguiente ronda empieza pronto…",
-          scoreCaption: "Mejor de 3",
-          subtitle: "Ronda {n} de {total}: empieza en {seconds}s…",
-          title: "Ronda {n} entrante"
-        },
-        bustedPrefix: "¡Te pasaste!",
-        bustedRecoverHint: "Cambia o congela para recuperarte.",
-        bustedScore: "Pasado",
-        forbidden: {
-          desc: "Este partido no es tuyo.",
-          title: "No permitido"
-        },
-        aiPlaying: "GRYND AI está jugando…",
-        cancelled: {
-          detail:
-            "Esta partida fue cancelada. Si ningún oponente llegó a unirse, tu apuesta fue reembolsada."
-        },
-        continue: "Continuar",
-        errorActionRejected: "Acción rechazada",
-        errorMatchUnavailable: "Partido no disponible",
-        errorNetwork: "Error de red",
-        freeMatch: "Partido gratis contra IA",
-        hit: "Pedir",
-        opponentDone: "Oponente. Mano oculta",
-        opponentPlaying: "El oponente está jugando…",
-        freeze: "Congelar",
-        freezeHint: "Apartar la última carta que robaste",
-        heldAdded: "(añadido a la mano)",
-        heldDiscarded: "(descartado)",
-        heldReserved: "(reservado)",
-        historyDraw: "Empate",
-        historyLose: "Perdida",
-        historyRow: "Ronda {n}, {me}: {myScore} pts vs {opp}: {oppScore} pts",
-        historyTitle: "Historial de rondas",
-        historyWin: "Ganada",
-        invalidId: "Identificador de partido no válido",
-        leave: {
-          body: "Es una partida de práctica gratuita: no hay nada en juego. Sal y vuelve a jugar cuando quieras.",
-          button: "Salir de la partida",
-          confirm: "Salir de la partida",
-          title: "¿Salir de esta partida?"
-        },
-        lobby: {
-          back: "Volver al salón",
-          cancel: "Cancelar lobby",
-          hostId: "Anfitrión #{id}",
-          lobbyId: "Lobby #{id}",
-          waitingMatch: "Tu lobby #{id} espera un oponente…"
-        },
-        lockedAfterStand: "Mano bloqueada. Ambas manos se revelan al final de la ronda",
-        matchEndHeader: "Partido terminado",
-        peek: "Espiar",
-        peekHint: "Mira la parte superior del zapato: la próxima carta que robarías",
-        peekOverlayLabel: "Próxima carta",
-        priority: {
-          rule1: "1. La puntuación más alta ≤ 21 gana",
-          rule2: "2. Pasarse pierde automáticamente",
-          rule3: "3. Puntuación igual = ronda empatada",
-          title: "Prioridad del ganador"
-        },
-        ptsUnit: "pts",
-        ready: "Listo",
-        resign: {
-          body: "Perderás tu apuesta de {amount}. Tu oponente gana la partida.",
-          button: "Abandonar y volver al salón",
-          cancel: "Seguir jugando",
-          confirm: "Abandonar",
-          error: "No se pudo abandonar",
-          loading: "Abandonando…",
-          title: "¿Abandonar la partida?"
-        },
-        result: {
-          draw: "Empatado",
-          lose: "Perdiste",
-          win: "Ganaste"
-        },
-        revealTeaser: "Revelando manos…",
-        revealTeaserHint: "Las dos manos se descubren simultáneamente",
-        roundResult: {
-          drawSubtitle: "Nadie gana: puntuaciones igualadas",
-          drawTitle: "Ronda empatada",
-          loseTitle: "{winner} gana la ronda {n}",
-          rule: "Gana quien esté más cerca de 21 sin pasarse; pasarse = eliminado.",
-          scoreLine: "Marcador: {me} {mine} – {theirs} {them}",
-          winTitle: "{winner} gana la ronda {n}"
-        },
-        roundResultHeader: "Resultado de la ronda {n}",
-        scoreboard: {
-          opponent: "Oponente",
-          player: "Jugador",
-          roundLabel: "Ronda",
-          roundsUnit: "r."
-        },
-        roundTimer: "{seconds}s",
-        roundTimerUrgent: "{seconds}s, actúa ya",
-        seat: {
-          ai: "GRYND AI",
-          opponent: "Oponente",
-          player1: "Jugador 1",
-          player2: "Jugador 2"
-        },
-        skipReveal: "Saltar revelación",
-        stake: "Apuesta: {amount}",
-        stand: "Plantarse",
-        status: {
-          activePlay: "En juego",
-          betweenRounds: "Ronda {n} ganada. Ronda {m} siguiente",
-          cancelled: "Partido cancelado",
-          finishedDraw: "Empate",
-          finishedLose: "Perdiste el partido",
-          finishedWin: "Ganaste el partido",
-          loading: "Cargando…",
-          ready: "Prepárate…",
-          roundN: "Ronda {n} / 3",
-          waiting: "Esperando a un oponente…"
-        },
-        swap: "Cambiar",
-        swapChosenHint: "Carta n.° {n} marcada. Pulsa Cambiar para sacar una carta aleatoria",
-        swapHint: "Reemplazar la carta seleccionada con un robo aleatorio del zapato",
-        swapHintPick: "Primero haz clic en una carta, luego pulsa Cambiar",
-        swapHintRandom: "Reemplazar la carta n.° {n} con un robo aleatorio del zapato",
-        swapPickHint: "Haz clic en cualquier carta para marcarla para el cambio",
-        swapSelectedBadge: "Cambiar",
-        title: "Blackjack PvP",
-        useHeldAdd: "Usar carta congelada",
-        useHeldDiscard: "Descartar carta congelada",
-        waitingBusted: "Esperando…",
-        waitingStood: "Plantado, esperando al oponente",
-        you: "tú"
-    },
     
     
     
@@ -3337,7 +2716,6 @@ export const APP_TEXT_TRANSLATIONS = {
       home: "Inicio",
       casino: "Juegos",
       leaderboard: "Clasificaciones",
-      battlepass: "Battlepass",
       contact: "Contacto",
       settings: "Ajustes",
       sign_out: "Cerrar sesión",
@@ -3381,18 +2759,9 @@ export const APP_TEXT_TRANSLATIONS = {
         opponent_label: "RIVAL",
       },
       game_cards: {
-        roulette_alt: "Mesa de ruleta con fichas",
-        roulette_desc:
-          "Misma ruleta, un ganador. Retira números y bloquea los objetivos de tu rival.",
-        blackjack_alt: "Mesa de Blackjack PvP al mejor de 3",
-        blackjack_desc:
-          "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
         tower_arena_alt: "Bloques de Tower Arena apilados en una torre de duelo",
         tower_arena_desc:
           "Dos jugadores, una torre. Construye, bloquea y sobrevive al derrumbe.",
-        plinko_alt: "Juego Plinko con fichas cayendo",
-        plinko_desc:
-          "Duelo en el mismo campo de clavijas: 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
       },
       errors: {
         manage_tokens: "No se pudieron administrar tus fichas",
@@ -3546,23 +2915,13 @@ export const APP_TEXT_TRANSLATIONS = {
       },
     },
     games: {
-      roulette_desc:
-        "Ruleta compartida, tablero que se encoge. Retira números, roba puntos y supera a tu rival.",
-      blackjack_name: "Blackjack",
       tower_arena_name: "Tower Arena",
-      plinko_name: "Plinko",
-      blackjack_desc:
-        "Al mejor de 3 cara a cara. Lee la mesa, elige bien tus cambios y supera al asiento de enfrente.",
       mines_pvp_name: "Mines Duel",
       mines_pvp_desc:
         "Apuesta fichas y enfréntate a otro jugador en un tablero 5×5 compartido. El anfitrión elige la cantidad de minas. El ganador se lleva 1,9× su apuesta; se aplica una tarifa de plataforma del 5 %.",
       memory_grid_name: "Memory Grid",
       memory_grid_desc:
         "Apuesta fichas y enfréntate a otro jugador en una cuadrícula de memoria 4×4 compartida. Voltea dos cartas para encontrar parejas. Una pareja mantiene tu turno, el ganador se lleva 1,9× su apuesta; se aplica una tarifa de plataforma del 5 %.",
-      plinko_desc:
-        "Mismo campo de clavijas, 3 bolas cada uno. Elige tu lanzamiento y supera a tu rival.",
-      crash_arena_desc:
-        "Únete a una mesa, publica las ciegas y aguanta contra la curva del crash. El último jugador en pie se lleva el bote.",
       chess_desc: "Supera a tu oponente jugada a jugada.",
       keno_desc: "Duelo de supervivencia de Keno 1v1. 3 vidas cada uno, una sola casilla encendida y la misma ventana para ambos: púlsala a tiempo y conservas tu vida — adelantarte a tu rival no le cuesta nada. Si la fallas, la vida es tuya. Llévate el bote.",
       uno_desc:
@@ -3858,7 +3217,6 @@ export const APP_TEXT_TRANSLATIONS = {
       pool_masters_desc: "Compite en una partida estratégica de billar. ¡Emboca la bola 8 para ganar!",
       hex_duel_name: "HEX DUEL",
       hex_duel_desc: "Conquista el tablero hexagonal. Captura casillas, supera a tu oponente y domina el territorio.",
-      roulette_name: "Ruleta",
       join: "Unirse",
       create_game: "Crear partida",
       play_vs_ai: "Jugar contra IA",
@@ -4067,7 +3425,7 @@ export const APP_TEXT_TRANSLATIONS = {
         outplayDesc: "La habilidad, el timing y la estrategia deciden cada partida.",
         progressTitle: "Progresa",
         progressDesc:
-          "Cada partida clasificatoria otorga trofeos hacia tu Battle Pass, cosméticos y recompensas.",
+          "Cada partida clasificatoria otorga trofeos que suben tu posición en la clasificación y tu Elo.",
       },
       tokens: {
         kicker: "Guía rápida",
@@ -4105,8 +3463,6 @@ export const APP_TEXT_TRANSLATIONS = {
         gamesDesc: "Explora el lobby completo y entra en cualquier partida.",
         profileTitle: "Perfil",
         profileDesc: "Tus estadísticas, títulos y aspecto.",
-        battlepassTitle: "Battle Pass",
-        battlepassDesc: "100 niveles de recompensas ligadas a trofeos.",
         shopTitle: "Tienda",
         shopDesc: "Cosméticos y paquetes de tokens.",
         settingsTitle: "Ajustes",
@@ -4237,15 +3593,6 @@ export const APP_TEXT_TRANSLATIONS = {
         title: "Saldo de fichas",
         amount: "{amount} fichas",
       },
-      battlepass: {
-        title: "Nivel del Battlepass",
-        level: "Nivel {level}",
-        xp: "{amount} trophies",
-        percent: "{percent}%",
-        nextLevel: "{amount} trofeos para el siguiente nivel",
-        earn: "Gana trofeos ganando partidas clasificatorias.",
-        view: "Ver el Battlepass →",
-      },
       membership: {
         title: "Membresía GRYND PRO",
         active: "Activa",
@@ -4291,7 +3638,6 @@ export const APP_TEXT_TRANSLATIONS = {
         tabSpecial: "Títulos especiales",
         tabVip: "Títulos VIP",
         tabStreak: "Títulos de racha",
-        tabPrestige: "Prestigio",
         hidden: "?????",
         lockedSecret: "Título secreto bloqueado",
         clickToUnequip: "Haz clic de nuevo para quitarlo",
@@ -4305,13 +3651,7 @@ export const APP_TEXT_TRANSLATIONS = {
         unequipStreak: "Quitar el título de racha",
         milestones: "Todos los hitos de racha",
         daysCount: "{count} días",
-        prestigeBadge: "Insignia de prestigio",
-        prestigeFallback: "Prestigio {level}",
-        prestigeDesc: "Muestra tu nivel de prestigio permanente junto a tu nombre en lugar de un título normal. El nivel siempre proviene de tu progreso real en el servidor — solo puedes mostrar el prestigio que realmente ganaste, y tus títulos siguen disponibles cuando quieras volver atrás.",
-        hidePrestige: "Haz clic para ocultar la insignia de prestigio",
-        showPrestige: "Mostrar la insignia de prestigio",
         equippedTag: "Equipado",
-        prestigeLocked: "🔒 El prestigio se desbloquea en el nivel 100 — sigue subiendo el Battle Pass para ganar tu primer nivel de prestigio.",
         badgeFailed: "No se pudo actualizar tu insignia",
       },
       referral: {

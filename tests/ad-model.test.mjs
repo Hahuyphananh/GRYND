@@ -142,7 +142,6 @@ test("the entitlement helper is server-authoritative and memoized per request", 
 
 test("only non-game surfaces are registered placements", () => {
   assert.deepEqual(Object.keys(AD_PLACEMENT_ENV).sort(), [
-    "battlepass",
     "home",
     "hub",
     "leaderboard",
@@ -153,7 +152,6 @@ test("only non-game surfaces are registered placements", () => {
 test("every ad slot or loader sits on a non-game browsing page", () => {
   const pagesWithSlots = allPages().filter((p) => /<AdSlot\s/.test(read(p)));
   assert.deepEqual(pagesWithSlots, [
-    "src/app/battlepass/page.jsx",
     "src/app/casino/page.jsx",
     "src/app/classement/page.jsx",
     "src/app/page.jsx",
@@ -189,7 +187,6 @@ test("the slot is placed above the footer, never over controls", () => {
     ["src/app/casino/page.jsx", "src/app/casino/PageClient.jsx"],
     ["src/app/classement/page.jsx", "src/app/classement/PageClient.jsx"],
     ["src/app/profil/page.jsx", "src/app/profil/PageClient.jsx"],
-    ["src/app/battlepass/page.jsx", "src/app/battlepass/PageClient.jsx"],
   ]) {
     assert.match(read(page), /adSlot=\{<AdSlot placement="[a-z]+" \/>\}/, `${page} must pass a slot`);
     const source = read(client);

@@ -52,7 +52,7 @@ export default function UnoBack() {
           bg-gradient-to-br from-[#000814] via-[#00111f] to-[#000814]
           flex items-center justify-center relative overflow-hidden"
         >
-          {/*  Cyber grid (same as blackjack) */}
+          {/*  Cyber grid */}
           <div
             className="absolute inset-0 opacity-25
             bg-[linear-gradient(#00e5ff22_1px,transparent_1px),linear-gradient(90deg,#00e5ff22_1px,transparent_1px)]

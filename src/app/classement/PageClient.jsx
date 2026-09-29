@@ -38,14 +38,10 @@ const RATED_GAMES_FALLBACK = [
   { key: "precision", label: "Precision" },
   { key: "mines-pvp", label: "Mines Duel" },
   { key: "keno-pvp", label: "Keno Duel" },
-  { key: "plinko-pvp", label: "Plinko Duel" },
   { key: "lane-rush-duel", label: "Lane Rush Duel" },
-  { key: "blackjack-pvp", label: "Blackjack" },
   { key: "dice-flush", label: "Dice Flush" },
   { key: "rps-pvp", label: "Rock Paper Scissors" },
   { key: "odds-pvp", label: "Odds" },
-  { key: "roulette-pvp", label: "Roulette" },
-  { key: "crash-arena", label: "Crash Arena" },
   { key: "uno", label: "Neon Flush" },
   { key: "tower-arena", label: "Tower Arena" },
   { key: "hex-duel", label: "Hex Duel" },
@@ -631,11 +627,6 @@ export default function LeaderboardPage({ adSlot = null }) {
               <>
                 <p className="text-sm font-semibold text-cyan-100">
                   {me.user?.name || me.name || "You"}
-                  {me.prestigeBadge && (
-                    <span className="ml-2 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">
-                      {me.prestigeBadge}
-                    </span>
-                  )}
                 </p>
                 {/* Real board record (weekly/all-time/per-game/streak rows all
                     return it). The Overall tab shows the aggregate instead —
@@ -877,11 +868,6 @@ export default function LeaderboardPage({ adSlot = null }) {
                                   className={`block max-w-[9rem] truncate font-semibold text-[#c9f7ff] transition-colors hover:text-[#00e5ff] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
                                 >
                                   {item.user?.name || item.name}
-                                  {item.prestigeBadge && (
-                                    <span className="ml-1.5 rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-violet-300">
-                                      {item.prestigeBadge}
-                                    </span>
-                                  )}
                                   <ProvisionalChip item={item} />
                                   {!isOverallTab(tab) && !isTrophyTab(tab) && (
                                     <OverallEloBadge item={item} />

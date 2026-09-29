@@ -5,7 +5,7 @@
 // Every stake-based game used to take a wager from the client, check the
 // player's token balance, debit it on entry and credit a payout on settle.
 // That is over. Competitive play is now decided by TROPHIES (per-game
-// progression) and ELO (Prestige, revealed at the trophy cap) — a result is
+// progression) and per-game ELO — a result is
 // worth the same whether or not anything was at risk, and nothing is.
 //
 // WHY THIS MODULE EXISTS

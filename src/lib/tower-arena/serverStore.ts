@@ -32,7 +32,6 @@ import {
   towerArenaTurns,
   users,
 } from "../../db/schema";
-import { resolvePrestigeBadge } from "../prestige";
 import { STAKES_RETIRED } from "../games/stakes";
 import { sendSystemNotificationEmail } from "../emails/system";
 import { DEFAULT_ICON_KEY } from "../iconAssets";
@@ -1521,7 +1520,6 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
     {
       name: string;
       iconKey: string;
-      prestigeBadge: string | null;
       profileFrame: unknown;
     }
   >
@@ -1534,9 +1532,6 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
       name: users.name,
       selectedIcon: users.selectedIcon,
       equippedCosmetics: users.equippedCosmetics,
-      xp: users.xp,
-      prestigeLevel: users.prestigeLevel,
-      showPrestigeBadge: users.showPrestigeBadge,
     })
     .from(users)
     .where(inArray(users.clerkId, ids));
@@ -1551,7 +1546,6 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
     {
       name: string;
       iconKey: string;
-      prestigeBadge: string | null;
       profileFrame: unknown;
     }
   >();
@@ -1560,12 +1554,6 @@ export function safeFallbackPlacement(match: any): { shape: BlockShape; position
       name: row.name || "Player",
       iconKey: row.selectedIcon || DEFAULT_ICON_KEY,
       profileFrame: decorationByClerkId.get(row.clerkId) || null,
-      // Prestige is derived from ratings + per-game trophies, which are not
-      // loaded here — an opted-in player with no capped game resolves to no
-      // badge.
-      prestigeBadge: resolvePrestigeBadge({
-        showPrestigeBadge: row.showPrestigeBadge,
-      }),
     });
   }
   return map;
@@ -1589,7 +1577,6 @@ async function enrichMatchPlayers(tx: any, players: any[]) {
       eliminatedAt: p.eliminatedAt,      name: p.isAi ? `Bot ${p.seat}` : (d?.name ?? "Player"),
       iconKey: p.isAi ? DEFAULT_ICON_KEY : (d?.iconKey ?? DEFAULT_ICON_KEY),
       profileFrame: p.isAi ? null : (d?.profileFrame ?? null),
-      prestigeBadge: p.isAi ? null : (d?.prestigeBadge ?? null),
     };
   });
 }

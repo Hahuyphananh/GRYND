@@ -13,6 +13,7 @@ import { db } from "../../../../db";
 import { logError } from "../../../../lib/logError";
 import { grantAllOfficialIcons } from "../../../../lib/icons";
 import { reconcileEmoteState } from "../../../../lib/emotes";
+import { grantAllCosmeticsToUser } from "../../../../lib/cosmetics";
 import { searchNameFor } from "../../../../lib/searchName";
 
 export async function POST(req) {
@@ -76,6 +77,12 @@ export async function POST(req) {
           // very first free grant — idempotent + safe to run repeatedly).
           await reconcileEmoteState(newUserId).catch((err) =>
             console.warn("[clerk-webhook] emote grant failed:", err),
+          );
+          // New accounts own the ENTIRE cosmetic catalog for free (the Battle
+          // Pass was the only way to earn it before it was removed).
+          // Idempotent + best-effort.
+          await grantAllCosmeticsToUser(newUserId).catch((err) =>
+            console.warn("[clerk-webhook] cosmetic grant failed:", err),
           );
         }
         await db

@@ -10,10 +10,11 @@
 //   * Any equipped cosmetic must resolve through the official catalog AND
 //     be owned by the user (a row in `user_cosmetics`).
 //   * Only catalog rows with `price_tokens` set are purchasable from the
-//     Shop. Unpurchasable rows (e.g. Prestige Aura/Crown with an
-//     `unlock_condition`) are granted through battlepass/eligibility.
-//   * `unlock_condition` rows (currently `prestige`) additionally require
-//     the condition to be met before they can be purchased or equipped.
+//     Shop. Unpurchasable rows (e.g. Elite Aura/Crown, which carry no price)
+//     are granted at account creation instead.
+//   * `unlock_condition` is legacy: the only condition the catalogue ever used
+//     was `prestige`, which no longer exists, so every condition is treated as
+//     satisfied.
 //   * `users.equipped_cosmetics` is a jsonb map of category → cosmetic key;
 //     it is written ONLY through the equip/clear functions here.
 //   * Spends are a single atomic debit + ledger row (`spend`,
@@ -33,7 +34,7 @@ export const COSMETIC_CATEGORIES = [
   "username_effect",
   "chat_effect",
   "profile_glow",
-  "prestige_effect",
+  "elite_effect",
 ] as const;
 
 export type CosmeticCategory = (typeof COSMETIC_CATEGORIES)[number];
@@ -70,40 +71,27 @@ export async function getCosmeticByKey(key: string): Promise<CosmeticRow | null>
 }
 
 /**
- * Does the user currently satisfy `unlock_condition`? Currently the only
- * condition is `prestige` (prestige progression earned, not purchasable).
+ * Does the user satisfy `unlock_condition`? The only historical condition was
+ * `prestige`, which has been removed — every catalog item is now granted to
+ * everyone, so any condition is treated as satisfied.
  */
 export async function meetsUnlockCondition(
-  userId: number,
-  condition: string | null,
+  _userId: number,
+  _condition: string | null,
 ): Promise<boolean> {
-  if (!condition) return true;
-  if (condition === "prestige") {
-    const [row] = await db
-      .select({ prestigeLevel: users.prestigeLevel })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    return Boolean(row && Number(row.prestigeLevel) >= 1);
-  }
-  return false;
+  return true;
 }
 
-/**
- * Check whether an unlock condition is satisfiable so the Shop can label
- * locked items ("Requires Prestige") without blocking gift-guard purchases.
- * Separate from meetsUnlockCondition to keep the purchase path atomic.
- */
 
 /**
  * Idempotently grant ownership of `key` (validated against the catalog) to
- * `userId`. Returns { granted, alreadyOwned, missing } so battlepass claims
- * can skip cleanly when the catalog is missing a key (never errors).
+ * `userId`. Returns { granted, alreadyOwned, missing } so callers can skip
+ * cleanly when the catalog is missing a key (never errors).
  */
 export async function grantCosmetic(
   userId: number,
   key: string,
-  source = "battlepass",
+  source = "grant",
 ): Promise<{ granted: boolean; alreadyOwned: boolean; missing: boolean }> {
   const catalog = await getCosmeticByKey(key);
   if (!catalog) return { granted: false, alreadyOwned: false, missing: true };
@@ -119,6 +107,49 @@ export async function grantCosmetic(
   return { granted: true, alreadyOwned: false, missing: false };
 }
 
+/**
+ * Grant EVERY item in the cosmetic catalogs to one player, for free — every
+ * enabled glow, animated emote, cosmetic and special title. Idempotent
+ * (NOT EXISTS guards), so it is safe to call at account creation and again
+ * later. Nothing is earnable any more, so everyone owns the whole catalog
+ * (migration 0186 backfills existing accounts, this covers new ones).
+ */
+export async function grantAllCosmeticsToUser(userId: number): Promise<void> {
+  if (!Number.isFinite(Number(userId))) return;
+  await db.execute(sql`
+    INSERT INTO "user_glows" ("user_id", "glow_key")
+    SELECT ${userId}, g."key" FROM "glows" g
+     WHERE g."enabled" = TRUE
+       AND NOT EXISTS (
+         SELECT 1 FROM "user_glows" ug WHERE ug."user_id" = ${userId} AND ug."glow_key" = g."key"
+       )
+  `);
+  await db.execute(sql`
+    INSERT INTO "user_emotes" ("user_id", "emote_key")
+    SELECT ${userId}, e."key" FROM "emotes" e
+     WHERE e."enabled" = TRUE
+       AND NOT EXISTS (
+         SELECT 1 FROM "user_emotes" ue WHERE ue."user_id" = ${userId} AND ue."emote_key" = e."key"
+       )
+  `);
+  await db.execute(sql`
+    INSERT INTO "user_cosmetics" ("user_id", "cosmetic_key", "source")
+    SELECT ${userId}, c."key", 'grant' FROM "cosmetics" c
+     WHERE c."enabled" = TRUE
+       AND NOT EXISTS (
+         SELECT 1 FROM "user_cosmetics" uc WHERE uc."user_id" = ${userId} AND uc."cosmetic_key" = c."key"
+       )
+  `);
+  await db.execute(sql`
+    INSERT INTO "user_special_titles" ("user_id", "title_key")
+    SELECT ${userId}, st."key" FROM "special_titles" st
+     WHERE NOT EXISTS (
+       SELECT 1 FROM "user_special_titles" ust
+        WHERE ust."user_id" = ${userId} AND ust."title_key" = st."key"
+     )
+  `);
+}
+
 export type BuyCosmeticResult =
   | { ok: true; cosmeticKey: string; name: string; balance: number }
   | { ok: false; error: string; status?: number; code?: string };
@@ -128,7 +159,7 @@ export type BuyCosmeticResult =
  *   1. key is well-formed,
  *   2. cosmetic exists in the catalog AND is enabled AND has a price,
  *   3. the user exists and has paid enough tokens,
- *   4. the unlock condition (e.g. prestige) is met.
+ *   4. the unlock condition is met (every condition is satisfied now).
  * Then atomically: debit balance, write the `spend` ledger row, insert the
  * ownership row (unique constraint = idempotency), and return the result.
  */

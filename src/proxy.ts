@@ -32,17 +32,11 @@ import { CacheKeys, CacheTTL } from "./lib/redis/keys";
  * /casino/* → /games/*, so a request can arrive with either prefix.
  */
 const GAME_ROUTE_PATTERNS = [
-  "/casino/blackjack(.*)",
-  "/casino/roulette(.*)",
   "/casino/uno(.*)",
   "/casino/neon-flush(.*)",
   // /uno is the top-level alias of the Uno game page.
   "/uno",
-  "/casino/plinko(.*)",
   "/casino/mines-pvp(.*)",
-  // /casino/crash still redirects to the PVP Crash Arena.
-  "/casino/crash",
-  "/casino/crash-arena(.*)",
   "/casino/chess(.*)",
   "/casino/keno",
   "/casino/keno-pvp(.*)",
@@ -58,14 +52,9 @@ const GAME_ROUTE_PATTERNS = [
   "/casino/memory-grid(.*)",
   "/casino/precision(.*)",
   // /games/* mirrors of the /casino/* routes.
-  "/games/blackjack(.*)",
-  "/games/roulette(.*)",
   "/games/uno(.*)",
   "/games/neon-flush(.*)",
-  "/games/plinko(.*)",
   "/games/mines-pvp(.*)",
-  "/games/crash",
-  "/games/crash-arena(.*)",
   "/games/chess(.*)",
   "/games/keno",
   "/games/keno-pvp(.*)",
@@ -139,7 +128,6 @@ const isPublicRoute = createRouteMatcher([
   // Legacy Shop URL: now a redirect to /upgrade-pro, kept public so old links
   // (emails, bookmarks, Stripe returns) don't bounce through sign-in first.
   "/shop",
-  "/battlepass",
 ]);
 
 const gameRouteMatcher = createRouteMatcher([...GAME_ROUTE_PATTERNS]);
@@ -193,16 +181,14 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     config: { windowMs: 60_000, max: 30 },
   },
   {
-    // Plinko PvP / Keno PvP match pages poll /status every 5s as a
-    // reconnect safety net (socket broadcasts are the fast path; the poll
-    // was 800ms before the socket layer existed). Even at 5s, ~12 req/min
-    // per client on top of stop / launch actions is above the generic
-    // 60/min per-user cap. The generic cap silently froze the board
-    // mid-round: with the status polls rate-limited, the client could
-    // never reconcile, so every STOP click 409'd against the stale board
-    // ("can't click stop"). These polling-heavy flows get their own
-    // headroom.
-    pattern: /^\/api\/(plinko-pvp|keno-pvp)\//,
+    // Keno PvP match pages poll /status every 5s as a reconnect safety
+    // net (socket broadcasts are the fast path). Even at 5s, ~12 req/min
+    // per client on top of actions is above the generic 60/min per-user
+    // cap. The generic cap silently froze the board mid-round: with the
+    // status polls rate-limited, the client could never reconcile, so
+    // every action 409'd against the stale board. These polling-heavy
+    // flows get their own headroom.
+    pattern: /^\/api\/(keno-pvp)\//,
     config: { windowMs: 60_000, max: 300 },
   },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },

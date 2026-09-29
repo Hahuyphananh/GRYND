@@ -1034,30 +1034,28 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "precision",
     "mines-pvp",
     "keno-pvp",
-    "plinko-pvp",
     "lane-rush-duel",
-    "blackjack-pvp",
     "dice-flush",
     "rps-pvp",
     "odds-pvp",
-    "roulette-pvp",
-    "crash-arena",
     "uno",
     "tower-arena",
     "hex-duel",
     "mini-golf",
   ]);
   assert.equal(isRatedGame("chess"), true);
-  // The formerly-excluded games are now REGISTERED, so all of the 20 rated
-  // games are rated keys. Poker was removed from the game entirely, so its key
-  // must NOT be rated any more.
+  // The formerly-excluded games are now REGISTERED, so every listed game is a
+  // rated key. Poker, plinko, blackjack, roulette, crash arena were removed
+  // from the game entirely, so their keys must NOT be rated any more.
   assert.equal(isRatedGame("mini-golf"), true);
   assert.equal(isRatedGame("hex-duel"), true);
   assert.equal(isRatedGame("tower-arena"), true);
   assert.equal(isRatedGame("uno"), true);
-  assert.equal(isRatedGame("crash-arena"), true);
-  assert.equal(isRatedGame("roulette-pvp"), true);
   assert.equal(isRatedGame("poker"), false);
+  assert.equal(isRatedGame("crash-arena"), false);
+  assert.equal(isRatedGame("roulette-pvp"), false);
+  assert.equal(isRatedGame("plinko-pvp"), false);
+  assert.equal(isRatedGame("blackjack-pvp"), false);
   assert.equal(isRatedGame("not-a-game"), false);
   assert.equal(normalizeRatingGameKey("nope"), RATED_GAMES[0]);
   assert.equal(getRatingGameLabel("pool"), "Pool Masters");
@@ -1182,9 +1180,7 @@ const WIRING = [
   ["precision", "src/lib/precision/finishMatch.ts"],
   ["mines-pvp", "src/lib/mines-pvp/serverStore.js"],
   ["keno-pvp", "src/lib/keno-pvp/serverStore.js"],
-  ["plinko-pvp", "src/lib/plinko-pvp/serverStore.js"],
   ["lane-rush-duel", "src/lib/lane-rush-duel/serverStore.js"],
-  ["blackjack-pvp", "src/lib/blackjack-pvp/serverStore.js"],
   ["dice-flush", "src/app/api/dice-flush/_lib.js"],
   ["rps-pvp", "src/lib/rps-pvp/serverStore.js"],
   ["odds-pvp", "src/app/api/odds/pvp/pick/route.ts"],

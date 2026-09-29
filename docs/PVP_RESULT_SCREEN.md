@@ -82,17 +82,9 @@ Notes:
   behind via "View Results" dismiss, resign shows "Watch game"; placement + the server's
   win/lose verdict from `finalRankings` and the resign API; old `ResultPopup`/`Stat` components
   deleted)
-- Plinko Duel — `src/app/casino/plinko/[matchId]/PageClient.tsx` (`renderWinnerPopup` now
-  renders the shared screen; real `p1Score–p2Score`, winner-vs-viewer verdict,
-  round-decided label, duration from `startedAt/endedAt`; per-seat score boxes moved into
-  Match Details; old modal + `TrophyIcon` deleted)
 - Memory Grid — `src/app/casino/memory-grid/[matchId]/PageClient.tsx` (finished-state screen
   replaces the inline board + separate draw popup; real rounds/score, duration from
   `startedAt/endedAt`)
-- Blackjack PvP — `src/app/casino/blackjack/[matchId]/PageClient.tsx` (match-end screen from
-  real winner/rounds; old `MatchEndModal` + its icons deleted)
-- Roulette PvP — `src/app/casino/roulette/[matchId]/PageClient.jsx` (finished banner replaced;
-  real match points + round results from the match payload)
 - Chess Arena — `src/app/casino/chess-game/[gameId]/PageClient.jsx` (win/loss/draw screen from
   the game row's winner/result; old popup + icons deleted). For a finished match it adds a
   "See Evaluation" `secondaryAction` linking to `/evaluation/chess/[gameId]` (omitted for an
@@ -119,11 +111,6 @@ Notes:
 
 ## Games with no match-over result UI (nothing to convert)
 
-- Crash Arena (table) — `RoundResultModal` is a per-hand, 8s auto-dismissing card whose design
-  is to keep hands flowing (winner semantics: fold-out / last-standing / pot carry-over, plus
-  folded-vs-busted player outcomes that don't map to win/loss/draw). The shared screen has no
-  auto-dismiss and would block every hand on a button press; leaving the table just refunds
-  and navigates to the lobby. Existing per-hand treatment is already the right lightweight fit.
 - Chess `[tableAmount]` — waiting/lobby page only, the board lives elsewhere (already converted)
 - Neon Flush — no result popup exists on the match page
 

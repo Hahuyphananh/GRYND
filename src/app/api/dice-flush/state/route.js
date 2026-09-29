@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { and, inArray } from "drizzle-orm";
 import { asc, db, eq, resolveExpiredTurn, diceFlushRooms } from "../_lib";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
-import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 import { getFrameDecorations } from "../../../../lib/cosmetics";
 import { sql } from "drizzle-orm";
@@ -21,9 +20,6 @@ async function enrichRoomPlayers(room) {
   const rows = await db
     .select({
       clerkId: users.clerkId,
-      xp: users.xp,
-      prestigeLevel: users.prestigeLevel,
-      showPrestigeBadge: users.showPrestigeBadge,
       iconKey: users.selectedIcon,
       equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
@@ -43,7 +39,6 @@ async function enrichRoomPlayers(room) {
       ),
     )
     .where(inArray(users.clerkId, humanIds));
-  const badgeByUser = new Map();
   const iconByUser = new Map();
   const colorByUser = new Map();
   const frameByUser = new Map();
@@ -54,16 +49,8 @@ async function enrichRoomPlayers(room) {
     rows.map((row, index) => [String(row.clerkId), decorations[index]]),
   );
   for (const row of rows) {
-    badgeByUser.set(
-      String(row.clerkId),
-      resolvePrestigeBadge({
-        xp: row.xp,
-        prestigeLevel: row.prestigeLevel,
-        showPrestigeBadge: row.showPrestigeBadge,
-      }),
-    );
     iconByUser.set(String(row.clerkId), row.iconKey || "default");
-    // Equipped name color — battlepass glow wins; the GRYND PRO chat
+    // Equipped name color — an owned glow wins; the GRYND PRO chat
     // color only surfaces for active members (chat-route precedence).
     colorByUser.set(
       String(row.clerkId),
@@ -82,7 +69,6 @@ async function enrichRoomPlayers(room) {
           ? p
           : {
               ...p,
-              prestigeBadge: badgeByUser.get(String(p.userId)) || null,
               iconKey: iconByUser.get(String(p.userId)) || "default",
               profileFrame: frameByUser.get(String(p.userId)) || null,
               nameColor: colorByUser.get(String(p.userId)) || null,

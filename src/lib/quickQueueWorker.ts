@@ -6,9 +6,6 @@ import { normalizeStake } from "./games/stakes";
 import { getTrophyMapsForUsers } from "./trophyStore";
 import { getRatingMapsForUsers } from "./rating";
 import { createOrJoin as createOrJoinMinesMatch } from "./mines-pvp/serverStore";
-import { createOrJoin as createOrJoinPlinkoMatch } from "./plinko-pvp/serverStore";
-import { createOrJoin as createOrJoinBlackjackMatch } from "./blackjack-pvp/serverStore";
-import { createOrJoin as createOrJoinRouletteMatch } from "./roulette-pvp/serverStore";
 import { createOrJoin as createOrJoinKenoMatch } from "./keno-pvp/serverStore";
 import { createOrJoin as createOrJoinLaneRushMatch } from "./lane-rush-duel/serverStore";
 import { createOrJoinFourInARowDestination } from "./quickQueueFourInARow";
@@ -22,7 +19,6 @@ import { createOrJoinPrecisionDestination } from "./quickQueuePrecision";
 import { createOrJoinHexDuelDestination } from "./quickQueueHexDuel";
 import { createOrJoinChessDestination } from "./quickQueueChess";
 import { createOrJoinDiceFlushDestination } from "./quickQueueDiceFlush";
-import { createOrJoinCrashArenaDestination } from "./quickQueueCrashArena";
 import { createOrJoin as createOrJoinMiniGolfMatch } from "./mini-golf/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
@@ -49,9 +45,9 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     } catch (error) {
       console.error("[quick-queue] failed to load trophy snapshots", error);
     }
-    // Elo snapshots, for the ABOVE-CAP switch: once both players have capped a
-    // game their trophies are identical, so the matcher uses the prestige (Elo)
-    // gap instead (see src/lib/quickQueue.ts). Best-effort like trophies.
+    // Elo snapshots — the second skill signal. Trophies are unbounded now, so
+    // the matcher checks BOTH the trophy gap and the Elo gap for every pair
+    // (see src/lib/quickQueue.ts). Best-effort like trophies.
     try {
       ratingMaps = await getRatingMapsForUsers(rows.map((row) => row.userId));
     } catch (error) {
@@ -71,7 +67,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       requestId: row.id,
       queuedAt: row.queuedAt.getTime(),
       trophies: trophyMaps[row.userId] ?? null,
-      prestige: ratingMaps[row.userId] ?? null,
+      ratings: ratingMaps[row.userId] ?? null,
       row,
     }));
 
@@ -89,7 +85,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     // STAKES ARE RETIRED (src/lib/games/stakes.js). Every queue-matched game
     // used to be created at the stake the players queued with (the Mines
     // request's stake field doubles as the queue's stake envelope). That value
-    // is now normalized away HERE, at the one place all 18 queue games are
+    // is now normalized away HERE, at the one place all queue games are
     // created, so matchmaking can never hand a game a stake — and therefore
     // never a debit or a payout — no matter what a queue row still carries
     // from before the retirement.
@@ -99,9 +95,6 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
     const partnerMines = Number(pair.partner.row?.minesCount ?? sourceMines);
     const createMatch = {
       "mines-pvp": (userId) => createOrJoinMinesMatch({ userId, stakeAmount: sourceStake, minesCount: sourceMines }),
-      "plinko-pvp": (userId) => createOrJoinPlinkoMatch({ userId, stakeAmount: sourceStake }),
-      "blackjack-pvp": (userId) => createOrJoinBlackjackMatch({ userId, stakeAmount: sourceStake }),
-      "roulette-pvp": (userId) => createOrJoinRouletteMatch({ userId, stakeAmount: sourceStake }),
       "keno-pvp": (userId) => createOrJoinKenoMatch({ userId, stakeAmount: sourceStake }),
       "lane-rush-duel": (userId) => createOrJoinLaneRushMatch({ userId, stakeAmount: sourceStake, difficulty: "easy", vsBot: false }),
       "four-in-a-row": (userId) => createOrJoinFourInARowDestination({ userId, betAmount: sourceStake }),
@@ -115,7 +108,6 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       "hex-duel": (userId) => createOrJoinHexDuelDestination({ userId, wager: sourceStake }),
       "chess": (userId) => createOrJoinChessDestination({ userId, betAmount: sourceStake }),
       "dice-flush": (userId) => createOrJoinDiceFlushDestination({ userId, wager: sourceStake }),
-      "crash-arena": (userId) => createOrJoinCrashArenaDestination({ userId, wager: sourceStake }),
       // Mini Golf is unstaked: its `createOrJoin` takes no stake (the queue's
       // normalized stake is simply unused) and returns the same waiting lobby
       // id for both calls, exactly like the other lobby-style destinations.
@@ -157,9 +149,7 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
                           ? createOrJoinChessDestination({ userId: pair.partner.userId, betAmount: sourceStake })
                           : pair.candidate.gameKey === "dice-flush"
                             ? createOrJoinDiceFlushDestination({ userId: pair.partner.userId, wager: sourceStake })
-                            : pair.candidate.gameKey === "crash-arena"
-                              ? createOrJoinCrashArenaDestination({ userId: pair.partner.userId, wager: sourceStake })
-                              : await createMatch(pair.partner.userId) as any;
+                            : await createMatch(pair.partner.userId) as any;
       } catch (error) {
         console.error("[quick-queue] destination join failed", { gameKey: pair.candidate.gameKey, userId: pair.partner.userId, destinationMatchId, error });
         return null;

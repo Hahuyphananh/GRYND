@@ -14,33 +14,9 @@ export async function POST(req) {
       async () => {
         const { rows: result } = await sql`
           (
-            SELECT users.name AS username, 'Roulette' AS gameType, roulette_games.bet_amount AS betAmount, roulette_games.payout AS payout, roulette_games.created_at AS createdAt
-            FROM roulette_games
-            INNER JOIN users ON users.id = roulette_games.user_id
-          )
-          UNION ALL
-          (
-            SELECT users.name, 'Crash', crash_games.bet_amount, crash_games.payout, crash_games.created_at
-            FROM crash_games
-            INNER JOIN users ON users.id = crash_games.user_id
-          )
-          UNION ALL
-          (
-            SELECT users.name, 'Blackjack', blackjack_games.bet_amount, blackjack_games.payout, blackjack_games.created_at
-            FROM blackjack_games
-            INNER JOIN users ON users.id = blackjack_games.user_id
-          )
-          UNION ALL
-          (
-            SELECT users.name, 'Mines', mines_games.bet_amount, mines_games.payout, mines_games.created_at
+            SELECT users.name AS username, 'Mines' AS gameType, mines_games.bet_amount AS betAmount, mines_games.payout AS payout, mines_games.created_at AS createdAt
             FROM mines_games
             INNER JOIN users ON users.id = mines_games.user_id
-          )
-          UNION ALL
-          (
-            SELECT users.name, 'Plinko', plinko_games.bet_amount, plinko_games.payout, plinko_games.created_at
-            FROM plinko_games
-            INNER JOIN users ON users.id = plinko_games.user_id
           )
           ORDER BY createdAt DESC
           LIMIT ${limit} OFFSET ${offset};

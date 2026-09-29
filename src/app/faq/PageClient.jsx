@@ -17,7 +17,7 @@ const faqSections = [
       },
       {
         q: "How do I earn more tokens?",
-        a: "Win skill-based games to grow your balance, earn referral bonuses when friends join through your code, and pick up comeback bonuses if you take a break. Ranked wins also earn trophies that drive your Battle Pass progression.",
+        a: "Win skill-based games to grow your balance, earn referral bonuses when friends join through your code, and pick up comeback bonuses if you take a break. Ranked wins also earn trophies that raise your ladder position.",
       },
       {
         q: "Can I withdraw or buy tokens?",
@@ -80,7 +80,7 @@ const faqSections = [
     questions: [
       {
         q: "How do levels, titles, and streaks work?",
-        a: "Your Battle Pass level rises with the trophies you earn from ranked matches — win to gain trophies, and unlock milestone titles, name glows, emotes and profile frames as you climb. Your profile also tracks win streaks and your highest all-time streak.",
+        a: "Ranked matches award trophies, and your trophy count places you on the ladder. Every name glow, emote and profile frame is available to every player from day one — nothing is locked behind a paid track. Your profile also tracks milestone titles, win streaks and your highest all-time streak.",
       },
       {
         q: "How do referrals work?",

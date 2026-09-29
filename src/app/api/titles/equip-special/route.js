@@ -64,7 +64,6 @@ export async function POST(request) {
       selectedSpecialTitle: normalizedKey,
       selectedTitle: null,
       selectedStreakType: null,
-      showPrestigeBadge: false,
     })
     .where(eq(users.id, appUser.id));
 

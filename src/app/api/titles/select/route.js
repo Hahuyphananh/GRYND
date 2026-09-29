@@ -103,7 +103,6 @@ export async function POST(request) {
         selectedTitle: title,
         selectedSpecialTitle: null,
         selectedStreakType: null,
-        showPrestigeBadge: false,
       })
       .where(eq(users.id, dbUser.id));
 

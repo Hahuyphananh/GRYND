@@ -1,17 +1,13 @@
 //get-bet-history/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "../../../db";
-import { eq, or, and, inArray, sql } from "drizzle-orm";
+import { eq, or, and } from "drizzle-orm";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 import {
   users,
-  rouletteGames,
-  blackjackGames,
   minesGames,
-  plinkoGames,
   rpsGames,
-  crashGames,
   unoGames,
   chessGames,
   keno_games,
@@ -26,9 +22,6 @@ import {
   diceFlushPlayers,
   minesPvpMatches,
   laneRushDuelMatches,
-  crashArenaTables,
-  crashArenaRounds,
-  crashArenaEntries,
   miniGolfMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
@@ -72,11 +65,7 @@ export async function GET(req: NextRequest) {
       CacheTTL.betHistory,
       async () => {
         const [
-      roulette,
-      blackjack,
       mines,
-      plinko,
-      crash,
       rps,
       uno,
       chess,
@@ -91,33 +80,12 @@ export async function GET(req: NextRequest) {
       diceFlushRows,
       minesPvpRows,
       laneRushDuelRows,
-      crashArenaRows,
       miniGolfRows,
     ] = await Promise.all([
       // Column projection + per-table LIMIT. The formatters below only
       // read a handful of fields per row; full-row selects shipped every
       // table's deck/hand/seed/state columns to the client. LIMIT caps
       // unbounded history (oldest entries are dropped by the final sort).
-      db
-        .select({
-          betAmount: rouletteGames.betAmount,
-          payout: rouletteGames.payout,
-          result: rouletteGames.result,
-          createdAt: rouletteGames.createdAt,
-        })
-        .from(rouletteGames)
-        .where(eq(rouletteGames.userId, uid))
-        .limit(HISTORY_LIMIT),
-      db
-        .select({
-          betAmount: blackjackGames.betAmount,
-          payout: blackjackGames.payout,
-          result: blackjackGames.result,
-          createdAt: blackjackGames.createdAt,
-        })
-        .from(blackjackGames)
-        .where(eq(blackjackGames.userId, uid))
-        .limit(HISTORY_LIMIT),
       db
         .select({
           betAmount: minesGames.betAmount,
@@ -127,26 +95,6 @@ export async function GET(req: NextRequest) {
         })
         .from(minesGames)
         .where(eq(minesGames.userId, uid))
-        .limit(HISTORY_LIMIT),
-      db
-        .select({
-          betAmount: plinkoGames.betAmount,
-          payout: plinkoGames.payout,
-          result: plinkoGames.result,
-          createdAt: plinkoGames.createdAt,
-        })
-        .from(plinkoGames)
-        .where(eq(plinkoGames.userId, userId))
-        .limit(HISTORY_LIMIT),
-      db
-        .select({
-          betAmount: crashGames.betAmount,
-          payout: crashGames.payout,
-          result: crashGames.result,
-          createdAt: crashGames.createdAt,
-        })
-        .from(crashGames)
-        .where(eq(crashGames.userId, uid))
         .limit(HISTORY_LIMIT),
       db
         .select({
@@ -388,25 +336,6 @@ export async function GET(req: NextRequest) {
           ),
         )
         .limit(HISTORY_LIMIT),
-      //  Crash Arena — one entry per player per round (PvP tables AND
-      //  free AI practice tables). Projection joins entries → rounds →
-      //  tables so we can label AI practice rounds and compute the pot
-      //  from the table wager.
-      db
-        .select({
-          entryId: crashArenaEntries.id,
-          result: crashArenaEntries.result,
-          roundId: crashArenaEntries.roundId,
-          roundStatus: crashArenaRounds.status,
-          roundCreatedAt: crashArenaRounds.createdAt,
-          tableIsAi: crashArenaTables.isAi,
-          tableWager: crashArenaTables.wagerAmount,
-        })
-        .from(crashArenaEntries)
-        .innerJoin(crashArenaRounds, eq(crashArenaEntries.roundId, crashArenaRounds.id))
-        .innerJoin(crashArenaTables, eq(crashArenaRounds.tableId, crashArenaTables.id))
-        .where(eq(crashArenaEntries.userId, uid))
-        .limit(HISTORY_LIMIT),
       //  Mini Golf (PvP, clerkId-based — finished-only). Unstaked: it moves
       //  no tokens, so amount/payout/tokenDiff are all 0 and the entry is a
       //  pure W/L/draw record. AI/practice matches are labelled and also move
@@ -431,26 +360,6 @@ export async function GET(req: NextRequest) {
         )
         .limit(HISTORY_LIMIT),
     ]);
-
-    // ── Crash Arena: how many entries each of the user's rounds had ───────
-    // Pot = players × wager; the winner takes pot minus the 5% rake.
-    const crashRoundIds = [
-      ...new Set(crashArenaRows.map((r) => r.roundId).filter((id) => id != null)),
-    ];
-    let crashRoundPlayerCounts = new Map();
-    if (crashRoundIds.length > 0) {
-      const counts = await db
-        .select({
-          roundId: crashArenaEntries.roundId,
-          count: sql<number>`count(*)`,
-        })
-        .from(crashArenaEntries)
-        .where(inArray(crashArenaEntries.roundId, crashRoundIds))
-        .groupBy(crashArenaEntries.roundId);
-      crashRoundPlayerCounts = new Map(
-        counts.map((c) => [c.roundId, Number(c.count ?? 0)]),
-      );
-    }
 
     const formatBet = (type, bet) => {
       let result = "pending";
@@ -727,28 +636,6 @@ export async function GET(req: NextRequest) {
       })
       .filter(Boolean);
 
-    // Crash Arena — settled rounds only. AI practice rounds are labeled
-    // "Crash Arena vs AI" (their amounts are virtual practice chips).
-    const crashArenaFormatted = crashArenaRows
-      .map((g) => {
-        if (g.roundStatus !== "settled") return null;
-        const amount = Number(g.tableWager ?? 0);
-        const players = crashRoundPlayerCounts.get(g.roundId) ?? 0;
-        const pot = players * amount;
-        const rake = Math.floor(pot * 0.05);
-        const won = g.result === "won";
-        const payout = won ? pot - rake : 0;
-        return {
-          type: g.tableIsAi ? "Crash Arena vs AI" : "Crash Arena",
-          date: g.roundCreatedAt || new Date().toISOString(),
-          amount,
-          payout,
-          result: won ? "won" : "lost",
-          tokenDiff: won ? payout - amount : -amount,
-        };
-      })
-      .filter(Boolean);
-
     // Mini Golf — finished matches only. Mini Golf is unstaked (no wagers,
     // tokens or payouts), so every entry is a 0-token W/L/draw record: the
     // server-authoritative `winner_id` decides, and a `tie` result (five
@@ -808,11 +695,7 @@ export async function GET(req: NextRequest) {
       .filter(Boolean);
 
         return [
-    ...roulette.map((b) => formatBet("Roulette", b)),
-    ...blackjack.map((b) => formatBet("Blackjack", b)),
     ...mines.map((b) => formatBet("Mines", b)),
-    ...plinko.map((b) => formatBet("Plinko", b)),
-    ...crash.map((b) => formatBet("Crash", b)),
     ...rps.map((b) => formatBet("Rock Paper Scissors", b)),
     ...uno.map((b) => formatBet("UNO", b)),
     ...chess.map((b) => formatBet("Chess", b)),
@@ -827,7 +710,6 @@ export async function GET(req: NextRequest) {
       ...diceFlushFormatted,
       ...minesPvpFormatted,
       ...laneRushDuelFormatted,
-      ...crashArenaFormatted,
       ...miniGolfFormatted,
       ]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())

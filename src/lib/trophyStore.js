@@ -18,15 +18,16 @@
 // their own row and are only ever read/written by Chess settlements.
 //
 // THE RULE (see src/lib/trophies.js — the single source of truth):
-//   win = +30, loss = −30, draw = 0, clamped to [0, 1000] per game.
+//   win = +30, loss = −30, draw = 0, floored at 0 and otherwise UNBOUNDED
+//   per game.
 //   At a multi-seat table the ±30 becomes a symmetric placement LADDER
 //   (applyPlacementTrophies): 1st +30, last −30, even shares between,
 //   zero-sum, with tied seats averaging the ranks they span.
 //
 // WHAT NEVER ENTERS THE CALCULATION (by construction):
-// token balance, winnings/payout, wagered amount, XP, Battle Pass, Prestige,
-// streaks, cosmetics, membership. The only inputs are the two current
-// trophy counts and the outcome.
+// token balance, winnings/payout, wagered amount, XP, streaks, cosmetics,
+// membership. The only inputs are the two current trophy counts and the
+// outcome.
 //
 // WHAT THE CLIENT CAN NEVER DO:
 //   * submit a trophy count or a delta (there is no write path that accepts
@@ -66,7 +67,6 @@ import {
   isValidTrophyOutcome,
   normalizeTrophyGameKey,
   toTrophyShape,
-  trophyProgress,
 } from "./trophies";
 
 /** The journal/game-key shape guard (mirrors rating.js's GAME_KEY_RE). */
@@ -138,10 +138,8 @@ export async function getTrophiesForUser(clerkId) {
 /**
  * A player's TOTAL trophies — the SUM of their per-game trophy counts.
  *
- * This is the value the Battle Pass level is derived from (see
- * `getLevelFromTrophies` in src/lib/battlepass.js), and the value the navbar
- * chip shows. It is computed on read; nothing is stored. Returns 0 for a
- * player who has not earned trophies in any game.
+ * This is the value the navbar chip shows. It is computed on read; nothing is
+ * stored. Returns 0 for a player who has not earned trophies in any game.
  */
 export async function getTotalTrophiesForUser(clerkId) {
   if (!clerkId) return 0;
@@ -388,14 +386,14 @@ export { normalizeTrophyGameKey };
  *      (deterministic lock order ⇒ no deadlock between two match results that
  *      involve the same pair in opposite order),
  *   4. bail out if this match already moved either player's trophies,
- *   5. compute both deltas with the pure trophy rule (clamped to 0..10000),
+ *   5. compute both deltas with the pure trophy rule (floored at 0),
  *   6. update both rows,
  *   6b. mirror the new progress into the anti-reset identity ledger,
  *   7. journal both events.
  *
  * The returned winner/loser objects carry the applied delta and the post-match
- * progression (`trophies`, `complete`, `phase`) so a result screen can show
- * "+30 → 4,320 / 1,000" without a second round-trip.
+ * trophy count so a result screen can show "+30 → 4,320" without a second
+ * round-trip.
  *
  * @param {object} params
  * @param {string} params.gameKey       eligible game key (see TROPHY_GAMES)
@@ -457,9 +455,7 @@ export { normalizeTrophyGameKey };
 /**
  * The read shape both writers return for one settled seat. `trophiesBefore` /
  * `trophiesAfter` / `delta` are what every result screen renders; `clamped`
- * reports that the bounds cut the nominal ±30 short (a seat floored at 0, or a
- * winner already at the cap), and the progress fields come from the game's own
- * numbers.
+ * reports that the floor cut the nominal ±30 short (a seat floored at 0).
  */
 function toSettledSeatShape(entry) {
   return {
@@ -472,7 +468,6 @@ function toSettledSeatShape(entry) {
     delta: entry.delta,
     nominalDelta: entry.nominalDelta,
     clamped: entry.clamped,
-    ...trophyProgress(entry.after),
   };
 }
 
@@ -593,8 +588,8 @@ async function settleTrophies({
     // runs HERE — inside the lock, before anything is written.
     //
     // Each seat's own bound still clamps its own delta, so a seat on the floor
-    // loses nothing and a winner already at the cap gains nothing: a table can
-    // move less than the nominal ladder when seats sit at the bounds.
+    // loses nothing: a table can move less than the nominal ladder when seats
+    // sit on the floor.
     const lockedSeats = ordered.map((seat) => ({
       clerkId: String(seat.clerkId),
       trophies: trophyRows.get(String(seat.clerkId)).trophies,

@@ -95,7 +95,7 @@ test("no game page can start with a stake (the default-wager hook is gone)", () 
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// 3. The queue chokepoint — all 19 queue games are created through it
+// 3. The queue chokepoint — every queue game is created through it
 // ════════════════════════════════════════════════════════════════════════
 
 const WORKER = "src/lib/quickQueueWorker.ts";
@@ -145,24 +145,16 @@ const CONVERTED = [
   "src/app/api/dice-flush/start-ai/route.js",
   "src/app/api/dice-flush/_lib.js",
   // PvP matchmaking entry points
-  "src/app/api/blackjack-pvp/create-or-join/route.js",
   "src/app/api/keno-pvp/create-or-join/route.js",
   "src/app/api/lane-rush-duel/create-or-join/route.js",
   "src/app/api/memory-grid/create-or-join/route.js",
   "src/app/api/mines-pvp/create-or-join/route.js",
-  "src/app/api/plinko-pvp/create-or-join/route.js",
-  "src/app/api/roulette-pvp/create-or-join/route.js",
   // PvP stores that escrow the stake
-  "src/lib/blackjack-pvp/serverStore.js",
   "src/lib/keno-pvp/serverStore.js",
   "src/lib/lane-rush-duel/serverStore.js",
   "src/lib/memory-grid/serverStore.js",
   "src/lib/mines-pvp/serverStore.js",
-  "src/lib/plinko-pvp/serverStore.js",
-  "src/lib/roulette-pvp/serverStore.js",
   // Single-player / AI games
-  "src/app/api/play-plinko/route.js",
-  "src/app/api/roulette/save-game/route.js",
   "src/app/api/rps/play/route.js",
   "src/app/api/odds/ai/start/route.ts",
   "src/app/api/hex-duel/start-game/route.ts",
@@ -214,16 +206,12 @@ test("every converted entry point takes its stake from the seam", () => {
 // Every entry point/store whose debit, refund or payout machinery was deleted
 // once stakes were retired. None of them may ever move a token balance again.
 const NO_TOKEN_MOVES = [
-  "src/lib/blackjack-pvp/serverStore.js",
-  "src/lib/roulette-pvp/serverStore.js",
   "src/lib/keno-pvp/serverStore.js",
-  "src/lib/plinko-pvp/serverStore.js",
   "src/lib/mines-pvp/serverStore.js",
   "src/lib/memory-grid/serverStore.js",
   "src/lib/lane-rush-duel/serverStore.js",
   "src/lib/rps-pvp/serverStore.js",
   "src/lib/quickQueueChess.ts",
-  "src/lib/quickQueueCrashArena.ts",
   "src/lib/quickQueueDiceFlush.ts",
   "src/lib/quickQueueDotsAndBoxes.ts",
   "src/lib/quickQueueFourInARow.ts",
@@ -235,7 +223,6 @@ const NO_TOKEN_MOVES = [
   "src/lib/dotsAndBoxesServer.js",
   "src/lib/fourInARowServer.js",
   "src/lib/tower-arena/serverStore.ts",
-  "src/lib/crash-arena/cleanup.ts",
   "src/app/api/chess/create-game/route.js",
   "src/app/api/chess/join-game/route.js",
   "src/app/api/chess/cancel-game/route.js",
@@ -266,7 +253,6 @@ const NO_TOKEN_MOVES = [
   "src/app/api/odds/pvp/cleanup/route.ts",
   "src/app/api/odds/pvp/forfeit/route.ts",
   "src/app/api/odds/pvp/pick/route.ts",
-  "src/app/api/crash-arena/join/route.ts",
   "src/app/api/dice-flush/_lib.js",
   "src/app/api/dice-flush/resign/route.js",
 ];
@@ -291,19 +277,6 @@ test("no converted entry point can move a token balance again", () => {
     offenders,
     [],
     `retired stake machinery is back:\n${offenders.join("\n")}`,
-  );
-});
-
-test("crash arena treats every join as play-money, whatever the table", () => {
-  // Crash Arena's buy-in is a chip stack, not a charge, but the PUBLIC-table
-  // path used to debit `users.balance`. With stakes retired no table may spend
-  // real tokens, so the join route must treat every table as virtual.
-  const src = fs.readFileSync("src/app/api/crash-arena/join/route.ts", "utf8");
-  assert.match(src, /tokensMoveForMatches\(\)/);
-  assert.match(
-    src,
-    /Boolean\(table\.isPrivate\) \|\| !tokensMoveForMatches\(\)/,
-    "every crash arena join must be play-money",
   );
 });
 

@@ -3,9 +3,8 @@ import { claimIdempotency } from "../../../../lib/security/idempotency";
 import { sql } from "../../../../db/sql";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { checkUnlocks } from "../../../../lib/specialTitles";
-import { addExp } from "../../../../lib/battlepass";
 
-// GRYND has no token currency — the referral bonus is Battle Pass XP.
+// Token amount credited to the referrer's running earnings total.
 const REFERRAL_BONUS = 250;
 
 export async function POST(request) {
@@ -111,10 +110,6 @@ export async function POST(request) {
         WHERE id = ${referrer.id}
       `;
     });
-
-    // Grant the referral bonus as Battle Pass XP to both players (no tokens).
-    await addExp(Number(currentUser.id), REFERRAL_BONUS);
-    await addExp(Number(referrer.id), REFERRAL_BONUS);
 
     const unlockedSpecialTitles = await checkUnlocks(
       referrer.clerk_id,

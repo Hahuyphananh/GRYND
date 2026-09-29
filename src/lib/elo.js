@@ -21,7 +21,7 @@
 //   * every K-factor and the rule that selects between them.
 //
 // WHAT IS DELIBERATELY ABSENT
-//   Nothing about tokens, winnings, XP, Battle Pass, Prestige, streaks,
+//   Nothing about tokens, winnings, XP, level, streaks,
 //   cosmetics, streaks or membership may influence a rating change. The only
 //   inputs are the two ratings, the two games-played counts (which select the
 //   K-factor) and the outcome. This keeps Elo a measure of results only.

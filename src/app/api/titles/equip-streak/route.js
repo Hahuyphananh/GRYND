@@ -43,7 +43,6 @@ export async function POST(request) {
           selectedStreakType: newValue,
           selectedTitle: null,
           selectedSpecialTitle: null,
-          showPrestigeBadge: false,
         })
         .where(eq(users.clerkId, userId));
     } else {

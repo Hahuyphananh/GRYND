@@ -3,8 +3,7 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db } from "../../../../db/client";
-import { dotsAndBoxesGames, users } from "../../../../db/schema";
-import { resolvePrestigeBadge } from "../../../../lib/prestige";
+import { dotsAndBoxesGames } from "../../../../db/schema";
 import { getSeatIdentity } from "../../../../lib/seatIdentity";
 
 import {
@@ -71,47 +70,6 @@ export async function GET(req) {
     const hostName = identity.player1?.name || null;
     const guestName = identity.player2?.name || null;
 
-    const [hostBadge, guestBadge] = await Promise.all([
-      db
-        .select({
-          xp: users.xp,
-          prestigeLevel: users.prestigeLevel,
-          showPrestigeBadge: users.showPrestigeBadge,
-        })
-        .from(users)
-        .where(eq(users.clerkId, game.hostClerkId))
-        .limit(1)
-        .then((rows) =>
-          rows[0]
-            ? resolvePrestigeBadge({
-                xp: rows[0].xp,
-                prestigeLevel: rows[0].prestigeLevel,
-                showPrestigeBadge: rows[0].showPrestigeBadge,
-              })
-            : null,
-        ),
-      game.guestClerkId
-        ? db
-            .select({
-              xp: users.xp,
-              prestigeLevel: users.prestigeLevel,
-              showPrestigeBadge: users.showPrestigeBadge,
-            })
-            .from(users)
-            .where(eq(users.clerkId, game.guestClerkId))
-            .limit(1)
-            .then((rows) =>
-              rows[0]
-                ? resolvePrestigeBadge({
-                    xp: rows[0].xp,
-                    prestigeLevel: rows[0].prestigeLevel,
-                    showPrestigeBadge: rows[0].showPrestigeBadge,
-                  })
-                : null,
-            )
-        : null,
-    ]);
-
     const gameState = ensureState(game.gameState);
 
     const timerSeconds = getGameMoveSeconds(game);
@@ -135,8 +93,6 @@ export async function GET(req) {
         guestNameColor: identity.player2?.nameColor ?? null,
         hostProfileFrame: identity.player1?.profileFrame ?? null,
         guestProfileFrame: identity.player2?.profileFrame ?? null,
-        hostPrestigeBadge: hostBadge || null,
-        guestPrestigeBadge: guestBadge || null,
 
         remainingEdges: remaining,
         timerSeconds,

@@ -90,12 +90,12 @@ export async function getMembershipTier(
 //
 //   * tokens or any other currency,
 //   * XP multipliers,
-//   * faster trophy or Prestige progression,
+//   * faster trophy or Elo progression,
 //   * priority matchmaking or any other gameplay / competitive advantage.
 //
 // Free players get the complete game: all games, ranked play, Elo,
-// leaderboards, free tournaments, profiles, match history, progression,
-// the Battle Pass and cosmetic rewards.
+// leaderboards, free tournaments, profiles, match history, progression and
+// every cosmetic reward.
 
 /**
  * Guarantee the plan has a Stripe Product + recurring monthly Price, creating

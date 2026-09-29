@@ -7,7 +7,7 @@ const source = fs.readFileSync("src/components/lobby/PlatformQuickQueue.jsx", "u
 
 test("maps supported assignment games to lobby routes", () => {
   assert.equal(quickQueueGameRoute("mines-pvp", "123"), "/casino/mines-pvp/123");
-  assert.equal(quickQueueGameRoute("plinko-pvp", "abc"), "/casino/plinko/abc");
+  assert.equal(quickQueueGameRoute("keno-pvp", "abc"), "/casino/keno-pvp/abc");
   assert.equal(quickQueueGameRoute("unknown", "123"), null);
 });
 

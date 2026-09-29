@@ -72,14 +72,6 @@ export const GAME_TAGS = [
  *   tags  the traits above
  */
 export const GAME_CATALOG = [
-  // Shared wheel, shrinking board: decided by the spin (chance), quick rounds
-  // (fast_paced), head-to-head (pvp).
-  { id: "roulette", href: "/casino/roulette", tags: ["pvp", "chance", "fast_paced"] },
-
-  // Best-of-3, "read the table, time your swaps": decisions (strategy) and
-  // execution (skill) — not the deal.
-  { id: "blackjack", href: "/casino/blackjack", tags: ["pvp", "strategy", "skill"] },
-
   // Staked 1v1 on a SHARED 5x5 mine board: the mine layout is luck (chance),
   // but the public reveals/clues make the read a real competitive core.
   { id: "mines-pvp", href: "/casino/mines-pvp", tags: ["pvp", "chance", "competitive"] },
@@ -87,18 +79,6 @@ export const GAME_CATALOG = [
   // Flip pairs on a 4x4 grid: memory is ability (skill), the rules take
   // seconds to learn (casual).
   { id: "memory-grid", href: "/casino/memory-grid", tags: ["pvp", "skill", "casual"] },
-
-  // Same peg field, 3 balls each: the drop is chance, the match is quick
-  // (fast_paced).
-  { id: "plinko", href: "/casino/plinko", tags: ["pvp", "chance", "fast_paced"] },
-
-  // Head-to-head last-player-standing on a random crash curve: the curve is
-  // chance, the rounds are short (fast_paced), the duel is competitive.
-  {
-    id: "crash",
-    href: "/casino/crash-arena",
-    tags: ["pvp", "chance", "fast_paced", "competitive"],
-  },
 
   // "Outthink your opponent move by move": the archetypal strategy/skill game,
   // and the archetypal ranked one.

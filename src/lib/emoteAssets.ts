@@ -41,7 +41,7 @@ export const FREE_EMOTE_KEYS = [
 
 /**
  * The full 15-entry official emote catalog (client-safe mirror of the
- * migration seed). 8 free entries + 7 Battle Pass entries.
+ * migration seed). Every entry is owned by every player.
  */
 export const OFFICIAL_EMOTE_DEFINITIONS = [
   // ── FREE (8) — owned by every user ───────────────────────────────────
@@ -117,11 +117,11 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
     enabled: true,
     sortOrder: 8,
   },
-  // ── BATTLE PASS (7) — granted at levels 6 / 13 / 22 / 31 / 42 / 56 / 81 ──
+  // ── Elite (7) — official animated emotes, owned by every player ──────
   {
     key: "hype",
     name: "Hype",
-    description: "Get hyped. Battle Pass Level 6 reward.",
+    description: "Get hyped.",
     assetPath: "/emotes/hype.webp",
     rarity: "Common",
     enabled: true,
@@ -130,7 +130,7 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
   {
     key: "victory",
     name: "Victory",
-    description: "You win. Battle Pass Level 13 reward.",
+    description: "You win.",
     assetPath: "/emotes/victory.webp",
     rarity: "Bronze",
     enabled: true,
@@ -139,7 +139,7 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
   {
     key: "party",
     name: "Party",
-    description: "Let the party begin. Battle Pass Level 22 reward.",
+    description: "Let the party begin.",
     assetPath: "/emotes/party.webp",
     rarity: "Bronze",
     enabled: true,
@@ -148,7 +148,7 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
   {
     key: "skull",
     name: "Skull",
-    description: "Too soon. Battle Pass Level 31 reward.",
+    description: "Too soon.",
     assetPath: "/emotes/skull.webp",
     rarity: "Silver",
     enabled: true,
@@ -157,7 +157,7 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
   {
     key: "thumbsup",
     name: "Thumbs Up",
-    description: "Respect. Battle Pass Level 42 reward.",
+    description: "Respect.",
     assetPath: "/emotes/thumbsup.webp",
     rarity: "Silver",
     enabled: true,
@@ -166,7 +166,7 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
   {
     key: "clap",
     name: "Clap",
-    description: "Slow clap to standing ovation. Level 56 reward.",
+    description: "Slow clap to standing ovation.",
     assetPath: "/emotes/clap.webp",
     rarity: "Gold",
     enabled: true,
@@ -175,7 +175,7 @@ export const OFFICIAL_EMOTE_DEFINITIONS = [
   {
     key: "star",
     name: "Star",
-    description: "Legend status. Battle Pass Level 81 reward.",
+    description: "Legend status.",
     assetPath: "/emotes/star.webp",
     rarity: "Elite",
     enabled: true,

@@ -16,11 +16,11 @@ test("rejects invalid Quick Queue constraints", () => {
 });
 
 test("selects the first compatible preferred game and rejects stale candidates", () => {
-  const request = normalizeQuickQueueRequest({ userId: "u", preferredGames: ["plinko-pvp", "mines-pvp"], preferredModes: ["pvp"], playerCount: 2, maxWaitMs: 1000 });
+  const request = normalizeQuickQueueRequest({ userId: "u", preferredGames: ["keno-pvp", "mines-pvp"], preferredModes: ["pvp"], playerCount: 2, maxWaitMs: 1000 });
   const result = findCompatibleQuickQueueCandidate(request, [
     { gameKey: "mines-pvp", mode: "pvp", region: "eu", playerCount: 2, queuedAt: 999500, available: true },
-    { gameKey: "plinko-pvp", mode: "pvp", region: "eu", playerCount: 2, queuedAt: 999900, available: true },
+    { gameKey: "keno-pvp", mode: "pvp", region: "eu", playerCount: 2, queuedAt: 999900, available: true },
     { gameKey: "mines-pvp", mode: "pvp", region: "eu", playerCount: 2, queuedAt: 998000, available: true },
   ], 1000000);
-  assert.equal(result?.gameKey, "plinko-pvp");
+  assert.equal(result?.gameKey, "keno-pvp");
 });

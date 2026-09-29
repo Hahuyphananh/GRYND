@@ -10,7 +10,6 @@ import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified"
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../../db/client";
 import { glows, tokenSubscriptions, users } from "../../../../db/schema";
-import { resolvePrestigeBadge } from "../../../../lib/prestige";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "../../../../lib/stripe/subscriptions";
 import { getFrameDecorations } from "../../../../lib/cosmetics";
 import {
@@ -22,17 +21,16 @@ import type { PrecisionState } from "../../../../lib/precision/types";
 
 /**
  * Server-authoritative seat-identity decoration for the players in a
- * precision state payload: prestige badge + official Grynd icon key +
- * equipped name color (battlepass glow wins; the GRYND PRO chat color only
- * surfaces for active members). Only the resolved labels leave the
- * server; raw columns never reach the client. Non-user ids (the AI
- * sentinel "AI_BOT") keep nulls so the client falls back to its label.
+ * precision state payload: official Grynd icon key + equipped name color
+ * (equipped glow wins; the GRYND PRO chat color only surfaces for active
+ * members). Only the resolved labels leave the server; raw columns never
+ * reach the client. Non-user ids (the AI sentinel "AI_BOT") keep nulls so
+ * the client falls back to its label.
  */
 async function decoratePlayerBadges<T extends { userId: string }>(
   players: T[],
 ): Promise<
   (T & {
-    prestigeBadge: string | null;
     iconKey: string | null;
     nameColor: string | null;
     profileFrame: unknown;
@@ -44,7 +42,6 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   if (humanIds.length === 0) {
     return players.map((p) => ({
       ...p,
-      prestigeBadge: null,
       iconKey: null,
       nameColor: null,
       profileFrame: null,
@@ -53,9 +50,6 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   const rows = await db
     .select({
       clerkId: users.clerkId,
-      xp: users.xp,
-      prestigeLevel: users.prestigeLevel,
-      showPrestigeBadge: users.showPrestigeBadge,
       iconKey: users.selectedIcon,
       equippedCosmetics: users.equippedCosmetics,
       chatColor: users.chatColor,
@@ -75,7 +69,6 @@ async function decoratePlayerBadges<T extends { userId: string }>(
       ),
     )
     .where(inArray(users.clerkId, humanIds));
-  const badgeByUser = new Map<string, string | null>();
   const iconByUser = new Map<string, string | null>();
   const colorByUser = new Map<string, string | null>();
   const frameByUser = new Map<string, unknown>();
@@ -86,13 +79,6 @@ async function decoratePlayerBadges<T extends { userId: string }>(
     rows.map((row, index) => [String(row.clerkId), decorations[index]]),
   );
   for (const row of rows) {
-    badgeByUser.set(
-      String(row.clerkId),
-      // Prestige is derived from ratings + per-game trophies, which are not
-      // loaded for opponents here — an opted-in player with no capped game
-      // resolves to no badge.
-      resolvePrestigeBadge({ showPrestigeBadge: row.showPrestigeBadge }),
-    );
     iconByUser.set(String(row.clerkId), row.iconKey || null);
     colorByUser.set(
       String(row.clerkId),
@@ -104,7 +90,6 @@ async function decoratePlayerBadges<T extends { userId: string }>(
   }
   return players.map((p) => ({
     ...p,
-    prestigeBadge: badgeByUser.get(String(p.userId)) ?? null,
     iconKey: iconByUser.get(String(p.userId)) ?? null,
     nameColor: colorByUser.get(String(p.userId)) ?? null,
     profileFrame: frameByUser.get(String(p.userId)) ?? null,

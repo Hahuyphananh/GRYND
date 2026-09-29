@@ -46,7 +46,6 @@ type Player = {
   userId: string;
   name: string;
   isAI?: boolean;
-  prestigeBadge?: string | null;
   iconKey?: string | null;
   profileFrame?: unknown;
   nameColor?: string | null;
@@ -1016,11 +1015,6 @@ export default function DiceFlushPage() {
           >
             {opponent?.name || "OPPONENT"}
           </span>
-          {opponent?.prestigeBadge && (
-            <span className="ml-1.5 inline-block rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-px align-middle text-[9px] font-semibold uppercase tracking-wide text-violet-300">
-              {opponent.prestigeBadge}
-            </span>
-          )}
           <EmoteBubble emote={incomingEmote} />
         </div>
         <motion.div

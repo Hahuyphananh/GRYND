@@ -51,7 +51,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SHOTS = join(root, "qa/reports/precision-mobile");
 mkdirSync(SHOTS, { recursive: true });
 
-// ── 1. Bundle the real components (same stub set as the roulette checks) ────
+// ── 1. Bundle the real components (the shared stub set) ────────────────
 const shell = (extra) => `import { createElement, Fragment } from "react";
 const Passthrough = (p) => createElement(Fragment, null, p ? p.children : null);
 const Null = () => null;

@@ -3,9 +3,9 @@
 // GET  — the signed-in user's complete emote state:
 //   * equippedEmotes — the ordered loadout (max 9, already sanitized
 //                      server-side), exactly what the in-game picker shows
-//   * emotes         — every enabled catalog emote with ownership /
-//                      equipped flags + Battle Pass unlock info for locked
-//                      entries (profile manager renders locked/unowned here)
+//   * emotes         — every enabled catalog emote with its ownership /
+//                      equipped flags (the profile manager renders any that
+//                      are somehow not owned as locked)
 //   * maxLoadout     — the server-enforced 9-slot cap
 // The client renders emotes ONLY from these catalog keys via emoteAssetUrl —
 // never from a client-supplied URL.
@@ -21,8 +21,8 @@
 //   6. max 9 entries.
 // The complete ordered list is saved atomically to users.equipped_emotes.
 // Unlocking an emote via request tampering is impossible: ownership is
-// checked server-side and grants only happen through the Battle Pass / free
-// reconciliation paths.
+// checked server-side and grants only happen through the free-emote
+// reconciliation and the account-creation catalog grant.
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";

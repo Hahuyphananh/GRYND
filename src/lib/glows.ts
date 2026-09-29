@@ -8,8 +8,8 @@
 //   * An equipped glow must resolve through the official `glows` catalog.
 //   * A glow may only be equipped if the user OWNS it (a row in
 //     `user_glows`) and it is enabled.
-//   * There is no implicit default glow — NULL selected_glow = no glow
-//     (glows are battlepass-earned, never granted by default).
+//   * There is no implicit default glow — NULL selected_glow = no glow (every
+//     glow is granted to every player, but none is auto-equipped).
 //   * Arbitrary hex colors / user-supplied values are NEVER accepted as a
 //     glow (the GRYND PRO `chat_color` picker is the free-form surface; glows
 //     are fixed catalog entries).

@@ -69,13 +69,15 @@ test("overallTrophiesFromCounts: sums played games and gates on the minimum", ()
   assert.equal(withUnplayed.eligible, false);
 });
 
-test("overallTrophiesFromCounts: clamps each entry into the legal band", () => {
+test("overallTrophiesFromCounts: floors each entry at zero but never caps the top", () => {
   const r = overallTrophiesFromCounts([
     { trophies: 999999, gamesRated: 1 },
     { trophies: -50, gamesRated: 1 },
     { trophies: 1000, gamesRated: 1 },
   ]);
-  assert.equal(r.overallTrophies, 1000 + 0 + 1000);
+  // Trophies are UNBOUNDED — a per-game count above the old 1,000 ceiling is
+  // summed as-is; only the floor still applies.
+  assert.equal(r.overallTrophies, 999999 + 0 + 1000);
 });
 
 test("overallTrophiesFromCounts: garbage input never throws or NaNs", () => {

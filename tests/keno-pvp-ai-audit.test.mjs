@@ -184,9 +184,6 @@ async function installMocks(t) {
   t.mock.module("../src/lib/keno-pvp/canonicalLifecycle.js", {
     namedExports: { mirrorKenoQueued: () => {}, mirrorKenoTransition: () => {} },
   });
-  t.mock.module("../src/lib/prestige.js", {
-    namedExports: { applyPrestigeResult: async () => {} },
-  });
   t.mock.module("../src/lib/leaderboardCounters.js", {
     namedExports: { applyLeaderboardCounters: async () => {} },
   });

@@ -7,7 +7,7 @@ export const sendLossStreakEmail = (user: any) =>
     subject: "Comeback reward unlocked",
     html: renderTemplate(
       "Tough streak?",
-      "<p>You lost 3 in a row. Reset, regroup, and climb back up the Battle Pass.</p>",
+      "<p>You lost 3 in a row. Reset, regroup, and climb back up the ladder.</p>",
     ),
   });
 export const sendFraudAlertEmail = (user: any, reason: string) =>

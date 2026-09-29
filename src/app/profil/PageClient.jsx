@@ -84,19 +84,6 @@ export default function ProfilePage({ adSlot = null }) {
     allStreakTitles: [],
   });
 
-  // Prestige badge equip state — resolved server-side by
-  // /api/user/prestige-badge. `display` is null unless the badge is both
-  // equipped AND genuinely earned (Level 100 + prestige >= 1), so an
-  // unearned badge can never be rendered.
-  const [prestigeBadge, setPrestigeBadge] = useState({
-    loading: true,
-    enabled: false,
-    display: null,
-    prestige: 0,
-    prestigeUnlocked: false,
-    error: null,
-  });
-
   const [membership, setMembership] = useState(null);
   const [chatColor, setChatColor] = useState("#00e5ff");
   const [chatColorMsg, setChatColorMsg] = useState(null);
@@ -145,7 +132,7 @@ export default function ProfilePage({ adSlot = null }) {
   });
   // Official icon picker modal (owned Grynd icons only).
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  // Battlepass-earned name glow: currently equipped glow's catalog hex
+  // Catalog-granted name glow: currently equipped glow's catalog hex
   // (null = no glow) — rendered on the profile name + used for the preview.
   const [isGlowPickerOpen, setIsGlowPickerOpen] = useState(false);
   const [selectedGlowColor, setSelectedGlowColor] = useState(null);
@@ -312,62 +299,6 @@ export default function ProfilePage({ adSlot = null }) {
       await loadTitles();
       window.dispatchEvent(new Event("titleUpdated"));
       window.dispatchEvent(new Event("profileUpdated"));
-    }
-  };
-
-  const loadPrestigeBadge = async () => {
-    try {
-      const response = await fetch("/api/user/prestige-badge", {
-        credentials: "include",
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setPrestigeBadge({
-          loading: false,
-          enabled: Boolean(data.badge?.enabled),
-          display: data.badge?.display || null,
-          prestige: data.badge?.prestige || 0,
-          prestigeUnlocked: Boolean(data.badge?.prestigeUnlocked),
-          error: null,
-        });
-      } else {
-        setPrestigeBadge((prev) => ({ ...prev, loading: false }));
-      }
-    } catch (err) {
-      console.error("[LOAD_PRESTIGE_BADGE_ERROR]", err);
-      setPrestigeBadge((prev) => ({ ...prev, loading: false }));
-    }
-  };
-
-  // Equip / unequip the Prestige badge. The server only stores a boolean
-  // preference and re-derives the display text from the real prestige
-  // level — this page never sends or renders a client-claimed tier.
-  const handleEquipPrestigeBadge = async (enabled) => {
-    const response = await fetch("/api/user/prestige-badge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ enabled }),
-    });
-    const data = await response.json();
-    if (response.ok && data.success) {
-      setPrestigeBadge({
-        loading: false,
-        enabled: Boolean(data.badge?.enabled),
-        display: data.badge?.display || null,
-        prestige: data.badge?.prestige || 0,
-        prestigeUnlocked: Boolean(data.badge?.prestigeUnlocked),
-        error: null,
-      });
-      window.dispatchEvent(new Event("titleUpdated"));
-      window.dispatchEvent(new Event("profileUpdated"));
-    } else {
-      setPrestigeBadge((prev) => ({
-        ...prev,
-        error:
-          data?.error ||
-          t("profile.titles.badgeFailed", "Could not update your badge"),
-      }));
     }
   };
 
@@ -742,7 +673,6 @@ export default function ProfilePage({ adSlot = null }) {
           loadMembership(),
           loadGlow(),
           loadOwnedCosmetics(),
-          loadPrestigeBadge(),
           loadFriends(),
           loadFriendPresence(),
           loadFriendInvites(),
@@ -803,7 +733,6 @@ export default function ProfilePage({ adSlot = null }) {
       loadSpecialTitles();
       loadVipTitles();
       loadStreakTitles();
-      loadPrestigeBadge();
     };
 
     window.addEventListener("titleUpdated", refreshTitles);
@@ -967,11 +896,6 @@ export default function ProfilePage({ adSlot = null }) {
     }
 
     previousLevelRef.current = stats.currentLevel;
-  }, [stats]);
-
-  const levelProgressPercent = useMemo(() => {
-    if (!stats?.levelProgress) return 0;
-    return Number(stats.levelProgress.progressPercent || 0);
   }, [stats]);
 
   const fallbackCopy = (text) => {
@@ -1256,7 +1180,7 @@ export default function ProfilePage({ adSlot = null }) {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div
-            className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${profileGlowClass || ""} ${prestigeBadge.prestigeUnlocked ? "prestige-aura" : ""}`}
+            className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${profileGlowClass || ""}`}
             style={
               profileInfo.profileAccent
                 ? {
@@ -1301,7 +1225,7 @@ export default function ProfilePage({ adSlot = null }) {
                 aria-label={t("profile.info.changeIcon", "Change your Grynd icon")}
                 title={t("profile.info.changeIcon", "Change your Grynd icon")}
                 style={equippedFrame.style}
-                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} ${prestigeBadge.prestigeUnlocked ? "prestige-crown" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
+                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
               >
                 <IconAvatar
                   iconKey={profileInfo.selectedIcon}
@@ -1348,18 +1272,10 @@ export default function ProfilePage({ adSlot = null }) {
                       {equippedCosmetics.badge.name}
                     </span>
                   )}
-                  {(prestigeBadge.display ||
-                    specialTitles.selectedSpecialTitleName ||
+                  {(specialTitles.selectedSpecialTitleName ||
                     titleMeta.selectedTitle) && (
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-xs ${
-                        prestigeBadge.display
-                          ? "border-violet-400/70 bg-violet-500/15 text-violet-300"
-                          : "border-[#f5ff3b]/60 bg-[#f5ff3b]/10 text-[#f5ff3b]"
-                      }`}
-                    >
-                      {prestigeBadge.display ||
-                        specialTitles.selectedSpecialTitleName ||
+                    <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
+                      {specialTitles.selectedSpecialTitleName ||
                         titleMeta.selectedTitle}
                     </span>
                   )}
@@ -1435,67 +1351,6 @@ export default function ProfilePage({ adSlot = null }) {
             </p>
           </div>
 
-        </div>
-
-        <div
-          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
-        >
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-[#00e5ff]">
-              {t("profile.battlepass.title", "Battlepass Level")}
-            </h2>
-            <div
-              className="rounded-full px-3 py-1 bg-[#00e5ff] text-[#001933] 
-shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
-            >
-              {t("profile.battlepass.level", { level: stats?.currentLevel ?? 1 })}
-              {stats?.levelProgress?.maxLevel
-                ? ` / ${stats.levelProgress.maxLevel}`
-                : ""}
-            </div>
-          </div>
-
-          <div className="h-3 w-full rounded-full bg-white/10 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-500 transition-all duration-500"
-              style={{ width: `${levelProgressPercent}%` }}
-            />
-          </div>
-          <div className="mt-2 flex justify-between text-sm text-gray-300">
-            <span>
-              {t("profile.battlepass.xp", {
-                amount: Number(
-                  stats?.levelProgress?.prevLevelRequired ?? 0,
-                ).toLocaleString(),
-              })}
-            </span>
-            <span>
-              {t("profile.battlepass.percent", {
-                percent: levelProgressPercent.toFixed(2),
-              })}
-            </span>
-            <span>
-              {t("profile.battlepass.nextLevel", {
-                amount: Number(
-                  stats?.levelProgress?.nextLevelRequired ?? 0,
-                ).toLocaleString(),
-              })}
-            </span>
-          </div>
-          <div className="mt-3 text-xs text-[#7dd3fc]">
-            {t(
-              "profile.battlepass.earn",
-              "Earn trophies by winning ranked matches.",
-            )}
-          </div>
-          <Link
-            href="/battlepass"
-            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[#f5ff3b] hover:text-yellow-300"
-          >
-            {t("profile.battlepass.view", "View Battlepass →")}
-          </Link>
         </div>
 
         <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
@@ -1795,16 +1650,6 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                     <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                   </svg>
                 </button>
-                <button
-                  onClick={() => setTitlesView("prestige")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
-                    titlesView === "prestige"
-                      ? "bg-violet-500 text-white"
-                      : "bg-white/10 text-gray-300"
-                  }`}
-                >
-                  👑 {t("profile.titles.tabPrestige", "Prestige")}
-                </button>
               </div>
 
               {titlesView === "special" && (
@@ -2061,71 +1906,6 @@ shadow-[0_0_10px_rgba(0,229,255,0.4)] font-bold"
                 </div>
               )}
 
-              {titlesView === "prestige" && (
-                <div className="rounded-lg border border-violet-400/35 bg-violet-500/5 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-violet-300/50 bg-violet-500/15 text-2xl">
-                      👑
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-violet-300">
-                        {t("profile.titles.prestigeBadge", "Prestige badge")}
-                      </p>
-                      <p className="text-lg font-bold text-white">
-                        {prestigeBadge.display ||
-                          t("profile.titles.prestigeFallback", {
-                            level: prestigeBadge.prestige,
-                          })}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-300">
-                    {t(
-                      "profile.titles.prestigeDesc",
-                      "Show your permanent Prestige tier next to your name instead of a normal title. The tier always comes from your real server progress — you can only ever display the Prestige you actually earned, and your existing titles stay available whenever you switch back.",
-                    )}
-                  </p>
-                  {prestigeBadge.prestigeUnlocked ? (
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        disabled={prestigeBadge.loading}
-                        onClick={() =>
-                          handleEquipPrestigeBadge(!prestigeBadge.enabled)
-                        }
-                        className="rounded-lg border border-violet-300/60 bg-violet-500/20 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/35 disabled:opacity-50"
-                      >
-                        {prestigeBadge.enabled
-                          ? t(
-                              "profile.titles.hidePrestige",
-                              "Click to hide the Prestige badge",
-                            )
-                          : t(
-                              "profile.titles.showPrestige",
-                              "Display Prestige badge",
-                            )}
-                      </button>
-                      {prestigeBadge.enabled && (
-                        <span className="rounded-full border border-yellow-300/70 bg-yellow-300/10 px-2.5 py-0.5 text-xs font-semibold text-yellow-200">
-                          {t("profile.titles.equippedTag", "Equipped")}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
-                      {t(
-                        "profile.titles.prestigeLocked",
-                        "🔒 Prestige unlocks at Level 100 — keep climbing the Battle Pass to earn your first Prestige tier.",
-                      )}
-                    </p>
-                  )}
-                  {prestigeBadge.error && (
-                    <p className="mt-2 text-xs text-red-400">
-                      {prestigeBadge.error}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -2339,11 +2119,6 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                     <div className="flex-1">
                       <span className="flex flex-wrap items-center gap-x-1.5">
                         {friend.name}
-                        {friend.prestigeBadge && (
-                          <span className="rounded-full border border-violet-400/70 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300">
-                            {friend.prestigeBadge}
-                          </span>
-                        )}
                       </span>
                       {friend.streakTitle && (
                         <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
@@ -2847,7 +2622,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 </button>
                 {/* Every profile cosmetic lives behind this ONE picker: the
                     frame plus the badge / avatar / username / chat effects and
-                    the profile + prestige glows. The old per-category rows are
+                    the profile + elite glows. The old per-category rows are
                     gone so nothing has to be equipped in several places. */}
                 <p className="mt-2 text-xs text-gray-400">
                   {t(
@@ -2855,24 +2630,6 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     "Frames, badges, avatar / username / chat effects and profile glows are all equipped here.",
                   )}
                 </p>
-                {ownedCosmeticsLoaded && ownedCosmetics.length === 0 && (
-                  <p className="mt-2 text-xs text-gray-300">
-                    {t(
-                      "profile.edit.noCosmeticsLead",
-                      "You don't own any cosmetics yet. Visit the",
-                    )}{" "}
-                    <Link
-                      href="/battlepass"
-                      className="font-semibold text-[#00e5ff] underline hover:text-[#33ebff]"
-                    >
-                      {t("nav.battlepass")}
-                    </Link>{" "}
-                    {t(
-                      "profile.edit.noCosmeticsTail",
-                      "to unlock frames, badges, avatar, username and chat effects.",
-                    )}
-                  </p>
-                )}
               </div>
               <label htmlFor="profil-edit-password" className="sr-only">
                 {t("profile.edit.password", "New password (optional)")}
@@ -2966,7 +2723,7 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6 text-center"
         }
       />
 
-      {/* Battlepass-earned name glow picker — owned glows only. */}
+      {/* Catalog-granted name glow picker — owned glows only. */}
       <ChooseGlowModal
         open={isGlowPickerOpen}
         onClose={() => setIsGlowPickerOpen(false)}

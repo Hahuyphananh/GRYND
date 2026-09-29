@@ -326,14 +326,15 @@ test("the welcome hero shows it only on the hand-off from the questionnaire", ()
 // ── 5. The RPS first-game flow is untouched ──────────────────────────────
 
 test("the onboarding first game is still the unchanged RPS Free Play match", () => {
-  // Same URL, same page-level gate, same endpoint, same one-time XP.
+  // Same URL, same page-level gate, same endpoint. The one-time XP grant is
+  // gone with the Battle Pass — the endpoint only records the completion flag.
   assert.match(welcome, /const FIRST_GAME_URL = "\/casino\/rps\/play-ai\?onboarding=1";/);
   assert.match(source(RPS), /api\/onboarding\/first-game-complete/);
   assert.match(source(RPS), /if \(tutorial\.mode !== "active" \|\| !matchOver\) return;/);
   const firstGame = source(FIRST_GAME);
   assert.match(firstGame, /isNull\(users\.firstGameCompletedAt\)/);
-  assert.match(firstGame, /FIRST_GAME_BONUS_XP/);
-  assert.match(firstGame, /addExp\(/);
+  assert.match(firstGame, /xpGranted: 0/);
+  assert.doesNotMatch(firstGame, /addExp\(/);
   // The questionnaire never touches that flag, and never fakes the match.
   assert.doesNotMatch(route, /firstGameCompletedAt/);
   assert.doesNotMatch(questionnaire, /first-game-complete/);
@@ -547,16 +548,25 @@ test("E. changing preferences changes the recommendations", () => {
   assert.ok(
     chance.recommendations.slice(0, taggedCount("chance")).every((g) => g.tags.includes("chance"))
   );
-  assert.equal(chance.recommendations[0].id, "roulette");
+  assert.equal(chance.recommendations[0].id, "mines-pvp");
 
   // With the rest of the profile filled in, both the full order and the three
   // primary picks still differ — the change reaches the lobby section.
   const fullStrategy = recommendGames({ ...FULL_ANSWERS, game_types: ["strategy"] });
   const fullChance = recommendGames({ ...FULL_ANSWERS, game_types: ["luck_chance"] });
-  // Poker was removed from the games catalog, so the strategy picks now come
-  // from the remaining strategy games (chess → tower-arena → hex-duel).
+  // Poker, roulette, plinko, blackjack and crash arena were removed from the
+  // games catalog, so the strategy picks now come from the remaining strategy
+  // games (chess → tower-arena → hex-duel).
   assert.deepEqual(fullStrategy.primaryGameIds, ["chess", "tower-arena", "hex-duel"]);
-  assert.ok(fullStrategy.primaryGameIds.every((id) => !fullChance.primaryGameIds.includes(id)));
+  // The chance answer floats a different game to the top and reorders the
+  // whole list — the change reaches the lobby section even if a shared
+  // favourite (chess) still appears in both pick sets.
+  assert.equal(fullChance.primaryGameIds[0], "mines-pvp");
+  assert.notDeepEqual(fullStrategy.primaryGameIds, fullChance.primaryGameIds);
+  assert.notDeepEqual(
+    fullStrategy.recommendations.map((g) => g.id),
+    fullChance.recommendations.map((g) => g.id)
+  );
   assert.ok(fullChance.recommendations[0].score > recommendGames(null).recommendations[0].score);
   // The lobby section is derived from a fresh server read on every mount, so
   // the next visit to /casino reflects the new answers.
