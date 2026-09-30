@@ -90,7 +90,13 @@ test("discovery: the catalog and the lobby agree on Speed Typing's position", ()
     lobbyIds,
     "the catalog must mirror the lobby's featured order",
   );
-  assert.equal(lobbyIds.at(-1), KEY, "Speed Typing is the newest lobby card");
+  // New games are APPENDED to the end of the lobby, so Speed Typing sits after
+  // Mini Golf and before any title that shipped later — asserted relatively, so
+  // a newer card does not falsify the append-at-the-end rule.
+  assert.ok(
+    lobbyIds.indexOf(KEY) > lobbyIds.indexOf("mini-golf"),
+    "Speed Typing is appended after Mini Golf",
+  );
 });
 
 test("discovery: the lobby card links to the lobby, records plays and is 1v1", () => {
@@ -104,8 +110,9 @@ test("discovery: the lobby card links to the lobby, records plays and is 1v1", (
   assert.match(card, /nameKey: "games.speed_typing_name"/);
   // The card art is shipped art, not a shared fallback.
   assert.match(src, /import ImgSpeedTyping from "\.\.\/\.\.\/images\/speed-typing-card\.svg"/);
-  // It is the newest card, so it heads the "Newest" sort.
-  assert.match(src, /const newestOrder = \[\n\s*"speed-typing",/);
+  // The "Newest" sort is newest-first: a title shipped later may precede it,
+  // but Speed Typing must sit directly behind it.
+  assert.match(src, /const newestOrder = \[\n\s*"tic-tac-toe",\n\s*"speed-typing",/);
 });
 
 test("discovery: personalization always returns Speed Typing (never hidden)", () => {

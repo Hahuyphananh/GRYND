@@ -3377,6 +3377,97 @@ export const speedTypingMatches = pgTable(
   })
 );
 
+// ── Tic-Tac-Toe Duel (PvP, rated) ────────────────────────────────────────
+//
+// Server-authoritative 1v1 turn-based tic-tac-toe: 3x3 board, nine cells,
+// X vs O, X goes first, three in a row wins, a full board with no line is a
+// draw. No randomness during play, no wagers, no tokens, no balances, no
+// payouts.
+//
+// Matchmaking follows the Mini Golf pattern (0179) rather than Pool Masters'
+// lobby+match pair (0022): a single row with a nullable `player2_id` and a
+// `waiting` status IS the open lobby, so `create-or-join` matches two players
+// under one advisory lock (TIC_TAC_TOE_LOCK_NAMESPACE) with no second table to
+// keep in sync — and no per-wager queue bucket, because the game is unstaked.
+//
+// THERE IS NO SEED COLUMN, ON PURPOSE: tic-tac-toe contains no randomness. The
+// board is a pure function of the accepted move order, so unlike mini golf's
+// course there is nothing to regenerate — the append-only move log replays the
+// whole match.
+//
+// There is deliberately NO stake_amount / prize_paid / house_fee column: the
+// game is unstaked, so no money is ever moved by settlement.
+//
+// Player ids are stored as plain clerk-id strings with no FK to `users`,
+// matching every other PvP table.
+export const ticTacToeMatches = pgTable(
+  "tic_tac_toe_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // Derived from `game_state.currentTurn` on every write.
+    currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
+    // Accepted moves so far (0..9). The mark is a pure function of parity:
+    // X moves on an even ply, O on an odd one.
+    ply: integer("ply").notNull().default(0),
+    /** waiting | ready | playing | finished | cancelled — the shared house
+     *  vocabulary the retention sweep, the queue mirror and the match-history
+     *  formatter all read. `ready` is never entered: the second seat joining
+     *  takes the match straight to `playing`, exactly as Mini Golf does. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // The authoritative TicTacToeState (see src/lib/tic-tac-toe/rules.ts).
+    gameState: jsonb("game_state").notNull(),
+    // Marked on any future practice match so settlement can skip rating/stats.
+    isAi: boolean("is_ai").notNull().default(false),
+    // 'player1' | 'player2' | 'tie'. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("tic_tac_toe_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("tic_tac_toe_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("tic_tac_toe_matches_player2_idx").on(table.player2Id, table.createdAt),
+  })
+);
+
+// Append-only move log. The authoritative replay record: every accepted mark
+// with the exact input the server validated.
+//
+// The mark itself is deliberately NOT stored — it is a pure function of the ply
+// (`ply % 2 === 0` is X), so a `mark` column would be redundant state that
+// could drift out of agreement with the ply counter.
+//
+// `cell_idx_unique` does more than prevent replays: it makes "a player may only
+// place their mark in an empty cell" a STORAGE invariant, so a cell can never
+// be occupied twice even if a future code path forgets the application check.
+export const ticTacToeMoves = pgTable(
+  "tic_tac_toe_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => ticTacToeMatches.id, { onDelete: "cascade" }),
+    ply: integer("ply").notNull(),
+    playerId: varchar("player_id", { length: 255 }).notNull(),
+    // 0..8, row-major (0-2 top row, 3-5 middle, 6-8 bottom).
+    cellIndex: integer("cell_index").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("tic_tac_toe_moves_match_idx").on(table.matchId, table.ply),
+    // Anti-replay: one persisted row per turn number per match.
+    plyIdx: unique("tic_tac_toe_moves_ply_unique").on(table.matchId, table.ply),
+    // The game rule as a structural guarantee: a cell is occupied at most once.
+    cellIdx: unique("tic_tac_toe_moves_cell_unique").on(table.matchId, table.cellIndex),
+  })
+);
+
 // GAME EVALUATION RESULTS — post-match LLM coaching/analysis journal.
 // ==============================================================================
 // One row per evaluation request for a finished match. `objective_data` holds

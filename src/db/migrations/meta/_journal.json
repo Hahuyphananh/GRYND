@@ -1212,6 +1212,13 @@
       "when": 1800000035000,
       "tag": "0191_speed_typing_race",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1800000036000,
+      "tag": "0192_tic_tac_toe",
+      "breakpoints": true
     }
   ]
 }

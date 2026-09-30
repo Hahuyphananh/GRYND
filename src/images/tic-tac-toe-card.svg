@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="ttt-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1226" />
+      <stop offset="100%" stop-color="#04060f" />
+    </linearGradient>
+    <radialGradient id="ttt-halo" cx="50%" cy="44%" r="62%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.26" />
+      <stop offset="58%" stop-color="#22d3ee" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#04060f" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="400" height="300" fill="url(#ttt-bg)" />
+  <rect width="400" height="300" fill="url(#ttt-halo)" />
+
+  <!-- The 3x3 board -->
+  <g>
+    <rect x="122" y="42" width="156" height="156" rx="10" fill="#111830" stroke="#2b3560" />
+  </g>
+
+  <!-- Grid lines -->
+  <g stroke="#3b4778" stroke-width="4" stroke-linecap="round">
+    <line x1="174" y1="50" x2="174" y2="190" />
+    <line x1="226" y1="50" x2="226" y2="190" />
+    <line x1="130" y1="94" x2="270" y2="94" />
+    <line x1="130" y1="146" x2="270" y2="146" />
+  </g>
+
+  <!-- X (player 1, amber) on the top-left / centre and O (player 2, cyan) -->
+  <g stroke="#f59e0b" stroke-width="9" stroke-linecap="round">
+    <line x1="139" y1="61" x2="161" y2="83" />
+    <line x1="161" y1="61" x2="139" y2="83" />
+    <line x1="191" y1="113" x2="213" y2="135" />
+    <line x1="213" y1="113" x2="191" y2="135" />
+    <circle cx="248" cy="72" r="13" fill="none" />
+    <circle cx="200" cy="172" r="13" fill="none" />
+  </g>
+
+  <g stroke="#22d3ee" stroke-width="9" stroke-linecap="round">
+    <circle cx="148" cy="120" r="13" fill="none" />
+    <circle cx="248" cy="120" r="13" fill="none" />
+    <line x1="236" y1="160" x2="260" y2="184" />
+    <line x1="260" y1="160" x2="236" y2="184" />
+  </g>
+
+  <!-- Winning line, drawn last so it reads as the final move -->
+  <line
+    x1="134"
+    y1="172"
+    x2="266"
+    y2="172"
+    stroke="#f5ff3b"
+    stroke-width="5"
+    stroke-linecap="round"
+    opacity="0.85"
+  >
+    <animate attributeName="opacity" values="0.85;0.35;0.85" dur="2.4s" repeatCount="indefinite" />
+  </line>
+
+  <!-- Two seats, one per mark -->
+  <g>
+    <rect x="122" y="218" width="156" height="34" rx="17" fill="#171f3c" stroke="#2b3560" />
+    <circle cx="146" cy="235" r="10" fill="#f59e0b" />
+    <circle cx="254" cy="235" r="10" fill="#22d3ee" />
+    <rect x="168" y="230" width="64" height="10" rx="5" fill="#4a5687" />
+    <rect x="168" y="230" width="34" height="10" rx="5" fill="#f59e0b" />
+  </g>
+</svg>

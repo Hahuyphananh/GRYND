@@ -14,7 +14,9 @@ test("Quick Queue controller listens for realtime assignment events", () => {
 
 test("Quick Queue controller exposes notification state", () => {
   assert.match(controller, /const \[notification, setNotification\]/);
-  assert.match(controller, /notification, onToggle/);
+  // The controller exposes both the notification and the toggle it renders.
+  assert.match(controller, /notification,/);
+  assert.match(controller, /onToggle: toggle/);
 });
 
 test("shared lobby renders realtime Quick Queue notifications", () => {

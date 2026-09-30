@@ -24,6 +24,7 @@ import {
   laneRushDuelMatches,
   miniGolfMatches,
   speedTypingMatches,
+  ticTacToeMatches,
 } from "../../../db/schema";
 import { auth } from "@clerk/nextjs/server";
 
@@ -83,6 +84,7 @@ export async function GET(req: NextRequest) {
       laneRushDuelRows,
       miniGolfRows,
       speedTypingRows,
+      ticTacToeRows,
     ] = await Promise.all([
       // Column projection + per-table LIMIT. The formatters below only
       // read a handful of fields per row; full-row selects shipped every
@@ -382,6 +384,29 @@ export async function GET(req: NextRequest) {
           or(
             eq(speedTypingMatches.player1Id, clerkId),
             eq(speedTypingMatches.player2Id, clerkId),
+          ),
+        )
+        .limit(HISTORY_LIMIT),
+      //  Tic-Tac-Toe Duel (PvP, clerkId-based — finished-only). Unstaked,
+      //  exactly like Mini Golf and Speed Typing: it moves no tokens, so
+      //  amount/payout/tokenDiff are all 0 and the entry is a pure W/L/draw
+      //  record decided by the server-authoritative `winner_id`.
+      db
+        .select({
+          player1Id: ticTacToeMatches.player1Id,
+          player2Id: ticTacToeMatches.player2Id,
+          winnerId: ticTacToeMatches.winnerId,
+          result: ticTacToeMatches.result,
+          status: ticTacToeMatches.status,
+          isAi: ticTacToeMatches.isAi,
+          endedAt: ticTacToeMatches.endedAt,
+          createdAt: ticTacToeMatches.createdAt,
+        })
+        .from(ticTacToeMatches)
+        .where(
+          or(
+            eq(ticTacToeMatches.player1Id, clerkId),
+            eq(ticTacToeMatches.player2Id, clerkId),
           ),
         )
         .limit(HISTORY_LIMIT),
@@ -718,6 +743,32 @@ export async function GET(req: NextRequest) {
     // Keno Duel PvP matches — winner's payout is `stake * 1.9` and a
     // loser's is 0; a draw refunds both stakes (payout = stake,
     // tokenDiff = 0). Mirrors the minesPvpFormatted shape.
+    // Tic-Tac-Toe Duel — finished matches only. Like Mini Golf and Speed Typing
+    // it is unstaked (no wagers, tokens or payouts), so every entry is a
+    // 0-token W/L/draw record: the server-authoritative `winner_id` decides,
+    // and `tie` (nine cells filled with no line) is a draw. A draw is the
+    // common case in tic-tac-toe, not an edge case.
+    const ticTacToeFormatted = ticTacToeRows
+      .map((g) => {
+        if (g.status !== "finished") return null;
+        const isDraw = g.result === "tie" || !g.winnerId;
+        const outcome = isDraw
+          ? "draw"
+          : g.winnerId === clerkId
+            ? "won"
+            : "lost";
+        return {
+          type: g.isAi ? "Tic-Tac-Toe vs AI" : "Tic-Tac-Toe",
+          date: g.endedAt || g.createdAt || new Date().toISOString(),
+          // Unstaked — the record line is decided, not token movement.
+          amount: 0,
+          payout: 0,
+          result: outcome,
+          tokenDiff: 0,
+        };
+      })
+      .filter(Boolean);
+
     const kenoPvpFormatted = kenoPvpRows
       .map((g) => {
         if (g.status !== "finished") return null;
@@ -764,6 +815,7 @@ export async function GET(req: NextRequest) {
       ...laneRushDuelFormatted,
       ...miniGolfFormatted,
       ...speedTypingFormatted,
+      ...ticTacToeFormatted,
       ]
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         // Cap the merged list: the profile renders the newest 10 and the

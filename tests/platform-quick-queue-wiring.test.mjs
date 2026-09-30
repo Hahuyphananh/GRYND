@@ -6,8 +6,9 @@ const lobby = fs.readFileSync("src/components/lobby/PvpLobby.jsx", "utf8");
 
 test("shared lobby page wires platform Quick Queue readiness", () => {
   assert.match(lobby, /usePlatformQuickQueue/);
-  assert.match(lobby, /const quickQueue = usePlatformQuickQueue\(\)/);
-  assert.match(lobby, /quickQueue=\{props\.quickQueue \?\? quickQueue\}/);
+  assert.match(lobby, /const quickQueue = usePlatformQuickQueue\(\{ readinessBody:/);
+  assert.match(lobby, /quickQueue=\{props\.quickQueue \?/);
+  assert.match(lobby, /preferences: props\.quickQueuePreferences/);
 });
 
 test("manual lobby content is still rendered", () => {

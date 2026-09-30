@@ -19,6 +19,7 @@ import Img22 from "../../images/precision.svg";
 import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import ImgMiniGolf from "../../images/mini-golf-card.svg";
 import ImgSpeedTyping from "../../images/speed-typing-card.svg";
+import ImgTicTacToe from "../../images/tic-tac-toe-card.svg";
 import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
@@ -502,6 +503,16 @@ function MainComponent({ adSlot = null }) {
       nameKey: "games.speed_typing_name",
       pvpMode: "1v1",
     },
+    {
+      name: "Tic-Tac-Toe",
+      href: "/casino/tic-tac-toe",
+      leaderboardKey: "tic-tac-toe",
+      playsKey: "tic-tac-toe",
+      image: ImgTicTacToe,
+      descriptionKey: "games.tic_tac_toe_desc",
+      nameKey: "games.tic_tac_toe_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -522,6 +533,7 @@ function MainComponent({ adSlot = null }) {
   );
 
   const newestOrder = [
+    "tic-tac-toe",
     "speed-typing",
     "mini-golf",
     "memory-grid",

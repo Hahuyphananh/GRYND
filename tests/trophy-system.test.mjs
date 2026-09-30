@@ -265,13 +265,13 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  assert.equal(TROPHY_CONFIG.gameCount, 17);
+  assert.equal(TROPHY_CONFIG.gameCount, 18);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 17);
+  assert.equal(TROPHY_GAMES.length, 18);
   assert.equal(isTrophyGame("mini-golf"), true);
   // Speed Typing is a rated 1v1 duel, so it is a trophy game by the same rule
   // (TROPHY_GAMES IS RATED_GAMES — one list, no drift).
@@ -1314,6 +1314,10 @@ const WIRING = [
   // Speed Typing is a 1v1 race whose winner is derived server-side from the
   // authoritative race, so it uses the same original 1v1 writer.
   ["speed-typing", "src/lib/speed-typing/serverStore.ts"],
+  // Tic-Tac-Toe Duel is a 1v1 turn-based duel whose board — and therefore its
+  // winner/draw — is derived server-side, so it uses the same original 1v1
+  // writer. A draw is a common outcome here, not an edge case.
+  ["tic-tac-toe", "src/lib/tic-tac-toe/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

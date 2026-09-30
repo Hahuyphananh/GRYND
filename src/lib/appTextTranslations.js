@@ -533,6 +533,8 @@ export const APP_TEXT_TRANSLATIONS = {
       mini_golf_desc: "A turn-based, physics-based 1v1 duel over five holes. Fewest strokes wins the hole — best of 5, first to 3.",
       speed_typing_name: "Speed Typing",
       speed_typing_desc: "A real-time 1v1 typing race. Both players get the exact same passage — type it faster and more accurately than your opponent, and the first to finish it correctly wins.",
+      tic_tac_toe_name: "Tic-Tac-Toe",
+      tic_tac_toe_desc: "A free, rated 1v1 duel on a 3x3 board. X moves first and play is turn by turn — line up three of your mark in a row, a column or a diagonal before your opponent does.",
       dots_and_boxes_name: "Dots & Boxes",
       dots_and_boxes_desc: "A classic pencil-and-paper duel. Take turns drawing lines between dots to claim boxes. Each box scores a point and earns another turn.",
       dots_and_boxes: {
@@ -1952,6 +1954,8 @@ export const APP_TEXT_TRANSLATIONS = {
       mini_golf_desc: "Un duel 1v1 tour à tour sur cinq trous, avec une physique de balle réaliste. Le moins de coups remporte le trou — au meilleur des 5, premier à 3.",
       speed_typing_name: "Speed Typing",
       speed_typing_desc: "Une course de frappe 1v1 en temps réel. Les deux joueurs reçoivent exactement le même texte — tapez-le plus vite et plus précisément que votre adversaire, et le premier à le terminer correctement gagne.",
+      tic_tac_toe_name: "Tic-Tac-Toe",
+      tic_tac_toe_desc: "Un duel 1v1 noté et gratuit sur une grille 3x3. Les X commencent et chacun joue à son tour — alignez trois de vos symboles sur une ligne, une colonne ou une diagonale avant votre adversaire.",
       dots_and_boxes_name: "Points & Cases",
       dots_and_boxes_desc: "Un duel stratégique classique sur papier. Tracez à tour de rôle des lignes entre les points pour revendiquer des cases. Chaque case rapporte un point et vous donne un tour supplémentaire.",
       dots_and_boxes: {
@@ -3130,6 +3134,8 @@ export const APP_TEXT_TRANSLATIONS = {
       mini_golf_desc: "Un duelo 1v1 por turnos sobre cinco hoyos, con física real. Menos golpes gana el hoyo — al mejor de 5, el primero en llegar a 3.",
       speed_typing_name: "Speed Typing",
       speed_typing_desc: "Una carrera de mecanografía 1v1 en tiempo real. Ambos jugadores reciben exactamente el mismo texto — escríbelo más rápido y con más precisión que tu rival, y el primero en completarlo correctamente gana.",
+      tic_tac_toe_name: "Tic-Tac-Toe",
+      tic_tac_toe_desc: "Un duelo 1v1 puntuado y gratuito en una cuadrícula 3x3. Las X empiezan y se juega por turnos — alinea tres de tus símbolos en fila, columna o diagonal antes que tu rival.",
       dots_and_boxes_name: "Puntos y Cuadros",
       dots_and_boxes_desc: "Un duelo clásico de estrategia sobre papel. Dibuja turnos líneas entre los puntos para reclamar cuadros. Cada cuadro suma un punto y te da otro turno.",
       dots_and_boxes: {

@@ -21,6 +21,7 @@ import { createOrJoinChessDestination } from "./quickQueueChess";
 import { createOrJoinDiceFlushDestination } from "./quickQueueDiceFlush";
 import { createOrJoin as createOrJoinMiniGolfMatch } from "./mini-golf/serverStore";
 import { createOrJoin as createOrJoinSpeedTypingMatch } from "./speed-typing/serverStore";
+import { createOrJoin as createOrJoinTicTacToeMatch } from "./tic-tac-toe/serverStore";
 
 export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
   return db.transaction(async (tx) => {
@@ -118,6 +119,10 @@ export async function claimQuickQueueAssignment({ limit = 100 } = {}) {
       // both paired seats. It takes no stake at all, so the queue's normalized
       // stake can never reach it — and therefore never a debit or a payout.
       "speed-typing": (userId) => createOrJoinSpeedTypingMatch({ userId }),
+      // Tic-Tac-Toe Duel is unstaked too, and lobby-style in exactly the same
+      // way: its `createOrJoin` returns the SAME waiting-lobby id for both
+      // paired seats, so the queue's normalized stake can never reach it.
+      "tic-tac-toe": (userId) => createOrJoinTicTacToeMatch({ userId }),
     }[pair.candidate.gameKey];
     if (createMatch) {
       let result: any;

@@ -280,23 +280,23 @@ test("combination: pvp + strategy + competitive puts the ranked strategists on t
     priorities: ["ranking_up"],
   }).recommendations;
   // pvp(10) + strategy(10) + competitive(10) + competition(4) + ranking_up(4)
-  // + experienced(2) = 40. Chess, Hex Duel and Tower Arena are the three games
-  // tagged all three, so they lead — Tower Arena included, because it is now a
-  // ranked 1v1 duel like the other two (it used to lose the pvp weight as a
-  // shared-table game).
+  // + experienced(2) = 40. Chess, Hex Duel, Tower Arena and Tic-Tac-Toe are the
+  // games tagged all three, so they lead — Tower Arena included, because it is
+  // now a ranked 1v1 duel like the others (it used to lose the pvp weight as a
+  // shared-table game), and Tic-Tac-Toe because it is a ranked strategist too.
   // Ties break by the lobby's featured order: chess, then tower-arena, then
-  // hex-duel.
+  // hex-duel, then tic-tac-toe.
   assert.deepEqual(
-    ranked.slice(0, 3).map((g) => g.id),
-    ["chess", "tower-arena", "hex-duel"]
+    ranked.slice(0, 4).map((g) => g.id),
+    ["chess", "tower-arena", "hex-duel", "tic-tac-toe"]
   );
   assert.equal(ranked[0].score, 40);
   for (const tag of ["pvp", "strategy", "competitive"]) {
     assert.ok(ranked[0].tags.includes(tag));
   }
   // …and the next block down is the competitively-tagged non-strategists.
-  assert.equal(ranked[3].score, 30);
-  assert.ok(!ranked[3].tags.includes("strategy"));
+  assert.equal(ranked[4].score, 30);
+  assert.ok(!ranked[4].tags.includes("strategy"));
 });
 
 test("combination: chance + fun puts the casual lucky game on top", () => {

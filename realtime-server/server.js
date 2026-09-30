@@ -1219,6 +1219,49 @@ io.on("connection", (socket) => {
     logThrottled("speed-typing:leave", "[speed-typing] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Tic-Tac-Toe room-participant tracking ───────────────────────
+  // Same pattern as mini-golf / speed-typing so a `tic-tac-toe:ready` poke can
+  // only come from a tracked participant of that match, and so disconnect
+  // handling can forfeit an abandoned duel to the opponent (or cancel an empty
+  // lobby). Keyed by matchId (a uuid).
+  //
+  // This literal is deliberately restated rather than imported: this server is
+  // plain CommonJS and cannot load the TypeScript vocabulary in
+  // src/lib/tic-tac-toe/rooms.ts. A test pins the two to the same string.
+  const TIC_TAC_TOE_MATCH_ROOM_PREFIX = "tic-tac-toe:match:";
+  if (!global.__ticTacToeRoomParticipants) {
+    global.__ticTacToeRoomParticipants = new Map();
+  }
+  const ticTacToeRoomParticipants = global.__ticTacToeRoomParticipants;
+
+  function trackTicTacToeJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(TIC_TAC_TOE_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(TIC_TAC_TOE_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!ticTacToeRoomParticipants.has(matchId)) {
+      ticTacToeRoomParticipants.set(matchId, new Set());
+    }
+    ticTacToeRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit timer for this match.
+    cancelDisconnectGraceTimer(`tic-tac-toe:${matchId}:${userId}`);
+    logThrottled("tic-tac-toe:join", "[tic-tac-toe] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackTicTacToeLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(TIC_TAC_TOE_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(TIC_TAC_TOE_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = ticTacToeRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) ticTacToeRoomParticipants.delete(matchId);
+    logThrottled("tic-tac-toe:leave", "[tic-tac-toe] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -1271,6 +1314,7 @@ io.on("connection", (socket) => {
     trackTowerArenaJoin(String(roomId), socket.data.userId);
     trackMiniGolfJoin(String(roomId), socket.data.userId);
     trackSpeedTypingJoin(String(roomId), socket.data.userId);
+    trackTicTacToeJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1319,6 +1363,7 @@ io.on("connection", (socket) => {
     trackTowerArenaLeave(String(roomId), socket.data.userId);
     trackMiniGolfLeave(String(roomId), socket.data.userId);
     trackSpeedTypingLeave(String(roomId), socket.data.userId);
+    trackTicTacToeLeave(String(roomId), socket.data.userId);
   });
 
   // The first round is armed by an HTTP ready call, and this broadcast is the
@@ -1829,6 +1874,42 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Tic-Tac-Toe: ready ────────────────────────────────────────
+  // The client emits `tic-tac-toe:ready` after a successful /move or /forfeit
+  // POST so the opponent gets an instant refresh push instead of waiting for the
+  // next poll. The handler validates that the caller is a tracked participant of
+  // that match, then relays `lobby:updated` to the room (excluding the sender).
+  // The generic `room_event` path still works as a fallback.
+  //
+  // The relayed payload is a BARE INVALIDATION HINT (match id + who moved), so
+  // nothing a client emits here can ever reach the opponent as game state. The
+  // authoritative board always comes from the /api/tic-tac-toe/match/[id]
+  // snapshot the receiving client re-fetches.
+  socket.on("tic-tac-toe:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = ticTacToeRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "tic-tac-toe:rejectReady",
+        "[tic-tac-toe] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${TIC_TAC_TOE_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   // ── Crash Arena: table update ─────────────────────────────────
   // The client emits `crashArena:updated` after a successful API
   // mutation (start-round, fold, crash/settle, join, leave) so
@@ -2240,6 +2321,44 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[speed-typing] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Tic-Tac-Toe: same pattern as Mini Golf — a duel abandoned past the
+    // grace window is forfeited to the seat still present (or an empty lobby is
+    // cancelled) via /api/tic-tac-toe/disconnect-forfeit. A reconnect inside the
+    // window cancels the timer (see trackTicTacToeJoin), so a refresh can never
+    // cost a rated match.
+    const ticTacToeMatchesForUser = [];
+    for (const [mid, set] of ticTacToeRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) ticTacToeMatchesForUser.push(mid);
+    }
+    for (const mid of ticTacToeMatchesForUser) {
+      const roomId = `${TIC_TAC_TOE_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = ticTacToeRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) ticTacToeRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`tic-tac-toe:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/tic-tac-toe/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[tic-tac-toe] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

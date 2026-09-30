@@ -1043,6 +1043,7 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "hex-duel",
     "mini-golf",
     "speed-typing",
+    "tic-tac-toe",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a

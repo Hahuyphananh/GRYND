@@ -116,6 +116,20 @@ export const RATED_GAMES = Object.freeze([
   // src/lib/trophies.js reuses this list as TROPHY_GAMES, so there is no
   // second registry to keep in sync.
   "speed-typing",
+  // Tic-Tac-Toe Duel is fully server-authoritative: the board is a pure
+  // function of the accepted move order (src/lib/tic-tac-toe/rules.ts), there
+  // is no randomness at all, and neither player can influence the outcome
+  // except by choosing a cell — so the result is server-derivable and the game
+  // is ratable.
+  //
+  // NOTE: it is a solved game, so draws are common rather than an edge case.
+  // A draw still settles through `applyRatingResult` with result "draw".
+  // Registering the key HERE is what makes the game ratable and trophied:
+  // src/lib/trophies.js reuses this list as TROPHY_GAMES, and
+  // `normalizeRatingGameKey` silently falls back to RATED_GAMES[0] for an
+  // unknown key — so omitting this entry would rate Tic-Tac-Toe matches under
+  // chess rather than erroring.
+  "tic-tac-toe",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -137,6 +151,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "hex-duel": "Hex Duel",
   "mini-golf": "Mini Golf",
   "speed-typing": "Speed Typing",
+  "tic-tac-toe": "Tic-Tac-Toe",
 });
 
 /** True when a game key is eligible for Elo. */

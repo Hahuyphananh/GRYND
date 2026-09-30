@@ -18,6 +18,7 @@ import {
   rpsPvpGames,
   kenoPvpMatches,
   speedTypingMatches,
+  ticTacToeMatches,
   unoGames,
   userStats,
 } from "../db/schema";
@@ -95,6 +96,7 @@ const GAME_PAGES: {
   { path: "/games/odds", source: [oddsGames, oddsGames.createdAt] },
   { path: "/games/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
   { path: "/games/speed-typing", source: [speedTypingMatches, speedTypingMatches.createdAt] },
+  { path: "/games/tic-tac-toe", source: [ticTacToeMatches, ticTacToeMatches.createdAt] },
 ];
 
 const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility", "/faq"];

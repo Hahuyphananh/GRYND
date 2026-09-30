@@ -169,6 +169,18 @@ export const GAME_CATALOG = [
     href: "/casino/speed-typing",
     tags: ["pvp", "skill", "fast_paced", "competitive"],
   },
+
+  // Take turns claiming cells on a 3x3 board: reading the opponent and planning
+  // a line is the whole game (strategy), the outcome is decided by play and not
+  // by anything drawn (skill), on the ranked ladder (competitive). It is the
+  // shortest game in the catalog to learn, but it is a solved duel rather than a
+  // pick-up game, so it is not tagged `casual` — and nothing is rolled or dealt,
+  // so it is never `chance`.
+  {
+    id: "tic-tac-toe",
+    href: "/casino/tic-tac-toe",
+    tags: ["pvp", "strategy", "skill", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any
