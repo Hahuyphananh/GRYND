@@ -29,7 +29,7 @@ import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -141,8 +141,16 @@ writeFileSync(
 
 const server = createServer((req, res) => {
   const path = req.url === "/" ? "/index.html" : req.url.split("?")[0];
+  const rootDir = resolve(outDir);
+  const requestedPath = path.replace(/^\//, "");
+  const filePath = resolve(rootDir, requestedPath);
+  if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
+    res.writeHead(403);
+    res.end("forbidden");
+    return;
+  }
   try {
-    const buf = readFileSync(join(outDir, path.replace(/^\//, "")));
+    const buf = readFileSync(filePath);
     res.writeHead(200, {
       "Content-Type": path.endsWith(".css")
         ? "text/css"
