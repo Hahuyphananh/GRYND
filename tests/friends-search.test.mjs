@@ -145,6 +145,10 @@ function resolve(locale, key) {
   return key.split(".").reduce((node, part) => node?.[part], locale);
 }
 
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 for (const lang of ["en", "fr", "es"]) {
   test(`every history-panel key exists in \`${lang}\``, () => {
     const bundle = APP_TEXT_TRANSLATIONS[lang];
@@ -187,7 +191,7 @@ test("the history panels read their copy from the bundle", () => {
   for (const key of localeKeys) {
     assert.match(
       src,
-      new RegExp(`t\\("${key.replace(/\./g, "\\.")}"`),
+      new RegExp(`t\\("${escapeRegExp(key)}"`),
       `the page never renders ${key}`,
     );
   }
