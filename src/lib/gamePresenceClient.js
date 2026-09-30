@@ -78,6 +78,7 @@ export function getPresenceSessionId() {
     const existing = store.getItem(SESSION_KEY);
     if (existing) return existing;
     const created = createSessionId();
+    if (!created) return null;
     store.setItem(SESSION_KEY, created);
     return created;
   } catch {
