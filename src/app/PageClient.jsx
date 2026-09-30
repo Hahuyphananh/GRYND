@@ -9,6 +9,7 @@ import SocialLinks from "../components/SocialLinks";
 import ReviewWall from "../components/reviews/ReviewWall";
 import InteractiveCasinoBg from "../components/InteractiveCasinoBg";
 import IconAvatar from "../components/IconAvatar";
+import ReportEntryButton from "../components/reports/ReportEntryButton";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Image from "next/image";
@@ -688,10 +689,13 @@ function MainComponent({ adSlot = null }) {
             ) : (
               <ul className="divide-y divide-[#00e5ff]/10">
                 {leaderboard.items.map((item, i) => (
-                  <li key={item.clerk_id || `${item.rank}-${i}`}>
+                  <li
+                    key={item.clerk_id || `${item.rank}-${i}`}
+                    className="flex items-center gap-1 pr-3 transition-colors hover:bg-[#00e5ff]/5 sm:pr-4"
+                  >
                     <Link
                       href={`/profil/${encodeURIComponent(item.clerk_id)}`}
-                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[#00e5ff]/5 sm:px-6"
+                      className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 sm:px-6"
                     >
                       <span
                         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
@@ -721,6 +725,17 @@ function MainComponent({ adSlot = null }) {
                         {t("home.best_of.wins_label")}
                       </span>
                     </Link>
+                    {/* Any visitor can flag a ranked player; hidden on your
+                        own row. The username filter catches most of this at
+                        signup, this is the backstop for everything else. */}
+                    {item.clerk_id !== user?.id && (
+                      <ReportEntryButton
+                        reportedClerkId={item.clerk_id}
+                        reportedPlayerName={item.user?.name || item.name || "Player"}
+                        gameType="leaderboard"
+                        contextLabel="Leaderboard"
+                      />
+                    )}
                   </li>
                 ))}
               </ul>

@@ -7,6 +7,7 @@ import ReviewModal from "./ReviewModal";
 import IconAvatar from "../IconAvatar";
 import ErrorState from "../states/ErrorState";
 import { useApiResource } from "../../hooks/useApiResource";
+import ReportEntryButton from "../reports/ReportEntryButton";
 
 interface Review {
   id: number;
@@ -17,6 +18,8 @@ interface Review {
   createdAt: string;
   username: string;
   iconKey: string | null;
+  /** Reviewer's Clerk id — the target of the report-this-review action. */
+  clerkId: string | null;
 }
 
 interface ReviewStats {
@@ -76,7 +79,7 @@ export default function ReviewWall({
   initialReviews?: Review[] | null;
   initialStats?: ReviewStats | null;
 }) {
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { isLoaded: authLoaded, isSignedIn, userId } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [reviews, setReviews] = useState<Review[]>(initialReviews ?? []);
@@ -208,8 +211,21 @@ export default function ReviewWall({
                   size="h-6 w-6"
                 />
                 <span className="font-semibold text-[#c9f7ff]/80">{r.username || "Player"}</span>
-                <span className="ml-auto rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">
-                  Verified player
+                <span className="ml-auto flex items-center gap-1.5">
+                  <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">
+                    Verified player
+                  </span>
+                  {/* Never offer a report button on your own review — the API
+                      rejects self-reports anyway, this just avoids the dead end. */}
+                  {r.clerkId !== userId && (
+                    <ReportEntryButton
+                      reportedClerkId={r.clerkId}
+                      reportedPlayerName={r.username || "Player"}
+                      gameType="review"
+                      contextLabel="Review"
+                      gameId={r.id}
+                    />
+                  )}
                 </span>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { productReviews, users } from "../db/schema";
 
@@ -25,6 +25,15 @@ export interface PublicReview {
   createdAt: string;
   username: string | null;
   iconKey: string | null;
+  /**
+   * Clerk id of the reviewer.
+   *
+   * Included so the public wall can file a report against the REVIEWER when a
+   * review is flagged (POST /api/reports/submit needs a reportedClerkId). This
+   * is not new information: public profile URLs are /profil/<clerkId> and the
+   * weekly leaderboard already ships clerk ids to signed-out clients.
+   */
+  clerkId: string | null;
 }
 
 export interface ReviewStats {
@@ -34,6 +43,91 @@ export interface ReviewStats {
   /** rating (1–5) → how many approved reviews gave it. */
   distribution: Record<number, number>;
 }
+
+// ── Placeholder reviews are never public ───────────────────────────────────
+// This table was hand-seeded during development, and one placeholder row
+// (title "Test review", body "Test") was approved and left live on /reviews —
+// a fake review, credited to a "Verified player", sitting on a public marketing
+// page. A moderation queue does not catch that, because the row was approved on
+// purpose, so the public read path refuses placeholder content outright.
+//
+// A review is treated as a placeholder only when BOTH fields are empty or
+// nothing but a placeholder token. A real review — however terse — keeps at
+// least one field with actual words, so it is never hidden. The same rule is
+// applied by a database cleanup (migration 0194) and by the SQL twin below, so
+// the wall, the aggregate and the JSON-LD all agree on what is publishable.
+
+export const PLACEHOLDER_REVIEW_VALUES = [
+  "test",
+  "testreview",
+  "testing",
+  "testtest",
+  "asdf",
+  "asdfasdf",
+  "foo",
+  "bar",
+  "baz",
+  "sample",
+  "samplesample",
+  "placeholder",
+  "dummy",
+  "loremipsum",
+  "hello",
+  "helloworld",
+  "hi",
+  "abc",
+  "abcabc",
+  "xyz",
+  "qwerty",
+  "aaa",
+  "bbb",
+];
+
+/** Lowercase a review field and drop everything that is not a letter or digit. */
+export function normalizeReviewField(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** True when a field is empty or is nothing but a known placeholder token. */
+export function isPlaceholderReviewField(value: unknown): boolean {
+  const normalized = normalizeReviewField(value);
+  return normalized === "" || PLACEHOLDER_REVIEW_VALUES.includes(normalized);
+}
+
+/**
+ * True when a review carries no real content at all.
+ *
+ * Both fields must be placeholder-or-empty; a single field with real words is
+ * enough to keep the review publishable.
+ */
+export function isPlaceholderReview(review: {
+  title?: unknown;
+  body?: unknown;
+}): boolean {
+  return (
+    isPlaceholderReviewField(review?.title) && isPlaceholderReviewField(review?.body)
+  );
+}
+
+// SQL twin of `isPlaceholderReview`. The values are code-owned lowercase
+// alphanumerics, so inlining them is safe (and `sql.raw` keeps them out of the
+// parameter list, where an `IN` with a parameter array would not work).
+const PLACEHOLDER_VALUES_SQL = sql.raw(
+  `(${PLACEHOLDER_REVIEW_VALUES.map((value) => `'${value}'`).join(", ")})`,
+);
+
+const titleKey = sql`regexp_replace(lower(coalesce(${productReviews.title}, '')), '[^a-z0-9]', '', 'g')`;
+const bodyKey = sql`regexp_replace(lower(coalesce(${productReviews.body}, '')), '[^a-z0-9]', '', 'g')`;
+
+const NOT_PLACEHOLDER_REVIEW = sql`NOT ((${titleKey} = '' OR ${titleKey} IN ${PLACEHOLDER_VALUES_SQL}) AND (${bodyKey} = '' OR ${bodyKey} IN ${PLACEHOLDER_VALUES_SQL}))`;
+
+/** Approved AND not a placeholder — the only rows that may be published. */
+const PUBLISHABLE = and(
+  eq(productReviews.status, "approved"),
+  NOT_PLACEHOLDER_REVIEW,
+);
 
 /** Newest approved reviews, newest first. */
 export async function getApprovedReviews(limit = 12): Promise<PublicReview[]> {
@@ -49,10 +143,12 @@ export async function getApprovedReviews(limit = 12): Promise<PublicReview[]> {
       // Official Grynd icon key for the reviewer's avatar (never an arbitrary
       // profile-image URL).
       iconKey: users.selectedIcon,
+      // Identity of the reviewer, for the report-this-review action.
+      clerkId: users.clerkId,
     })
     .from(productReviews)
     .innerJoin(users, eq(productReviews.userId, users.id))
-    .where(eq(productReviews.status, "approved"))
+    .where(PUBLISHABLE)
     .orderBy(desc(productReviews.createdAt))
     .limit(limit);
 
@@ -75,7 +171,7 @@ export async function getReviewStats(): Promise<ReviewStats> {
       five: sql<number>`COUNT(*) FILTER (WHERE rating = 5)`,
     })
     .from(productReviews)
-    .where(eq(productReviews.status, "approved"))
+    .where(PUBLISHABLE)
     .then((r) => r[0]);
 
   return {

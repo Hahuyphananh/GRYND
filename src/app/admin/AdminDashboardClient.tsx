@@ -83,6 +83,12 @@ interface PlayerReport {
   reported_name: string | null;
   reported_email: string | null;
   reported_is_banned: boolean | null;
+  // Present only when the flagged entry was a REVIEW (game_type = "review") —
+  // the review itself, so the queue can show what was actually reported.
+  review_title: string | null;
+  review_body: string | null;
+  review_rating: number | null;
+  review_status: string | null;
 }
 
 interface ContactMessageReply {
@@ -731,6 +737,38 @@ export default function AdminDashboardClient({
     }
   }
 
+  // ── Rename a reported player to a neutral handle ──────────────────
+  // The remedy for the flags that come from the public surfaces (a
+  // leaderboard row or a review by someone with an offensive name). Assigning
+  // the new handle is server-side; this only reflects the result.
+  async function handleRenameUser(report: PlayerReport) {
+    if (!report.reported_clerk_id) return;
+    setBanLoading("rename-" + report.id);
+    setActionResult(null);
+    try {
+      const res = await fetch("/api/admin/reports", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: report.id, action: "rename" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionResult("Report #" + report.id + ": renamed to " + data.name + ".");
+        setReports((prev) =>
+          prev.map((row) =>
+            row.id === report.id ? { ...row, reported_name: data.name } : row,
+          ),
+        );
+      } else {
+        setActionResult("Error: " + data.error);
+      }
+    } catch {
+      setActionResult("Network error renaming player");
+    } finally {
+      setBanLoading(null);
+    }
+  }
+
   // ── Format report reason for display ────────────────────────────
   function formatReason(reason: string): string {
     const labels: Record<string, string> = {
@@ -741,6 +779,29 @@ export default function AdminDashboardClient({
       other: "Other",
     };
     return labels[reason] || reason.replace(/_/g, " ");
+  }
+
+  // ── Format report source for display ────────────────────────────
+  // `game_type` records WHERE the flag came from: a public surface reports the
+  // player (leaderboard / profile) or the content (review), while in-game
+  // reports name the game. It used to render as a bare lowercase slug, which
+  // told whoever is triaging nothing about the entry they are looking at.
+  function formatSource(gameType: string): string {
+    const labels: Record<string, string> = {
+      leaderboard: "Leaderboard",
+      review: "Review",
+      profile: "Profile",
+      "hex-duel": "Hex Duel",
+      "pool-masters": "Pool Masters",
+      "tic-tac-toe": "Tic-Tac-Toe",
+      "four-in-a-row": "Four in a Row",
+      "dots-and-boxes": "Dots and Boxes",
+      "mini-golf": "Mini Golf",
+      "mines-pvp": "Mines PvP",
+      rps: "Rock Paper Scissors",
+      precision: "Precision",
+    };
+    return labels[gameType] || gameType.replace(/-/g, " ");
   }
 
   // ── Format event name for display ──────────────────────────────
@@ -1274,7 +1335,7 @@ export default function AdminDashboardClient({
                     <th className="px-3 py-2.5 font-medium">ID</th>
                     <th className="px-3 py-2.5 font-medium">Reported</th>
                     <th className="px-3 py-2.5 font-medium">Reason</th>
-                    <th className="px-3 py-2.5 font-medium">Game</th>
+                    <th className="px-3 py-2.5 font-medium">Source</th>
                     <th className="px-3 py-2.5 font-medium">Reporter</th>
                     <th className="px-3 py-2.5 font-medium">Time</th>
                     <th className="px-3 py-2.5 font-medium text-right">Actions</th>
@@ -1311,9 +1372,27 @@ export default function AdminDashboardClient({
                             {r.details}
                           </p>
                         )}
+                        {/* A flagged review is useless to moderation without the
+                            review itself — this is the only place it is shown. */}
+                        {(r.review_title || r.review_body) && (
+                          <p
+                            className="text-cyan-300/80 text-[10px] mt-1 max-w-[200px] truncate"
+                            title={[r.review_title, r.review_body]
+                              .filter(Boolean)
+                              .join(" — ")}
+                          >
+                            <span className="text-gray-500">Review:</span>{" "}
+                            {r.review_title || r.review_body}
+                          </p>
+                        )}
+                        {r.review_rating != null && (
+                          <p className="text-gray-500 text-[10px] mt-0.5">
+                            {r.review_rating}/5 · {r.review_status}
+                          </p>
+                        )}
                       </td>
-                      <td className="px-3 py-2.5 text-gray-400 text-xs capitalize">
-                        {r.game_type.replace(/-/g, " ")}
+                      <td className="px-3 py-2.5 text-gray-400 text-xs">
+                        <span className="text-gray-300">{formatSource(r.game_type)}</span>
                         {r.game_id && <span className="text-gray-600"> #{r.game_id}</span>}
                       </td>
                       <td className="px-3 py-2.5 text-gray-400 text-xs">
@@ -1324,6 +1403,16 @@ export default function AdminDashboardClient({
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* For a name complaint, a fresh handle resolves it
+                              without banning anyone. */}
+                          <button
+                            onClick={() => handleRenameUser(r)}
+                            disabled={banLoading === "rename-" + r.id}
+                            title="Assign this player a new, neutral display name"
+                            className="px-2.5 py-1 rounded text-[10px] font-medium bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 transition-colors disabled:opacity-50"
+                          >
+                            {banLoading === "rename-" + r.id ? "..." : "Rename"}
+                          </button>
                           <button
                             onClick={() => handleToggleBan(r.reported_clerk_id, !r.reported_is_banned)}
                             disabled={banLoading === r.reported_clerk_id}

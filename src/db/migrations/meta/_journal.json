@@ -1226,6 +1226,13 @@
       "when": 1800000037000,
       "tag": "0193_solitaire_duel",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1800000038000,
+      "tag": "0194_purge_placeholder_reviews",
+      "breakpoints": true
     }
   ]
 }

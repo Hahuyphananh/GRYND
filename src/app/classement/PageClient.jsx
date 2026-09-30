@@ -13,6 +13,7 @@ import { useTranslation } from "../../hooks/useTranslation";
 import { useApiResource } from "../../hooks/useApiResource";
 import AsyncState from "../../components/states/AsyncState";
 import UpgradeProButton from "../../components/UpgradeProButton";
+import ReportEntryButton from "../../components/reports/ReportEntryButton";
 
 const TABS = [
   "trophies",
@@ -879,10 +880,17 @@ export default function LeaderboardPage({ adSlot = null }) {
                                 <RecordLine item={item} />
                               </span>
                             </Link>
-                            {isMe && (
+                            {isMe ? (
                               <span className="shrink-0 rounded-full bg-[#f5ff3b] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#041125]">
                                 You
                               </span>
+                            ) : (
+                              <ReportEntryButton
+                                reportedClerkId={item.clerk_id}
+                                reportedPlayerName={item.user?.name || item.name || "Player"}
+                                gameType="leaderboard"
+                                contextLabel="Leaderboard"
+                              />
                             )}
                           </div>
                         </td>

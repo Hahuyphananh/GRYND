@@ -10,6 +10,7 @@ import { grantAllOfficialIcons } from "../../../lib/icons";
 import { reconcileEmoteState } from "../../../lib/emotes";
 import { grantAllCosmeticsToUser } from "../../../lib/cosmetics";
 import { searchNameFor } from "../../../lib/searchName";
+import { moderatedDisplayName } from "../../../lib/moderation/profanity";
 import { validateObject } from "../../../lib/security/validation";
 
 export async function POST(req: Request) {
@@ -54,11 +55,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const preferredName =
+    // Local display name — filtered exactly like the user.created webhook so
+    // both signup paths converge on the same moderated handle. A profane
+    // provider name can never reach the public leaderboard; the account is
+    // still created, just under a deterministic clean handle.
+    const preferredName = moderatedDisplayName(
       `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
-      clerkUser.username ||
-      email.split("@")[0] ||
-      "Player";
+        clerkUser.username ||
+        email.split("@")[0],
+      clerkId,
+    );
 
     // Grynd avatars are OFFICIAL icons only (users.selected_icon). Clerk's
     // externally-hosted imageUrl is deliberately NOT copied into the Grynd

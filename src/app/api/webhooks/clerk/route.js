@@ -15,6 +15,7 @@ import { grantAllOfficialIcons } from "../../../../lib/icons";
 import { reconcileEmoteState } from "../../../../lib/emotes";
 import { grantAllCosmeticsToUser } from "../../../../lib/cosmetics";
 import { searchNameFor } from "../../../../lib/searchName";
+import { moderatedDisplayName } from "../../../../lib/moderation/profanity";
 
 export async function POST(req) {
   try {
@@ -43,10 +44,15 @@ export async function POST(req) {
           crypto.randomBytes(32).toString("hex"),
           12,
         );
-        const displayName =
-          username ||
-          `${first_name || ""} ${last_name || ""}`.trim() ||
-          "Player";
+        // The handle that ends up on the PUBLIC leaderboard. A profane Clerk
+        // username (or first/last name) must never be published, so it is
+        // filtered here — an unmoderated name is the first thing a visitor
+        // sees. Account creation still succeeds; only the handle is replaced
+        // with a deterministic, clean one the player can change later.
+        const displayName = moderatedDisplayName(
+          username || `${first_name || ""} ${last_name || ""}`.trim(),
+          id,
+        );
         const insertedRows = await db
           .insert(users)
           .values({
@@ -96,7 +102,8 @@ export async function POST(req) {
         await sendWelcomeEmail({
           clerkId: id,
           email,
-          username: username || first_name || "Player",
+          // The same moderated handle the account was created with.
+          username: displayName,
         });
       }
       auditLog("webhook_user_created", { clerkId: id });

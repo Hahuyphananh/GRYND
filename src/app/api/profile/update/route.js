@@ -4,6 +4,7 @@ import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { searchNameFor } from "../../../../lib/searchName";
+import { findProfanity } from "../../../../lib/moderation/profanity";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // NOTE: profile pictures are no longer accepted by this endpoint. Grynd
@@ -86,6 +87,25 @@ export async function POST(request) {
         },
       );
     }
+
+    // The display name is public (leaderboard, reviews, profiles), so a rename
+    // is the second place a profane name could enter the system. Reject it with
+    // a generic message — never echo the matched term back, and don't reveal
+    // which substring tripped the filter.
+    if (hasName && findProfanity(parsed.data.name) !== null) {
+      auditLog("profile_update_rejected_name", { userId });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "That display name isn't allowed. Please choose a different one.",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
     if (
       parsed.data.password !== null &&
       parsed.data.password !== "" &&
