@@ -18,6 +18,7 @@ import {
   rpsPvpGames,
   kenoPvpMatches,
   speedTypingMatches,
+  solitaireDuelMatches,
   ticTacToeMatches,
   unoGames,
   userStats,
@@ -97,6 +98,7 @@ const GAME_PAGES: {
   { path: "/games/memory-grid", source: [memoryGridMatches, memoryGridMatches.createdAt] },
   { path: "/games/speed-typing", source: [speedTypingMatches, speedTypingMatches.createdAt] },
   { path: "/games/tic-tac-toe", source: [ticTacToeMatches, ticTacToeMatches.createdAt] },
+  { path: "/games/solitaire-duel", source: [solitaireDuelMatches, solitaireDuelMatches.createdAt] },
 ];
 
 const LEGAL_PAGES = ["/terms", "/privacy-policy", "/security-policy", "/fair-play", "/accessibility", "/faq"];

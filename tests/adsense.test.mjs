@@ -85,6 +85,7 @@ const ALLOWED = [
   "src/app/casino/tower-arena/page.tsx",
   "src/app/casino/uno/page.jsx",
   "src/app/casino/speed-typing/page.tsx",
+  "src/app/casino/solitaire-duel/page.tsx",
   "src/app/casino/tic-tac-toe/page.tsx",
 ];
 

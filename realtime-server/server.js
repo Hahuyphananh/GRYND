@@ -1262,6 +1262,51 @@ io.on("connection", (socket) => {
     logThrottled("tic-tac-toe:leave", "[tic-tac-toe] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Solitaire Duel room-participant tracking ────────────────────
+  // Same pattern as mini-golf / speed-typing / tic-tac-toe so a
+  // `solitaire-duel:ready` poke can only come from a tracked participant of
+  // that match, and so disconnect handling can forfeit a race abandoned past
+  // the grace window to the seat still present (or cancel an empty lobby).
+  // Keyed by matchId (a uuid).
+  //
+  // This literal is deliberately restated rather than imported: this server is
+  // plain CommonJS and cannot load the TypeScript vocabulary in
+  // src/lib/solitaire-duel/rooms.ts. A test pins the two to the same string.
+  const SOLITAIRE_DUEL_MATCH_ROOM_PREFIX = "solitaire-duel:match:";
+  if (!global.__solitaireDuelRoomParticipants) {
+    global.__solitaireDuelRoomParticipants = new Map();
+  }
+  const solitaireDuelRoomParticipants = global.__solitaireDuelRoomParticipants;
+
+  function trackSolitaireDuelJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SOLITAIRE_DUEL_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SOLITAIRE_DUEL_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!solitaireDuelRoomParticipants.has(matchId)) {
+      solitaireDuelRoomParticipants.set(matchId, new Set());
+    }
+    solitaireDuelRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit timer for this match, so a refresh can never
+    // cost a rated race.
+    cancelDisconnectGraceTimer(`solitaire-duel:${matchId}:${userId}`);
+    logThrottled("solitaire-duel:join", "[solitaire-duel] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackSolitaireDuelLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SOLITAIRE_DUEL_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SOLITAIRE_DUEL_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = solitaireDuelRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) solitaireDuelRoomParticipants.delete(matchId);
+    logThrottled("solitaire-duel:leave", "[solitaire-duel] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -1315,6 +1360,7 @@ io.on("connection", (socket) => {
     trackMiniGolfJoin(String(roomId), socket.data.userId);
     trackSpeedTypingJoin(String(roomId), socket.data.userId);
     trackTicTacToeJoin(String(roomId), socket.data.userId);
+    trackSolitaireDuelJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1364,6 +1410,7 @@ io.on("connection", (socket) => {
     trackMiniGolfLeave(String(roomId), socket.data.userId);
     trackSpeedTypingLeave(String(roomId), socket.data.userId);
     trackTicTacToeLeave(String(roomId), socket.data.userId);
+    trackSolitaireDuelLeave(String(roomId), socket.data.userId);
   });
 
   // The first round is armed by an HTTP ready call, and this broadcast is the
@@ -1379,6 +1426,38 @@ io.on("connection", (socket) => {
       }
     }
     if (!roomId || !event) return;
+    // ── Solitaire Duel: reserve the server-authority events ──────────
+    // The generic relay below forwards ANY event name a client asks it to,
+    // to any room the client has joined (`join_room` takes an arbitrary id).
+    // For Solitaire Duel that would let a socket forge the two events the
+    // client acts on without a refetch: a fabricated
+    // `solitaire-duel:opponent-progress` (a fake opponent bar) or a
+    // `solitaire-duel:countdown` with an arbitrary `goAtMs` (which pins the
+    // victim's board in the countdown phase). Both are emitted ONLY by the
+    // backend, through `broadcastMatchEvent` in
+    // src/lib/solitaire-duel/rooms.ts, so a client `room_event` carrying one
+    // of these names is always a forgery and is dropped here.
+    //
+    // `lobby:updated` is deliberately NOT reserved: it is a bare "refetch the
+    // snapshot" hint, the snapshot is authoritative, and every game relays it
+    // through this same generic path. This list is intentionally scoped to
+    // Solitaire Duel so no other game's relay behaviour changes.
+    const relayedEvent = String(event);
+    if (
+      relayedEvent === "solitaire-duel:opponent-progress" ||
+      relayedEvent === "solitaire-duel:countdown" ||
+      relayedEvent === "solitaire-duel:match-started" ||
+      relayedEvent === "solitaire-duel:match-finished"
+    ) {
+      logThrottled(
+        "solitaire-duel:rejectForgedEvent",
+        "[solitaire-duel] dropping forged server event from client: event=",
+        relayedEvent,
+        "userId=",
+        socket.data.userId
+      );
+      return;
+    }
     socket.to(String(roomId)).emit(String(event), {
       ...(payload && typeof payload === "object" ? payload : {}),
       userId: socket.data.userId,
@@ -1885,6 +1964,43 @@ io.on("connection", (socket) => {
   // nothing a client emits here can ever reach the opponent as game state. The
   // authoritative board always comes from the /api/tic-tac-toe/match/[id]
   // snapshot the receiving client re-fetches.
+  // ── Solitaire Duel: ready ──────────────────────────────────────
+  // The client emits `solitaire-duel:ready` after a successful /move,
+  // /forfeit or /cancel POST so the opponent gets an instant refresh push
+  // instead of waiting for the next poll. The handler validates that the
+  // caller is a tracked participant of that match, then relays `lobby:updated`
+  // to the room (excluding the sender).
+  //
+  // The relayed payload is a BARE INVALIDATION HINT (match id + who moved), so
+  // no client-supplied progress or result ever reaches the opponent as game
+  // state. The authoritative `solitaire-duel:opponent-progress` /
+  // `solitaire-duel:match-finished` events are emitted by the BACKEND, from the
+  // store's own board — never by a client and never from a client's numbers.
+  socket.on("solitaire-duel:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = solitaireDuelRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "solitaire-duel:rejectReady",
+        "[solitaire-duel] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${SOLITAIRE_DUEL_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   socket.on("tic-tac-toe:ready", ({ matchId } = {}) => {
     if (!matchId) return;
     const matchIdStr = String(matchId);
@@ -2359,6 +2475,45 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[tic-tac-toe] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Solitaire Duel: same pattern as Mini Golf / Speed Typing /
+    // Tic-Tac-Toe — a race abandoned past the grace window is forfeited to the
+    // seat still present (or an empty lobby is cancelled) via
+    // /api/solitaire-duel/disconnect-forfeit. A reconnect inside the window
+    // cancels the timer (see trackSolitaireDuelJoin), so a refresh can never
+    // cost a rated race.
+    const solitaireDuelMatchesForUser = [];
+    for (const [mid, set] of solitaireDuelRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) solitaireDuelMatchesForUser.push(mid);
+    }
+    for (const mid of solitaireDuelMatchesForUser) {
+      const roomId = `${SOLITAIRE_DUEL_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = solitaireDuelRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) solitaireDuelRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`solitaire-duel:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/solitaire-duel/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[solitaire-duel] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

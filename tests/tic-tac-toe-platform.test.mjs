@@ -77,14 +77,17 @@ test("retention: the daily sweep purges the terminal Tic-Tac-Toe match table", (
   assert.match(src, /purge\("tic_tac_toe_matches", FINISHED\)/);
 });
 
-test("migration + journal: 0192 is registered as the next entry", () => {
+test("migration + journal: 0192 is registered at its own index", () => {
   const journal = JSON.parse(read("src/db/migrations/meta/_journal.json"));
-  const last = journal.entries.at(-1);
-  assert.equal(last.idx, 173);
-  assert.equal(last.tag, "0192_tic_tac_toe");
+  // Asserted BY TAG, not "is the last entry": the newest migration belongs to
+  // whichever game shipped most recently, so a later game adding one must not
+  // fail Tic-Tac-Toe's own registration test.
+  const entry = journal.entries.find((candidate) => candidate.tag === "0192_tic_tac_toe");
+  assert.ok(entry, "0192_tic_tac_toe must be registered in the journal");
+  assert.equal(entry.idx, 173);
   // Indices are contiguous — nothing was inserted out of order.
-  assert.equal(journal.entries.length, 174);
-  journal.entries.forEach((entry, index) => assert.equal(entry.idx, index, `entry ${index}`));
+  assert.ok(journal.entries.length >= 174, "the journal must reach 0192");
+  journal.entries.forEach((candidate, index) => assert.equal(candidate.idx, index, `entry ${index}`));
 });
 
 test("migration: declares both tables and both invariant indexes", () => {

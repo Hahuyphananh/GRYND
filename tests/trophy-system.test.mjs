@@ -265,19 +265,25 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  assert.equal(TROPHY_CONFIG.gameCount, 18);
+  // 19 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
+  assert.equal(TROPHY_CONFIG.gameCount, 19);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 18);
+  assert.equal(TROPHY_GAMES.length, 19);
   assert.equal(isTrophyGame("mini-golf"), true);
   // Speed Typing is a rated 1v1 duel, so it is a trophy game by the same rule
   // (TROPHY_GAMES IS RATED_GAMES — one list, no drift).
   assert.equal(isTrophyGame("speed-typing"), true);
   assert.equal(normalizeTrophyGameKey("speed-typing"), "speed-typing");
   assert.equal(getTrophyGameLabel("speed-typing"), "Speed Typing");
+  // Solitaire Duel settles from its own server-derived boards, so its trophies
+  // move on the same writer — and its label comes from the one registry.
+  assert.equal(isTrophyGame("solitaire-duel"), true);
+  assert.equal(normalizeTrophyGameKey("solitaire-duel"), "solitaire-duel");
+  assert.equal(getTrophyGameLabel("solitaire-duel"), "Solitaire Duel");
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
   // The 6 formerly-excluded games are now REGISTERED (their trophy/rating
@@ -1318,6 +1324,11 @@ const WIRING = [
   // winner/draw — is derived server-side, so it uses the same original 1v1
   // writer. A draw is a common outcome here, not an edge case.
   ["tic-tac-toe", "src/lib/tic-tac-toe/serverStore.ts"],
+  // Solitaire Duel is a 1v1 simultaneous race on ONE server-generated deal:
+  // both seats play their own board from it, and the winner is derived from the
+  // authoritative boards (completion, or most progress at the deadline), so it
+  // uses the same original 1v1 writer.
+  ["solitaire-duel", "src/lib/solitaire-duel/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

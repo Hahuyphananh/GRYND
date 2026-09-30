@@ -1044,6 +1044,7 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "mini-golf",
     "speed-typing",
     "tic-tac-toe",
+    "solitaire-duel",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a
@@ -1053,6 +1054,10 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
   // Speed Typing is a 1v1 race with no randomness during play, so its winner is
   // derivable server-side and it is ratable like the other duels.
   assert.equal(isRatedGame("speed-typing"), true);
+  // Solitaire Duel derives the whole race server-side from ONE committed deal
+  // (completion first, then most progress at the deadline), so it is ratable
+  // on the same terms.
+  assert.equal(isRatedGame("solitaire-duel"), true);
   assert.equal(normalizeRatingGameKey("speed-typing"), "speed-typing");
   assert.equal(getRatingGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isRatedGame("hex-duel"), true);
@@ -1294,6 +1299,10 @@ const WIRING = [
   // Speed Typing has no rating formula of its own either: its store derives the
   // winner from the authoritative race and then calls the SAME shared writer.
   ["speed-typing", "src/lib/speed-typing/serverStore.ts"],
+  // Solitaire Duel derives its winner server-side too: both seats race ONE
+  // server-generated deal and the outcome comes from the authoritative boards
+  // (completion, or most progress at the deadline).
+  ["solitaire-duel", "src/lib/solitaire-duel/serverStore.ts"],
 ];
 
 for (const [gameKey, file] of WIRING) {

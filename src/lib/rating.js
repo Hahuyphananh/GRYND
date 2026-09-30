@@ -130,6 +130,17 @@ export const RATED_GAMES = Object.freeze([
   // unknown key — so omitting this entry would rate Tic-Tac-Toe matches under
   // chess rather than erroring.
   "tic-tac-toe",
+  // Solitaire Duel is fully server-authoritative too: ONE deterministic
+  // Klondike deal per match, one board per seat, and an outcome derived from
+  // the server's own boards — the first seat to solve the whole puzzle wins
+  // immediately, and the greater progress at the deadline wins otherwise (an
+  // exact tie is a draw). Nothing is drawn during play and there is no wager,
+  // so the result is server-derivable and the game is ratable. Registering the
+  // key HERE is what makes the store's `applyRatingResult("solitaire-duel")`
+  // and `applyTrophyResult("solitaire-duel")` calls take effect — before this
+  // entry the shared writers refused the key as unrated rather than mis-rating
+  // the match under another game's ladder.
+  "solitaire-duel",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -152,6 +163,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "mini-golf": "Mini Golf",
   "speed-typing": "Speed Typing",
   "tic-tac-toe": "Tic-Tac-Toe",
+  "solitaire-duel": "Solitaire Duel",
 });
 
 /** True when a game key is eligible for Elo. */

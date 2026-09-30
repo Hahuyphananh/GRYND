@@ -3468,6 +3468,104 @@ export const ticTacToeMoves = pgTable(
   })
 );
 
+// SOLITAIRE DUEL — the 1v1 simultaneous Klondike race.
+// ==============================================================================
+// ONE server-generated deal per match that BOTH seats play from their own
+// independent board. `deal` is the single canonical puzzle; `p1_state` /
+// `p2_state` are two copies of it that diverge only through each seat's own
+// validated moves. A seat's move can never touch the other seat's column.
+//
+// `server_seed` is secret until the match is terminal; `server_seed_hash` is the
+// public pre-match commitment, so the revealed seed can be verified against the
+// deal that was actually played.
+//
+// There is deliberately NO stake_amount / prize_paid / house_fee column: the
+// game is unstaked, so no money is ever moved by settlement.
+export const solitaireDuelMatches = pgTable(
+  "solitaire_duel_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The frozen ruleset, versioned into the deal digest.
+    variant: varchar("variant", { length: 24 }).notNull().default("klondike-1"),
+    variantVersion: integer("variant_version").notNull().default(1),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    /** waiting | ready | playing | finished | cancelled — the shared house
+     *  vocabulary the retention sweep, the queue mirror and the match-history
+     *  formatter all read. `ready` is part of the vocabulary but never entered:
+     *  joining takes the match straight to `playing`, with a countdown window
+     *  before the first legal move. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // 'player1' | 'player2' | 'draw'. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    // finish | deadline | forfeit | draw — how the server ended it.
+    resolutionReason: varchar("resolution_reason", { length: 20 }),
+    // Provably-fair seed pair (see src/lib/solitaire-duel/seeds.js).
+    serverSeed: varchar("server_seed", { length: 64 }).notNull(),
+    serverSeedHash: varchar("server_seed_hash", { length: 64 }).notNull(),
+    // uint32, so it exceeds int4's range and must be a bigint column.
+    dealSeed: bigint("deal_seed", { mode: "number" }).notNull(),
+    // The ONE canonical deal both seats start from (server-only).
+    deal: jsonb("deal").notNull(),
+    // The two independent boards. Both NOT NULL: a match always has two boards,
+    // even while seat 2 is still an empty lobby slot.
+    p1State: jsonb("p1_state").notNull(),
+    p2State: jsonb("p2_state").notNull(),
+    // Denormalised per-seat facts, so no read has to parse JSONB.
+    p1Ply: integer("p1_ply").notNull().default(0),
+    p2Ply: integer("p2_ply").notNull().default(0),
+    p1PeakFoundation: integer("p1_peak_foundation").notNull().default(0),
+    p2PeakFoundation: integer("p2_peak_foundation").notNull().default(0),
+    p1Revealed: integer("p1_revealed").notNull().default(0),
+    p2Revealed: integer("p2_revealed").notNull().default(0),
+    p1FinishedAt: timestamp("p1_finished_at"),
+    p2FinishedAt: timestamp("p2_finished_at"),
+    // Absolute server instants — never a per-client delay.
+    goAt: timestamp("go_at"),
+    deadlineAt: timestamp("deadline_at"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("solitaire_duel_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("solitaire_duel_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("solitaire_duel_matches_player2_idx").on(table.player2Id, table.createdAt),
+    dueIdx: index("solitaire_duel_matches_due_idx").on(table.status, table.deadlineAt),
+  })
+);
+
+// Append-only per-seat move log. The authoritative replay record: every
+// accepted move with the exact validated input the server acted on.
+//
+// `ply_unique` makes "one accepted move per ply, per seat" a STORAGE invariant,
+// so a duplicated or racing POST can never advance a board twice — the same
+// structural backstop `tic_tac_toe_moves` provides, but keyed by seat because
+// the two players move independently rather than alternating.
+export const solitaireDuelMoves = pgTable(
+  "solitaire_duel_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => solitaireDuelMatches.id, { onDelete: "cascade" }),
+    seat: varchar("seat", { length: 10 }).notNull(),
+    ply: integer("ply").notNull(),
+    // The move kind, denormalised so an audit can filter without parsing JSONB.
+    kind: varchar("kind", { length: 32 }).notNull(),
+    // The validated move, verbatim.
+    move: jsonb("move").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("solitaire_duel_moves_match_idx").on(table.matchId, table.seat, table.ply),
+    plyIdx: unique("solitaire_duel_moves_ply_unique").on(table.matchId, table.seat, table.ply),
+  })
+);
+
 // GAME EVALUATION RESULTS — post-match LLM coaching/analysis journal.
 // ==============================================================================
 // One row per evaluation request for a finished match. `objective_data` holds

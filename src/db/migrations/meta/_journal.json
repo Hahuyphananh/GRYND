@@ -1219,6 +1219,13 @@
       "when": 1800000036000,
       "tag": "0192_tic_tac_toe",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1800000037000,
+      "tag": "0193_solitaire_duel",
+      "breakpoints": true
     }
   ]
 }

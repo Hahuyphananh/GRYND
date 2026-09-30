@@ -535,6 +535,8 @@ export const APP_TEXT_TRANSLATIONS = {
       speed_typing_desc: "A real-time 1v1 typing race. Both players get the exact same passage — type it faster and more accurately than your opponent, and the first to finish it correctly wins.",
       tic_tac_toe_name: "Tic-Tac-Toe",
       tic_tac_toe_desc: "A free, rated 1v1 duel on a 3x3 board. X moves first and play is turn by turn — line up three of your mark in a row, a column or a diagonal before your opponent does.",
+      solitaire_duel_name: "Solitaire Duel",
+      solitaire_duel_desc: "A rated 1v1 Solitaire race. Both players receive the exact same Klondike deal and play it simultaneously — solve the whole puzzle first to win instantly, or lead on progress when the match clock runs out.",
       dots_and_boxes_name: "Dots & Boxes",
       dots_and_boxes_desc: "A classic pencil-and-paper duel. Take turns drawing lines between dots to claim boxes. Each box scores a point and earns another turn.",
       dots_and_boxes: {
@@ -1956,6 +1958,8 @@ export const APP_TEXT_TRANSLATIONS = {
       speed_typing_desc: "Une course de frappe 1v1 en temps réel. Les deux joueurs reçoivent exactement le même texte — tapez-le plus vite et plus précisément que votre adversaire, et le premier à le terminer correctement gagne.",
       tic_tac_toe_name: "Tic-Tac-Toe",
       tic_tac_toe_desc: "Un duel 1v1 noté et gratuit sur une grille 3x3. Les X commencent et chacun joue à son tour — alignez trois de vos symboles sur une ligne, une colonne ou une diagonale avant votre adversaire.",
+      solitaire_duel_name: "Solitaire Duel",
+      solitaire_duel_desc: "Une course de Solitaire 1v1 notée. Les deux joueurs reçoivent exactement la même donne de Klondike et la jouent en simultané — résolvez toute la patience en premier pour gagner immédiatement, ou menez au niveau de la progression quand le chrono s'arrête.",
       dots_and_boxes_name: "Points & Cases",
       dots_and_boxes_desc: "Un duel stratégique classique sur papier. Tracez à tour de rôle des lignes entre les points pour revendiquer des cases. Chaque case rapporte un point et vous donne un tour supplémentaire.",
       dots_and_boxes: {
@@ -3136,6 +3140,8 @@ export const APP_TEXT_TRANSLATIONS = {
       speed_typing_desc: "Una carrera de mecanografía 1v1 en tiempo real. Ambos jugadores reciben exactamente el mismo texto — escríbelo más rápido y con más precisión que tu rival, y el primero en completarlo correctamente gana.",
       tic_tac_toe_name: "Tic-Tac-Toe",
       tic_tac_toe_desc: "Un duelo 1v1 puntuado y gratuito en una cuadrícula 3x3. Las X empiezan y se juega por turnos — alinea tres de tus símbolos en fila, columna o diagonal antes que tu rival.",
+      solitaire_duel_name: "Solitaire Duel",
+      solitaire_duel_desc: "Una carrera de Solitario 1v1 puntuada. Ambos jugadores reciben exactamente el mismo reparto de Klondike y lo juegan a la vez — resuelve todo el solitario primero para ganar al instante, o ve por delante en progreso cuando se acabe el tiempo.",
       dots_and_boxes_name: "Puntos y Cuadros",
       dots_and_boxes_desc: "Un duelo clásico de estrategia sobre papel. Dibuja turnos líneas entre los puntos para reclamar cuadros. Cada cuadro suma un punto y te da otro turno.",
       dots_and_boxes: {

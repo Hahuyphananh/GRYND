@@ -48,6 +48,7 @@ const RATED_GAMES_FALLBACK = [
   { key: "mini-golf", label: "Mini Golf" },
   { key: "speed-typing", label: "Speed Typing" },
   { key: "tic-tac-toe", label: "Tic-Tac-Toe" },
+  { key: "solitaire-duel", label: "Solitaire Duel" },
 ];
 
 // Game-result categories the weekly/all-time boards rank by. Every

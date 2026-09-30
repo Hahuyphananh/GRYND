@@ -23,6 +23,7 @@ import {
   hexDuelGames,
   oddsGames,
   diceFlushPlayers,
+  solitaireDuelMatches,
 } from "../../../db/schema";
 
 export async function GET() {
@@ -185,6 +186,17 @@ export async function GET() {
         safeCount("dice-flush", () =>
           db.select({ n: count() }).from(diceFlushPlayers).where(eq(diceFlushPlayers.userId, clerkId)),
         ),
+        safeCount("solitaire-duel", () =>
+          db
+            .select({ n: count() })
+            .from(solitaireDuelMatches)
+            .where(
+              or(
+                eq(solitaireDuelMatches.player1Id, clerkId),
+                eq(solitaireDuelMatches.player2Id, clerkId),
+              ),
+            ),
+        ),
       ]);
 
       const gameCounts = [
@@ -201,6 +213,7 @@ export async function GET() {
         ["Hex Duel", counts[10]],
         ["Odds", counts[11]],
         ["Dice Flush", counts[12]],
+        ["Solitaire Duel", counts[13]],
       ];
       const favoriteGame =
         gameCounts.sort((a, b) => b[1] - a[1])[0]?.[1] > 0

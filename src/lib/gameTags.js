@@ -181,6 +181,20 @@ export const GAME_CATALOG = [
     href: "/casino/tic-tac-toe",
     tags: ["pvp", "strategy", "skill", "competitive"],
   },
+
+  // Solitaire Duel is a 1v1 race over ONE server-generated Klondike deal: both
+  // seats receive the exact same starting position and play it simultaneously,
+  // so nothing is drawn during play and the outcome is a pure function of each
+  // player's ability and speed (skill, and never `chance`). The first seat to
+  // solve the whole puzzle wins immediately, and the greater progress wins if
+  // nobody has before the match limit — a duel on the ranked ladder
+  // (competitive) built around a race against a clock (fast_paced). It is a
+  // ranked duel rather than a pick-up game, so it is not tagged `casual`.
+  {
+    id: "solitaire-duel",
+    href: "/casino/solitaire-duel",
+    tags: ["pvp", "skill", "fast_paced", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any

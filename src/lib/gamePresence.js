@@ -105,6 +105,7 @@ export const GAME_LABEL_TO_GAME_ID = {
   "mini-golf": "mini-golf",
   "speed-typing": "speed-typing",
   "tic-tac-toe": "tic-tac-toe",
+  "solitaire-duel": "solitaire-duel",
 
   // ── alternate labels on the same game (AI / other play surface) ────
   "chess-ai": "chess",

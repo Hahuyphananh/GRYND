@@ -20,6 +20,7 @@ import ImgDotsBoxes from "../../images/dots-and-boxes.svg";
 import ImgMiniGolf from "../../images/mini-golf-card.svg";
 import ImgSpeedTyping from "../../images/speed-typing-card.svg";
 import ImgTicTacToe from "../../images/tic-tac-toe-card.svg";
+import ImgSolitaireDuel from "../../images/solitaire-duel-card.svg";
 import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
@@ -513,6 +514,16 @@ function MainComponent({ adSlot = null }) {
       nameKey: "games.tic_tac_toe_name",
       pvpMode: "1v1",
     },
+    {
+      name: "Solitaire Duel",
+      href: "/casino/solitaire-duel",
+      leaderboardKey: "solitaire-duel",
+      playsKey: "solitaire-duel",
+      image: ImgSolitaireDuel,
+      descriptionKey: "games.solitaire_duel_desc",
+      nameKey: "games.solitaire_duel_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -535,6 +546,7 @@ function MainComponent({ adSlot = null }) {
   const newestOrder = [
     "tic-tac-toe",
     "speed-typing",
+    "solitaire-duel",
     "mini-golf",
     "memory-grid",
     "mines-pvp",
