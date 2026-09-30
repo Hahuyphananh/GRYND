@@ -30,8 +30,11 @@ import {
 
 export const runtime = "nodejs";
 
-/** The single membership badge shown next to members' names. */
-export const MEMBERSHIP_TITLE = "GRYND PRO";
+// The single membership badge shown next to members' names. Module-local on
+// purpose: a route module may only export its HTTP handler and the reserved
+// route-config constants, so an extra named export fails Next's generated
+// route type check.
+const MEMBERSHIP_TITLE = "GRYND PRO";
 
 export async function GET() {
   const { userId } = await auth();
