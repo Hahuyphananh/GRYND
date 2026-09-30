@@ -26,7 +26,7 @@ import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -146,8 +146,16 @@ writeFileSync(
 // ── Serve it from a real origin so `localStorage` (the language store) works ─
 const server = createServer((req, res) => {
   const path = req.url === "/" ? "/index.html" : req.url.split("?")[0];
+  const relPath = path.replace(/^\//, "");
+  const absOutDir = resolve(outDir);
+  const requestedPath = resolve(absOutDir, relPath);
+  if (requestedPath !== absOutDir && !requestedPath.startsWith(`${absOutDir}/`)) {
+    res.writeHead(403);
+    res.end("forbidden");
+    return;
+  }
   try {
-    const buf = readFileSync(join(outDir, path.replace(/^\//, "")));
+    const buf = readFileSync(requestedPath);
     res.writeHead(200, {
       "Content-Type": path.endsWith(".css")
         ? "text/css"
