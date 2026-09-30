@@ -45,17 +45,28 @@ function getStorage() {
   }
 }
 
-/** A fresh opaque id. crypto.randomUUID is used when present, with a
- *  dependency-free fallback so an older/insecure context still gets one. */
+/**
+ * A fresh opaque id from the Web Crypto API.
+ *
+ * Deliberately never `Math.random()` (CodeQL js/insecure-randomness): this id
+ * scopes a write, so a guessable value is worse than no value at all.
+ * `crypto.randomUUID` only exists in a secure context, so a plain
+ * `crypto.getRandomValues` draw covers every other browser. Returns null when
+ * the runtime has no crypto — the id is optional in the API (see
+ * getPresenceSessionId), so "no id" is the correct degradation.
+ */
 function createSessionId() {
   try {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID();
+    if (typeof crypto === "undefined") return null;
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    if (typeof crypto.getRandomValues === "function") {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      return `tab-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
     }
   } catch {
-    // fall through to the manual id
+    // fall through to null
   }
-  return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return null;
 }
 
 /**
@@ -73,6 +84,7 @@ export function getPresenceSessionId() {
     const existing = store.getItem(SESSION_KEY);
     if (existing) return existing;
     const created = createSessionId();
+    if (!created) return null;
     store.setItem(SESSION_KEY, created);
     return created;
   } catch {

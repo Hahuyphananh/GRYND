@@ -6,6 +6,10 @@ on:
       timezone: "America/Toronto"
   workflow_dispatch:
 
+# Least privilege: this workflow only reads the repo and calls an external API.
+permissions:
+  contents: read
+
 jobs:
   run-daily-report:
     runs-on: ubuntu-latest

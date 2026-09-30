@@ -169,7 +169,7 @@ for (const table of DIRECT_TABLES) {
   test(`queries ${table} directly via from()`, () => {
     assert.match(
       source,
-      new RegExp(`from\\(${table.replace(/_/g, "_")}\\)`),
+      new RegExp(`from\\(${table}\\)`),
       `must query ${table}`
     );
   });

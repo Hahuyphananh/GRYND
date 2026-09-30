@@ -25,6 +25,8 @@
 //
 // Run: npm run verify:ai-search
 
+import { load } from "cheerio";
+
 const BASE_URL = (process.env.BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 
 // Pages that must stand on their own for a JS-less reader. `/reviews` carries
@@ -44,26 +46,29 @@ const check = (name, ok, extra = "") => {
   ok ? pass++ : fail++;
 };
 
-/** Visible text only: scripts, styles and comments can't be read by a crawler. */
+/**
+ * Visible text only: scripts and styles can't be read by a crawler.
+ *
+ * Parsed with a real HTML parser (cheerio, already a dependency) rather than
+ * stripped with regexes: regex-based tag/comment filtering is bypassable by
+ * construction (CodeQL js/bad-tag-filter), and the parser also decodes
+ * character references the way a crawler does — `&#x27;` is an apostrophe and
+ * `&amp;` is an ampersand — which is what the comparisons below rely on.
+ */
 function visibleText(html) {
-  return html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    // A crawler reads the DECODED characters, so `&#x27;` is an apostrophe and
-    // `&amp;` is an ampersand. Comparing raw markup against a DOM's innerText
-    // without decoding produced false failures (e.g. `WHO&#x27;S` vs `WHO'S`).
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
-    .replace(/&nbsp;/g, " ")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+  if (!html) return "";
+  // Fragment mode (`isDocument = false`) so a bare `<h1>…</h1>` snippet parses
+  // the same way a whole page does.
+  const $ = load(String(html), null, false);
+  $("script, style").remove();
+  // Keep every element boundary as whitespace — the regex version replaced
+  // each tag with a space, and without this "<h1>a</h1><p>b</p>" would fuse
+  // into "ab" and break the substring comparisons below.
+  $("*").each((_, el) => {
+    $(el).before(" ");
+    $(el).after(" ");
+  });
+  return $.root().text().replace(/\s+/g, " ").trim();
 }
 
 function extractJsonLd(html) {
