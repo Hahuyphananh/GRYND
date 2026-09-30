@@ -45,23 +45,17 @@ function getStorage() {
   }
 }
 
-/**
- * A fresh opaque id from the Web Crypto API.
- *
- * Deliberately never `Math.random()` (CodeQL js/insecure-randomness): this id
- * scopes a write, so a guessable value is worse than no value at all.
- * `crypto.randomUUID` only exists in a secure context, so a plain
- * `crypto.getRandomValues` draw covers every other browser. Returns null when
- * the runtime has no crypto — the id is optional in the API (see
- * getPresenceSessionId), so "no id" is the correct degradation.
- */
+/** A fresh opaque id from Web Crypto; null when secure randomness is unavailable. */
 function createSessionId() {
   try {
-    if (typeof crypto === "undefined") return null;
-    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
-    if (typeof crypto.getRandomValues === "function") {
-      const bytes = crypto.getRandomValues(new Uint8Array(16));
-      return `tab-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      return `tab-${hex}`;
     }
   } catch {
     // fall through to null
