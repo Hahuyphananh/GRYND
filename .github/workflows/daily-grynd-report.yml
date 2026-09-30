@@ -6,6 +6,9 @@ on:
       timezone: "America/Toronto"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   run-daily-report:
     runs-on: ubuntu-latest
