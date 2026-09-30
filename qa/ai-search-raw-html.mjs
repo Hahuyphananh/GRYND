@@ -46,11 +46,10 @@ const check = (name, ok, extra = "") => {
 
 /** Visible text only: scripts, styles and comments can't be read by a crawler. */
 function visibleText(html) {
-  return html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " ")
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const node of doc.querySelectorAll("script, style, noscript")) node.remove();
+
+  return (doc.body?.textContent || "")
     // A crawler reads the DECODED characters, so `&#x27;` is an apostrophe and
     // `&amp;` is an ampersand. Comparing raw markup against a DOM's innerText
     // without decoding produced false failures (e.g. `WHO&#x27;S` vs `WHO'S`).
