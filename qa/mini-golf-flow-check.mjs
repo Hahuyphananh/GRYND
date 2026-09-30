@@ -8,22 +8,26 @@
 //   1. DESKTOP render — the course, both seats, the hole indicator, the turn
 //      status and the "Best of 5 — first to 3" format all render, and the
 //      canvas is actually painted (not a blank box).
-//   2. AIM input — dragging on the course changes the aim direction.
-//   3. POWER input — the slider drives the power readout and the meter.
-//   4. SHOT LOCK — confirming a shot disables the controls, sends ONLY
+//   2. AIM input — moving over the course pivots the aim; a CLICK pins the angle
+//      without touching power (phase 1 of the Pool Masters interaction).
+//   3. POWER input — dragging back from the ball (angle already pinned) charges
+//      power, and the meter mirrors it (phase 2).
+//   4. SHOT LOCK — RELEASING the charge sends exactly one request carrying ONLY
 //      { angle, power, expectedVersion }, and then hands the UI back to the
 //      SERVER'S result: the stroke count and the turn come from the snapshot,
-//      never from a local simulation.
-//   5. HOLE TRANSITION — both balls holed out shows the hole-result state
+//      never from a local simulation. There is no shoot button and no slider.
+//   5. TURN HAND-OFF — the turn status and the on-board announcement follow the
+//      snapshot's turn, and the announcement names the seat.
+//   6. HOLE TRANSITION — both balls holed out shows the hole-result state
 //      (both stroke columns, the winner and the updated match score), then
 //      advances to the next hole.
-//   6. MATCH TRANSITION — reaching 3 hole wins hands over to the shared result
+//   7. MATCH TRANSITION — reaching 3 hole wins hands over to the shared result
 //      screen with the right outcome, game key and score.
-//   7. TWO-PLAYER SYNC — two pages, one as player1 and one as player2, pointed
+//   8. TWO-PLAYER SYNC — two pages, one as player1 and one as player2, pointed
 //      at the SAME authoritative state: same course pixels, same scoreboard,
 //      and each page's turn status follows the shared turn.
-//   8. MOBILE portrait + landscape — playable with touch, controls reachable,
-//      course never dependent on a fixed desktop resolution.
+//   9. MOBILE portrait + landscape — playable with touch, the board owning the
+//      viewport, and the course never dependent on a fixed desktop resolution.
 //
 // Run: npm run verify:mini-golf
 //      node qa/mini-golf-flow-check.mjs
@@ -74,6 +78,13 @@ const STUBS = {
   "components/GameSessionHost": `
     import React from "react";
     export default function GameSessionHost({ children }) { return children ?? null; }
+  `,
+  // The shared navbar is app-shell furniture (it drags in the theme/language
+  // providers, which are `.js` files carrying JSX). It is not part of THIS
+  // page's contract, so it is stubbed like the rest of the shell.
+  "components/navigation-bar": `
+    import React from "react";
+    export default function NavigationBar() { return React.createElement("div", { "data-testid": "app-navbar" }); }
   `,
   "components/lobby/MatchWaiting": `
     import React from "react";
@@ -312,17 +323,60 @@ const serverScores = (page) =>
 // NOT a settle signal, because handing the turn over legitimately disables it.
 const SETTLE_MS = 900;
 
-/** Waits for the viewer's turn, then confirms a shot. */
+/**
+ * Waits until the viewer may actually shoot, then takes a shot the way a player
+ * does — there is no button and no slider to press any more:
+ *
+ *   phase 1  the pointer pivots the aim around the ball; a CLICK pins the angle
+ *   phase 2  a drag back from the ball charges power; the RELEASE putts
+ *
+ * `data-interactive` on the canvas mirrors the page's own `canShoot` exactly, so
+ * it is the readiness signal. The turn status alone would race the rollout that
+ * is still animating the previous shot.
+ */
 const clickShoot = async (page, timeout = 8000) => {
   await page.waitForFunction(
     () => {
-      const b = document.querySelector('[data-testid="shoot-button"]');
-      return Boolean(b) && !b.disabled;
+      const c = document.querySelector('[data-testid="mini-golf-canvas"]');
+      return Boolean(c) && c.getAttribute("data-interactive") === "true";
     },
     null,
     { timeout },
   );
-  await page.locator('[data-testid="shoot-button"]').click();
+
+  const ball = await page.evaluate(() => window.__bf.ballClientPos("player1"));
+  if (!ball) throw new Error("mini-golf qa: the viewer's ball has no on-screen position");
+
+  // Phase 1 — pivot away from the ball, then click to pin the angle.
+  await page.mouse.move(ball.x, ball.y);
+  await page.mouse.move(ball.x + 70, ball.y - 45, { steps: 6 });
+  await page.mouse.down();
+  await page.mouse.up();
+  await sleep(60);
+
+  // Phase 2 — charge, then release to putt.
+  const aim = await holdCharge(page, ball);
+  await page.mouse.up();
+  await sleep(60);
+  return aim;
+};
+
+/**
+ * Phase 2 held open: press on the ball and drag back far enough to load a real
+ * shot, WITHOUT releasing. The caller asserts on the charged aim (the read-out
+ * and the meter are only meaningful while the charge is live) and then calls
+ * `page.mouse.up()` to putt.
+ */
+const holdCharge = async (page, ball, { drag = 150 } = {}) => {
+  const from = ball ?? (await page.evaluate(() => window.__bf.ballClientPos("player1")));
+  if (!from) throw new Error("mini-golf qa: the viewer's ball has no on-screen position");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  // `powerFromDrag` dead-zones under 16px and saturates at 190px, so ~150px of
+  // drag is a strong-but-not-maximal shot.
+  await page.mouse.move(from.x - drag, from.y + Math.round(drag * 0.4), { steps: 8 });
+  await sleep(80);
+  return readAim(page);
 };
 
 /** Plays the OPPONENT's shot on the authoritative server, then lets the page
@@ -369,11 +423,37 @@ const { page } = desktop;
 
 const indicator = await holeIndicator(page);
 check("the hole indicator names the current hole and its difficulty", /^Hole 1 of 5/i.test(indicator), indicator);
+// Both of these read case-INSENSITIVELY. The header chip sits inside the top
+// strip's `uppercase`, so `innerText` hands back "FORMAT · BEST OF 5 — FIRST TO
+// 3" — the same reason the hole indicator above is matched with /i. And the
+// match facts are reference material: they start collapsed behind the details
+// toggle (so the board can own the height), which means the sidebar half of the
+// assertion has to open the panel, read it, and put it back — otherwise the
+// "defaults to collapsed" check further down would be testing nothing.
 check(
   "the page states the match format (Best of 5 — first to 3)",
-  /Best of 5\s*—\s*first to 3/.test(await page.evaluate(() => document.body.innerText)),
+  /best of 5\s*—\s*first to 3/i.test(await page.evaluate(() => document.body.innerText)),
+  await page.evaluate(
+    () => document.body.innerText.match(/best of 5\s*—\s*first to \d+/i)?.[0] ?? "",
+  ),
 );
-check("the format appears in the sidebar too", (await page.evaluate(() => document.body.innerText)).includes("Format"));
+const sidebarFacts = await page.evaluate(async () => {
+  const toggle = document.querySelector('[data-testid="match-details-toggle"]');
+  if (!toggle) return "";
+  const isOpen = () => toggle.getAttribute("aria-expanded") === "true";
+  if (!isOpen()) toggle.click();
+  for (let i = 0; i < 40 && !isOpen(); i += 1) await new Promise((r) => setTimeout(r, 25));
+  await new Promise((r) => setTimeout(r, 220)); // let the expand animation land
+  const text = document.body.innerText;
+  if (isOpen()) toggle.click();
+  for (let i = 0; i < 40 && isOpen(); i += 1) await new Promise((r) => setTimeout(r, 25));
+  return text;
+});
+check(
+  "the format appears in the sidebar too",
+  /format/i.test(sidebarFacts) && /best of 5\s*—\s*first to 3/i.test(sidebarFacts),
+  sidebarFacts.match(/.*first to \d+.*/i)?.[0] ?? sidebarFacts.slice(0, 80),
+);
 
 const p1 = await readSeat(page, "player1");
 const p2 = await readSeat(page, "player2");
@@ -387,79 +467,109 @@ check("the canvas fills a real share of the board", paint.cssWidth > 200 && pain
 
 check("the turn status says it is the viewer's turn", (await turnStatus(page)) === "Your turn", await turnStatus(page));
 check(
-  "the shoot button is enabled on the viewer's turn",
-  await page.evaluate(() => !document.querySelector('[data-testid="shoot-button"]').disabled),
+  "the course accepts the pointer on the viewer's turn",
+  await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="mini-golf-canvas"]')?.getAttribute("data-interactive") ===
+      "true",
+  ),
 );
 
-// ── AIM: drag from the ball outward ────────────────────────────────────────
+// ── AIM (phase 1): move over the course, click to pin the angle ────────────
 const beforeAim = await readAim(page);
 const ball = await page.evaluate(() => window.__bf.ballClientPos("player1"));
 check("the viewer's ball has an on-screen position", ball && ball.x > 0 && ball.y > 0, JSON.stringify(ball));
 await page.mouse.move(ball.x, ball.y);
-await page.mouse.down();
 await page.mouse.move(ball.x + 70, ball.y - 45, { steps: 6 });
+await page.mouse.down();
 await page.mouse.up();
 await sleep(120);
 const afterAim = await readAim(page);
 check(
-  "dragging on the course changes the aim direction",
+  "moving over the course pivots the aim direction",
   afterAim.angle !== beforeAim.angle && Math.abs(afterAim.angle - 327) < 40,
   `${beforeAim.angle}° → ${afterAim.angle}°`,
 );
-check("dragging also sets a non-zero power from the drag length", afterAim.power > 10, `power=${afterAim.power}`);
-
-// ── POWER: the slider ──────────────────────────────────────────────────────
-await page.locator('[data-testid="power-slider"]').fill("90");
-await sleep(80);
-const sliderAim = await readAim(page);
-check("the power slider drives the power readout", sliderAim.power === 90, `power=${sliderAim.power}`);
 check(
-  "the power meter reflects the chosen power",
-  (await page.evaluate(() => document.querySelector('[data-testid="power-meter"]').style.width)) === "90%",
+  "the click pins the angle WITHOUT spending power",
+  afterAim.power === beforeAim.power,
+  `power=${afterAim.power} (was ${beforeAim.power})`,
+);
+check(
+  "the pinned angle is announced on the board",
+  await page.evaluate(
+    () => document.querySelector('[data-testid="aim-state"]')?.getAttribute("data-locked") === "true",
+  ),
 );
 
-// ── SHOT LOCK: confirm → controls disabled → authoritative result ──────────
+// ── POWER (phase 2): drag back from the ball to charge ─────────────────────
+// The charge is left HELD OPEN so the meter can be read while it is live; the
+// release below (the SHOT LOCK section) is what actually putts.
+const chargedAim = await holdCharge(page, ball);
+check("dragging back from the ball charges power", chargedAim.power > 40, `power=${chargedAim.power}`);
+check(
+  "the power meter mirrors the charge",
+  (await page.evaluate(() => document.querySelector('[data-testid="power-meter"]').style.width)) ===
+    `${chargedAim.power}%`,
+  `power=${chargedAim.power}`,
+);
+
+// ── SHOT LOCK: release → one request → authoritative result ────────────────
+// Sampled from the moment of the release. With no button left, the honest lock
+// signal is that the course STOPS accepting the pointer and the turn status
+// follows the server — both derived from the snapshot, never from local state.
 await page.evaluate(() => {
   window.__bf.samples = [];
   window.__bf.sampler = setInterval(() => {
-    const btn = document.querySelector('[data-testid="shoot-button"]');
-    const slider = document.querySelector('[data-testid="power-slider"]');
+    const canvas = document.querySelector('[data-testid="mini-golf-canvas"]');
+    const turn = document.querySelector('[data-testid="turn-status"]');
     window.__bf.samples.push({
-      disabled: btn ? btn.disabled : null,
-      text: btn ? btn.textContent.trim() : null,
-      sliderDisabled: slider ? slider.disabled : null,
+      interactive: canvas ? canvas.getAttribute("data-interactive") : null,
+      turn: turn ? turn.innerText.replace(/\s+/g, " ").trim() : null,
     });
   }, 16);
 });
 
 const postsBefore = await page.evaluate(() => window.__bf.posts.length);
-await clickShoot(page);
+await page.mouse.up(); // the release IS the putt
 await sleep(700);
+const announced = await page.evaluate(() => {
+  const el = document.querySelector('[data-testid="turn-announcement"]');
+  return el ? el.innerText.replace(/\s+/g, " ").trim() : null;
+});
 const samples = await page.evaluate(() => {
   clearInterval(window.__bf.sampler);
   return window.__bf.samples;
 });
 
 const shotPosts = (await page.evaluate(() => window.__bf.posts)).slice(postsBefore);
-check("confirming a shot POSTs exactly one shoot request", shotPosts.length === 1 && shotPosts[0].url.endsWith("/shoot"), shotPosts.map((p) => p.url).join(", "));
+check("releasing the charge POSTs exactly one shoot request", shotPosts.length === 1 && shotPosts[0].url.endsWith("/shoot"), shotPosts.map((p) => p.url).join(", "));
 const body = shotPosts[0]?.body ?? {};
 check(
   "the request carries ONLY angle + power (+ expectedVersion)",
   Object.keys(body).sort().join(",") === "angle,expectedVersion,power",
   Object.keys(body).join(","),
 );
-check("the request carries the aim the player set", Math.abs(body.angle - sliderAim.angle) <= 1 && body.power === 90, JSON.stringify(body));
-
-const locked = samples.filter((s) => s.disabled === true);
-check("the shoot control locks while the shot resolves", locked.length > 0, `${locked.length}/${samples.length} samples locked`);
 check(
-  "the power control locks alongside it",
-  locked.some((s) => s.sliderDisabled === true),
+  "the request carries the aim the player charged",
+  Math.abs(body.angle - chargedAim.angle) <= 1 && body.power === chargedAim.power,
+  JSON.stringify(body),
+);
+
+check(
+  "the course stops accepting the pointer while the shot resolves",
+  samples.some((s) => s.interactive === "false"),
+  `${samples.filter((s) => s.interactive === "false").length}/${samples.length} samples locked`,
 );
 check(
-  "the lock reads honestly ('Shooting…' / 'Ball rolling…' / 'Locked' / 'Waiting…')",
-  locked.some((s) => /Shooting|Ball rolling|Locked|Waiting/.test(s.text ?? "")),
-  locked.map((s) => s.text).filter(Boolean)[0],
+  "the turn status hands over to the opponent from the snapshot",
+  samples.some((s) => /Waiting for your opponent|Rival's turn/.test(s.turn ?? "")),
+  samples.map((s) => s.turn).filter(Boolean).slice(-1)[0],
+);
+check(
+  "the hand-off is announced on the board, by name",
+  /Rival's turn/.test(announced ?? ""),
+  announced ?? "no announcement",
 );
 
 // The authoritative adoption: the score/turn shown must equal the server's.
@@ -476,12 +586,27 @@ check(
   await turnStatus(page),
 );
 check("the opponent seat is now the active one", (await readSeat(page, "player2")).active === "true");
+check(
+  "the match facts default to collapsed so the board keeps the height",
+  await page.evaluate(() => {
+    const b = document.querySelector('[data-testid="match-details-toggle"]');
+    return Boolean(b) && b.getAttribute("aria-expanded") === "false";
+  }),
+);
+check(
+  "…and expanding them reveals the match facts",
+  await page.evaluate(async () => {
+    document.querySelector('[data-testid="match-details-toggle"]')?.click();
+    await new Promise((r) => setTimeout(r, 260));
+    return /Best of 5/.test(document.body.innerText);
+  }),
+);
 
 check("no runtime / hydration errors on desktop", runtimeErrors(desktop).length === 0, runtimeErrors(desktop).slice(0, 3).join(" | "));
 await page.screenshot({ path: join(REPORTS, "mini-golf-desktop.png") });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5  HOLE TRANSITION
+// 6  HOLE TRANSITION
 // ═══════════════════════════════════════════════════════════════════════════
 console.log("\n=== HOLE TRANSITION — both balls holed out ===\n");
 
@@ -513,7 +638,7 @@ check("the next hole resets the per-hole strokes", (await readSeat(holePage, "pl
 await holePage.screenshot({ path: join(REPORTS, "mini-golf-hole-transition.png") });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6  MATCH TRANSITION
+// 7  MATCH TRANSITION
 // ═══════════════════════════════════════════════════════════════════════════
 console.log("\n=== MATCH TRANSITION — first to 3 ===\n");
 
@@ -569,7 +694,7 @@ check(
 await finishPage.screenshot({ path: join(REPORTS, "mini-golf-match-transition.png") });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 7  TWO-PLAYER STATE SYNCHRONISATION
+// 8  TWO-PLAYER STATE SYNCHRONISATION
 // ═══════════════════════════════════════════════════════════════════════════
 console.log("\n=== TWO-PLAYER SYNC — one authoritative state, two viewers ===\n");
 
@@ -668,7 +793,7 @@ await A.page.screenshot({ path: join(REPORTS, "mini-golf-sync-player1.png") });
 await B.page.screenshot({ path: join(REPORTS, "mini-golf-sync-player2.png") });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 8  MOBILE — portrait + landscape, touch aiming
+// 9  MOBILE — portrait + landscape, touch aiming
 // ═══════════════════════════════════════════════════════════════════════════
 console.log("\n=== MOBILE — 390×844 portrait / 844×390 landscape ===\n");
 
@@ -679,10 +804,23 @@ check("portrait: the course renders at phone width", ppPaint.ok && ppPaint.cssWi
 check("portrait: the board is not a fixed desktop resolution", ppPaint.cssWidth < 500, `${ppPaint.cssWidth}`);
 check("portrait: the hole indicator is present", /^Hole 1 of 5/i.test(await holeIndicator(pp)), await holeIndicator(pp));
 
-const shootBox = await pp.locator('[data-testid="shoot-button"]').boundingBox();
-const sliderBox = await pp.locator('[data-testid="power-slider"]').boundingBox();
-check("portrait: the shoot button is laid out and tappable", Boolean(shootBox) && shootBox.width > 80 && shootBox.height >= 36, JSON.stringify(shootBox && { w: Math.round(shootBox.width), h: Math.round(shootBox.height) }));
-check("portrait: the power slider is laid out", Boolean(sliderBox) && sliderBox.width > 80, JSON.stringify(sliderBox && { w: Math.round(sliderBox.width) }));
+const boardBox = await pp.locator('[data-testid="mini-golf-board"]').boundingBox();
+check(
+  "portrait: the board owns most of the viewport height",
+  Boolean(boardBox) && boardBox.height >= 280,
+  JSON.stringify(boardBox && { w: Math.round(boardBox.width), h: Math.round(boardBox.height) }),
+);
+check(
+  "portrait: the board fits the phone width (no sideways scroll)",
+  await pp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+  await pp.evaluate(() => `${document.documentElement.scrollWidth} vs ${window.innerWidth}`),
+);
+const turnBox = await pp.locator('[data-testid="turn-status"]').boundingBox();
+check(
+  "portrait: the turn status is laid out in the header",
+  Boolean(turnBox) && turnBox.width > 60,
+  JSON.stringify(turnBox && { w: Math.round(turnBox.width) }),
+);
 
 const touchBefore = await readAim(pp);
 const touchBall = await pp.evaluate(() => window.__bf.ballClientPos("player1"));
@@ -711,8 +849,13 @@ check("portrait: a TOUCH drag is accepted by the course", touchResult === "ok", 
 await sleep(120);
 const touchAfter = await readAim(pp);
 check(
-  "portrait: the touch drag changes the aim",
-  touchAfter.angle !== touchBefore.angle && touchAfter.power > 0,
+  "portrait: the touch drag pivots the aim and pins the angle",
+  touchAfter.angle !== touchBefore.angle &&
+    touchAfter.power === touchBefore.power &&
+    (await pp.evaluate(
+      () =>
+        document.querySelector('[data-testid="aim-state"]')?.getAttribute("data-locked") === "true",
+    )),
   `${touchBefore.angle}° → ${touchAfter.angle}° (power ${touchAfter.power})`,
 );
 
@@ -721,9 +864,21 @@ const landscape = await boot({ width: 844, height: 390 }, { touch: true });
 const lp = landscape.page;
 const lpPaint = await canvasPaint(lp);
 check("landscape: the course still renders", lpPaint.ok && lpPaint.cssWidth > 280, `${lpPaint.cssWidth}×${lpPaint.cssHeight}`);
-check("landscape: the shoot control is reachable", Boolean(await lp.locator('[data-testid="shoot-button"]').boundingBox()), "");
-const lBox = await lp.locator('[data-testid="shoot-button"]').boundingBox();
-check("landscape: the shoot control keeps a usable tap area", lBox.width > 80 && lBox.height >= 36, JSON.stringify({ w: Math.round(lBox.width), h: Math.round(lBox.height) }));
+const lBoard = await lp.locator('[data-testid="mini-golf-board"]').boundingBox();
+check(
+  "landscape: the board is reachable and playable",
+  Boolean(lBoard) && lBoard.height >= 150,
+  JSON.stringify(lBoard && { w: Math.round(lBoard.width), h: Math.round(lBoard.height) }),
+);
+check(
+  "landscape: the course accepts the pointer (no fixed desktop resolution)",
+  await lp.evaluate(
+    () =>
+      document.querySelector('[data-testid="mini-golf-canvas"]')?.getAttribute("data-interactive") ===
+      "true",
+  ),
+  "",
+);
 check("landscape: the turn status is visible", Boolean(await turnStatus(lp)), await turnStatus(lp));
 
 check(

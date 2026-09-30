@@ -467,6 +467,21 @@ export async function advanceAiTurns({
       // Deliberately NO settleMatch / mirrorQueueTransition here: a practice
       // match moves no rating, no trophy and no queue state.
       if (outcome) break;
+
+      // ONE BOT TURN, ONE HOLE.
+      //
+      // `applyShot` starts the next hole the instant a hole completes, and on an
+      // even hole the starter IS the bot — so without this break a single poll
+      // would play out the bot's whole run, complete the hole, and then keep
+      // going on the NEXT hole (and the next, while the bot keeps winning the
+      // tee). To the player that read as "my turn ended, the opponent's turn was
+      // skipped, and now we're on another hole".
+      //
+      // Stopping here hands control back after every hole: the client shows the
+      // hole-result interstitial, and the next poll picks the bot up again on the
+      // new hole. Bounded work per read is unchanged — it is now bounded by a
+      // hole as well as by MAX_AI_SHOTS_PER_ADVANCE.
+      if (applied.holeCompleted) break;
     }
 
     return { match: current, advanced } as const;

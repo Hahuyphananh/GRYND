@@ -52,6 +52,15 @@ export type MiniGolfCourseProps = {
   /** Overrides the animating seat's ball while the server trajectory plays. */
   movingSeat?: Seat | null;
   movingBall?: Vec2 | null;
+  /**
+   * Whose ball belongs on the board.
+   *
+   * A Mini Golf turn is one seat finishing its own ball, so only that ball is
+   * ever drawn: rendering both made it read as if two balls were live at once
+   * and left "whose shot is this?" ambiguous. Omitted / `null` draws every seat
+   * (the pre-existing behaviour, kept for tests and any future spectator view).
+   */
+  visibleSeat?: Seat | null;
   /** The local seat's current aim preview (direction + power). */
   aim?: MiniGolfAim | null;
   /** Where the local seat's aim originates (its ball, or the last rest point). */
@@ -119,6 +128,7 @@ export default function MiniGolfCourse({
   balls,
   movingSeat = null,
   movingBall = null,
+  visibleSeat = null,
   aim = null,
   aimFrom = null,
   aimLocked = false,
@@ -550,6 +560,9 @@ export default function MiniGolfCourse({
 
     // ── Balls — the animating seat uses the server trajectory position.
     for (const seat of ["player1", "player2"] as const) {
+      // Only the seat being played owns the board; the opponent's ball is not
+      // drawn at all.
+      if (visibleSeat && seat !== visibleSeat) continue;
       const ball = balls?.[seat];
       const isMoving = movingSeat === seat && Boolean(movingBall);
       const position = isMoving ? (movingBall as Vec2) : ball;
@@ -693,6 +706,7 @@ export default function MiniGolfCourse({
     balls,
     movingSeat,
     movingBall,
+    visibleSeat,
     aim,
     aimFrom,
     aimLocked,
@@ -716,6 +730,11 @@ export default function MiniGolfCourse({
       <canvas
         ref={canvasRef}
         data-testid="mini-golf-canvas"
+        // Mirrors `interactive` exactly — the one honest answer to "may this
+        // viewer shoot right now?" — so the pointer contract is observable from
+        // the outside (QA drives the shot through the canvas, and there is no
+        // button left to check).
+        data-interactive={interactive ? "true" : "false"}
         aria-label="Mini Golf course"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
