@@ -141,6 +141,17 @@ export const SEAT = Object.freeze({
   PLAYER2: "player2",
 });
 
+/**
+ * Stable internal identity for the free human-vs-AI practice seat.
+ *
+ * It occupies `player2` of an `is_ai` row exactly as a real joiner would, so
+ * every seat-based read (the per-seat board, the move log, the race facts)
+ * works unchanged — no token ever authenticates as this id, and the row is
+ * excluded from rating/trophies. Mirrors TIC_TAC_TOE_AI_PLAYER_ID and
+ * SPEED_TYPING_AI_PLAYER_ID.
+ */
+export const SOLITAIRE_DUEL_AI_PLAYER_ID = "solitaire_duel_ai_bot";
+
 /** How the server ended the match. Persisted in `resolution_reason`. */
 export const RESOLUTION = Object.freeze({
   /** A seat put all 52 cards on the foundations. */

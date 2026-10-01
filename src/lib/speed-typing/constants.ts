@@ -96,11 +96,23 @@ export type SettlementResult =
 /**
  * The tier the practice bot plays at when a legacy/unchosen row is read.
  *
- * Speed Typing has no bot yet, so this is only the documented default the
- * shared `AiDifficulty` vocabulary resolves to. Kept here so the eventual AI
- * has one place to read it from, exactly like `mini-golf`/`DEFAULT_MINI_GOLF_AI_DIFFICULTY`.
+ * The shared `AiDifficulty` vocabulary resolves anything unrecognised to
+ * `normal`; this constant names that fallback for Speed Typing so the AI and
+ * the store read one value from one place, exactly like
+ * `mini-golf`/`DEFAULT_MINI_GOLF_AI_DIFFICULTY`.
  */
 export const DEFAULT_AI_DIFFICULTY = "normal" as const;
+
+/**
+ * Stable internal identity for the free human-vs-AI practice seat.
+ *
+ * It occupies `player2` of an `is_ai` row exactly as a real joiner would, so
+ * every seat-based read (`seatForUser`, the race state, the settlement seam)
+ * works unchanged — the only difference is that no token ever authenticates as
+ * this id and the row is excluded from rating/trophies. Mirrors
+ * MINI_GOLF_AI_PLAYER_ID and TIC_TAC_TOE_AI_PLAYER_ID.
+ */
+export const SPEED_TYPING_AI_PLAYER_ID = "speed_typing_ai_bot";
 
 /**
  * The two seats, as the authoritative race state keys them.

@@ -253,8 +253,9 @@ test("economy: no wager, balance or payout field anywhere in the UI", () => {
   assert.doesNotMatch(page, /betAmount|stakeAmount|prizePaid|houseFee|newBalance|tokenBalance/);
   assert.doesNotMatch(board, /betAmount|stakeAmount|prizePaid|houseFee|newBalance/);
   assert.doesNotMatch(lobbyPage, /betAmount|stakeAmount|prizePaid|houseFee|newBalance/);
-  // There is no difficulty picker: the game has no bot, no timers, no luck.
-  assert.doesNotMatch(lobbyPage, /AiDifficultyPicker|create-ai/);
+  // Free practice vs AI is offered from the lobby (unrated, so no economy).
+  assert.match(lobbyPage, /AiDifficultyPicker/);
+  assert.match(lobbyPage, /create-ai/);
 });
 
 // ════════════════════════════════════════════════════════════════════════

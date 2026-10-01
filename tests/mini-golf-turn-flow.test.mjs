@@ -201,3 +201,58 @@ test("the course is sized to the screen and the layout stacks on mobile", () => 
   assert.match(src, /<NavigationBar currentPath="\/casino" \/>/, "the shared navbar is rendered");
   assert.match(src, /min-h-\[calc\(100svh-68px\)\]/);
 });
+
+// ── 5. A refresh can never run the opponent's turn behind the board ─────
+//
+// In a practice match the GET itself plays the bot's turn, and in a human
+// duel it delivers the opponent's move. Firing it while a rollout or the
+// hole-result interstitial owned the board is what swallowed the hand-off on
+// later holes — the opponent's turn resolved underneath the interstitial and
+// was never seen. The snapshot request is now deferred until the board is
+// free, then flushed once.
+
+test("refresh defers while a rollout or the hole interstitial owns the board", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /const pendingRefreshRef = useRef\(false\);/);
+  const refreshFn = src.slice(
+    src.indexOf("const refresh = useCallback"),
+    src.indexOf("const flushPendingRefresh = useCallback"),
+  );
+  assert.ok(refreshFn.length > 0, "refresh must exist before flushPendingRefresh");
+  assert.match(
+    refreshFn,
+    /if \(animRef\.current \|\| overlayRef\.current\) \{\s*\n\s*pendingRefreshRef\.current = true;\s*\n\s*return;/,
+    "refresh must defer while a rollout or the interstitial is up",
+  );
+});
+
+test("the deferred refresh is flushed once the board is free", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /const flushPendingRefresh = useCallback\(\(\) => \{/);
+  // It re-checks the board is free before firing, so a queued rollout that
+  // just started can leave the request pending (its own finish flushes it).
+  const flushFn = src.slice(
+    src.indexOf("const flushPendingRefresh = useCallback"),
+    src.indexOf("useEffect(", src.indexOf("const flushPendingRefresh = useCallback")),
+  );
+  assert.match(flushFn, /if \(animRef\.current \|\| overlayRef\.current\) return;/);
+  // Wired at every settle point: the hole interstitial's timeout and the two
+  // rollout-finish branches.
+  assert.ok(
+    countOf(src, "flushPendingRefresh()") >= 3,
+    "the flush must run from the interstitial timeout and the rollout finish",
+  );
+});
+
+test("a hand-off is not announced mid-rollout (it would eat the key)", () => {
+  const src = strip(read(MATCH_PAGE));
+  const announce = src.slice(
+    src.indexOf("── Turn announcement"),
+    src.indexOf("const { incomingEmote, myEmote, sendEmote }"),
+  );
+  assert.ok(announce.length > 0, "the turn announcement effect must exist");
+  // Skipping while a rollout is in flight leaves the key for the hand-off the
+  // player actually needs to see once the board settles.
+  assert.match(announce, /if \(holeOverlay\) return;/);
+  assert.match(announce, /if \(anim\) return;/);
+});

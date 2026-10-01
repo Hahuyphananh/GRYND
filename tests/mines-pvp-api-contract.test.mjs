@@ -29,7 +29,11 @@ import {
   normaliseMatchForViewer,
   scrubPicksForViewer,
 } from "../src/lib/mines-pvp/matchView.js";
-import { MATCH_STATUS, WIN_REASON } from "../src/lib/mines-pvp/constants.js";
+import {
+  MATCH_STATUS,
+  WIN_REASON,
+  minesFoundForSeat,
+} from "../src/lib/mines-pvp/constants.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel) => readFileSync(join(here, "..", rel), "utf8");
@@ -208,6 +212,28 @@ test("active match: flag locations are private, only the COUNTS are public", () 
   assert.equal(opponentEntry.cell, null);
   assert.equal(opponentEntry.hint, null);
   assert.equal(opponentEntry.isMine, false);
+});
+
+test("confirmed-mine counts survive the board scrub (stuck-counter regression)", () => {
+  const match = activeMatch({
+    board: BOARD,
+    p1Flags: [0, 7], // two correct mines for P1
+    p2Flags: [24], // one correct mine for P2
+  });
+  // A raw row still carries the hidden board, so the count is board-derived.
+  assert.equal(minesFoundForSeat(match, "player1"), 2);
+  assert.equal(minesFoundForSeat(match, "player2"), 1);
+
+  // The row handed to the viewer serializer has ALREADY been scrubbed on the
+  // GET path (`fetchMatchWithAutoResolve` → `scrubMatchForViewer`), which
+  // nulls the board. The count captured at scrub time must therefore be
+  // honoured — reading it off the null board returned 0, which pinned the
+  // side-by-side counter at "10 | 10" no matter how many mines were flagged.
+  const scrubbed = { ...match, p1MinesFound: 2, p2MinesFound: 1, board: null };
+  const asP1 = normaliseMatchForViewer(scrubbed, P1);
+  assert.equal(asP1.board, null);
+  assert.equal(asP1.myMinesFound, 2);
+  assert.equal(asP1.opponentMinesFound, 1);
 });
 
 test("active match: flag claims do not count as discovered safe cells", () => {

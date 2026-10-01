@@ -30,6 +30,11 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { IconCards } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 export default function SolitaireDuelLobbyPage() {
   const { isSignedIn } = useUser();
@@ -37,6 +42,9 @@ export default function SolitaireDuelLobbyPage() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("solitaire-duel"),
+  );
 
   const createOrJoin = useCallback(async () => {
     if (busy) return;
@@ -61,6 +69,30 @@ export default function SolitaireDuelLobbyPage() {
       setBusy(false);
     }
   }, [busy, router]);
+
+  const playAi = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/solitaire-duel/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ difficulty: aiDifficulty }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to start the practice match");
+        return;
+      }
+      router.push(`/casino/solitaire-duel/${data.data.matchId}`);
+    } catch {
+      setError("Unable to start the practice match");
+    } finally {
+      setBusy(false);
+    }
+  }, [aiDifficulty, busy, router]);
 
   const rules = useMemo(
     () => ({
@@ -159,6 +191,28 @@ export default function SolitaireDuelLobbyPage() {
       playLabel="Find a Match"
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
+      children={
+        <AiDifficultyPicker
+          gameKey="solitaire-duel"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "A slow, sloppy solver — beatable by anyone who plays carefully.",
+            normal: "A steady solver of the same deal. Beat it with a clean run.",
+            hard: "A fast, near-optimal solver of the shared deal.",
+          }}
+        />
+      }
+      extraActions={
+        <button
+          type="button"
+          onClick={playAi}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
+        >
+          Play Free vs AI
+        </button>
+      }
       lobbies={[]}
       error={error}
     />

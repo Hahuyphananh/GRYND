@@ -145,6 +145,15 @@ test("the server store canonicalises both flag sets onto the scrubbed row", () =
   assert.match(STORE, /p2Flags: flagsForSeat\(match, "player2"\)/);
 });
 
+test("scrubMatchForViewer stamps the board-derived counts before hiding the board", () => {
+  // The board is nulled by the scrub, and the viewer serializer runs after
+  // it — so the per-seat confirmed-mine counts must be captured from the
+  // REAL board here. Skipping this left the side-by-side counter stuck at
+  // "10 | 10" even after a correct flag.
+  assert.match(STORE, /p1MinesFound: minesFoundForSeat\(match, "player1"\)/);
+  assert.match(STORE, /p2MinesFound: minesFoundForSeat\(match, "player2"\)/);
+});
+
 test("the scrub helper hides the opponent's flag cell and verdict", () => {
   // Only the claimant (or a settled replay) sees the flag's cell/verdict.
   const scrub = MATCH_VIEW.slice(

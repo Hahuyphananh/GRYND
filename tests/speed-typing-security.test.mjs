@@ -82,6 +82,7 @@ assert.ok(TEXT.length > 20, "the seeded prompt must be a real passage");
 
 const R = {
   createOrJoin: "src/app/api/speed-typing/create-or-join/route.ts",
+  createAi: "src/app/api/speed-typing/create-ai/route.ts",
   match: "src/app/api/speed-typing/match/[matchId]/route.ts",
   progress: "src/app/api/speed-typing/match/[matchId]/progress/route.ts",
   finish: "src/app/api/speed-typing/match/[matchId]/finish/route.ts",

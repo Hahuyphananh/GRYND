@@ -34,7 +34,7 @@ export async function POST(req) {
     });
 
     if (evt.type === "user.created") {
-      const { id, email_addresses, username, first_name, last_name } = evt.data;
+      const { id, email_addresses } = evt.data;
       const email = email_addresses?.[0]?.email_address;
       if (email) {
         // users.password is NOT NULL with no DB default — without a value
@@ -44,15 +44,17 @@ export async function POST(req) {
           crypto.randomBytes(32).toString("hex"),
           12,
         );
-        // The handle that ends up on the PUBLIC leaderboard. A profane Clerk
-        // username (or first/last name) must never be published, so it is
-        // filtered here — an unmoderated name is the first thing a visitor
-        // sees. Account creation still succeeds; only the handle is replaced
-        // with a deterministic, clean one the player can change later.
-        const displayName = moderatedDisplayName(
-          username || `${first_name || ""} ${last_name || ""}`.trim(),
-          id,
-        );
+        // The handle that ends up on the PUBLIC leaderboard. It is the name
+        // the player CHOSE at the signup username step (stored in Clerk
+        // publicMetadata by /api/update-birthdate) — never the provider's real
+        // name or email prefix, which must not be published. A profane choice
+        // is filtered here too; account creation still succeeds and degrades
+        // to a neutral generated handle the player can change later.
+        const chosenUsername =
+          typeof evt.data.public_metadata?.username === "string"
+            ? evt.data.public_metadata.username
+            : "";
+        const displayName = moderatedDisplayName(chosenUsername, id);
         const insertedRows = await db
           .insert(users)
           .values({

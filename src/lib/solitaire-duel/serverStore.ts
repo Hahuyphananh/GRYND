@@ -33,6 +33,7 @@ import { solitaireDuelMatches, solitaireDuelMoves, users } from "../../db/schema
 import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   MATCH_STATUS,
   MAX_MOVES_PER_SEAT,
@@ -41,11 +42,13 @@ import {
   RESOLUTION,
   RESULT,
   SEAT,
+  SOLITAIRE_DUEL_AI_PLAYER_ID,
   SOLITAIRE_DUEL_LOCK_NAMESPACE,
   TERMINAL_STATUSES,
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
+import { aiMoveDelayMs, planAiMoves } from "./ai";
 import { dealFromSeed } from "./deck";
 import {
   cloneState,
@@ -465,6 +468,191 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string, n
   return { match: updated, joined: true } as const;
 }
 
+/**
+ * Start a free practice match against the built-in bot.
+ *
+ * Practice is UNRATED: the row is `isAi`, so finalization skips ratings,
+ * trophies, win counters and the queue mirror entirely, and it never enters the
+ * open lobby pool (the bot occupies player2 immediately).
+ *
+ * NOTHING about the puzzle is special-cased: the same server seed → deal →
+ * openings path as a real lobby runs here, and the bot races the SAME deal from
+ * player2. The only additions are the `playing` status and the synchronized
+ * clock, so the human gets the identical countdown a joined lobby would have.
+ */
+export async function createAiMatch({
+  userId,
+  difficulty,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  difficulty?: unknown;
+  nowMs?: number;
+}) {
+  const tier = coerceAiDifficulty(difficulty);
+
+  const serverSeed = randomHex(32);
+  const serverSeedHash = getServerSeedHash(serverSeed);
+  const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
+  const deal: SolitaireDeal = dealFromSeed(dealSeed);
+
+  const opening = initialStateFromDeal(deal);
+  const openingProgress = progressOf(opening);
+  const goAtMs = nowMs + READY_COUNTDOWN_MS;
+
+  const [match] = await db
+    .insert(solitaireDuelMatches)
+    .values({
+      variant: VARIANT,
+      variantVersion: VARIANT_VERSION,
+      player1Id: userId,
+      player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+      status: MATCH_STATUS.PLAYING,
+      isAi: true,
+      aiDifficulty: tier,
+      serverSeed,
+      serverSeedHash,
+      dealSeed,
+      deal,
+      p1State: opening,
+      p2State: cloneState(opening),
+      p1Ply: 0,
+      p2Ply: 0,
+      p1PeakFoundation: opening.peakFoundation,
+      p2PeakFoundation: opening.peakFoundation,
+      p1Revealed: openingProgress.revealedTableau,
+      p2Revealed: openingProgress.revealedTableau,
+      goAt: new Date(goAtMs),
+      deadlineAt: new Date(goAtMs + MATCH_LIMIT_MS),
+      startedAt: new Date(nowMs),
+    })
+    .returning();
+
+  return { match } as const;
+}
+
+/**
+ * Advance the practice bot's board to the server's current instant.
+ *
+ * THE BOT'S TURN. Solitaire Duel is simultaneous, so the bot is paced by the
+ * clock rather than by a turn hand-off: at `nowMs` it is allowed
+ * `floor((nowMs - goAt) / delay)` moves, and this plays the best legal Klondike
+ * move repeatedly until it has caught up (or the board is stuck). Calling it on
+ * every read is what guarantees the bot genuinely plays and can never be
+ * skipped — nothing about its progress depends on a client calling an endpoint.
+ *
+ * The bot's completion INSTANT is the simulated instant of the completing move
+ * (`goAt + ply × delay`), not the instant the read happened to run, so a photo
+ * finish is decided by who actually solved the shared deal first.
+ *
+ * Idempotent and monotonic: a no-op for a non-AI row, an unstarted row, a row
+ * whose deadline has passed (the deadline resolution owns that verdict), or a
+ * call that lands between two of the bot's moves. A write happens only when at
+ * least one move was played, and the completion is finalized inside the same
+ * transaction.
+ */
+export async function advanceAiMatch({
+  matchId,
+  nowMs = Date.now(),
+}: {
+  matchId: string;
+  nowMs?: number;
+}) {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.id, matchId))
+      .for("update");
+
+    if (!match) return err("Match not found", 404);
+    if (!match.isAi || match.status !== MATCH_STATUS.PLAYING || !match.player2Id) {
+      return { match, advanced: false } as const;
+    }
+
+    const goAtMs = instantMs(match.goAt);
+    if (goAtMs == null || nowMs < goAtMs) return { match, advanced: false } as const;
+    // Past the limit, the deadline resolution decides the match from the
+    // authoritative progress (and the bot's board must not move after it).
+    if (isDeadlineDue(match, nowMs)) return { match, advanced: false } as const;
+
+    const seat = SEAT.PLAYER2;
+    let state = stateForSeat(match, seat);
+    if (!state || !isWellFormedState(state) || state.completed) {
+      return { match, advanced: false } as const;
+    }
+
+    const delayMs = aiMoveDelayMs(match.aiDifficulty);
+    const allowedPly = Math.floor((nowMs - goAtMs) / delayMs);
+    // How many moves the bot has "earned" by now, bounded by the per-seat cap.
+    const maxMoves = Math.max(
+      0,
+      Math.min(allowedPly - state.ply, MAX_MOVES_PER_SEAT - state.ply),
+    );
+    if (maxMoves <= 0) return { match, advanced: false } as const;
+
+    const startPly = state.ply;
+    const plan = planAiMoves({
+      state,
+      difficulty: match.aiDifficulty,
+      maxMoves,
+    });
+    if (plan.moves.length === 0) return { match, advanced: false } as const;
+
+    state = plan.state;
+    const completedNow = plan.completed && !state.completedAtMs;
+    if (completedNow) {
+      // The simulated instant of the completing move, never the read instant.
+      state.completedAtMs = goAtMs + (startPly + plan.moves.length) * delayMs;
+    }
+    const played = plan.moves.map((move, index) => ({
+      ply: startPly + index,
+      kind: move.kind,
+      move,
+    }));
+
+    for (const entry of played) {
+      await tx.insert(solitaireDuelMoves).values({
+        matchId: match.id,
+        seat,
+        ply: entry.ply,
+        kind: entry.kind,
+        move: entry.move,
+      });
+    }
+
+    const progress = progressOf(state);
+    const [updated] = await tx
+      .update(solitaireDuelMatches)
+      .set({
+        ...seatPatchFor(seat, state, progress),
+        ...(completedNow
+          ? { p2FinishedAt: new Date(state.completedAtMs ?? nowMs) }
+          : {}),
+        updatedAt: new Date(nowMs),
+      })
+      .where(eq(solitaireDuelMatches.id, match.id))
+      .returning();
+
+    const changed = updated ?? match;
+    let finalRow = changed;
+    const outcome = resolveRace({
+      player1: raceFor(changed, SEAT.PLAYER1),
+      player2: raceFor(changed, SEAT.PLAYER2),
+    });
+    if (outcome) finalRow = await finalizeMatch(tx, changed, outcome, nowMs);
+
+    return { match: finalRow, advanced: true } as const;
+  });
+}
+
+/** Advance the bot (when the row is a practice match) and return the row. */
+async function advanceAiIfPractice(match: MatchRow, nowMs: number): Promise<MatchRow> {
+  if (!match.isAi || match.status !== MATCH_STATUS.PLAYING) return match;
+  const advanced = await advanceAiMatch({ matchId: match.id, nowMs });
+  return "error" in advanced ? match : advanced.match;
+}
+
 // ── Reads ─────────────────────────────────────────────────────────────────
 
 /**
@@ -494,6 +682,11 @@ export async function fetchMatch({
   if (!seatForUser(seats, userId)) {
     return err("Not a participant of this match", 403);
   }
+
+  // For a practice match the bot is advanced to NOW first, so every poll shows
+  // its live board progress (and finalizes the match the instant it solves the
+  // deal). A human row is untouched by this step.
+  match = await advanceAiIfPractice(match, nowMs);
 
   if (isDeadlineDue(match, nowMs)) {
     await resolveDueMatch({ matchId, nowMs });
@@ -596,6 +789,11 @@ export async function submitMove({
   if (malformed) return err(malformed.error, 400);
   // Narrowed once, explicitly: `strict: false` does not narrow on `parsed.ok`.
   const normalized = parsed as { ok: true; move: SolitaireMove };
+
+  // Bring a practice bot's board up to NOW first, so a human completion that
+  // lands second is judged against the bot's real completion instant. A no-op
+  // for a human match.
+  await advanceAiMatch({ matchId, nowMs });
 
   try {
     return await db.transaction(async (tx) => {
@@ -744,6 +942,11 @@ export async function resolveDueMatch({
   matchId: string;
   nowMs?: number;
 }): Promise<DueResolution> {
+  // A practice bot's board must be current BEFORE the deadline verdict is
+  // computed, so the progress tiebreak compares its real progress. No-op for a
+  // human match, and idempotent either way.
+  await advanceAiMatch({ matchId, nowMs });
+
   return await db.transaction(async (tx) => {
     const [match] = await tx
       .select()
@@ -993,14 +1196,18 @@ async function finalizeMatch(
 
   await settleSolitaireDuelMatch(tx, finalRow, outcome);
 
-  mirrorQueueTransition({
-    gameKey: "solitaire-duel",
-    matchId: finalRow.id,
-    status: "completed",
-    playerCount: 2,
-    cancelReason: null,
-    at: new Date(nowMs),
-  });
+  // A free-practice match is excluded from the canonical queue entirely, so it
+  // must not mirror a transition either.
+  if (!finalRow.isAi) {
+    mirrorQueueTransition({
+      gameKey: "solitaire-duel",
+      matchId: finalRow.id,
+      status: "completed",
+      playerCount: 2,
+      cancelReason: null,
+      at: new Date(nowMs),
+    });
+  }
 
   return finalRow;
 }
@@ -1037,6 +1244,8 @@ async function settleSolitaireDuelMatch(
   match: MatchRow,
   outcome: RaceOutcome,
 ) {
+  // Free vs-AI matches must never affect rating, trophies or win counters.
+  if (match.isAi) return;
   if (!match.player2Id) return;
 
   const matchId = String(match.id);

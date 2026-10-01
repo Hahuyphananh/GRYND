@@ -21,6 +21,11 @@ import { useUser } from "@clerk/nextjs";
 import { usePostHog } from "posthog-js/react";
 import { IconTicTac } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   TIC_TAC_TOE_LOBBY_ROOM,
@@ -46,6 +51,10 @@ export default function TicTacToeLobbyPage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
+  // The tier the practice bot plays at, remembered per game by the picker.
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("tic-tac-toe"),
+  );
 
   const fetchLobbies = useCallback(async () => {
     try {
@@ -115,6 +124,30 @@ export default function TicTacToeLobbyPage() {
       setBusy(false);
     }
   }, [busy, pokeLobby, posthog, router]);
+
+  const playAi = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tic-tac-toe/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ difficulty: aiDifficulty }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to start the practice match");
+        return;
+      }
+      posthog?.capture("tic_tac_toe_match_started", { mode: "ai" });
+      router.push(`/casino/tic-tac-toe/${data.data.matchId}`);
+    } catch {
+      setError("Unable to start the practice match");
+    } finally {
+      setBusy(false);
+    }
+  }, [aiDifficulty, posthog, router]);
 
   const cancelLobby = useCallback(
     async (matchId: string) => {
@@ -203,6 +236,28 @@ export default function TicTacToeLobbyPage() {
       playLabel="Find a Match"
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
+      children={
+        <AiDifficultyPicker
+          gameKey="tic-tac-toe"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "The bot plays a random empty cell and never blocks or wins on purpose.",
+            normal: "The bot plays to win, but slips occasionally — it is beatable.",
+            hard: "A perfect opponent: it never loses and forces a draw at worst.",
+          }}
+        />
+      }
+      extraActions={
+        <button
+          type="button"
+          onClick={playAi}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
+        >
+          Play Free vs AI
+        </button>
+      }
       myOpenId={myOpenId}
       onResume={(id: string) => router.push(`/casino/tic-tac-toe/${id}`)}
       onCancel={cancelLobby}

@@ -58,6 +58,7 @@ const MALLORY = "user_mallory";
 
 const R = {
   createOrJoin: "src/app/api/tic-tac-toe/create-or-join/route.ts",
+  createAi: "src/app/api/tic-tac-toe/create-ai/route.ts",
   available: "src/app/api/tic-tac-toe/available/route.ts",
   match: "src/app/api/tic-tac-toe/match/[matchId]/route.ts",
   move: "src/app/api/tic-tac-toe/match/[matchId]/move/route.ts",

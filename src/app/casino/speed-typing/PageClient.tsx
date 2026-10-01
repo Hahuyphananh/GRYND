@@ -27,6 +27,11 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { IconKeyboardShow } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 
 export default function SpeedTypingLobbyPage() {
   const { isSignedIn } = useUser();
@@ -34,6 +39,9 @@ export default function SpeedTypingLobbyPage() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("speed-typing"),
+  );
 
   const createOrJoin = useCallback(async () => {
     if (busy) return;
@@ -58,6 +66,30 @@ export default function SpeedTypingLobbyPage() {
       setBusy(false);
     }
   }, [busy, router]);
+
+  const playAi = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/speed-typing/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ difficulty: aiDifficulty }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to start the practice race");
+        return;
+      }
+      router.push(`/casino/speed-typing/${data.data.matchId}`);
+    } catch {
+      setError("Unable to start the practice race");
+    } finally {
+      setBusy(false);
+    }
+  }, [aiDifficulty, busy, router]);
 
   // Speed Typing is unstaked — stakes are retired platform-wide and this game
   // never had one — so there is no wager picker, no balance and no escrow note
@@ -126,6 +158,28 @@ export default function SpeedTypingLobbyPage() {
       playLabel="Find a Match"
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
+      children={
+        <AiDifficultyPicker
+          gameKey="speed-typing"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "A slower typist that makes plenty of mistakes — a comfortable win.",
+            normal: "A solid amateur pace. Beat it with quick, accurate typing.",
+            hard: "A fast, near-flawless typist. Only a genuinely quick run beats it.",
+          }}
+        />
+      }
+      extraActions={
+        <button
+          type="button"
+          onClick={playAi}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
+        >
+          Play Free vs AI
+        </button>
+      }
       lobbies={[]}
       error={error}
     />

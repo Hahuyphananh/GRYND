@@ -1160,6 +1160,11 @@ export const APP_TEXT_TRANSLATIONS = {
       why1: "Age verification is required for real-token play.",
       why2: "Your date of birth is never shown to other players.",
       why3: "It's stored for verification only — nothing else.",
+      usernameLabel: "Username",
+      usernamePlaceholder: "Choose a username",
+      usernameHint:
+        "2–20 characters. This is the name other players and the leaderboard see — not your real name.",
+      errorUsernameRequired: "Please choose a username (2–20 characters)",
       dateLabel: "Date of birth",
       dateHint: "You must be at least {age} years old — born on or before {date}.",
       statusOk: "You're {age} — good to go.",

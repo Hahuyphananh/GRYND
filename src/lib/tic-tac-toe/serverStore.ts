@@ -26,10 +26,14 @@ import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import {
+  CELL_COUNT,
   MATCH_STATUS,
   RESULT,
+  TIC_TAC_TOE_AI_PLAYER_ID,
   TIC_TAC_TOE_LOCK_NAMESPACE,
 } from "./constants";
+import { chooseAiCell } from "./ai";
+import { coerceAiDifficulty } from "../aiDifficulty";
 import {
   applyMove,
   computeMatchResult,
@@ -197,6 +201,45 @@ export async function createOrJoin({ userId }: { userId: string }) {
 
     return await createWaitingMatch(tx, userId);
   });
+}
+
+/**
+ * Start a free practice match against the built-in bot.
+ *
+ * Practice is UNRATED: the row is `isAi`, so `settleMatch` skips ratings,
+ * trophies and win counters entirely. It never enters the open-lobby pool (the
+ * bot occupies player2 immediately), so it can never be joined or listed.
+ *
+ * The human is player1 (X) and moves first, exactly as a real lobby host — the
+ * bot takes the O seat.
+ */
+export async function createAiMatch({
+  userId,
+  difficulty,
+}: {
+  userId: string;
+  difficulty?: unknown;
+}) {
+  const state = createInitialState();
+  const seats: Seats = { player1Id: userId, player2Id: TIC_TAC_TOE_AI_PLAYER_ID };
+  const tier = coerceAiDifficulty(difficulty);
+
+  const [match] = await db
+    .insert(ticTacToeMatches)
+    .values({
+      player1Id: userId,
+      player2Id: TIC_TAC_TOE_AI_PLAYER_ID,
+      status: statusForState(state),
+      ply: state.ply,
+      currentTurnUserId: userIdForSeat(seats, state.currentTurn),
+      gameState: state,
+      isAi: true,
+      aiDifficulty: tier,
+      startedAt: new Date(),
+    })
+    .returning();
+
+  return { match } as const;
 }
 
 async function createWaitingMatch(tx: any, userId: string) {
@@ -411,7 +454,6 @@ export async function move({
 
       const index = cellIndex as number;
       const applied = applyMove({ state, seat, cellIndex: index });
-      const nextState = applied.state;
 
       // Append-only log. `ply` is the turn number the moved seat just played.
       await tx.insert(ticTacToeMoves).values({
@@ -421,13 +463,54 @@ export async function move({
         cellIndex: index,
       });
 
-      const outcome = applied.matchCompleted ? computeMatchResult(nextState) : null;
+      // Free practice: the bot answers INSIDE this same transaction, so its
+      // turn can never be skipped by a client that forgets to call an AI
+      // endpoint, and the snapshot the caller gets back already reflects it.
+      // The loop is the closed form (tic-tac-toe is one move per turn, so it
+      // runs once) and it stops the instant the turn is the human's again or
+      // the match is finished.
+      let finalState = applied.state;
+      let finalApplied = applied;
+      if (match.isAi && !applied.matchCompleted) {
+        let guard = 0;
+        while (
+          finalState.phase !== "finished" &&
+          finalState.currentTurn !== seat &&
+          guard < CELL_COUNT
+        ) {
+          guard += 1;
+          const aiSeat = finalState.currentTurn;
+          const aiCell = chooseAiCell({
+            board: finalState.board,
+            seat: aiSeat,
+            difficulty: match.aiDifficulty,
+          });
+          if (aiCell === null) break;
+          const aiApplied = applyMove({
+            state: finalState,
+            seat: aiSeat,
+            cellIndex: aiCell,
+          });
+          await tx.insert(ticTacToeMoves).values({
+            matchId: match.id,
+            ply: finalState.ply,
+            playerId: TIC_TAC_TOE_AI_PLAYER_ID,
+            cellIndex: aiCell,
+          });
+          finalState = aiApplied.state;
+          finalApplied = aiApplied;
+        }
+      }
+
+      const outcome = finalApplied.matchCompleted
+        ? computeMatchResult(finalState)
+        : null;
 
       const updates: Partial<typeof ticTacToeMatches.$inferInsert> = {
-        gameState: nextState,
-        ply: nextState.ply,
-        currentTurnUserId: userIdForSeat(seats, nextState.currentTurn),
-        status: outcome ? MATCH_STATUS.FINISHED : statusForState(nextState),
+        gameState: finalState,
+        ply: finalState.ply,
+        currentTurnUserId: userIdForSeat(seats, finalState.currentTurn),
+        status: outcome ? MATCH_STATUS.FINISHED : statusForState(finalState),
         updatedAt: new Date(),
       };
 
@@ -466,14 +549,14 @@ export async function move({
 
       return {
         match: updated ?? match,
-        state: nextState,
+        state: finalState,
         // The mark is DERIVED from the acting seat by `applyMove`; echoing it
         // back is a convenience for the client's history panel, never an input.
-        mark: applied.state.lastMove?.mark ?? "",
+        mark: finalApplied.state.lastMove?.mark ?? "",
         ply: state.ply,
-        matchCompleted: applied.matchCompleted,
-        winningLine: applied.winningLine,
-        winnerSeat: applied.winnerSeat,
+        matchCompleted: finalApplied.matchCompleted,
+        winningLine: finalApplied.winningLine,
+        winnerSeat: finalApplied.winnerSeat,
       } as const;
     });
   } catch (error) {

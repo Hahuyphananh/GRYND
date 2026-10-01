@@ -772,7 +772,17 @@ export function chooseAiCell(match, random = secureRandom) {
 // seat (never the locations). `minesFoundForSeat` derives it from the
 // seat's own flag set + the server-only board, and
 // `minesRemainingForSeat` is what the side-by-side "5 | 5" counter shows.
+//
+// A row that has been through `scrubMatchForViewer` no longer carries the
+// board (it is nulled to hide mine positions), so the count captured at
+// scrub time from the REAL board is authoritative there. Raw rows (the
+// flag/AI-turn read paths) still hold the hidden board, so they fall back
+// to deriving the count from it. Without the precomputed path the counter
+// would read 0/0 confirmed — i.e. a stuck "10 | 10" — on every status poll.
 export function minesFoundForSeat(match, seat) {
+  const precomputed =
+    seat === "player2" ? match?.p2MinesFound : match?.p1MinesFound;
+  if (Number.isInteger(precomputed)) return precomputed;
   return correctFlagCount(flagsForSeat(match, seat), match?.board);
 }
 

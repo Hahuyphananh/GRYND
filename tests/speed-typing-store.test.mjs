@@ -38,6 +38,7 @@ import {
   RESOLUTION,
   RESULT,
   SEAT,
+  SPEED_TYPING_AI_PLAYER_ID,
 } from "../src/lib/speed-typing/constants.ts";
 import { createRaceState } from "../src/lib/speed-typing/rules.ts";
 import {
@@ -884,4 +885,126 @@ test("assumption: the seeded prompt is the one the row races", { skip: SKIP_REAS
   installMocks(t);
   const row = armedRow();
   assert.equal(passageForRow(row)?.text, TEXT, "the fixture row must carry the seeded prompt");
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 7. Practice vs AI — the bot genuinely races and settles nothing
+// ════════════════════════════════════════════════════════════════════════
+
+const practiceRow = (overrides = {}) =>
+  armedRow({
+    isAi: true,
+    player2Id: SPEED_TYPING_AI_PLAYER_ID,
+    aiDifficulty: "normal",
+    ...overrides,
+  });
+
+/** The bot's finish instant for the seeded passage, from the shared profile. */
+function botFinishElapsedMs(difficulty = "normal") {
+  const wpm = { easy: 30, normal: 45, hard: 65 }[difficulty];
+  return Math.ceil(TEXT.length / ((wpm * 5) / 60_000));
+}
+
+test("practice: createAiMatch seats the bot, arms the race and marks it unrated", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { createAiMatch } = await loadStore();
+  installClock(t, GO);
+
+  const { match } = await createAiMatch({ userId: ALICE, difficulty: "hard" });
+  assert.equal(match.player1Id, ALICE);
+  assert.equal(match.player2Id, SPEED_TYPING_AI_PLAYER_ID);
+  assert.equal(match.isAi, true);
+  assert.equal(match.aiDifficulty, "hard");
+  assert.equal(match.status, MATCH_STATUS.PLAYING);
+  // Armed exactly like a real join: a seed, a passage pair and a future GO.
+  assert.ok(match.raceSeed != null);
+  assert.ok(match.passageId);
+  assert.equal(match.passageVersion, PASSAGE_VERSION);
+  assert.equal(match.goAt.getTime(), GO + RACE_COUNTDOWN_MS);
+  // A practice row is never mirrored into the queue lifecycle.
+  assert.equal(settlement.queue.length, 0);
+});
+
+test("practice: createAiMatch coerces an unknown difficulty onto the shared scale", { skip: SKIP_REASON }, async (t) => {
+  installMocks(t);
+  const { createAiMatch } = await loadStore();
+  installClock(t, GO);
+  const { match } = await createAiMatch({ userId: ALICE, difficulty: "nonsense" });
+  assert.equal(match.aiDifficulty, "normal");
+});
+
+test("practice: the bot's cursor advances from the server clock on a read", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { fetchMatch } = await loadStore();
+  seed(fake, practiceRow());
+  installClock(t, GO + 20_000);
+
+  const first = await fetchMatch({ userId: ALICE, matchId: MATCH_ID });
+  assert.equal("error" in first, false);
+  const bot = first.dto.race.opponent;
+  assert.ok(bot.charsTyped > 0, "the bot has made progress");
+  assert.equal(bot.finished, false, "20s in, the normal bot is still typing");
+
+  // Further along the clock, further along the passage — never backwards.
+  Date.now = () => GO + 40_000;
+  const second = await fetchMatch({ userId: ALICE, matchId: MATCH_ID });
+  assert.ok(second.dto.race.opponent.charsTyped > bot.charsTyped);
+
+  // A stale (earlier) instant cannot rewind the bot.
+  const rewound = await (await loadStore()).advanceAiRace({ matchId: MATCH_ID, nowMs: GO + 5_000 });
+  assert.equal(rewound.match.player2CharsTyped, second.dto.race.opponent.charsTyped);
+});
+
+test("practice: the bot finishes, and a human who finishes later loses to it unrated", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { submitFinish } = await loadStore();
+  seed(fake, practiceRow());
+
+  // The human types the whole passage AFTER the bot's own finish instant, so
+  // the finish is submitted with the bot already done.
+  const elapsed = botFinishElapsedMs("normal") + 20_000;
+  const result = await submitFinish({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    typedText: TEXT,
+    nowMs: GO + elapsed,
+  });
+
+  assert.equal(result.accepted, true);
+  // Both seats are finished, and the bot was quicker — it wins.
+  const row = result.match;
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.result, RESULT.PLAYER2);
+  assert.equal(row.winnerId, SPEED_TYPING_AI_PLAYER_ID);
+  assert.equal(row.raceState.seats.player2.finished, true);
+  assert.equal(row.raceState.seats.player1.finished, true);
+  // A practice race touches NO competitive progression at all.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  assert.equal(settlement.queue.length, 0);
+});
+
+test("practice: the deadline verdict sees the bot's real progress", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { resolveDueRace } = await loadStore();
+  seed(fake, practiceRow({ goAt: new Date(GO) }));
+
+  const result = await resolveDueRace({ matchId: MATCH_ID, nowMs: GO + RACE_LIMIT_MS + 1_000 });
+  assert.equal(result.resolved, true);
+  // The bot finished long before the limit, so it wins by finish, not by the
+  // deadline tiebreak — and still settles nothing.
+  assert.equal(result.reason, RESOLUTION.FINISH);
+  assert.equal(result.match.result, RESULT.PLAYER2);
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+});
+
+test("practice: advanceAiRace is a no-op for a human match", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const { advanceAiRace } = await loadStore();
+  seed(fake, armedRow());
+
+  const result = await advanceAiRace({ matchId: MATCH_ID, nowMs: GO + 60_000 });
+  assert.equal(result.advanced, false);
+  assert.equal(matchWrites(fake).length, 0, "a human match is never advanced or written");
 });

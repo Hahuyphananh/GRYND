@@ -55,16 +55,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Local display name — filtered exactly like the user.created webhook so
-    // both signup paths converge on the same moderated handle. A profane
-    // provider name can never reach the public leaderboard; the account is
-    // still created, just under a deterministic clean handle.
-    const preferredName = moderatedDisplayName(
-      `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
-        clerkUser.username ||
-        email.split("@")[0],
-      clerkId,
-    );
+    // Local display name — the handle the player CHOSE at the signup username
+    // step (stored in Clerk publicMetadata by /api/update-birthdate), filtered
+    // exactly like the user.created webhook so both signup paths converge on
+    // the same moderated handle.
+    //
+    // The provider's real name (first/last) and the email prefix are
+    // deliberately NOT used as fallbacks: the display name is public on the
+    // leaderboard, reviews and profiles, and publishing a legal name is the
+    // exact thing the username step exists to prevent. A missing choice
+    // degrades to a neutral generated handle the player can change later.
+    const chosenUsername =
+      typeof clerkUser.publicMetadata?.username === "string"
+        ? clerkUser.publicMetadata.username
+        : "";
+    const preferredName = moderatedDisplayName(chosenUsername, clerkId);
 
     // Grynd avatars are OFFICIAL icons only (users.selected_icon). Clerk's
     // externally-hosted imageUrl is deliberately NOT copied into the Grynd

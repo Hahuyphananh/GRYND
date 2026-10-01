@@ -679,20 +679,142 @@ test("a practice (isAi) match is never rated, trophied or queued", async (t) => 
   const fake = installMocks(t);
   const store = await loadStore();
   const BOT = "tic_tac_toe_ai_bot";
-  seedMatch(fake, { isAi: true, player2Id: BOT });
+  seedMatch(fake, { isAi: true, player2Id: BOT, aiDifficulty: "hard" });
   settlement.queue.length = 0;
 
-  const results = await playCells(store, fake, A_WIN, { player2Id: BOT });
-  assert.equal(results.filter((r) => "error" in r).length, 0);
+  // The human opens; the bot answers INSIDE the same call. Because the bot
+  // always replies, it is the human's turn again after every accepted move.
+  let guard = 0;
+  while (liveMatch(fake).status === MATCH_STATUS.PLAYING && guard < 9) {
+    guard += 1;
+    const live = liveMatch(fake);
+    if (live.gameState.currentTurn !== "player1") break;
+    const cell = live.gameState.board.findIndex((c) => c === null);
+    const res = await store.move({
+      userId: ALICE,
+      matchId: MATCH_ID,
+      cellIndex: cell,
+      expectedVersion: live.gameState.version,
+    });
+    if ("error" in res) break;
+  }
 
   const row = liveMatch(fake);
-  assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.result, RESULT.PLAYER1);
-  assert.equal(row.winnerId, ALICE);
-  // A practice match is excluded from competitive progression entirely.
+  // Whatever the outcome, a practice match is excluded from competitive
+  // progression entirely — no rating, no trophy and no queue mirror.
   assert.equal(settlement.rating.length, 0);
   assert.equal(settlement.trophy.length, 0);
   assert.equal(settlement.queue.length, 0);
+
+  // The bot really played: every human move has a bot reply in the log.
+  const moves = fake.rowsOf(ticTacToeMoves);
+  const botMoves = moves.filter((m) => m.playerId === BOT).length;
+  const humanMoves = moves.filter((m) => m.playerId === ALICE).length;
+  assert.ok(humanMoves >= 1, "the human played at least once");
+  assert.ok(botMoves >= 1, "the bot answered the human's move");
+  assert.ok(botMoves <= humanMoves, "the bot never moves twice in a row");
+});
+
+test("createAiMatch seats the bot on player2 and marks the row unrated", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  settlement.queue.length = 0;
+
+  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "normal" });
+
+  assert.equal(match.player1Id, ALICE);
+  assert.equal(match.player2Id, "tic_tac_toe_ai_bot");
+  assert.equal(match.isAi, true);
+  assert.equal(match.aiDifficulty, "normal");
+  assert.equal(match.status, MATCH_STATUS.PLAYING);
+  assert.equal(match.gameState.currentTurn, "player1");
+  assert.equal(match.gameState.ply, 0);
+  // Never enters the open-lobby pool: the bot fills player2 immediately, so
+  // the row can never satisfy the `player2_id IS NULL` open-lobby predicate,
+  // and no queue transition is mirrored.
+  assert.equal(settlement.queue.length, 0);
+});
+
+test("createAiMatch coerces an unknown difficulty onto the shared scale", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "nonsense" });
+  assert.equal(match.aiDifficulty, "normal");
+});
+
+test("move on a practice match plays the bot's reply in the same call", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const BOT = "tic_tac_toe_ai_bot";
+  seedMatch(fake, { isAi: true, player2Id: BOT, aiDifficulty: "hard" });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    cellIndex: 4,
+    expectedVersion: 1,
+  });
+  assert.equal("error" in result, false);
+  // Two plies were applied: the human's X and the bot's O.
+  assert.equal(result.state.ply, 2);
+  assert.equal(result.state.board[4], "X");
+  assert.equal(result.state.board.filter((c) => c === "O").length, 1);
+  assert.equal(result.state.board.filter((c) => c === null).length, 7);
+  // It is the human's turn again — the bot never leaves itself on move.
+  assert.equal(result.state.currentTurn, "player1");
+  assert.equal(liveMatch(fake).currentTurnUserId, ALICE);
+  const botMoves = fake.rowsOf(ticTacToeMoves).filter((m) => m.playerId === BOT);
+  assert.equal(botMoves.length, 1);
+});
+
+test("the bot can end the match on its own reply and never moves again after", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const BOT = "tic_tac_toe_ai_bot";
+  // O (the bot) already holds 0 and 3; the human must play 8, then the bot
+  // needs only cell 6 to complete 0,3,6 and win.
+  const board = ["O", null, null, "O", null, null, null, null, null];
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: BOT,
+    aiDifficulty: "hard",
+    gameState: { ...createInitialState(), board, currentTurn: "player1", ply: 4, version: 5 },
+  });
+
+  const result = await store.move({
+    userId: ALICE,
+    matchId: MATCH_ID,
+    cellIndex: 8,
+    expectedVersion: 5,
+  });
+  assert.equal("error" in result, false);
+  assert.equal(result.matchCompleted, true);
+  assert.equal(result.winnerSeat, "player2");
+  const row = liveMatch(fake);
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.winnerId, BOT);
+  // A bot win must never settle a rating or trophy either.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  // After the match is decided the bot does not append any further move.
+  assert.equal(fake.rowsOf(ticTacToeMoves).filter((m) => m.playerId === BOT).length, 1);
+});
+
+test("a human move on a practice match is still validated as usual", async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, { isAi: true, player2Id: "tic_tac_toe_ai_bot", aiDifficulty: "easy" });
+
+  // Out-of-turn: the bot is player2 and X (player1) opens, so a player2 claim
+  // from the human is rejected before anything is played.
+  const outOfTurn = await store.move({
+    userId: "tic_tac_toe_ai_bot",
+    matchId: MATCH_ID,
+    cellIndex: 0,
+    expectedVersion: 1,
+  });
+  assert.equal(outOfTurn.status, 409);
+  assert.match(outOfTurn.error, /not your turn/i);
 });
 
 // ── Forfeit / cancel / disconnect ─────────────────────────────────────────

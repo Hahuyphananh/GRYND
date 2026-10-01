@@ -895,10 +895,15 @@ test("store: the participant read path is the ONLY gate on the race view", () =>
 });
 
 test("store: a race never writes a row per keystroke", () => {
-  // The store's ONLY insert is the match row itself. Nothing inserts progress,
-  // keystrokes or events — checkpoints update the row they belong to.
+  // The store's ONLY insert is the match row itself (once for matchmaking, once
+  // for the practice bot's row). Nothing inserts progress, keystrokes or events
+  // — checkpoints update the row they belong to.
   const inserts = [...STORE_CODE.matchAll(/\.insert\(([A-Za-z0-9_]+)\)/g)].map((m) => m[1]);
-  assert.deepEqual(inserts, ["speedTypingMatches"]);
+  assert.ok(inserts.length >= 1, "the store inserts the match row");
+  assert.ok(
+    inserts.every((table) => table === "speedTypingMatches"),
+    `only the match table is inserted, saw ${inserts.join(", ")}`,
+  );
   // Progress is persisted as a checkpoint on the match row, with the
   // authoritative blob alongside the denormalised columns.
   assert.match(functionSource("recordProgress"), /raceState: nextState/);

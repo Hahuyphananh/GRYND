@@ -60,6 +60,7 @@ import { applyRatingResult } from "../rating";
 import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
+import { aiSeatRaceAt } from "./ai";
 import { PASSAGE_VERSION, passageForRow, selectPassageForSeed } from "./passages";
 import {
   coerceRaceState,
@@ -90,6 +91,7 @@ import {
   RESULT,
   SEAT,
   SETTLEMENT_RESULT,
+  SPEED_TYPING_AI_PLAYER_ID,
   SPEED_TYPING_LOCK_NAMESPACE,
   TERMINAL_STATUSES,
   type ResolutionReason,
@@ -357,6 +359,45 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string) {
   return { match: updated, joined: true };
 }
 
+/**
+ * Start a free practice race against the built-in bot.
+ *
+ * Practice is UNRATED: the row is `isAi`, so `settleFinishedRace` skips
+ * ratings, trophies and win counters entirely, and it never enters the open
+ * lobby pool (the bot occupies player2 immediately, so it can never be joined
+ * or listed).
+ *
+ * The race is ARMED here exactly as a real join arms it — one server seed, one
+ * passage, one absolute GO instant one countdown ahead — so both seats race the
+ * same text off the same clock. The human is player1 (host) and the bot takes
+ * player2; the bot's progress is then advanced from the server clock on every
+ * read (see `advanceAiRace`), so it always plays and can never be skipped.
+ */
+export async function createAiMatch({
+  userId,
+  difficulty,
+}: {
+  userId: string;
+  difficulty?: unknown;
+}) {
+  const nowMs = Date.now();
+  const tier = coerceAiDifficulty(difficulty ?? DEFAULT_AI_DIFFICULTY);
+  const [match] = await db
+    .insert(speedTypingMatches)
+    .values({
+      player1Id: userId,
+      player2Id: SPEED_TYPING_AI_PLAYER_ID,
+      status: MATCH_STATUS.PLAYING,
+      isAi: true,
+      aiDifficulty: tier,
+      startedAt: new Date(nowMs),
+      ...armedRaceValues({ nowMs, revision: 0 }),
+    })
+    .returning();
+
+  return { match } as const;
+}
+
 // ── Read ──────────────────────────────────────────────────────────────────
 
 export async function fetchMatch({
@@ -379,7 +420,12 @@ export async function fetchMatch({
 
   // The 403 above is the gate: only a participant ever reaches the view that
   // carries the passage text.
-  const current = await resolveRaceIfDue(match);
+  //
+  // For a practice race the bot is advanced to NOW first, so every poll shows
+  // its live progress (and settles the race the instant both seats finish);
+  // then the deadline is applied. A non-AI row is untouched by the first step.
+  const advanced = await advanceAiIfPractice(match, Date.now());
+  const current = await resolveRaceIfDue(advanced);
   return { match: current, dto: matchViewFor({ match: current, viewerId: userId }) } as const;
 }
 
@@ -560,6 +606,116 @@ export async function armRace({ matchId, nowMs = Date.now() }: { matchId: string
 
     return { match: updated ?? match, armed: true } as const;
   });
+}
+
+/**
+ * Advance the practice bot's seat to the server's current instant.
+ *
+ * THE BOT'S "TURN". Speed Typing has no discrete turns, so the bot is modelled
+ * as a typing SPEED (see ./ai.ts): this projects how far it has typed from the
+ * elapsed server time and writes that seat state, exactly as a progress packet
+ * from a real opponent would. Calling it on every read is what guarantees the
+ * bot genuinely races — it can never be skipped, because nothing about its
+ * progress depends on a client calling an endpoint.
+ *
+ * Idempotent and monotonic: a no-op for a non-AI row, an unarmed row, a row
+ * whose race has already resolved, or a call that does not advance the cursor.
+ * When the bot's write completes the race (both seats finished), it resolves and
+ * settles inside this same transaction — the identical seam a real finish uses,
+ * so a settled practice race is never rated.
+ */
+export async function advanceAiRace({
+  matchId,
+  nowMs = Date.now(),
+}: {
+  matchId: string;
+  nowMs?: number;
+}) {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(speedTypingMatches)
+      .where(eq(speedTypingMatches.id, matchId))
+      .for("update");
+
+    if (!match) return { error: "Match not found", status: 404 } as const;
+    if (!match.isAi) return { match, advanced: false } as const;
+    if (match.status !== MATCH_STATUS.PLAYING) return { match, advanced: false } as const;
+    if (!match.player2Id) return { match, advanced: false } as const;
+
+    const goAtMs = instantFromDate(match.goAt);
+    if (goAtMs == null) return { match, advanced: false } as const;
+
+    const state = raceStateOf(match);
+    if (state.resolvedAtMs != null) return { match, advanced: false } as const;
+
+    const passage = passageForRow(match);
+    if (!passage) return { match, advanced: false } as const;
+
+    const botSeat = SEAT.PLAYER2;
+    const currentSeat = state.seats[botSeat] ?? emptySeatRace();
+    const nextSeat = aiSeatRaceAt({
+      difficulty: match.aiDifficulty,
+      passageLength: passage.text.length,
+      goAtMs,
+      nowMs,
+      current: currentSeat,
+    });
+
+    const changed =
+      nextSeat.charsTyped !== currentSeat.charsTyped ||
+      nextSeat.errors !== currentSeat.errors ||
+      nextSeat.finished !== currentSeat.finished;
+    if (!changed) return { match, advanced: false } as const;
+
+    const seats = { ...state.seats, [botSeat]: nextSeat };
+    // Only the SECOND verified finish ends the race by "finish"; until the
+    // human has also completed, the practice race stays live so the player can
+    // still beat the bot's clock.
+    const bothFinished =
+      seats[SEAT.PLAYER1]?.finished === true && seats[SEAT.PLAYER2]?.finished === true;
+    const outcome = bothFinished
+      ? resolveRace({ state: { ...state, seats }, reason: RESOLUTION.FINISH, nowMs })
+      : null;
+
+    const nextState: RaceState = {
+      ...state,
+      version: state.version + 1,
+      seats,
+      resolvedAtMs: outcome?.settled ? outcome.resolvedAtMs : state.resolvedAtMs,
+      resolutionReason: outcome?.settled ? outcome.resolutionReason : state.resolutionReason,
+    };
+
+    const [updated] = await tx
+      .update(speedTypingMatches)
+      .set({
+        ...progressColumnsFor(botSeat, nextSeat),
+        ...(nextSeat.finished
+          ? completedColumnFor(botSeat, new Date(nextSeat.finishedAtMs ?? nowMs))
+          : {}),
+        raceState: nextState,
+        revision: sql`${speedTypingMatches.revision} + 1`,
+        updatedAt: new Date(nowMs),
+        ...(outcome?.settled ? terminalColumnsFor(match, outcome, nowMs) : {}),
+      })
+      .where(eq(speedTypingMatches.id, match.id))
+      .returning();
+
+    const settled = updated ?? match;
+    if (outcome?.settled) {
+      await settleFinishedRace(tx, match, outcome);
+      mirrorCompletedRace(match);
+    }
+
+    return { match: settled, advanced: true } as const;
+  });
+}
+
+/** Advance the bot (when the row is a practice race) and return the row. */
+async function advanceAiIfPractice(match: MatchRow, nowMs: number): Promise<MatchRow> {
+  if (!match.isAi || match.status !== MATCH_STATUS.PLAYING) return match;
+  const advanced = await advanceAiRace({ matchId: match.id, nowMs });
+  return "error" in advanced ? match : advanced.match;
 }
 
 /**
@@ -746,6 +902,12 @@ export async function submitFinish({
   typedText: unknown;
   nowMs?: number;
 }) {
+  // Bring a practice bot's cursor up to NOW first, so a human finish that lands
+  // second is compared against the bot's real finish instant (and a finish that
+  // lands first leaves the bot the rest of the limit to answer). No-op for a
+  // human race.
+  await advanceAiRace({ matchId, nowMs });
+
   return await db.transaction(async (tx) => {
     const [match] = await tx
       .select()
@@ -966,6 +1128,11 @@ export async function resolveDueRace({
   matchId: string;
   nowMs?: number;
 }) {
+  // A practice bot's cursor must be current BEFORE the deadline verdict is
+  // computed, so the tiebreak compares the bot's real progress. A no-op for a
+  // human race, and idempotent either way.
+  await advanceAiRace({ matchId, nowMs });
+
   return await db.transaction(async (tx) => {
     const [match] = await tx
       .select()

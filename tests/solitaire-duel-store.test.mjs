@@ -53,6 +53,7 @@ import {
   MATCH_STATUS,
   MAX_MOVES_PER_SEAT,
   READY_COUNTDOWN_MS,
+  SOLITAIRE_DUEL_AI_PLAYER_ID,
   SUITS,
   VARIANT,
   VARIANT_VERSION,
@@ -1166,4 +1167,124 @@ test("moves: the append-only log records each seat's own ply sequence", { skip: 
   assert.equal(store.isParticipant(row, ALICE), true);
   assert.equal(store.isParticipant(row, BOB), true);
   assert.equal(store.isParticipant(row, MALLORY), false);
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Practice vs AI — the bot genuinely plays and settles nothing
+// ════════════════════════════════════════════════════════════════════════
+
+const practiceRow = (fake, overrides = {}) =>
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+    aiDifficulty: "hard",
+    goAt: new Date(NOW - 120_000),
+    ...overrides,
+  });
+
+test("practice: createAiMatch seats the bot, deals the same puzzle and starts the clock", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+
+  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "hard", nowMs: NOW });
+  assert.equal(match.player1Id, ALICE);
+  assert.equal(match.player2Id, SOLITAIRE_DUEL_AI_PLAYER_ID);
+  assert.equal(match.isAi, true);
+  assert.equal(match.aiDifficulty, "hard");
+  assert.equal(match.status, MATCH_STATUS.PLAYING);
+  // One deal, two independent boards — the same shape a real join produces.
+  assert.ok(match.deal);
+  assert.ok(match.p1State && match.p2State);
+  assert.equal(match.p1Ply, 0);
+  assert.equal(match.p2Ply, 0);
+  assert.equal(match.goAt.getTime(), NOW + READY_COUNTDOWN_MS);
+  assert.equal(match.deadlineAt.getTime(), NOW + READY_COUNTDOWN_MS + MATCH_LIMIT_MS);
+  // A practice row is never mirrored into the queue lifecycle.
+  assert.equal(settlement.queue.length, 0);
+});
+
+test("practice: createAiMatch coerces an unknown difficulty onto the shared scale", { skip: SKIP_REASON }, async (t) => {
+  installMocks(t);
+  const store = await loadStore();
+  const { match } = await store.createAiMatch({ userId: ALICE, difficulty: "nonsense", nowMs: NOW });
+  assert.equal(match.aiDifficulty, "normal");
+});
+
+test("practice: advanceAiMatch plays the bot's own board from the server clock", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const row = practiceRow(fake);
+  const humanBefore = structuredClone(row.p1State);
+
+  const result = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(result.advanced, true);
+
+  const after = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.ok(after.p2Ply > 0, "the bot made moves");
+  // Every logged move is the bot's, and the human's board is untouched.
+  const log = fake.rowsOf(solitaireDuelMoves);
+  assert.ok(log.length > 0);
+  assert.equal(log.every((entry) => entry.seat === "player2"), true);
+  assert.deepEqual(after.p1State, humanBefore);
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+});
+
+test("practice: advanceAiMatch is a no-op before GO and between the bot's moves", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+    aiDifficulty: "hard",
+    goAt: new Date(NOW + 5_000),
+  });
+  // Before GO: nothing is played.
+  const before = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(before.advanced, false);
+  // 100ms after GO: the (hard) bot has not yet earned its first move.
+  const between = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW + 5_100 });
+  assert.equal(between.advanced, false);
+  assert.equal(fake.rowsOf(solitaireDuelMoves).length, 0);
+});
+
+test("practice: advanceAiMatch never touches a human match", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, { goAt: new Date(NOW - 120_000) });
+
+  const human = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(human.advanced, false);
+  assert.equal(fake.rowsOf(solitaireDuelMoves).length, 0);
+  assert.equal(fake.rowsOf(solitaireDuelMatches)[0].p2Ply, 0);
+});
+
+test("practice: the bot can solve the deal, and the win settles nothing", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  const botBoard = boardOneMoveFromComplete();
+  seedMatch(fake, {
+    isAi: true,
+    player2Id: SOLITAIRE_DUEL_AI_PLAYER_ID,
+    aiDifficulty: "hard",
+    goAt: new Date(NOW - 120_000),
+    p2State: botBoard,
+    p2Ply: 0,
+    p2PeakFoundation: botBoard.peakFoundation,
+  });
+
+  const result = await store.advanceAiMatch({ matchId: MATCH_ID, nowMs: NOW });
+  assert.equal(result.advanced, true);
+
+  const row = fake.rowsOf(solitaireDuelMatches)[0];
+  assert.equal(row.status, MATCH_STATUS.FINISHED);
+  assert.equal(row.result, "player2");
+  assert.equal(row.winnerId, SOLITAIRE_DUEL_AI_PLAYER_ID);
+  // A practice match must never move a rating, a trophy, a win counter or the
+  // queue, even when the bot wins.
+  assert.equal(settlement.rating.length, 0);
+  assert.equal(settlement.trophy.length, 0);
+  assert.equal(settlement.queue.length, 0);
+  const userWrites = fake.state.writes.filter((w) => w.table === users);
+  assert.equal(userWrites.length, 0, "no win/loss counter is touched");
 });

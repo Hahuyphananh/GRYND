@@ -86,6 +86,10 @@ export default function CompleteProfilePage() {
   const router = useRouter();
   const { t, language } = useTranslation();
   const [birthDate, setBirthDate] = useState("");
+  // The player's chosen handle. Required here, and stored so every public
+  // surface (leaderboard, reviews, in-game seats) shows THIS instead of the
+  // provider's real name — see /api/update-birthdate + the signup webhook.
+  const [username, setUsername] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -115,7 +119,12 @@ export default function CompleteProfilePage() {
   // shared helper, and the server remains authoritative.
   const previewAge = birthDate ? calculateAge(birthDate) : null;
   const previewOk = previewAge !== null && previewAge >= MINIMUM_AGE;
-  const accountName = user?.firstName || user?.username || user?.fullName || null;
+  // Username rule mirrors the server (2–20 chars). The account line shows the
+  // typed handle, never the Clerk real name.
+  const trimmedUsername = username.trim();
+  const usernameOk =
+    trimmedUsername.length >= 2 && trimmedUsername.length <= 20;
+  const accountName = trimmedUsername || null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -125,6 +134,12 @@ export default function CompleteProfilePage() {
     // Defensive only — the button and the input's `max` already prevent these
     // from being reachable through the UI. The check is kept because the
     // server stays the authority and nothing here may trust a client value.
+    if (!usernameOk) {
+      setError(t("completeProfile.errorUsernameRequired"));
+      setIsSubmitting(false);
+      return;
+    }
+
     if (!birthDate) {
       setError(t("completeProfile.errorRequired"));
       setIsSubmitting(false);
@@ -147,7 +162,7 @@ export default function CompleteProfilePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ birthDate }),
+        body: JSON.stringify({ birthDate, username: trimmedUsername }),
       });
 
       const result = await response.json();
@@ -274,8 +289,37 @@ export default function CompleteProfilePage() {
 
             <form onSubmit={handleSubmit} className="mt-6 text-left">
               <label
-                htmlFor="birthDate"
+                htmlFor="username"
                 className="block text-[11px] font-black uppercase tracking-[0.22em] text-[#9dd8ff]"
+              >
+                {t("completeProfile.usernameLabel")}
+              </label>
+
+              <input
+                type="text"
+                id="username"
+                name="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                minLength={2}
+                maxLength={20}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={Boolean(error) && !usernameOk}
+                aria-describedby="usernameHelp"
+                placeholder={t("completeProfile.usernamePlaceholder")}
+                required
+                className="mt-2 w-full rounded-2xl border-2 border-[#00e5ff]/30 bg-[#040d24] px-4 py-3.5 text-base font-semibold text-[#d8fbff] outline-none transition focus:border-[#00e5ff] focus:ring-2 focus:ring-[#00e5ff]/40 sm:text-lg"
+              />
+
+              <p id="usernameHelp" className="mt-2 text-xs text-[#6b91b3]">
+                {t("completeProfile.usernameHint")}
+              </p>
+
+              <label
+                htmlFor="birthDate"
+                className="mt-5 block text-[11px] font-black uppercase tracking-[0.22em] text-[#9dd8ff]"
               >
                 {t("completeProfile.dateLabel")}
               </label>
@@ -336,7 +380,7 @@ export default function CompleteProfilePage() {
                   The live line above says why in the player's language. */}
               <button
                 type="submit"
-                disabled={isSubmitting || !previewOk}
+                disabled={isSubmitting || !previewOk || !usernameOk}
                 className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FFD700] px-7 py-4 text-base font-extrabold tracking-wide text-[#030817] shadow-[0_0_22px_rgba(255,215,0,0.45)] transition-all duration-200 hover:scale-[1.02] hover:bg-[#ffe14f] hover:shadow-[0_0_32px_rgba(255,215,0,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
                 {isSubmitting && (

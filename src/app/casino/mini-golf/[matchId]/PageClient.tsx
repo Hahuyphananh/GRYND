@@ -162,6 +162,10 @@ export default function MiniGolfMatchPage() {
   const [showReportModal, setShowReportModal] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  // Set when a refresh was requested while the board was busy (a rollout
+  // playing, or the hole-result interstitial up). Flushed once the board is
+  // free — see `refresh` / `flushPendingRefresh`.
+  const pendingRefreshRef = useRef(false);
   const matchRef = useRef<any>(null);
   const hydratedRef = useRef(false);
   const lastAnimatedSeqRef = useRef(-1);
@@ -200,6 +204,7 @@ export default function MiniGolfMatchPage() {
     lastAnimatedSeqRef.current = -1;
     animRef.current = null;
     overlayRef.current = null;
+    pendingRefreshRef.current = false;
     queuedAnimRef.current = null;
     shownHolesRef.current = new Set();
     botRecapSeqRef.current = -1;
@@ -252,12 +257,33 @@ export default function MiniGolfMatchPage() {
     [apiMatch, matchId],
   );
 
+  // A snapshot request is not a passive read in a practice match: the GET is
+  // what runs the server-driven bot's turn, and it is also what delivers the
+  // opponent's move in a human duel. Firing it while a shot or the hole-result
+  // interstitial owns the board is exactly what made the opponent's turn
+  // disappear — the bot played the next hole (or the opponent moved) behind the
+  // interstitial and the hand-off was never seen. Defer it until the board is
+  // free instead, then flush once (see `flushPendingRefresh`).
   const refresh = useCallback(() => {
+    if (animRef.current || overlayRef.current) {
+      pendingRefreshRef.current = true;
+      return;
+    }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     void fetchSnapshot(controller.signal);
   }, [fetchSnapshot]);
+
+  // Run the deferred refresh once nothing owns the board. Safe to call from
+  // every settle point: a still-busy board (a queued rollout just started, or
+  // the interstitial went back up) simply leaves the request pending.
+  const flushPendingRefresh = useCallback(() => {
+    if (!pendingRefreshRef.current) return;
+    if (animRef.current || overlayRef.current) return;
+    pendingRefreshRef.current = false;
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (!matchId) return undefined;
@@ -350,9 +376,12 @@ export default function MiniGolfMatchPage() {
         setHoleOverlay(null);
         setRenderBalls(cloneBalls(matchRef.current?.balls));
         playQueuedRollout();
+        // The interstitial is gone — if the opponent/AI moved (or was queued)
+        // while it was up, fetch now so their turn gets its own visible beat.
+        flushPendingRefresh();
       }, HOLE_RESULT_MS);
     },
-    [playQueuedRollout],
+    [playQueuedRollout, flushPendingRefresh],
   );
 
   const finishAnimation = useCallback(
@@ -387,14 +416,16 @@ export default function MiniGolfMatchPage() {
         }
         setRenderBalls(cloneBalls(latest?.balls));
         playQueuedRollout();
+        flushPendingRefresh();
         return;
       }
 
       // Same hole: adopt the authoritative rest positions (and holed-out flags).
       setRenderBalls(cloneBalls(latest?.balls) ?? null);
       playQueuedRollout();
+      flushPendingRefresh();
     },
-    [playQueuedRollout, showHoleResult],
+    [playQueuedRollout, showHoleResult, flushPendingRefresh],
   );
 
   useEffect(() => {
@@ -694,6 +725,11 @@ export default function MiniGolfMatchPage() {
     // The hole-result interstitial owns the screen; the hand-off it leads to is
     // announced the moment it clears (this effect re-runs on that change).
     if (holeOverlay) return;
+    // A rollout owns the board too. Announcing a hand-off mid-flight would
+    // consume the (hole, seat, shot) key before the interstitial/rollout it
+    // belongs to has finished, so the hand-off the player actually needs to
+    // see — the opponent's/AI's turn on the next hole — would never surface.
+    if (anim) return;
     const seat: Seat | null = match.currentTurn ?? null;
     if (!seat) return;
     const key = `${Number(match.currentHole) || 0}:${seat}:${Number(match.shotSeq) || 0}`;
@@ -714,7 +750,7 @@ export default function MiniGolfMatchPage() {
       turnCallTimerRef.current = null;
       setTurnCall(null);
     }, TURN_CALL_MS);
-  }, [match, finished, cancelled, holeOverlay, viewerSeat, opponentSeat, seats.opponent?.name]);
+  }, [match, finished, cancelled, holeOverlay, anim, viewerSeat, opponentSeat, seats.opponent?.name]);
 
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
     socket,

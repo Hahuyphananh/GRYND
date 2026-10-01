@@ -74,6 +74,7 @@ import {
   isFlagEntry,
   isFreeAiMatch,
   isMine,
+  minesFoundForSeat,
   nearestMineDistance,
   pickRandomCell,
   relocateMine,
@@ -1455,16 +1456,26 @@ export function scrubMatchForViewer(match) {
     p1Flags: flagsForSeat(match, "player1"),
     p2Flags: flagsForSeat(match, "player2"),
   };
+  // The per-seat confirmed-mine counts are BOARD-DERIVED, so they must be
+  // captured HERE — this is the last moment the real board exists before it
+  // is nulled below. `normaliseMatchForViewer` runs afterwards and can no
+  // longer see the layout, so without these stamps its counter would read
+  // 0/0 confirmed (a stuck "10 | 10") on every poll.
+  const counts = {
+    p1MinesFound: minesFoundForSeat(match, "player1"),
+    p2MinesFound: minesFoundForSeat(match, "player2"),
+  };
   if (isFinished) {
     // Finished: keep the board so the client can render the post-
     // match reveal animation.
-    return { ...match, ...flags };
+    return { ...match, ...flags, ...counts };
   }
   // Not finished: replace the board with a placeholder so the
   // client knows the field is server-only without seeing the mines.
   return {
     ...match,
     ...flags,
+    ...counts,
     board: null,
     // Per-viewer scrubbing (e.g. hiding the OPPONENT's auto-pick flag so
     // neither side can infer AFK state) is done by `scrubPicksForViewer` /

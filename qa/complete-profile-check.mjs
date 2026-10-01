@@ -230,6 +230,12 @@ const snapshot = () =>
           }
         : null,
       labelText: txt(label),
+      usernameInput: (() => {
+        const u = document.getElementById("username");
+        return u
+          ? { type: u.type, maxLength: u.maxLength, value: u.value, required: u.required }
+          : null;
+      })(),
       cta: cta
         ? {
             text: txt(cta),
@@ -259,6 +265,22 @@ const snapshot = () =>
 const setInput = async (value) => {
   await page.evaluate((v) => {
     const input = document.getElementById("birthDate");
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    ).set;
+    setter.call(input, v);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
+  await page.waitForTimeout(120);
+};
+
+// The username step is now mandatory, so every submit path has to fill it
+// before the CTA unlocks.
+const USERNAME = "TestPutter";
+const setUsername = async (value) => {
+  await page.evaluate((v) => {
+    const input = document.getElementById("username");
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       "value",
@@ -387,9 +409,16 @@ try {
     JSON.stringify(s.whyBullets.map((b) => b.slice(0, 34))),
   );
   check(
-    "the page names the account being verified",
-    /^Signed in as Tester$/.test(s.accountLine ?? ""),
+    "the page never shows the account's provider real name",
+    s.accountLine === null,
     `"${s.accountLine}"`,
+  );
+  check(
+    "the player is asked for a username (text, capped at 20)",
+    s.usernameInput?.type === "text" &&
+      s.usernameInput.maxLength === 20 &&
+      s.usernameInput.required === true,
+    JSON.stringify(s.usernameInput),
   );
   check(
     "no error banner before a submit",
@@ -398,6 +427,13 @@ try {
   );
 
   // ── Live feedback + submit contract ──────────────────────────────────────
+  await setUsername(USERNAME);
+  s = await snapshot();
+  check(
+    "the typed username (not the real name) is shown on the account line",
+    s.accountLine === `Signed in as ${USERNAME}`,
+    `"${s.accountLine}"`,
+  );
   await setInput(MINOR);
   s = await snapshot();
   check(
@@ -444,11 +480,12 @@ try {
   s = await snapshot();
   const fetchBody = await page.evaluate(() => window.__fetches.map((f) => JSON.parse(f.body)));
   check(
-    "a valid date POSTs the ISO date once and then routes to /sync",
+    "a valid date POSTs the ISO date + username once and then routes to /sync",
     s.fetches === 1 &&
       s.pushes === 1 &&
       (await page.evaluate(() => window.__pushes[0])) === "/sync" &&
-      fetchBody[0]?.birthDate === ADULT,
+      fetchBody[0]?.birthDate === ADULT &&
+      fetchBody[0]?.username === USERNAME,
     `fetches ${JSON.stringify(fetchBody)}, pushes ${await page.evaluate(() => window.__pushes)}`,
   );
   await page.screenshot({ path: join(SHOTS, "1280-valid.png") });
@@ -468,6 +505,7 @@ try {
         json: () => Promise.resolve({ success: false, error: "server said no" }),
       });
   });
+  await setUsername(USERNAME);
   await setInput(ADULT);
   await clickCta();
   s = await snapshot();
@@ -525,6 +563,8 @@ try {
     page = phone;
     console.log(`\n── ${vp.label} × ${vp.height} (en) ─────────────────────────`);
     await render("en");
+    // The username step gates the CTA, so fill it before the happy path.
+    await setUsername(USERNAME);
     const m = await snapshot();
 
     check(
@@ -567,7 +607,7 @@ try {
     );
     check(
       `${vp.label}: the account line truncates instead of widening the card`,
-      !!m.accountLine && m.accountLine.length > 0,
+      m.accountLine === `Signed in as ${USERNAME}`,
       `"${m.accountLine}"`,
     );
     await page.screenshot({ path: join(SHOTS, `${vp.label}-en.png`) });

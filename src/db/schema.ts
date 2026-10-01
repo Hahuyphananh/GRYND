@@ -3420,8 +3420,10 @@ export const ticTacToeMatches = pgTable(
     status: varchar("status", { length: 20 }).notNull().default("waiting"),
     // The authoritative TicTacToeState (see src/lib/tic-tac-toe/rules.ts).
     gameState: jsonb("game_state").notNull(),
-    // Marked on any future practice match so settlement can skip rating/stats.
+    // Marked on any practice match so settlement can skip rating/stats.
     isAi: boolean("is_ai").notNull().default(false),
+    // AI tier for a practice match (NULL = the documented default).
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // 'player1' | 'player2' | 'tie'. Null until the match settles.
     result: varchar("result", { length: 20 }),
     startedAt: timestamp("started_at"),
@@ -3498,6 +3500,11 @@ export const solitaireDuelMatches = pgTable(
      *  joining takes the match straight to `playing`, with a countdown window
      *  before the first legal move. */
     status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // Marked on a practice match so settlement skips ratings/trophies. The
+    // second seat is the internal bot id; the human always holds player1.
+    isAi: boolean("is_ai").notNull().default(false),
+    // AI tier for a practice match (NULL = the documented default).
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // 'player1' | 'player2' | 'draw'. Null until the match settles.
     result: varchar("result", { length: 20 }),
     // finish | deadline | forfeit | draw — how the server ended it.
