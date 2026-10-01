@@ -3573,6 +3573,123 @@ export const solitaireDuelMoves = pgTable(
   })
 );
 
+// SUDOKU DUEL — the 1v1 simultaneous Sudoku race.
+// ==============================================================================
+// ONE server-generated puzzle per match that BOTH seats solve from their own
+// independent board. `puzzle` is the clue grid (public, both seats see it);
+// `solution` is the authoritative completion and is SERVER-ONLY — it is never
+// projected to a client, because a client must derive it, not read it.
+// `p1_state` / `p2_state` are two copies of the opening clue board that diverge
+// only through each seat's own judged actions, so a seat's action can never
+// touch the other seat's column.
+//
+// A seat state holds givens + CORRECTLY placed values only: an incorrect value
+// is counted as a mistake and discarded, never written. `mistakes` and
+// `penalty_ms` are the +1s-per-mistake competitive penalty; `p*_finished_at` and
+// `completed_at_ms` are server-stamped and decide a photo finish.
+//
+// `server_seed` is secret until the match is terminal; `server_seed_hash` is the
+// public pre-match commitment, so the revealed seed can be verified against the
+// puzzle that was actually played.
+//
+// There is deliberately NO stake_amount / prize_paid / house_fee column: the
+// game is unstaked, so no money is ever moved by settlement.
+export const sudokuDuelMatches = pgTable(
+  "sudoku_duel_matches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The frozen ruleset, versioned into the puzzle digest.
+    variant: varchar("variant", { length: 24 }).notNull().default("classic-9"),
+    variantVersion: integer("variant_version").notNull().default(1),
+    // easy | normal | hard — a clue-count TARGET, see constants.ts.
+    difficulty: varchar("difficulty", { length: 16 }).notNull().default("normal"),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Nullable so a `waiting` row doubles as the open lobby.
+    player2Id: varchar("player2_id", { length: 255 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    /** waiting | ready | playing | finished | cancelled — the shared house
+     *  vocabulary. `ready` is never entered: joining takes the match straight to
+     *  `playing`, with a 3 → 2 → 1 → GO countdown before the first legal action. */
+    status: varchar("status", { length: 20 }).notNull().default("waiting"),
+    // Reserved for a future practice bot so settlement can skip ratings; false
+    // for every human match.
+    isAi: boolean("is_ai").notNull().default(false),
+    // 'player1' | 'player2' | 'draw'. Null until the match settles.
+    result: varchar("result", { length: 20 }),
+    // finish | deadline | forfeit | draw — how the server ended it.
+    resolutionReason: varchar("resolution_reason", { length: 20 }),
+    // Provably-fair seed pair (see src/lib/sudoku-duel/seeds.js).
+    serverSeed: varchar("server_seed", { length: 64 }).notNull(),
+    serverSeedHash: varchar("server_seed_hash", { length: 64 }).notNull(),
+    // uint32, so it exceeds int4's range and must be a bigint column.
+    puzzleSeed: bigint("puzzle_seed", { mode: "number" }).notNull(),
+    // The ONE canonical puzzle both seats solve. `puzzle` is the clues (public);
+    // `solution` is the authoritative answer (server-only, never sent).
+    puzzle: jsonb("puzzle").notNull(),
+    solution: jsonb("solution").notNull(),
+    givens: integer("givens").notNull().default(0),
+    // The two independent boards. Both NOT NULL: a match always has two boards,
+    // even while seat 2 is still an empty lobby slot.
+    p1State: jsonb("p1_state").notNull(),
+    p2State: jsonb("p2_state").notNull(),
+    // Denormalised per-seat facts, so no read has to parse JSONB.
+    p1Ply: integer("p1_ply").notNull().default(0),
+    p2Ply: integer("p2_ply").notNull().default(0),
+    // Correctly completed NON-given cells — the competitive metric.
+    p1Correct: integer("p1_correct").notNull().default(0),
+    p2Correct: integer("p2_correct").notNull().default(0),
+    p1Mistakes: integer("p1_mistakes").notNull().default(0),
+    p2Mistakes: integer("p2_mistakes").notNull().default(0),
+    p1PenaltyMs: integer("p1_penalty_ms").notNull().default(0),
+    p2PenaltyMs: integer("p2_penalty_ms").notNull().default(0),
+    p1FinishedAt: timestamp("p1_finished_at"),
+    p2FinishedAt: timestamp("p2_finished_at"),
+    // Absolute server instants — never a per-client delay.
+    goAt: timestamp("go_at"),
+    deadlineAt: timestamp("deadline_at"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index("sudoku_duel_matches_status_idx").on(table.status, table.createdAt),
+    player1Idx: index("sudoku_duel_matches_player1_idx").on(table.player1Id, table.createdAt),
+    player2Idx: index("sudoku_duel_matches_player2_idx").on(table.player2Id, table.createdAt),
+    dueIdx: index("sudoku_duel_matches_due_idx").on(table.status, table.deadlineAt),
+  })
+);
+
+// Append-only per-seat action log. The authoritative replay record: every
+// accepted action with the exact validated input the server judged.
+//
+// `ply_unique` makes "one accepted action per ply, per seat" a STORAGE
+// invariant, so a duplicated or racing POST can never advance a board twice —
+// keyed by seat because the two players act independently rather than
+// alternating. A logged `place` is not necessarily correct: an incorrect value
+// is recorded as the action that produced a mistake, and the resulting state
+// still holds only correct entries.
+export const sudokuDuelMoves = pgTable(
+  "sudoku_duel_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    matchId: uuid("match_id")
+      .notNull()
+      .references(() => sudokuDuelMatches.id, { onDelete: "cascade" }),
+    seat: varchar("seat", { length: 10 }).notNull(),
+    ply: integer("ply").notNull(),
+    // 'place' | 'clear', denormalised so an audit can filter without JSON.
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // The validated action, verbatim.
+    action: jsonb("action").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    matchIdx: index("sudoku_duel_moves_match_idx").on(table.matchId, table.seat, table.ply),
+    plyIdx: unique("sudoku_duel_moves_ply_unique").on(table.matchId, table.seat, table.ply),
+  })
+);
+
 // GAME EVALUATION RESULTS — post-match LLM coaching/analysis journal.
 // ==============================================================================
 // One row per evaluation request for a finished match. `objective_data` holds

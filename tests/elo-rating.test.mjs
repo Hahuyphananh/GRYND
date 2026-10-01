@@ -1045,6 +1045,7 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
     "speed-typing",
     "tic-tac-toe",
     "solitaire-duel",
+    "sudoku-duel",
   ]);
   assert.equal(isRatedGame("chess"), true);
   // The formerly-excluded games are now REGISTERED, so every listed game is a
@@ -1058,6 +1059,12 @@ test("RATED_GAMES: the registry is the audited 1v1/server-authoritative set", ()
   // (completion first, then most progress at the deadline), so it is ratable
   // on the same terms.
   assert.equal(isRatedGame("solitaire-duel"), true);
+  // Sudoku Duel derives the whole race server-side from ONE committed puzzle
+  // (a verified completion under an adjusted-time comparison, then most cells
+  // at the deadline), so it is ratable on the same terms.
+  assert.equal(isRatedGame("sudoku-duel"), true);
+  assert.equal(normalizeRatingGameKey("sudoku-duel"), "sudoku-duel");
+  assert.equal(getRatingGameLabel("sudoku-duel"), "Sudoku Duel");
   assert.equal(normalizeRatingGameKey("speed-typing"), "speed-typing");
   assert.equal(getRatingGameLabel("speed-typing"), "Speed Typing");
   assert.equal(isRatedGame("hex-duel"), true);
@@ -1272,6 +1279,132 @@ test("SPEED TYPING: the ranking is independent of every other game's ladder", as
 });
 
 // ════════════════════════════════════════════════════════════════════════
+//
+// Sudoku Duel has NO Elo implementation of its own: its store's
+// `settleSudokuDuelMatch` derives the winner from the authoritative boards
+// (a verified completion under an adjusted-time comparison, or most cells at
+// the deadline) and then calls the shared `applyRatingResult` with the game key
+// "sudoku-duel". These tests pin that collaboration down at the writer seam.
+
+const SUDOKU_DUEL_ARGS = {
+  gameKey: "sudoku-duel",
+  matchId: "44444444-4444-4444-8444-444444444444",
+  winnerClerkId: "user_winner",
+  loserClerkId: "user_loser",
+};
+
+test("SUDOKU DUEL: a completed puzzle settles both seats through the shared writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyRatingResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.gameKey, "sudoku-duel");
+  // Placement K=64 on equal ratings ⇒ an equal-opponent win is worth 32, the
+  // same number every other duel gets. Nothing Sudoku-specific.
+  assert.equal(result.winner.ratingBefore, 1000);
+  assert.equal(result.winner.ratingAfter, 1032);
+  assert.equal(result.winner.delta, 32);
+  assert.equal(result.loser.ratingAfter, 968);
+  assert.equal(result.loser.delta, -32);
+
+  // Its own independent ladder: the two sudoku-duel rows exist and nothing else.
+  assert.equal(db.state.ratings.size, 2);
+  assert.equal(db.state.ratings.get("11:sudoku-duel").wins, 1);
+  assert.equal(db.state.ratings.get("22:sudoku-duel").losses, 1);
+
+  // The journal rows are the platform's match history for this duel.
+  const events = db.eventsFor("sudoku-duel");
+  assert.equal(events.length, 2);
+  assert.equal(events[0].outcome, "win");
+  assert.equal(events[1].outcome, "loss");
+});
+
+test("SUDOKU DUEL: a deadline draw moves neither rating and journals both as draws", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyRatingResult({
+    tx: db.tx,
+    ...SUDOKU_DUEL_ARGS,
+    result: "draw",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.result, "draw");
+  assert.equal(result.winner.delta, 0);
+  assert.equal(result.loser.delta, 0);
+  // A draw is neither a win nor a loss in the counters.
+  assert.equal(db.state.ratings.get("11:sudoku-duel").wins, 0);
+  assert.equal(db.state.ratings.get("11:sudoku-duel").draws, 1);
+  assert.equal(db.state.ratings.get("22:sudoku-duel").draws, 1);
+  assert.equal(db.eventsFor("sudoku-duel").length, 2);
+});
+
+test("SUDOKU DUEL: a replayed settlement of the same match rates exactly once", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const first = await applyRatingResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+  assert.equal(first.applied, true);
+  const ratingAfterFirst = db.state.ratings.get("11:sudoku-duel").rating;
+  const writesAfterFirst = db.writes().length;
+
+  // A duplicate completion event, a deadline sweep and a forfeit all reach the
+  // writer with the same (game, match) key: the journal refuses every one after
+  // the first.
+  const second = await applyRatingResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+  const third = await applyRatingResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(third.applied, false);
+  assert.equal(third.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.state.ratings.get("11:sudoku-duel").rating, ratingAfterFirst);
+  assert.equal(db.eventsFor("sudoku-duel").length, 2);
+});
+
+test("SUDOKU DUEL: the ranking is independent of every other game's ladder", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  await applyRatingResult({
+    tx: db.tx,
+    gameKey: "chess",
+    matchId: "55555555-5555-4555-8555-555555555555",
+    winnerClerkId: "user_winner",
+    loserClerkId: "user_loser",
+  });
+
+  assert.equal(db.state.ratings.has("11:sudoku-duel"), false);
+  assert.equal(db.state.ratings.has("11:chess"), true);
+
+  await applyRatingResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+  assert.equal(db.state.ratings.get("11:sudoku-duel").rating, 1032);
+  assert.equal(db.state.ratings.get("11:chess").rating, 1032);
+});
+
+test("SUDOKU DUEL SECURITY: a client-supplied winner/rating can never reach the writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  // Everything a cheating client would love to submit alongside a cell: the
+  // outcome and the rating would have to come from the STORE's server-derived
+  // winner, never from any of these fields (none of them is read anywhere).
+  const result = await applyRatingResult({
+    tx: db.tx,
+    ...SUDOKU_DUEL_ARGS,
+    winner: "player1",
+    winnerId: "user_loser",
+    elo: 9999,
+    eloDelta: 500,
+    rating: 9999,
+    delta: 500,
+    trophies: 9999,
+    completed: true,
+    correctCells: 81,
+    matchResult: "player2",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.ratingBefore, 1000); // not the smuggled 9999
+  assert.equal(result.winner.ratingAfter, 1032);
+  assert.equal(result.winner.delta, 32); // not the smuggled 500
+  assert.equal(result.loser.ratingAfter, 968);
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // 12. Settlement wiring — every rated game must feed the writer
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1303,6 +1436,11 @@ const WIRING = [
   // server-generated deal and the outcome comes from the authoritative boards
   // (completion, or most progress at the deadline).
   ["solitaire-duel", "src/lib/solitaire-duel/serverStore.ts"],
+  // Sudoku Duel derives its winner server-side too: both seats solve ONE
+  // server-generated puzzle and the outcome comes from the authoritative boards
+  // (a verified completion under an adjusted-time comparison, or most cells at
+  // the deadline).
+  ["sudoku-duel", "src/lib/sudoku-duel/serverStore.ts"],
 ];
 
 for (const [gameKey, file] of WIRING) {

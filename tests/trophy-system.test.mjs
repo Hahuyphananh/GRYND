@@ -265,14 +265,14 @@ test("config: a ranked win is +30, a loss −30, a draw 0", () => {
   // Trophies are UNBOUNDED — there is no per-game max or overall-max cap.
   assert.equal(TROPHY_CONFIG.max, undefined);
   assert.equal(TROPHY_CONFIG.overallMax, undefined);
-  // 19 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
-  assert.equal(TROPHY_CONFIG.gameCount, 19);
+  // 20 rated keys — TROPHY_GAMES IS RATED_GAMES, so the count is derived.
+  assert.equal(TROPHY_CONFIG.gameCount, 20);
   assert.deepEqual([...TROPHY_OUTCOMES], ["win", "loss", "draw"]);
 });
 
 test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.deepEqual([...TROPHY_GAMES], [...RATED_GAMES]);
-  assert.equal(TROPHY_GAMES.length, 19);
+  assert.equal(TROPHY_GAMES.length, 20);
   assert.equal(isTrophyGame("mini-golf"), true);
   // Speed Typing is a rated 1v1 duel, so it is a trophy game by the same rule
   // (TROPHY_GAMES IS RATED_GAMES — one list, no drift).
@@ -284,6 +284,11 @@ test("registry: trophies use EXACTLY the Elo game set (no drift)", () => {
   assert.equal(isTrophyGame("solitaire-duel"), true);
   assert.equal(normalizeTrophyGameKey("solitaire-duel"), "solitaire-duel");
   assert.equal(getTrophyGameLabel("solitaire-duel"), "Solitaire Duel");
+  // Sudoku Duel settles from its own server-derived boards too, so its trophies
+  // move on the same writer — and its label comes from the one registry.
+  assert.equal(isTrophyGame("sudoku-duel"), true);
+  assert.equal(normalizeTrophyGameKey("sudoku-duel"), "sudoku-duel");
+  assert.equal(getTrophyGameLabel("sudoku-duel"), "Sudoku Duel");
   assert.equal(isTrophyGame("chess"), true);
   assert.equal(isTrophyGame("precision"), true);
   // The 6 formerly-excluded games are now REGISTERED (their trophy/rating
@@ -1126,6 +1131,99 @@ test("SPEED TYPING SECURITY: trophy counts are never taken from a client-shaped 
 });
 
 // ════════════════════════════════════════════════════════════════════════
+// 7d. Sudoku Duel — a settled race feeds the SAME trophy writer
+// ════════════════════════════════════════════════════════════════════════
+//
+// Sudoku Duel has NO trophy rule of its own (not even a game-specific ±30):
+// `src/lib/sudoku-duel/serverStore.ts` derives the winner from the
+// authoritative boards (a verified completion under an adjusted-time
+// comparison, or most cells at the deadline) and calls the shared
+// `applyTrophyResult` with `gameKey: "sudoku-duel"`.
+
+const SUDOKU_DUEL_ARGS = {
+  gameKey: "sudoku-duel",
+  matchId: "44444444-4444-4444-8444-444444444444",
+  winnerClerkId: "user_winner",
+  loserClerkId: "user_loser",
+};
+
+test("SUDOKU DUEL: a completed puzzle pays +30 / −30 through the shared writer", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyTrophyResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.gameKey, "sudoku-duel");
+  assert.equal(result.winner.trophiesBefore, 0);
+  assert.equal(result.winner.trophiesAfter, 30);
+  assert.equal(result.winner.delta, 30);
+  // The loser is floored at 0 rather than going negative.
+  assert.equal(result.loser.trophiesAfter, 0);
+  assert.equal(result.loser.delta, 0);
+
+  assert.equal(db.state.trophies.get("11:sudoku-duel").wins, 1);
+  assert.equal(db.state.trophies.get("22:sudoku-duel").losses, 1);
+  assert.equal(db.eventsFor("sudoku-duel").length, 2);
+});
+
+test("SUDOKU DUEL: a deadline draw awards no trophies", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  // Seed both seats above 0 so a non-draw would be observable.
+  seedTrophyRow(db, 11, "sudoku-duel", 300);
+  seedTrophyRow(db, 22, "sudoku-duel", 300);
+
+  const result = await applyTrophyResult({
+    tx: db.tx,
+    ...SUDOKU_DUEL_ARGS,
+    result: "draw",
+  });
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.delta, 0);
+  assert.equal(result.loser.delta, 0);
+  assert.equal(db.state.trophies.get("11:sudoku-duel").trophies, 300);
+  assert.equal(db.state.trophies.get("22:sudoku-duel").trophies, 300);
+});
+
+test("SUDOKU DUEL: a replayed settlement never awards trophies twice", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  await applyTrophyResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+  const writesAfterFirst = db.writes().length;
+
+  // A duplicate completion event, a deadline sweep and a forfeit all reach the
+  // writer with the same (game, match) key.
+  const second = await applyTrophyResult({ tx: db.tx, ...SUDOKU_DUEL_ARGS });
+  assert.equal(second.applied, false);
+  assert.equal(second.reason, "duplicate");
+  assert.equal(db.writes().length, writesAfterFirst);
+  assert.equal(db.state.trophies.get("11:sudoku-duel").trophies, 30);
+  assert.equal(db.eventsFor("sudoku-duel").length, 2);
+});
+
+test("SUDOKU DUEL SECURITY: trophy counts are never taken from a client-shaped payload", async () => {
+  const db = makeFakeDb({ users: TWO_USERS });
+  const result = await applyTrophyResult({
+    tx: db.tx,
+    ...SUDOKU_DUEL_ARGS,
+    // Everything a cheating solver would love to submit alongside a cell: the
+    // outcome, the counts and the delta must come from the CALLER's
+    // server-derived race result, never from any of these fields.
+    winner: "player1",
+    winnerId: "user_loser",
+    trophies: 9999,
+    winnerTrophies: 9999,
+    loserTrophies: 9999,
+    delta: 500,
+    correctCells: 81,
+    mistakes: 0,
+    matchResult: "player2",
+  });
+
+  assert.equal(result.applied, true);
+  assert.equal(result.winner.trophiesBefore, 0); // not the smuggled 9999
+  assert.equal(result.winner.trophiesAfter, 30); // +30, not 9999
+  assert.equal(result.winner.delta, 30); // not the smuggled 500
+});
+
+// ════════════════════════════════════════════════════════════════════════
 // 8. Writer: no cap
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1329,6 +1427,12 @@ const WIRING = [
   // authoritative boards (completion, or most progress at the deadline), so it
   // uses the same original 1v1 writer.
   ["solitaire-duel", "src/lib/solitaire-duel/serverStore.ts"],
+  // Sudoku Duel is a 1v1 simultaneous race on ONE server-generated puzzle:
+  // both seats solve their own board from it, and the winner is derived from
+  // the authoritative boards (verified completion under an adjusted-time
+  // comparison, or most cells at the deadline), so it uses the same original
+  // 1v1 writer.
+  ["sudoku-duel", "src/lib/sudoku-duel/serverStore.ts"],
 ];
 
 for (const [gameKey, file, writer = "applyTrophyResult"] of WIRING) {

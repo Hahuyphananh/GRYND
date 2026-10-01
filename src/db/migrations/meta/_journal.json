@@ -1240,6 +1240,13 @@
       "when": 1800000039000,
       "tag": "0195_ai_opponents",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1800000040000,
+      "tag": "0196_sudoku_duel",
+      "breakpoints": true
     }
   ]
 }

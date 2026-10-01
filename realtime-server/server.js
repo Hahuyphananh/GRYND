@@ -1307,6 +1307,51 @@ io.on("connection", (socket) => {
     logThrottled("solitaire-duel:leave", "[solitaire-duel] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Sudoku Duel room-participant tracking ───────────────────────
+  // Same pattern as mini-golf / speed-typing / tic-tac-toe / solitaire-duel so a
+  // `sudoku-duel:ready` poke can only come from a tracked participant of that
+  // match, and so disconnect handling can forfeit a race abandoned past the
+  // grace window to the seat still present (or cancel an empty lobby). Keyed by
+  // matchId (a uuid).
+  //
+  // This literal is deliberately restated rather than imported: this server is
+  // plain CommonJS and cannot load the TypeScript vocabulary in
+  // src/lib/sudoku-duel/rooms.ts. A test pins the two to the same string.
+  const SUDOKU_DUEL_MATCH_ROOM_PREFIX = "sudoku-duel:match:";
+  if (!global.__sudokuDuelRoomParticipants) {
+    global.__sudokuDuelRoomParticipants = new Map();
+  }
+  const sudokuDuelRoomParticipants = global.__sudokuDuelRoomParticipants;
+
+  function trackSudokuDuelJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SUDOKU_DUEL_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SUDOKU_DUEL_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!sudokuDuelRoomParticipants.has(matchId)) {
+      sudokuDuelRoomParticipants.set(matchId, new Set());
+    }
+    sudokuDuelRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again — cancel any
+    // pending disconnect forfeit timer for this match, so a refresh can never
+    // cost a rated race.
+    cancelDisconnectGraceTimer(`sudoku-duel:${matchId}:${userId}`);
+    logThrottled("sudoku-duel:join", "[sudoku-duel] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackSudokuDuelLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(SUDOKU_DUEL_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(SUDOKU_DUEL_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = sudokuDuelRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) sudokuDuelRoomParticipants.delete(matchId);
+    logThrottled("sudoku-duel:leave", "[sudoku-duel] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Crash Arena room-participant tracking ───────────────────────
   // Mirrors the plinko/precision tracking pattern so the
   // `crashArena:updated` handler below can reject events from
@@ -1361,6 +1406,7 @@ io.on("connection", (socket) => {
     trackSpeedTypingJoin(String(roomId), socket.data.userId);
     trackTicTacToeJoin(String(roomId), socket.data.userId);
     trackSolitaireDuelJoin(String(roomId), socket.data.userId);
+    trackSudokuDuelJoin(String(roomId), socket.data.userId);
   });
 
   // ── Admin notifications room join ──────────────────────────────────
@@ -1411,6 +1457,7 @@ io.on("connection", (socket) => {
     trackSpeedTypingLeave(String(roomId), socket.data.userId);
     trackTicTacToeLeave(String(roomId), socket.data.userId);
     trackSolitaireDuelLeave(String(roomId), socket.data.userId);
+    trackSudokuDuelLeave(String(roomId), socket.data.userId);
   });
 
   // The first round is armed by an HTTP ready call, and this broadcast is the
@@ -1442,12 +1489,22 @@ io.on("connection", (socket) => {
     // snapshot" hint, the snapshot is authoritative, and every game relays it
     // through this same generic path. This list is intentionally scoped to
     // Solitaire Duel so no other game's relay behaviour changes.
+    // Sudoku Duel has the same reservation for the same reason: a forged
+    // `sudoku-duel:opponent-progress` would fake an opponent bar, and a forged
+    // `sudoku-duel:countdown` would pin a victim's board with an arbitrary
+    // `goAtMs`. Both are emitted ONLY by the backend, through
+    // `broadcastMatchEvent` in src/lib/sudoku-duel/rooms.ts, so a client
+    // `room_event` carrying one of these names is always a forgery.
     const relayedEvent = String(event);
     if (
       relayedEvent === "solitaire-duel:opponent-progress" ||
       relayedEvent === "solitaire-duel:countdown" ||
       relayedEvent === "solitaire-duel:match-started" ||
-      relayedEvent === "solitaire-duel:match-finished"
+      relayedEvent === "solitaire-duel:match-finished" ||
+      relayedEvent === "sudoku-duel:opponent-progress" ||
+      relayedEvent === "sudoku-duel:countdown" ||
+      relayedEvent === "sudoku-duel:match-started" ||
+      relayedEvent === "sudoku-duel:match-finished"
     ) {
       logThrottled(
         "solitaire-duel:rejectForgedEvent",
@@ -2001,6 +2058,43 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Sudoku Duel: ready ─────────────────────────────────────────
+  // The client emits `sudoku-duel:ready` after a successful /move, /forfeit or
+  // /cancel POST so the opponent gets an instant refresh push instead of waiting
+  // for the next poll. The handler validates that the caller is a tracked
+  // participant of that match, then relays `lobby:updated` to the room
+  // (excluding the sender).
+  //
+  // The relayed payload is a BARE INVALIDATION HINT (match id + who acted), so no
+  // client-supplied progress, answer or result ever reaches the opponent as game
+  // state. The authoritative `sudoku-duel:opponent-progress` /
+  // `sudoku-duel:match-finished` events are emitted by the BACKEND, from the
+  // store's own board — never by a client and never from a client's numbers.
+  socket.on("sudoku-duel:ready", ({ matchId } = {}) => {
+    if (!matchId) return;
+    const matchIdStr = String(matchId);
+    // matchId is a uuid — keep the character set tight so a malformed id can
+    // never build a surprising room name.
+    if (!/^[0-9a-fA-F-]{1,64}$/.test(matchIdStr)) return;
+    const participants = sudokuDuelRoomParticipants.get(matchIdStr);
+    if (!participants || !participants.has(socket.data.userId)) {
+      logThrottled(
+        "sudoku-duel:rejectReady",
+        "[sudoku-duel] rejecting ready from non-participant: matchId=",
+        matchIdStr,
+        "userId=",
+        socket.data.userId,
+      );
+      return;
+    }
+    const roomId = `${SUDOKU_DUEL_MATCH_ROOM_PREFIX}${matchIdStr}`;
+    socket.to(roomId).emit("lobby:updated", {
+      matchId: matchIdStr,
+      userId: socket.data.userId,
+      sentAt: new Date().toISOString(),
+    });
+  });
+
   socket.on("tic-tac-toe:ready", ({ matchId } = {}) => {
     if (!matchId) return;
     const matchIdStr = String(matchId);
@@ -2514,6 +2608,44 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[solitaire-duel] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Sudoku Duel: same pattern as the other duels — a race abandoned past
+    // the grace window is forfeited to the seat still present (or an empty lobby
+    // is cancelled) via /api/sudoku-duel/disconnect-forfeit. A reconnect inside
+    // the window cancels the timer (see trackSudokuDuelJoin), so a refresh can
+    // never cost a rated race.
+    const sudokuDuelMatchesForUser = [];
+    for (const [mid, set] of sudokuDuelRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) sudokuDuelMatchesForUser.push(mid);
+    }
+    for (const mid of sudokuDuelMatchesForUser) {
+      const roomId = `${SUDOKU_DUEL_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = sudokuDuelRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) sudokuDuelRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`sudoku-duel:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/sudoku-duel/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[sudoku-duel] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

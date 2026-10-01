@@ -141,6 +141,21 @@ export const RATED_GAMES = Object.freeze([
   // entry the shared writers refused the key as unrated rather than mis-rating
   // the match under another game's ladder.
   "solitaire-duel",
+  // Sudoku Duel is fully server-authoritative on the same terms: ONE
+  // deterministic 9x9 puzzle per match, one board per seat, and an outcome the
+  // store derives from its OWN boards — a seat that fills its board correctly
+  // wins the moment `judgeAction` writes the final cell (compared by ADJUSTED
+  // completion instant, i.e. completion + the per-mistake second), and at the
+  // deadline the greater verified cell count wins, then fewest mistakes, then
+  // the earliest achievement of that progress, with an exact tie a draw.
+  // Nothing is drawn during play and there is no wager, so the result is
+  // server-derivable and the game is ratable. Registering the key HERE is what
+  // makes the store's `applyRatingResult("sudoku-duel")` and
+  // `applyTrophyResult("sudoku-duel")` calls take effect — before this entry
+  // the shared writers refused the key as unrated rather than mis-rating the
+  // match under another game's ladder (trophies reuse this list as
+  // TROPHY_GAMES, so there is no second registry to keep in sync).
+  "sudoku-duel",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
@@ -164,6 +179,7 @@ export const RATING_GAME_LABELS = Object.freeze({
   "speed-typing": "Speed Typing",
   "tic-tac-toe": "Tic-Tac-Toe",
   "solitaire-duel": "Solitaire Duel",
+  "sudoku-duel": "Sudoku Duel",
 });
 
 /** True when a game key is eligible for Elo. */

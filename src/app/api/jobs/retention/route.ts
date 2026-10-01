@@ -71,6 +71,7 @@ export async function GET(request: Request) {
   await purge("speed_typing_matches", FINISHED);
   await purge("tic_tac_toe_matches", FINISHED);
   await purge("solitaire_duel_matches", FINISHED);
+  await purge("sudoku_duel_matches", FINISHED);
   await purge("odds_games", FINISHED);
   await purge("dots_and_boxes_games", FINISHED);
   await purge("rps_pvp_games", FINISHED);
