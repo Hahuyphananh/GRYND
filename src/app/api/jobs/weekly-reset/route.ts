@@ -1,5 +1,6 @@
 import { sql } from "../../../../db/sql";
 import { invalidateAllLeaderboards } from "../../../../lib/redis/invalidation";
+import { refreshRatingLeaderboardView } from "../../../../lib/leaderboardView";
 import { sendWeeklySummaryEmail } from "../../../../lib/emails/summary";
 import { verifyCronRequest } from "../../../../lib/security/cronAuth";
 
@@ -92,5 +93,14 @@ export async function GET(request: Request) {
     console.error("weekly-reset: failed to invalidate leaderboard caches", err),
   );
 
-  return Response.json({ ok: true, resetAt: new Date().toISOString() });
+  // Rebuild the materialized leaderboard ranks (migration 0200) so the next
+  // read is a (game_key, rank) page lookup rather than a full window scan over
+  // every rated row plus a full-table Overall-Elo GROUP BY.
+  const ratingsRefreshed = await refreshRatingLeaderboardView();
+
+  return Response.json({
+    ok: true,
+    resetAt: new Date().toISOString(),
+    ratingsRefreshed,
+  });
 }
