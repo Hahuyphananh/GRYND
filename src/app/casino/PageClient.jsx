@@ -21,6 +21,7 @@ import ImgMiniGolf from "../../images/mini-golf-card.svg";
 import ImgSpeedTyping from "../../images/speed-typing-card.svg";
 import ImgTicTacToe from "../../images/tic-tac-toe-card.svg";
 import ImgSolitaireDuel from "../../images/solitaire-duel-card.svg";
+import ImgSudokuDuel from "../../images/sudoku-duel-card.svg";
 import ImgTowerArena from "../../images/towersimage.jpg";
 import ImgMinesPvp from "../../images/minesimage.png";
 import ImgMemoryGrid from "../../images/memorygridimage.png";
@@ -524,6 +525,16 @@ function MainComponent({ adSlot = null }) {
       nameKey: "games.solitaire_duel_name",
       pvpMode: "1v1",
     },
+    {
+      name: "Sudoku Duel",
+      href: "/casino/sudoku-duel",
+      leaderboardKey: "sudoku-duel",
+      playsKey: "sudoku-duel",
+      image: ImgSudokuDuel,
+      descriptionKey: "games.sudoku_duel_desc",
+      nameKey: "games.sudoku_duel_name",
+      pvpMode: "1v1",
+    },
   ];
 
   // "For You": the engine ranks canonical game ids (leaderboardKey), so map
@@ -546,6 +557,7 @@ function MainComponent({ adSlot = null }) {
   const newestOrder = [
     "tic-tac-toe",
     "speed-typing",
+    "sudoku-duel",
     "solitaire-duel",
     "mini-golf",
     "memory-grid",

@@ -195,6 +195,20 @@ export const GAME_CATALOG = [
     href: "/casino/solitaire-duel",
     tags: ["pvp", "skill", "fast_paced", "competitive"],
   },
+
+  // Sudoku Duel is a solved once, raced together: the server generates ONE 9x9
+  // puzzle and both seats solve it simultaneously, so nothing is drawn during
+  // play and the outcome is pure solving ability (skill, never `chance`). It is
+  // a rated ladder duel (competitive) with no time limit — the first correct
+  // board wins — so it is not `fast_paced`, and it is a ranked duel rather than
+  // a pick-up game, so it is not `casual`. Deliberately not tagged `strategy`:
+  // unlike chess or tic-tac-toe, there is no opponent to read or plan against,
+  // only the puzzle in front of you.
+  {
+    id: "sudoku-duel",
+    href: "/casino/sudoku-duel",
+    tags: ["pvp", "skill", "competitive"],
+  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any
