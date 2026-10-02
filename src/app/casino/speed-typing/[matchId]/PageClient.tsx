@@ -43,6 +43,12 @@ import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../hooks/useVisiblePoll";
+import {
   SPEED_TYPING_EVENTS,
   speedTypingMatchRoom,
 } from "../../../../lib/speed-typing/rooms";
@@ -103,7 +109,6 @@ type OpponentProgressPayload = {
 };
 
 const TERMINAL = new Set(["finished", "cancelled"]);
-const SNAPSHOT_MS = 2000;
 const PUSH_DEBOUNCE_MS = 120;
 
 /** "You" / "Opponent", decided by the seat the SERVER says is the viewer's. */
@@ -472,12 +477,16 @@ export default function SpeedTypingMatchPage() {
     };
   }, [socket, matchId, mySeatKey, scheduleLoad]);
 
-  // Poll backstop — the socket is an accelerator, never the only path.
-  useEffect(() => {
-    if (!match || finished) return undefined;
-    const id = window.setInterval(() => void load({ silent: true }), SNAPSHOT_MS);
-    return () => window.clearInterval(id);
-  }, [match, finished, load]);
+  const socketConnected = useSocketConnected(socket);
+
+  // Poll backstop — the socket is an accelerator, never the only path. It
+  // relaxes while the socket is healthy, tightens if it drops, and stops while
+  // the tab is hidden (a racer cannot type into a hidden tab).
+  useVisiblePoll(
+    () => load({ silent: true }),
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(match) && !finished,
+  );
 
   // ── Focus: the keyboard is the whole game ────────────────────────────────
   useEffect(() => {

@@ -54,6 +54,12 @@ import {
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
 import { withReducedMotion } from "../../../../lib/animations";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../hooks/useVisiblePoll";
+import {
   IconBomb,
   IconSparkles,
   IconDiamondFilled,
@@ -705,17 +711,22 @@ export default function MinesPvpMatchPage({
     }
   }, [isSignedIn, isValidMatchId, matchId]);
 
+  const socketConnected = useSocketConnected(socket);
+
   useEffect(() => {
     fetchStatus();
-    // Poll slower than the socket fast-path. The per-match room broadcast
-    // (MINES_PVP_MATCH_UPDATED above) drives live updates; this HTTP poll
-    // is a reconnect/consistency safety net only. Turn pacing comes from
-    // the server's round_deadline timestamp + a local 250ms tick, never
-    // from poll frequency, so 5s is safe and keeps match-time DB reads
-    // minimal.
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  // The per-match room broadcast (MINES_PVP_MATCH_UPDATED above) drives live
+  // updates; this poll is a reconnect/consistency safety net only. It relaxes
+  // while the socket is healthy and tightens if it drops, and stops while the
+  // tab is hidden. Turn pacing comes from the server's round_deadline
+  // timestamp + a local 250ms tick, never from poll frequency.
+  useVisiblePoll(
+    fetchStatus,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(isValidMatchId),
+  );
 
   // ── Socket subscription ──────────────────────────────────────────
   // Listen for the per-match room event so the 1.5 s poll can

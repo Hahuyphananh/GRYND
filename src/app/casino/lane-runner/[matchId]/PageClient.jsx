@@ -39,6 +39,12 @@ import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import Footer from "../../../../components/Footer";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../hooks/useVisiblePoll";
+import {
   LANE_RUSH_DUEL_MATCH_UPDATED,
   laneRushDuelMatchRoom,
 } from "../../../../lib/lane-rush-duel/rooms";
@@ -851,14 +857,21 @@ export default function LaneRushDuelMatchPage({ params }) {
     }
   }, [matchId]);
 
+  const socketConnected = useSocketConnected(socket);
+
   useEffect(() => {
     fetchStatus();
-    // The socket room pushes opponent updates instantly; this HTTP poll is
-    // a reconcile/safety net. Pacing comes from server state + the local
-    // 250ms clock, never from the poll rate.
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  // The socket room pushes opponent updates instantly; this poll is a
+  // reconcile/safety net. It relaxes while the socket is healthy, tightens if
+  // it drops, and stops while the tab is hidden. Pacing comes from server state
+  // + the local 250ms clock, never from the poll rate.
+  useVisiblePoll(
+    fetchStatus,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(matchId),
+  );
 
   useEffect(() => {
     if (!socket || !matchId) return;

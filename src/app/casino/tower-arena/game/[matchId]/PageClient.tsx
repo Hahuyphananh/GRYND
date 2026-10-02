@@ -20,6 +20,12 @@ import { useSocket } from "../../../../../context/SocketProvider";
 import { CoinIcon } from "../../../../../components/lobby/PvpLobby";
 import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../../hooks/useVisiblePoll";
+import {
   IconBuildingSkyscraper,
   IconX,
   IconRotate,
@@ -1152,15 +1158,21 @@ export default function TowerArenaMatchPage() {
   };
   loadRef.current = load;
 
+  const socketConnected = useSocketConnected(socket);
+
   useEffect(() => {
     load();
-    // Realtime match events already trigger an authoritative refetch the
-    // moment the engine advances; this poll is a backstop only, so a 3s
-    // cadence is plenty (was 1.2s) and cuts redundant /get-match calls.
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
+
+  // Realtime match events already trigger an authoritative refetch the moment
+  // the engine advances; this poll is a backstop only. It relaxes while the
+  // socket is healthy, tightens if it drops, and stops while the tab is hidden.
+  useVisiblePoll(
+    load,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(matchId),
+  );
 
   // Realtime room — participant tracking + instant lobby/match pushes.
   // Every server-authoritative in-match event triggers an authoritative

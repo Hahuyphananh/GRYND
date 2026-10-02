@@ -20,6 +20,12 @@ import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDiffic
 import { TURN_TIME_LIMIT_MS } from "../../../../game-engine/diceFlushEngine";
 import { playVictory, playDefeat, playTurnSwitch, playTick } from "../../../lib/gameAudio";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../hooks/useVisiblePoll";
+import {
   IconNotebook,
   IconDice,
   IconPin,
@@ -437,14 +443,25 @@ export default function DiceFlushPage() {
     };
   }, [socket, roomId]);
 
-  // Backup polling — slower fallback if a socket event is missed
+  const socketConnected = useSocketConnected(socket);
+
+  // Backup polling — slower fallback if a socket event is missed. The socket
+  // room above is the fast path; this relaxes while it is healthy, tightens if
+  // it drops, and stops while the tab is hidden.
   useEffect(() => {
     if (!roomId) return;
-    const poll = async () => { await fetchRoom(roomId); await fetchHistory(roomId); };
-    poll();
-    const p = setInterval(poll, 5000);
-    return () => clearInterval(p);
+    void fetchRoom(roomId);
+    void fetchHistory(roomId);
   }, [roomId]);
+
+  useVisiblePoll(
+    () => {
+      void fetchRoom(roomId);
+      void fetchHistory(roomId);
+    },
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(roomId),
+  );
 
   const you = useMemo(() => game?.players?.find((p) => p.userId === user?.id) || null, [game, user?.id]);
   const opponent = useMemo(() => game?.players?.find((p) => p.userId !== user?.id) || null, [game, user?.id]);

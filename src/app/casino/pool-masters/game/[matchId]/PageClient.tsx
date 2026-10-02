@@ -29,6 +29,12 @@ import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { playVictory, playDefeat, playCardPlace, playBuzz } from "../../../../../lib/gameAudio";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../../hooks/useVisiblePoll";
+import {
   IconFlag,
   IconNotebook,
   IconTarget,
@@ -239,7 +245,6 @@ export default function Page() {
   const localShotInProgressRef = useRef(false);
   const remoteShotInProgressRef = useRef(false);
   const shotHistoryRef = useRef<ShotEntry[]>([]);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPolledVersionRef = useRef(0);
   const pendingActionRef = useRef(false);
   const pendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1403,24 +1408,27 @@ if (payload.balls && !isSelf && shouldAcceptBalls && (!payload.version || payloa
     }
   };
 
+  const socketConnected = useSocketConnected(socket);
+
   useEffect(() => {
     if (aiMode) {
       if (syncVersionRef.current === 0) void syncMatch();
       return;
     }
-
     void syncMatch();
-    pollIntervalRef.current = setInterval(syncMatch, 1000);
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
     // router is intentionally omitted — useRouter() returns a stable reference in Next.js
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMatchId, aiMode]);
+
+  // The per-match socket room ("pool:live-state") is the fast path — it is
+  // reliable over TCP while connected. This poll is a reconcile/safety net: it
+  // relaxes while the socket is healthy, tightens if it drops, and stops while
+  // the tab is hidden. (It used to run every second unconditionally.)
+  useVisiblePoll(
+    syncMatch,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    !aiMode && Boolean(activeMatchId),
+  );
   const myRemaining = BALL_LAYOUT.filter((b) =>
     myTeam ? (myTeam === "solids" ? !b.s && b.n !== 8 : b.s) : b.n !== 8
   )

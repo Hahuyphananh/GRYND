@@ -5,6 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useHexDuel, otherPlayer, type DuelPlayer } from "../../../lib/hexDuelEngine";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import { useSocket } from "../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
@@ -1405,11 +1406,13 @@ export default function HexDuelPage() {
 
     // Poll immediately, then every 3 seconds
     pollStatus();
-    const interval = setInterval(pollStatus, 3000);
+    // Visibility-gated: a hidden tab cannot be waiting on a match, so the
+    // poll stops there instead of firing into Postgres from the background.
+    const stopPoll = startVisibleInterval(pollStatus, 3000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPoll();
     };
   }, [gameMode, multiplayerGameId]);
 
@@ -1983,11 +1986,13 @@ export default function HexDuelPage() {
     // tradeoff is slightly slower catch-up after a dropped socket event,
     // which the forced-sync request on turn start already covers.
     pollActions();
-    const interval = setInterval(pollActions, 5000);
+    // Visibility-gated. Cadence left at 5s: this is the documented catch-up
+    // net for missed hexDuel:action socket events.
+    const stopPoll = startVisibleInterval(pollActions, 5000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPoll();
     };
   }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner, enqueueRemoteAction]);
 
@@ -2151,11 +2156,14 @@ export default function HexDuelPage() {
     };
 
     pollTurn();
-    const interval = setInterval(pollTurn, 2000);
+    // Visibility-gated. The cadence is deliberately left tight: the comment
+    // above documents the P2-never-updates bug this safety net exists to
+    // cover, so only the hidden-tab case is optimised here.
+    const stopPoll = startVisibleInterval(pollTurn, 2000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPoll();
     };
   }, [gameMode, multiplayerGameId, opponentReady, effectiveWinner, enqueueRemoteAction]);
 
@@ -2234,11 +2242,12 @@ export default function HexDuelPage() {
     };
 
     pollSpectate();
-    const interval = setInterval(pollSpectate, 2000);
+    // Visibility-gated: nobody spectates from a background tab.
+    const stopPoll = startVisibleInterval(pollSpectate, 2000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPoll();
     };
   }, [isSpectator, multiplayerGameId, effectiveWinner, enqueueRemoteAction]);
 

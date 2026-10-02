@@ -6,7 +6,7 @@
 // opponent won), and shows the rounds history in the left sidebar —
 // each resolved round lists the exact throw each player made.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../../lib/gameAudio";
 import { useUser } from "@clerk/nextjs";
@@ -25,6 +25,12 @@ import FrameAvatar from "../../../../../components/FrameAvatar";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import { useSocket } from "../../../../../context/SocketProvider";
+import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../../hooks/useVisiblePoll";
 import { RockFistIcon } from "../../../../../components/icons/CustomIcons";
 import {
   IconHandStop,
@@ -39,7 +45,6 @@ const PVP_CHOICES = ["rock", "paper", "scissors"] as const;
 // channel. 1500ms -> 2000ms is a safe cut: players have a 10s pick window
 // and the server enforces the pick deadline, so a 2s poll never drops a
 // legitimate submission (it only defers the opp move/status render by ~0.5s).
-const POLL_MS = 2000;
 const CHOICE_SECONDS = 10;
 
 type Choice = (typeof PVP_CHOICES)[number];
@@ -128,71 +133,79 @@ export default function RPSPvpGamePage() {
     else if (winner === "tie") playTick();
   }, [status, winner]);
 
+  const poll = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/rps/pvp/status?gameId=${gameId}`);
+      const data = await res.json();
+      if (!data.success) {
+        setFailed(data.error || "Game unavailable");
+        return;
+      }
+
+      const game = data.data;
+      setStatus(game.status);
+      setPlayer1Id(game.player1Id || null);
+      setPlayer2Id(game.player2Id || null);
+      setMyName(game.myName || "You");
+      setOpponentName(game.opponentName || "Opponent");
+      setMyIconKey(game.myIconKey || null);
+      setMyNameColor(game.myNameColor || null);
+      setOpponentIconKey(game.opponentIconKey || null);
+      setOpponentNameColor(game.opponentNameColor || null);
+      setMyProfileFrame(game.myProfileFrame || null);
+      setOpponentProfileFrame(game.opponentProfileFrame || null);
+      setMyChoice(game.myChoice || null);
+      setOpponentChoice(game.opponentChoice || null);
+      setRoundsWon1(game.roundsWon1 || 0);
+      setRoundsWon2(game.roundsWon2 || 0);
+      setCurrentRound(game.currentRound || 1);
+      setHistory(game.roundHistory || []);
+      setBetAmount(game.betAmount || 0);
+      setWinner(game.winner || null);
+      if (typeof game.newBalance === "number") setTokens(game.newBalance);
+
+      if (game.status === "active") {
+        setMessage("Waiting for opponent…");
+      } else if (game.status === "matched" && !game.myChoice) {
+        setMessage("Opponent joined. Pick rock, paper, or scissors.");
+      } else if (game.status === "matched" && game.myChoice && !game.opponentChoice) {
+        setMessage("Choice locked. Waiting for opponent choice…");
+      } else if (game.status === "matched") {
+        setMessage(`Round ${game.currentRound || 1}. Pick your throw.`);
+      } else if (game.status === "finished") {
+        setMessage(
+          game.winner === "you"
+            ? "You won the best-of-7 match!"
+            : game.winner === "opponent"
+              ? "You lost the best-of-7 match."
+              : "It's a tie.",
+        );
+      } else if (game.status === "cancelled") {
+        setMessage("Game cancelled.");
+      }
+    } catch (err) {
+      console.error("Failed to poll RPS PvP status:", err);
+    }
+  }, [gameId, user?.id]);
+
   useEffect(() => {
     if (!gameId || !Number.isFinite(gameId)) {
       setFailed("Invalid game");
       return;
     }
+    void poll();
+  }, [gameId, poll]);
 
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/rps/pvp/status?gameId=${gameId}`);
-        const data = await res.json();
-        if (!data.success) {
-          setFailed(data.error || "Game unavailable");
-          return;
-        }
+  const socketConnected = useSocketConnected(socket);
 
-        const game = data.data;
-        setStatus(game.status);
-        setPlayer1Id(game.player1Id || null);
-        setPlayer2Id(game.player2Id || null);
-        setMyName(game.myName || "You");
-        setOpponentName(game.opponentName || "Opponent");
-        setMyIconKey(game.myIconKey || null);
-        setMyNameColor(game.myNameColor || null);
-        setOpponentIconKey(game.opponentIconKey || null);
-        setOpponentNameColor(game.opponentNameColor || null);
-        setMyProfileFrame(game.myProfileFrame || null);
-        setOpponentProfileFrame(game.opponentProfileFrame || null);
-        setMyChoice(game.myChoice || null);
-        setOpponentChoice(game.opponentChoice || null);
-        setRoundsWon1(game.roundsWon1 || 0);
-        setRoundsWon2(game.roundsWon2 || 0);
-        setCurrentRound(game.currentRound || 1);
-        setHistory(game.roundHistory || []);
-        setBetAmount(game.betAmount || 0);
-        setWinner(game.winner || null);
-        if (typeof game.newBalance === "number") setTokens(game.newBalance);
-
-        if (game.status === "active") {
-          setMessage("Waiting for opponent…");
-        } else if (game.status === "matched" && !game.myChoice) {
-          setMessage("Opponent joined. Pick rock, paper, or scissors.");
-        } else if (game.status === "matched" && game.myChoice && !game.opponentChoice) {
-          setMessage("Choice locked. Waiting for opponent choice…");
-        } else if (game.status === "matched") {
-          setMessage(`Round ${game.currentRound || 1}. Pick your throw.`);
-        } else if (game.status === "finished") {
-          setMessage(
-            game.winner === "you"
-              ? "You won the best-of-7 match!"
-              : game.winner === "opponent"
-                ? "You lost the best-of-7 match."
-                : "It's a tie.",
-          );
-        } else if (game.status === "cancelled") {
-          setMessage("Game cancelled.");
-        }
-      } catch (err) {
-        console.error("Failed to poll RPS PvP status:", err);
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, POLL_MS);
-    return () => clearInterval(interval);
-  }, [gameId, user?.id]);
+  // Socket push is the fast path; this poll is a reconcile/safety net. It
+  // relaxes while the socket is healthy, tightens if it drops, and stops while
+  // the tab is hidden.
+  useVisiblePoll(
+    poll,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(gameId) && Number.isFinite(gameId),
+  );
 
   // Presence room — lets the realtime server track this participant so
   // a disconnect past the grace window forfeits the match to the

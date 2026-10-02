@@ -52,17 +52,26 @@ export function getPool(): Pool {
 
   poolInstance = new Pool({
     connectionString: sanitizedConnectionString,
-    // Serverless platforms spin up one pool per warm instance; a small max
-    // keeps connection counts bounded while the provider pooler multiplexes.
-    max: 10,
+    // Serverless platforms spin up one pool per warm instance, so the real
+    // pressure on Supabase's pooler is `max × concurrent instances`, not `max`
+    // alone. At 10 per instance a traffic spike could hold hundreds of server
+    // connections, which is what forces a larger compute tier. The pooler
+    // multiplexes many clients onto few server connections, so a small local
+    // max still serves the same throughput.
+    //
+    // Raise this only with `npm run loadtest:read-mix` as evidence — a value
+    // that is too low surfaces as queueing (bounded into a fast 500 by
+    // `connectionTimeoutMillis`), not as silent data loss.
+    max: 3,
     // Establish connections fast (or fail fast): with a 10s handshake
     // timeout, a slow pooler made every queued request wait ~10s and the
     // resulting backlog stacked into 12-14s requests and cascading 500s.
     connectionTimeoutMillis: 5_000,
-    // Keep idle connections warm longer so bursty dev traffic doesn't churn
-    // TLS handshakes against the pooler — each refill re-pays the handshake
-    // latency that was timing out under load.
-    idleTimeoutMillis: 60_000,
+    // Release idle connections promptly. This was 60s to avoid re-paying the
+    // TLS handshake on bursty traffic, but it also meant every instance that
+    // went quiet held its share of the pool for a full minute — connections
+    // that a scaled-down fleet no longer needs but Supabase still counts.
+    idleTimeoutMillis: 15_000,
     // TCP keepalive so the provider doesn't reap connections the pool still
     // thinks are alive (the "Connection terminated unexpectedly" errors).
     keepAlive: true,

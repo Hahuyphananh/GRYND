@@ -83,6 +83,12 @@ import {
 } from "../../../../lib/memory-grid/rooms";
 import { MATCH_STATUS } from "../../../../lib/memory-grid/constants";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../hooks/useVisiblePoll";
+import {
   playVictory,
   playDefeat,
   playTick,
@@ -439,6 +445,8 @@ export default function MemoryGridMatchPage({
     }
   }, [matchId]);
 
+  const socketConnected = useSocketConnected(socket);
+
   useEffect(() => {
     if (!Number.isFinite(matchId)) {
       setError("Invalid match link.");
@@ -446,17 +454,21 @@ export default function MemoryGridMatchPage({
       return;
     }
     fetchStatus();
-    // Socket room (MEMORY_GRID_MATCH_UPDATED) pushes opponent updates
-    // instantly; this HTTP poll is a reconnect/consistency safety net.
-    // Phase pacing comes from server timelines + the local 100ms clock,
-    // never from the poll rate. The server broadcasts every phase
-    // transition it discovers (see the /status route) and the client also
-    // re-fetches at each phase deadline (below), so 5s keeps match-time
-    // DB reads minimal without leaving a 2.5s memorize window
-    // undiscovered.
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
   }, [matchId, fetchStatus]);
+
+  // Socket room (MEMORY_GRID_MATCH_UPDATED) pushes opponent updates instantly;
+  // this poll is the reconnect/consistency safety net. It relaxes while the
+  // socket is healthy and tightens again if it drops, and it stops entirely
+  // while the tab is hidden. Phase pacing comes from server timelines + the
+  // local 100ms clock, never from the poll rate — the server broadcasts every
+  // phase transition it discovers (see the /status route) and the client also
+  // re-fetches at each phase deadline, so a slow safety net never leaves a
+  // 2.5s memorize window undiscovered.
+  useVisiblePoll(
+    fetchStatus,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Number.isFinite(matchId),
+  );
 
   // ── Socket: join the per-match room for instant updates ───────────
   useEffect(() => {

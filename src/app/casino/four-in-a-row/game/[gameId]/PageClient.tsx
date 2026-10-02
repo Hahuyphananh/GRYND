@@ -35,6 +35,12 @@ import PvpResultScreen from "../../../../../components/result/PvpResultScreen";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { turnBanner as turnBannerAnim } from "../../../../../lib/animations";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../../hooks/useVisiblePoll";
+import {
   IconTarget,
   IconEye,
   IconFlag,
@@ -354,19 +360,30 @@ export default function ConnectFourGamePage() {
     return () => clearInterval(id);
   }, []);
 
+  const socketConnected = useSocketConnected(socket);
+
   useEffect(() => {
     fetchState();
-    // Socket room ("match:updated") pushes opponent moves instantly; this
-    // HTTP poll is a reconnect/consistency safety net. Turn pacing comes
-    // from server deadlines + the clock tick, never from the poll rate.
-    // Poll faster while matchmaking so the ready takeover (3s window)
-    // renders promptly on both sides, then settle at 5s during play.
-    const delay =
-      game?.status === "waiting" || game?.status === "ready" ? 1500 : 5000;
-    const interval = setInterval(fetchState, delay);
-    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, game?.status]);
+
+  // Socket room ("match:updated") pushes opponent moves instantly; this poll is
+  // a reconnect/consistency safety net. Poll faster while matchmaking so the
+  // ready takeover (3s window) renders promptly on both sides, then settle
+  // while playing. It stops entirely while the tab is hidden.
+  // Turn pacing comes from server deadlines + the clock tick, never from the
+  // poll rate.
+  const matchmaking =
+    game?.status === "waiting" || game?.status === "ready";
+  useVisiblePoll(
+    fetchState,
+    matchmaking
+      ? 1500
+      : socketConnected
+        ? SOCKET_HEALTHY_POLL_MS
+        : SOCKET_DOWN_POLL_MS,
+    Boolean(gameId),
+  );
 
   useEffect(() => {
     if (!socket) return;

@@ -67,6 +67,12 @@ import FrameAvatar from "../../../../components/FrameAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
+  SOCKET_DOWN_POLL_MS,
+  SOCKET_HEALTHY_POLL_MS,
+  useSocketConnected,
+  useVisiblePoll,
+} from "../../../../hooks/useVisiblePoll";
+import {
   SOLITAIRE_DUEL_EVENTS,
   solitaireDuelMatchRoom,
 } from "../../../../lib/solitaire-duel/rooms";
@@ -126,7 +132,6 @@ type MatchDto = {
 
 type OpponentProgressPayload = OpponentProgress & { matchId?: string };
 
-const LIVE_POLL_MS = 1500;
 /** How long the "GO" flash stays up once the countdown reaches zero. */
 const GO_FLASH_MS = 700;
 /** How long an invalid-move notice lingers. */
@@ -395,12 +400,18 @@ export default function SolitaireDuelMatchPage() {
     return () => window.clearTimeout(id);
   }, [notice]);
 
+  const socketConnected = useSocketConnected(socket);
+
   // ── Poll backstop ──────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!matchId || !match || terminal) return undefined;
-    const id = window.setInterval(() => void load(), LIVE_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [matchId, match, terminal, load]);
+  // The MATCH_UPDATED socket event is the fast path; this is a reconcile
+  // safety net. It relaxes while the socket is healthy, tightens if it drops,
+  // and stops while the tab is hidden (a watching player was worth a query
+  // every 1.5s before).
+  useVisiblePoll(
+    load,
+    socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
+    Boolean(matchId) && Boolean(match) && !terminal,
+  );
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.
