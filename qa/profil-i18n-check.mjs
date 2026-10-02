@@ -145,23 +145,25 @@ writeFileSync(
 
 // ── Serve it from a real origin so `localStorage` (the language store) works ─
 const server = createServer((req, res) => {
-  const path = req.url === "/" ? "/index.html" : req.url.split("?")[0];
-  // The request path is attacker-controlled data, so it is resolved inside the
-  // fixture directory and anything that escapes it is refused rather than read
-  // (CodeQL js/path-injection).
-  const rootDir = resolve(outDir);
-  const filePath = resolve(rootDir, path.replace(/^\//, ""));
-  if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
+  const rawPath = req.url === "/" ? "/index.html" : req.url.split("?")[0];
+  const allowedFiles = new Map([
+    ["/index.html", "index.html"],
+    ["/app.css", "app.css"],
+    ["/harness.js", "harness.js"],
+  ]);
+  const safeFile = allowedFiles.get(rawPath);
+  if (!safeFile) {
     res.writeHead(403);
     res.end("forbidden");
     return;
   }
+  const filePath = join(outDir, safeFile);
   try {
     const buf = readFileSync(filePath);
     res.writeHead(200, {
-      "Content-Type": path.endsWith(".css")
+      "Content-Type": rawPath.endsWith(".css")
         ? "text/css"
-        : path.endsWith(".js")
+        : rawPath.endsWith(".js")
           ? "text/javascript"
           : "text/html",
     });
