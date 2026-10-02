@@ -140,12 +140,29 @@ writeFileSync(
 );
 
 const server = createServer((req, res) => {
-  const path = req.url === "/" ? "/index.html" : req.url.split("?")[0];
+  const rawPath = req.url === "/" ? "/index.html" : req.url.split("?")[0];
+  let path;
+  try {
+    path = decodeURIComponent(rawPath);
+  } catch {
+    res.writeHead(400);
+    res.end("bad request");
+    return;
+  }
+
+  const requestedFile = path.replace(/^\/+/, "");
+  const allowedFiles = new Set(["index.html", "app.css", "harness.js"]);
+  if (!allowedFiles.has(requestedFile)) {
+    res.writeHead(404);
+    res.end("not found");
+    return;
+  }
+
   // The request path is attacker-controlled data, so it is resolved inside the
   // fixture directory and anything that escapes it is refused rather than read
   // (CodeQL js/path-injection).
   const rootDir = resolve(outDir);
-  const filePath = resolve(rootDir, path.replace(/^\//, ""));
+  const filePath = resolve(rootDir, requestedFile);
   if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
     res.writeHead(403);
     res.end("forbidden");
