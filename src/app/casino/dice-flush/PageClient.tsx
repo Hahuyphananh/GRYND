@@ -377,6 +377,7 @@ export default function DiceFlushPage() {
   const [roomId, setRoomId] = useState<string | null>(null); const [game, setGame] = useState<GameState | null>(null);
   const posthog = usePostHog();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null); const [rolling, setRolling] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
   const [aiCategoryHighlight, setAiCategoryHighlight] = useState<string | null>(null);
   const [moveHistory, setMoveHistory] = useState<any[]>([]);
   const [turnBanner, setTurnBanner] = useState<string | null>(null);
@@ -741,15 +742,27 @@ export default function DiceFlushPage() {
     if (!socket || !roomId) return;
     socket.emit("room_event", { roomId, event: "game_state_update" });
   };
-  const playAction = async (url: string, payload: Record<string, unknown>) => { if (!roomId || !isYourTurn) return; if (url.endsWith("/roll")) { playTick(); setTimeout(() => playTick(), 90); setTimeout(() => playTick(), 180); } const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, ...payload }) }); const d = await res.json(); if (!res.ok || !d.success) {
-    // A rejected move (e.g. the shot clock expired mid-click) usually comes
-    // with the resolved state — refresh the board instead of leaving it stale.
-    if (d?.state) { setGame(normalizeState(d.state as GameState)); emitRoomEvent(); }
-    return alert(d.error || "Action failed");
-  }
-    setGame(normalizeState((d.state || d.finalState) as GameState));
-    emitRoomEvent();
-    fetchHistory(roomId);
+  const playAction = async (url: string, payload: Record<string, unknown>) => {
+    // Guard against a second tap while the first action is still in flight —
+    // the buttons used to stay live, so a double-tap fired two moves.
+    if (!roomId || !isYourTurn || actionPending) return;
+    setActionPending(true);
+    try {
+      if (url.endsWith("/roll")) { playTick(); setTimeout(() => playTick(), 90); setTimeout(() => playTick(), 180); }
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomId, ...payload }) });
+      const d = await res.json();
+      if (!res.ok || !d.success) {
+        // A rejected move (e.g. the shot clock expired mid-click) usually comes
+        // with the resolved state — refresh the board instead of leaving it stale.
+        if (d?.state) { setGame(normalizeState(d.state as GameState)); emitRoomEvent(); }
+        return alert(d.error || "Action failed");
+      }
+      setGame(normalizeState((d.state || d.finalState) as GameState));
+      emitRoomEvent();
+      fetchHistory(roomId);
+    } finally {
+      setActionPending(false);
+    }
   };
   const confirmPlay = async () => {
     if (!selectedCategory || !isYourTurn || !roomId) return;
@@ -1218,7 +1231,7 @@ export default function DiceFlushPage() {
     <div data-df="controls" className="mt-3 flex flex-col items-center gap-3">
       <div className="flex items-center justify-center gap-3">
       <button
-        disabled={!isYourTurn || waitingForOpponent || aiAnimating}
+        disabled={!isYourTurn || waitingForOpponent || aiAnimating || actionPending}
         onClick={async () => {
           setRolling(true);
           await playAction("/api/dice-flush/roll", {});
@@ -1229,7 +1242,7 @@ export default function DiceFlushPage() {
         ROLL
       </button>
       <motion.button
-        disabled={!selectedCategory || !isYourTurn || aiAnimating}
+        disabled={!selectedCategory || !isYourTurn || aiAnimating || actionPending}
         whileHover={selectedCategory && isYourTurn ? { scale: 1.05 } : {}}
         whileTap={{ scale: 0.95 }}
         onClick={confirmPlay}
@@ -1312,7 +1325,7 @@ export default function DiceFlushPage() {
           return (
           <motion.button
           key={i}
-          disabled={!isYourTurn || waitingForOpponent || aiAnimating || diceUnknown}
+          disabled={!isYourTurn || waitingForOpponent || aiAnimating || diceUnknown || actionPending}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.95 }}
           onClick={() =>

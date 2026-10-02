@@ -72,8 +72,9 @@ export const GAME_TAGS = [
  *   tags  the traits above
  */
 export const GAME_CATALOG = [
-  // Staked 1v1 on a SHARED 5x5 mine board: the mine layout is luck (chance),
-  // but the public reveals/clues make the read a real competitive core.
+  // Simultaneous 1v1 on independent 10x10 mine boards: the mine layout is
+  // luck (chance), but reading the clues and racing the clock is a real
+  // competitive core.
   { id: "mines-pvp", href: "/casino/mines-pvp", tags: ["pvp", "chance", "competitive"] },
 
   // Flip pairs on a 4x4 grid: memory is ability (skill), the rules take

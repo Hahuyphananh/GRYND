@@ -1084,11 +1084,19 @@ export default function UnoGamePage() {
   );
   const playerHandNode = (
     <div
-      className={`flex flex-wrap justify-center gap-1.5 rounded-2xl p-2 ${isPlayerTurn ? "ring-2 ring-[#00e5ff]/50 shadow-[0_0_18px_rgba(0,229,255,0.25)]" : ""}`}
+      aria-busy={loading}
+      className={`flex flex-wrap justify-center gap-1.5 rounded-2xl p-2 ${isPlayerTurn ? "ring-2 ring-[#00e5ff]/50 shadow-[0_0_18px_rgba(0,229,255,0.25)]" : ""} ${loading ? "pointer-events-none opacity-60" : ""}`}
     >
       {playerHand.map((card, i) => (
         <UnoCard color={card.color} value={card.value} onClick={() => playCard(card)} key={i} />
       ))}
+      {/* The hand used to look frozen while a play/draw was in flight —
+          playCard() silently ignored clicks. Dim it and say so instead. */}
+      {loading ? (
+        <p className="w-full text-center text-[11px] font-black uppercase tracking-widest text-[#00e5ff]">
+          {t("neonFlush.playing", "Playing…")}
+        </p>
+      ) : null}
     </div>
   );
   const colorPickerNode = showColorPicker ? (

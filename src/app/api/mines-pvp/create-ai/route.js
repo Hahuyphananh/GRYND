@@ -1,6 +1,8 @@
 // POST — create a free human-vs-AI Mines Duel match.
-// No stake is escrowed; the match starts immediately in `ready`
-// state with the bot in seat 2.
+// No stake is escrowed; the match starts immediately in `ready` state
+// with the bot in seat 2. The bot plays SIMULTANEOUSLY on its own board
+// (its own score, flags, reveals and completion state) via the same
+// server-authoritative pipeline a human uses — there are no turns.
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { createAiMatch } from "../../../../lib/mines-pvp/serverStore";
@@ -16,13 +18,12 @@ function normaliseMatch(match) {
     stakeAmount: Number(match.stakeAmount),
     minesCount: match.minesCount,
     status: match.status,
-    firstPlayerId: match.firstPlayerId,
-    currentTurnUserId: match.currentTurnUserId,
-    roundDeadline: match.roundDeadline,
+    matchTimerSeconds: Number(match.matchTimerSeconds) || 0,
+    matchDeadline: match.matchDeadline ?? null,
     // The viewer's own flag set (empty on a brand-new match) + counters.
     myFlags: [],
-    myMinesFound: 0,
-    opponentMinesFound: 0,
+    myScore: 0,
+    opponentScore: 0,
     winReason: match.winReason ?? null,
     startedAt: match.startedAt,
     endedAt: match.endedAt,

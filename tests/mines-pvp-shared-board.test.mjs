@@ -1,338 +1,134 @@
 /**
- * Mines PvP — shared-board preparation contract.
+ * Mines Duel — simultaneous independent-board contract.
  *
- * The shared-board competitive rules need two things the original schema
- * could not express:
- *   * FLAGS as per-player CLAIMS (not terminal picks) — the
- *     `mines_pvp_matches.p1_flags` / `p2_flags` columns
- *   * a WIN REASON so the client can tell a mine hit from an
- *     all-mines-flagged win — the `win_reason` columns
- *
- * The behaviour that USES them lands in later steps; this file pins the
- * scaffolding (schema + migration + journal + the constants vocabulary)
- * so it cannot silently drift out from under that work.
+ * The old shared-board / alternating-turn model is retired. This file pins the
+ * structural pieces of the replacement:
+ *   • the migration adds every new column idempotently and is registered;
+ *   • the schema mirrors what the migration adds;
+ *   • the two seats get DIFFERENT mine positions with the same distribution;
+ *   • the store generates the pair server-side (never per request);
+ *   • the scrub helper canonicalises per-seat arrays before serialisation.
  *
  * Run:  node --test tests/mines-pvp-shared-board.test.mjs
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import fs from "node:fs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const read = (rel) => readFileSync(join(here, "..", rel), "utf8");
+const read = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 
-const SCHEMA = read("src/db/schema.ts");
-const MIGRATION_PATH = "src/db/migrations/0180_mines_pvp_shared_board_flags.sql";
-const JOURNAL = JSON.parse(
-  read("src/db/migrations/meta/_journal.json").replace(/^\uFEFF/, ""),
+const MIGRATION = read("src/db/migrations/0201_mines_pvp_simultaneous.sql");
+const REPLAY_MIGRATION = read(
+  "src/db/migrations/0202_mines_pvp_replay_state.sql",
 );
-
-// ════════════════════════════════════════════════════════════════════════
-// Schema — the mines_pvp_matches / mines_pvp_rounds tables
-// ════════════════════════════════════════════════════════════════════════
-
-test("mines_pvp_matches declares per-player flag columns", () => {
-  const block = SCHEMA.slice(
-    SCHEMA.indexOf('export const minesPvpMatches = pgTable('),
-    SCHEMA.indexOf('export const minesPvpRounds = pgTable('),
-  );
-  assert.match(block, /p1Flags: jsonb\("p1_flags"\)/);
-  assert.match(block, /p2Flags: jsonb\("p2_flags"\)/);
-  // Flags must be a stable JSONB array default so reads never see null.
-  assert.match(block, /p1Flags:[\s\S]*?\.default\(sql`'\[\]'::jsonb`\)/);
-  assert.match(block, /p2Flags:[\s\S]*?\.default\(sql`'\[\]'::jsonb`\)/);
-});
-
-test("mines_pvp_matches declares a win_reason column", () => {
-  const block = SCHEMA.slice(
-    SCHEMA.indexOf('export const minesPvpMatches = pgTable('),
-    SCHEMA.indexOf('export const minesPvpRounds = pgTable('),
-  );
-  assert.match(block, /winReason: varchar\("win_reason", \{ length: 32 \}\)/);
-});
-
-test("mines_pvp_rounds mirrors win_reason for the replay read path", () => {
-  const block = SCHEMA.slice(SCHEMA.indexOf('export const minesPvpRounds = pgTable('));
-  assert.match(block, /winReason: varchar\("win_reason", \{ length: 32 \}\)/);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// Migration — additive, idempotent, registered in the journal
-// ════════════════════════════════════════════════════════════════════════
-
-test("the shared-board migration exists and adds every new column idempotently", () => {
-  assert.ok(existsSync(join(here, "..", MIGRATION_PATH)), `${MIGRATION_PATH} missing`);
-  const sql = read(MIGRATION_PATH);
-  // Additive only — never drop / rewrite existing columns.
-  assert.doesNotMatch(sql, /DROP COLUMN/i);
-  for (const column of ["p1_flags", "p2_flags", "win_reason"]) {
-    assert.match(
-      sql,
-      new RegExp(`ADD COLUMN IF NOT EXISTS "${column}"`),
-      `migration must add ${column} with IF NOT EXISTS`,
-    );
-  }
-  // Both tables are covered.
-  assert.match(sql, /ALTER TABLE "mines_pvp_matches"/);
-  assert.match(sql, /ALTER TABLE "mines_pvp_rounds"/);
-});
-
-test("the shared-board migration is registered in _journal.json", () => {
-  const tags = JOURNAL.entries.map((e) => e.tag);
-  assert.ok(
-    tags.includes("0180_mines_pvp_shared_board_flags"),
-    "0180_mines_pvp_shared_board_flags must be in _journal.json",
-  );
-  // Journal indices must stay unique and ordered (drizzle reads idx).
-  const idxs = JOURNAL.entries.map((e) => e.idx);
-  assert.equal(new Set(idxs).size, idxs.length, "journal idx values must be unique");
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// Constants — the vocabulary the later steps consume
-// ════════════════════════════════════════════════════════════════════════
-
-test("the constants module exports the win-reason vocabulary and flag helpers", () => {
-  const src = read("src/lib/mines-pvp/constants.js");
-  assert.match(src, /export const WIN_REASON = Object\.freeze\(/);
-  assert.match(src, /export function normalizeFlags\(/);
-  assert.match(src, /export function correctFlagCount\(/);
-  assert.match(src, /export function hasFlaggedAllMines\(/);
-  assert.match(src, /export function flagsForSeat\(/);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// Serialization — the persistent state reaches the client
-// ════════════════════════════════════════════════════════════════════════
-
-const MATCH_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/route.js");
-const MATCH_VIEW = read("src/lib/mines-pvp/matchView.js");
+const JOURNAL = read("src/db/migrations/meta/_journal.json");
+const SCHEMA = read("src/db/schema.ts");
 const STORE = read("src/lib/mines-pvp/serverStore.js");
-const SERVER_STORE = STORE;
-const MATCH_CLIENT = read("src/app/casino/mines-pvp/[matchId]/PageClient.tsx");
-
-test("the match route delegates serialisation to the shared matchView module", () => {
-  // One serializer for every read path, so a client can never receive two
-  // divergent descriptions of the same row.
-  assert.match(MATCH_ROUTE, /import \{ normaliseMatchForViewer \}/);
-  assert.match(MATCH_ROUTE, /match: normaliseMatchForViewer\(enrichedMatch, userId\)/);
-  // The AI-turn route consumes the SAME serializer (never the raw row).
-  const AI_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/ai-turn/route.js");
-  assert.match(AI_ROUTE, /normaliseMatchForViewer\(result\.match, userId\)/);
-});
-
-test("the viewer serializer exposes the private flag set + public mine counts", () => {
-  for (const field of ["myFlags", "myMinesFound", "opponentMinesFound", "winReason", "winnerId"]) {
-    assert.match(MATCH_VIEW, new RegExp(`${field}:`), `payload must expose ${field}`);
-  }
-  // The viewer's OWN flag set is read per seat; the opponent's locations are
-  // never serialised — only their confirmed COUNT.
-  assert.match(MATCH_VIEW, /myFlags: flagsForSeat\(match, viewerSeat\)/);
-  assert.match(MATCH_VIEW, /myMinesFound: minesFoundForSeat\(match, viewerSeat\)/);
-  assert.match(MATCH_VIEW, /opponentMinesFound: minesFoundForSeat\(match, opponentSeat\)/);
-  // The opponent's flag locations are scrubbed from the pick history.
-  assert.match(MATCH_VIEW, /cell:\s*\n?\s*isFlag && !isViewerPick/);
-  // Win reason is preserved verbatim (null while the match is active).
-  assert.match(MATCH_VIEW, /winReason: match\.winReason \?\? null/);
-});
-
-test("the server store canonicalises both flag sets onto the scrubbed row", () => {
-  // flagsForSeat() returns a normalised (unique, sorted, in-range) array.
-  assert.match(STORE, /p1Flags: flagsForSeat\(match, "player1"\)/);
-  assert.match(STORE, /p2Flags: flagsForSeat\(match, "player2"\)/);
-});
-
-test("scrubMatchForViewer stamps the board-derived counts before hiding the board", () => {
-  // The board is nulled by the scrub, and the viewer serializer runs after
-  // it — so the per-seat confirmed-mine counts must be captured from the
-  // REAL board here. Skipping this left the side-by-side counter stuck at
-  // "10 | 10" even after a correct flag.
-  assert.match(STORE, /p1MinesFound: minesFoundForSeat\(match, "player1"\)/);
-  assert.match(STORE, /p2MinesFound: minesFoundForSeat\(match, "player2"\)/);
-});
-
-test("the scrub helper hides the opponent's flag cell and verdict", () => {
-  // Only the claimant (or a settled replay) sees the flag's cell/verdict.
-  const scrub = MATCH_VIEW.slice(
-    MATCH_VIEW.indexOf("export function scrubPicksForViewer"),
-    MATCH_VIEW.indexOf("export function normaliseMatchForViewer"),
-  );
-  assert.match(scrub, /const reveal = !isFlag \|\| isViewerPick \|\| finished;/);
-  assert.match(scrub, /isFlag && !isViewerPick/);
-});
-
-test("the client match type declares the private-flag + counter fields", () => {
-  assert.match(MATCH_CLIENT, /winReason: string \| null;/);
-  assert.match(MATCH_CLIENT, /myFlags: number\[\];/);
-  assert.match(MATCH_CLIENT, /myMinesFound: number;/);
-  assert.match(MATCH_CLIENT, /opponentMinesFound: number;/);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// Backwards compatibility — legacy state stays intact
-// ════════════════════════════════════════════════════════════════════════
-
-test("legacy match state is preserved (nothing removed)", () => {
-  // The odds-turn history + the legacy scalars + the result/status
-  // contract all still ship — the new columns are additive.
-  assert.match(MATCH_VIEW, /^\s*picks,$/m, "payload must still expose the picks history");
-  for (const field of ["p1Pick", "p2Pick", "result", "status", "winnerId", "currentTurnUserId"]) {
-    assert.match(MATCH_VIEW, new RegExp(`${field}:`), `payload must still expose ${field}`);
-  }
-  // The hidden board/mines stay hidden mid-match and only reveal at finish.
-  assert.match(MATCH_VIEW, /board: finished \? match\.board : null/);
-  assert.match(STORE, /board: null/);
-});
-
-test("create endpoints expose the new state with empty defaults", () => {
-  for (const rel of [
-    "src/app/api/mines-pvp/create-or-join/route.js",
-    "src/app/api/mines-pvp/create-ai/route.js",
-  ]) {
-    const src = read(rel);
-    assert.match(src, /myFlags: \[\]/);
-    assert.match(src, /myMinesFound: 0/);
-    assert.match(src, /opponentMinesFound: 0/);
-    assert.match(src, /winReason: match\.winReason \?\? null/);
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// Shared-board SERVER RULES — the behaviour that now uses the scaffolding
-// ════════════════════════════════════════════════════════════════════════
-
-const FLAG_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/flag/route.js");
 const CONSTANTS = read("src/lib/mines-pvp/constants.js");
 
-test("the SHARED CLUE is published to both seats (no per-viewer hint stripping)", () => {
-  // The clue is server-computed and belongs to the shared board, so the
-  // serializer must NOT gate it on "is this the viewer's own pick".
-  assert.match(
-    MATCH_VIEW,
-    /hint:[\s\S]{0,40}raw\.hint != null \? Number\(raw\.hint\) : null/,
-  );
-  assert.doesNotMatch(
-    MATCH_VIEW,
-    /hint:[\s\S]{0,160}finished \|\| isViewerPick/,
-    "the shared clue must not be stripped from the opponent",
-  );
-  // Flag claims are not reveals and must not count as discovered safe cells.
-  assert.match(MATCH_VIEW, /!Boolean\(p\.isMine\) && !Boolean\(p\.flag\)/);
-  // The hidden board stays hidden while the match is live.
-  assert.match(MATCH_VIEW, /board: finished \? match\.board : null/);
+test("the simultaneous migration is registered in _journal.json", () => {
+  assert.match(JOURNAL, /"tag": "0201_mines_pvp_simultaneous"/);
 });
 
-test("the store resolves winner-shaped and stamps the end reason", () => {
-  assert.match(SERVER_STORE, /async function resolveMatch\(tx, match, \{ winnerId, reason \} = \{\}\)/);
-  assert.match(SERVER_STORE, /const result = resultForWinner\(\{/);
-  // Both player-driven endings are wired.
-  assert.match(SERVER_STORE, /reason: WIN_REASON\.MINE_HIT/);
-  assert.match(SERVER_STORE, /reason: WIN_REASON\.ALL_MINES_FLAGGED/);
-  assert.match(SERVER_STORE, /reason: WIN_REASON\.RESIGN/);
-  // `winReason` reaches BOTH the match row and the replay snapshot.
-  assert.match(SERVER_STORE, /winReason: reason \?\? null/);
-  // A terminal row is never re-settled (one winner only).
-  assert.match(SERVER_STORE, /if \(TERMINAL_STATES\.has\(match\.status\)\)/);
+test("the migration adds the per-seat boards + state idempotently", () => {
+  for (const column of [
+    "p1_board",
+    "p2_board",
+    "p1_revealed",
+    "p2_revealed",
+    "p1_correct_flags",
+    "p2_correct_flags",
+    "p1_score",
+    "p2_score",
+    "p1_completed",
+    "p2_completed",
+    "p1_locked",
+    "p2_locked",
+    "match_deadline",
+    "match_timer_seconds",
+  ]) {
+    assert.ok(
+      MIGRATION.includes(`"${column}"`),
+      `migration must add ${column}`,
+    );
+  }
+  // Every column statement is non-destructive / re-runnable (no bare
+  // `ADD COLUMN` anywhere).
+  assert.doesNotMatch(MIGRATION, /ADD COLUMN (?!IF NOT EXISTS)/);
+  assert.match(MIGRATION, /ADD COLUMN IF NOT EXISTS/);
 });
 
-test("the mine-hit winner is the OPPONENT of the picker", () => {
-  assert.match(SERVER_STORE, /winnerId: otherSeatId\(/);
-  assert.match(SERVER_STORE, /function otherSeatId\(match, userId\)/);
+test("the migration adds the 'active' status value idempotently", () => {
+  assert.match(MIGRATION, /ALTER TYPE "mines_pvp_status" ADD VALUE IF NOT EXISTS 'active'/);
+  // Legacy labels are NOT dropped.
+  assert.doesNotMatch(MIGRATION, /DROP VALUE/);
 });
 
-test("flagTile keeps only CORRECT flags and reports the outcome to the caller", () => {
-  assert.match(SERVER_STORE, /withFlagForSeat\(match, seat, idx\)/);
-  assert.match(SERVER_STORE, /hasFlaggedAllMines\(claimedFlags, match\.board\)/);
-  assert.match(
-    SERVER_STORE,
-    /winnerId: userId,[\s\S]{0,40}?reason: WIN_REASON\.ALL_MINES_FLAGGED/,
-  );
-  // The verdict is computed server-side and only a CORRECT flag is kept in
-  // the seat's own set; a wrong flag still consumes the turn. Both the human
-  // flag room and the AI flag share this one `applyFlag` body.
-  const flagBody = SERVER_STORE.slice(
-    SERVER_STORE.indexOf("async function applyFlag"),
-    SERVER_STORE.indexOf("async function playAiTurnInTransaction"),
-  );
-  assert.match(flagBody, /const flagIsMine = isMine\(match\.board, idx\);/);
-  assert.match(flagBody, /flagIsMine \? withFlagForSeat\(match, seat, idx\) : \{\}/);
-  assert.match(flagBody, /wrongFlag: !flagIsMine/);
-  assert.doesNotMatch(flagBody, /loserId/);
-  // `flagTile` delegates to the shared body rather than duplicating it.
-  const flagTileBody = SERVER_STORE.slice(
-    SERVER_STORE.indexOf("export async function flagTile"),
-    SERVER_STORE.indexOf("async function applyFlag"),
-  );
-  assert.match(flagTileBody, /await applyFlag\(tx, match, \{ userId, seat, idx \}\)/);
+test("the distribution is a single server constant summing to 10", () => {
+  assert.match(CONSTANTS, /export const MINE_VALUE_DISTRIBUTION = Object\.freeze\(\[/);
+  assert.match(CONSTANTS, /\{ value: 10, count: 5 \}/);
+  assert.match(CONSTANTS, /\{ value: 20, count: 3 \}/);
+  assert.match(CONSTANTS, /\{ value: 30, count: 1 \}/);
+  assert.match(CONSTANTS, /\{ value: 50, count: 1 \}/);
 });
 
-test("reveal blocking ignores flag claims, and legacy mirrors skip flags", () => {
-  // A flagged (not revealed) cell is still revealable.
-  assert.match(SERVER_STORE, /return revealedCells\(match\);/);
-  assert.match(SERVER_STORE, /const reveals = allPicks\.filter\(\(p\) => !isFlagEntry\(p\)\);/);
-  assert.match(CONSTANTS, /export function revealedCells\(match\)/);
-  assert.match(CONSTANTS, /export function isFlagEntry\(entry\)/);
+test("the store generates BOTH boards server-side", () => {
+  assert.match(STORE, /generateBoardPair\(MINES_PER_MATCH\)/);
+  assert.match(STORE, /p1Board: board1/);
+  assert.match(STORE, /p2Board: board2/);
+  // The create path never reads a client-supplied board / position / value.
+  assert.doesNotMatch(STORE, /body\.board/);
+  assert.doesNotMatch(STORE, /body\.mines/);
 });
 
-test("the flag route reports the caller's own set, the counters and the verdict", () => {
-  assert.match(FLAG_ROUTE, /justResolved: Boolean\(result\.justResolved\)/);
-  assert.match(FLAG_ROUTE, /myFlags: flagsForSeat\(match, viewerSeat\)/);
-  assert.match(FLAG_ROUTE, /opponentMinesFound: minesFoundForSeat\(match, opponentSeat\)/);
-  assert.match(FLAG_ROUTE, /winReason: match\.winReason \?\? null/);
-  // The response tells the CALLER whether their read was right.
-  assert.match(FLAG_ROUTE, /wrongFlag: Boolean\(result\.wrongFlag\)/);
+test("the scrub helper canonicalises the per-seat arrays", () => {
+  assert.match(STORE, /p1Flags: flagsForSeat\(match, "player1"\)/);
+  assert.match(STORE, /p1Revealed: revealedForSeat\(match, "player1"\)/);
+  assert.match(STORE, /p1CorrectFlagCells: correctFlagsForSeat\(match, "player1"\)/);
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// AI — a deducting bot that FLAGS provable mines and reveals safely
-// ════════════════════════════════════════════════════════════════════════
-
-test("AI turn: the bot follows the server turn rules and stamps the SAME public clue", () => {
-  // Turn ownership: the bot only acts when the closed-form formula puts it up.
-  assert.match(STORE, /expectedPicker !== match\.player2Id/);
-  // Its reveal is stamped exactly like a human's — hint null on a mine, and
-  // the server-computed PUBLIC clue on a safe cell.
-  assert.match(
-    STORE,
-    /hint: pickIsMine\s*\?\s*null\s*:\s*nearestMineDistance\(board, idx\)/,
+test("the schema mirrors the migration's new columns", () => {
+  const mine = SCHEMA.slice(
+    SCHEMA.indexOf("export const minesPvpMatches = pgTable("),
+    SCHEMA.indexOf("export const minesPvpRounds = pgTable("),
   );
+  assert.match(mine, /p1Board: jsonb\("p1_board"\)/);
+  assert.match(mine, /p2Board: jsonb\("p2_board"\)/);
+  assert.match(mine, /matchDeadline: timestamp\("match_deadline"\)/);
 });
 
-test("AI play decides between a flag and a reveal and applies the SAME pipeline", () => {
-  // One shared turn routine drives both the explicit endpoint and the status
-  // auto-advance, so the bot can never diverge between the two paths.
-  const aiTurnBody = STORE.slice(
-    STORE.indexOf("async function playAiTurnInTransaction"),
-    STORE.indexOf("async function aiReveal"),
-  );
-  assert.ok(aiTurnBody.length > 0, "playAiTurnInTransaction body located");
-  assert.match(aiTurnBody, /chooseAiAction\(match\)/);
-  assert.match(aiTurnBody, /action\.kind === "flag"/);
-  // A flag goes through `applyFlag` (the human path), a reveal through the
-  // shared `aiReveal` / `applyPick` path.
-  assert.match(aiTurnBody, /await applyFlag\(tx, match, \{/);
-  assert.match(aiTurnBody, /aiReveal\(tx, match/);
-  // The exported endpoint delegates to that routine inside its own tx.
-  const playBody = STORE.slice(
-    STORE.indexOf("export async function playAiTurn"),
-    STORE.indexOf("// ── Create / Join matchmaking"),
-  );
-  assert.match(playBody, /await playAiTurnInTransaction\(tx, match\)/);
+test("legacy columns are preserved (nothing removed)", () => {
+  // The old single-board field, picks and flags stay for legacy rows.
+  assert.ok(SCHEMA.includes('board: jsonb("board")'));
+  assert.ok(SCHEMA.includes('picks: jsonb("picks")'));
+  assert.ok(SCHEMA.includes('p1Flags: jsonb("p1_flags")'));
 });
 
-test("the AI policy proves mines from the clues and can flag them", () => {
-  assert.match(CONSTANTS, /export function deduceKnownMines\(/);
-  assert.match(CONSTANTS, /export function chooseAiAction\(/);
-  const actionBody = CONSTANTS.slice(
-    CONSTANTS.indexOf("export function chooseAiAction"),
-    CONSTANTS.indexOf("// ── Per-player mine counters"),
-  );
-  assert.ok(actionBody.length > 0, "chooseAiAction body located");
-  assert.match(actionBody, /kind: "flag"/);
-  assert.match(actionBody, /kind: "reveal"/);
-  // Easy keeps its no-deduction reveal policy.
-  assert.match(actionBody, /tier !== "easy"/);
+test("the replay migration is registered and adds the final-state columns", () => {
+  assert.match(JOURNAL, /"tag": "0202_mines_pvp_replay_state"/);
+  for (const column of ["p1_final_state", "p2_final_state"]) {
+    assert.ok(
+      REPLAY_MIGRATION.includes(`"${column}"`),
+      `replay migration must add ${column}`,
+    );
+  }
+  assert.doesNotMatch(REPLAY_MIGRATION, /ADD COLUMN (?!IF NOT EXISTS)/);
+  assert.doesNotMatch(REPLAY_MIGRATION, /DROP COLUMN/);
+});
+
+test("the rounds schema mirrors the replay final-state columns", () => {
+  const rounds = SCHEMA.slice(SCHEMA.indexOf("export const minesPvpRounds = pgTable("));
+  assert.match(rounds, /p1FinalState: jsonb\("p1_final_state"\)/);
+  assert.match(rounds, /p2FinalState: jsonb\("p2_final_state"\)/);
+});
+
+test("the store snapshots each seat's full final state at resolve", () => {
+  assert.match(STORE, /p1FinalState: finalStateForSeat\(match, "player1"\)/);
+  assert.match(STORE, /p2FinalState: finalStateForSeat\(match, "player2"\)/);
+  assert.match(STORE, /function finalStateForSeat\(match, seat\)/);
+  // The snapshot carries revealed tiles, flags, mines hit and completion.
+  assert.match(STORE, /revealed: revealedForSeat\(match, seat\)/);
+  assert.match(STORE, /flags: flagsForSeat\(match, seat\)/);
+  assert.match(STORE, /correctFlags: correctFlagsForSeat\(match, seat\)/);
 });

@@ -1,10 +1,9 @@
 // src/app/api/mines-pvp/match/[matchId]/resign/route.js
 //
-// POST — resign from an active Mines Duel match. The resigner
-// forfeits their stake and the opponent is credited the pot minus
-// the house fee (full settlement via the shared `resolveMatch`
-// path in the server store). Mirrors the auth / async-params /
-// error pattern of `cancel/route.js`.
+// POST — resign from an active Mines Duel match. The resigner forfeits
+// (the opponent is named the winner) via the shared `resolveMatch` path
+// in the server store. Stakes are retired, so no tokens change hands.
+// Mirrors the auth / async-params / error pattern of `cancel/route.js`.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";

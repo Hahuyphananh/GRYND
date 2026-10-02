@@ -8,7 +8,7 @@ import AdSenseScript from "../../../components/AdSenseScript";
 // See scripts/audit-social-metadata.mjs.
 const title = "Mines Duel | GRYND";
 const description =
-  "Play Mines Duel on GRYND. Face another player on a shared 10×10 board with 10 mines — every safe reveal and its clue is public, flags are private. Step on a mine and you lose instantly; confirm every mine and you win.";
+  "Play Mines Duel on GRYND. Race another player on your own 10×10 minefield — 10 mines, no turns, one shared 3-minute clock. Safe tiles +5, correct flags score the mine's value, mine hits −25, clearing your board +100. Highest score wins.";
 const image = ogImageUrl("/images/og/mines.jpg");
 
 export const metadata: Metadata = {

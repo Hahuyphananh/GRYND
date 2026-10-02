@@ -655,12 +655,17 @@ if (!global.__disconnectGraceTimers) {
 }
 const disconnectGraceTimers = global.__disconnectGraceTimers;
 
+// Returns true when a timer was actually pending (i.e. the caller genuinely
+// came back from an absence), false otherwise. Callers such as the Mines
+// presence broadcast use this to distinguish a reconnect from a first join.
 function cancelDisconnectGraceTimer(key) {
   const handle = disconnectGraceTimers.get(key);
   if (handle) {
     clearTimeout(handle.timer);
     disconnectGraceTimers.delete(key);
+    return true;
   }
+  return false;
 }
 
 function scheduleDisconnectGraceTimer(
@@ -1034,6 +1039,56 @@ io.on("connection", (socket) => {
     logThrottled("memory-grid:leave", "[memory-grid] participant left: matchId=", matchId, "userId=", userId);
   }
 
+  // ── Mines PvP room-participant tracking ─────────────────────────
+  // Mines Duel is SIMULTANEOUS (no turns), but the per-match room is still
+  // tracked so an abandoned socket can be forfeited to the opponent after a
+  // grace window, and so a reconnect inside the window cancels that timer and
+  // re-syncs the player-specific board state (via the client's status refetch).
+  // Keyed by matchId.
+  const MINES_PVP_MATCH_ROOM_PREFIX = "mines-pvp:match:";
+  if (!global.__minesPvpRoomParticipants) {
+    global.__minesPvpRoomParticipants = new Map();
+  }
+  const minesPvpRoomParticipants = global.__minesPvpRoomParticipants;
+
+  function trackMinesPvpJoin(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(MINES_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(MINES_PVP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    if (!minesPvpRoomParticipants.has(matchId)) {
+      minesPvpRoomParticipants.set(matchId, new Set());
+    }
+    minesPvpRoomParticipants.get(matchId).add(userId);
+    // A (re)joining socket means the player is present again. Cancel any
+    // pending disconnect forfeit timer. Only when one was actually pending (a
+    // real reconnect, not a first join) do we tell the opponent they're back
+    // so a "reconnecting" indicator can clear. The authoritative
+    // player-specific board state is delivered by the client's /status refetch.
+    const wasAway = cancelDisconnectGraceTimer(`mines:${matchId}:${userId}`);
+    if (wasAway) {
+      socket.to(roomId).emit("mines-pvp:opponent:reconnected", {
+        matchId,
+        userId,
+        at: new Date().toISOString(),
+      });
+    }
+    logThrottled("mines:join", "[mines-pvp] participant joined: matchId=", matchId, "userId=", userId);
+  }
+  function trackMinesPvpLeave(roomId, userId) {
+    if (typeof roomId !== "string" || !roomId.startsWith(MINES_PVP_MATCH_ROOM_PREFIX)) {
+      return;
+    }
+    const matchId = roomId.slice(MINES_PVP_MATCH_ROOM_PREFIX.length);
+    if (!matchId) return;
+    const set = minesPvpRoomParticipants.get(matchId);
+    if (!set) return;
+    set.delete(userId);
+    if (set.size === 0) minesPvpRoomParticipants.delete(matchId);
+    logThrottled("mines:leave", "[mines-pvp] participant left: matchId=", matchId, "userId=", userId);
+  }
+
   // ── Roulette PvP room-participant tracking ──────────────────────
   // Same pattern as keno-pvp so disconnect handling can forfeit
   // abandoned matches to the opponent (and a re-joining socket
@@ -1398,6 +1453,7 @@ io.on("connection", (socket) => {
     trackPlinkoJoin(String(roomId), socket.data.userId);
     trackKenoPvpJoin(String(roomId), socket.data.userId);
     trackMemoryGridJoin(String(roomId), socket.data.userId);
+    trackMinesPvpJoin(String(roomId), socket.data.userId);
     trackCrashArenaJoin(String(roomId), socket.data.userId);
     trackRoulettePvpJoin(String(roomId), socket.data.userId);
     trackRpsPvpJoin(String(roomId), socket.data.userId);
@@ -1449,6 +1505,7 @@ io.on("connection", (socket) => {
     trackPlinkoLeave(String(roomId), socket.data.userId);
     trackKenoPvpLeave(String(roomId), socket.data.userId);
     trackMemoryGridLeave(String(roomId), socket.data.userId);
+    trackMinesPvpLeave(String(roomId), socket.data.userId);
     trackCrashArenaLeave(String(roomId), socket.data.userId);
     trackRoulettePvpLeave(String(roomId), socket.data.userId);
     trackRpsPvpLeave(String(roomId), socket.data.userId);
@@ -1495,6 +1552,20 @@ io.on("connection", (socket) => {
     // `goAtMs`. Both are emitted ONLY by the backend, through
     // `broadcastMatchEvent` in src/lib/sudoku-duel/rooms.ts, so a client
     // `room_event` carrying one of these names is always a forgery.
+    //
+    // Mines Duel has the same reservation for its two SERVER-ONLY events:
+    //   • `mines-pvp:score` — the cosmetic score-animation hint. It is minted
+    //     only by the backend (`broadcastScoreEvent` in
+    //     src/lib/mines-pvp/rooms.js) with the exact server-computed delta and
+    //     seat. A client `room_event` carrying it would let a seat fake the
+    //     opponent's "+100" / "-25" animation, so it is dropped here.
+    //   • `mines-pvp:opponent:reconnected` — emitted by the realtime-server's
+    //     own participant tracking when a player's socket re-joins. A forged
+    //     copy would let a client clear the opponent's "reconnecting" state.
+    //
+    // `lobby:updated` stays UNRESERVED for Mines exactly as for every other
+    // game: it is a bare "refetch the authoritative snapshot" hint, and the
+    // refetched snapshot recomputes every number server-side.
     const relayedEvent = String(event);
     if (
       relayedEvent === "solitaire-duel:opponent-progress" ||
@@ -1504,11 +1575,13 @@ io.on("connection", (socket) => {
       relayedEvent === "sudoku-duel:opponent-progress" ||
       relayedEvent === "sudoku-duel:countdown" ||
       relayedEvent === "sudoku-duel:match-started" ||
-      relayedEvent === "sudoku-duel:match-finished"
+      relayedEvent === "sudoku-duel:match-finished" ||
+      relayedEvent === "mines-pvp:score" ||
+      relayedEvent === "mines-pvp:opponent:reconnected"
     ) {
       logThrottled(
-        "solitaire-duel:rejectForgedEvent",
-        "[solitaire-duel] dropping forged server event from client: event=",
+        "mines-pvp:rejectForgedEvent",
+        "[mines-pvp] dropping forged server event from client: event=",
         relayedEvent,
         "userId=",
         socket.data.userId
@@ -2323,6 +2396,47 @@ io.on("connection", (socket) => {
         } catch (err) {
           console.warn(
             "[memory-grid] disconnect forfeit failed:",
+            err && err.message ? err.message : err,
+          );
+          return true; // transient — retry
+        }
+      });
+    }
+
+    // For Mines PvP: same pattern as memory-grid. Mines is SIMULTANEOUS, so a
+    // disconnect never freezes the opponent (there is no turn to hold). A
+    // temporary blip is fully covered by the grace window: the timer is
+    // cancelled the moment the socket re-joins, so a refresh never awards a
+    // win, never touches the score and never touches either board. Only a
+    // player who stays gone past the window forfeits — and the server ignores
+    // the forfeit entirely if that player had already CLEARED their board or
+    // the match had already finished.
+    const minesPvpMatchesForUser = [];
+    for (const [mid, set] of minesPvpRoomParticipants.entries()) {
+      if (set.has(socket.data.userId)) minesPvpMatchesForUser.push(mid);
+    }
+    for (const mid of minesPvpMatchesForUser) {
+      const roomId = `${MINES_PVP_MATCH_ROOM_PREFIX}${mid}`;
+      if (hasLiveSocketForUser(socket.data.userId, roomId)) continue;
+      const set = minesPvpRoomParticipants.get(mid);
+      if (set) {
+        set.delete(socket.data.userId);
+        if (set.size === 0) minesPvpRoomParticipants.delete(mid);
+      }
+      scheduleDisconnectGraceTimer(`mines:${mid}:${socket.data.userId}`, async () => {
+        if (hasLiveSocketForUser(socket.data.userId, roomId)) return false;
+        try {
+          const baseUrl = process.env.NEXTJS_INTERNAL_URL || "http://localhost:3000";
+          const res = await fetch(`${baseUrl}/api/mines-pvp/disconnect-forfeit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matchId: mid, token: socket.data.clerkToken }),
+          });
+          const payload = await res.json().catch(() => null);
+          return !(payload && payload.success === true);
+        } catch (err) {
+          console.warn(
+            "[mines-pvp] disconnect forfeit failed:",
             err && err.message ? err.message : err,
           );
           return true; // transient — retry

@@ -119,26 +119,27 @@ test("every bot whose turn is gated by the server has a client ask that clears t
     `keno probes [${offsets}] must span the bot's ${minReaction}–${ceiling}ms reaction band`,
   );
 
-  // Mines PvP — turns strictly alternate, so the server gates the bot's turn
-  // on the shared turn formula (an ask that arrives out of turn is answered
-  // idempotently rather than failing). The page still uses the shared reveal
-  // rhythm constant for its own board hold.
+  // Mines PvP — simultaneous, independent boards (no shared turn formula).
+  // The bot plays its OWN board; the status poll advances it and the AI-turn
+  // endpoint is an idempotent wake-up the page fires after each own action.
   const minesConstants = read("src/lib/mines-pvp/constants.js");
   const minesStore = read("src/lib/mines-pvp/serverStore.js");
   const minesPage = read("src/app/casino/mines-pvp/[matchId]/PageClient.tsx");
+  // The legacy pacing constant is still exported for older clients.
   assert.ok(minesConstants.includes("export const AI_PICK_DELAY_MS ="));
+  // The reworked page wakes the bot through the endpoint (not a local timer).
   assert.ok(
-    minesPage.includes("AI_PICK_DELAY_MS,") &&
-      /setTimeout\(resolve, AI_PICK_DELAY_MS\)/.test(minesPage),
-    "the page must pace its own reveal rhythm with the shared constant",
+    minesPage.includes("`/api/mines-pvp/match/${matchId}/ai-turn`"),
+    "the page must ask the server to advance the bot after a human action",
   );
   assert.ok(
-    minesStore.includes("expectedPicker !== match.player2Id"),
-    "the server only plays the bot when the turn formula says it is up",
+    minesStore.includes("playAiTurnInTransaction") &&
+      minesStore.includes("isFreeAiMatch(match)"),
+    "the read route advances the bot on its own board for a free AI match",
   );
   assert.ok(
     minesStore.includes("alreadyPlayed: true"),
-    "an out-of-turn ask stays success-shaped so the client can just re-ask",
+    "a redundant ask stays success-shaped so the client can just re-ask",
   );
 
   // Lane Rush Duel — the bot is paced server-side, so ONE ask per state is not

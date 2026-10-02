@@ -1,17 +1,21 @@
-// POST — submit the server-controlled Mines Duel AI's turn.
-// Called after the human acts (server-side, inline in the pick/flag routes)
-// and as a recovery fallback from the client.
+// POST — let the server-controlled Mines Duel bot take its next action(s).
+// Called after the human acts (inline in the pick/flag routes) and as a
+// recovery fallback from the client's poll.
 //
-// AUTHORITY: the bot is not a client. It plays through the SAME
-// `playAiTurn` → `applyPick` / `applyFlag` pipeline a human uses (a reveal of
-// the safest live cell, or a flag of a mine it can prove from the clues), so it
-// gets the same turn enforcement, row lock, first-pick mercy, sudden-death mine
-// handling and `winReason` stamping. There is deliberately no separate rules
-// engine for the AI.
+// AUTHORITY: the bot is not a client. It plays SIMULTANEOUSLY on its OWN
+// seat-2 board through the SAME `playAiTurn` → `applyReveal` / `applyFlag`
+// pipeline a human uses (reveal the safest cell, or flag a mine it can prove
+// from its own clues), so it gets the same row lock, server-minted scoring,
+// completion handling and `winReason` stamping. There is deliberately no
+// separate rules engine for the AI.
+//
+// FAIRNESS: the bot only ever reads its own revealed clues and its own flag
+// set — never the human's board or the hidden layout — exactly the
+// information a human seat holds. See `chooseAiActionForSeat`.
 //
 // VISIBILITY: the response is the same viewer-shaped payload the match GET
 // returns (`normaliseMatchForViewer`) — never the raw row. The raw row carries
-// the hidden `board` (the mine layout) and every reveal's real `isMine`
+// the hidden boards (`p1_board` / `p2_board`) and every reveal's real `isMine`
 // verdict, so echoing it here would hand an AI-match player the solution
 // mid-game.
 
@@ -50,8 +54,9 @@ export async function POST(req, { params }) {
     // emit; no new realtime mechanism.
     broadcastMatchUpdate(matchId, {
       status: result.match?.status,
-      currentTurnUserId: result.match?.currentTurnUserId ?? null,
-      roundDeadline: result.match?.roundDeadline ?? null,
+      matchDeadline: result.match?.matchDeadline ?? null,
+      p1Score: Number(result.match?.p1Score) || 0,
+      p2Score: Number(result.match?.p2Score) || 0,
       justResolved: Boolean(result.justResolved),
       aiTurn: true,
     });

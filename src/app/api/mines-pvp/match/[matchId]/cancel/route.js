@@ -1,7 +1,8 @@
 // src/app/api/mines-pvp/match/[matchId]/cancel/route.js
 //
-// POST — cancel a waiting match (creator only). Refunds the
-// creator's stake and transitions status to 'cancelled'. Mirrors
+// POST — cancel a waiting match (creator only). Transitions status to
+// 'cancelled'. Stakes are retired (matches are free), so there is nothing
+// to refund. Mirrors
 // `src/app/api/blackjack-pvp/match/[matchId]/cancel/route.js`.
 
 import { NextResponse } from "next/server";

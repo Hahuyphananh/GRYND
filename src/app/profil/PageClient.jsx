@@ -22,6 +22,7 @@ import UpgradeProButton from "../../components/UpgradeProButton";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
+import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
 
 // GRYND PRO chat color palette (matches the neon casino aesthetic).
@@ -273,33 +274,68 @@ export default function ProfilePage({ adSlot = null }) {
   };
 
   const handleEquipSpecialTitle = async (titleKey) => {
-    const response = await fetch("/api/titles/equip-special", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ titleKey }),
+    // Equipping a title is cosmetic and fully reversible, so move the ring
+    // immediately and let the server refetch reconcile it. Previously the
+    // button did nothing on screen until the round trip finished.
+    const previous = specialTitles;
+    const picked = (previous.titles || []).find((title) => title.key === titleKey);
+    await runOptimistically({
+      optimistic: () =>
+        setSpecialTitles((current) => ({
+          ...current,
+          selectedSpecialTitle: titleKey,
+          selectedSpecialTitleName: titleKey
+            ? picked?.name || current.selectedSpecialTitleName
+            : "",
+        })),
+      rollback: () => setSpecialTitles(previous),
+      request: async () => {
+        const response = await fetch("/api/titles/equip-special", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ titleKey }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || "Could not equip that title.");
+        }
+        await Promise.all([loadSpecialTitles(), loadTitles(), loadProfileData()]);
+        window.dispatchEvent(new Event("titleUpdated"));
+        window.dispatchEvent(new Event("profileUpdated"));
+        return data;
+      },
     });
-    const data = await response.json();
-    if (response.ok && data.success) {
-      await Promise.all([loadSpecialTitles(), loadTitles(), loadProfileData()]);
-      window.dispatchEvent(new Event("titleUpdated"));
-      window.dispatchEvent(new Event("profileUpdated"));
-    }
   };
 
   const handleEquipStreakTitle = async (streakType) => {
-    const response = await fetch("/api/titles/equip-streak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ streakType }),
+    // Same reasoning as the special titles above: flip the highlight now,
+    // roll back only if the server rejects the change.
+    const previous = streakState;
+    await runOptimistically({
+      optimistic: () =>
+        setStreakState((current) => ({
+          ...current,
+          selectedStreakType: streakType ? streakType : null,
+        })),
+      rollback: () => setStreakState(previous),
+      request: async () => {
+        const response = await fetch("/api/titles/equip-streak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ streakType }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || "Could not equip that title.");
+        }
+        await loadTitles();
+        window.dispatchEvent(new Event("titleUpdated"));
+        window.dispatchEvent(new Event("profileUpdated"));
+        return data;
+      },
     });
-    const data = await response.json();
-    if (response.ok && data.success) {
-      await loadTitles();
-      window.dispatchEvent(new Event("titleUpdated"));
-      window.dispatchEvent(new Event("profileUpdated"));
-    }
   };
 
   const cyberButton =
@@ -462,34 +498,45 @@ export default function ProfilePage({ adSlot = null }) {
     );
     if (!confirmed) return;
 
+    // Drop the row from the grid right away; put it back if the server
+    // refuses. The previous version left the card clickable but unchanged
+    // until the refetch landed.
+    const previous = myFriends;
     setFriendsStatus("");
+    const result = await runOptimistically({
+      optimistic: () =>
+        setMyFriends((current) => current.filter((f) => f.id !== friendId)),
+      rollback: () => setMyFriends(previous),
+      request: async () => {
+        const response = await fetch("/api/friends/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ friendId }),
+        });
 
-    try {
-      const response = await fetch("/api/friends/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ friendId }),
-      });
+        const data = await response.json();
 
-      const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.error ||
+              t("profile.friends.removeFailed", "Could not remove friend."),
+          );
+        }
 
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error ||
-            t("profile.friends.removeFailed", "Could not remove friend."),
-        );
-      }
+        return data;
+      },
+    });
 
-      setFriendsStatus(t("profile.friends.removed", "Friend removed."));
-      await loadFriends();
-      await loadFriendPresence(); // keep UI in sync
-    } catch (err) {
-      console.error("[REMOVE_FRIEND_ERROR]", err);
-      setFriendsStatus(
-        err.message || t("profile.friends.removeFailed", "Could not remove friend."),
-      );
+    if (!result.ok) {
+      console.error("[REMOVE_FRIEND_ERROR]", result.error);
+      setFriendsStatus(result.error);
+      return;
     }
+
+    setFriendsStatus(t("profile.friends.removed", "Friend removed."));
+    await loadFriends();
+    await loadFriendPresence(); // keep UI in sync
   };
 
   useEffect(() => {
@@ -555,7 +602,10 @@ export default function ProfilePage({ adSlot = null }) {
   };
 
   const handleInviteFriend = async (friendId) => {
-    setFriendsStatus("");
+    // No local list to optimistically mutate (the server decides whether this
+    // is a pending request or an instant add), so give the click immediate
+    // feedback instead of a silent pause.
+    setFriendsStatus(t("profile.friends.sendingInvite", "Sending invite…"));
     try {
       const response = await fetch("/api/friends/invite", {
         method: "POST",
@@ -607,7 +657,7 @@ export default function ProfilePage({ adSlot = null }) {
   };
 
   const handleRespondToInvite = async (inviteId, action) => {
-    setFriendsStatus("");
+    setFriendsStatus(t("profile.friends.updatingInvite", "Updating invite…"));
     try {
       const response = await fetch("/api/friends/invites/respond", {
         method: "POST",
@@ -755,26 +805,32 @@ export default function ProfilePage({ adSlot = null }) {
       );
       return;
     }
-    try {
-      const response = await fetch("/api/user/chat-color", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color: chatColor }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) {
-        setChatColorMsg(t("profile.membership.saved", "Chat color saved!"));
-        setMembership((m) => (m ? { ...m, chatColor } : m));
-      } else {
-        setChatColorMsg(
-          data.error || t("profile.membership.saveFailed", "Could not save color."),
-        );
-      }
-    } catch (err) {
-      setChatColorMsg(
-        t("profile.membership.saveFailed", "Could not save color."),
-      );
-    }
+    // Purely cosmetic: mark it saved immediately and roll the membership
+    // back if the write is rejected.
+    const previous = membership;
+    const result = await runOptimistically({
+      optimistic: () => setMembership((m) => (m ? { ...m, chatColor } : m)),
+      rollback: () => setMembership(previous),
+      request: async () => {
+        const response = await fetch("/api/user/chat-color", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ color: chatColor }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            data.error || t("profile.membership.saveFailed", "Could not save color."),
+          );
+        }
+        return data;
+      },
+    });
+    setChatColorMsg(
+      result.ok
+        ? t("profile.membership.saved", "Chat color saved!")
+        : result.error,
+    );
   };
 
   const handleSaveCosmetics = async () => {
@@ -788,57 +844,68 @@ export default function ProfilePage({ adSlot = null }) {
       );
       return;
     }
-    try {
-      const response = await fetch("/api/user/profile-customization", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    const previous = profileInfo;
+    const result = await runOptimistically({
+      optimistic: () =>
+        setProfileInfo((current) => ({
+          ...current,
           profileAccent: cosmetics.accent,
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.ok) {
-        setCosmeticsMsg(
-          t("profile.customization.saved", "Profile customization saved!"),
-        );
+        })),
+      rollback: () => setProfileInfo(previous),
+      request: async () => {
+        const response = await fetch("/api/user/profile-customization", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profileAccent: cosmetics.accent,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              t("profile.customization.saveFailed", "Could not save customization."),
+          );
+        }
         await loadProfileData();
-      } else {
-        setCosmeticsMsg(
-          data.error ||
-            t("profile.customization.saveFailed", "Could not save customization."),
-        );
-      }
-    } catch (err) {
-      setCosmeticsMsg(
-        t("profile.customization.saveFailed", "Could not save customization."),
-      );
-    }
+        return data;
+      },
+    });
+    setCosmeticsMsg(
+      result.ok
+        ? t("profile.customization.saved", "Profile customization saved!")
+        : result.error,
+    );
   };
 
   const handleResetChatColor = async () => {
     setChatColorMsg(null);
-    try {
-      const response = await fetch("/api/user/chat-color", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ color: null }),
-      });
-      if (response.ok) {
+    const previous = membership;
+    const previousColor = chatColor;
+    const result = await runOptimistically({
+      optimistic: () => {
         setChatColor("#00e5ff");
-        setChatColorMsg(
-          t("profile.membership.resetDone", "Chat color reset to default."),
-        );
         setMembership((m) => (m ? { ...m, chatColor: null } : m));
-      } else {
-        setChatColorMsg(
-          t("profile.membership.resetFailed", "Could not reset color."),
-        );
-      }
-    } catch (err) {
-      setChatColorMsg(
-        t("profile.membership.resetFailed", "Could not reset color."),
-      );
-    }
+      },
+      rollback: () => {
+        setChatColor(previousColor);
+        setMembership(previous);
+      },
+      request: async () => {
+        const response = await fetch("/api/user/chat-color", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ color: null }),
+        });
+        if (!response.ok) throw new Error("Could not reset color.");
+        return true;
+      },
+    });
+    setChatColorMsg(
+      result.ok
+        ? t("profile.membership.resetDone", "Chat color reset to default.")
+        : t("profile.membership.resetFailed", "Could not reset color."),
+    );
   };
 
   useEffect(() => {

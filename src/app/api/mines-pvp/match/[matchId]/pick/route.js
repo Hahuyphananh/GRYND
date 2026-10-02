@@ -1,50 +1,58 @@
 // src/app/api/mines-pvp/match/[matchId]/pick/route.js
 //
-// POST — submit a per-match tile pick. Server-side authoritative:
-//   • turn enforcement (currentTurnUserId must match caller)
-//   • cellIndex 0-24 row-major validation
-//   • rejects duplicate picks (own + opponent's)
-//   • rejects post-deadline (server-side AFK auto-pick fires from
-//     /status poll instead, so the client just has to wait for the
-//     next poll to see the new state)
+// POST — reveal a tile on the CALLER'S OWN board. Simultaneous play: both
+// seats may post at any time while the match is `active`, the 180s server
+// timer has not expired, and their own board is not completed/locked. There
+// are no turns and no shared board.
 //
-// The route is intentionally thin: it forwards (cellIndex) to
-// `pickTile` in the server store, which performs:
+// The route is intentionally thin: it forwards (cellIndex) to `pickTile` in
+// the server store, which performs:
 //   • participant + active-state validation
 //   • FOR UPDATE row lock so two parallel pickTile calls can't race
 //   • conditional UPDATE on `match.status` to refuse stale POSTs
-//   • synchronous state advancement (p1 ↔ p2 alternating in the
-//     shared-board odds order; revealing a mine ends the match)
+//   • server-minted scoring (safe +5 / mine −25, clamped) and completion
 //
 // Anti-cheat considerations baked into `pickTile`:
-//   * only the player whose turn it is can pick (server-trusted
-//     clerkId from Clerk's `auth()`)
+//   * the acting seat is derived from the authenticated user, never the body
 //   * the board column is never exposed mid-match (scrubbed at the
-//     /status response layer)
-//   * a stale submission (post-deadline) is rejected with 400 so
-//     the client knows to wait for the next poll to trigger the
-//     server-side AFK auto-pick
-//   * duplicate picks are rejected with 409 (Cell already picked)
+//     /status response layer); only the caller's own reveal is known
+//   * a submission after the match timer expires is rejected with 400
+//   * a duplicate reveal (same cell twice / a confirmed mine) is rejected 409
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { pickTile } from "../../../../../../lib/mines-pvp/serverStore";
 import { GRID_CELLS } from "../../../../../../lib/mines-pvp/constants";
-import { broadcastMatchUpdate } from "../../../../../../lib/mines-pvp/rooms";
+import {
+  broadcastMatchUpdate,
+  broadcastScoreEvent,
+} from "../../../../../../lib/mines-pvp/rooms";
 
-function normalisePickResult(match) {
+function normalisePickResult(match, userId) {
   if (!match) return null;
-  // Only return the cellIndex of each pick (not pickIsMine) so the
-  // POST response can't leak the board state. The full reveal
-  // comes from the subsequent /status poll (where viewer-aware
-  // scrubbing governs visibility per the spec).
+  // Return ONLY server-derived state for the acting seat. The board, the
+  // mine positions and the mine VALUES are never sent. The full per-viewer
+  // payload comes from the subsequent /status poll.
+  const viewerSeat = match.player1Id === userId ? "player1" : "player2";
+  const mineHit =
+    viewerSeat === "player1"
+      ? Number(match.p1MinesHit) > 0
+      : Number(match.p2MinesHit) > 0;
   return {
     id: match.id,
     status: match.status,
-    p1Pick: match.p1Pick ?? null,
-    p2Pick: match.p2Pick ?? null,
-    currentTurnUserId: match.currentTurnUserId,
-    roundDeadline: match.roundDeadline,
+    myScore: Number(viewerSeat === "player1" ? match.p1Score : match.p2Score) || 0,
+    opponentScore:
+      Number(viewerSeat === "player1" ? match.p2Score : match.p1Score) || 0,
+    myCompleted: Boolean(
+      viewerSeat === "player1" ? match.p1Completed : match.p2Completed,
+    ),
+    myLocked: Boolean(viewerSeat === "player1" ? match.p1Locked : match.p2Locked),
+    myMinesHit:
+      Number(viewerSeat === "player1" ? match.p1MinesHit : match.p2MinesHit) || 0,
+    matchDeadline: match.matchDeadline ?? null,
+    winnerId: match.winnerId ?? null,
+    winReason: match.winReason ?? null,
   };
 }
 
@@ -102,20 +110,26 @@ export async function POST(req, { params }) {
       );
     }
 
-    // Best-effort push to the match room so the opponent sees the
-    // reveal (or the sudden-death mine hit) without waiting for the
-    // 1.5s poll. Same `lobby:updated` event the rest of the game uses —
-    // the listener refetches `/status` for authoritative state, so the
-    // payload is a hint only and never carries board data. The helper
-    // internally handles the no-op case when the realtime-server runs
-    // in a separate process.
+    // Best-effort push to the match room so the opponent refetches the
+    // authoritative per-viewer snapshot immediately (no turns, simultaneous
+    // play). The `lobby:updated` hint never carries board data — the listener
+    // re-reads `/status`. The score event is cosmetic only (score animations)
+    // and is recomputed server-side on the refetch. Both helpers no-op when
+    // the realtime-server runs in a separate process, in which case the
+    // client relay + poll cover it.
     broadcastMatchUpdate(matchId, {
       status: result.match?.status,
-      currentTurnUserId: result.match?.currentTurnUserId ?? null,
-      roundDeadline: result.match?.roundDeadline ?? null,
+      matchDeadline: result.match?.matchDeadline ?? null,
+      p1Score: Number(result.match?.p1Score) || 0,
+      p2Score: Number(result.match?.p2Score) || 0,
       winnerId: result.match?.winnerId ?? null,
       winReason: result.match?.winReason ?? null,
       justResolved: Boolean(result.justResolved),
+    });
+    broadcastScoreEvent(matchId, {
+      seat: result.seat ?? null,
+      delta: Number(result.scoreDelta) || 0,
+      reason: result.scoreReason ?? null,
     });
 
     // Server-side AI trigger: if the match is a free AI game and the
@@ -135,8 +149,12 @@ export async function POST(req, { params }) {
     return NextResponse.json({
       success: true,
       data: {
-        match: normalisePickResult(result.match),
+        match: normalisePickResult(result.match, userId),
         justResolved: Boolean(result.justResolved),
+        // Caller-only feedback: true when this reveal detonated a mine, and
+        // whether it cleared (and therefore locked) the caller's board.
+        revealedMine: Boolean(result.revealedMine),
+        completed: Boolean(result.completed),
         raced: Boolean(result.raced),
       },
     });

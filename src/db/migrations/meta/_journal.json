@@ -1275,6 +1275,20 @@
       "when": 1800000044000,
       "tag": "0200_rating_leaderboard_mv",
       "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "7",
+      "when": 1800000045000,
+      "tag": "0201_mines_pvp_simultaneous",
+      "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1800000046000,
+      "tag": "0202_mines_pvp_replay_state",
+      "breakpoints": true
     }
   ]
 }

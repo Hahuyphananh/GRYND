@@ -11,6 +11,7 @@ import { useToast } from "../../components/toast/ToastProvider";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTranslation } from "../../hooks/useTranslation";
 import { QUESTIONNAIRE_QUESTIONS } from "../../lib/onboardingQuestionnaire";
+import { runOptimistically } from "../../lib/optimistic";
 
 /**
  * Settings hub. Hosts the preferences that used to live directly in the nav
@@ -185,26 +186,34 @@ export default function SettingsPageClient() {
   const saveLossLimit = async () => {
     setLossLimitSaving(true);
     setLossLimitMsg(null);
-    try {
-      let limit = null; // default
-      if (lossLimitMode === "off") limit = 0;
-      else if (lossLimitMode === "custom") {
-        const n = Number(lossLimitDraft);
-        if (!Number.isInteger(n) || n <= 0) {
-          setLossLimitMsg({ ok: false, text: "Enter a whole number of tokens above 0." });
-          return;
-        }
-        limit = n;
+    let limit = null; // default
+    if (lossLimitMode === "off") limit = 0;
+    else if (lossLimitMode === "custom") {
+      const n = Number(lossLimitDraft);
+      if (!Number.isInteger(n) || n <= 0) {
+        setLossLimitMsg({ ok: false, text: "Enter a whole number of tokens above 0." });
+        setLossLimitSaving(false);
+        return;
       }
-      const response = await fetch("/api/user/daily-loss-limit", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit }),
-      });
-      const data = await response.json();
-      if (response.ok && data?.success) {
-        setLossLimit(limit);
+      limit = n;
+    }
+    // A preference, not a server-decided value: apply it at once and revert
+    // if the write fails.
+    const previous = lossLimit;
+    const result = await runOptimistically({
+      optimistic: () => setLossLimit(limit),
+      rollback: () => setLossLimit(previous),
+      request: async () => {
+        const response = await fetch("/api/user/daily-loss-limit", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit }),
+        });
+        const data = await response.json();
+        if (!(response.ok && data?.success)) {
+          throw new Error(data?.error || "Failed to save.");
+        }
         showToast(
           limit === null
             ? "Using the global default warning."
@@ -213,14 +222,11 @@ export default function SettingsPageClient() {
               : `Warn me when I'm down ${limit.toLocaleString()} tokens in a day.`,
           "success",
         );
-      } else {
-        setLossLimitMsg({ ok: false, text: data?.error || "Failed to save." });
-      }
-    } catch {
-      setLossLimitMsg({ ok: false, text: "Failed to save — try again." });
-    } finally {
-      setLossLimitSaving(false);
-    }
+        return data;
+      },
+    });
+    if (!result.ok) setLossLimitMsg({ ok: false, text: result.error });
+    setLossLimitSaving(false);
   };
 
   const sendMfaOtp = async () => {
@@ -336,27 +342,31 @@ export default function SettingsPageClient() {
   const unsubscribeAll = async () => {
     setPrefsSaving(true);
     setPrefsMsg(null);
-    try {
-      const res = await fetch("/api/user/notification-preferences", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prefs: { promotions: false, daily: false, summary: false, progress: false },
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+    const allOff = { promotions: false, daily: false, summary: false, progress: false };
+    // Flip every toggle off on screen immediately; restore if the server
+    // rejects the opt-out.
+    const previous = prefs;
+    const result = await runOptimistically({
+      optimistic: () => setPrefs((p) => ({ ...p, ...allOff })),
+      rollback: () => setPrefs(previous),
+      request: async () => {
+        const res = await fetch("/api/user/notification-preferences", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prefs: allOff }),
+        });
+        const data = await res.json();
+        if (!(res.ok && data.success)) {
+          throw new Error(data.error || "Failed to unsubscribe.");
+        }
         setPrefs({ ...data.prefs });
         showToast("Unsubscribed from all marketing emails.", "success");
-      } else {
-        setPrefsMsg({ ok: false, text: data.error || "Failed to unsubscribe." });
-      }
-    } catch {
-      setPrefsMsg({ ok: false, text: "Failed to unsubscribe — try again." });
-    } finally {
-      setPrefsSaving(false);
-    }
+        return data;
+      },
+    });
+    if (!result.ok) setPrefsMsg({ ok: false, text: result.error });
+    setPrefsSaving(false);
   };
 
   // The player's answers as displayable rows: the catalog's own question

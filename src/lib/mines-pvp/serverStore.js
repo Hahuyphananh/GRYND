@@ -1,35 +1,28 @@
 // src/lib/mines-pvp/serverStore.js
 //
-// Server-side canonical helpers for the Mines PvP ("Mines Duel")
-// match system.
+// Server-side canonical helpers for the Mines PvP ("Mines Duel") match
+// system — SIMULTANEOUS, INDEPENDENT-BOARD scoring model.
 //
-// Why a dedicated serverStore (mirrors `src/lib/blackjack-pvp/
-// serverStore.js` + `src/lib/roulette-pvp/serverStore.js`):
-//   The match state machine has to be authoritative on the server:
-//     * matchmaking lock (stake-keyed) prevents lobby-race duplicates
-//     * host-picked mine count is locked at lobby creation; joiner
-//       gets the same board
-//     * server randomizes the turn order at match creation
-//     * server randomizes the 5×5 board at match creation
-//     * 3-second ready banner auto-advance
-//     * turn enforcement (only the player whose turn it is can pick)
-//     * 20-second pick-window auto-pick (AFK → random cell, which
-//       may be a mine — that's the punishment for going AFK)
-//     * end-state resolution per the shared-board rules (a mine hit →
-//       the revealer loses; all mines flagged → the flagger wins)
-//     * 90/10 payout split (winner gets 1.9× stake, house keeps 0.1×)
-//     * full board hidden from clients until match finishes
-//   Centralising this in a tiny module keeps the API routes thin
-//   and makes the state machine testable in isolation.
-//
-// State machine:
-//   waiting → ready → p1_turn → p2_turn → finished
+// The state machine:
+//   waiting → ready → active → finished
 //   (waiting/ready/active → cancelled)
 //
-// "p1_turn" means "it's player1's turn" (currentTurnUserId = player1Id).
-// "p2_turn" means "it's player2's turn" (currentTurnUserId = player2Id).
-// The host-picked first player is whichever of player1Id / player2Id
-// was rolled at match creation; the other player goes second.
+//   • `waiting`  — host has created a lobby, no opponent yet.
+//   • `ready`    — both seats filled; a short 3-second banner runs while
+//                  the server holds the single 180-second match timer.
+//   • `active`   — both players play AT WILL and AT THE SAME TIME on
+//                  their OWN server-generated board. There are no turns.
+//   • `finished` — both boards completed, or the match timer expired.
+//                  The score/tiebreak ladder names the winner (or a
+//                  deterministic draw).
+//
+// Everything here is server-authoritative. The client can only ever send
+// a `cellIndex`; it can never submit a score, a mine value, a mine
+// position, a completion, a timer or another seat's action.
+//
+// Mirrors the architectural shape of the other PvP stores (advisory-lock
+// matchmaking, FOR UPDATE row locks, conditional updates, best-effort
+// stat side-effects) while implementing the Mines-specific rules.
 
 import { eq, and, sql, isNull, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -50,10 +43,10 @@ import { sendSystemNotificationEmail } from "../emails/system";
 import { mirrorMinesQueued, mirrorMinesTransition } from "./canonicalLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import {
-  ACTIVE_STATES,
+  AI_PICK_DELAY_MS,
   GRID_CELLS,
-  HOUSE_RATIO,
   MATCH_STATUS,
+  MATCH_TIMER_SECONDS,
   MAX_STAKE,
   MIN_STAKE,
   MINES_AI_PLAYER_ID,
@@ -62,45 +55,45 @@ import {
   PICKABLE_STATES,
   READY_WINDOW_MS,
   RESULT,
-  ROUND_PICK_DEADLINE_MS,
+  SCORE,
   TERMINAL_STATES,
-  ROUND_TIMER_SECONDS,
   WIN_REASON,
-  activePickerForMatch,
-  chooseAiAction,
-  chooseAiCell,
+  ACTION_KIND,
+  applyScoreDelta,
+  chooseAiActionForSeat,
+  correctFlagsForSeat,
   flagsForSeat,
-  generateBoard,
-  hasFlaggedAllMines,
-  isFlagEntry,
+  generateBoardPair,
+  isBoardComplete,
   isFreeAiMatch,
   isMine,
-  minesFoundForSeat,
+  mineValueAt,
   nearestMineDistance,
-  pickRandomCell,
-  relocateMine,
-  resultForWinner,
-  revealedCells,
-  withFlagForSeat,
+  normalizeFlags,
+  revealedForSeat,
+  resolveScoredMatch,
 } from "./constants";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-// Per-row pacing helper: derive the per-pick deadline duration in ms
-// from a match row, falling back to the server-side default if the
-// column is null/0. Lets admin tooling override per-match pacing via
-// `round_timer_seconds` without code changes (mirrors roulette-pvp /
-// blackjack-pvp `roundDeadlineMs`).
-function roundDeadlineMs(match) {
-  const t = Number(match?.roundTimerSeconds);
-  if (Number.isFinite(t) && t > 0) return t * 1000;
-  return ROUND_PICK_DEADLINE_MS;
+// The two seat labels, in a stable order.
+const SEATS = ["player1", "player2"];
+
+function seatRow(match, seat) {
+  return seat === "player2" ? match?.p2Board : match?.p1Board;
+}
+
+function scoreForSeat(match, seat) {
+  return Number(seat === "player2" ? match?.p2Score : match?.p1Score) || 0;
+}
+
+function isSeatLocked(match, seat) {
+  return Boolean(seat === "player2" ? match?.p2Locked : match?.p1Locked);
 }
 
 // Stable deterministic hash from numeric stake to a signed 32-bit int.
-// Used purely as the second key of the two-key pg_advisory_xact_lock
-// for stake-keyed matchmaking. Collisions on distinct stakes would
-// only briefly serialise (no correctness risk).
+// Used purely as the second key of the two-key pg_advisory_xact_lock for
+// stake-keyed matchmaking.
 function hashStakeToInt(stake) {
   const fixed = Number(stake).toFixed(2);
   let h = 2166136261; // FNV-1a 32-bit offset basis
@@ -111,8 +104,6 @@ function hashStakeToInt(stake) {
   return (h | 0) & 0x7fffffff;
 }
 
-// Seat label ("player1" | "player2") for a user in a given match row.
-// Returns null if the user is not a participant.
 export function seatForUser(match, userId) {
   if (!match || !userId) return null;
   if (match.player1Id === userId) return "player1";
@@ -124,36 +115,42 @@ export function isParticipant(match, userId) {
   return seatForUser(match, userId) !== null;
 }
 
-// Validate the stake at lobby creation time. The mine count is FIXED now
-// (10 on the 10×10 board), so any requested count is checked against that
-// single legal value. Returns `{ ok: true }` on
-// success, `{ ok: false, error }` otherwise.
+// Format a seat-stats update patch onto the match row. Single source of
+// truth so the two seats can never be written to each other's columns.
+function statsPatch(seat, { score, safeRevealed, minesHit, correctFlagCount, incorrectFlagCount, completed, completedAt, locked }) {
+  const p = seat === "player2";
+  const patch = {};
+  if (score !== undefined) patch[p ? "p2Score" : "p1Score"] = score;
+  if (safeRevealed !== undefined) patch[p ? "p2SafeRevealed" : "p1SafeRevealed"] = safeRevealed;
+  if (minesHit !== undefined) patch[p ? "p2MinesHit" : "p1MinesHit"] = minesHit;
+  if (correctFlagCount !== undefined) patch[p ? "p2CorrectFlagCount" : "p1CorrectFlagCount"] = correctFlagCount;
+  if (incorrectFlagCount !== undefined) patch[p ? "p2IncorrectFlagCount" : "p1IncorrectFlagCount"] = incorrectFlagCount;
+  if (completed !== undefined) patch[p ? "p2Completed" : "p1Completed"] = completed;
+  if (completedAt !== undefined) patch[p ? "p2CompletedAt" : "p1CompletedAt"] = completedAt;
+  if (locked !== undefined) patch[p ? "p2Locked" : "p1Locked"] = locked;
+  return patch;
+}
+
+// ── Parameter validation ──────────────────────────────────────────────
 export function validateMatchParams({ stakeAmount, minesCount }) {
   const stake = Number(stakeAmount);
   const mines = Number(minesCount);
-  // STAKES ARE RETIRED: a free match is the only legal entry, so the stake
-  // range no longer rejects anything.
-  if (!STAKES_RETIRED && (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE)) {
+  if (
+    !STAKES_RETIRED &&
+    (!Number.isFinite(stake) || stake < MIN_STAKE || stake > MAX_STAKE)
+  ) {
     return {
       ok: false,
       error: `Stake must be a number in [${MIN_STAKE}, ${MAX_STAKE}]`,
     };
   }
-  // Accept `undefined` (older clients that don't send a mine count) so the
-  // server can pin it, but reject an explicitly different value.
   if (minesCount != null && mines !== MINES_PER_MATCH) {
-    return {
-      ok: false,
-      error: `Mines count is fixed at ${MINES_PER_MATCH}`,
-    };
+    return { ok: false, error: `Mines count is fixed at ${MINES_PER_MATCH}` };
   }
   return { ok: true };
 }
 
-// ── Lobby helpers ─────────────────────────────────────────────────────
-
-// Open (waiting) matches for the casino lobby listing. Most recent
-// first; `player2Id IS NULL` is the canonical "open" predicate.
+// ── Lobby listing ─────────────────────────────────────────────────────
 export async function listOpenMatches({ limit = 30 } = {}) {
   return db
     .select({
@@ -174,34 +171,17 @@ export async function listOpenMatches({ limit = 30 } = {}) {
     .limit(limit);
 }
 
-// ── Create a free human-vs-AI match ─────────────────────────────────
-//
-// The bot occupies player2 seat. No stake is escrowed, no user
-// balance is touched. The match starts immediately in `ready`
-// state so the human sees the 3-second "Get ready" banner, then
-// the AI will play when its turn arrives via the odds formula.
-//
-// The mine count is FIXED (MINES_PER_MATCH) and the board is generated
-// server-side just like a normal match.
+// ── Create a free human-vs-AI match ───────────────────────────────────
 export async function createAiMatch({ userId, minesCount, difficulty }) {
   if (!userId) return { error: "Unauthorized", status: 401 };
 
-  // The lobby's AI tier, stored on the row so the bot's cell policy (see
-  // `chooseAiCell`) reads the same value on every path.
   const aiDifficulty = coerceAiDifficulty(difficulty);
 
   if (minesCount != null && Number(minesCount) !== MINES_PER_MATCH) {
-    return {
-      error: `Mines count is fixed at ${MINES_PER_MATCH}`,
-      status: 400,
-    };
+    return { error: `Mines count is fixed at ${MINES_PER_MATCH}`, status: 400 };
   }
-  const count = MINES_PER_MATCH;
 
-  // Server randomises the first player. In AI matches the human
-  // always goes first so they get a meaningful opening; the AI
-  // responds after the human's pick.
-  const firstPlayerId = userId;
+  const { board1, board2 } = generateBoardPair(MINES_PER_MATCH);
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [match] = await db
@@ -210,96 +190,52 @@ export async function createAiMatch({ userId, minesCount, difficulty }) {
       player1Id: userId,
       player2Id: MINES_AI_PLAYER_ID,
       stakeAmount: "0.00",
-      minesCount: count,
+      minesCount: MINES_PER_MATCH,
       status: MATCH_STATUS.READY,
       isAi: true,
       aiDifficulty,
-      firstPlayerId,
-      board: generateBoard(count),
-      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      firstPlayerId: userId,
+      // Legacy single-board field mirrors seat 1; live play uses the
+      // per-seat boards.
+      board: board1,
+      p1Board: board1,
+      p2Board: board2,
+      roundTimerSeconds: 20,
       roundDeadline: readyDeadline,
+      matchTimerSeconds: MATCH_TIMER_SECONDS,
       startedAt: new Date(),
     })
     .returning();
 
+  mirrorMinesQueued({
+    matchId: match.id,
+    playerCount: 2,
+    queuedAt: match.createdAt ? new Date(match.createdAt) : undefined,
+    mode: `ai:${MINES_PER_MATCH}`,
+  });
+
   return { match, joined: true };
 }
 
-// Let the authenticated human request the bot's move. The bot acts through the
-// SAME action pipeline a human uses (`applyPick` / `applyFlag`) under the same
-// row lock, validation and resolution, so a flag and a reveal are decided by
-// server rules and nothing else. It flags a mine when the public clues prove
-// one (see `chooseAiAction`) and otherwise reveals the safest live cell.
-//
-// A duplicate call is idempotent: if it is not the bot's turn (or the match is
-// already over/not started), it returns the current state.
-export async function playAiTurn({ userId, matchId }) {
-  return await db.transaction(async (tx) => {
-    const match = await fetchMatchForUpdate(tx, matchId);
-    if (!match) return { error: "Match not found", status: 404 };
-    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
-      return { error: "Forbidden", status: 403 };
-    }
-    if (TERMINAL_STATES.has(match.status)) {
-      return { match, justResolved: false, alreadyPlayed: true };
-    }
-    if (match.status === MATCH_STATUS.WAITING || match.status === MATCH_STATUS.READY) {
-      return { error: "Match has not started yet", status: 400 };
-    }
-
-    // Only act when the closed-form turn order actually puts the bot up.
-    const expectedPicker = activePickerForMatch(match);
-    if (!expectedPicker || expectedPicker !== match.player2Id) {
-      return { match, justResolved: false, alreadyPlayed: true };
-    }
-
-    const beforeStatus = match.status;
-    const updated = await playAiTurnInTransaction(tx, match);
-    const justResolved =
-      !TERMINAL_STATES.has(beforeStatus) && TERMINAL_STATES.has(updated.status);
-    return { match: updated, justResolved, alreadyPlayed: false };
-  });
-}
-
 // ── Create / Join matchmaking ─────────────────────────────────────────
-//
-// Single-transaction stake-keyed matchmaking (mirrors
-// blackjack-pvp / roulette-pvp):
-//
-//   1. Postgres `pg_advisory_xact_lock` keyed on
-//      (MINES_PVP_LOCK_NAMESPACE, hash(stake)) serialises every
-//      concurrent matchmaker for the same stake across all workers.
-//      Without this, two matchmakers calling `createOrJoin`
-//      concurrently could both observe "no open match" and both
-//      INSERT a fresh waiting row.
-//   2. `FOR UPDATE` + re-fetch + conditional UPDATE filtering on
-//      `status='waiting' AND player2_id IS NULL` catches the
-//      "creator cancelled in parallel" race.
-//
-// The mine count is a SERVER CONSTANT (10 on the 10×10 board) and every
-// incoming request's `minesCount` is ignored in favour of it. This keeps
-// older clients, stored Quick Queue preferences and a malicious joiner from
-// ever substituting a different field density.
 export async function createOrJoin({ userId, stakeAmount, minesCount }) {
   void minesCount; // a client value is never trusted; the constant wins
-  // Retired stakes: the match is free, and every escrow/payout below operates
-  // on 0 because the stake is normalized here.
   stakeAmount = normalizeStake(stakeAmount);
-  const validation = validateMatchParams({ stakeAmount, minesCount: MINES_PER_MATCH });
+  const validation = validateMatchParams({
+    stakeAmount,
+    minesCount: MINES_PER_MATCH,
+  });
   if (!validation.ok) {
     return { error: validation.error, status: 400 };
   }
-  const fixedMines = MINES_PER_MATCH;
 
   const lockKey = hashStakeToInt(stakeAmount);
 
   return await db.transaction(async (tx) => {
-    // Acquire stake-keyed advisory lock; auto-released on commit/rollback.
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${MINES_PVP_LOCK_NAMESPACE}, ${lockKey})`,
     );
 
-    // 1) Look for an existing open match with matching stake.
     const [openMatch] = await tx
       .select()
       .from(minesPvpMatches)
@@ -315,45 +251,40 @@ export async function createOrJoin({ userId, stakeAmount, minesCount }) {
       .for("update");
 
     if (openMatch) {
-      // minesCount from joiner is ignored (host already picked).
       if (openMatch.player1Id === userId) {
-        // Caller's own existing lobby — just return it.
         return { match: openMatch, joined: false };
       }
       return await joinExistingMatch(tx, openMatch.id, userId, stakeAmount);
     }
 
-    // 2) No open match — create a fresh waiting match.
-    return await createWaitingMatch(tx, userId, stakeAmount, fixedMines);
+    return await createWaitingMatch(tx, userId, stakeAmount);
   });
 }
 
-async function createWaitingMatch(tx, userId, stakeAmount, minesCount) {
-  // Mine count is fixed; any requested value is ignored in favour of the
-  // single legal density.
-  const count = MINES_PER_MATCH;
+async function createWaitingMatch(tx, userId, stakeAmount) {
+  // Both boards are generated HERE and locked before any joiner arrives.
+  const { board1, board2 } = generateBoardPair(MINES_PER_MATCH);
   const [match] = await tx
     .insert(minesPvpMatches)
     .values({
       player1Id: userId,
       stakeAmount: Number(stakeAmount).toFixed(2),
-      minesCount: count,
+      minesCount: MINES_PER_MATCH,
       status: MATCH_STATUS.WAITING,
-      // BOARD IS GENERATED HERE so it is locked in before any joiner
-      // arrives. The board is stored server-only; the viewer serializer
-      // scrubs it until the match finishes.
-      board: generateBoard(count),
-      roundTimerSeconds: ROUND_TIMER_SECONDS,
+      board: board1,
+      p1Board: board1,
+      p2Board: board2,
+      roundTimerSeconds: 20,
+      matchTimerSeconds: MATCH_TIMER_SECONDS,
       startedAt: null,
     })
     .returning();
 
-  // Fire system notification for large PvP create stakes.
   if (Number(stakeAmount) >= 1000) {
     sendSystemNotificationEmail({
       eventType: "bet_placed",
-      description: `User ${userId} created mines PvP lobby (${stakeAmount} stake, ${count} mines).`,
-      metadata: { userId, stakeAmount, minesCount: count, matchId: match.id },
+      description: `User ${userId} created mines PvP lobby (${stakeAmount} stake).`,
+      metadata: { userId, stakeAmount, minesCount: MINES_PER_MATCH, matchId: match.id },
     }).catch(() => {});
   }
 
@@ -361,15 +292,12 @@ async function createWaitingMatch(tx, userId, stakeAmount, minesCount) {
     matchId: match.id,
     playerCount: 1,
     queuedAt: match.createdAt ? new Date(match.createdAt) : undefined,
-    mode: `pvp:${count}`,
+    mode: `pvp:${MINES_PER_MATCH}`,
   });
   return { match, joined: false };
 }
 
 async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
-  // Re-fetch the candidate row INSIDE the same transaction with
-  // FOR UPDATE so a parallel /cancel that committed first can't leave
-  // us updating a row that's already cancelled.
   const [match] = await tx
     .select()
     .from(minesPvpMatches)
@@ -380,16 +308,8 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     return { error: "Lobby no longer available", status: 409 };
   }
 
-  // Server randomizes the turn order at match creation. The chosen
-  // player is the one who picks first (status='p1_turn' / 'p2_turn'
-  // with currentTurnUserId pointing at them).
-  const firstPlayerId =
-    Math.random() < 0.5 ? match.player1Id : userId;
-
-  // Brief 3-second "Ready" window so both players can read the
-  // match-found banner before the first 20-second pick window
-  // opens. /status auto-advances to the first pick state once the
-  // deadline passes (see advanceFromReady).
+  // Both boards are already fixed; joining only opens the ready banner.
+  void stakeAmount;
   const readyDeadline = new Date(Date.now() + READY_WINDOW_MS);
 
   const [updated] = await tx
@@ -397,9 +317,7 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     .set({
       player2Id: userId,
       status: MATCH_STATUS.READY,
-      firstPlayerId,
-      // currentTurnUserId stays null until advanceFromReady fires
-      // (the first pick state will set it to firstPlayerId).
+      firstPlayerId: match.player1Id,
       currentTurnUserId: null,
       roundDeadline: readyDeadline,
       startedAt: new Date(),
@@ -407,16 +325,12 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
     .where(
       and(
         eq(minesPvpMatches.id, candidateId),
-        // Defensive guard: only update if status is still `waiting`
-        // and player2Id is still null when we commit.
         eq(minesPvpMatches.status, MATCH_STATUS.WAITING),
         isNull(minesPvpMatches.player2Id),
       ),
     )
     .returning();
 
-  // If our conditional UPDATE didn't match any rows, another concurrent
-  // joiner raced us.
   if (!updated) {
     return { error: "Lobby no longer available", status: 409 };
   }
@@ -430,8 +344,7 @@ async function joinExistingMatch(tx, candidateId, userId, stakeAmount) {
   return { match: updated, joined: true };
 }
 
-// ── Cancel (creator only, while in waiting) ───────────────────────────
-
+// ── Cancel (creator only, while waiting) ──────────────────────────────
 export async function cancelMatch({ userId, matchId }) {
   return await db.transaction(async (tx) => {
     const [match] = await tx
@@ -442,10 +355,7 @@ export async function cancelMatch({ userId, matchId }) {
 
     if (!match) return { error: "Match not found", status: 404 };
     if (match.status !== MATCH_STATUS.WAITING) {
-      return {
-        error: "Match cannot be cancelled after opponent joins",
-        status: 400,
-      };
+      return { error: "Match cannot be cancelled after opponent joins", status: 400 };
     }
     if (match.player1Id !== userId) {
       return { error: "Only the creator can cancel", status: 403 };
@@ -453,10 +363,7 @@ export async function cancelMatch({ userId, matchId }) {
 
     const [updated] = await tx
       .update(minesPvpMatches)
-      .set({
-        status: MATCH_STATUS.CANCELLED,
-        endedAt: new Date(),
-      })
+      .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
       .where(eq(minesPvpMatches.id, matchId))
       .returning();
 
@@ -470,15 +377,7 @@ export async function cancelMatch({ userId, matchId }) {
   });
 }
 
-// ── Resign from an active match ──────────────────────────────────────
-//
-// POST-only surrender: the resigner forfeits their stake and the
-// opponent is declared the winner (full settlement via the shared
-// `resolveMatch` path — winner credited, house fee taken, history
-// row + stats recorded). Allowed from any non-terminal state where
-// the opponent has already joined (ready / p1_turn / p2_turn); a
-// `waiting` match is cancelled with a full refund instead (see
-// `cancelMatch`), and terminal matches are rejected outright.
+// ── Resign from an active match ───────────────────────────────────────
 export async function resignMatch({ userId, matchId }) {
   return await db.transaction(async (tx) => {
     const [match] = await tx
@@ -488,9 +387,7 @@ export async function resignMatch({ userId, matchId }) {
       .for("update");
 
     if (!match) return { error: "Match not found", status: 404 };
-    if (!isParticipant(match, userId)) {
-      return { error: "Forbidden", status: 403 };
-    }
+    if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
     if (TERMINAL_STATES.has(match.status)) {
       return { error: "Match already finished", status: 400 };
     }
@@ -498,8 +395,6 @@ export async function resignMatch({ userId, matchId }) {
       return { error: "Use cancel to leave a waiting match", status: 400 };
     }
 
-    // Resignation is a loss for the resigner: name the OPPONENT as the
-    // winner (never the resigner as the loser) and label the ending.
     const updated = await resolveMatch(tx, match, {
       winnerId: otherSeatId(match, userId),
       reason: WIN_REASON.RESIGN,
@@ -508,7 +403,69 @@ export async function resignMatch({ userId, matchId }) {
   });
 }
 
-// ── Match fetch with row lock (for atomic operations) ─────────────────
+// ── Disconnect forfeit ────────────────────────────────────────────────
+// Called by /api/mines-pvp/disconnect-forfeit when a participant's socket
+// has stayed disconnected past the realtime-server grace window.
+//
+// Adaptations for SIMULTANEOUS play — a temporary blip must never:
+//   • award a win,              → the realtime grace window is the only trigger
+//   • freeze the opponent,      → nothing is frozen; the duel has no turns
+//   • modify the score, or      → the forfeit never touches scoring columns
+//   • modify the board.         → the boards are never read or written here
+//
+// Also ignored (no forfeit) when:
+//   • the match is already terminal (idempotent),
+//   • the disconnecting seat already COMPLETED/locked its board — a finisher
+//     walking away must not be punished; the opponent plays to the timer,
+//   • the match is a free vs-AI practice match,
+//   • the match is still WAITING (no opponent) → cancel it instead.
+export async function forfeitMatchOnDisconnect({ loserClerkId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, loserClerkId)) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (TERMINAL_STATES.has(match.status)) {
+      return { match, forfeited: false, cancelled: false, ignored: true };
+    }
+    if (isFreeAiMatch(match)) {
+      // Practice matches are never forfeited on a disconnect.
+      return { match, forfeited: false, cancelled: false, ignored: true };
+    }
+
+    const seat = seatForUser(match, loserClerkId);
+
+    // Waiting lobby with no opponent → cancel (the creator left).
+    if (match.status === MATCH_STATUS.WAITING || !match.player2Id) {
+      const [cancelled] = await tx
+        .update(minesPvpMatches)
+        .set({ status: MATCH_STATUS.CANCELLED, endedAt: new Date() })
+        .where(eq(minesPvpMatches.id, match.id))
+        .returning();
+      mirrorMinesTransition({
+        matchId: match.id,
+        status: "cancelled",
+        cancelReason: "disconnect",
+        playerCount: 1,
+      });
+      return { match: cancelled || match, forfeited: false, cancelled: true };
+    }
+
+    // A player who already CLEARED their board keeps their result; the
+    // opponent simply plays to the clock. No forfeit.
+    if (isSeatLocked(match, seat)) {
+      return { match, forfeited: false, cancelled: false, ignored: true };
+    }
+
+    const winnerId = otherSeatId(match, loserClerkId);
+    const updated = await resolveMatch(tx, match, {
+      winnerId,
+      reason: WIN_REASON.DISCONNECT,
+    });
+    return { match: updated, forfeited: true, cancelled: false };
+  });
+}
 
 async function fetchMatchForUpdate(tx, matchId) {
   const [match] = await tx
@@ -519,34 +476,32 @@ async function fetchMatchForUpdate(tx, matchId) {
   return match;
 }
 
-// ── Auto-advance ready → first pick state ──────────────────────────────
-//
-// Fires from fetchMatchWithAutoResolve when the 3-second ready window
-// elapses. Sets `status` to `p1_turn` or `p2_turn` (whichever
-// `firstPlayerId` corresponds to) and opens the first 20-second
-// pick window.
-async function advanceFromReady(tx, match) {
-  if (!match.firstPlayerId) {
-    // Defensive: should never happen (joinExistingMatch sets this),
-    // but bail out cleanly if it does.
-    return match;
-  }
-  const isFirstPlayerP1 = match.firstPlayerId === match.player1Id;
-  const nextStatus = isFirstPlayerP1
-    ? MATCH_STATUS.P1_TURN
-    : MATCH_STATUS.P2_TURN;
-  // Free vs-AI matches are untimed — the human can pick at their own
-  // pace, so no pick window is opened (PvP keeps the 20s clock).
-  const deadline = isFreeAiMatch(match)
-    ? null
-    : new Date(Date.now() + roundDeadlineMs(match));
+function otherSeatId(match, userId) {
+  if (!match) return null;
+  if (match.player1Id === userId) return match.player2Id ?? null;
+  if (match.player2Id === userId) return match.player1Id ?? null;
+  return null;
+}
 
+// ── Ready → active ────────────────────────────────────────────────────
+// Opens the SINGLE 180-second match timer. Both players start from this
+// one server timestamp.
+async function advanceFromReady(tx, match) {
+  const timerSeconds = Number(match.matchTimerSeconds) || MATCH_TIMER_SECONDS;
+  // ONE shared start instant for both seats: `startedAt` marks when play
+  // actually begins (after the ready banner) and `matchDeadline` is the
+  // single server-authoritative 180s clock derived from the same `now`.
+  const now = Date.now();
+  const startedAt = new Date(now);
+  const deadline = new Date(now + timerSeconds * 1000);
   await tx
     .update(minesPvpMatches)
     .set({
-      status: nextStatus,
-      currentTurnUserId: match.firstPlayerId,
-      roundDeadline: deadline,
+      status: MATCH_STATUS.ACTIVE,
+      currentTurnUserId: null,
+      roundDeadline: null,
+      startedAt,
+      matchDeadline: deadline,
     })
     .where(
       and(
@@ -562,281 +517,28 @@ async function advanceFromReady(tx, match) {
   return refreshed || match;
 }
 
-// ── Force-pick on deadline ────────────────────────────────────────────
-//
-// Server-side "AFK nudge": if the current player's pick window has
-// elapsed and they haven't picked, auto-pick a random un-picked
-// cell. The cell MAY be a mine — that's the punishment for going
-// AFK in the middle of a turn (per user spec). The auto-pick is
-// appended to `picks` (with `autoPicked: true`) and follows the
-// normal resolution rules: mine hit → picker loses outright;
-// otherwise → advance to the next picker in the "odds" turn order.
-// Returns the freshly-updated match row.
-async function forcePick(tx, match) {
-  if (!PICKABLE_STATES.has(match.status)) {
-    return match;
-  }
-  // The active picker is whatever the closed-form odds formula
-  // returns given the current picks-array length — NOT whatever
-  // `match.status === p1_turn` says, which only mirrors seat at
-  // pick-time.
-  const pickerId = activePickerForMatch(match);
-  const cellIndex = pickRandomCell({
-    // Exclude every cell already in the per-pick history, not just
-    // the legacy first-of-each-seat scalar (a player may have
-    // already made multiple picks before going AFK).
-    excludePicks: pickHistoryCells(match),
-  });
-
-  // First-pick mercy applies to the AFK auto-pick on turn 1 as well:
-  // the opening is definitionally a guess, so it must never be a trap.
-  // Relocates the mine and persists the new board in this tx.
-  let board = match.board;
-  let mercyUsed = false;
-  if (match.picks.length === 0 && isMine(board, cellIndex)) {
-    board = relocateMine(board, cellIndex);
-    mercyUsed = true;
-    await tx
-      .update(minesPvpMatches)
-      .set({ board })
-      .where(eq(minesPvpMatches.id, match.id));
-  }
-
-  const pickIsMine = isMine(board, cellIndex);
-  const seat = pickerId === match.player1Id ? "player1" : "player2";
-  const pickedAt = new Date();
-  const newPick = {
-    userId: pickerId,
-    seat,
-    cell: cellIndex,
-    isMine: pickIsMine,
-    // Proximity hint for SAFE picks (null on a mine): how many tiles
-    // away the nearest mine is, computed server-side from the board.
-    // PUBLIC under the shared-board rules — both seats see the same
-    // board, so matchView never strips the opponent's clues.
-    hint: pickIsMine ? null : nearestMineDistance(board, cellIndex),
-    mercy: mercyUsed,
-    autoPicked: true,
-    pickedAt: pickedAt.toISOString(),
-  };
-
-  // Apply the pick: a mine resolves the match, a safe cell advances the
-  // turn. `applyPick` always returns `{ match, justResolved }`.
-  return await applyPick(tx, { ...match, board }, newPick);
-}
-
-// ── Pure utility: every REVEALED cell across both players ─────────────
-// Used by the duplicate-reveal guard in `pickTile` + `flagTile` and by
-// forcePick's `excludePicks` so the AFK auto-pick never re-uses a cell
-// anyone already cleared. Safe to call on legacy rows whose `picks` is
-// NULL — returns an empty array.
-//
-// FLAG claims are deliberately NOT counted as reveals: under the
-// shared-board rules a flag is a claim on a still-hidden cell, so the other
-// player (or the flagger) may still reveal it — only a real reveal blocks a
-// second reveal. Duplicate FLAGS are rejected separately, against the
-// flagger's OWN flag set (see `flagTile`).
-function pickHistoryCells(match) {
-  return revealedCells(match);
-}
-
-// The OTHER participant's clerkId for whoever just acted. Used to derive a
-// winner from the loser we observed (a mine hit) — or to name the opponent a
-// resigner loses to — so no call site has to hand-roll the seat ternary and
-// silently pick the wrong side. Returns null when the actor isn't a seat.
-function otherSeatId(match, userId) {
-  if (!match) return null;
-  if (match.player1Id === userId) return match.player2Id ?? null;
-  if (match.player2Id === userId) return match.player1Id ?? null;
-  return null;
-}
-
-// ── Apply a (validated) pick to the match ─────────────────────────────-
-//
-// Shared by `pickTile` (user-supplied) and `forcePick` (AFK
-// auto-pick). Encapsulates: append to `picks`, mirror the
-// most-recent pick onto the legacy p{N}_pick columns for
-// backwards-compat history views, and either resolve the match
-// (mine hit) or advance to the next picker (odds formula).
-
-// Shared by `applyPick` (pickTile / forcePick) and `flagTile`: compute
-// the legacy scalar mirrors (most-recent-of-each-seat REVEAL) for a new
-// chronological `picks` array. `picks` stores `pickedAt` as an ISO
-// string for JSONB portability, but the Drizzle `p{N}_picked_at`
-// columns are declared `timestamp()` (mode 'date' default) and crash
-// with `TypeError: value.getTime is not a function` when bound from a
-// raw string — so `pickSeatMostRecentDate` re-hydrates to a Date
-// before .set().
-//
-// FLAG entries are skipped entirely. The legacy columns describe REVEALS
-// (`p{N}_pick_is_mine` in particular is surfaced to the viewer's own seat
-// mid-match by the /status scrub), and a flag's correctness is secret until
-// the match ends — mirroring a flag here would hand the flagger the answer.
-// Flags are published exclusively through `p1_flags` / `p2_flags`.
-function mirrorPickSetValues(allPicks) {
-  const reveals = allPicks.filter((p) => !isFlagEntry(p));
-  return {
-    p1Pick: pickSeatMostRecent(reveals, "player1", "cell"),
-    p2Pick: pickSeatMostRecent(reveals, "player2", "cell"),
-    p1PickIsMine: pickSeatMostRecent(reveals, "player1", "isMine"),
-    p2PickIsMine: pickSeatMostRecent(reveals, "player2", "isMine"),
-    p1PickedAt: pickSeatMostRecentDate(reveals, "player1"),
-    p2PickedAt: pickSeatMostRecentDate(reveals, "player2"),
-    p1AutoPicked:
-      pickSeatMostRecent(reveals, "player1", "autoPicked") ?? false,
-    p2AutoPicked:
-      pickSeatMostRecent(reveals, "player2", "autoPicked") ?? false,
-  };
-}
-
-// The turn-advance patch for a match whose `picks` array already contains
-// the action that just landed: whoever the closed-form odds formula puts up
-// next, a fresh deadline (free vs-AI matches stay untimed), and the legacy
-// status mirror. Extracted so `applyPick` (safe reveal) and `flagTile` (a
-// flag consumes your turn) advance identically — one source of truth for
-// turn order.
-function nextTurnPatch(match) {
-  const nextPickerId = activePickerForMatch(match);
-  return {
-    currentTurnUserId: nextPickerId,
-    // Free vs-AI matches are untimed (see advanceFromReady).
-    roundDeadline: isFreeAiMatch(match)
-      ? null
-      : new Date(Date.now() + roundDeadlineMs(match)),
-    status:
-      nextPickerId === match.player1Id
-        ? MATCH_STATUS.P1_TURN
-        : MATCH_STATUS.P2_TURN,
-  };
-}
-
-async function applyPick(tx, match, pick) {
-  const allPicks = Array.isArray(match.picks) ? [...match.picks] : [];
-  allPicks.push(pick);
-
-  const setValues = {
-    picks: allPicks,
-    // Mirror the most-recent-of-each seat onto the legacy scalar
-    // columns. Only the LAST pick from a given seat sticks; this
-    // preserves the schema contract for any legacy viewer that
-    // still reads `p1_pick` / `p2_pick` etc. directly.
-    ...mirrorPickSetValues(allPicks),
-  };
-
-  if (pick.isMine) {
-    // Sudden-death mine: the picker who revealed a mine loses IMMEDIATELY
-    // and the opponent wins, per the shared-board rules. The winner is
-    // derived here (never the loser) and `resolveMatch` re-derives the
-    // result from it, so the two sides can't be accidentally swapped.
-    // Conditional update + resolve are inside the same tx so a
-    // concurrent status poll can't see a half-applied pick.
-    const [updated] = await tx
-      .update(minesPvpMatches)
-      .set(setValues)
-      .where(
-        and(
-          eq(minesPvpMatches.id, match.id),
-          eq(minesPvpMatches.status, match.status),
-        ),
-      )
-      .returning();
-    if (!updated) {
-      // Lost the race to a concurrent safe-pick advance; fall
-      // through and call resolveMatch on the FRESH row, but
-      // EXPLICITLY merge `pick` onto `refreshed.picks` first so the
-      // rounds-row + per-seat scalars don't drop the mine that
-      // ended the match (defensive per code-review S1).
-      const [refreshed] = await tx
-        .select()
-        .from(minesPvpMatches)
-        .where(eq(minesPvpMatches.id, match.id));
-      const merged = refreshed || match;
-      const mergedPicks = Array.isArray(merged.picks)
-        ? [...merged.picks, pick]
-        : [pick];
-      const finalRow = await resolveMatch(
-        tx,
-        { ...merged, picks: mergedPicks },
-        {
-          winnerId: otherSeatId(merged, pick.userId),
-          reason: WIN_REASON.MINE_HIT,
-        },
-      );
-      return { match: finalRow, justResolved: true };
-    }
-    const finalRow = await resolveMatch(tx, updated, {
-      winnerId: otherSeatId(updated, pick.userId),
-      reason: WIN_REASON.MINE_HIT,
-    });
-    return { match: finalRow, justResolved: true };
-  }
-
-  // Safe reveal → the clue is computed server-side (on `pick.hint`) and is
-  // PUBLIC to both seats now; only the turn advances here.
-  const fakeMatchAfter = { ...match, picks: allPicks };
-
+// ── Shared update helper ──────────────────────────────────────────────
+// Conditional on the status we validated against, so a racing action can
+// never double-apply. Returns the fresh row (or null on a lost race).
+async function patchMatch(tx, matchId, status, patch) {
   const [updated] = await tx
     .update(minesPvpMatches)
-    .set({
-      ...setValues,
-      ...nextTurnPatch(fakeMatchAfter),
-    })
+    .set(patch)
     .where(
       and(
-        eq(minesPvpMatches.id, match.id),
-        eq(minesPvpMatches.status, match.status),
+        eq(minesPvpMatches.id, matchId),
+        eq(minesPvpMatches.status, status),
       ),
     )
     .returning();
-
-  if (!updated) {
-    const [refreshed] = await tx
-      .select()
-      .from(minesPvpMatches)
-      .where(eq(minesPvpMatches.id, match.id));
-    return { match: refreshed || match, justResolved: false, raced: true };
-  }
-  return { match: updated, justResolved: false };
+  return updated || null;
 }
 
-// Pure helper: return the value of `field` from the MOST RECENT
-// entry of `picks` whose `seat` matches `seatLabel`. Returns null
-// if no such entry exists (so callers can stamp null onto legacy
-// timestamp columns when that seat hasn't picked yet).
-function pickSeatMostRecent(picks, seatLabel, field) {
-  for (let i = picks.length - 1; i >= 0; i -= 1) {
-    if (picks[i] && picks[i].seat === seatLabel) {
-      return picks[i][field] ?? null;
-    }
-  }
-  return null;
-}
-
-// Date sibling of `pickSeatMostRecent`. Reads the most-recent
-// `pickedAt` ISO string for `seatLabel` and re-hydrates it into a
-// JS `Date` so the result is safe to bind to Drizzle's
-// `timestamp()` columns (`mode: 'date'` is the default and Drizzle
-// calls `.getTime()`/`.toISOString()` on the value — passing a
-// raw string throws a TypeError and 500s the route). Returns null
-// when the seat hasn't picked yet, mirroring the original helper.
-function pickSeatMostRecentDate(picks, seatLabel) {
-  const raw = pickSeatMostRecent(picks, seatLabel, "pickedAt");
-  return raw ? new Date(raw) : null;
-}
-
-// ── pickTile (the main action) ────────────────────────────────────────
-//
-// Server-side authoritative tile-pick action. Only the player whose
-// turn it is can pick. Cell index must be 0-24 and not already
-// REVEALED. After a safe pick lands the turn advances to the next
-// picker in the shared-board odds order; a mine ends the match
-// immediately with the revealer losing.
-//
-// Rejects stale submissions: if the pick window has elapsed, return
-// 409 so the client knows to wait for the next status poll to
-// trigger the AFK auto-pick.
+// ── Reveal a tile (the main action) ───────────────────────────────────
+// Server-authoritative. The caller may only name a cell on their OWN
+// board; the server decides the outcome, the score change and whether the
+// board just completed.
 export async function pickTile({ userId, matchId, cellIndex }) {
-  // Defense-in-depth input validation (the API route also validates).
   const idx = Number(cellIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
     return {
@@ -847,115 +549,29 @@ export async function pickTile({ userId, matchId, cellIndex }) {
 
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
-
     if (!match) return { error: "Match not found", status: 404 };
-    if (!isParticipant(match, userId)) {
-      return { error: "Forbidden", status: 403 };
-    }
+    if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
     if (!PICKABLE_STATES.has(match.status)) {
-      return { error: "Match is not awaiting a pick", status: 400 };
+      return { error: "Match is not active", status: 400 };
+    }
+    if (isMatchExpired(match)) {
+      return { error: "Match timer has expired", status: 400 };
     }
 
-    // Stale-deadline guard: if the pick window has elapsed, reject
-    // the manual pick. The next /status poll will trigger the AFK
-    // auto-pick via fetchMatchWithAutoResolve.
-    if (
-      match.roundDeadline &&
-      new Date(match.roundDeadline).getTime() <= Date.now()
-    ) {
-      return { error: "Pick window has expired", status: 400 };
+    const seat = seatForUser(match, userId);
+    if (isSeatLocked(match, seat)) {
+      return { error: "Your board is already locked", status: 400 };
     }
 
-    // Turn enforcement: the closed-form odds formula decides WHOSE
-    // turn it is right now (FP / SP / SP / FP / ...). The DB row's
-    // `currentTurnUserId` should agree with the formula; if it
-    // doesn't (e.g. a legacy row mid-migration), reject. The caller
-    // must equal whatever the formula says.
-    const expectedPicker = activePickerForMatch(match);
-    if (
-      !expectedPicker ||
-      match.currentTurnUserId !== expectedPicker ||
-      userId !== expectedPicker
-    ) {
-      return { error: "It is not your turn", status: 403 };
-    }
-
-    // Disallow duplicate picks across the full per-pick history.
-    const historyCells = pickHistoryCells(match);
-    if (historyCells.includes(idx)) {
-      return { error: "Cell already picked", status: 409 };
-    }
-
-    // A cell you have already CONFIRMED as a mine (a correct flag) is a
-    // known mine — revealing it would be a guaranteed self-destruct, so the
-    // server refuses rather than letting a misclick lose the match. The
-    // opponent's flags stay private, so their confirmed mines are still
-    // clickable (and still lethal).
-    const seat = userId === match.player1Id ? "player1" : "player2";
-    if (flagsForSeat(match, seat).includes(idx)) {
-      return { error: "You already flagged this tile", status: 409 };
-    }
-
-    // First-pick mercy: the game's very first reveal is always safe.
-    // Before any cell is revealed there is zero information, so the
-    // opening is definitionally a guess — this makes it a safe guess
-    // (the same convention real guess-free minesweeper uses). If the
-    // first pick lands on a mine, relocate that mine off the cell and
-    // persist the new board in the same transaction (the board is
-    // server-hidden mid-match, so nothing leaks to either client).
-    let board = match.board;
-    let mercyUsed = false;
-    if (match.picks.length === 0 && isMine(board, idx)) {
-      board = relocateMine(board, idx);
-      mercyUsed = true;
-      await tx
-        .update(minesPvpMatches)
-        .set({ board })
-        .where(eq(minesPvpMatches.id, match.id));
-    }
-
-    const pickIsMine = isMine(board, idx);
-    const newPick = {
-      userId,
-      seat,
-      cell: idx,
-      isMine: pickIsMine,
-      // Proximity hint for SAFE picks (null on a mine): distance to the
-      // nearest mine. PUBLIC under the shared-board rules — both seats
-      // see the same clues.
-      hint: pickIsMine ? null : nearestMineDistance(board, idx),
-      mercy: mercyUsed,
-      autoPicked: false,
-      pickedAt: new Date().toISOString(),
-    };
-
-    return await applyPick(tx, { ...match, board }, newPick);
+    return await applyReveal(tx, match, { userId, seat, cellIndex: idx });
   });
 }
 
-// ── flagTile (mark a tile you believe is a mine) ──────────────────────
-//
-// On your turn you may FLAG a tile instead of revealing it. A flag is your
-// ENTIRE turn: the server resolves it immediately and passes the turn to
-// the opponent.
-//
-//   • CORRECT flag (the tile IS a mine): the mine is confirmed for YOU. The
-//     tile joins your own private flag set and stays hidden from the
-//     opponent, who only sees your "mines found" counter tick down and a
-//     "(name) revealed a mine" notice. Flag EVERY mine and you win
-//     immediately (`winReason: all_mines_flagged`).
-//   • WRONG flag (the tile is safe): you are told at once, the flag is not
-//     kept, and the turn still passes — the bad read cost you a turn.
-//
-// Flag locations are PRIVATE: only the flagger's own set travels to their
-// client (see matchView). Everything the opponent receives is the COUNT of
-// confirmed mines, never a cell.
-//
-// Validation mirrors pickTile: participant, pickable state, strict turn
-// enforcement, deadline freshness, cell-not-already-REVEALED, and
-// cell-not-already-claimed-by-you (a duplicate flag is rejected with 409).
+// ── Flag a tile ───────────────────────────────────────────────────────
+// Correct flag: award the mine's value (server-minted), confirm the mine
+// and check completion. Wrong flag: −10, the wrong-flag state is kept
+// until that tile is eventually revealed.
 export async function flagTile({ userId, matchId, cellIndex }) {
-  // Defense-in-depth input validation (the API route also validates).
   const idx = Number(cellIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
     return {
@@ -966,343 +582,348 @@ export async function flagTile({ userId, matchId, cellIndex }) {
 
   return await db.transaction(async (tx) => {
     const match = await fetchMatchForUpdate(tx, matchId);
-
     if (!match) return { error: "Match not found", status: 404 };
-    if (!isParticipant(match, userId)) {
-      return { error: "Forbidden", status: 403 };
-    }
+    if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
     if (!PICKABLE_STATES.has(match.status)) {
-      return { error: "Match is not awaiting a pick", status: 400 };
+      return { error: "Match is not active", status: 400 };
+    }
+    if (isMatchExpired(match)) {
+      return { error: "Match timer has expired", status: 400 };
     }
 
-    // Stale-deadline guard: same contract as pickTile — a flag after
-    // the window is rejected; the next /status poll triggers the AFK
-    // auto-pick instead.
-    if (
-      match.roundDeadline &&
-      new Date(match.roundDeadline).getTime() <= Date.now()
-    ) {
-      return { error: "Pick window has expired", status: 400 };
+    const seat = seatForUser(match, userId);
+    if (isSeatLocked(match, seat)) {
+      return { error: "Your board is already locked", status: 400 };
     }
 
-    // Turn enforcement via the closed-form odds formula (same as
-    // pickTile): the caller must be whoever the formula says is up.
-    const expectedPicker = activePickerForMatch(match);
-    if (
-      !expectedPicker ||
-      match.currentTurnUserId !== expectedPicker ||
-      userId !== expectedPicker
-    ) {
-      return { error: "It is not your turn", status: 403 };
+    return await applyFlag(tx, match, { userId, seat, cellIndex: idx });
+  });
+}
+
+// ── Unflag a tile ─────────────────────────────────────────────────────
+// Removes a WRONG flag marker so a misclick can be corrected. A CONFIRMED
+// mine (a correct flag, which already awarded its value and counts toward
+// completion) can NOT be unflagged — that would let a player re-flag the same
+// mine and farm its value. Unflagging does NOT refund the −10: the penalty is
+// permanent, only the marker is cleared.
+export async function unflagTile({ userId, matchId, cellIndex }) {
+  const idx = Number(cellIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) {
+    return {
+      error: `cellIndex must be an integer in [0, ${GRID_CELLS - 1}]`,
+      status: 400,
+    };
+  }
+
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
+    if (!PICKABLE_STATES.has(match.status)) {
+      return { error: "Match is not active", status: 400 };
+    }
+    if (isMatchExpired(match)) {
+      return { error: "Match timer has expired", status: 400 };
     }
 
-    // Cannot flag a cell either side has already REVEALED (the claim would
-    // contradict settled information). A flag on a cell the OTHER player
-    // merely claimed is legal — the claims are independent.
-    if (pickHistoryCells(match).includes(idx)) {
-      return { error: "Cell already revealed", status: 409 };
+    const seat = seatForUser(match, userId);
+    if (isSeatLocked(match, seat)) {
+      return { error: "Your board is already locked", status: 400 };
     }
 
-    const seat = userId === match.player1Id ? "player1" : "player2";
-    // Duplicate of YOUR OWN claim: rejected (409). There is no unflag route,
-    // so re-claiming the same cell carries no information and would only
-    // burn a turn.
-    const myFlags = flagsForSeat(match, seat);
-    if (myFlags.includes(idx)) {
-      return { error: "Cell already flagged", status: 409 };
+    const flags = flagsForSeat(match, seat);
+    const correctFlags = correctFlagsForSeat(match, seat);
+    if (!flags.includes(idx)) {
+      return { error: "Cell is not flagged", status: 409 };
+    }
+    if (correctFlags.includes(idx)) {
+      return { error: "Cannot unflag a confirmed mine", status: 409 };
     }
 
-    // Applied by the shared `applyFlag` below — the same path the AI's flag
-    // uses, so the human and the bot obey identical rules and resolution.
-    const applied = await applyFlag(tx, match, { userId, seat, idx });
-    if (!applied) {
-      // Lost the race to a concurrent action on the same turn: the flag was
-      // NEVER applied, so reject rather than replaying it.
+    const newFlags = flags.filter((c) => c !== idx);
+    const patch = {
+      [seat === "player2" ? "p2Flags" : "p1Flags"]: newFlags,
+    };
+    const updated = await patchMatch(tx, match.id, match.status, patch);
+    if (!updated) {
       return { error: "Match state changed, please retry", status: 409 };
     }
-    return applied;
+    return {
+      match: updated,
+      justResolved: false,
+      seat,
+      unflagged: true,
+      scoreDelta: 0,
+    };
   });
 }
 
-// ── applyFlag (shared by a human flag and the AI's flag) ──────────────
-//
-// The flag half of the action pipeline, extracted from `flagTile` so the AI
-// turn path (which runs inside an already-open transaction) can flag through
-// exactly the same code. Callers are responsible for the participant / turn /
-// deadline / duplicate validation; this only records the claim, checks the
-// all-mines win, and advances the turn.
-//
-// Returns `{ match, justResolved, flagRevealed, wrongFlag }`, or `null` when a
-// concurrent action won the turn (the caller turns that into a 409).
-async function applyFlag(tx, match, { userId, seat, idx }) {
-  // The verdict is computed server-side. It is stored on the entry so the
-  // CLAIMANT can render the confirmed mine, but matchView scrubs an
-  // opponent's flag cell to null — the opponent only ever sees the count.
-  const flagIsMine = isMine(match.board, idx);
+function isMatchExpired(match) {
+  return Boolean(
+    match?.matchDeadline &&
+      new Date(match.matchDeadline).getTime() <= Date.now(),
+  );
+}
 
-  const flagEntry = {
-    userId,
+// ── applyReveal (shared by a human reveal and the AI) ─────────────────
+async function applyReveal(tx, match, { userId, seat, cellIndex }) {
+  const board = seatRow(match, seat);
+  const revealed = revealedForSeat(match, seat);
+  const flags = flagsForSeat(match, seat);
+  const correctFlags = correctFlagsForSeat(match, seat);
+
+  if (revealed.includes(cellIndex)) {
+    return { error: "Cell already revealed", status: 409 };
+  }
+  // A mine you have already CONFIRMED by flagging is known — revealing it
+  // would only self-destruct, so the server refuses.
+  if (correctFlags.includes(cellIndex)) {
+    return { error: "Cell already confirmed as a mine", status: 409 };
+  }
+
+  const mine = isMine(board, cellIndex);
+  const scoreBefore = scoreForSeat(match, seat);
+  let score = scoreBefore;
+  let safeRevealed = Number(seat === "player2" ? match.p2SafeRevealed : match.p1SafeRevealed) || 0;
+  let minesHit = Number(seat === "player2" ? match.p2MinesHit : match.p1MinesHit) || 0;
+
+  if (mine) {
+    score = applyScoreDelta(score, SCORE.MINE_HIT);
+    minesHit += 1;
+  } else {
+    score = applyScoreDelta(score, SCORE.SAFE_TILE);
+    safeRevealed += 1;
+  }
+
+  const newRevealed = normalizeFlags([...revealed, cellIndex]);
+  // Revealing a WRONG-flagged tile resolves it — the flag is cleared (the
+  // `incorrectFlagCount` stat stays as a permanent record).
+  const newFlags = flags.filter((c) => c !== cellIndex);
+
+  const completion = completeIfDone({
+    match,
+    board,
     seat,
-    cell: idx,
-    isMine: flagIsMine,
-    hint: null,
-    // Discriminators: this entry is a CLAIM, not a reveal.
-    flag: true,
-    kind: "flag",
-    mercy: false,
-    autoPicked: false,
-    pickedAt: new Date().toISOString(),
-  };
-
-  const allPicks = Array.isArray(match.picks)
-    ? [...match.picks, flagEntry]
-    : [flagEntry];
-
-  // Only a CORRECT flag is kept in this seat's own set. `withFlagForSeat`
-  // returns a single-column patch, so the two players' sets can never
-  // overwrite one another.
-  const flagsPatch = flagIsMine ? withFlagForSeat(match, seat, idx) : {};
-  const claimedFlags = flagIsMine
-    ? seat === "player1"
-      ? flagsPatch.p1Flags
-      : flagsPatch.p2Flags
-    : flagsForSeat(match, seat);
-
-  // THE WIN CONDITION: this player's confirmed mines now cover every mine
-  // on the server-only board.
-  const wonByFlags = flagIsMine && hasFlaggedAllMines(claimedFlags, match.board);
-
-  const [updated] = await tx
-    .update(minesPvpMatches)
-    .set({
-      picks: allPicks,
-      ...flagsPatch,
-      // Legacy scalar mirrors deliberately skip flag entries (see
-      // `mirrorPickSetValues`).
-      ...mirrorPickSetValues(allPicks),
-    })
-    .where(
-      and(
-        eq(minesPvpMatches.id, match.id),
-        eq(minesPvpMatches.status, match.status),
-      ),
-    )
-    .returning();
-
-  if (!updated) return null;
-
-  if (wonByFlags) {
-    // The flagger wins immediately: every mine is confirmed. Resolved from
-    // the WINNER's id, so the sides cannot be swapped.
-    const final = await resolveMatch(tx, updated, {
-      winnerId: userId,
-      reason: WIN_REASON.ALL_MINES_FLAGGED,
-    });
-    return { match: final, justResolved: true, flagRevealed: true };
-  }
-
-  // Either way the flag consumed this turn — a correct flag confirmed a
-  // mine, a wrong one just cost a read — so hand the turn to the opponent.
-  const next = await advanceTurn(tx, updated);
-  return {
-    match: next,
-    justResolved: false,
-    flagRevealed: flagIsMine,
-    wrongFlag: !flagIsMine,
-  };
-}
-
-// ── The bot's turn (shared by the endpoint and the status auto-advance) ──
-//
-// Decides ONE action for the bot — flagging a mine the public clues prove, or
-// revealing the least risky live cell — and applies it through the SAME
-// pipeline a human uses (`applyFlag` / `applyPick`). The caller must already
-// hold the row lock and have confirmed the closed-form turn order puts the bot
-// up. Idempotent: a no-op when it is not the bot's turn or the board is terminal.
-async function playAiTurnInTransaction(tx, match) {
-  if (!PICKABLE_STATES.has(match.status)) return match;
-  const expectedPicker = activePickerForMatch(match);
-  if (!expectedPicker || expectedPicker !== match.player2Id) return match;
-
-  const action = chooseAiAction(match);
-  if (!action) return match;
-
-  if (action.kind === "flag") {
-    const idx = Number(action.cellIndex);
-    if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) return match;
-    // A cell the bot already owns would be rejected as a duplicate claim, so
-    // fall back to a reveal rather than burning the turn.
-    if (flagsForSeat(match, "player2").includes(idx)) {
-      const fallback = chooseAiCell(match, undefined, flagsForSeat(match, "player2"));
-      return await aiReveal(tx, match, fallback.cellIndex);
-    }
-    const applied = await applyFlag(tx, match, {
-      userId: MINES_AI_PLAYER_ID,
-      seat: "player2",
-      idx,
-    });
-    return applied?.match ?? match;
-  }
-
-  return await aiReveal(tx, match, action.cellIndex);
-}
-
-// Apply one bot reveal through the shared `applyPick` path. First-pick mercy
-// applies to the bot exactly as it does to a human's opening reveal.
-async function aiReveal(tx, match, cellIndex) {
-  let idx = Number(cellIndex);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) return match;
-  // Defensive: a bot reveal of a cell it has already CONFIRMED as a mine would
-  // be a guaranteed self-destruct. `pickTile` refuses this for a human; the AI
-  // path runs through `applyPick` directly, so guard it here and switch cells.
-  const myFlags = flagsForSeat(match, "player2");
-  if (myFlags.includes(idx)) {
-    const alt = Number(chooseAiCell(match, undefined, myFlags).cellIndex);
-    if (!Number.isInteger(alt) || alt < 0 || alt >= GRID_CELLS || myFlags.includes(alt)) {
-      return match;
-    }
-    idx = alt;
-  }
-
-  let board = match.board;
-  let mercyUsed = false;
-  if (match.picks.length === 0 && isMine(board, idx)) {
-    board = relocateMine(board, idx);
-    mercyUsed = true;
-    await tx
-      .update(minesPvpMatches)
-      .set({ board })
-      .where(eq(minesPvpMatches.id, match.id));
-  }
-
-  const pickIsMine = isMine(board, idx);
-  const newPick = {
-    userId: MINES_AI_PLAYER_ID,
-    seat: "player2",
-    cell: idx,
-    isMine: pickIsMine,
-    hint: pickIsMine ? null : nearestMineDistance(board, idx),
-    mercy: mercyUsed,
-    autoPicked: false,
-    pickedAt: new Date().toISOString(),
-  };
-
-  const result = await applyPick(tx, { ...match, board }, newPick);
-  return result?.match ?? match;
-}
-
-// Advance the turn for a match whose `picks` array already contains the
-// action that just landed. Conditional on the status we validated against, so
-// a racing action can't double-advance the same turn; on a race we return the
-// freshly-fetched row (the other actor owns the new turn).
-async function advanceTurn(tx, match) {
-  const [updated] = await tx
-    .update(minesPvpMatches)
-    .set(nextTurnPatch(match))
-    .where(
-      and(
-        eq(minesPvpMatches.id, match.id),
-        eq(minesPvpMatches.status, match.status),
-      ),
-    )
-    .returning();
-
-  if (updated) return updated;
-
-  const [refreshed] = await tx
-    .select()
-    .from(minesPvpMatches)
-    .where(eq(minesPvpMatches.id, match.id));
-  return refreshed || match;
-}
-
-// ── Resolve the match ─────────────────────────────────────────────────
-//
-// Single server-authoritative end path for every ending. Callers name the
-// WINNER and the REASON, never the loser:
-//
-//   resolveMatch(tx, match, { winnerId, reason })
-//
-// Winner-shaped by design. The shared-board rules end a match on a mine hit
-// (the HITTER loses) or on a full flag sweep (the FLAGGER wins), so a
-// loser-shaped signature invites a future caller to pass the deciding seat
-// and silently reverse the result — `resultForWinner` makes that impossible
-// (it throws unless the id is one of the two seats). The old
-// `decideOutcome(loserId)` path is kept only for the engine's public API and
-// its unit tests; the store no longer resolves through it.
-//
-// Reasons: 'mine_hit' | 'all_mines_flagged' | 'resign' | 'disconnect'
-// (WIN_REASON). The
-// reason is stamped on BOTH the match row and the rounds snapshot, so the
-// post-match read path can label the ending without joining the live row.
-//
-// Idempotency/concurrency: every caller already holds the match row under a
-// `SELECT … FOR UPDATE` inside its transaction, and the status guard below
-// bounces a row that is already terminal, so a second request can never
-// record a second winner.
-async function resolveMatch(tx, match, { winnerId, reason } = {}) {
-  if (!match) return match;
-  if (TERMINAL_STATES.has(match.status)) {
-    // Already settled (e.g. a racing request that lost the row lock).
-    return match;
-  }
-  if (!winnerId) {
-    // Defensive: a resolution without a winner is a programming error, not
-    // a draw — the shared-board rules have no draw case at all. Bail out
-    // without touching the row rather than writing a half-finished match.
-    return match;
-  }
-
-  const result = resultForWinner({
-    winnerId,
-    player1Id: match.player1Id,
-    player2Id: match.player2Id,
+    revealed: newRevealed,
+    correctFlags,
+    score,
   });
 
-  // AI matches are always free: no stat updates.
+  const patch = {
+    [seat === "player2" ? "p2Revealed" : "p1Revealed"]: newRevealed,
+    [seat === "player2" ? "p2Flags" : "p1Flags"]: newFlags,
+    ...statsPatch(seat, {
+      score: completion.score,
+      safeRevealed,
+      minesHit,
+      completed: completion.completed,
+      completedAt: completion.completedAt,
+      locked: completion.locked,
+    }),
+  };
+
+  const updated = await patchMatch(tx, match.id, match.status, patch);
+  if (!updated) {
+    return { error: "Match state changed, please retry", status: 409 };
+  }
+
+  const settled = await maybeResolve(tx, updated);
+  return {
+    match: settled,
+    justResolved: settled.status === MATCH_STATUS.FINISHED,
+    revealedMine: mine,
+    completed: completion.completed,
+    seat,
+    // Exact server-minted score change for this action (a realtime hint; the
+    // score itself is authoritative on the returned row).
+    scoreDelta: completion.score - scoreBefore,
+    scoreReason: completion.completed
+      ? "complete"
+      : mine
+        ? "mine_hit"
+        : "safe",
+  };
+}
+
+// ── applyFlag (shared by a human flag and the AI) ─────────────────────
+async function applyFlag(tx, match, { userId, seat, cellIndex }) {
+  const board = seatRow(match, seat);
+  const revealed = revealedForSeat(match, seat);
+  const flags = flagsForSeat(match, seat);
+  const correctFlags = correctFlagsForSeat(match, seat);
+
+  if (revealed.includes(cellIndex)) {
+    return { error: "Cell already revealed", status: 409 };
+  }
+  if (flags.includes(cellIndex)) {
+    return { error: "Cell already flagged", status: 409 };
+  }
+
+  const mine = isMine(board, cellIndex);
+  const scoreBefore = scoreForSeat(match, seat);
+  let score = scoreBefore;
+  let correctFlagCount = Number(seat === "player2" ? match.p2CorrectFlagCount : match.p1CorrectFlagCount) || 0;
+  let incorrectFlagCount = Number(seat === "player2" ? match.p2IncorrectFlagCount : match.p1IncorrectFlagCount) || 0;
+  let newCorrectFlags = correctFlags;
+  let mineValue = null;
+
+  if (mine) {
+    // The mine's value is minted HERE from the server-only board. A client
+    // can never name it.
+    mineValue = mineValueAt(board, cellIndex);
+    score = applyScoreDelta(score, mineValue ?? 0);
+    correctFlagCount += 1;
+    newCorrectFlags = normalizeFlags([...correctFlags, cellIndex]);
+  } else {
+    score = applyScoreDelta(score, SCORE.WRONG_FLAG);
+    incorrectFlagCount += 1;
+  }
+
+  const newFlags = normalizeFlags([...flags, cellIndex]);
+
+  const completion = completeIfDone({
+    match,
+    board,
+    seat,
+    revealed,
+    correctFlags: newCorrectFlags,
+    score,
+  });
+
+  const patch = {
+    [seat === "player2" ? "p2Flags" : "p1Flags"]: newFlags,
+    [seat === "player2" ? "p2CorrectFlags" : "p1CorrectFlags"]: newCorrectFlags,
+    ...statsPatch(seat, {
+      score: completion.score,
+      correctFlagCount,
+      incorrectFlagCount,
+      completed: completion.completed,
+      completedAt: completion.completedAt,
+      locked: completion.locked,
+    }),
+  };
+
+  const updated = await patchMatch(tx, match.id, match.status, patch);
+  if (!updated) {
+    return { error: "Match state changed, please retry", status: 409 };
+  }
+
+  const settled = await maybeResolve(tx, updated);
+  return {
+    match: settled,
+    justResolved: settled.status === MATCH_STATUS.FINISHED,
+    flagCorrect: mine,
+    mineValue: mine ? mineValue : null,
+    seat,
+    scoreDelta: completion.score - scoreBefore,
+    scoreReason: completion.completed
+      ? "complete"
+      : mine
+        ? "correct_flag"
+        : "wrong_flag",
+  };
+}
+
+// Award the +100 completion bonus, mark complete + locked, if this action
+// resolved the whole board. Pure-ish: returns the (possibly bumped) score
+// and the completion patch fields.
+function completeIfDone({ match, board, seat, revealed, correctFlags, score }) {
+  const already = Boolean(seat === "player2" ? match.p2Completed : match.p1Completed);
+  if (already) {
+    return { score, completed: true, completedAt: match.p2CompletedAt ?? match.p1CompletedAt ?? null, locked: true };
+  }
+  if (!isBoardComplete(board, revealed, correctFlags)) {
+    return { score, completed: false, completedAt: null, locked: false };
+  }
+  return {
+    score: applyScoreDelta(score, SCORE.BOARD_COMPLETE),
+    completed: true,
+    completedAt: new Date(),
+    locked: true,
+  };
+}
+
+// ── Resolve when both boards are done, or the timer expires ───────────
+async function maybeResolve(tx, match) {
+  if (TERMINAL_STATES.has(match.status)) return match;
+  const bothComplete = Boolean(match.p1Completed) && Boolean(match.p2Completed);
+  const expired = isMatchExpired(match);
+  if (!bothComplete && !expired) return match;
+  return await resolveMatch(tx, match, { reason: WIN_REASON.SCORE });
+}
+
+// Snapshot one seat's complete final state for the persisted replay row.
+// Server-only: reads the match row (+ its per-seat arrays), never a client.
+function finalStateForSeat(match, seat) {
+  const p = seat === "player2";
+  return {
+    score: Number(p ? match?.p2Score : match?.p1Score) || 0,
+    safeRevealed:
+      Number(p ? match?.p2SafeRevealed : match?.p1SafeRevealed) || 0,
+    minesHit: Number(p ? match?.p2MinesHit : match?.p1MinesHit) || 0,
+    correctFlagCount:
+      Number(p ? match?.p2CorrectFlagCount : match?.p1CorrectFlagCount) || 0,
+    incorrectFlagCount:
+      Number(p ? match?.p2IncorrectFlagCount : match?.p1IncorrectFlagCount) ||
+      0,
+    completed: Boolean(p ? match?.p2Completed : match?.p1Completed),
+    completedAt: (p ? match?.p2CompletedAt : match?.p1CompletedAt) ?? null,
+    revealed: revealedForSeat(match, seat),
+    flags: flagsForSeat(match, seat),
+    correctFlags: correctFlagsForSeat(match, seat),
+  };
+}
+
+// ── The single settle path ────────────────────────────────────────────
+// `winnerId` is optional: a resignation names the opponent explicitly; a
+// scored finish derives the winner from the tiebreak ladder.
+async function resolveMatch(tx, match, { winnerId = null, reason } = {}) {
+  if (!match) return match;
+  if (TERMINAL_STATES.has(match.status)) return match;
+
+  let result;
+  if (winnerId) {
+    if (winnerId === match.player1Id) result = RESULT.PLAYER1;
+    else if (winnerId === match.player2Id) result = RESULT.PLAYER2;
+    else return match; // defensive: a non-seat "winner" is a bug
+  } else {
+    result = resolveScoredMatch(match);
+  }
+
+  if (result === RESULT.DRAW) {
+    winnerId = null;
+  } else if (!winnerId) {
+    winnerId = result === RESULT.PLAYER1 ? match.player1Id : match.player2Id;
+  }
+
   const isAi = isFreeAiMatch(match);
 
-  // Pick the FIRST pick from each seat for the legacy single-pick
-  // columns on `mines_pvp_rounds`. The full chronological history
-  // is mirrored onto the new `picks` jsonb column below — that is
-  // the source of truth for replays.
-  const picks = Array.isArray(match.picks) ? match.picks : [];
-  const firstP1Pick = picks.find((p) => p?.seat === "player1") ?? null;
-  const firstP2Pick = picks.find((p) => p?.seat === "player2") ?? null;
-
-  // Persist the per-match history snapshot FIRST so the history
-  // always reflects the final board + outcome + full pick
-  // chronology.
+  // Persist the replay snapshot first (both boards + final scores).
   await tx.insert(minesPvpRounds).values({
     matchId: match.id,
     roundNumber: 1,
-    p1Pick: firstP1Pick ? firstP1Pick.cell : null,
-    p2Pick: firstP2Pick ? firstP2Pick.cell : null,
-    p1PickIsMine: firstP1Pick ? Boolean(firstP1Pick.isMine) : null,
-    p2PickIsMine: firstP2Pick ? Boolean(firstP2Pick.isMine) : null,
-    p1AutoPicked: firstP1Pick ? Boolean(firstP1Pick.autoPicked) : false,
-    p2AutoPicked: firstP2Pick ? Boolean(firstP2Pick.autoPicked) : false,
-    boardSnapshot: match.board ?? { size: 5, mines: [] },
-    picks,
+    boardSnapshot: match.p1Board ?? match.board ?? { size: 10, mines: [], values: {} },
+    p2BoardSnapshot: match.p2Board ?? { size: 10, mines: [], values: {} },
+    p1Score: Number(match.p1Score) || 0,
+    p2Score: Number(match.p2Score) || 0,
+    // Full per-seat final state so the replay is self-contained (both
+    // scores, both boards, mine values, revealed tiles, flags, mines hit
+    // and completion times). See migration 0202.
+    p1FinalState: finalStateForSeat(match, "player1"),
+    p2FinalState: finalStateForSeat(match, "player2"),
     roundWinner: result,
-    // WHY it ended, mirrored onto the replay snapshot.
     winReason: reason ?? null,
   });
 
-  // Stamp the match as finished. The `board` column stays on the
-  // row so the post-match reveal screen can render the full mine
-  // layout (the /status route stops scrubbing it once
-  // status='finished').
   const [updated] = await tx
     .update(minesPvpMatches)
     .set({
       status: MATCH_STATUS.FINISHED,
       currentTurnUserId: null,
       roundDeadline: null,
+      matchDeadline: null,
       result,
       winnerId,
-      // WHY this match ended ('mine_hit' | 'all_mines_flagged' |
-      // 'resign' | 'disconnect').
       winReason: reason ?? null,
       houseFee: "0.00",
       prizePaid: "0.00",
@@ -1318,30 +939,21 @@ async function resolveMatch(tx, match, { winnerId, reason } = {}) {
     playerCount: [match.player1Id, match.player2Id].filter(Boolean).length,
   });
 
-  // Best-effort stat side-effects (failures don't roll the match).
-  // Skipped for AI matches since bot results should not affect
-  // real user leaderboards or statistics.
-  if (!isAi) {
+  // Best-effort stat side-effects (failures don't roll the match). Skipped
+  // for AI matches and for draws.
+  if (!isAi && winnerId) {
     await recordPvPResult(tx, finalRow, winnerId, result).catch(() => {});
   }
 
   return finalRow;
 }
 
-// Best-effort stat side-effect — mirrors blackjack-pvp /
-// roulette-pvp. Bumps pvpWins / gamesWon / gamesLost / totalWon /
-// totalWagered on the users rows so the global PvP leaderboards
-// stay fresh without re-running aggregate queries.
+// Best-effort stat side-effect — mirrors the other PvP stores.
 async function recordPvPResult(tx, match, winnerId, result) {
   const loserId =
     result === RESULT.PLAYER1 ? match.player2Id : match.player1Id;
   if (!winnerId || !loserId) return;
 
-  // Legacy per-seat counters — the public profile reads games_won /
-  // games_lost. The money/streak/daily counters (totalWon, totalWagered,
-  // biggestWin, daily_*, weekly_*, XP/level) are all maintained by
-  // applyLeaderboardCounters below; bumping them here too would double-
-  // count every settled match.
   await tx
     .update(users)
     .set({ gamesWon: sql`${users.gamesWon} + 1` })
@@ -1351,9 +963,6 @@ async function recordPvPResult(tx, match, winnerId, result) {
     .set({ gamesLost: sql`${users.gamesLost} + 1` })
     .where(eq(users.clerkId, loserId));
 
-  // Canonical SKILL stats pipeline (wins/losses/win_rate/streaks, pvp_wins).
-  // Outcome-driven and token/XP-free: only the win/loss/streak leaderboards
-  // move. Fire-and-forget on its own pool — never blocks settlement.
   applyLeaderboardCounters({
     clerkId: winnerId,
     game: "mines-pvp",
@@ -1366,9 +975,6 @@ async function recordPvPResult(tx, match, winnerId, result) {
     outcome: "loss",
   }).catch(() => {});
 
-  // Per-game Elo — guarded single-execution path: only ONE settlement of this
-  // match can ever move a rating. The rating_events journal keyed by
-  // (user, game, match) makes it idempotent.
   await applyRatingResult({
     tx,
     gameKey: "mines-pvp",
@@ -1376,7 +982,6 @@ async function recordPvPResult(tx, match, winnerId, result) {
     winnerClerkId: winnerId,
     loserClerkId: loserId,
   }).catch(() => {});
-  // Per-game trophies — the same authoritative result (+30 / −30).
   await applyTrophyResult({
     tx,
     gameKey: "mines-pvp",
@@ -1386,55 +991,88 @@ async function recordPvPResult(tx, match, winnerId, result) {
   }).catch(() => {});
 }
 
-// ── Status fetch with auto-resolve ────────────────────────────────────
-//
-// Three auto-advance paths live here so the client polling is the
-// single source of forward progress:
-//
-//   1. `ready` deadline elapsed → advance to the first pick state
-//      (p1_turn or p2_turn depending on the host's first-player roll).
-//   2. `p1_turn` or `p2_turn` deadline elapsed → force-pick a random
-//      cell for the current player (AFK nudge), then advance the turn
-//      OR resolve the match (if the auto-pick hit a mine).
-//
-// Also scrubs the `board` column from the returned match row when
-// the match is not yet `finished`, so the client can't inspect mine
-// positions mid-match. Once status='finished' the board is exposed
-// for the post-match reveal.
-//
-// Returns `advanced: true` when this request actually moved the match
-// forward (ready → first pick, a forced AFK pick, or a resolve). The
-// /status ROUTE uses it to broadcast the new turn to the per-match
-// room: the sitting player's 20 s turn clock starts at the transition
-// timestamp, so a player who only learns about it on their own next
-// poll — up to 5 s later — can lose a quarter of their turn before
-// the UI even offers them the board.
-function phaseSignature(match) {
-  if (!match) return "";
-  return [
-    match.status ?? "",
-    match.currentTurnUserId ?? "",
-    match.roundDeadline ? new Date(match.roundDeadline).getTime() : "",
-  ].join("|");
+// ── AI turn (server-driven) ───────────────────────────────────────────
+// The bot plays on its OWN board through the SAME `applyReveal` /
+// `applyFlag` pipeline a human uses. Idempotent: a no-op once the bot's
+// board is locked or the match is over.
+async function playAiTurnInTransaction(tx, match) {
+  if (!PICKABLE_STATES.has(match.status)) return match;
+  if (isMatchExpired(match)) return match;
+  const seat = "player2";
+  if (isSeatLocked(match, seat)) return match;
+  if (match.player2Id !== MINES_AI_PLAYER_ID) return match;
+
+  const board = seatRow(match, seat);
+  const revealed = revealedForSeat(match, seat);
+  const correctFlags = correctFlagsForSeat(match, seat);
+  const flags = flagsForSeat(match, seat);
+  const resolved = normalizeFlags([...revealed, ...correctFlags]);
+
+  // Reconstruct the public clues the bot has actually seen (safe reveals
+  // only) from its own board — this is exactly the information a human
+  // seat holds, never the hidden layout.
+  const revealedEntries = revealed
+    .filter((cell) => !isMine(board, cell))
+    .map((cell) => ({ cell, hint: nearestMineDistance(board, cell) }));
+
+  const action = chooseAiActionForSeat({
+    revealed: revealedEntries,
+    flags,
+    resolved,
+    difficulty: match.aiDifficulty,
+  });
+  if (!action) return match;
+
+  const applied =
+    action.kind === ACTION_KIND.FLAG
+      ? await applyFlag(tx, match, {
+          userId: MINES_AI_PLAYER_ID,
+          seat,
+          cellIndex: action.cellIndex,
+        })
+      : await applyReveal(tx, match, {
+          userId: MINES_AI_PLAYER_ID,
+          seat,
+          cellIndex: action.cellIndex,
+        });
+
+  return applied?.match ?? match;
 }
 
+// Public AI endpoint entry: let the authenticated human wake the bot.
+export async function playAiTurn({ userId, matchId }) {
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (TERMINAL_STATES.has(match.status)) {
+      return { match, justResolved: false, alreadyPlayed: true };
+    }
+    if (match.status === MATCH_STATUS.WAITING || match.status === MATCH_STATUS.READY) {
+      return { error: "Match has not started yet", status: 400 };
+    }
+    // Play up to a bounded burst so the bot keeps pace with a fast human.
+    let current = match;
+    for (let i = 0; i < 8; i += 1) {
+      current = await playAiTurnInTransaction(tx, current);
+      if (current.status !== MATCH_STATUS.ACTIVE) break;
+    }
+    return { match: current, justResolved: current.status === MATCH_STATUS.FINISHED, alreadyPlayed: false };
+  });
+}
+
+// ── Status fetch with auto-advance + auto-resolve ─────────────────────
 export async function fetchMatchWithAutoResolve(userId, matchId) {
   const result = await db.transaction(async (tx) => {
     let match = await fetchMatchForUpdate(tx, matchId);
     if (!match) return { error: "Match not found", status: 404 };
-    if (!isParticipant(match, userId)) {
-      return { error: "Forbidden", status: 403 };
-    }
+    if (!isParticipant(match, userId)) return { error: "Forbidden", status: 403 };
 
-    // The row's state BEFORE the auto-advance steps below. There is no
-    // background scheduler: a turn only ever passes because a status
-    // request arrived, so the player whose request triggered it learns
-    // the new turn in this response while the other player waits for
-    // their own next poll (up to 5 s of a 20 s turn).
     const before = phaseSignature(match);
 
-    // 1) Auto-advance the brief Ready window into the first pick
-    //    state.
+    // 1) Ready banner elapsed → go live (opens the single 180s timer).
     if (
       match.status === MATCH_STATUS.READY &&
       match.roundDeadline &&
@@ -1443,31 +1081,17 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
       match = await advanceFromReady(tx, match);
     }
 
-    // 2) AFK auto-pick on the current turn's deadline. Covers both
-    //    p1_turn and p2_turn. forcePick advances the turn OR
-    //    resolves the match internally depending on whose turn it
-    //    was. Free vs-AI matches are exempt — the human's turn
-    //    never expires there.
-    if (
-      PICKABLE_STATES.has(match.status) &&
-      !isFreeAiMatch(match) &&
-      match.roundDeadline &&
-      new Date(match.roundDeadline).getTime() <= Date.now()
-    ) {
-      // forcePick hands back `{ match, justResolved }` (the shared
-      // applyPick shape) — unwrap to the row so the steps below read the
-      // FRESH state rather than the wrapper.
-      const forced = await forcePick(tx, match);
-      match = forced?.match ?? forced;
-    }
-
-    // 3) Server-side AI turn: if this is a free AI match and it's
-    //    the bot's turn, play the bot's action (a flag of a provable
-    //    mine, or a safe reveal) immediately so the human doesn't have
-    //    to wait for the full deadline. Done inside the same
-    //    transaction to avoid race conditions.
-    if (PICKABLE_STATES.has(match.status) && isFreeAiMatch(match)) {
-      match = await playAiTurnInTransaction(tx, match);
+    // 2) Active match: settle on expiry, else let the bot play its board.
+    if (match.status === MATCH_STATUS.ACTIVE) {
+      if (isMatchExpired(match)) {
+        match = await maybeResolve(tx, match);
+      } else if (isFreeAiMatch(match)) {
+        for (let i = 0; i < 12; i += 1) {
+          match = await playAiTurnInTransaction(tx, match);
+          if (match.status !== MATCH_STATUS.ACTIVE) break;
+        }
+      }
+      match = await maybeResolve(tx, match);
     }
 
     return { match, advanced: phaseSignature(match) !== before };
@@ -1479,56 +1103,40 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
   return result;
 }
 
-// Scrub server-only state from a match row before sending it to a
-// client. Hides the `board` jsonb (mine positions) until the match
-// reaches `finished`. The auto-pick flags and pick timestamps stay
-// on the row (history/replay data) — they don't reveal mine
-// positions so they don't need scrubbing.
+function phaseSignature(match) {
+  if (!match) return "";
+  return [
+    match.status ?? "",
+    Number(match.p1Score) || 0,
+    Number(match.p2Score) || 0,
+    Boolean(match.p1Completed),
+    Boolean(match.p2Completed),
+    match.matchDeadline ? new Date(match.matchDeadline).getTime() : "",
+  ].join("|");
+}
+
+// ── Scrub / canonicalise server state before serialisation ────────────
+// This does NOT decide per-viewer visibility (matchView.js does). It only
+// canonicalises the arrays and stamps board-derived counters.
 export function scrubMatchForViewer(match) {
   if (!match) return match;
   const isFinished = match.status === MATCH_STATUS.FINISHED;
-  // Flag CLAIMS are public, shared-board state: both players see both
-  // seats' flags ("both players' flags" is explicitly part of the shared
-  // competitive picture). They are therefore always present on the
-  // scrubbed row — unlike the hidden `board` — and are canonicalised here
-  // so every reader gets normalised integer arrays rather than a raw /
-  // legacy JSONB shape. Each seat is read from its OWN column, so the two
-  // sets stay independent (the same cell may appear in both).
-  const flags = {
+  const boardFields = {
     p1Flags: flagsForSeat(match, "player1"),
     p2Flags: flagsForSeat(match, "player2"),
-  };
-  // The per-seat confirmed-mine counts are BOARD-DERIVED, so they must be
-  // captured HERE — this is the last moment the real board exists before it
-  // is nulled below. `normaliseMatchForViewer` runs afterwards and can no
-  // longer see the layout, so without these stamps its counter would read
-  // 0/0 confirmed (a stuck "10 | 10") on every poll.
-  const counts = {
-    p1MinesFound: minesFoundForSeat(match, "player1"),
-    p2MinesFound: minesFoundForSeat(match, "player2"),
+    p1Revealed: revealedForSeat(match, "player1"),
+    p2Revealed: revealedForSeat(match, "player2"),
+    p1CorrectFlagCells: correctFlagsForSeat(match, "player1"),
+    p2CorrectFlagCells: correctFlagsForSeat(match, "player2"),
   };
   if (isFinished) {
-    // Finished: keep the board so the client can render the post-
-    // match reveal animation.
-    return { ...match, ...flags, ...counts };
+    return { ...match, ...boardFields };
   }
-  // Not finished: replace the board with a placeholder so the
-  // client knows the field is server-only without seeing the mines.
-  return {
-    ...match,
-    ...flags,
-    ...counts,
-    board: null,
-    // Per-viewer scrubbing (e.g. hiding the OPPONENT's auto-pick flag so
-    // neither side can infer AFK state) is done by `scrubPicksForViewer` /
-    // `normaliseMatchForViewer` in matchView.js.
-  };
+  // Legacy single-board field is nulled while live (it mirrors seat 1).
+  return { ...match, ...boardFields, board: null };
 }
 
-// ── Fetch round history for the match ─────────────────────────────────
-//
-// Always returns 1 row (this is a single-round game). Kept as an
-// array for API symmetry with the other PvP systems.
+// ── Round history ─────────────────────────────────────────────────────
 export async function fetchMatchRounds(matchId) {
   return db
     .select()
@@ -1537,13 +1145,6 @@ export async function fetchMatchRounds(matchId) {
     .orderBy(sql`${minesPvpRounds.roundNumber} ASC`);
 }
 
-// ── Lightweight read for /status (no row lock) ────────────────────────
-//
-// Returns the raw row without scrubbing. The caller is responsible
-// for running `scrubMatchForViewer` if it's about to send the row
-// to a client. `fetchMatchWithAutoResolve` already scrubs; this
-// thin read is exposed for callers that want to do their own
-// post-processing (admin tooling, tests).
 export async function fetchMatch(matchId) {
   const [match] = await db
     .select()
@@ -1552,14 +1153,7 @@ export async function fetchMatch(matchId) {
   return match || null;
 }
 
-// ── User enrichment (player names + icons) ─────────────────────────────
-//
-// Best-effort lookup of `users` rows for both seats so the match view can
-// render real usernames next to each player. Mirrors
-// `keno-pvp/serverStore.js`'s `enrichMatchesWithUsers`. Never crashes the
-// caller on lookup failure (the client falls back to seat labels). AI seats
-// (free AI matches seat the bot as player2Id === MINES_AI_PLAYER_ID) resolve
-// to the fixed GRYND AI identity instead of hitting the users table.
+// ── User enrichment (player names + icons) ────────────────────────────
 export async function enrichMatchWithPlayers(match) {
   if (!match) return match;
 
@@ -1610,12 +1204,8 @@ export async function enrichMatchWithPlayers(match) {
           displayName: r.displayName || r.clerkId,
           iconKey: r.iconKey || "default",
           profileFrame: decorationByClerkId.get(r.clerkId) || null,
-          // Equipped name color — same precedence as the chat route:
-          // an owned glow wins; the GRYND PRO chat color only surfaces
-          // for active members.
           nameColor:
-            r.glowColor ||
-            (Boolean(r.isPremium) ? r.chatColor || null : null),
+            r.glowColor || (Boolean(r.isPremium) ? r.chatColor || null : null),
         };
       }
     } catch (err) {
@@ -1662,3 +1252,6 @@ export async function enrichMatchWithPlayers(match) {
     },
   };
 }
+
+// Re-exported so tests / route helpers can reason about the seat set.
+export { SEATS, AI_PICK_DELAY_MS };

@@ -1,43 +1,41 @@
 // src/app/api/mines-pvp/match/[matchId]/route.js
 //
-// GET — fetch current match state with auto-resolve behaviour. The
-// server store handles three auto-advance paths inside
+// GET — fetch the caller's current match state with auto-advance /
+// auto-resolve behaviour. The server store handles the paths inside
 // `fetchMatchWithAutoResolve`:
-//   1. `ready` deadline elapsed → advance to first pick state
-//      (p1_turn or p2_turn depending on the host's first-player
-//      roll).
-//   2. `p1_turn` / `p2_turn` deadline elapsed → force-pick a random
-//      cell for the current player (AFK nudge), then advance the
-//      turn OR resolve the match (if the auto-pick hit a mine).
+//   1. `ready` deadline elapsed → go `active` and open the single
+//      server-authoritative 180s match timer.
+//   2. `active` + timer expired → settle by score (the tiebreak ladder).
+//   3. `active` + free vs-AI → let the bot play its own board.
 //
-// CRITICAL — visibility model (shared-board rules). The actual scrubbing
-// lives in `src/lib/mines-pvp/matchView.js` (pure + unit-tested), which every
-// read path shares so a client can never receive two divergent descriptions
-// of the same row:
-//   • During active play (`waiting` / `ready` / `p1_turn` / `p2_turn`):
-//     - the `board` jsonb is HIDDEN (replaced with `null`) so the
+// There are NO turns any more: nothing force-picks for an AFK seat and
+// no per-turn deadline exists. Both seats act at will until their board
+// completes or the 180s clock runs out.
+//
+// CRITICAL — visibility model (simultaneous independent boards). The
+// actual per-viewer serialisation lives in `src/lib/mines-pvp/matchView.js`
+// (pure + unit-tested), which every read path shares so a client can never
+// receive two divergent descriptions of the same row:
+//   • During active play (`waiting` / `ready` / `active`):
+//     - the hidden `board` jsonb is HIDDEN (replaced with `null`) so the
 //       client can't peek at mine positions mid-match.
-//     - the `picks` jsonb array is FULLY visible to BOTH seats.
-//       Every REVEAL on the array is a safe cell — if any had been a
-//       mine the match would have ended immediately — so revealing the
-//       reveals gives both players the same shared board progress
-//       without leaking mine positions.
-//     - the CLUE (`hint`) on each reveal is PUBLIC: the shared-board
-//       rules give both players the same board, so the server-computed
-//       number on a revealed cell is the SAME information for both
-//       seats. The client never computes a clue itself; it renders the
-//       one the server stamped. (Flag entries carry no clue: a claim is
-//       not a reveal.)
-//     - FLAG claims are public per seat via `p1Flags` / `p2Flags`.
-//       A flag never states whether it was correct — that verdict only
-//       exists in the finished reveal, derived from the board.
-//     - the viewer sees their OWN auto-pick flag (true/false) so
-//       they can render their own AFK state; the OPPONENT's
-//       auto-pick flag is scrubbed to false to avoid leaking
-//       whether the opponent is AFK.
-//   • Once `finished`: full reveal — every reveal in the array has
-//     its real `isMine` verdict exposed, plus the full board and the
-//     `winnerId` / `winReason` pair.
+//     - each seat sees ONLY its OWN resolved cells (`myRevealed`),
+//       its own flags (`myFlags` / `myCorrectFlagCells` /
+//       `myIncorrectFlagCells`) and its own score. The CLUE (`hint`) on
+//       a safe reveal is the server-computed distance to that seat's
+//       OWN nearest mine — the player already saw it, and it is never
+//       shared with the opponent.
+//     - the opponent is exposed ONLY as PUBLIC progress: score, safe
+//       reveals, mines hit, correct/incorrect flag counts and the
+//       completion flag. Their board, mine positions and mine values
+//       are never serialised.
+//     - a confirmed mine (a correct flag) renders on the flagging
+//       seat's own board; the opponent never learns WHICH mine it was.
+//     - mine VALUES are never sent while the match is live — only the
+//       awarded score delta appears (see the action routes).
+//   • Once `finished`: the full replay is revealed — both seats' boards
+//     with their mine values, plus the `result` / `winnerId` /
+//     `winReason` triple.
 //
 // The match is NEVER mutated from anything the client sends: this route takes
 // no body and derives every field from the server-side row.
@@ -107,19 +105,19 @@ export async function GET(req, { params }) {
       enrichedMatch = match;
     }
 
-    // A turn only ever passes because a status request arrived (there is
-    // no background scheduler), so the player whose request advanced the
-    // match sees the new turn in this response while the other one is
-    // still one poll tick — up to 5 s of a 20 s turn — behind. That is
-    // worst for the player whose turn it now IS: their clock is already
-    // running. Push the new turn to the per-match room so their board
-    // becomes usable within milliseconds (fire and forget; a missed push
-    // just falls back to the poll).
+    // The match only advances because a status request arrived (there is
+    // no background scheduler), so the player whose request advanced it
+    // sees the new state immediately while the other one is still up to
+    // one poll tick behind. Push a bare refetch hint to the per-match
+    // room so the opponent's HUD (score / progress / clock) catches up in
+    // milliseconds (fire and forget; a missed push just falls back to the
+    // poll). It carries public state only — never a board or mine value.
     if (result.advanced) {
       broadcastMatchUpdate(matchId, {
         status: match.status,
-        currentTurnUserId: match.currentTurnUserId ?? null,
-        roundDeadline: match.roundDeadline ?? null,
+        matchDeadline: match.matchDeadline ?? null,
+        p1Score: Number(match.p1Score) || 0,
+        p2Score: Number(match.p2Score) || 0,
       });
     }
 
@@ -136,13 +134,16 @@ export async function GET(req, { params }) {
         rounds: rounds.map((r) => ({
           id: r.id,
           roundNumber: r.roundNumber,
-          p1Pick: r.p1Pick,
-          p2Pick: r.p2Pick,
-          p1PickIsMine: r.p1PickIsMine,
-          p2PickIsMine: r.p2PickIsMine,
-          p1AutoPicked: Boolean(r.p1AutoPicked),
-          p2AutoPicked: Boolean(r.p2AutoPicked),
+          // Final replay snapshot — both seats' scores, both boards (with
+          // mine values) and each seat's full play history (revealed tiles,
+          // flags, mines hit, completion times). Only ever present once the
+          // match has settled; an active match returns `rounds: []`.
+          p1Score: r.p1Score ?? null,
+          p2Score: r.p2Score ?? null,
           boardSnapshot: r.boardSnapshot ?? null,
+          p2BoardSnapshot: r.p2BoardSnapshot ?? null,
+          p1FinalState: r.p1FinalState ?? null,
+          p2FinalState: r.p2FinalState ?? null,
           roundWinner: r.roundWinner,
           winReason: r.winReason ?? null,
           createdAt: r.createdAt,

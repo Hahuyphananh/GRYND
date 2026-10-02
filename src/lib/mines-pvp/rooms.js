@@ -1,123 +1,115 @@
 // src/lib/mines-pvp/rooms.js
 //
-// Shared Socket.IO room-id constants + a safe server-side broadcast
-// helper for the Mines PvP match system. Centralised so the lobby
-// page, the match view, and the server store all agree on room
-// naming — a typo in only one would silently break the per-match
-// live-update channel.
+// Shared Socket.IO room-id constants + safe server-side broadcast helpers for
+// the Mines PvP match system. Centralised so the lobby page, the match view,
+// the server store and the realtime-server all agree on room naming — a typo
+// in only one would silently break the per-match live-update channel.
 //
-// Mirrors `src/lib/blackjack-pvp/rooms.js` and
-// `src/lib/roulette-pvp/rooms.js` so contributions to any PvP
-// feature feel familiar; we namespace the rooms with `mines-pvp`
-// so emissions don't leak across PvP features.
+// Mirrors `src/lib/blackjack-pvp/rooms.js` / `src/lib/keno-pvp/rooms.js`;
+// rooms are namespaced with `mines-pvp` so emissions don't leak across PvP
+// features.
 //
-// ── Wiring overview ────────────────────────────────────────────────
+// ── The simultaneous model ────────────────────────────────────────────
+// There are NO turns any more, so there is no "your turn" push. Both seats
+// act independently and every score-changing action produces a realtime
+// update. The client relays `lobby:updated` (a bare "refetch the authoritative
+// snapshot" hint) after each successful action; the opponent's status GET
+// returns that viewer's OWN board state plus the opponent's PUBLIC progress
+// (score, revealed/flag counts, completion). No hidden mine information is
+// ever broadcast.
 //
-//   Player A — lobby page: hits /api/mines-pvp/create-or-join.
-//     createOrJoin() either returns A's own existing match (no-op)
-//     or the freshly-matched pair. After success, the lobby emits
-//       room_event({ roomId: mines-pvp:match:${id},
-//                  event:   "lobby:updated" })
-//     so that Player B (sitting on /casino/mines-pvp/[matchId]
-//     AFTER the join) sees the status flip from waiting → ready
-//     without waiting for the next 1.5 s poll.
+//   Player A acts → POST /api/mines-pvp/match/:id/{pick|flag|unflag}
+//     → client emits room_event({ roomId: mines-pvp:match:id,
+//                                event: "lobby:updated" })
+//     → Player B refetches /api/mines-pvp/match/:id (per-viewer state)
 //
-//   In match view, both players are members of the per-match room.
-//   When Player A POSTs /api/mines-pvp/[matchId]/pick and the
-//   server's pickTile resolves the turn (or the whole match),
-//   Player A's client emits the same room_event — Player B's
-//   status poll fires inside ~50 ms (socket round trip) instead
-//   of waiting for the 1.5 s poll.
-//
-//   Polling remains active as a safety net for cases where the
-//   socket round-trip drops (mobile suspend, etc.). The polling
-//   interval stays 1.5 s but the user-perceived latency for
-//   opponent picks and round resolutions drops to "instant".
-//
-// ── The server-side broadcast helper ──────────────────────────────
-//
-//   The realtime-server runs in a separate Node process (see
-//   realtime-server/server.js) and exposes its Socket.IO instance
-//   as the local `io` constant. In the standard flow the NEXT.JS
-//   API routes (which call into the server store) DO NOT have
-//   direct access to `io` — in that case the helper silently
-//   no-ops and the client-side polling fallback (1.5 s interval)
-//   covers the latency. The helper only fires when invoked from
-//   inside a process that exposes `io` on globalThis (e.g. the
-//   realtime-server itself, or a future shared-process
-//   deployment, or unit tests that wire one up).
+// The realtime-server additionally tracks per-match participants so an
+// abandoned socket can be forfeited after a grace window (see
+// realtime-server/server.js and /api/mines-pvp/disconnect-forfeit).
 
-/** Lobby-list refresh room (open mines-pvp lobbies). The casino
- *  lobby page joins this on mount and re-renders its list whenever
- *  it receives a `MINES_PVP_MATCH_UPDATED` event broadcast on
- *  this room. */
+/** Lobby-list refresh room (open mines-pvp lobbies). */
 export const MINES_PVP_LOBBY_ROOM = "lobby:mines-pvp";
 
+/** Room-id prefix used by the realtime-server's participant tracking. */
+export const MINES_PVP_MATCH_ROOM_PREFIX = "mines-pvp:match:";
+
 /**
- * Per-match live-update room. Each match has its own room id so
- * emissions don't leak to other matches' open sockets.
+ * Per-match live-update room id.
  *
  * @param {number|string} matchId
  * @returns {string}
  */
 export function minesPvpMatchRoom(matchId) {
-  return `mines-pvp:match:${matchId}`;
+  return `${MINES_PVP_MATCH_ROOM_PREFIX}${matchId}`;
 }
 
 /**
- * Event name broadcast on the per-match room AND the lobby room.
- * The match view listens for this and re-fetches status. Mirrors
- * `BLACKJACK_PVP_MATCH_UPDATED` / `ROULETTE_PVP_MATCH_UPDATED`
- * (both are the same string `"lobby:updated"`) so the
- * realtime-server's generic `room_event` handler routes them
- * identically.
+ * The generic "refetch the authoritative snapshot" event. Emitted on the
+ * per-match room (and the lobby room). It carries NO game authority — the
+ * listener refetches `/status`.
  */
 export const MINES_PVP_MATCH_UPDATED = "lobby:updated";
 
 /**
- * Broadcast a `MINES_PVP_MATCH_UPDATED` event to every socket
- * currently joined to the per-match room. Safe to call from
- * anywhere — silently no-ops if `globalThis.io` is not reachable
- * (the client-side polling fallback will deliver the update
- * within ~1.5 s).
+ * Cosmetic score-animation event. The server (or the acting client, relayed
+ * by the realtime-server's generic `room_event` handler) may emit this after a
+ * score-changing action so the opponent can play an animation immediately.
  *
- * Use this from the server store's `pickTile` / `createOrJoin`
- * paths to fan out a status update immediately after the DB write
- * commits, so the opponent's "your turn" / "opponent picked"
- * banner flips without waiting for the poll.
- *
- * @param {number|string} matchId
- * @param {object} [payload] Extra fields merged into the broadcast
- *   envelope. The realtime-server's `room_event` handler also
- *   injects `userId` (the broadcaster) and `sentAt` automatically
- *   when the broadcast originates from a client socket; this
- *   server-side helper pre-fills `matchId` and `sentAt` itself.
- * @returns {boolean} `true` if the broadcast was dispatched,
- *   `false` if no io instance was reachable (silent no-op).
+ * It is DELIBERATELY a hint: the payload is never treated as authoritative
+ * state — the listener still refetches `/status`, which recomputes every
+ * number server-side. Fields:
+ *   { seat: "player1"|"player2", delta: number,
+ *     reason: "safe"|"correct_flag"|"wrong_flag"|"mine_hit"|"complete",
+ *     myScore?: number, opponentScore?: number }
  */
-export function broadcastMatchUpdate(matchId, payload) {
+export const MINES_PVP_SCORE_EVENT = "mines-pvp:score";
+
+function safeRoomBroadcast(roomId, event, payload) {
   const io = globalThis.io;
   if (!io || typeof io.to !== "function") return false;
-  const roomId = minesPvpMatchRoom(matchId);
   const safePayload =
     payload && typeof payload === "object" && !Array.isArray(payload)
       ? payload
       : {};
   try {
-    io.to(roomId).emit(MINES_PVP_MATCH_UPDATED, {
-      matchId,
-      ...safePayload,
-      sentAt: new Date().toISOString(),
-    });
+    io.to(roomId).emit(event, { ...safePayload, sentAt: new Date().toISOString() });
     return true;
   } catch (err) {
-    // Never let a broadcast failure bubble up to the calling API
-    // route — a missed broadcast is recoverable (polling will catch
-    // up) but a 500 on /api/mines-pvp/pick is a hard failure.
     console.warn(
-      "[mines-pvp] broadcastMatchUpdate failed:",
+      "[mines-pvp] realtime broadcast failed:",
       err && err.message ? err.message : err,
     );
     return false;
   }
+}
+
+/**
+ * Broadcast a `MINES_PVP_MATCH_UPDATED` event to every socket in the
+ * per-match room. Safe to call from anywhere — silently no-ops when no io
+ * instance is reachable (the client relay + 1.5s polling cover that case).
+ *
+ * @param {number|string} matchId
+ * @param {object} [payload] Extra fields merged into the envelope.
+ * @returns {boolean}
+ */
+export function broadcastMatchUpdate(matchId, payload) {
+  return safeRoomBroadcast(minesPvpMatchRoom(matchId), MINES_PVP_MATCH_UPDATED, {
+    matchId,
+    ...(payload && typeof payload === "object" ? payload : {}),
+  });
+}
+
+/**
+ * Broadcast a cosmetic `MINES_PVP_SCORE_EVENT` to the per-match room. Never
+ * authoritative; the client refetches the authoritative snapshot separately.
+ *
+ * @param {number|string} matchId
+ * @param {object} payload { seat, delta, reason, myScore, opponentScore }
+ * @returns {boolean}
+ */
+export function broadcastScoreEvent(matchId, payload) {
+  return safeRoomBroadcast(minesPvpMatchRoom(matchId), MINES_PVP_SCORE_EVENT, {
+    matchId,
+    ...(payload && typeof payload === "object" ? payload : {}),
+  });
 }

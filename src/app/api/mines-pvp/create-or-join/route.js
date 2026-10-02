@@ -2,16 +2,13 @@
 //
 // POST — stake-keyed matchmaking for Mines Duel:
 //   1. Look for an open match with matching stake (different host).
-//   2. If found → join it (deduct stake, transition to `ready` with
-//      a 3-second banner, server rolls the first-player turn order).
-//   3. Otherwise → create a fresh waiting match (deduct stake, lock
-//      in the host's mine count + generate the server-authoritative
-//      board).
+//   2. If found → join it (transition to `ready`; a 3-second banner
+//      runs, then both players start simultaneously).
+//   3. Otherwise → create a fresh waiting match and generate the two
+//      server-authoritative boards.
 //
-// `minesCount` is REQUIRED at create time and IGNORED at join time —
-// the joiner just consumes whatever mine count the host picked. This
-// prevents a malicious joiner from substituting a different mine
-// count to "fix" the match.
+// `minesCount` is fixed server-side (10 on the 10×10 board) and is
+// IGNORED — a client can never pick a different mine count.
 //
 // Always returns the resulting match in a normalised shape so the
 // frontend can react identically to "created" vs "joined".
@@ -27,6 +24,9 @@ import {
 
 function normaliseMatch(match) {
   if (!match) return null;
+  // Simultaneous model — no turn fields. Both seats play at will from the
+  // one server-authoritative clock; the viewer's own board state arrives on
+  // the subsequent /match/:id status fetch.
   return {
     id: match.id,
     player1Id: match.player1Id,
@@ -35,15 +35,11 @@ function normaliseMatch(match) {
     stakeAmount: Number(match.stakeAmount),
     minesCount: match.minesCount,
     status: match.status,
-    firstPlayerId: match.firstPlayerId,
-    currentTurnUserId: match.currentTurnUserId,
-    roundDeadline: match.roundDeadline,
-    p1Pick: match.p1Pick ?? null,
-    p2Pick: match.p2Pick ?? null,
-    // The viewer's own flag set (empty on a brand-new match) + counters.
+    matchTimerSeconds: Number(match.matchTimerSeconds) || 0,
+    matchDeadline: match.matchDeadline ?? null,
     myFlags: [],
-    myMinesFound: 0,
-    opponentMinesFound: 0,
+    myScore: 0,
+    opponentScore: 0,
     winReason: match.winReason ?? null,
     startedAt: match.startedAt,
     endedAt: match.endedAt,

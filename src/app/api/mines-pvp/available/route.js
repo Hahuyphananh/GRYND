@@ -2,9 +2,8 @@
 //
 // GET — list open Mines Duel lobbies (one open row per match that's
 // waiting for an opponent). Public read; mirrors the blackjack-pvp /
-// roulette-pvp `available` route. Adds the host-picked `minesCount`
-// to the payload so the joiner knows what they're agreeing to
-// before they click.
+// roulette-pvp `available` route. `minesCount` is the fixed server
+// constant (10 on the 10×10 board), included for display parity.
 
 import { NextResponse } from "next/server";
 import { listOpenMatches } from "../../../../lib/mines-pvp/serverStore";

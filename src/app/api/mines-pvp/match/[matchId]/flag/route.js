@@ -1,65 +1,88 @@
 // src/app/api/mines-pvp/match/[matchId]/flag/route.js
 //
-// POST — submit a per-match FLAG (a per-player CLAIM) instead of a pick.
-// On your turn you may declare a tile you believe is a mine:
-//   • The claim is added to YOUR OWN flag set (`p1Flags` / `p2Flags`).
-//     The two seats' collections are independent.
-//   • A WRONG claim is NOT a loss — the turn simply passes to the
-//     opponent.
-//   • Claiming EVERY mine wins IMMEDIATELY
-//     (`winReason: 'all_mines_flagged'`).
+// POST — mark a tile on the CALLER'S OWN board as a suspected mine.
+// Simultaneous play: both seats may flag at any time while the match is
+// `active`, the 180s server timer has not expired, and their own board is not
+// completed/locked. The two seats' flag sets are fully independent.
+//   • A CORRECT flag awards the mine's own server-assigned value and resolves
+//     that cell.
+//   • A WRONG flag costs −10 (the marker is kept until the tile is revealed).
+//   • Completing a board awards +100 and locks that seat only — it is NOT an
+//     instant win; the opponent keeps playing to the clock.
 //
-// Thin mirror of the /pick route: forwards `{ cellIndex }` to
-// `flagTile` in the server store, which performs the same
-// validation chain as `pickTile` (participant + active state, FOR
-// UPDATE row lock, conditional UPDATE on `match.status`, turn
-// enforcement via the closed-form odds formula, deadline freshness,
-// cell-not-already-REVEALED, cell-not-already-claimed-by-you).
+// Thin mirror of the /pick route: forwards `{ cellIndex }` to `flagTile` in
+// the server store, which performs the same validation chain as `pickTile`
+// (participant + active state, FOR UPDATE row lock, conditional UPDATE on
+// `match.status`, deadline freshness, cell-not-already-REVEALED,
+// cell-not-already-claimed-by-you).
 //
 // Anti-cheat considerations baked into `flagTile`:
-//   * only the player whose turn it is can flag (server-trusted
-//     clerkId from Clerk's `auth()`)
+//   * the acting seat is derived from the authenticated user, never the body
 //   * the board column is never exposed mid-match
-//   * a stale submission (post-deadline) is rejected with 400 so
-//     the client waits for the next poll's AFK auto-pick instead
+//   * a submission after the match timer expires is rejected with 400
 //   * flagging an already-REVEALED cell, or re-flagging a cell you
 //     already claimed, is rejected with 409
-//   * whether a claim was CORRECT is board-derived and never leaves
-//     the server while the match is live — the flag entry itself
-//     carries no verdict, so a claim leaks nothing
+//   * the mine VALUE is minted from the server board — never sent by a client
 //
-// The POST response deliberately omits any correctness verdict (the
-// client learns the outcome from the subsequent /status poll, which
-// fully reveals the board once status='finished'). It DOES return the
-// caller's updated flag set so the toggle reflects the claim at once.
+// The POST response returns the caller's OWN updated flag set plus the
+// server-computed verdict. The opponent's flag locations and the hidden board
+// are never sent; the subsequent /status poll carries the full per-viewer
+// snapshot.
 
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../../lib/auth/requireAgeVerified";
 import { flagTile } from "../../../../../../lib/mines-pvp/serverStore";
+import { broadcastScoreEvent } from "../../../../../../lib/mines-pvp/rooms";
 import {
   GRID_CELLS,
+  correctFlagsForSeat,
   flagsForSeat,
-  minesFoundForSeat,
+  normalizeFlags,
 } from "../../../../../../lib/mines-pvp/constants";
 import { broadcastMatchUpdate } from "../../../../../../lib/mines-pvp/rooms";
 
 function normaliseFlagResult(match, userId) {
   if (!match) return null;
-  // Return structural fields plus the CALLER'S OWN confirmed mines and the
-  // two public mine counters. The opponent's flag locations are never sent.
+  // Return structural fields plus the CALLER'S OWN flag state and score. The
+  // opponent's flag locations, board and mine VALUES are never sent.
   const viewerIsPlayer1 = match.player1Id === userId;
   const viewerSeat = viewerIsPlayer1 ? "player1" : "player2";
   const opponentSeat = viewerIsPlayer1 ? "player2" : "player1";
+  const correct = correctFlagsForSeat(match, viewerSeat);
   return {
     id: match.id,
     status: match.status,
-    p1Pick: match.p1Pick ?? null,
-    p2Pick: match.p2Pick ?? null,
-    currentTurnUserId: match.currentTurnUserId,
-    roundDeadline: match.roundDeadline,
+    myScore: Number(viewerIsPlayer1 ? match.p1Score : match.p2Score) || 0,
+    opponentScore:
+      Number(viewerIsPlayer1 ? match.p2Score : match.p1Score) || 0,
     myFlags: flagsForSeat(match, viewerSeat),
-    myMinesFound: minesFoundForSeat(match, viewerSeat),
-    opponentMinesFound: minesFoundForSeat(match, opponentSeat),
+    myCorrectFlagCells: correct,
+    myIncorrectFlagCells: normalizeFlags(flagsForSeat(match, viewerSeat)).filter(
+      (c) => !correct.includes(c),
+    ),
+    myCorrectFlags:
+      Number(
+        viewerIsPlayer1 ? match.p1CorrectFlagCount : match.p2CorrectFlagCount,
+      ) || 0,
+    myIncorrectFlags:
+      Number(
+        viewerIsPlayer1
+          ? match.p1IncorrectFlagCount
+          : match.p2IncorrectFlagCount,
+      ) || 0,
+    myMinesFound:
+      Number(
+        viewerIsPlayer1 ? match.p1CorrectFlagCount : match.p2CorrectFlagCount,
+      ) || 0,
+    opponentMinesFound:
+      Number(
+        viewerIsPlayer1 ? match.p2CorrectFlagCount : match.p1CorrectFlagCount,
+      ) || 0,
+    myCompleted: Boolean(
+      viewerIsPlayer1 ? match.p1Completed : match.p2Completed,
+    ),
+    myLocked: Boolean(viewerIsPlayer1 ? match.p1Locked : match.p2Locked),
+    matchDeadline: match.matchDeadline ?? null,
     winReason: match.winReason ?? null,
     winnerId: match.winnerId ?? null,
   };
@@ -115,18 +138,23 @@ export async function POST(req, { params }) {
       );
     }
 
-    // Best-effort push to the match room so the opponent sees the new
-    // turn (or the all-mines-flagged finish) without waiting for a poll.
-    // Same `lobby:updated` event as the rest of the game — listeners
-    // refetch `/status` for authoritative state and the payload never
-    // carries board or flag-correctness data.
+    // Best-effort push so the opponent refetches its per-viewer snapshot,
+    // plus a cosmetic score animation hint. Neither carries the opponent's
+    // flag locations or any hidden mine information — the refetch is
+    // authoritative and the opponent only ever receives public counts.
     broadcastMatchUpdate(matchId, {
       status: result.match?.status,
-      currentTurnUserId: result.match?.currentTurnUserId ?? null,
-      roundDeadline: result.match?.roundDeadline ?? null,
+      matchDeadline: result.match?.matchDeadline ?? null,
+      p1Score: Number(result.match?.p1Score) || 0,
+      p2Score: Number(result.match?.p2Score) || 0,
       winnerId: result.match?.winnerId ?? null,
       winReason: result.match?.winReason ?? null,
       justResolved: Boolean(result.justResolved),
+    });
+    broadcastScoreEvent(matchId, {
+      seat: result.seat ?? null,
+      delta: Number(result.scoreDelta) || 0,
+      reason: result.scoreReason ?? null,
     });
 
     // Server-side AI trigger: if the match is a free AI game and the human
@@ -146,11 +174,13 @@ export async function POST(req, { params }) {
       data: {
         match: normaliseFlagResult(result.match, userId),
         justResolved: Boolean(result.justResolved),
-        // The caller-only verdict: true when the flagged tile really was a
-        // mine (the mine is confirmed for them), false when the read was
-        // wrong (they are told at once). The location is theirs alone.
-        flagRevealed: Boolean(result.flagRevealed),
-        wrongFlag: Boolean(result.wrongFlag),
+        // Caller-only verdict: true when the flagged tile really was a mine
+        // (and the mine's value was awarded), false when the read was wrong.
+        // `mineValue` is the server-minted points the correct flag earned.
+        flagRevealed: Boolean(result.flagCorrect),
+        wrongFlag: !result.flagCorrect,
+        mineValue: result.flagCorrect ? result.mineValue : null,
+        completed: Boolean(result.completed),
       },
     });
   } catch (error) {

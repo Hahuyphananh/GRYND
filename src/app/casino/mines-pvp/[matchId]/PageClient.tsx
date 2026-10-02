@@ -1,42 +1,42 @@
 "use client";
 
-// src/app/casino/mines-pvp/[matchId]/page.tsx
+// src/app/casino/mines-pvp/[matchId]/PageClient.tsx
 //
-// MATCH view for the Mines PvP ("Mines Duel") system — the SHARED-BOARD
-// competitive Minesweeper rules. Both players play the SAME 10×10 board on a
-// strict alternating (server-authoritative) turn order; each turn has a 20 s
-// window.
+// MATCH view for the Mines Duel — SIMULTANEOUS, INDEPENDENT-BOARD competitive
+// scoring. There are NO turns: both players race at the same time, each on
+// their OWN server-generated 10×10 board. Whoever scores more when both boards
+// are done — or the server-authoritative 180s clock runs out — wins.
 //
-// SHARED INFORMATION: a safe reveal belongs to the WHOLE board — the cell and
-// its Minesweeper clue (how many tiles away the NEAREST mine is, 1 = touching
-// a mine, stamped server-side from the hidden board) are visible to BOTH
-// players. The client never derives a clue itself and never hides the
-// opponent's. The one thing that never leaves the server mid-match is the
-// hidden mine list itself.
+// ── What each seat can see ───────────────────────────────────────────
+//   • The viewer's OWN board only: every cell they have resolved (safe reveals
+//     with their server-stamped clue, mines they detonated, mine they
+//     confirmed by flagging, and their wrong-flag markers).
+//   • The opponent ONLY as compact public progress — score, tiles, confirmed
+//     mines, completion. Their board, mine positions and mine values are never
+//     rendered.
+//   • Both full boards are revealed ONLY once the match is `finished` (the
+//     replay state).
 //
-// ENDINGS: revealing a mine loses instantly (sudden death); confirming
-// EVERY mine wins instantly. Flags are private per seat — a correct flag
-// reveals the mine to the flagger alone, and the opponent only sees the
-// mine counter drop. A wrong flag is rejected and costs the flagger a turn.
+// ── Scoring (all server-minted; the client never computes a score) ───
+//   • safe reveal +5 · wrong flag −10 · mine hit −25 · board cleared +100
+//   • a correct flag awards the flagged mine's own value (10/20/30/50)
+//   Scores clamp at 0. The client only *displays* the authoritative change
+//   (via a score diff against the refetched snapshot) so the animation can
+//   never disagree with the server.
 //
-// Visual design reuses the solo-mines page's gameboard
-// (cyan safe / magenta mine palette, bomb animation,  for
-// unrevealed) and STIPS the left + right sidebars (no bet input,
-// no autoplay, no multiplier readout — those don't apply in the
-// PvP variant). The page replaces the sidebars with a PvP-specific
-// turn indicator + 20 s countdown + a post-match result screen
-// that reveals the full board + payout breakdown.
+// ── Reused visual language ───────────────────────────────────────────
+// The board frame, tile styling, safe/mine palette, clue badges, bomb fuse /
+// explosion, reveal + hint-pop cues, seat emote system, shared result screen,
+// matchmaking takeover and audio cues are all carried over from the original
+// Mines page rather than re-invented.
 
-import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, use, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { usePostHog } from "posthog-js/react";
 import { useUser } from "@clerk/nextjs";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import NavigationBar from "../../../../components/navigation-bar";
 import Footer from "../../../../components/Footer";
-// Shared session host: tracks active-player presence and the
-// recently-played strip from the real match lifecycle. The
-// waiting/matchmaking takeover and Footer stay OUTSIDE it.
 import GameSessionHost from "../../../../components/GameSessionHost";
 import ReportModal from "../../../../components/ReportModal";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
@@ -49,6 +49,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import {
   MINES_PVP_LOBBY_ROOM,
   MINES_PVP_MATCH_UPDATED,
+  MINES_PVP_SCORE_EVENT,
   minesPvpMatchRoom,
 } from "../../../../lib/mines-pvp/rooms";
 import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../../../../lib/gameAudio";
@@ -66,32 +67,17 @@ import {
   IconQuestionMark,
   IconFlag,
   IconTrophy,
-  IconCheck,
 } from "@tabler/icons-react";
-import {
-  MATCH_STATUS,
-  RESULT,
-  GRID_CELLS,
-  AI_PICK_DELAY_MS,
-} from "../../../../lib/mines-pvp/constants";
+import { MATCH_STATUS, GRID_CELLS } from "../../../../lib/mines-pvp/constants";
 
 // How long the finished board keeps the table to itself before the result
-// overlay covers it (see the beat in the match view). Sized to the finished
-// reveal below, not to the impact alone: the last still-hidden cell starts at
-// 480ms and a mine's explosion runs 400ms, so the minefield has fully
-// uncovered itself by ~880ms and the result panel lands on a complete picture
-// — it stays the primary final state, just after the reveal rather than over
-// it. Reduced motion skips the wait entirely.
+// overlay covers it (the finished reveal must land first). Reduced motion
+// skips the wait.
 const RESULT_BEAT_MS = 900;
-
-// Finished-reveal sweep step: how far apart two still-hidden cells uncover.
-// 100 cells × 6ms = the last cell starts at ~594ms, so the whole minefield
-// has uncovered itself before the result overlay lands at RESULT_BEAT_MS.
+// Finished-reveal sweep step (in index order: top-left → bottom-right).
 const REVEAL_STEP_MS = 6;
 
-// ── Animation: bomb glyph (reused from solo mines) ──────────────────
-// `delayMs` exists for the finished reveal only: the bomb animation is the
-// existing one-shot, and the sweep just starts it on the cell's own step.
+// ── Animation: bomb glyph (reused from the original Mines board) ─────
 function AnimatedBomb({
   exploded = false,
   delayMs = 0,
@@ -99,10 +85,11 @@ function AnimatedBomb({
   exploded?: boolean;
   delayMs?: number;
 }) {
-  return (      <span className={`
-        relative text-lg
-        ${exploded ? "animate-bomb-explode" : "animate-bomb-fuse"}
-      `}
+  return (
+    <span
+      className={`relative text-lg ${
+        exploded ? "animate-bomb-explode" : "animate-bomb-fuse"
+      }`}
       style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
     >
       <IconBomb size={15} className="text-red-400" />
@@ -115,22 +102,10 @@ function AnimatedBomb({
   );
 }
 
-// ── Inline SVG icons (kept in-file so this page doesn't pull in
-// other game-specific icon sets) ─────────────────────────────────────
-
+// ── Inline SVG icons (kept in-file, reused from the original page) ───
 function CoinIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <ellipse cx="12" cy="6" rx="8" ry="2.5" />
       <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
       <ellipse cx="12" cy="18" rx="8" ry="2.5" />
@@ -140,17 +115,7 @@ function CoinIcon({ className = "" }: { className?: string }) {
 
 function MineIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <circle cx="12" cy="14" r="7" />
       <path d="M14 7 L17 4" />
       <path d="M16 4 L18 4 L18 6" />
@@ -161,17 +126,7 @@ function MineIcon({ className = "" }: { className?: string }) {
 
 function ClockIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7 V12 L15 14" />
     </svg>
@@ -180,17 +135,7 @@ function ClockIcon({ className = "" }: { className?: string }) {
 
 function CheckIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <path d="M5 12 L10 17 L19 7" />
     </svg>
   );
@@ -198,229 +143,16 @@ function CheckIcon({ className = "" }: { className?: string }) {
 
 function CrossIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <path d="M6 6 L18 18" />
       <path d="M18 6 L6 18" />
     </svg>
   );
 }
 
-type PlayerSeatProps = {
-  isMe: boolean;
-  name: string;
-  iconKey?: string | null;
-  profileFrame?: unknown;
-  nameColor?: string | null;
-  // Tiles this seat has REVEALED (flag claims are not reveals and are
-  // counted separately below).
-  reveals: number;
-  // How many mines this seat has CONFIRMED (correctly flagged). Flag locations
-  // are private, so this count is the only public progress signal.
-  minesFound: number;
-  minesTotal: number;
-  wagerLabel: string;
-  thinking: boolean;
-  // Optional label for the opponent's thinking indicator (defaults to
-  // "Picking"). AI matches pass "AI thinking" so the animated dots
-  // read as the bot deliberating over its second tile.
-  thinkingLabel?: string;
-  // Whose turn it is, as a stable identity ("me-turn" / "them-turn"). The
-  // seat flashes a one-shot ring the moment it becomes the active one — see
-  // `.animate-seat-turn`. Undefined while this seat is not the active seat.
-  emphasisKey?: string;
-  // True while the hand is in a live pick phase (p1_turn / p2_turn). Only then
-  // is one of the two seats the one to act, so only then does the pair get the
-  // active/muted weighting — there is nobody to emphasise while waiting,
-  // ready, finished or cancelled.
-  livePhase?: boolean;
-  isWinner: boolean;
-  emote: { kind?: string; value?: string; key?: string } | null;
-  emoteSide: "mine" | "incoming";
-};
-
-// Per-player seat card: username + wager + tiles clicked, with a live
-// turn/winner state. The emote bubble is anchored to the player's name
-// (relative span) so an emote "pops" on the sender's name — the pattern
-// shared by the RPS / keno-pvp / pool match views.
-function PlayerSeat({
-  isMe,
-  name,
-  iconKey,
-  profileFrame,
-  nameColor,
-  reveals,
-  minesFound,
-  minesTotal,
-  wagerLabel,
-  thinking,
-  thinkingLabel,
-  emphasisKey,
-  livePhase,
-  isWinner,
-  emote,
-  emoteSide,
-}: PlayerSeatProps) {
-  // Active / muted / settled weighting.
-  //
-  // `thinking` already means exactly "this seat is the one to act", so the
-  // other seat is the quiet one — that is the whole relationship: one card is
-  // emphasised, the other steps back, and the board stays the focus.
-  // Everything is border / background / opacity / glow, so it rides the card's
-  // existing `transition-all`: a turn switch cross-fades instead of snapping,
-  // and because these are transitions (not animations) a poll or socket
-  // snapshot carrying the same state can never replay anything.
-  //
-  // The winner keeps the gold treatment its badge already uses, and it wins
-  // over the turn weighting — the hand is over, so nobody is "active".
-  const settled = isMe
-    ? "border-cyan-300/25 bg-cyan-500/[0.06]"
-    : "border-fuchsia-300/25 bg-fuchsia-500/[0.06]";
-  const card = isWinner
-    ? "border-yellow-300/50 bg-yellow-400/[0.08] shadow-[0_0_16px_rgba(250,204,21,0.22)]"
-    : thinking
-      ? isMe
-        ? "border-cyan-300/50 bg-cyan-500/[0.12] ring-1 ring-cyan-300/60 shadow-[0_0_14px_rgba(0,229,255,0.25)]"
-        : "border-fuchsia-300/50 bg-fuchsia-500/[0.12] ring-1 ring-fuchsia-300/60 shadow-[0_0_14px_rgba(255,79,216,0.25)]"
-      : `${settled}${livePhase ? " opacity-70" : ""}`;
-  return (
-    <div
-      className={`relative rounded-xl border px-3 py-2.5 lg:py-2 transition-all ${card}`}
-    >
-      {/* Turn emphasis — one flash on the seat whose turn just started, keyed
-          by the turn so a poll/socket re-render (same key) reuses the element
-          and the CSS animation cannot restart. `pointer-events-none` so the
-          card's own controls stay clickable, and `aria-hidden` because the
-          banner already announces the turn. */}
-      {emphasisKey ? (
-        <span
-          key={emphasisKey}
-          aria-hidden
-          className={`animate-seat-turn pointer-events-none absolute inset-0 rounded-xl ring-2 ${
-            isMe ? "ring-cyan-300/70" : "ring-fuchsia-300/70"
-          }`}
-        />
-      ) : null}
-      <div className="flex items-center justify-between gap-2">
-        <span className="relative flex min-w-0 items-center gap-2">
-          {/* Official Grynd icon — falls back to a letter circle when
-              the key is missing/invalid. */}
-          <FrameAvatar frame={profileFrame} iconKey={iconKey} name={name} size="h-7 w-7" />
-          <span
-            className={`truncate text-sm font-bold text-white/90 ${cosmeticEffectClass((profileFrame as any)?.usernameEffect?.visual) || ""}`}
-            style={nameColor ? { color: nameColor } : undefined}
-          >
-            {name}
-          </span>
-          {/* Emote pops above the sender's name */}
-          <EmoteBubble emote={emote} side={emoteSide} />
-        </span>
-        {thinking && (
-          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/60">
-            {isMe ? (
-              <>
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
-                Your turn
-              </>
-            ) : (
-              <>
-                {/* Subtle rippling dots while the opponent picks —
-                    the staggered pulse reads as the AI thinking over
-                    its next tile during the paced pause. */}
-                <span className="flex items-center gap-0.5">
-                  {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-fuchsia-300"
-                      style={{ animationDelay: `${i * 180}ms` }}
-                    />
-                  ))}
-                </span>
-                {thinkingLabel || "Picking"}
-              </>
-            )}
-          </span>
-        )}
-        {isWinner && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-yellow-300/40 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-yellow-200">
-            <IconTrophy size={11} className="text-yellow-300" />
-            Winner
-          </span>
-        )}
-      </div>
-      {/* Competitive state at a glance: the seat's own accent carries BOTH
-          counters, so whose reveals/flags are whose reads from the same
-          cyan/fuchsia language as the board. `flex-wrap` keeps the three
-          stats legible on the narrower two-up layout instead of clipping.
-          Only COUNTS are shown — never a mine location. */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/55">
-        <span className="inline-flex items-center gap-1 font-semibold text-yellow-200/80">
-          <CoinIcon className="h-3.5 w-3.5 text-yellow-300" />
-          {wagerLabel}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <IconDiamondFilled
-            size={11}
-            className={isMe ? "text-cyan-300" : "text-fuchsia-300"}
-          />
-          Reveals:{" "}
-          {/* Activity feedback: keyed by the count itself, so the pop plays once
-              per reveal that actually lands and re-renders carrying the same
-              count (polls, socket snapshots, turn changes, timer ticks) reuse
-              the element and replay nothing. */}
-          <b
-            key={`reveals-${reveals}`}
-            className={`animate-tile-reveal ${
-              isMe ? "text-cyan-100" : "text-fuchsia-100"
-            }`}
-          >
-            {reveals}
-          </b>
-        </span>
-        {minesTotal > 0 ? (
-          <span
-            title="Mines this seat has confirmed by correctly flagging them. Flag every mine to win."
-            className="inline-flex items-center gap-1"
-          >
-            <IconFlag
-              size={11}
-              className={isMe ? "text-cyan-300" : "text-fuchsia-300"}
-            />
-            Mines found:{" "}
-            <b
-              key={`mines-${minesFound}`}
-              className={`animate-tile-reveal ${
-                isMe ? "text-cyan-100" : "text-fuchsia-100"
-              }`}
-            >
-              {minesFound}
-            </b>
-            <span className="text-white/40">/ {minesTotal}</span>
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function LoadingDotsIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
       <circle cx="6" cy="12" r="2" />
       <circle cx="12" cy="12" r="2" />
       <circle cx="18" cy="12" r="2" />
@@ -430,17 +162,7 @@ function LoadingDotsIcon({ className = "" }: { className?: string }) {
 
 function AlertIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
       <path d="M12 3 L22 20 H2 Z" />
       <line x1="12" y1="10" x2="12" y2="15" />
       <circle cx="12" cy="17.5" r="0.8" fill="currentColor" stroke="none" />
@@ -448,41 +170,9 @@ function AlertIcon({ className = "" }: { className?: string }) {
   );
 }
 
-// ── Type for the match payload returned by /api/mines-pvp/[id]/status
-// Mirrors the schema (`mines_pvp_matches` + the server-side
-// `scrubMatchForViewer` contract: `board` is null while not yet
-// finished, populated with the real `{ size, mines }` once
-// status='finished').
-//
-// The chronological `picks` array is the source of truth: it holds every
-// REVEAL (with its public clue) plus every flag CLAIM (no clue, no verdict).
-// The legacy `p1Pick` / `p2Pick` scalars still come back for backwards-compat
-// and hold the most-recent REVEAL from each seat — claims never touch them.
-type PickEntry = {
-  userId: string | null;
-  seat: "player1" | "player2" | null;
-  cell: number;
-  isMine: boolean;
-  // The Minesweeper clue for a safe reveal — distance to the NEAREST mine in
-  // tiles (1 = touching a mine), computed SERVER-SIDE from the hidden board.
-  // PUBLIC to both seats: the shared-board rules give both players the same
-  // revealed board, so every reveal carries its number for everyone. The
-  // client never derives a clue itself. null on mines and on flag entries.
-  hint?: number | null;
-  autoPicked: boolean;
-  pickedAt: string | null;
-  // Flag discriminator: true when this entry is a CLAIM (flagTile) rather
-  // than a reveal. A claim is player-specific, reveals nothing, and is NOT
-  // terminal — it consumes the claimer's turn and the match continues unless
-  // that claim completed the sweep. `isMine` is null on live claims (the
-  // verdict is only derivable from the board, once the match has settled).
-  flag?: boolean;
-};
+// ── Payload types (mirror src/lib/mines-pvp/matchView.js) ────────────
+type OwnReveal = { cell: number; mine: boolean; hint: number | null };
 
-// Enriched player summary — added server-side by enrichMatchWithPlayers
-// (users.name + selectedIcon + nameColor per seat). `missing` marks a
-// seat whose users row wasn't found (the client falls back to seat
-// labels).
 type PlayerSummary = {
   id: string;
   displayName: string;
@@ -497,109 +187,198 @@ type MatchRow = {
   player1Id: string;
   player2Id: string | null;
   isAi: boolean;
-  stakeAmount: string;
-  status: string;
+  stakeAmount: number;
   minesCount: number;
-  // Server-computed: how many safe (non-mine) tiles are still unrevealed.
-  // Stamped from the board + reveal history (flag claims never count), so it
-  // stays authoritative no matter what the client believes it has seen. As it
-  // approaches 0, only mines are left unrevealed — whoever must pick next
-  // loses by logic (the zugzwang endgame), which is what this counter makes
-  // legible.
-  safeTilesRemaining: number;
-  board: { size: number; mines: number[] } | null;
-  firstPlayerId: string | null;
-  currentTurnUserId: string | null;
-  // Chronological pick history (server-advertised; sanitised per
-  // viewer in scrubPickRowsForViewer).
-  picks: PickEntry[];
-  pickCount: number;
-  // Legacy single-pick columns (kept for backwards compat with
-  // /status consumers — mirror the most-recent pick from each
-  // seat).
-  p1Pick: number | null;
-  p2Pick: number | null;
-  p1PickIsMine: boolean | null;
-  p2PickIsMine: boolean | null;
-  p1AutoPicked: boolean;
-  p2AutoPicked: boolean;
-  p1PickedAt: string | null;
-  p2PickedAt: string | null;
-  roundDeadline: string | null;
-  roundTimerSeconds: number;
-  winnerId: string | null;
-  result: string | null;
-  // WHY the match ended (server WIN_REASON): 'mine_hit' |
-  // 'all_mines_flagged' | 'resign' | 'disconnect', or null while the
-  // match is still in progress. `result` says WHO won; this says HOW —
-  // the shared-board rules added the all-mines-flagged ending, so the
-  // result alone no longer identifies the hand.
-  winReason: string | null;
-  // The viewer's OWN confirmed mines (cells they correctly flagged). Private:
-  // the opponent's flag locations are never sent. Unique, sorted row-major
-  // cell indices.
-  myFlags: number[];
-  // Public per-seat progress: how many mines each player has confirmed. The
-  // side-by-side "5 | 5" counter is driven by these two numbers.
-  myMinesFound: number;
-  opponentMinesFound: number;
-  houseFee: string;
-  prizePaid: string;
+  status: string;
+  viewerIsPlayer1: boolean;
+  viewerSeat: string;
+  opponentSeat: string;
+  matchTimerSeconds: number;
+  matchDeadline: string | null;
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
-  // Player summaries (usernames/icons) — enriched server-side by
-  // enrichMatchWithPlayers; null until the /match route fills them in.
-  players: {
-    p1: PlayerSummary | null;
-    p2: PlayerSummary | null;
-  } | null;
+  myRevealed: OwnReveal[];
+  myFlags: number[];
+  myCorrectFlagCells: number[];
+  myIncorrectFlagCells: number[];
+  myScore: number;
+  mySafeRevealed: number;
+  myMinesHit: number;
+  myCorrectFlags: number;
+  myIncorrectFlags: number;
+  myCompleted: boolean;
+  myCompletedAt: string | null;
+  myLocked: boolean;
+  mySafeTilesRemaining: number;
+  opponentScore: number;
+  opponentSafeRevealed: number;
+  opponentMinesHit: number;
+  opponentCorrectFlags: number;
+  opponentIncorrectFlags: number;
+  opponentCompleted: boolean;
+  opponentCompletedAt: string | null;
+  opponentLocked: boolean;
+  result: string | null;
+  winnerId: string | null;
+  winReason: string | null;
+  board: { size: number; mines: number[]; values?: Record<string, number> } | null;
+  opponentBoard: { size: number; mines: number[]; values?: Record<string, number> } | null;
+  safeTilesRemaining: number;
+  myMinesFound: number;
+  opponentMinesFound: number;
+  houseFee?: number;
+  prizePaid?: number;
+  players: { p1: PlayerSummary | null; p2: PlayerSummary | null } | null;
 };
 
-// ── Dynamic-route params arrive async (Promise) on Next.js 15+/16. ─────
-// BUG-FIX ("both players stuck in loading mode when starting a game")
-// ────────────────────────────────────────────────────────
-// The page's two polling URLs were pointed at /api/mines-pvp/${matchId}/status
-// and /api/mines-pvp/${matchId}/pick, but those routes never existed — the
-// real match gateway lives at /api/mines-pvp/match/${matchId} (with /pick
-// underneath it). Every poll therefore 404'd on the server, the response
-// body that came back was HTML (not JSON), and the resulting parse error
-// surfaced as "Network error" / "Match not found" instead of the live
-// match — both players looked stuck on the loading screen. The two URL
-// typos are corrected in the `fetchStatus` and `handleCellClick` blocks
-// below. As belt-and-braces we also: (a) unwrap the async params prop
-// with React's `use()` (mirror of the roulette + blackjack match views)
-// so the page never receives `matchId === NaN`; (b) flip setLoading(false)
-// on every early-return path in fetchStatus so a stray guard never pins
-// the page to "Loading match…"; and (c) tighten the isSignedIn check so
-// the brief window before Clerk reports `true`/`false` doesn't dump the
-// user onto the "Match not found" panel.
+function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const m = Math.floor(s / 60);
+  const sec = String(s % 60).padStart(2, "0");
+  return `${m}:${sec}`;
+}
+
+// Minesweeper clue badge (the skill mechanic; 1 = right next to a mine).
+function hintBadgeClass(hint: number): string {
+  if (hint <= 1) return "bg-red-500/20 text-red-200 border-red-400/50";
+  if (hint === 2) return "bg-orange-500/20 text-orange-200 border-orange-300/40";
+  if (hint === 3) return "bg-amber-500/20 text-amber-200 border-amber-300/40";
+  if (hint === 4) return "bg-emerald-500/20 text-emerald-200 border-emerald-300/40";
+  return "bg-cyan-500/20 text-cyan-200 border-cyan-300/40";
+}
+
+// The revealed-safe tile content: a cyan diamond + the server-stamped clue.
+function safeCellContent(hint: number | null): ReactNode {
+  return (
+    <span className="relative inline-flex items-center justify-center animate-tile-reveal">
+      <IconDiamondFilled size={15} className="text-cyan-300" />
+      {hint !== null && (
+        <span
+          className={`animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] font-black tabular-nums ${hintBadgeClass(
+            hint,
+          )}`}
+        >
+          {hint}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// Reusable floating score chip (+5 / −25 …), reusing the state-in entrance.
+function ScorePop({ delta }: { delta: number }) {
+  const positive = delta >= 0;
+  return (
+    <motion.span
+      initial={{ opacity: 0, y: 6, scale: 0.9 }}
+      animate={{ opacity: 1, y: -18, scale: 1 }}
+      exit={{ opacity: 0, y: -30 }}
+      transition={{ duration: 0.9, ease: "easeOut" }}
+      className={`pointer-events-none absolute left-1/2 top-full z-20 -translate-x-1/2 whitespace-nowrap rounded-lg px-2 py-0.5 text-sm font-black tabular-nums shadow-lg ${
+        positive
+          ? "bg-cyan-400/90 text-[#001a2e]"
+          : "bg-red-500/90 text-white"
+      }`}
+    >
+      {positive ? "+" : ""}
+      {delta}
+    </motion.span>
+  );
+}
+
+// ── Scoreboard side (score + compact public progress) ────────────────
+function ScoreSide({
+  label,
+  name,
+  iconKey,
+  profileFrame,
+  nameColor,
+  score,
+  tiles,
+  tilesTotal,
+  mines,
+  completed,
+  pops,
+  emote,
+  emoteSide,
+  align,
+  accent,
+}: {
+  label: string;
+  name: string;
+  iconKey?: string | null;
+  profileFrame?: unknown;
+  nameColor?: string | null;
+  score: number;
+  tiles: number;
+  tilesTotal: number;
+  mines: number;
+  completed: boolean;
+  pops: { id: number; delta: number }[];
+  emote: { kind?: string; value?: string; key?: string } | null;
+  emoteSide: "mine" | "incoming";
+  align: "left" | "right";
+  accent: "cyan" | "fuchsia";
+}) {
+  const pct = tilesTotal > 0 ? Math.min(100, (tiles / tilesTotal) * 100) : 0;
+  const acText = accent === "cyan" ? "text-cyan-300" : "text-fuchsia-300";
+  const acBar = accent === "cyan" ? "bg-cyan-400" : "bg-fuchsia-400";
+  const acBorder = accent === "cyan" ? "border-cyan-300/30" : "border-fuchsia-300/30";
+  return (
+    <div
+      className={`relative flex min-w-0 flex-col ${
+        align === "right" ? "items-end text-right" : "items-start text-left"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <FrameAvatar frame={profileFrame} iconKey={iconKey || null} name={name} size="h-7 w-7" />
+        <div className="min-w-0">
+          <p className={`text-[10px] font-bold uppercase tracking-widest ${acText}`}>{label}</p>
+          <p
+            className={`truncate text-xs font-bold text-white/90 ${cosmeticEffectClass(
+              (profileFrame as any)?.usernameEffect?.visual,
+            ) || ""}`}
+            style={nameColor ? { color: nameColor } : undefined}
+          >
+            {name}
+          </p>
+        </div>
+        <EmoteBubble emote={emote} side={emoteSide} />
+      </div>
+      <p className="mt-1 text-3xl font-black tabular-nums text-white sm:text-4xl">
+        {score.toLocaleString()}
+        {completed && (
+          <span className="ml-1.5 align-middle text-[10px] font-black uppercase tracking-widest text-emerald-300">
+            Cleared
+          </span>
+        )}
+      </p>
+      <div className={`mt-1 h-1.5 w-full max-w-[10rem] overflow-hidden rounded-full bg-white/10 border ${acBorder}`}>
+        <div className={`h-full rounded-full ${acBar} transition-all duration-500`} style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-1 text-[10px] font-semibold text-white/50 tabular-nums">
+        {tiles}/{tilesTotal} tiles · {mines} mines
+      </p>
+      <AnimatePresence>
+        {pops.map((p) => (
+          <ScorePop key={p.id} delta={p.delta} />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function MinesPvpMatchPage({
   params,
 }: {
   params: Promise<{ matchId: string }>;
 }) {
-  // Memoize a stable Promise wrapping the raw `params` prop so `use()`
-  // is callable unconditionally on every render (React rules-of-
-  // hooks). `Promise.resolve(p)` flattens when `params` is itself a
-  // thenable; wraps a plain object on older Next.js so the call is
-  // safe there too. The grandparent <Suspense> boundary provided by
-  // the route segment (Next.js default behaviour) covers the brief
-  // suspend.
-  const paramsPromise = useMemo(
-    () => Promise.resolve(params),
-    [params],
-  );
+  const paramsPromise = useMemo(() => Promise.resolve(params), [params]);
   const resolvedParams = use(paramsPromise);
   const rawMatchId =
-    resolvedParams && typeof resolvedParams === "object"
-      ? resolvedParams.matchId
-      : undefined;
+    resolvedParams && typeof resolvedParams === "object" ? resolvedParams.matchId : undefined;
   const numericMatchId = Number(rawMatchId);
-  // `matchId` is `null` until params resolve and on truly malformed
-  // URLs (e.g. /casino/mines-pvp/not-a-number). Used everywhere the
-  // route id is needed; downstream `if (!isValidMatchId)` guards in
-  // fetchStatus / effects keep API calls safe.
   const matchId = Number.isFinite(numericMatchId) ? numericMatchId : null;
   const isValidMatchId = matchId !== null;
   const { isSignedIn, user } = useUser();
@@ -607,81 +386,36 @@ export default function MinesPvpMatchPage({
   const posthog = usePostHog();
   const { socket } = useSocket();
 
-  // ── Match state ──────────────────────────────────────────────────
   const [match, setMatch] = useState<MatchRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false); // true while a pick POST is in flight
+  const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [resigning, setResigning] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  // Report modal — flags the human opponent for moderation.
   const [showReportModal, setShowReportModal] = useState(false);
-  // Flag mode: when ON, clicking a tile submits a CLAIM on that tile
-  // instead of a pick. Only meaningful on your turn (the handler
-  // guards `isMyTurn` anyway); auto-resets when the turn passes.
   const [flagMode, setFlagMode] = useState(false);
-  // Transient in-match messages: "(name) revealed a mine" when a player
-  // correctly flags one, plus wrong-flag feedback for the player who tried.
   const [messages, setMessages] = useState<
     { id: number; text: string; tone: "mine" | "safe" }[]
   >([]);
-  // Previous public mine counts, so the reveal notices fire once per
-  // confirmed mine rather than on every poll.
-  const prevMineCountsRef = useRef<{ me: number; opp: number } | null>(null);
 
-  // Refs used to anchor the countdown interval + the last-seen
-  // deadline timestamp so we don't reset the countdown when the
-  // status poll lands a few ms early/late.
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Guard so the `mines_pvp_match_resolved` Posthog event fires
-  // exactly once per match-resolution, mirroring the
-  // `roulette_pvp_match_finished` pattern in
-  // src/app/casino/roulette/[matchId]/page.jsx. The ref is
-  // re-initialized when the component remounts (different matchId)
-  // so navigating between matches doesn't suppress the event.
   const resolvedFiredRef = useRef(false);
 
-  // ── Status fetch ─────────────────────────────────────────────────
-  // The /status route calls serverStore.fetchMatchWithAutoResolve,
-  // which auto-advances ready→first-turn on the 3s ready deadline
-  // and triggers AFK force-pick on the 20s pick deadline. So just
-  // polling it on the 1.5s tick is enough — no client-side
-  // deadline handling.
+  // ── Status fetch (authoritative per-viewer snapshot) ─────────────
   const fetchStatus = useCallback(async () => {
-    // BUG-FIX: the original guard was `if (!isSignedIn || !Number.isFinite(matchId)) return;`
-    // — that early `return` skipped the `finally { setLoading(false) }`, so any
-    // page mount where `matchId` wasn't a finite number left the user pinned to the
-    // "Loading match…" spinner. We now branch + flip `loading=false` so the
-    // existing `if (!match)` render path renders the "Match not found" panel.
-    // Clerk reports `isSignedIn` only AFTER it loads; before that, the
-    // value is `undefined`, which would have triggered the early return
-    // below and dumped the user onto the "Match not found" panel for the
-    // ~hundreds of ms Clerk takes to decide. We now distinguish "loaded +
-    // signed out" (real sign-out → redirect) from "loaded + signed in" (poll
-    // normally). While Clerk is still deciding we hold `loading=true` so
-    // the spinner stays put.
     if (isSignedIn === false) {
       setLoading(false);
       setError("You must be signed in to view this match.");
       return;
     }
-    // If isSignedIn is undefined we simply skip the fetch this tick —
-    // it's a Clerk-warming-up window, the polling interval will retry
-    // inside 1.5 s once Clerk reports the actual value.
-    if (isSignedIn !== true) {
-      return;
-    }
+    if (isSignedIn !== true) return;
     if (!isValidMatchId) {
       setLoading(false);
       setError("Invalid match link.");
       return;
     }
     try {
-      // BUG-FIX: the route lives at /api/mines-pvp/match/[matchId] (verified
-      // via `src/app/api/mines-pvp/match/[matchId]/route.js`); the old
-      // /api/mines-pvp/${matchId}/status URL 404'd on every poll.
       const res = await fetch(`/api/mines-pvp/match/${matchId}`, {
         cache: "no-store",
         credentials: "include",
@@ -691,18 +425,9 @@ export default function MinesPvpMatchPage({
         setError(data?.error || "Unable to load match");
         return;
       }
-      // Defensive null-check: API contract says `data.data.match` is the
-      // match row OR null; never undefined. Guard against malformed frames
-      // so we always end up on a defined UI state instead of an unhandled
-      // object.
       const nextMatch =
-        data?.data?.match && typeof data.data.match === "object"
-          ? data.data.match
-          : null;
+        data?.data?.match && typeof data.data.match === "object" ? data.data.match : null;
       setMatch(nextMatch);
-      // A successful response always wins over any stale tick error —
-      // never preserve "Network error" across a fresh "match is gone"
-      // confirmation.
       setError(nextMatch ? null : "Match not found.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -717,56 +442,45 @@ export default function MinesPvpMatchPage({
     fetchStatus();
   }, [fetchStatus]);
 
-  // The per-match room broadcast (MINES_PVP_MATCH_UPDATED above) drives live
-  // updates; this poll is a reconnect/consistency safety net only. It relaxes
-  // while the socket is healthy and tightens if it drops, and stops while the
-  // tab is hidden. Turn pacing comes from the server's round_deadline
-  // timestamp + a local 250ms tick, never from poll frequency.
   useVisiblePoll(
     fetchStatus,
     socketConnected ? SOCKET_HEALTHY_POLL_MS : SOCKET_DOWN_POLL_MS,
     Boolean(isValidMatchId),
   );
 
-  // ── Socket subscription ──────────────────────────────────────────
-  // Listen for the per-match room event so the 1.5 s poll can
-  // short-circuit on the opponent's pick (the realtime-server's
-  // `room_event` handler routes the per-match broadcast into the
-  // per-match room, and the `MINES_PVP_MATCH_UPDATED` event name
-  // is the same on the lobby room + the per-match room).
+  // ── Realtime: existing per-match room refetch hint ──────────────
+  // `lobby:updated` is the bare "refetch the authoritative snapshot" hint
+  // every game relays. `mines-pvp:score` is the server-only cosmetic score
+  // hint — we only use it as an extra prompt to refetch, never as a source of
+  // truth (the refetched snapshot recomputes the score).
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !isValidMatchId) return;
     const refresh = () => fetchStatus();
     const roomId = minesPvpMatchRoom(matchId);
     socket.emit("join_room", { roomId });
     socket.on(MINES_PVP_MATCH_UPDATED, refresh);
+    socket.on(MINES_PVP_SCORE_EVENT, refresh);
     return () => {
       socket.emit("leave_room", { roomId });
       socket.off(MINES_PVP_MATCH_UPDATED, refresh);
+      socket.off(MINES_PVP_SCORE_EVENT, refresh);
     };
-  }, [socket, matchId, fetchStatus]);
+  }, [socket, matchId, isValidMatchId, fetchStatus]);
 
-  // ── Countdown tick ───────────────────────────────────────────────
-  // Driven by the server's `round_deadline` timestamp. Re-syncs
-  // whenever the deadline column changes (status poll returns a
-  // fresh row with a fresh deadline on each turn start).
+  // ── Server-authoritative countdown (visual only) ────────────────
   useEffect(() => {
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
     }
-    if (
-      !match?.roundDeadline ||
-      match.status === MATCH_STATUS.FINISHED ||
-      match.status === MATCH_STATUS.CANCELLED
-    ) {
-      setTimeLeft(0);
+    const deadline = match?.matchDeadline;
+    if (!deadline || match?.status !== MATCH_STATUS.ACTIVE) {
+      setTimeLeft(match?.status === MATCH_STATUS.ACTIVE ? Number(match?.matchTimerSeconds) || 0 : 0);
       return;
     }
-    const deadlineMs = new Date(match.roundDeadline).getTime();
+    const deadlineMs = new Date(deadline).getTime();
     const tick = () => {
-      const remaining = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
-      setTimeLeft(remaining);
+      setTimeLeft(Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000)));
     };
     tick();
     tickRef.current = setInterval(tick, 250);
@@ -776,9 +490,9 @@ export default function MinesPvpMatchPage({
         tickRef.current = null;
       }
     };
-  }, [match?.roundDeadline, match?.status]);
+  }, [match?.matchDeadline, match?.status, match?.matchTimerSeconds]);
 
-  // ── Derived UI state ─────────────────────────────────────────────
+  // ── Derived state ───────────────────────────────────────────────
   const myUserId = user?.id;
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
     socket,
@@ -787,120 +501,79 @@ export default function MinesPvpMatchPage({
     selfId: myUserId,
   });
 
-  // ── Reveal notices ────────────────────────────────────────────────
-  // A confirmed mine is public ONLY as a count, so the announcement is
-  // derived from the two counters ticking up: "(name) revealed a mine".
-  // The tile itself stays private to whoever found it.
-  const myMinesFoundCount = Number(match?.myMinesFound) || 0;
-  const opponentMinesFoundCount = Number(match?.opponentMinesFound) || 0;
-  const opponentDisplayNameForMessages = useMemo(() => {
-    if (!match) return "Opponent";
-    if (match.isAi) return "GRYND AI";
-    const summary =
-      match.player1Id === myUserId ? match.players?.p2 : match.players?.p1;
-    return summary?.displayName || "Opponent";
+  const isPlayer1 = match?.player1Id === myUserId;
+  const isAi = Boolean(match?.isAi);
+  const status = match?.status ?? null;
+  const isWaiting = status === MATCH_STATUS.WAITING;
+  const isReady = status === MATCH_STATUS.READY;
+  const isActive = status === MATCH_STATUS.ACTIVE;
+  const isFinished = status === MATCH_STATUS.FINISHED;
+  const isCancelled = status === MATCH_STATUS.CANCELLED;
+  const isParticipant = useMemo(() => {
+    if (!match || !myUserId) return false;
+    return match.player1Id === myUserId || match.player2Id === myUserId;
   }, [match, myUserId]);
+
+  const myRevealMap = useMemo(() => {
+    const map = new Map<number, OwnReveal>();
+    for (const r of match?.myRevealed ?? []) {
+      if (r && Number.isInteger(r.cell)) map.set(r.cell, r);
+    }
+    return map;
+  }, [match]);
+  const myFlagSet = useMemo(() => new Set(match?.myFlags ?? []), [match]);
+  const correctFlagSet = useMemo(() => new Set(match?.myCorrectFlagCells ?? []), [match]);
+  const incorrectFlagSet = useMemo(() => new Set(match?.myIncorrectFlagCells ?? []), [match]);
+
+  // "Resolved" = every cell the seat has settled: revealed cells (safe tiles
+  // plus detonated mines) AND mines confirmed by a correct flag. This is the
+  // same set the server checks for completion, so the progress bar reaches
+  // 100/100 exactly when the board clears.
+  const myRevealedCount = myRevealMap.size;
+  const myTilesResolved = myRevealedCount + correctFlagSet.size;
+  const opponentTilesResolved =
+    (Number(match?.opponentSafeRevealed) || 0) +
+    (Number(match?.opponentMinesHit) || 0) +
+    (Number(match?.opponentCorrectFlags) || 0);
+
+  // ── Score feedback (diffed from the authoritative snapshot) ─────
+  const prevScoresRef = useRef<{ me: number; opp: number } | null>(null);
+  const popIdRef = useRef(0);
+  const [myPops, setMyPops] = useState<{ id: number; delta: number }[]>([]);
+  const [oppPops, setOppPops] = useState<{ id: number; delta: number }[]>([]);
   useEffect(() => {
     if (!match) {
-      prevMineCountsRef.current = null;
+      prevScoresRef.current = null;
       return;
     }
-    const prev = prevMineCountsRef.current;
-    prevMineCountsRef.current = {
-      me: myMinesFoundCount,
-      opp: opponentMinesFoundCount,
-    };
-    // First frame for this match: record the baseline, announce nothing.
+    const me = Number(match.myScore) || 0;
+    const opp = Number(match.opponentScore) || 0;
+    const prev = prevScoresRef.current;
+    prevScoresRef.current = { me, opp };
     if (!prev) return;
-    const next: { id: number; text: string; tone: "mine" | "safe" }[] = [];
-    if (myMinesFoundCount > prev.me) {
-      next.push({ id: Date.now(), text: "You revealed a mine", tone: "mine" });
+    if (me !== prev.me) {
+      setMyPops((p) => [...p, { id: (popIdRef.current += 1), delta: me - prev.me }]);
     }
-    if (opponentMinesFoundCount > prev.opp) {
-      next.push({
-        id: Date.now() + 1,
-        text: `${opponentDisplayNameForMessages} revealed a mine`,
-        tone: "mine",
-      });
+    if (opp !== prev.opp) {
+      setOppPops((p) => [...p, { id: (popIdRef.current += 1), delta: opp - prev.opp }]);
     }
-    if (next.length) setMessages((prevMsgs) => [...prevMsgs, ...next].slice(-3));
-  }, [match, myMinesFoundCount, opponentMinesFoundCount, opponentDisplayNameForMessages]);
-
-  // Per-seat pick history derived from the chronological `picks`
-  // array. Replaces the old single `p1Pick`/`p2Pick` derived
-  // fields below. The cell helpers + handleCellClick below use
-  // THESE so a player who has picked multiple times still sees
-  // every cleared cell.
-  // REVEALED cells per seat. FLAG entries are excluded: a flag never reveals a
-  // cell, so it must not make a cell look cleared. The viewer's own confirmed
-  // mines are read from `myFlags` (the opponent's flag locations are never
-  // sent).
-  const myPicks = useMemo(() => {
-    if (!match || !myUserId) return [] as number[];
-    return (match.picks ?? [])
-      .filter((p) => p && !p.flag && p.userId === myUserId)
-      .map((p) => p.cell);
-  }, [match, myUserId]);
-  const opponentPicks = useMemo(() => {
-    if (!match || !myUserId) return [] as number[];
-    return (match.picks ?? [])
-      .filter((p) => p && !p.flag && p.userId !== null && p.userId !== myUserId)
-      .map((p) => p.cell);
-  }, [match, myUserId]);
-  // My OWN confirmed mines (correctly flagged cells). The opponent's flag
-  // locations are never sent — only their confirmed count below.
-  const myFlags = useMemo<number[]>(() => {
-    if (!match) return [];
-    return Array.isArray(match.myFlags) ? match.myFlags : [];
   }, [match]);
-  // My most-recent pick (for "you just picked this" UI affordances
-  // + auto-picked flag display inside the result popup).
-  const myLastPick = useMemo(() => {
-    if (!match || !myUserId) return null as PickEntry | null;
-    for (let i = (match.picks ?? []).length - 1; i >= 0; i -= 1) {
-      const p = match.picks[i];
-      if (p && p.userId === myUserId) return p;
-    }
-    return null;
-  }, [match, myUserId]);
-  const opponentLastPick = useMemo(() => {
-    if (!match || !myUserId) return null as PickEntry | null;
-    for (let i = (match.picks ?? []).length - 1; i >= 0; i -= 1) {
-      const p = match.picks[i];
-      if (p && p.userId !== null && p.userId !== myUserId) return p;
-    }
-    return null;
-  }, [match, myUserId]);
+  useEffect(() => {
+    if (!myPops.length) return;
+    const t = setTimeout(() => setMyPops((p) => p.slice(1)), 1200);
+    return () => clearTimeout(t);
+  }, [myPops]);
+  useEffect(() => {
+    if (!oppPops.length) return;
+    const t = setTimeout(() => setOppPops((p) => p.slice(1)), 1200);
+    return () => clearTimeout(t);
+  }, [oppPops]);
 
-  // The tile that actually HIT a mine (a pick — a flag is never a "hit"): it
-  // carries the one-shot impact cue. Server-driven by construction — mid-match
-  // no mine pick can exist, because a mine ends the hand immediately — so this
-  // is only ever non-null inside the finished reveal.
-  const mineHitCell = useMemo(() => {
-    if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
-    for (const p of match.picks ?? []) {
-      if (p && p.isMine && !p.flag) return p.cell;
-    }
-    return null;
-  }, [match]);
-
-  // ── Deciding action → result beat ──────────────────────────────
-  // Both shared-board endings — a mine hit, or the claim that completed the
-  // flag sweep — settle the hand AND reveal the board in ONE commit, so the
-  // result overlay — a fixed, 80%-black blurred
-  // panel — used to cover the impact on the very frame it began. Hold the
-  // overlay for one short beat so the bomb, the impact cue and the reveal are
-  // actually seen first. Presentation only: the result row, the payouts and
-  // the resolved audio all apply on arrival; only the panel waits, and reduced
-  // motion skips the wait (nothing moves to watch).
-  //
-  // Keyed on the status STRING (not the match object), so a 5s poll or a
-  // socket snapshot landing before the timer fires can't re-arm it.
-  const matchStatus = match?.status ?? null;
+  // ── Deciding action → result beat ───────────────────────────────
   const shouldReduceMotion = useReducedMotion();
   const [resultRevealed, setResultRevealed] = useState(false);
   useEffect(() => {
-    if (matchStatus !== MATCH_STATUS.FINISHED) {
+    if (status !== MATCH_STATUS.FINISHED) {
       setResultRevealed(false);
       return;
     }
@@ -910,195 +583,62 @@ export default function MinesPvpMatchPage({
     }
     const timer = setTimeout(() => setResultRevealed(true), RESULT_BEAT_MS);
     return () => clearTimeout(timer);
-  }, [matchStatus, shouldReduceMotion]);
+  }, [status, shouldReduceMotion]);
 
   // ── Finished-reveal sweep ───────────────────────────────────────
-  // When the hand ends, the cells that were still HIDDEN uncover in one short
-  // sweep (in index order, i.e. top-left → bottom-right) instead of all 25
-  // firing at once. Only the hidden ones take part: every cell that already
-  // held a pick stays at delay 0, so a tile the player has already seen shows
-  // immediately and its existing element is never touched — nothing replays.
-  // The delay is a pure function of the cell's own index, so a poll or socket
-  // snapshot re-reporting the same finished board produces the identical style
-  // and nothing re-animates. With reduced motion the sweep is dropped
-  // altogether and the whole board is simply uncovered at once.
-  const revealedCells = useMemo(
-    () =>
-      new Set(
-        (match?.picks ?? [])
-          // Flag claims are not reveals, so a claimed cell still takes part in
-          // the finished-reveal sweep.
-          .filter((p) => p && !p.flag && Number.isInteger(p.cell))
-          .map((p) => p.cell),
-      ),
-    [match],
-  );
-  // 0 outside the finished state too, so mid-match hover/press transitions on
-  // the tiles are never delayed.
   const revealDelayMs = useCallback(
     (cellIndex: number) => {
-      if (!match || match.status !== MATCH_STATUS.FINISHED) return 0;
-      if (shouldReduceMotion || revealedCells.has(cellIndex)) return 0;
+      if (!match || !isFinished) return 0;
+      if (shouldReduceMotion || myRevealMap.has(cellIndex)) return 0;
       return cellIndex * REVEAL_STEP_MS;
     },
-    [match, shouldReduceMotion, revealedCells],
+    [match, isFinished, shouldReduceMotion, myRevealMap],
   );
 
-  // ── Audio: match-just-resolved ─────────────────────────────────
-  // Fired when the RESULT is revealed, not the moment the row settles. The
-  // board reveal (the impact, the bombs, the finished sweep) already carries
-  // its own cue, so the fanfare / defeat sting now lands together with the
-  // result panel and the confetti instead of ~0.9s early over the reveal.
-  // Its own guard ref: this effect used to lean on the posthog capture's ref
-  // declared below it, which only worked because effects run in declaration
-  // order. It re-arms whenever the match leaves the finished state.
+  // ── Audio: result ───────────────────────────────────────────────
   const resultSoundFiredRef = useRef(false);
   useEffect(() => {
-    if (!match || match.status !== MATCH_STATUS.FINISHED) {
+    if (!match || !isFinished) {
       resultSoundFiredRef.current = false;
       return;
     }
     if (!resultRevealed || resultSoundFiredRef.current) return;
     resultSoundFiredRef.current = true;
-    const iWon = Boolean(
-      match.winnerId && myUserId && match.winnerId === myUserId,
-    );
+    const iWon = Boolean(match.winnerId && myUserId && match.winnerId === myUserId);
     if (!match.winnerId) playTick();
     else if (iWon) playVictory();
     else playDefeat();
-  }, [match, myUserId, resultRevealed]);
+  }, [match, myUserId, isFinished, resultRevealed]);
 
-  // ── Audio: my pick reveal (safe chime / mine buzz) ─────────────
-  const lastPickIdxRef = useRef(-1);
+  // ── Posthog: match resolved ─────────────────────────────────────
   useEffect(() => {
-    if (!myLastPick) return;
-    const idx = (match.picks ?? []).indexOf(myLastPick);
-    if (idx === lastPickIdxRef.current || idx < 0) return;
-    lastPickIdxRef.current = idx;
-    if (myLastPick.flag) {
-      // A flag CLAIM — no verdict here. Whether the claim was right is
-      // board-derived and only revealed once the match is settled, so the
-      // claim itself just gets a neutral tick.
-      playTick();
-    } else if (myLastPick.isMine) {
-      playBuzz();
-    } else {
-      playGoodReveal();
-    }
-  }, [myLastPick, match?.picks]);
-
-  // ── Posthog: match-just-resolved ───────────────────────────────
-  // Capture `mines_pvp_match_resolved` on the first poll that
-  // observes status='finished'. Mirrors roulette-pvp's
-  // `roulette_pvp_match_finished` event (same shape: match_id,
-  // winner, prize_paid). Subsequent polls of the same match (or
-  // component re-renders with a stale `match` object) hit the
-  // `resolvedFiredRef` guard and are no-ops.
-  useEffect(() => {
-    if (!match || match.status !== MATCH_STATUS.FINISHED) {
-      // Reset the guard for non-finished states so a remount
-      // (e.g. navigating from one match view to another in the
-      // same SPA session) gets a fresh event.
-      if (resolvedFiredRef.current) {
-        resolvedFiredRef.current = false;
-      }
+    if (!match || !isFinished) {
+      if (resolvedFiredRef.current) resolvedFiredRef.current = false;
       return;
     }
     if (resolvedFiredRef.current) return;
     resolvedFiredRef.current = true;
-
-    const iWon = Boolean(
-      match.winnerId && myUserId && match.winnerId === myUserId,
-    );
-    const winner = iWon ? "you" : "opponent";
-    const allPicks = Array.isArray(match.picks) ? match.picks : [];
-    // The loser is whoever winnerId is NOT — derived from the WINNER, which is
-    // the only phrasing that stays correct for BOTH shared-board endings (a
-    // mine hit ends on the loser's entry; an all-mines-flagged win ends on the
-    // WINNER's claim).
-    const loserId = match.winnerId
-      ? match.winnerId === match.player1Id
-        ? match.player2Id
-        : match.player1Id
-      : null;
-    const loserSeat = loserId
-      ? loserId === match.player1Id
-        ? "player1"
-        : "player2"
-      : null;
-    // The entry that actually DECIDED it: the detonated mine for `mine_hit`, or
-    // the claim that completed the sweep for `all_mines_flagged`. (The last
-    // entry is NOT reliable — a losing player may have flagged afterwards on an
-    // older client, and a mid-match claim can sit at the tail of a match ended
-    // some other way.) Legacy rows without a `winReason` fall back to the tail.
-    const decidingEntry =
-      (match.winReason === "mine_hit"
-        ? [...allPicks].reverse().find((p) => p && !p.flag && p.isMine)
-        : match.winReason === "all_mines_flagged"
-          ? [...allPicks].reverse().find((p) => p && p.flag)
-          : null) ?? allPicks[allPicks.length - 1] ?? null;
-    const safePickCounts = { player1: 0, player2: 0 };
-    for (const p of allPicks) {
-      if (!p || p.isMine || p.flag) continue;
-      if (p.seat === "player1") safePickCounts.player1 += 1;
-      else if (p.seat === "player2") safePickCounts.player2 += 1;
-    }
+    const iWon = Boolean(match.winnerId && myUserId && match.winnerId === myUserId);
     posthog?.capture("mines_pvp_match_resolved", {
       match_id: matchId,
-      winner,
+      winner: iWon ? "you" : match.winnerId ? "opponent" : "draw",
       result: match.result,
-      stake: Number(match.stakeAmount).toFixed(2),
-      prize_paid: Number(match.prizePaid).toFixed(2),
-      house_fee: Number(match.houseFee).toFixed(2),
+      my_score: match.myScore,
+      opponent_score: match.opponentScore,
+      my_safe_revealed: match.mySafeRevealed,
+      my_mines_hit: match.myMinesHit,
+      my_correct_flags: match.myCorrectFlags,
+      my_incorrect_flags: match.myIncorrectFlags,
+      my_completed: match.myCompleted,
+      win_reason: match.winReason,
       mines_count: match.minesCount,
-      pick_count: allPicks.length,
-      p1_safe_picks: safePickCounts.player1,
-      p2_safe_picks: safePickCounts.player2,
-      // WHY the match ended, straight from the server (`mine_hit` |
-      // `all_mines_flagged` | `resign`) — derived here rather than guessed
-      // from the last entry, which can be a flag claim that decided nothing.
-      ended_by: match.winReason ?? (decidingEntry?.isMine ? "mine_hit" : null),
-      loser_id: loserId,
-      loser_seat: loserSeat,
-      loser_pick_cell: decidingEntry ? decidingEntry.cell ?? null : null,
-      deciding_seat: decidingEntry ? decidingEntry.seat ?? null : null,
     });
-  }, [match, matchId, myUserId, posthog]);
-  const isParticipant = useMemo(() => {
-    if (!match || !myUserId) return false;
-    return match.player1Id === myUserId || match.player2Id === myUserId;
-  }, [match, myUserId]);
-  const isPlayer1 = match?.player1Id === myUserId;
-  const isAi = Boolean(match?.isAi);
-  // The opponent is whoever occupies the seat we don't hold. Only
-  // reportable once a real human opponent has joined. Never reportable
-  // in AI matches.
-  const opponentClerkId = isAi
-    ? null
-    : isPlayer1
-      ? match?.player2Id ?? null
-      : match?.player1Id ?? null;
-  const isMyTurn =
-    match?.status === MATCH_STATUS.P1_TURN
-      ? isPlayer1
-      : match?.status === MATCH_STATUS.P2_TURN
-        ? !isPlayer1
-        : false;
-  const mySeat = isPlayer1 ? "player1" : "player2";
+  }, [match, matchId, myUserId, posthog, isFinished]);
 
-  // ── Timer urgency tick (last 5s, your turn only) ────────────────
-  // Reuses the existing timer sound — `playTick`, the same one the casino's
-  // shared RoundTimer plays per second — so no new audio and no new behaviour
-  // to learn. Only the clock you can actually act on, and only while the
-  // server deadline is real: the 250ms countdown re-renders three times with
-  // the SAME second value and React bails on those, so this fires exactly once
-  // per remaining second, and the ref absorbs a dev double-invoke. The ref is
-  // cleared whenever the clock is above 5s, i.e. at the start of every turn,
-  // so each new turn re-arms cleanly (and a turn that ends at 5s can't swallow
-  // the next turn's first tick).
+  // ── Timer urgency ticks (last 5s) ───────────────────────────────
   const lastTickSecondRef = useRef<number | null>(null);
   useEffect(() => {
-    if (isAi || !isMyTurn || !match?.roundDeadline) return;
+    if (isAi || !isActive || match?.myLocked) return;
     if (timeLeft > 5) {
       lastTickSecondRef.current = null;
       return;
@@ -1107,101 +647,56 @@ export default function MinesPvpMatchPage({
     if (lastTickSecondRef.current === timeLeft) return;
     lastTickSecondRef.current = timeLeft;
     playTick();
-  }, [isAi, isMyTurn, match?.roundDeadline, timeLeft]);
-  // Most-recent-of-each-seat helpers (used by the legacy pick-audit
-  // block inside the result popup). The rest of the UI consumes the
-  // per-cell `picks`-array helpers above so a player who has
-  // picked multiple times still sees every cleared cell.
-  const myPick = myLastPick?.cell ?? null;
-  const myPickIsMine = myLastPick?.isMine ?? null;
-  const myAutoPicked = myLastPick?.autoPicked ?? false;
-  const opponentPick = opponentLastPick?.cell ?? null;
-  const opponentPickIsMine = opponentLastPick?.isMine ?? null;
-  const opponentAutoPicked = opponentLastPick?.autoPicked ?? false;
+  }, [isAi, isActive, match?.myLocked, timeLeft]);
 
-  // Auto-exit flag mode the moment it's no longer your turn, so a
-  // stale toggle can't turn a later pick into an accidental flag.
-  useEffect(() => {
-    if (!isMyTurn) setFlagMode(false);
-  }, [isMyTurn]);
-
-  // ── Action handlers ──────────────────────────────────────────────
-  const handleCellClick = useCallback(
-    async (cellIndex: number) => {
-      if (!isMyTurn || busy || !match) return;
-      // BUG-FIX ("opponent can't click tiles on their second turn"):
-      // The old single-pick guard was `if (myPick !== null) return;`,
-      // which blocked players who had already made at least one pick
-      // in this match. The odds-turn flow lets the same player pick
-      // multiple times across a single match (e.g. sequence
-      // P1 → P2 → P2 → P1 → P1 in `activePickerForMatch`'s closed
-      // form), so once a player has any prior pick their `myPick`
-      // points at it and the guard fired on every subsequent click
-      // even though the cell was empty. Use the per-cell picks-array
-      // membership checks — same pattern as the disabled-button
-      // `cellAlreadyPicked` predicate in the render block, so the
-      // client UI + server-side dedup (`pickHistoryCells`) agree.
-      if (myPicks.includes(cellIndex)) return; // already revealed by me
-      if (opponentPicks.includes(cellIndex)) return; // duplicate (opponent already revealed this cell)
-      // A tile you already CONFIRMED as a mine is a known mine — revealing it
-      // would be instant suicide and re-flagging is rejected, so swallow it.
-      if (myFlags.includes(cellIndex)) return;
+  // ── Actions ─────────────────────────────────────────────────────
+  const postAction = useCallback(
+    async (action: "pick" | "flag" | "unflag", cellIndex: number) => {
+      if (busy || !match) return;
       setBusy(true);
       setError(null);
       try {
-        // Flag mode submits a CLAIM to the /flag route; normal mode
-        // reveals via /pick. The server re-validates turn + state either
-        // way, and it alone decides whether a claim is correct or completed
-        // the sweep.
-        const res = await fetch(
-          flagMode
-            ? `/api/mines-pvp/match/${matchId}/flag`
-            : `/api/mines-pvp/match/${matchId}/pick`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ cellIndex }),
-          },
-        );
+        const res = await fetch(`/api/mines-pvp/match/${matchId}/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ cellIndex }),
+        });
         const data = await res.json();
         if (!res.ok || !data.success) {
-          setError(data?.error || (flagMode ? "Flag failed" : "Pick failed"));
+          setError(data?.error || "Action failed");
           return;
         }
-        // A wrong flag is reported to the flagger only: the tile is safe, the
-        // flag is not kept, and the turn still passed. A correct flag is
-        // announced through the mine counters on the next fetch.
-        if (flagMode && data?.data?.wrongFlag) {
-          setMessages((prev) =>
-            [
-              ...prev,
-              {
-                id: Date.now(),
-                text: "That tile is safe — wrong flag, turn lost",
-                tone: "safe" as const,
-              },
-            ].slice(-3),
-          );
+        const info = data?.data || {};
+        if (action === "flag") {
+          if (info.wrongFlag) {
+            setMessages((prev) =>
+              [...prev, { id: Date.now(), text: "Wrong flag −10", tone: "safe" as const }].slice(-3),
+            );
+            playBuzz();
+          } else if (info.flagRevealed) {
+            setMessages((prev) =>
+              [
+                ...prev,
+                { id: Date.now(), text: `Mine confirmed +${Number(info.mineValue) || 0}`, tone: "mine" as const },
+              ].slice(-3),
+            );
+            playGoodReveal();
+          }
+        } else if (action === "pick") {
+          if (info.revealedMine) {
+            setMessages((prev) =>
+              [...prev, { id: Date.now(), text: "💥 Mine hit −25", tone: "safe" as const }].slice(-3),
+            );
+            playBuzz();
+          } else {
+            playGoodReveal();
+          }
+        } else {
+          playTick();
         }
-        // The odds pattern gives each player two CONSECUTIVE turns
-        // (e.g. turns 4-5 for the first player). When the server says
-        // it's still our turn right after our pick, we're in the
-        // second half of our own pair — the board should hold for
-        // AI_PICK_DELAY_MS before the next pick is allowed so every
-        // reveal lands with the same rhythm as the AI's paced pair.
-        // (A flag CLAIM advances the turn the same way a reveal does, so
-        // the same consecutive-turn hold applies to it.)
-        const isConsecutiveTurn = Boolean(
-          data?.data?.match &&
-            (data.data.match.status === MATCH_STATUS.P1_TURN ||
-              data.data.match.status === MATCH_STATUS.P2_TURN) &&
-            data.data.match.currentTurnUserId === myUserId,
-        );
-        // Fanout the broadcast to BOTH the per-match room (so the
-        // opponent's match view refetches inside ~50 ms) and the
-        // lobby room (so the open-lobbies list drops a now-active
-        // match). Belt-and-braces with the 1.5 s poll.
+        // Existing realtime contract: a bare refetch hint to the match room
+        // (opponent refetches immediately) and the lobby room (open list).
         socket?.emit("room_event", {
           roomId: minesPvpMatchRoom(matchId),
           event: MINES_PVP_MATCH_UPDATED,
@@ -1210,82 +705,53 @@ export default function MinesPvpMatchPage({
           roomId: MINES_PVP_LOBBY_ROOM,
           event: MINES_PVP_MATCH_UPDATED,
         });
-        posthog?.capture(flagMode ? "mines_pvp_flag" : "mines_pvp_pick", {
-          match_id: matchId,
-          cell_index: cellIndex,
-          auto: false,
-        });
-        // Server-side AI trigger: if this is a free AI match and the
-        // human just picked, trigger the bot's response so it plays
-        // immediately rather than waiting for the status poll. The
-        // odds turn pattern gives the bot two CONSECUTIVE picks, so
-        // after its first tile lands we pause for AI_PICK_DELAY_MS
-        // and then hand it the second one — the two tiles appear one
-        // at a time instead of both at once. The server store
-        // enforces the same pacing window, so no path can jump ahead.
+        posthog?.capture(
+          action === "flag" ? "mines_pvp_flag" : action === "unflag" ? "mines_pvp_unflag" : "mines_pvp_pick",
+          { match_id: matchId, cell_index: cellIndex },
+        );
+        // Free vs-AI: let the bot take its move now.
         if (match?.isAi) {
-          // Whose turn the bot's response left behind: the AI id when
-          // its second (consecutive) pick is still pending, the human
-          // id when the turn already passed back, or null when the
-          // match resolved (mine hit / all-mines-flagged / resigned).
-          let aiTurnUserId = null;
           try {
-            const aiRes = await fetch(
-              `/api/mines-pvp/match/${matchId}/ai-turn`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({}),
-              },
-            );
-            const aiData = await aiRes.json();
-            aiTurnUserId =
-              aiData?.data?.match?.currentTurnUserId ?? null;
+            await fetch(`/api/mines-pvp/match/${matchId}/ai-turn`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({}),
+            });
           } catch {
-            // Best-effort: status polling will recover if this fails.
-          }
-          // Surface the bot's first tile now.
-          await fetchStatus();
-          // Only pace when the bot still has a tile to play — this is
-          // true exactly after the bot's first of its two consecutive
-          // picks. Turns where the human picks twice in a row skip
-          // this wait (the human's own consecutive turns get their
-          // own rhythm hold below) so the AI flow never locks the
-          // human out of their second pick.
-          if (aiTurnUserId && aiTurnUserId !== myUserId) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, AI_PICK_DELAY_MS),
-            );
-            try {
-              await fetch(`/api/mines-pvp/match/${matchId}/ai-turn`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({}),
-              });
-            } catch {
-              // Best-effort: status polling will recover if this fails.
-            }
+            /* best-effort; the poll recovers */
           }
         }
         await fetchStatus();
-        // Same rhythm for our own consecutive turns: when the server
-        // says it's still our turn, hold the board for AI_PICK_DELAY_MS
-        // so the revealed tile visibly lands before the next pick is
-        // allowed (mirrors the AI's paced pair above). The 20 s turn
-        // deadline is untouched — this only gates when the board
-        // re-enables, not the server-side window.
-        if (isConsecutiveTurn) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, AI_PICK_DELAY_MS),
-          );
-        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Network error");
       } finally {
         setBusy(false);
       }
     },
-    [busy, fetchStatus, flagMode, isMyTurn, match, matchId, myFlags, myPicks, myUserId, opponentPicks, posthog, socket],
+    [busy, match, matchId, posthog, socket, fetchStatus],
+  );
+
+  const boardLocked = !isActive || Boolean(match?.myLocked) || timeLeft <= 0;
+
+  const handleCellClick = useCallback(
+    (cellIndex: number) => {
+      if (!match || busy || boardLocked) return;
+      const reveal = myRevealMap.get(cellIndex);
+      if (reveal) return; // already resolved
+      if (correctFlagSet.has(cellIndex)) return; // confirmed mine — locked
+      if (flagMode) {
+        if (incorrectFlagSet.has(cellIndex)) {
+          postAction("unflag", cellIndex);
+          return;
+        }
+        if (myFlagSet.has(cellIndex)) return;
+        postAction("flag", cellIndex);
+        return;
+      }
+      postAction("pick", cellIndex);
+    },
+    [match, busy, boardLocked, myRevealMap, correctFlagSet, incorrectFlagSet, myFlagSet, flagMode, postAction],
   );
 
   const handleCancel = useCallback(async () => {
@@ -1303,16 +769,15 @@ export default function MinesPvpMatchPage({
         setError(data?.error || "Cancel failed");
         return;
       }
-      posthog?.capture("mines_pvp_lobby_cancelled", { match_id: matchId });
       router.push("/casino/mines-pvp");
     } finally {
       setCancelling(false);
     }
-  }, [cancelling, matchId, posthog, router]);
+  }, [cancelling, matchId, router]);
 
   const handleResign = useCallback(async () => {
     if (resigning) return;
-    if (!window.confirm("Resign this match? Your stake is forfeited and your opponent wins.")) return;
+    if (!window.confirm("Resign this match? Your opponent wins.")) return;
     setResigning(true);
     setError(null);
     try {
@@ -1326,432 +791,119 @@ export default function MinesPvpMatchPage({
         setError(data?.error || "Resign failed");
         return;
       }
-      posthog?.capture("mines_pvp_resigned", { match_id: matchId });
       await fetchStatus();
     } finally {
       setResigning(false);
     }
-  }, [matchId, posthog, resigning, fetchStatus]);
+  }, [matchId, resigning, fetchStatus]);
 
-  // ── Minesweeper clue badge (the skill mechanic) ─────────────────
-  // Distance semantics: 1 = right next to a mine (HOT), higher = safer.
-  // The number is SERVER-COMPUTED and PUBLIC to both seats: the shared-board
-  // rules give both players the same revealed board, so the clue on any
-  // revealed cell is the same information for both. The client never derives
-  // a clue itself — it renders the one the server stamped.
-  function hintBadgeClass(hint: number): string {
-    if (hint <= 1) return "bg-red-500/20 text-red-200 border-red-400/50";
-    if (hint === 2) return "bg-orange-500/20 text-orange-200 border-orange-300/40";
-    if (hint === 3) return "bg-amber-500/20 text-amber-200 border-amber-300/40";
-    if (hint === 4) return "bg-emerald-500/20 text-emerald-200 border-emerald-300/40";
-    return "bg-cyan-500/20 text-cyan-200 border-cyan-300/40";
-  }
-
-  /** The  + clue-number badge shown on any REVEALED safe cell. */
-  function safeCellContent(entry: PickEntry | undefined) {
-    const hint =
-      entry && typeof entry.hint === "number" ? entry.hint : null;
-    // Seat-tinted diamond so a glance at the board shows whose
-    // territory is whose: player1 picks stay cyan, player2 picks
-    // (the AI in free matches, or the opponent seat in PvP) render
-    // fuchsia — mirroring the seat accents everywhere else on this
-    // page. The clue number is the server's shared value.
-    const diamondColor =
-      entry?.seat === "player2" ? "text-fuchsia-300" : "text-cyan-300";
-    // One-shot reveal cue: the span mounts the moment this pick lands
-    // on the board, so the scale/flash pop plays exactly once per
-    // landed tile (it stays mounted afterwards and never replays).
-    // The number is sequenced AFTER the tile — the badge carries its own
-    // short delayed pop (`animate-hint-pop`) so the clean reveal lands
-    // first and the proximity hint arrives as a second, quieter beat.
-    return (
-      <span className="relative inline-flex items-center justify-center animate-tile-reveal">
-        <IconDiamondFilled size={15} className={diamondColor} />
-        {hint !== null && (
-          <span
-            className={`animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] font-black tabular-nums ${hintBadgeClass(
-              hint,
-            )}`}
-          >
-            {hint}
-          </span>
-        )}
-      </span>
-    );
-  }
-
-  // ── Cell rendering helpers (reused from solo mines page) ────────
-  // Returns { content, style } for a single cell based on the
-  // current match state. Two display modes in the odds-turn flow:
-  //   1. Mid-match (status not 'finished') — render EVERY cleared
-  //      cell as a , color-coded to its picker (cyan = player1,
-  //      fuchsia = player2). Revealing safe picks is safe because
-  //      the game would have ended if any were a mine.
-  //   2. Finished — full board reveal: all mines shown, all safe
-  //      cells shown, plus per-pick ring highlighting.
+  // ── Cell rendering ──────────────────────────────────────────────
   function getCellDisplay(cellIndex: number): {
-    content: React.ReactNode;
+    content: ReactNode;
     revealed: boolean;
     isMine: boolean;
+    tone: "hidden" | "safe" | "mine" | "correctFlag" | "wrongFlag" | "flagTarget";
   } {
     if (!match) {
-      return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false };
+      return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false, tone: "hidden" };
     }
-    const isFinished = match.status === MATCH_STATUS.FINISHED;
+    const reveal = myRevealMap.get(cellIndex);
+    const isCorrect = correctFlagSet.has(cellIndex);
+    const isWrong = incorrectFlagSet.has(cellIndex);
 
-    // Build lookup from cell index → the pick entry that holds it.
-    // O(N) but N ≤ 25 so it's cheap; avoids `.find` per tile.
-    const pickByCell = new Map<number, PickEntry>();
-    for (const p of match.picks ?? []) {
-      // Flag claims share the history array but are NOT reveals — they never
-      // clear a cell, so they must not enter the reveal lookup.
-      if (p && !p.flag && typeof p.cell === "number" && Number.isInteger(p.cell)) {
-        pickByCell.set(p.cell, p);
+    // Own resolved cells (live and finished).
+    if (reveal) {
+      if (reveal.mine) {
+        return { content: <AnimatedBomb exploded />, revealed: true, isMine: true, tone: "mine" };
       }
+      return { content: safeCellContent(reveal.hint), revealed: true, isMine: false, tone: "safe" };
     }
-    const claimedByMe = myFlags.includes(cellIndex);
-
-    // Mid-match: render every revealed cell as a . The board
-    // mines themselves stay hidden (we can't server-trust the
-    // board column mid-match — it's null until finished).
-    if (!isFinished) {
-      const entry = pickByCell.get(cellIndex);
-      if (entry) {
-        // Every in-flight pick is guaranteed safe (a mine would
-        // have ended the match). The seats get their own accent so
-        // a glance at the board shows whose territory is whose —
-        // and the minesweeper number shows how many mines touch
-        // this cell (the deduction surface).
-        return {
-          content: safeCellContent(entry),
-          revealed: true,
-          isMine: false,
-        };
-      }
-      // A CONFIRMED mine — you correctly flagged this tile, so its location is
-      // revealed to YOU (and only you).
-      if (claimedByMe) {
-        return {
-          content: (
-            <span className="relative inline-flex items-center justify-center animate-tile-reveal">
-              <IconBomb size={15} className="text-red-300" />
-              <span className="animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-emerald-300/50 bg-emerald-500/20 text-emerald-200">
-                <CheckIcon className="h-2.5 w-2.5" />
-              </span>
-            </span>
-          ),
-          revealed: true,
-          isMine: true,
-        };
-      }
-      // Flag mode: an unrevealed cell shows a flag target. Re-flagging your
-      // own confirmed mine is rejected by the server, so it is not offered.
-      const isFlagTarget =
-        flagMode &&
-        isMyTurn &&
-        !myPicks.includes(cellIndex) &&
-        !opponentPicks.includes(cellIndex);
-      if (isFlagTarget) {
-        return {
-          content: <IconFlag size={15} className="text-red-300/70" />,
-          revealed: false,
-          isMine: false,
-        };
-      }
-      return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false };
-    }
-
-    // Finished: full board reveal. The board column is now
-    // non-null so we can show every mine (including those that
-    // were not picked).
-    const mines = match.board?.mines ?? [];
-    const pickedEntry = pickByCell.get(cellIndex);
-    // A CLAIM on this cell, with its verdict. The verdict is derived from the
-    // server's now-revealed board (not from the flag entry, which deliberately
-    // carries no answer so a live claim can never leak the mine layout). The
-    // tile lands on the shared reveal cue and the verdict badge pops one beat
-    // later (the existing hint-pop timing), so the callout reads as a verdict
-    // ON the claim rather than as a second tile reveal. A still-unrevealed
-    // claimed cell shows the flag/verdict instead of the board's own reveal.
-    if (!pickedEntry && claimedByMe) {
-      const calledIt = mines.includes(cellIndex);
+    // A mine the player CONFIRMED by flagging (own knowledge only).
+    if (isCorrect) {
       return {
         content: (
           <span className="relative inline-flex items-center justify-center animate-tile-reveal">
-            <IconFlag
-              size={15}
-              className={calledIt ? "text-emerald-300" : "text-red-300"}
-            />
-            <span
-              className={`animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border ${
-                calledIt
-                  ? "bg-emerald-500/20 text-emerald-200 border-emerald-300/50"
-                  : "bg-red-500/20 text-red-200 border-red-400/50"
-              }`}
-            >
-              {calledIt ? (
-                <CheckIcon className="h-2.5 w-2.5" />
-              ) : (
-                <CrossIcon className="h-2.5 w-2.5" />
-              )}
+            <IconBomb size={15} className="text-red-300" />
+            <span className="animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-emerald-300/50 bg-emerald-500/20 text-emerald-200">
+              <CheckIcon className="h-2.5 w-2.5" />
             </span>
           </span>
         ),
         revealed: true,
-        isMine: calledIt,
-      };
-    }
-    if (pickedEntry?.isMine) {
-      // A picked mine: the picker lost. Render as bomb.
-      return {
-        content: <AnimatedBomb exploded />,
-        revealed: true,
         isMine: true,
+        tone: "correctFlag",
       };
     }
-    if (pickedEntry) {
+    if (isWrong) {
       return {
-        content: safeCellContent(pickedEntry),
-        revealed: true,
+        content: (
+          <span className="relative inline-flex items-center justify-center animate-tile-reveal">
+            <IconFlag size={15} className="text-red-300" />
+            <span className="animate-hint-pop absolute -top-2 -right-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-red-400/50 bg-red-500/20 text-red-200">
+              <CrossIcon className="h-2.5 w-2.5" />
+            </span>
+          </span>
+        ),
+        revealed: false,
         isMine: false,
+        tone: "wrongFlag",
       };
     }
-    const isMine = mines.includes(cellIndex);
-    // A still-hidden cell: it waits for its own step of the sweep (the wrapper
-    // holds it invisible until then via the entrance's `both` fill), which is
-    // what turns "the board appears" into "the minefield is uncovered".
-    const revealDelay = revealDelayMs(cellIndex);
-    const revealDelayStyle =
-      revealDelay > 0 ? { animationDelay: `${revealDelay}ms` } : undefined;
-    return {
-      content: isMine ? (
-        // A hidden mine keeps the loudest cue on the board — the existing
-        // one-shot explosion — and fires it as its tile lights up.
-        <span
-          className="animate-state-in inline-flex items-center justify-center"
-          style={revealDelayStyle}
-        >
-          <AnimatedBomb exploded delayMs={revealDelay} />
-        </span>
-      ) : (
-        // A hidden safe cell stays deliberately quieter than a mine: a short
-        // fade-in (the shared state entrance, reused) on the same step, with
-        // no explosion and no ring, so the mines are what the eye lands on.
-        <span
-          className="animate-state-in inline-flex items-center justify-center"
-          style={revealDelayStyle}
-        >
-          <IconDiamondFilled size={15} className="text-cyan-300" />
-        </span>
-      ),
-      revealed: true,
-      isMine,
-    };
-  }
-
-  // Helper to know which seat a cell belongs to after the match
-  // finishes (or mid-match for accent styling). Returns null on
-  // unrevealed cells.
-  function cellPickSeat(cellIndex: number): "player1" | "player2" | null {
-    if (!match) return null;
-    for (const p of match.picks ?? []) {
-      if (p && p.cell === cellIndex) return p.seat ?? null;
-    }
-    return null;
-  }
-
-  function getCellClass(cellIndex: number): string {
-    if (!match) {
-      return "bg-[#071226] border border-[#00e5ff]/20";
-    }
-    const isFinished = match.status === MATCH_STATUS.FINISHED;
-    const display = getCellDisplay(cellIndex);
-    const seat = cellPickSeat(cellIndex);
-    const isMyCell = seat
-      ? (isPlayer1 && seat === "player1") ||
-        (!isPlayer1 && seat === "player2")
-      : false;
-
-    if (display.revealed) {
-      if (display.isMine) {
-        // The mine that ended the game; always bright red.
-        const highlight = isMyCell
-          ? "shadow-[0_0_18px_rgba(255,79,216,0.95)] ring-2 ring-red-300/80"
-          : "shadow-[0_0_14px_rgba(255,79,216,0.6)]";
-        return `bg-[#3b1021] border-2 border-[#ff4fd8] ${highlight}`;
-      }
-      // Safe revealed cell — seat-tinted accent. Player1 picks
-      // glow cyan, Player2 picks glow fuchsia, regardless of who
-      // the viewer is (so both players can read the board).
-      const ring = isMyCell
-        ? "ring-2 ring-cyan-300/70 shadow-[0_0_14px_rgba(0,229,255,0.7)]"
-        : seat === "player1"
-          ? "ring-1 ring-cyan-300/30 shadow-[0_0_8px_rgba(0,229,255,0.25)]"
-          : seat === "player2"
-            ? "ring-1 ring-fuchsia-300/30 shadow-[0_0_8px_rgba(255,79,216,0.25)]"
-            : "";
-      return `bg-[#09243f] border border-[#00e5ff] ${ring}`;
-    }
-
-    // Unrevealed — interactive only on your turn + cell not yet
-    // picked by either side. The old `myPick === null` guard is
-    // gone because the new flow lets a player have already picked
-    // several cells and STILL have a turn (FP/SP/SP/FP …).
-    const isPlayable =
-      isMyTurn &&
-      !myPicks.includes(cellIndex) &&
-      !opponentPicks.includes(cellIndex) &&
-      !myFlags.includes(cellIndex);
+    // Finished replay of a cell the player never touched.
     if (isFinished) {
-      return "bg-[#0c1a33] border border-[#1f3a6a]";
+      const isMine = Boolean(match.board?.mines?.includes(cellIndex));
+      const revealDelay = revealDelayMs(cellIndex);
+      const style = revealDelay > 0 ? { animationDelay: `${revealDelay}ms` } : undefined;
+      return {
+        content: isMine ? (
+          <span className="animate-state-in inline-flex items-center justify-center" style={style}>
+            <AnimatedBomb exploded delayMs={revealDelay} />
+          </span>
+        ) : (
+          <span className="animate-state-in inline-flex items-center justify-center" style={style}>
+            <IconDiamondFilled size={15} className="text-cyan-300/60" />
+          </span>
+        ),
+        revealed: true,
+        isMine,
+        tone: isMine ? "mine" : "safe",
+      };
     }
-    if (isPlayable) {
-      // Flag mode tints playable cells red so the player can see at
-      // a glance that clicking means "declare a mine".
-      return flagMode
-        ? "bg-[#2a0d1e] border border-red-400/60 hover:border-red-300 hover:shadow-[0_0_16px_rgba(248,113,113,0.45)]"
-        : "bg-[#071226] border border-[#00e5ff]/20 hover:border-[#00e5ff]/70 hover:shadow-[0_0_16px_rgba(0,229,255,0.35)]";
+    // Flag mode: an unrevealed cell is a flag target.
+    if (flagMode && !match.myLocked && isActive) {
+      return { content: <IconFlag size={15} className="text-red-300/70" />, revealed: false, isMine: false, tone: "flagTarget" };
     }
-    return "bg-[#071226] border border-[#00e5ff]/15 opacity-60";
+    return { content: <IconQuestionMark size={15} className="text-white/25" />, revealed: false, isMine: false, tone: "hidden" };
   }
 
-  // ── Turn indicator / status banner ───────────────────────────────
-  function renderTurnIndicator() {
-    if (!match) return null;
-    const isFinished = match.status === MATCH_STATUS.FINISHED;
-    const isCancelled = match.status === MATCH_STATUS.CANCELLED;
-    // Urgency tiers — and only for a REAL server deadline: free vs-AI matches
-    // are untimed, and a missing deadline must not paint the panel red.
-    const timedTurn = !isAi && Boolean(match.roundDeadline);
-    const urgent = timedTurn && timeLeft <= 5; // 0 included: the clock ran out
-    // Mid tier (~5s left): visibly warmer but completely static, so the first
-    // two thirds of the 20s stay calm and the pulse is reserved for the end.
-    const warning = timedTurn && timeLeft > 5 && timeLeft <= 10;
-
-    if (isCancelled) {
-      return (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-900/30 px-4 py-3 text-red-200">
-          <AlertIcon className="w-5 h-5 text-red-300" />
-          <span className="font-semibold">This match was cancelled.</span>
-        </div>
-      );
+  function getCellClass(tone: ReturnType<typeof getCellDisplay>["tone"]): string {
+    switch (tone) {
+      case "mine":
+        return "bg-[#3b1021] border-2 border-[#ff4fd8] shadow-[0_0_14px_rgba(255,79,216,0.6)]";
+      case "correctFlag":
+        return "bg-[#12251a] border-2 border-emerald-400/70 shadow-[0_0_14px_rgba(52,211,153,0.5)]";
+      case "wrongFlag":
+        return "bg-[#2a0d1e] border-2 border-red-400/60";
+      case "safe":
+        return "bg-[#09243f] border border-[#00e5ff] ring-1 ring-cyan-300/40 shadow-[0_0_8px_rgba(0,229,255,0.25)]";
+      case "flagTarget":
+        return "bg-[#2a0d1e] border border-red-400/60 hover:border-red-300 hover:shadow-[0_0_16px_rgba(248,113,113,0.45)]";
+      default:
+        return "bg-[#071226] border border-[#00e5ff]/20 hover:border-[#00e5ff]/70 hover:shadow-[0_0_16px_rgba(0,229,255,0.35)]";
     }
-    if (isFinished) {
-      // Result screen handles its own rendering below.
-      return null;
-    }
-    if (match.status === MATCH_STATUS.WAITING) {
-      return (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3 text-cyan-200">
-          <LoadingDotsIcon className="w-5 h-5 text-cyan-200 animate-pulse" />
-          <span className="font-semibold">
-            Waiting for an opponent to join… (your stake is escrowed)
-          </span>
-        </div>
-      );
-    }
-    if (match.status === MATCH_STATUS.READY) {
-      return (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-3 text-cyan-200">
-          <LoadingDotsIcon className="w-5 h-5 text-cyan-200 animate-pulse" />
-          <span className="font-semibold">
-            Both players joined. Starting in a few seconds…
-          </span>
-        </div>
-      );
-    }
-    // p1_turn or p2_turn.
-    if (isMyTurn) {
-      // Turn-change transition: `key` is the turn's identity, so the banner
-      // remounts (and its 180ms entrance replays) exactly when the turn
-      // changes hands — mine → theirs → mine remounts on each hand-off, while
-      // a poll, socket refresh or any other re-render reuses the element and
-      // replays nothing.
-      return (
-        <div
-          key="my-turn"
-          className={`animate-state-in flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 lg:py-2 ${
-            urgent
-              ? "border-red-400/60 bg-red-900/30 text-red-200 animate-pulse"
-              : warning
-                ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
-                : "border-cyan-300/40 bg-cyan-500/10 text-cyan-200"
-          }`}
-        >
-          <span className="font-bold text-base sm:text-lg">
-            Your turn. Pick a tile
-          </span>
-          {/* Free vs-AI matches are untimed — no countdown chip. */}
-          {!isAi && (
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
-                urgent
-                  ? "bg-red-500/30 text-red-100"
-                  : warning
-                    ? "bg-amber-500/25 text-amber-100"
-                    : "bg-cyan-500/30 text-cyan-100"
-              }`}
-            >
-              <ClockIcon className="w-4 h-4" />
-              {timeLeft}s
-            </span>
-          )}
-        </div>
-      );
-    }
-    // Opponent's clock gets the same warm → red ramp so the player can see the
-    // hand is about to time out, but deliberately NO pulse: while you are
-    // waiting, an endlessly blinking panel is noise rather than information.
-    return (
-      <div
-        key="their-turn"
-        className={`animate-state-in relative flex flex-wrap items-center justify-center gap-3 rounded-xl border px-4 py-3 lg:py-2 ${
-          urgent
-            ? "border-red-400/50 bg-red-900/25 text-red-200"
-            : warning
-              ? "border-amber-400/40 bg-amber-500/10 text-amber-200"
-              : "border-fuchsia-300/40 bg-fuchsia-500/10 text-fuchsia-200"
-        }`}
-      >
-        <span className="font-bold text-base sm:text-lg">
-          {isAi ? "GRYND AI is picking…" : "Opponent is picking…"}
-        </span>
-        {!isAi && (
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${
-              urgent
-                ? "bg-red-500/30 text-red-100"
-                : warning
-                  ? "bg-amber-500/25 text-amber-100"
-                  : "bg-fuchsia-500/30 text-fuchsia-100"
-            }`}
-          >
-            <ClockIcon className="w-4 h-4" />
-            {timeLeft}s
-          </span>
-        )}
-      </div>
-    );
   }
 
-  // ── Result screen — shared PvpResultScreen (UX plan P3-3) ───────
-  // Rendered when the match is finished. Every number comes from the
-  // real match row (winnerId / stakeAmount / houseFee / prizePaid /
-  // players / startedAt→endedAt) — nothing is invented. Winner/payout
-  // logic is untouched; the old bespoke WIN/LOSS overlay is gone and
-  // this shared screen is the single end-of-match experience.
+  // ── Result ──────────────────────────────────────────────────────
   function renderResult() {
-    if (!match || match.status !== MATCH_STATUS.FINISHED) return null;
-    // Held back for one beat so the deciding tile's impact / flag callout (and
-    // the full-board reveal) land before this overlay covers the board.
-    if (!resultRevealed) return null;
-    const iWon =
-      match.winnerId && myUserId && match.winnerId === myUserId;
-    const iLost =
-      match.winnerId && myUserId && match.winnerId !== myUserId;
+    if (!match || !isFinished || !resultRevealed) return null;
+    const iWon = Boolean(match.winnerId && myUserId && match.winnerId === myUserId);
+    const iLost = Boolean(match.winnerId && myUserId && match.winnerId !== myUserId);
     const isDrawResult = !iWon && !iLost;
+    const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
 
-    // Duration from the existing timestamps (omitted when unavailable).
+    const oppSummary = isPlayer1 ? match.players?.p2 : match.players?.p1;
+    const oppName = oppSummary?.displayName || (isAi ? "GRYND AI" : "Opponent");
+
     let durationSeconds: number | null = null;
     if (match.startedAt && match.endedAt) {
       const start = new Date(match.startedAt).getTime();
@@ -1760,72 +912,52 @@ export default function MinesPvpMatchPage({
         durationSeconds = Math.round((end - start) / 1000);
       }
     }
+    let completedInSeconds: number | null = null;
+    if (match.startedAt && match.myCompletedAt) {
+      const start = new Date(match.startedAt).getTime();
+      const done = new Date(match.myCompletedAt).getTime();
+      if (Number.isFinite(start) && Number.isFinite(done) && done >= start) {
+        completedInSeconds = Math.round((done - start) / 1000);
+      }
+    }
 
-    // WHY the match ended comes straight from the server (`winReason`). A flag
-    // is not terminal (a wrong flag only costs a turn) and a flag can sit
-    // mid-history, so the ending can never be inferred from the last entry.
-    const p1Summary = match.players?.p1 ?? null;
-    const p2Summary = match.players?.p2 ?? null;
-    const oppSummary = isPlayer1 ? p2Summary : p1Summary;
-    const oppName =
-      oppSummary?.displayName || (isAi ? "GRYND AI" : "Opponent");
-    const winReason = match.winReason ?? null;
-    // Phrased around the player the ending belongs to: the LOSER of a mine hit
-    // ("[Player] hit a mine") and the WINNER of a completed flag sweep
-    // ("[Player] correctly flagged all mines"). Real display names are used
-    // where the roster is enriched; "You" is the viewer.
     const headline =
-      winReason === "all_mines_flagged"
+      match.winReason === "resign"
         ? iWon
-          ? "You correctly flagged all mines"
-          : `${oppName} correctly flagged all mines`
-        : winReason === "resign"
+          ? `${oppName} resigned`
+          : "You resigned"
+        : match.winReason === "disconnect"
           ? iWon
-            ? `${oppName} resigned — you take the win`
-            : "You resigned"
-          : iWon
-            ? `${oppName} hit a mine`
-            : iLost
-              ? "You hit a mine"
-              : "Match complete";
-
-    const subline = isAi
-      ? iWon
-        ? "You beat the GRYND AI!"
-        : iLost
-          ? "The GRYND AI won this round."
-          : null
-      : null;
-
-    const outcome = isDrawResult ? "draw" : iWon ? "win" : "loss";
+            ? `${oppName} disconnected`
+            : "You disconnected"
+          : `${match.myScore} – ${match.opponentScore}`;
 
     return (
       <PvpResultScreen
         open
         outcome={outcome}
         headline={headline}
-        subline={subline ?? undefined}
         gameName="Mines Duel"
         opponent={
           isAi
             ? { name: "GRYND AI", isAi: true }
-            : {
-                name: oppName,
-                iconKey: oppSummary?.iconKey || null,
-                profileFrame: oppSummary?.profileFrame || null,
-              }
+            : { name: oppName, iconKey: oppSummary?.iconKey || null, profileFrame: oppSummary?.profileFrame || null }
         }
         durationSeconds={durationSeconds}
-        summary={[
-          {
-            label: "Result",
-            value: outcome === "win" ? "Win" : outcome === "loss" ? "Loss" : "Draw",
-          },
-          ...(isAi ? [] : [{ label: "Opponent", value: oppName }]),
+        sides={[
+          { name: "You", score: match.myScore, highlight: iWon },
+          { name: oppName, score: match.opponentScore, highlight: iLost },
         ]}
         details={[
-          { label: "Match ID", value: String(match.id) },
-          { label: "Winner", value: iWon ? "You" : iLost ? "Opponent" : "Draw" },
+          { label: "Final score", value: `${match.myScore} – ${match.opponentScore}` },
+          { label: "Tiles revealed", value: String(myRevealedCount) },
+          { label: "Correct flags", value: String(match.myCorrectFlags) },
+          { label: "Wrong flags", value: String(match.myIncorrectFlags) },
+          { label: "Mines hit", value: String(match.myMinesHit) },
+          { label: "Board cleared", value: match.myCompleted ? "Yes" : "No" },
+          ...(completedInSeconds !== null
+            ? [{ label: "Cleared in", value: formatClock(completedInSeconds) }]
+            : []),
         ]}
         playAgain={{ onClick: () => router.push("/casino/mines-pvp") }}
         onReturnToLobby={() => router.push("/casino")}
@@ -1833,7 +965,7 @@ export default function MinesPvpMatchPage({
     );
   }
 
-  // ── Render ───────────────────────────────────────────────────────
+  // ── Loading / error / non-participant ──────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
@@ -1888,47 +1020,19 @@ export default function MinesPvpMatchPage({
     );
   }
 
-  const stake = Number(match.stakeAmount);
-  const canCancel =
-    match.status === MATCH_STATUS.WAITING &&
-    match.player1Id === myUserId &&
-    !cancelling;
-
-  // ── Player seat info (usernames + stats for the header cards) ─────
-  const p1Summary = match.players?.p1 ?? null;
-  const p2Summary = match.players?.p2 ?? null;
-  const mySummary = isPlayer1 ? p1Summary : p2Summary;
-  const oppSummary = isPlayer1 ? p2Summary : p1Summary;
-  const myDisplayName = mySummary?.displayName || "You";
-  const opponentDisplayName = isAi
-    ? "GRYND AI"
-    : oppSummary?.displayName || "Opponent";
-  const inPickState =
-    match.status === MATCH_STATUS.P1_TURN ||
-    match.status === MATCH_STATUS.P2_TURN;
-  const mySeatClerkId = isPlayer1 ? match.player1Id : match.player2Id;
-  const oppSeatClerkId = isPlayer1 ? match.player2Id : match.player1Id;
-  const meWon =
-    match.status === MATCH_STATUS.FINISHED &&
-    Boolean(match.winnerId) &&
-    match.winnerId === mySeatClerkId;
-  const oppWon =
-    match.status === MATCH_STATUS.FINISHED &&
-    Boolean(match.winnerId) &&
-    !meWon &&
-    Boolean(oppSeatClerkId);
+  // ── Chunk info ──────────────────────────────────────────────────
+  const stake = Number(match.stakeAmount) || 0;
   const wagerLabel = isAi ? "Free play" : `${stake.toLocaleString()} tokens`;
+  const mySummary = isPlayer1 ? match.players?.p1 : match.players?.p2;
+  const oppSummary = isPlayer1 ? match.players?.p2 : match.players?.p1;
+  const myDisplayName = mySummary?.displayName || "You";
+  const opponentDisplayName = isAi ? "GRYND AI" : oppSummary?.displayName || "Opponent";
+  const canCancel = isWaiting && match.player1Id === myUserId && !cancelling;
+  const opponentClerkId = isAi ? null : isPlayer1 ? match.player2Id : match.player1Id;
+  const minesTotal = Number(match.minesCount) || 0;
+  const tilesTotal = GRID_CELLS;
 
-  // ── Page arrangement ──────────────────────────────────────
-  // The game content is extracted into nodes so the SAME pieces compose
-  // the page. No game logic or state is touched, only layout.
-
-  // Title
   const titleNode = (
-    // The only JS-driven animation on this page, so it goes through the same
-    // shared helper as every other framer animation here: with reduced motion
-    // the title is simply there instead of being the one element that still
-    // slides and fades in.
     <motion.div
       {...withReducedMotion(shouldReduceMotion, {
         initial: { opacity: 0, y: -12 },
@@ -1943,124 +1047,197 @@ export default function MinesPvpMatchPage({
     </motion.div>
   );
 
-  // Match info strip
-  const infoNode = (
-    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs text-white/60 lg:mt-1">
-      <span className="inline-flex items-center gap-1">
-        {isAi ? "Free vs AI" : "Stake:"}
-        {!isAi && (
-          <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
-            {stake.toLocaleString()}
-            <CoinIcon className="w-3.5 w-3.5 text-yellow-300" />
+  // ── Top scoreboard: YOU | clock | OPPONENT, with compact progress ──
+  const scoreboardNode = (
+    <div className="mx-auto mt-4 w-full max-w-3xl rounded-2xl border border-[#00e5ff]/30 bg-[#08142f]/70 px-3 py-3 shadow-[0_0_30px_rgba(0,229,255,0.12)] sm:px-5">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2 sm:gap-4">
+        <ScoreSide
+          align="left"
+          accent="cyan"
+          label="You"
+          name={myDisplayName}
+          iconKey={mySummary?.iconKey || null}
+          profileFrame={mySummary?.profileFrame || null}
+          nameColor={mySummary?.nameColor || null}
+          score={Number(match.myScore) || 0}
+          tiles={myTilesResolved}
+          tilesTotal={tilesTotal}
+          mines={Number(match.myCorrectFlags) || 0}
+          completed={Boolean(match.myCompleted)}
+          pops={myPops}
+          emote={myEmote}
+          emoteSide="mine"
+        />
+        <div className="flex flex-col items-center px-1">
+          <div
+            className={`flex items-center gap-1 text-3xl font-black tabular-nums sm:text-4xl ${
+              isActive && timeLeft <= 10 ? "text-red-300" : "text-white"
+            } ${isActive && timeLeft <= 5 && timeLeft > 0 ? "animate-pulse" : ""}`}
+          >
+            <ClockIcon className="w-5 h-5 opacity-70" />
+            {formatClock(isActive ? timeLeft : 0)}
+          </div>
+          <span className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-white/40">
+            Match timer
           </span>
-        )}
-        {isAi && (
-          <span className="text-emerald-300 font-semibold">
-            No tokens at stake
-          </span>
-        )}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        Mines:
-        <span className="text-fuchsia-300 font-semibold inline-flex items-center gap-1">
-          {match.minesCount}
-          <MineIcon className="w-3.5 h-3.5 text-fuchsia-300" />
-        </span>
-      </span>
-      {/* Safe-tiles counter — makes the zugzwang endgame legible.
-          Server-stamped (the client can't count the opponent's
-          scrubbed safe reveals). Color-coded so the "only mines
-          left" moment is unmissable: emerald while comfortable,
-          amber when it's tight, red + pulse when the next forced
-          mine is one pick away. */}
-      <span
-        title="Safe (non-mine) tiles still unrevealed. When it hits 0, only mines are left. Whoever must pick next loses by logic (zugzwang)."
-        className={`inline-flex items-center gap-1 ${
-          match.safeTilesRemaining <= 2
-            ? "animate-pulse"
-            : ""
-        }`}
-      >
-        <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Safe left:</span>
-        <span
-          className={`font-bold inline-flex items-center gap-1 ${
-            match.safeTilesRemaining <= 2
-              ? "text-red-300"
-              : match.safeTilesRemaining <= 4
-                ? "text-amber-300"
-                : "text-emerald-300"
-          }`}
-        >
-          {match.safeTilesRemaining}
-        </span>
-      </span>
-      <span>
-        Seat: <span className="text-cyan-200 font-semibold">{mySeat}</span>
-      </span>
-      {opponentClerkId && (
-        <button
-          onClick={() => setShowReportModal(true)}
-          className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:shadow-[0_0_10px_rgba(239,68,68,0.3)]"
-        >
-          <span className="inline-flex items-center gap-1"><IconFlag size={12} /> Report opponent</span>
-        </button>
-      )}
+        </div>
+        <ScoreSide
+          align="right"
+          accent="fuchsia"
+          label={isAi ? "GRYND AI" : "Opponent"}
+          name={opponentDisplayName}
+          iconKey={oppSummary?.iconKey || null}
+          profileFrame={oppSummary?.profileFrame || null}
+          nameColor={oppSummary?.nameColor || null}
+          score={Number(match.opponentScore) || 0}
+          tiles={opponentTilesResolved}
+          tilesTotal={tilesTotal}
+          mines={Number(match.opponentCorrectFlags) || 0}
+          completed={Boolean(match.opponentCompleted)}
+          pops={oppPops}
+          emote={incomingEmote}
+          emoteSide="incoming"
+        />
+      </div>
     </div>
   );
 
-  // Player seats — stacks on narrow screens, two-up once there's room
-  // (normal mobile gets single cards, desktop + creator frames get 2-up).
-  const seatsNode = (
-    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:mt-0 lg:grid-cols-1">
-      <PlayerSeat
-        isMe
-        name={myDisplayName}
-        iconKey={mySummary?.iconKey || null}
-        profileFrame={mySummary?.profileFrame || null}
-        nameColor={mySummary?.nameColor || null}
-        reveals={myPicks.length}
-        minesFound={Number(match?.myMinesFound) || 0}
-        minesTotal={Number(match?.minesCount) || 0}
-        wagerLabel={wagerLabel}
-        thinking={inPickState && isMyTurn}
-        emphasisKey={inPickState && isMyTurn ? "me-turn" : undefined}
-        livePhase={inPickState}
-        isWinner={meWon}
-        emote={myEmote}
-        emoteSide="mine"
-      />
-      <PlayerSeat
-        isMe={false}
-        name={opponentDisplayName}
-        iconKey={oppSummary?.iconKey || null}
-        profileFrame={oppSummary?.profileFrame || null}
-        nameColor={oppSummary?.nameColor || null}
-        reveals={opponentPicks.length}
-        minesFound={Number(match?.opponentMinesFound) || 0}
-        minesTotal={Number(match?.minesCount) || 0}
-        wagerLabel={wagerLabel}
-        thinking={inPickState && !isMyTurn}
-        thinkingLabel={isAi ? "AI thinking" : "Picking"}
-        emphasisKey={inPickState && !isMyTurn ? "them-turn" : undefined}
-        livePhase={inPickState}
-        isWinner={oppWon}
-        emote={incomingEmote}
-        emoteSide="incoming"
-      />
+  // ── Status banner ───────────────────────────────────────────────
+  function renderStatus() {
+    if (isCancelled) {
+      return (
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-900/30 px-4 py-3 text-red-200">
+          <AlertIcon className="w-5 h-5 text-red-300" />
+          <span className="font-semibold">This match was cancelled.</span>
+        </div>
+      );
+    }
+    if (isFinished) return null;
+    if (isWaiting || isReady) return null;
+    if (isActive && match.opponentCompleted && !match.myCompleted) {
+      return (
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-amber-300/40 bg-amber-500/10 px-4 py-2.5 text-amber-100">
+          <span className="font-bold">
+            {isAi ? "GRYND AI cleared its board" : `${opponentDisplayName} cleared their board`} — keep going
+          </span>
+        </div>
+      );
+    }
+    if (isActive && boardLocked && !match.myCompleted) {
+      return (
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-900/25 px-4 py-2.5 text-red-200">
+          <ClockIcon className="w-5 h-5 text-red-300" />
+          <span className="font-bold">Time! Waiting for the final result…</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-cyan-300/40 bg-cyan-500/10 px-4 py-2.5 text-cyan-200">
+        <span className="font-bold">
+          {flagMode ? "Flag mode — tap a tile you believe is a mine" : "Reveal safe tiles and flag mines — go!"}
+        </span>
+      </div>
+    );
+  }
+
+  // ── Board ───────────────────────────────────────────────────────
+  const boardNode = (
+    <div className="mines-board-frame relative mx-auto mt-4 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-2 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-3">
+      <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
+        {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
+          const display = getCellDisplay(cellIndex);
+          const revealDelay = revealDelayMs(cellIndex);
+          const clickable = !boardLocked && (display.tone === "hidden" || display.tone === "flagTarget" || display.tone === "wrongFlag") && !myRevealMap.has(cellIndex) && !correctFlagSet.has(cellIndex);
+          return (
+            <button
+              key={cellIndex}
+              onClick={() => handleCellClick(cellIndex)}
+              disabled={!clickable || busy}
+              aria-label={`Tile ${cellIndex + 1}`}
+              className={`group w-full aspect-square rounded-none flex items-center justify-center transition-all duration-300 text-sm ${getCellClass(
+                display.tone,
+              )} ${!clickable ? "cursor-not-allowed" : ""}`}
+              style={revealDelay > 0 ? { transitionDelay: `${revealDelay}ms` } : undefined}
+            >
+              <span className="inline-flex transition-transform duration-100 ease-out group-active:scale-90">
+                {display.content}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Board-cleared overlay — the player finished, the opponent plays on. */}
+      <AnimatePresence>
+        {isActive && match.myCompleted && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 rounded-2xl bg-[#00111f]/85 backdrop-blur-sm"
+          >
+            <span className="flex items-center gap-2 text-2xl font-black uppercase tracking-widest text-emerald-300 drop-shadow-[0_0_18px_rgba(52,211,153,0.6)] sm:text-3xl">
+              <IconTrophy size={26} className="text-emerald-300" />
+              Board cleared
+            </span>
+            <span className="text-sm font-black text-cyan-200">+100 bonus</span>
+            <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-white/50">
+              Final score
+            </span>
+            <span className="text-4xl font-black tabular-nums text-white">{Number(match.myScore) || 0}</span>
+            <span className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-white/60">
+              <LoadingDotsIcon className="w-4 h-4 animate-pulse text-cyan-300" />
+              Waiting for {isAi ? "GRYND AI" : "opponent"}…
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
-  // Resign (mid-match only)
-  //
-  // `lg:mt-0`: on desktop the three control blocks below are laid out as ONE
-  // row, which owns the spacing between itself and the turn indicator, so each
-  // block drops its own top margin there. Below `lg` this is `mt-3` exactly as
-  // before — mobile spacing is untouched.
+  const legendNode = (
+    <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
+      <span className="inline-flex items-center gap-1">
+        <IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it)
+      </span>
+    </p>
+  );
+
+  // ── Controls ────────────────────────────────────────────────────
+  const controlsNode =
+    isActive && !match.myLocked ? (
+      <div className="mt-3 flex flex-col items-center gap-2">
+        <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
+          <button
+            onClick={() => setFlagMode(false)}
+            className={`px-3 py-1.5 rounded-lg transition ${
+              !flagMode ? "bg-cyan-300 text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.45)]" : "text-cyan-200/70 hover:text-cyan-100"
+            }`}
+          >
+            <span className="inline-flex items-center gap-1">
+              <IconDiamondFilled size={14} className="text-cyan-300" /> Reveal
+            </span>
+          </button>
+          <button
+            onClick={() => setFlagMode(true)}
+            className={`px-3 py-1.5 rounded-lg transition ${
+              flagMode ? "bg-red-400 text-[#2a0d1e] shadow-[0_0_10px_rgba(248,113,113,0.45)]" : "text-red-300/70 hover:text-red-200"
+            }`}
+          >
+            <span className="inline-flex items-center gap-1">
+              <IconFlag size={14} className="text-red-300" /> Flag
+            </span>
+          </button>
+        </div>
+        <p className="max-w-md text-center text-[10px] font-semibold text-white/45">
+          Safe reveal +5 · correct flag = the mine&apos;s value · wrong flag −10 · mine hit −25 · clearing your board +100.
+          Flag mode taps a marked tile to remove a wrong flag.
+        </p>
+      </div>
+    ) : null;
+
   const resignNode =
-    match.status !== MATCH_STATUS.FINISHED &&
-    match.status !== MATCH_STATUS.CANCELLED &&
-    match.status !== MATCH_STATUS.WAITING &&
-    match.status !== MATCH_STATUS.READY ? (
+    isActive && !match.myLocked ? (
       <div className="flex justify-center">
         <button
           onClick={handleResign}
@@ -2073,194 +1250,13 @@ export default function MinesPvpMatchPage({
       </div>
     ) : null;
 
-  // Pick / flag-mode toggle (your turn only)
-  const pickToggleNode =
-    isMyTurn &&
-    match.status !== MATCH_STATUS.FINISHED &&
-    match.status !== MATCH_STATUS.CANCELLED ? (
-      <div className="flex flex-col items-center gap-1.5">
-        <div className="inline-flex rounded-xl border border-cyan-300/30 bg-[#08142f]/80 p-1 text-xs font-bold">
-          <button
-            onClick={() => setFlagMode(false)}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              !flagMode
-                ? "bg-cyan-300 text-[#001933] shadow-[0_0_10px_rgba(0,229,255,0.45)]"
-                : "text-cyan-200/70 hover:text-cyan-100"
-            }`}
-          >
-            <span className="inline-flex items-center gap-1"><IconDiamondFilled size={14} className="text-cyan-300" /> Pick a tile</span>
-          </button>
-          <button
-            onClick={() => setFlagMode(true)}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              flagMode
-                ? "bg-red-400 text-[#2a0d1e] shadow-[0_0_10px_rgba(248,113,113,0.45)]"
-                : "text-red-300/70 hover:text-red-200"
-            }`}
-          >
-            <span className="inline-flex items-center gap-1"><IconFlag size={14} className="text-red-300" /> Flag a mine</span>
-          </button>
-        </div>
-        {flagMode && (
-          <p className="text-[10px] uppercase tracking-widest text-red-300/80 font-bold">
-            Click a tile you believe is a mine. Find every mine to win — a
-            wrong flag is rejected and costs you your turn
-          </p>
-        )}
-      </div>
-    ) : null;
-
-  // Emote picker
-  const emoteNode = (
-    <div className="flex justify-center">
-      <EmotePicker
-        compact
-        hideBubbles
-        incomingEmote={incomingEmote}
-        myEmote={myEmote}
-        onSend={(emote) => sendEmote(emote)}
-      />
-    </div>
-  );
-
-  // Error banner
-  const errorNode = error ? (
-    <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
-      <AlertIcon className="w-4 h-4 text-red-300" />
-      <span>{error}</span>
-    </div>
-  ) : null;
-
-  // ── Resign / pick-flag / emote ────────────────────────────────────
-  //
-  // Below `lg` these are the stacked blocks that used to sit ABOVE the board,
-  // each with its own `mt-3` (now one `gap-3` on the wrapper, pixel-for-pixel
-  // the same 12px rhythm). From `lg` up they move into the desktop side rail
-  // next to the board, where they stay stacked — a 17rem rail cannot hold the
-  // three of them side by side. It renders nothing when no block is present
-  // (finished / cancelled matches), so it never leaves an empty gap behind.
-  const actionsNode =
-    resignNode || pickToggleNode || emoteNode ? (
-      <div className="flex flex-col items-center gap-3 lg:mt-0">
-        {resignNode}
-        {pickToggleNode}
-        {emoteNode}
-      </div>
-    ) : null;
-
-  // ── The 10×10 gameboard (small Minesweeper tiles).
-  //
-  // `mines-board-frame` opts the board into the shared desktop sizing rule in
-  // globals.css: the board is square, so capping its WIDTH caps its height.
-  // On desktop the seats / turn indicator / controls move into the side rail
-  // (see `normalView`), which is what lets the board be much larger while
-  // still ending above the fold. ───────────────────────────────────
-  const boardNode = (
-    <div
-      className="mines-board-frame mx-auto mt-6 w-full rounded-2xl border border-[#00e5ff]/40 bg-gradient-to-br from-[#001933] via-[#00111f] to-[#000814] p-2 shadow-[0_0_60px_rgba(0,229,255,0.18),inset_0_0_30px_rgba(0,229,255,0.08)] sm:p-3 lg:mt-2"
-    >
-      <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
-        {Array.from({ length: GRID_CELLS }, (_, i) => i).map((cellIndex) => {
-          const display = getCellDisplay(cellIndex);
-          // This tile's step in the finished-reveal sweep (0 for every cell
-          // that already held a pick, and outside the finished state). The
-          // tile surface rides the same step as its contents, so a still-hidden
-          // tile lights up WITH its bomb/diamond instead of the whole board's
-          // colours changing at once.
-          const revealDelay = revealDelayMs(cellIndex);
-          const cellAlreadyPicked =
-            myPicks.includes(cellIndex) ||
-            opponentPicks.includes(cellIndex) ||
-            myFlags.includes(cellIndex);
-          const isMyTurnClickable =
-            isMyTurn &&
-            !cellAlreadyPicked &&
-            match.status !== MATCH_STATUS.FINISHED;
-          return (
-            <button
-              key={cellIndex}
-              onClick={() => handleCellClick(cellIndex)}
-              disabled={!isMyTurnClickable || busy}
-              // `group` lets the press response live on the inner span, so it
-              // can be a short transform-only beat while the tile's own
-              // colour/border state transition keeps its existing 300ms.
-              className={`group w-full aspect-square rounded-none flex items-center justify-center transition-all duration-300 text-sm ${getCellClass(
-                cellIndex,
-              )} ${mineHitCell === cellIndex ? "animate-mine-hit" : ""} ${
-                !isMyTurnClickable ? "cursor-not-allowed" : ""
-              }`}
-              style={
-                revealDelay > 0 ? { transitionDelay: `${revealDelay}ms` } : undefined
-              }
-            >
-              {/* Press/scale response: the tile acknowledges the touch
-                  immediately, before the server's reveal lands. The pick POST
-                  deliberately returns no board data (see the route's
-                  normalisePickResult), so the reveal itself can only arrive
-                  with the next status frame — the press is what makes the tap
-                  feel handled in the meantime. Transform-only and 100ms, and
-                  a disabled tile never receives :active, so it can't stick. */}
-              <span className="inline-flex transition-transform duration-100 ease-out group-active:scale-90">
-                {display.content}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  // Minesweeper hint legend — the skill mechanic
-  const legendNode = (
-    <p className="mt-3 text-center text-[10px] uppercase tracking-widest text-white/35 font-bold">
-      <span className="inline-flex items-center gap-1"><IconDiamondFilled size={12} className="text-cyan-300" /> number = tiles to the nearest mine (1 = right next to it)</span>
-    </p>
-  );
-
-  // ── Side-by-side mine counter ─────────────────────────────────────
-  // "5 | 4": how many mines each player still has to find. A correct flag
-  // ticks the flagger's own number down; the opponent sees it drop without
-  // ever learning WHICH tile was found.
-  const minesTotal = Number(match?.minesCount) || 0;
-  const myMinesRemaining = Math.max(0, minesTotal - myMinesFoundCount);
-  const oppMinesRemaining = Math.max(0, minesTotal - opponentMinesFoundCount);
-  const minesCounterNode = minesTotal > 0 ? (
-    <div className="rounded-xl border border-amber-300/30 bg-[#140f04]/70 px-3 py-2">
-      <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-200/70">
-        <MineIcon className="h-3.5 w-3.5 text-amber-300" /> Mines remaining
-      </div>
-      <div className="mt-1 flex items-center justify-center gap-3">
-        <div className="flex flex-col items-center">
-          <span key={`my-mines-${myMinesRemaining}`} className="animate-tile-reveal text-2xl font-black tabular-nums text-cyan-200">
-            {myMinesRemaining}
-          </span>
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-cyan-300/70">
-            You
-          </span>
-        </div>
-        <span className="text-2xl font-black text-white/25">|</span>
-        <div className="flex flex-col items-center">
-          <span key={`opp-mines-${oppMinesRemaining}`} className="animate-tile-reveal text-2xl font-black tabular-nums text-fuchsia-200">
-            {oppMinesRemaining}
-          </span>
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-fuchsia-300/70">
-            {isAi ? "GRYND AI" : "Opponent"}
-          </span>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
-  // Transient reveal / flag-feedback messages.
   const messagesNode = messages.length ? (
-    <div className="flex flex-col gap-1">
+    <div className="mt-3 flex flex-col gap-1">
       {messages.map((m) => (
         <div
           key={m.id}
           className={`animate-state-in rounded-lg border px-3 py-1.5 text-center text-xs font-bold ${
-            m.tone === "mine"
-              ? "border-amber-300/40 bg-amber-500/10 text-amber-200"
-              : "border-red-400/40 bg-red-900/30 text-red-200"
+            m.tone === "mine" ? "border-amber-300/40 bg-amber-500/10 text-amber-200" : "border-red-400/40 bg-red-900/30 text-red-200"
           }`}
         >
           {m.text}
@@ -2269,7 +1265,13 @@ export default function MinesPvpMatchPage({
     </div>
   ) : null;
 
-  // Host-only cancel button while still in waiting
+  const errorNode = error ? (
+    <div className="mt-3 flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-900/30 px-3 py-2 text-sm text-red-200">
+      <AlertIcon className="w-4 h-4 text-red-300" />
+      <span>{error}</span>
+    </div>
+  ) : null;
+
   const cancelNode = canCancel ? (
     <div className="mt-4 flex justify-center">
       <button
@@ -2282,143 +1284,119 @@ export default function MinesPvpMatchPage({
     </div>
   ) : null;
 
-  // Normal (non-creator) page.
-  //
-  // Below `lg` this is the familiar single column (seats / turn / controls /
-  // error above the board, legend below). From `lg` up the page becomes two
-  // columns: the board (with its legend) on the left and a side rail holding
-  // the seats, turn indicator and controls on the right. Moving that chrome
-  // out from ABOVE the board is what lets the square board grow to most of the
-  // viewport height while its bottom still stays above the fold. The board
-  // mounts once — the rail is reordered with grid placement, not a second copy.
-  const normalView = (
-    <>
-      {titleNode}
-      {infoNode}
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-6">
-        <div className="lg:order-2 lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-3">
-          {seatsNode}
-          {minesCounterNode}
-          {messagesNode}
-          <div className="mt-4 lg:mt-0">{renderTurnIndicator()}</div>
-          {actionsNode}
-          {errorNode}
-        </div>
-        <div className="lg:order-1 lg:col-start-1 lg:row-start-1">
-          {boardNode}
-          {legendNode}
-        </div>
-      </div>
-      {cancelNode}
-    </>
+  const infoNode = (
+    <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-white/60">
+      <span className="inline-flex items-center gap-1">
+        {isAi ? "Free vs AI" : "Stake:"}
+        {!isAi && (
+          <span className="text-yellow-300 font-semibold inline-flex items-center gap-1">
+            {stake.toLocaleString()}
+            <CoinIcon className="w-3.5 w-3.5 text-yellow-300" />
+          </span>
+        )}
+        {isAi && <span className="text-emerald-300 font-semibold">No tokens at stake</span>}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        Mines: <span className="text-fuchsia-300 font-semibold inline-flex items-center gap-1">{minesTotal}<MineIcon className="w-3.5 h-3.5 text-fuchsia-300" /></span>
+      </span>
+      <span className="inline-flex items-center gap-1">
+        Your mines left: <span className="text-cyan-300 font-semibold">{Math.max(0, minesTotal - (Number(match.myCorrectFlags) || 0))}</span>
+      </span>
+      <span className="inline-flex items-center gap-1">
+        {wagerLabel}
+      </span>
+      {opponentClerkId && (
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-0.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20"
+        >
+          <IconFlag size={12} /> Report opponent
+        </button>
+      )}
+    </div>
+  );
+
+  const emoteNode = (
+    <div className="mt-3 flex justify-center">
+      <EmotePicker compact hideBubbles incomingEmote={incomingEmote} myEmote={myEmote} onSend={(emote) => sendEmote(emote)} />
+    </div>
   );
 
   return (
     <>
-      {/* Unified full-screen waiting takeover (matchmaking → countdown) */}
-      {(match.status === MATCH_STATUS.WAITING ||
-        match.status === MATCH_STATUS.READY) && (
+      {(isWaiting || isReady) && (
         <MatchWaiting
-          state={
-            match.status === MATCH_STATUS.READY ? "ready" : "waiting"
-          }
+          state={isReady ? "ready" : "waiting"}
           gameName={isAi ? "Mines Duel vs AI" : "Mines Duel"}
           subtitle={
-            match.status === MATCH_STATUS.READY
+            isReady
               ? "Both players joined. Starting in a few seconds…"
               : isAi
                 ? "Free practice against the GRYND AI — the board starts in a moment."
                 : `Your ${stake.toLocaleString()} stake is escrowed. Someone with the same stake will join shortly.`
           }
           seats={[
-            // Real username + wager on both seats once the opponent has
-            // joined — the ready takeover flips their seat from open to
-            // occupied (same treatment as the in-game seat cards).
-            match.status === MATCH_STATUS.READY
-              ? {
-                  label: "You",
-                  name: myDisplayName,
-                  occupied: true,
-                  wager: wagerLabel,
-                }
+            isReady
+              ? { label: "You", name: myDisplayName, occupied: true, wager: wagerLabel }
               : { label: "You", name: myDisplayName, occupied: true },
-            match.status === MATCH_STATUS.READY
-              ? {
-                  label: isAi ? "GRYND AI" : "Opponent",
-                  name: opponentDisplayName,
-                  occupied: true,
-                  wager: wagerLabel,
-                }
+            isReady
+              ? { label: isAi ? "GRYND AI" : "Opponent", name: opponentDisplayName, occupied: true, wager: wagerLabel }
               : { label: isAi ? "GRYND AI" : "Opponent", occupied: false },
           ]}
-          onCancel={
-            match.status === MATCH_STATUS.WAITING && canCancel
-              ? handleCancel
-              : null
-          }
+          onCancel={isWaiting && canCancel ? handleCancel : null}
           cancelLabel="Cancel lobby (refund stake)"
           cancelling={cancelling}
         />
       )}
 
       <div className="min-h-screen overflow-x-clip bg-gradient-to-br from-[#001933] to-[#000d1a] px-3 pb-24 pt-20 text-white sm:px-6 md:pb-8">
-      <NavigationBar currentPath="/casino" />
+        <NavigationBar currentPath="/casino" />
 
-      {/* The matchmaking takeover / NavBar above and the Footer + modals
-          below stay outside the session host. Presence and the
-          recently-played strip track the match from the moment it leaves
-          the waiting room. */}
-      <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-4 lg:max-w-5xl">
-        <GameSessionHost
-          autoStart={
-            Boolean(match) &&
-            match.status !== MATCH_STATUS.WAITING &&
-            match.status !== MATCH_STATUS.FINISHED &&
-            match.status !== MATCH_STATUS.CANCELLED
-          }
-          autoStop={
-            match?.status === MATCH_STATUS.FINISHED ||
-            match?.status === MATCH_STATUS.CANCELLED
-          }
-          gameLabel="mines-duel"
-        >
-        {normalView}
+        <div className="mx-auto mt-4 max-w-3xl sm:mt-8 lg:mt-4">
+          <GameSessionHost
+            autoStart={Boolean(match) && !isWaiting && !isFinished && !isCancelled}
+            autoStop={isFinished || isCancelled}
+            gameLabel="mines-duel"
+          >
+            {titleNode}
+            {scoreboardNode}
+            {infoNode}
+            <div className="mt-3">{renderStatus()}</div>
+            {boardNode}
+            {messagesNode}
+            {controlsNode}
+            {errorNode}
+            {emoteNode}
+            {resignNode}
+            {legendNode}
+            {cancelNode}
+            {renderResult()}
+          </GameSessionHost>
 
-        {/* Post-match result screen — rendered as a fixed overlay
-            (mirrors the chess game's `showResultPopup` pattern), so
-            the win/lose panel sits on top of the board instead of
-            below it. The fixed inset-0 backdrop covers the frame
-            without needing its own portal, and `renderResult()`
-            short-circuits to `null` for any status other than
-            MATCH_STATUS.FINISHED. */}
-        {renderResult()}
-        </GameSessionHost>
+          <Footer />
+        </div>
 
-        <Footer />
-      </div>
-
-      {/* Report modal */}
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        onSubmit={async (reason, details) => {
-          const res = await fetch("/api/reports/submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reportedClerkId: opponentClerkId,
-              gameType: "mines-pvp",
-              gameId: String(matchId),
-              reason,
-              details: details || undefined,
-            }),
-          });
-          const data = await res.json();
-          if (!data.success) throw new Error(data.error || "Failed to submit report");
-        }}
-        reportedPlayerName="Opponent"
-        gameType="Mines Duel"
-      />
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          onSubmit={async (reason, details) => {
+            const res = await fetch("/api/reports/submit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                reportedClerkId: opponentClerkId,
+                gameType: "mines-pvp",
+                gameId: String(matchId),
+                reason,
+                details: details || undefined,
+              }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || "Failed to submit report");
+          }}
+          reportedPlayerName="Opponent"
+          gameType="Mines Duel"
+        />
       </div>
     </>
   );

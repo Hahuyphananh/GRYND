@@ -228,8 +228,25 @@ export default function ChatWidget() {
     const clean = message.trim();
     if (!clean) return;
 
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticRow = {
+      id: tempId,
+      roomType: room.roomType,
+      roomId: room.roomId,
+      content: clean,
+      displayName: user?.fullName || user?.username || "You",
+      createdAt: new Date().toISOString(),
+      pending: true,
+    };
+
     setIsSending(true);
     setError("");
+    // Echo the message locally the moment the user hits send, then swap in
+    // the server row (which carries the id, colour and cosmetics) when it
+    // arrives. On failure the echo is removed and the text is restored — so
+    // the composer never looks frozen waiting on the round trip.
+    setMessages((prev) => [...prev, optimisticRow]);
+    setMessage("");
 
     try {
       const res = await fetch("/api/chat/messages", {
@@ -254,11 +271,15 @@ export default function ChatWidget() {
         );
       }
 
-      setMessage("");
-      // Append the POST response in place (full enriched row) — no re-fetch
-      // of the history — and broadcast it so every client in the room
-      // appends instead of re-fetching too.
-      setMessages((prev) => upsertChatMessage(prev, data.message));
+      // Drop the placeholder and append the POST response in place (full
+      // enriched row) — no re-fetch of the history — and broadcast it so
+      // every client in the room appends instead of re-fetching too.
+      setMessages((prev) =>
+        upsertChatMessage(
+          prev.filter((m) => m.id !== tempId),
+          data.message,
+        ),
+      );
       socket?.emit("room_event", {
         roomId: `chat:${room.roomType}:${room.roomId}`,
         event: "chat:updated",
@@ -269,6 +290,8 @@ export default function ChatWidget() {
         },
       });
     } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setMessage(clean);
       setError(err.message || "Failed to send message.");
     } finally {
       setIsSending(false);
@@ -371,7 +394,9 @@ export default function ChatWidget() {
                   messages.map((msg) => (
                     <div
                       key={msg.id}
-                      className="mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition"
+                      className={`mb-2 rounded border border-cyan-400/10 bg-gradient-to-r from-black/60 to-cyan-950/20 px-2 py-1 hover:border-cyan-400/30 transition ${
+                        msg.pending ? "opacity-60" : ""
+                      }`}
                     >
                       <div className="mb-1 flex items-center justify-between text-[11px] text-cyan-300/70">
                         <span className="flex items-center gap-3 font-medium text-fuchsia-300 drop-shadow-[0_0_6px_rgba(217,70,239,0.5)]">
@@ -412,7 +437,9 @@ export default function ChatWidget() {
                           ) : null}
                         </span>
                         <span>
-                          {new Date(msg.createdAt).toLocaleTimeString()}
+                          {msg.pending
+                            ? "Sending…"
+                            : new Date(msg.createdAt).toLocaleTimeString()}
                         </span>
                       </div>
                       <div className="break-words text-[13px]">

@@ -2074,45 +2074,48 @@ export const dotsAndBoxesGames = pgTable(
 );
 
 // MINES PvP MATCHES — server-authoritative two-player "Mines Duel",
-// played under the SHARED-BOARD competitive Minesweeper rules. Both
-// players act on the SAME 5×5 board; the HOST picks the mine count at
-// lobby creation. The server randomizes turn order at match creation
-// (when player2 joins), then each player gets a 20s window to either
-// REVEAL a tile or FLAG one they believe is a mine.
+// played under the SIMULTANEOUS independent-board SCORING rules. Both
+// players play at the SAME TIME, each on their OWN server-generated
+// 10×10 board with 10 mines. There are NO turns and no shared board.
 //
 // Match flow:
-//   waiting → ready → p1_turn → p2_turn → finished
+//   waiting → ready → active → finished
 //
-// Shared-board rules:
-//   • EVERY safe reveal (and its server-computed clue) is public to both
-//     players — they read the same board, so the clue is not private.
-//   • Revealing a mine loses IMMEDIATELY for the revealer (sudden death);
-//     the opponent wins with `win_reason = 'mine_hit'`.
-//   • Flags are per-player CLAIMS (`p1_flags` / `p2_flags`), never
-//     terminal, and a WRONG claim is not a loss — it just costs a turn.
-//   • A player who correctly flags EVERY mine wins IMMEDIATELY with
-//     `win_reason = 'all_mines_flagged'`.
-//   • There is no draw case; a finished match rejects every further action.
+// Rules:
+//   • One server-authoritative 180-second clock, opened when the match
+//     goes `active`. A client can render a countdown but never supplies it.
+//   • Safe reveal +5 · correct flag = that mine's value (10/20/30/50) ·
+//     wrong flag −10 · mine hit −25 · board cleared +100. Scores clamp at 0.
+//   • Revealing a mine does NOT end the match; the player keeps playing.
+//   • Clearing a board (+100) locks that seat; the OPPONENT keeps playing.
+//     Completion is NOT an automatic victory.
+//   • The match ends when BOTH boards are complete, or the clock expires.
+//     The higher score wins; ties fall through a deterministic ladder
+//     (fewer mines hit, fewer wrong flags, more correct flags, earlier
+//     completion). A perfect tie is a draw.
 //
-// Payout (non-AI matches; stakes are currently retired and normalized to 0):
-//   Winner: own stake back + 90% of loser's stake
-//   Loser:   loses entire stake
-//   House:   10% rake on loser's stake only
+// Payout (non-AI matches; stakes are retired and normalized to 0):
+//   no tokens change hands — the match is played for rating / trophies.
 //
 // Schema conventions match roulette_pvp_matches / blackjack_pvp_matches:
 //   * clerkIds stored as varchar(255), no FK to `users`
 //   * stake/financials as numeric(10, 2)
-//   * pgEnum for `status` keeps the 6 match states strongly typed
+//   * pgEnum for `status` keeps the match states strongly typed
 //   * `mines_pvp_rounds` cascades from `mines_pvp_matches`
 //
-// The `board` jsonb column is SERVER-ONLY state. The match-state API
-// route scrubs it from /status responses while the match is in
-// {waiting, ready, p1_turn, p2_turn} so neither player can inspect
-// the mine positions during the match. Once the match reaches
-// `finished` the board is exposed to both clients for replay.
+// The per-seat boards (`p1_board` / `p2_board`, plus the legacy `board`
+// mirror) are SERVER-ONLY state. The match-state API route scrubs them —
+// and the mine values — from /status responses while the match is live; a
+// seat only ever receives its OWN resolved cells plus public opponent
+// progress. Once the match reaches `finished` both boards are exposed for
+// replay (see src/lib/mines-pvp/matchView.js).
 export const minesPvpStatusEnum = pgEnum("mines_pvp_status", [
   "waiting",
   "ready",
+  // Simultaneous independent-board play (the current model).
+  "active",
+  // Legacy alternating-turn labels — no new row advances into these, but
+  // old rows still carry them and must resolve to a known state.
   "p1_turn",
   "p2_turn",
   "finished",
@@ -2145,77 +2148,44 @@ export const minesPvpMatches = pgTable(
     player2Id: varchar("player2_id", { length: 255 }),
     stakeAmount: numeric("stake_amount", { precision: 10, scale: 2 }).notNull(),
     status: minesPvpStatusEnum("status").notNull().default("waiting"),
-    // Host-chosen mine count at lobby creation (1-24, since 25 would
-    // be 100% mines and an instant loss for every pick).
+    // Fixed server constant: 10 mines on the 10×10 board
+    // (MINES_PER_MATCH). Legacy rows may carry an old host-chosen count.
     minesCount: integer("mines_count").notNull(),
-    // 5×5 board — server-only state. Shape:
-    //   { "size": 5, "mines": [3, 7, 12] }
-    // where `mines.length === mines_count` and each entry is a unique
-    // 0-24 row-major cell index. Scrubbed from /status responses
-    // while the match is in {waiting, ready, p1_turn, p2_turn}.
+    // LEGACY single-board mirror of seat 1 (old shared-board model). Live
+    // play uses `p1_board` / `p2_board`; this is retained for old rows and
+    // is scrubbed from /status responses while a match is live.
     board: jsonb("board")
       .notNull()
       .default(sql`'{"size":5,"mines":[]}'::jsonb`),
-    // Server-decided at match creation (when player2 joins). Either
-    // equals `player1Id` or `player2Id`. Null until both players
-    // have joined.
+    // LEGACY turn fields. There are no turns any more; nothing in the store
+    // writes or reads these. Kept so old rows still parse.
     firstPlayerId: varchar("first_player_id", { length: 255 }),
-    // clerkId of the player currently being asked to pick. Null
-    // when status is in {waiting, ready, finished, cancelled}.
     currentTurnUserId: varchar("current_turn_user_id", { length: 255 }),
-    // 0-24 row-major cell index of the seat's most recent REVEAL. Null
-    // until the player reveals (or gets auto-revealed at deadline). Flag
-    // CLAIMS never touch these scalars — they describe reveals only, and
-    // `p{N}_pick_is_mine` is surfaced to the viewer's own seat mid-match,
-    // so mirroring a claim here would hand the claimer its verdict. The
-    // authoritative history lives on `picks` (see below) and the claims on
-    // `p{N}_flags`.
+    // LEGACY per-turn pick scalars. The simultaneous model tracks resolved
+    // cells on `p{N}_revealed` and flags on `p{N}_flags`; these are kept for
+    // old rows only and are never written by the current store.
     p1Pick: integer("p1_pick"),
     p2Pick: integer("p2_pick"),
-    // Whether the seat's most recent REVEAL landed on a mine. Computed at
-    // reveal time and persisted so post-match replays don't have to walk
-    // `board` to render the result. Full history lives on `picks`; flag
-    // claims are deliberately excluded (see `p{N}_pick` above).
     p1PickIsMine: boolean("p1_pick_is_mine"),
     p2PickIsMine: boolean("p2_pick_is_mine"),
-    // True when the server auto-picked because round_deadline
-    // elapsed before the player acted. Persisted for history /
-    // replay so spectators can see when a player went AFK.
     p1AutoPicked: boolean("p1_auto_picked").notNull().default(false),
     p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
     p1PickedAt: timestamp("p1_picked_at"),
     p2PickedAt: timestamp("p2_picked_at"),
-    // ── Odds turn system ────────────────────────────────────────
-    // Chronologically-ordered JSONB array of every ACTION in the match —
-    // both reveals and flag claims, since both consume a turn.
-    //
-    // REVEAL entry:
-    //   { userId, seat: "player1"|"player2", cell: <0..24>,
-    //     isMine: boolean, hint: <server clue | null>, flag: false,
-    //     mercy: boolean, autoPicked: boolean, pickedAt: ISO ts }
-    // CLAIM entry:
-    //   { userId, seat, cell, isMine: null, hint: null, flag: true,
-    //     kind: "flag", mercy: false, autoPicked: boolean, pickedAt }
-    //   (a claim carries NO verdict — it is public to both seats mid-match,
-    //    so the server's answer on it cannot travel with it)
-    //
-    // Authoritative state — `picks.length` is the turn counter; the
-    // server computes the next picker's seat/turn via the closed-
-    // form "odds" formula in src/lib/mines-pvp/constants.js
-    // (`activePickerForMatch`). Mirrored onto `mines_pvp_rounds.
-    // picks` at match resolution for post-match replays. See
-    // src/db/migrations/0050_mines_pvp_odds_turns.sql.
+    // LEGACY action history (old odds-turn model). The simultaneous model no
+    // longer writes this column; live play tracks per-seat state on
+    // `p{N}_revealed` / `p{N}_flags`, and the replay snapshot lives on
+    // `mines_pvp_rounds`. Retained so old rows still parse.
     picks: jsonb("picks")
       .notNull()
       .default(sql`'[]'::jsonb`),
-    // Per-player flag CLAIMS (shared-board rules). Flags are NOT terminal:
-    // each seat owns its own set, the same cell may be flagged by both, a
-    // flag never ends the match on its own, and a wrong flag is not a loss.
-    // Each array holds unique, sorted 0-24 row-major cell indices (the
-    // canonical form — see `normalizeFlags` in src/lib/mines-pvp/
-    // constants.js). The claim is ALSO recorded in `picks` as a `flag: true`
-    // entry (a claim consumes a turn), but the SET itself — the source of
-    // truth for the all-mines-flagged win — lives here, per seat.
+    // Per-seat flag CLAIMS — LIVE in the simultaneous model. Each seat owns
+    // its own set; the same cell may be flagged by both; a flag never ends
+    // the match on its own. Each array holds unique, sorted 0-99 row-major
+    // cell indices (canonical form — `normalizeFlags` in
+    // src/lib/mines-pvp/constants.js). A correct flag also lands in
+    // `p{N}_correct_flags`; a wrong flag costs −10 and is kept until the
+    // tile is revealed.
     p1Flags: jsonb("p1_flags")
       .notNull()
       .default(sql`'[]'::jsonb`),
@@ -2223,26 +2193,76 @@ export const minesPvpMatches = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     // WHY the match ended (see WIN_REASON in
-    // src/lib/mines-pvp/constants.js): 'mine_hit' | 'all_mines_flagged'
-    // | 'resign' | 'disconnect'. Null until the match finishes — the
-    // shared-board rules added the second player-driven ending
-    // (`all_mines_flagged`), so `result` alone no longer says how the hand
-    // was decided.
+    // src/lib/mines-pvp/constants.js): 'score' (timer expired / both boards
+    // cleared) | 'resign' | 'disconnect'. Legacy rows may carry 'mine_hit'
+    // or 'all_mines_flagged' from the old shared-board rules.
     winReason: varchar("win_reason", { length: 32 }),
-    // Pick-window deadline. 20s per spec. The server's
-    // `fetchMatchWithAutoResolve` mirrors blackjack-pvp /
-    // roulette-pvp: when this timestamp elapses and the active
-    // player hasn't picked, auto-pick a random cell.
+    // ── Simultaneous independent-board state ────────────────────────
+    // Each seat owns its OWN board. Both boards share dimensions, mine
+    // count and value distribution, but their mine POSITIONS differ
+    // (enforced by `generateBoardPair`). `board` above is retained for
+    // legacy rows only; live play uses these.
+    p1Board: jsonb("p1_board")
+      .notNull()
+      .default(sql`'{"size":10,"mines":[],"values":{}}'::jsonb`),
+    p2Board: jsonb("p2_board")
+      .notNull()
+      .default(sql`'{"size":10,"mines":[],"values":{}}'::jsonb`),
+    // Cells each seat has RESOLVED by revealing them (safe tiles + any
+    // mines it detonated). Unique, sorted, in-range (canonical).
+    p1Revealed: jsonb("p1_revealed")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    p2Revealed: jsonb("p2_revealed")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // Per-seat confirmed-mine subset of `p{N}_flags` (the cells that really
+    // are mines). Server-derived; backs board completion + the tiebreaks.
+    p1CorrectFlags: jsonb("p1_correct_flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    p2CorrectFlags: jsonb("p2_correct_flags")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // Server-authoritative scores + public stats. Every value here is
+    // computed by the store and clamped at 0; a client can never submit any
+    // of them.
+    p1Score: integer("p1_score").notNull().default(0),
+    p2Score: integer("p2_score").notNull().default(0),
+    p1SafeRevealed: integer("p1_safe_revealed").notNull().default(0),
+    p2SafeRevealed: integer("p2_safe_revealed").notNull().default(0),
+    p1MinesHit: integer("p1_mines_hit").notNull().default(0),
+    p2MinesHit: integer("p2_mines_hit").notNull().default(0),
+    p1CorrectFlagCount: integer("p1_correct_flag_count").notNull().default(0),
+    p2CorrectFlagCount: integer("p2_correct_flag_count").notNull().default(0),
+    p1IncorrectFlagCount: integer("p1_incorrect_flag_count").notNull().default(0),
+    p2IncorrectFlagCount: integer("p2_incorrect_flag_count").notNull().default(0),
+    // Board completion + lock. A completed board is locked: it keeps its
+    // final score, is displayed to both players, and accepts no further
+    // actions from its owner. It is NOT an automatic victory.
+    p1Completed: boolean("p1_completed").notNull().default(false),
+    p2Completed: boolean("p2_completed").notNull().default(false),
+    p1CompletedAt: timestamp("p1_completed_at"),
+    p2CompletedAt: timestamp("p2_completed_at"),
+    p1Locked: boolean("p1_locked").notNull().default(false),
+    p2Locked: boolean("p2_locked").notNull().default(false),
+    // ONE server-authoritative match deadline (replaces the per-turn
+    // `round_deadline`). Set when the match goes `active` and cleared on
+    // settle. The client never supplies a timer.
+    matchDeadline: timestamp("match_deadline"),
+    matchTimerSeconds: integer("match_timer_seconds").notNull().default(180),
+    // LEGACY pick-window deadline. Reused ONLY as the 3-second `ready`
+    // banner deadline between player2 joining and the match going `active`.
+    // Nothing auto-picks any more; there are no turns.
     roundDeadline: timestamp("round_deadline"),
-    // 20 seconds default per spec. Stored on the row for parity
-    // with roulette-pvp.round_timer_seconds and admin-tweakable
-    // without code changes.
+    // LEGACY per-turn timer (20s). Retained for old rows only; live play
+    // uses `match_timer_seconds`.
     roundTimerSeconds: integer("round_timer_seconds").notNull().default(20),
     // Final match bookkeeping.
     winnerId: varchar("winner_id", { length: 255 }),
-    // 'player1' | 'player2' | null. There is no DRAW under the shared-board
-    // rules ('draw' only appears on legacy pre-migration rows); `win_reason`
-    // above records how the hand was actually decided.
+    // 'player1' | 'player2' | 'draw' | null. A deterministic draw is a real
+    // outcome of the scored flow; `win_reason` above records how it was
+    // decided.
     result: varchar("result", { length: 20 }),
     houseFee: numeric("house_fee", { precision: 10, scale: 2 }).notNull().default("0.00"),
     prizePaid: numeric("prize_paid", { precision: 10, scale: 2 }).notNull().default("0.00"),
@@ -2286,26 +2306,45 @@ export const minesPvpRounds = pgTable(
     p2PickIsMine: boolean("p2_pick_is_mine"),
     p1AutoPicked: boolean("p1_auto_picked").notNull().default(false),
     p2AutoPicked: boolean("p2_auto_picked").notNull().default(false),
-    // Final board state snapshotted at resolution so post-match
-    // replays can render the full mine layout without having to
-    // walk the live match row.
+    // Seat 1's final board (with mine values), snapshotted at resolution
+    // so post-match replays render the full layout without walking the
+    // live match row. The 5×5 default is legacy; live rows write the 10×10
+    // board.
     boardSnapshot: jsonb("board_snapshot")
       .notNull()
       .default(sql`'{"size":5,"mines":[]}'::jsonb`),
-    // Odds-turn history: the full chronological action list from this
-    // match (every reveal AND every flag claim), mirrored at resolution
-    // time so post-match replay views can render every action without
-    // re-walking the live match row. Shape of each entry matches the
-    // `mines_pvp_matches.picks` element shape — see that column for the
-    // contract.
+    // Simultaneous-boards replay snapshot: both seats' final boards and the
+    // authoritative scores, so a replay can render both fields without
+    // re-walking the live match row. `board_snapshot` above mirrors seat 1
+    // for backwards compatibility.
+    p2BoardSnapshot: jsonb("p2_board_snapshot")
+      .notNull()
+      .default(sql`'{"size":10,"mines":[],"values":{}}'::jsonb`),
+    p1Score: integer("p1_score"),
+    p2Score: integer("p2_score"),
+    // Each seat's complete final state at settlement, so the persisted
+    // replay is self-contained (migration 0202). Shape: { score,
+    // safeRevealed, minesHit, correctFlagCount, incorrectFlagCount,
+    // completed, completedAt, revealed[], flags[], correctFlags[] }. The
+    // boards (with mine values) live on `board_snapshot` /
+    // `p2_board_snapshot`; these carry the per-seat play history.
+    p1FinalState: jsonb("p1_final_state")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    p2FinalState: jsonb("p2_final_state")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // LEGACY action history (odds-turn). The simultaneous model no longer
+    // writes it; per-seat replay state lives on `p{N}_final_state`.
     picks: jsonb("picks")
       .notNull()
       .default(sql`'[]'::jsonb`),
-    // 'player1' | 'player2' | null ('draw' only on legacy rows).
+    // 'player1' | 'player2' | 'draw' | null. A deterministic draw is a real
+    // outcome of the scored flow (the tiebreak ladder bottoming out).
     roundWinner: varchar("round_winner", { length: 10 }),
     // Mirror of the match's `win_reason` captured at resolution time so a
-    // replay can label how the hand ended (mine hit vs all mines flagged
-    // vs resign/disconnect) without joining the live match row.
+    // replay can label how the hand ended (score vs resign vs disconnect)
+    // without joining the live match row.
     winReason: varchar("win_reason", { length: 32 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

@@ -1,433 +1,255 @@
 /**
- * Mines PvP — API contract (shared-board serialization + request shape).
+ * Mines Duel — API layer + server-authority contract.
  *
- * The server rules live in `src/lib/mines-pvp/serverStore.js` and are covered
- * by `mines-pvp-flow.test.mjs`. This file pins the API LAYER:
- *
- *   • what the routes accept (only `{ cellIndex }` — never `isMine`, `hint`,
- *     `winner`, `board`)
- *   • what an ACTIVE match exposes (shared reveals + shared clues + both
- *     seats' flags + turn/seat identity) and what it must NEVER expose (the
- *     hidden mine list)
- *   • what a FINISHED match exposes (full board + winnerId + winReason)
- *   • that the AI-turn endpoint consumes the same serializer instead of
- *     echoing the raw row
- *
- * The serializer is pure, so the visibility rules are asserted directly
- * against the real function rather than by pattern-matching source.
+ * The pure rules live in `tests/mines-pvp-engine.test.mjs` and the mirrored
+ * state machine in `tests/mines-pvp-flow.test.mjs`. This file pins the
+ * SECURITY-critical parts of the real source:
+ *   • the routes accept ONLY a cellIndex — never a score / points / winner /
+ *     mine value / mine position / completion / timer;
+ *   • the store mints every score change and every mine value server-side;
+ *   • there is no client-trusted winner, and no turn formula any more;
+ *   • the reader serialises per-viewer state so hidden boards/values never
+ *     leave the server while the match is live;
+ *   • settlement wiring is preserved.
  *
  * Run:  node --import tsx --test tests/mines-pvp-api-contract.test.mjs
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import fs from "node:fs";
 
-import {
-  normaliseMatchForViewer,
-  scrubPicksForViewer,
-} from "../src/lib/mines-pvp/matchView.js";
-import {
-  MATCH_STATUS,
-  WIN_REASON,
-  minesFoundForSeat,
-} from "../src/lib/mines-pvp/constants.js";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const read = (rel) => readFileSync(join(here, "..", rel), "utf8");
+const read = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 
 const PICK_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/pick/route.js");
 const FLAG_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/flag/route.js");
+const UNFLAG_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/unflag/route.js");
 const MATCH_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/route.js");
+const FORFEIT_ROUTE = read("src/app/api/mines-pvp/disconnect-forfeit/route.js");
 const AI_ROUTE = read("src/app/api/mines-pvp/match/[matchId]/ai-turn/route.js");
+const STORE = read("src/lib/mines-pvp/serverStore.js");
+const MATCH_VIEW = read("src/lib/mines-pvp/matchView.js");
+const SCHEMA = read("src/db/schema.ts");
 
-// ── Fixtures ─────────────────────────────────────────────────────────────
+// ── Routes accept only a cellIndex ────────────────────────────────────
 
-const P1 = "user_1";
-const P2 = "user_2";
-// A fixture 10×10 board (5 mines) — the serializer's arithmetic is the
-// subject under test here, independent of the fixed MINES_PER_MATCH.
-const MINES = [0, 7, 24, 55, 63];
-const BOARD = { size: 10, mines: MINES };
-
-function activeMatch(overrides = {}) {
-  return {
-    id: 42,
-    player1Id: P1,
-    player2Id: P2,
-    isAi: false,
-    stakeAmount: "0.00",
-    minesCount: 5,
-    status: MATCH_STATUS.P1_TURN,
-    firstPlayerId: P1,
-    currentTurnUserId: P1,
-    roundDeadline: new Date("2026-01-01T00:00:20.000Z"),
-    board: BOARD,
-    picks: [],
-    p1Flags: [],
-    p2Flags: [],
-    p1Pick: null,
-    p2Pick: null,
-    p1PickIsMine: null,
-    p2PickIsMine: null,
-    p1AutoPicked: false,
-    p2AutoPicked: false,
-    p1PickedAt: null,
-    p2PickedAt: null,
-    result: null,
-    winnerId: null,
-    winReason: null,
-    prizePaid: "0.00",
-    houseFee: "0.00",
-    startedAt: new Date("2026-01-01T00:00:00.000Z"),
-    endedAt: null,
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    ...overrides,
-  };
-}
-
-// A reveal by `seat` on `cell` with the server-computed clue.
-function reveal({ seat, userId, cell, hint, autoPicked = false }) {
-  return {
-    userId,
-    seat,
-    cell,
-    isMine: false,
-    hint,
-    flag: false,
-    mercy: false,
-    autoPicked,
-    pickedAt: "2026-01-01T00:00:01.000Z",
-  };
-}
-
-// A CLAIM by `seat` on `cell`. Note there is deliberately no verdict.
-function claim({ seat, userId, cell }) {
-  return {
-    userId,
-    seat,
-    cell,
-    isMine: null,
-    hint: null,
-    flag: true,
-    kind: "flag",
-    mercy: false,
-    autoPicked: false,
-    pickedAt: "2026-01-01T00:00:02.000Z",
-  };
-}
-
-const json = (value) => JSON.stringify(value);
-
-// ════════════════════════════════════════════════════════════════════════
-// ACTIVE match — shared board state, hidden mines
-// ════════════════════════════════════════════════════════════════════════
-
-test("active match: the hidden board is never serialised", () => {
-  const match = activeMatch();
-  for (const viewer of [P1, P2]) {
-    const view = normaliseMatchForViewer(match, viewer);
-    assert.equal(view.board, null, "board must be null while the match is live");
-    assert.equal(view.minesCount, 5, "the COUNT is public; the layout is not");
-    // The mine layout must not appear anywhere in the payload.
-    assert.equal("mines" in view, false);
-    assert.equal(json(view).includes("[0,7,24,55,63]"), false);
-    assert.equal(/"(board|boardSnapshot)":\s*\{/.test(json(view)), false);
-  }
-});
-
-test("active match: both seats receive the same revealed cells AND clues", () => {
-  const match = activeMatch({
-    picks: [
-      reveal({ seat: "player1", userId: P1, cell: 12, hint: 2 }),
-      reveal({ seat: "player2", userId: P2, cell: 13, hint: 1 }),
-    ],
-    status: MATCH_STATUS.P2_TURN,
-    currentTurnUserId: P2,
-    p1Pick: 12,
-    p2Pick: 13,
-    p1PickIsMine: false,
-    p2PickIsMine: false,
-  });
-
-  for (const viewer of [P1, P2]) {
-    const view = normaliseMatchForViewer(match, viewer);
-    assert.equal(view.picks.length, 2);
-    const byCell = new Map(view.picks.map((p) => [p.cell, p]));
-    // P1's reveal carries ITS clue for P2 too (the shared-board requirement).
-    assert.equal(byCell.get(12).hint, 2);
-    assert.equal(byCell.get(13).hint, 1);
-    assert.equal(byCell.get(12).seat, "player1");
-    assert.equal(byCell.get(13).seat, "player2");
-    // ...and never the mine verdict while the match is live.
-    for (const p of view.picks) assert.equal(p.isMine, false);
-  }
-});
-
-test("active match: turn, deadline and seat identity are all exposed", () => {
-  const match = activeMatch({
-    status: MATCH_STATUS.P2_TURN,
-    currentTurnUserId: P2,
-    firstPlayerId: P1,
-  });
-  const asP1 = normaliseMatchForViewer(match, P1);
-  assert.equal(asP1.currentTurnUserId, P2);
-  assert.equal(asP1.player1Id, P1);
-  assert.equal(asP1.player2Id, P2);
-  assert.equal(asP1.viewerIsPlayer1, true);
-  assert.equal(asP1.isViewerTurn, false);
-  assert.equal(asP1.status, MATCH_STATUS.P2_TURN);
-  assert.ok(asP1.roundDeadline instanceof Date);
-
-  const asP2 = normaliseMatchForViewer(match, P2);
-  assert.equal(asP2.viewerIsPlayer1, false);
-  assert.equal(asP2.isViewerTurn, true);
-});
-
-test("active match: flag locations are private, only the COUNTS are public", () => {
-  const match = activeMatch({
-    status: MATCH_STATUS.P1_TURN,
-    picks: [
-      { ...claim({ seat: "player1", userId: P1, cell: 7 }), isMine: true },
-    ],
-    p1Flags: [7],
-    p2Flags: [24],
-  });
-  // Each viewer sees only their OWN confirmed mines; the opponent's set is
-  // never serialised.
-  const asP1 = normaliseMatchForViewer(match, P1);
-  assert.deepEqual(asP1.myFlags, [7]);
-  assert.equal(asP1.myMinesFound, 1);
-  assert.equal(asP1.opponentMinesFound, 1);
-  assert.equal("p1Flags" in asP1, false);
-  assert.equal("p2Flags" in asP1, false);
-
-  const asP2 = normaliseMatchForViewer(match, P2);
-  assert.deepEqual(asP2.myFlags, [24]);
-  // P2 never learns the opponent's flag cell from the pick history.
-  const opponentEntry = asP2.picks.find((p) => p.userId === P1);
-  assert.equal(opponentEntry.flag, true);
-  assert.equal(opponentEntry.cell, null);
-  assert.equal(opponentEntry.hint, null);
-  assert.equal(opponentEntry.isMine, false);
-});
-
-test("confirmed-mine counts survive the board scrub (stuck-counter regression)", () => {
-  const match = activeMatch({
-    board: BOARD,
-    p1Flags: [0, 7], // two correct mines for P1
-    p2Flags: [24], // one correct mine for P2
-  });
-  // A raw row still carries the hidden board, so the count is board-derived.
-  assert.equal(minesFoundForSeat(match, "player1"), 2);
-  assert.equal(minesFoundForSeat(match, "player2"), 1);
-
-  // The row handed to the viewer serializer has ALREADY been scrubbed on the
-  // GET path (`fetchMatchWithAutoResolve` → `scrubMatchForViewer`), which
-  // nulls the board. The count captured at scrub time must therefore be
-  // honoured — reading it off the null board returned 0, which pinned the
-  // side-by-side counter at "10 | 10" no matter how many mines were flagged.
-  const scrubbed = { ...match, p1MinesFound: 2, p2MinesFound: 1, board: null };
-  const asP1 = normaliseMatchForViewer(scrubbed, P1);
-  assert.equal(asP1.board, null);
-  assert.equal(asP1.myMinesFound, 2);
-  assert.equal(asP1.opponentMinesFound, 1);
-});
-
-test("active match: flag claims do not count as discovered safe cells", () => {
-  const match = activeMatch({
-    picks: [
-      reveal({ seat: "player1", userId: P1, cell: 12, hint: 2 }),
-      claim({ seat: "player2", userId: P2, cell: 18 }),
-    ],
-    p2Flags: [18],
-  });
-  const view = normaliseMatchForViewer(match, P1);
-  // 100 - 5 mines = 95 safe cells; ONE safe reveal so far (the claim is not one).
-  assert.equal(view.safeTilesRemaining, 94);
-  assert.equal(view.pickCount, 2, "claims still consume a turn and are counted");
-});
-
-test("active match: the viewer's own auto-pick shows, the opponent's is scrubbed", () => {
-  const match = activeMatch({
-    picks: [
-      reveal({ seat: "player1", userId: P1, cell: 12, hint: 2, autoPicked: true }),
-      reveal({ seat: "player2", userId: P2, cell: 13, hint: 1, autoPicked: true }),
-    ],
-  });
-  const asP1 = normaliseMatchForViewer(match, P1);
-  assert.equal(asP1.picks[0].autoPicked, true, "own AFK state is visible");
-  assert.equal(asP1.picks[1].autoPicked, false, "opponent's AFK state is not");
-});
-
-test("waiting / ready / cancelled matches stay scrubbed too", () => {
-  for (const status of [
-    MATCH_STATUS.WAITING,
-    MATCH_STATUS.READY,
-    MATCH_STATUS.CANCELLED,
-  ]) {
-    const view = normaliseMatchForViewer(activeMatch({ status }), P1);
-    assert.equal(view.board, null, `${status} must not leak the board`);
-  }
-  assert.equal(normaliseMatchForViewer(null, P1), null);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// FINISHED match — full reveal + winner/winReason
-// ════════════════════════════════════════════════════════════════════════
-
-test("finished match: board, verdicts, winnerId and winReason are all revealed", () => {
-  const match = activeMatch({
-    status: MATCH_STATUS.FINISHED,
-    picks: [
-      reveal({ seat: "player1", userId: P1, cell: 12, hint: 2 }),
-      { ...claim({ seat: "player2", userId: P2, cell: 7 }), isMine: null },
-    ],
-    p2Flags: [7],
-    winnerId: P2,
-    winReason: WIN_REASON.ALL_MINES_FLAGGED,
-    result: "player2",
-    currentTurnUserId: null,
-    roundDeadline: null,
-    endedAt: new Date("2026-01-01T00:00:30.000Z"),
-    prizePaid: "10.00",
-    houseFee: "1.00",
-  });
-
-  const view = normaliseMatchForViewer(match, P2);
-  assert.deepEqual(view.board, BOARD, "the settled board is revealed");
-  assert.equal(view.winnerId, P2);
-  assert.equal(view.winReason, WIN_REASON.ALL_MINES_FLAGGED);
-  assert.equal(view.result, "player2");
-  // The winner sees the pot; the loser sees zeros (no payout leak).
-  assert.equal(view.prizePaid, 10);
-  assert.equal(view.houseFee, 1);
-  assert.equal(normaliseMatchForViewer(match, P1).prizePaid, 0);
-  assert.equal(normaliseMatchForViewer(match, P1).houseFee, 0);
-});
-
-test("finished match: a mine hit exposes the detonated cell's verdict", () => {
-  const match = activeMatch({
-    status: MATCH_STATUS.FINISHED,
-    picks: [
-      reveal({ seat: "player1", userId: P1, cell: 12, hint: 2 }),
-      {
-        userId: P1,
-        seat: "player1",
-        cell: 7,
-        isMine: true,
-        hint: null,
-        flag: false,
-        autoPicked: false,
-        pickedAt: "2026-01-01T00:00:03.000Z",
-      },
-    ],
-    winnerId: P2,
-    winReason: WIN_REASON.MINE_HIT,
-  });
-  const view = normaliseMatchForViewer(match, P2);
-  const hit = view.picks.find((p) => p.cell === 7);
-  assert.equal(hit.isMine, true);
-  assert.equal(view.winReason, WIN_REASON.MINE_HIT);
-  assert.equal(view.winnerId, P2);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// scrubPicksForViewer — the low-level per-entry contract
-// ════════════════════════════════════════════════════════════════════════
-
-test("scrubPicksForViewer: drops malformed entries and normalises cells", () => {
-  const picks = scrubPicksForViewer(
-    [null, "nope", { cell: "12", seat: "player1", userId: P1, hint: "2" }, 7],
-    P1,
-    false,
-  );
-  assert.equal(picks.length, 1);
-  assert.equal(picks[0].cell, 12);
-  assert.equal(picks[0].hint, 2);
-  assert.equal(scrubPicksForViewer(null, P1, false).length, 0);
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// Request contract — the server decides everything authoritative
-// ════════════════════════════════════════════════════════════════════════
-
-test("the pick route accepts ONLY { cellIndex } and trusts no client result", () => {
+test("the pick route accepts ONLY { cellIndex }", () => {
   assert.match(PICK_ROUTE, /const cellIndex = Number\(body\?\.cellIndex\)/);
-  // Nothing else is read off the body.
-  assert.doesNotMatch(PICK_ROUTE, /body\?\.(isMine|hint|winner|board|flags|winnerId|winReason)/);
-  assert.doesNotMatch(PICK_ROUTE, /body\.(isMine|hint|winner|board)/);
-  // The response is a thin acknowledgement; it never echoes board state.
-  assert.doesNotMatch(PICK_ROUTE, /board:/);
-  assert.match(PICK_ROUTE, /normalisePickResult/);
+  for (const forbidden of [
+    /body\?\.score/,
+    /body\?\.points/,
+    /body\?\.winner/,
+    /body\?\.mineValue/,
+    /body\?\.cellValues/,
+    /body\?\.completed/,
+    /body\?\.elapsed/,
+  ]) {
+    assert.doesNotMatch(PICK_ROUTE, forbidden, `pick route must not read ${forbidden}`);
+  }
 });
 
-test("the flag route accepts ONLY { cellIndex } and trusts no client verdict", () => {
+test("the flag route accepts ONLY { cellIndex }", () => {
   assert.match(FLAG_ROUTE, /const cellIndex = Number\(body\?\.cellIndex\)/);
-  assert.doesNotMatch(FLAG_ROUTE, /body\?\.(isMine|hint|winner|board|flags|winnerId|winReason)/);
-  assert.doesNotMatch(FLAG_ROUTE, /body\.(isMine|hint|winner|board)/);
-  // It reports the caller's own confirmed mines + the public counters.
-  assert.match(FLAG_ROUTE, /myFlags: flagsForSeat\(match, viewerSeat\)/);
-  assert.match(FLAG_ROUTE, /opponentMinesFound: minesFoundForSeat\(match, opponentSeat\)/);
-  assert.doesNotMatch(FLAG_ROUTE, /isMine:/);
+  for (const forbidden of [
+    /body\?\.score/,
+    /body\?\.points/,
+    /body\?\.winner/,
+    /body\?\.mineValue/,
+    /body\?\.completed/,
+  ]) {
+    assert.doesNotMatch(FLAG_ROUTE, forbidden, `flag route must not read ${forbidden}`);
+  }
+});
+
+test("the unflag route accepts ONLY { cellIndex } and forwards to the store", () => {
+  assert.match(UNFLAG_ROUTE, /const cellIndex = Number\(body\?\.cellIndex\)/);
+  assert.match(UNFLAG_ROUTE, /unflagTile\(\{ userId, matchId, cellIndex \}\)/);
+  assert.match(UNFLAG_ROUTE, /broadcastMatchUpdate\(/);
+  for (const forbidden of [
+    /body\?\.score/,
+    /body\?\.points/,
+    /body\?\.winner/,
+    /body\?\.mineValue/,
+    /body\?\.board/,
+  ]) {
+    assert.doesNotMatch(UNFLAG_ROUTE, forbidden, `unflag route must not read ${forbidden}`);
+  }
+});
+
+test("the disconnect-forfeit route verifies the token and never trusts game data", () => {
+  assert.match(FORFEIT_ROUTE, /verifyToken\(token, \{ secretKey: CLERK_SECRET_KEY \}\)/);
+  assert.match(FORFEIT_ROUTE, /forfeitMatchOnDisconnect\(\{/);
+  assert.match(FORFEIT_ROUTE, /loserClerkId: clerkUserId/);
+  assert.match(FORFEIT_ROUTE, /broadcastMatchUpdate\(/);
+  assert.doesNotMatch(FORFEIT_ROUTE, /body\?\.(score|board|winner|points)/);
+});
+
+test("the unflag store path cannot farm a confirmed mine and does not refund the penalty", () => {
+  assert.match(STORE, /export async function unflagTile\(/);
+  assert.match(STORE, /Cannot unflag a confirmed mine/);
+  assert.match(STORE, /Cell is not flagged/);
+  // No score change on an unflag (the −10 stays).
+  assert.match(STORE, /unflagged: true,[\s\S]{0,80}scoreDelta: 0/);
 });
 
 test("the match GET takes no body and serialises through the shared viewer", () => {
-  assert.match(MATCH_ROUTE, /import \{ normaliseMatchForViewer \}/);
-  assert.match(MATCH_ROUTE, /normaliseMatchForViewer\(enrichedMatch, userId\)/);
-  assert.doesNotMatch(MATCH_ROUTE, /await req\.json\(\)/);
-  assert.doesNotMatch(MATCH_ROUTE, /board:/, "the board decision lives in matchView");
+  assert.doesNotMatch(MATCH_ROUTE, /req\.json\(\)/);
+  assert.match(MATCH_ROUTE, /normaliseMatchForViewer\(/);
+  assert.match(MATCH_ROUTE, /fetchMatchWithAutoResolve\(/);
 });
 
-test("a rejected action (e.g. a finished match) is surfaced, never swallowed", () => {
-  for (const [label, src] of [
-    ["pick", PICK_ROUTE],
-    ["flag", FLAG_ROUTE],
+// ── The store is the sole authority ───────────────────────────────────
+
+test("every score change is minted server-side", () => {
+  assert.match(STORE, /applyScoreDelta\(/);
+  assert.match(STORE, /SCORE\.MINE_HIT/);
+  assert.match(STORE, /SCORE\.SAFE_TILE/);
+  assert.match(STORE, /SCORE\.WRONG_FLAG/);
+  assert.match(STORE, /SCORE\.BOARD_COMPLETE/);
+});
+
+test("mine VALUES are read from the server board, never from a request", () => {
+  assert.match(STORE, /mineValueAt\(board, cellIndex\)/);
+  assert.doesNotMatch(STORE, /body\.mineValue/);
+  assert.doesNotMatch(STORE, /cellValues/);
+});
+
+test("the winner is derived server-side from the tiebreak ladder", () => {
+  assert.match(STORE, /resolveScoredMatch\(match\)/);
+  assert.match(STORE, /import \{[\s\S]*resolveScoredMatch[\s\S]*\} from "\.\/constants"/);
+  // No client-supplied winner anywhere in the settle path.
+  assert.doesNotMatch(STORE, /winnerId\s*=\s*.*body/);
+});
+
+test("the old alternating-turn machinery is gone", () => {
+  assert.doesNotMatch(STORE, /activePickerForMatch|seatForPickNumber|activeSeatForMatch/);
+  assert.doesNotMatch(STORE, /ROUND_PICK_DEADLINE_MS/);
+  assert.match(STORE, /MATCH_STATUS\.ACTIVE/);
+  assert.match(STORE, /isMatchExpired\(/);
+});
+
+test("the single match timer is server-authoritative", () => {
+  assert.match(STORE, /matchDeadline: deadline/);
+  assert.match(STORE, /matchTimerSeconds/);
+  assert.doesNotMatch(STORE, /body\.(elapsed|timeLeft|remainingMs)/);
+});
+
+test("actions after lock / completion / terminal state are rejected", () => {
+  assert.match(STORE, /if \(isSeatLocked\(match, seat\)\)/);
+  assert.match(STORE, /if \(!PICKABLE_STATES\.has\(match\.status\)\)/);
+  assert.match(STORE, /Match timer has expired/);
+});
+
+test("the acting seat is derived from the authenticated user, never the body", () => {
+  assert.match(STORE, /const seat = seatForUser\(match, userId\)/);
+  assert.doesNotMatch(STORE, /body\.seat/);
+});
+
+// ── Per-viewer visibility ─────────────────────────────────────────────
+
+test("the reader hides the boards until the match is finished", () => {
+  assert.match(MATCH_VIEW, /board: finished \? viewerBoard : null/);
+  assert.match(MATCH_VIEW, /opponentBoard: finished \? opponentBoard : null/);
+  assert.match(MATCH_VIEW, /boards: finished/);
+});
+
+test("the reader exposes the opponent only as public progress", () => {
+  assert.match(MATCH_VIEW, /opponentScore:/);
+  assert.match(MATCH_VIEW, /opponentSafeRevealed:/);
+  assert.match(MATCH_VIEW, /opponentMinesHit:/);
+  assert.match(MATCH_VIEW, /opponentCompleted:/);
+  // No opponent board field on the active payload.
+  assert.doesNotMatch(MATCH_VIEW, /opponentBoard: finished \? opponentBoard : null,[\s\S]*opponentBoard(?!:)/);
+});
+
+test("the reader exposes both boards ONLY on the finished branch", () => {
+  // The `boards` object is gated on `finished`; there is no other place that
+  // emits a raw board object onto the payload.
+  assert.match(MATCH_VIEW, /boards: finished\s*\n?\s*\? \{ p1: match\.p1Board \?\? null, p2: match\.p2Board \?\? null \}/);
+});
+
+// ── Schema + migration ────────────────────────────────────────────────
+
+test("the schema declares the per-seat boards, scores, completion and timer", () => {
+  const mine = SCHEMA.slice(
+    SCHEMA.indexOf("export const minesPvpMatches = pgTable("),
+    SCHEMA.indexOf("export const minesPvpRounds = pgTable("),
+  );
+  for (const token of [
+    "p1Board",
+    "p2Board",
+    "p1Revealed",
+    "p2Revealed",
+    "p1CorrectFlags",
+    "p2CorrectFlags",
+    "p1Score",
+    "p2Score",
+    "p1Completed",
+    "p2Completed",
+    "p1Locked",
+    "p2Locked",
+    "matchDeadline",
+    "matchTimerSeconds",
   ]) {
-    assert.match(src, /if \(result\.error\)/, `${label} must surface store errors`);
-    assert.match(
-      src,
-      /status: result\.status \|\| 400/,
-      `${label} must map the store's status onto the response`,
-    );
-    // No success body is emitted on the error path.
-    assert.doesNotMatch(
-      src,
-      /if \(result\.error\) \{[\s\S]{0,200}?success: true/,
-      `${label} must not answer success on the error path`,
-    );
+    assert.ok(mine.includes(token), `schema must declare ${token}`);
   }
-  // The store remains the authority: any action outside a pickable state
-  // (finished / cancelled / waiting / ready) is refused outright.
-  const STORE_SRC = read("src/lib/mines-pvp/serverStore.js");
-  assert.match(STORE_SRC, /PICKABLE_STATES\.has\(match\.status\)/);
-  assert.match(STORE_SRC, /Match is not awaiting a pick/);
+  assert.match(SCHEMA, /"active"/, "the status enum must include the active state");
 });
 
-test("the AI-turn endpoint returns the SCRUBBED viewer payload, not the raw row", () => {
-  assert.match(AI_ROUTE, /import \{ normaliseMatchForViewer \}/);
-  assert.match(AI_ROUTE, /match: normaliseMatchForViewer\(result\.match, userId\)/);
-  // The raw row (board + every isMine) must never be echoed back.
-  assert.doesNotMatch(AI_ROUTE, /match: result\.match/);
-  assert.doesNotMatch(AI_ROUTE, /match: match,/);
+test("the finished-match API exposes each seat's replay final state", () => {
+  assert.match(MATCH_ROUTE, /p1FinalState: r\.p1FinalState \?\? null/);
+  assert.match(MATCH_ROUTE, /p2FinalState: r\.p2FinalState \?\? null/);
+  assert.match(MATCH_ROUTE, /p2BoardSnapshot: r\.p2BoardSnapshot \?\? null/);
 });
 
-// ════════════════════════════════════════════════════════════════════════
-// Realtime — existing room + event, fired after every successful action
-// ════════════════════════════════════════════════════════════════════════
+test("the rounds schema declares the replay final-state columns", () => {
+  const rounds = SCHEMA.slice(
+    SCHEMA.indexOf("export const minesPvpRounds = pgTable("),
+  );
+  assert.match(rounds, /p1FinalState: jsonb\("p1_final_state"\)/);
+  assert.match(rounds, /p2FinalState: jsonb\("p2_final_state"\)/);
+});
+
+test("the store guards board completion so +100 can never apply twice", () => {
+  assert.match(
+    STORE,
+    /const already = Boolean\(seat === "player2" \? match\.p2Completed : match\.p1Completed\)/,
+  );
+  assert.match(STORE, /applyScoreDelta\(score, SCORE\.BOARD_COMPLETE\)/);
+  // Once complete, the seat is locked and every further action is refused.
+  assert.match(STORE, /isSeatLocked\(match, seat\)/);
+  assert.match(STORE, /Your board is already locked/);
+});
+
+// ── Realtime broadcast + settlement ───────────────────────────────────
 
 test("every mutation route broadcasts the existing match-updated event", () => {
-  for (const [label, src] of [
-    ["pick", PICK_ROUTE],
-    ["flag", FLAG_ROUTE],
-  ]) {
-    assert.match(src, /import \{ broadcastMatchUpdate \}/, `${label} must broadcast`);
-    assert.match(src, /broadcastMatchUpdate\(matchId, \{/, `${label} must broadcast`);
-    // The broadcast is only a wake-up hint; listeners refetch /status.
-    assert.doesNotMatch(src, /broadcastMatchUpdate\(\s*matchId,\s*\{[\s\S]{0,200}?board/, `${label} must not broadcast board data`);
+  for (const src of [PICK_ROUTE, FLAG_ROUTE, UNFLAG_ROUTE, AI_ROUTE, MATCH_ROUTE]) {
+    assert.match(src, /broadcastMatchUpdate\(/);
   }
-  // The AI turn notifies the same room so a viewer refetches promptly.
-  assert.match(AI_ROUTE, /broadcastMatchUpdate\(matchId, \{/);
+});
+
+test("every score-changing route also emits the server-only score hint", () => {
+  for (const src of [PICK_ROUTE, FLAG_ROUTE]) {
+    assert.match(src, /broadcastScoreEvent\(/);
+    assert.match(src, /reason: result\.scoreReason/);
+    assert.match(src, /seat: result\.seat/);
+  }
+});
+
+test("no route enforces a turn or a per-turn deadline", () => {
+  for (const src of [PICK_ROUTE, FLAG_ROUTE, UNFLAG_ROUTE, MATCH_ROUTE, AI_ROUTE]) {
+    assert.doesNotMatch(src, /activePickerForMatch|seatForPickNumber/);
+    assert.doesNotMatch(src, /ROUND_PICK_DEADLINE_MS/);
+    // No route compares the caller against a turn holder to gate the action.
+    assert.doesNotMatch(src, /currentTurnUserId\s*!==/);
+  }
+});
+
+test("Lane-style settlement wiring is preserved", () => {
+  assert.match(STORE, /import \{[\s\S]*applyRatingResult[\s\S]*\} from "\.\.\/rating"/);
+  assert.match(STORE, /gameKey: "mines-pvp"/);
+  assert.match(STORE, /applyTrophyResult\(/);
+  assert.match(STORE, /applyLeaderboardCounters\(/);
+  assert.match(STORE, /!isAi[\s\S]*recordPvPResult\(tx/);
 });
