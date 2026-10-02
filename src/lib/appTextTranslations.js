@@ -27,6 +27,20 @@ export const APP_TEXT_TRANSLATIONS = {
       tokensDesc: "We've credited your balance. Win games to grow it.",
       play: "Start Playing",
     },
+    unsubscribe: {
+      title: "Unsubscribe",
+      unsubscribedTitle: "You're unsubscribed",
+      unsubscribedBody:
+        "You'll no longer receive marketing emails from GRYND. Security alerts and payment receipts are unaffected.",
+      managePrefix: "Changed your mind? Update your preferences in",
+      invalidTitle: "Link not valid",
+      invalidBody:
+        "This unsubscribe link is invalid or has been altered. You can manage your emails in",
+      errorTitle: "Something went wrong",
+      errorBody:
+        "We couldn't update your email preferences just now. Please try again in",
+      settingsLink: "notification settings",
+    },
     tour: {
       skip: "Skip tour",
       back: "Back",
@@ -1453,6 +1467,20 @@ export const APP_TEXT_TRANSLATIONS = {
       tokensDesc: "Nous avons crédité votre solde. Gagnez des parties pour l'augmenter.",
       play: "Commencer à jouer",
     },
+    unsubscribe: {
+      title: "Se désabonner",
+      unsubscribedTitle: "Vous êtes désabonné",
+      unsubscribedBody:
+        "Vous ne recevrez plus d'e-mails marketing de GRYND. Les alertes de sécurité et les reçus de paiement ne sont pas concernés.",
+      managePrefix: "Vous avez changé d'avis ? Modifiez vos préférences dans",
+      invalidTitle: "Lien non valide",
+      invalidBody:
+        "Ce lien de désabonnement est invalide ou a été modifié. Vous pouvez gérer vos e-mails dans",
+      errorTitle: "Une erreur est survenue",
+      errorBody:
+        "Nous n'avons pas pu mettre à jour vos préférences pour le moment. Réessayez dans",
+      settingsLink: "les préférences de notification",
+    },
     tour: {
       skip: "Passer la visite",
       back: "Retour",
@@ -2634,6 +2662,20 @@ export const APP_TEXT_TRANSLATIONS = {
       tokensTitle: "1.000 fichas gratis",
       tokensDesc: "Hemos acreditado tu saldo. Gana partidas para aumentarlo.",
       play: "Empezar a jugar",
+    },
+    unsubscribe: {
+      title: "Cancelar suscripción",
+      unsubscribedTitle: "Has cancelado la suscripción",
+      unsubscribedBody:
+        "Ya no recibirás correos de marketing de GRYND. Las alertas de seguridad y los recibos de pago no se ven afectados.",
+      managePrefix: "¿Has cambiado de opinión? Actualiza tus preferencias en",
+      invalidTitle: "Enlace no válido",
+      invalidBody:
+        "Este enlace de cancelación no es válido o ha sido modificado. Puedes gestionar tus correos en",
+      errorTitle: "Algo ha salido mal",
+      errorBody:
+        "No hemos podido actualizar tus preferencias en este momento. Inténtalo de nuevo en",
+      settingsLink: "la configuración de notificaciones",
     },
     tour: {
       skip: "Saltar recorrido",

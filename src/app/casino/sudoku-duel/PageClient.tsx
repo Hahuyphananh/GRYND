@@ -35,6 +35,11 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { IconGridDots } from "@tabler/icons-react";
 import PvpLobbyPage from "../../../components/lobby/PvpLobby";
+import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import {
+  type AiDifficulty,
+  readStoredAiDifficulty,
+} from "../../../lib/aiDifficulty";
 import { useSocket } from "../../../context/SocketProvider";
 import {
   SUDOKU_DUEL_EVENTS,
@@ -68,6 +73,9 @@ export default function SudokuDuelLobbyPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
+    readStoredAiDifficulty("sudoku-duel"),
+  );
 
   const fetchLobbies = useCallback(async () => {
     try {
@@ -134,6 +142,30 @@ export default function SudokuDuelLobbyPage() {
     }
   }, [busy, pokeLobby, router]);
 
+  const playAi = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/sudoku-duel/create-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ difficulty: aiDifficulty }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        setError(data?.error || "Unable to start the practice match");
+        return;
+      }
+      router.push(`/casino/sudoku-duel/${data.data.matchId}`);
+    } catch {
+      setError("Unable to start the practice match");
+    } finally {
+      setBusy(false);
+    }
+  }, [aiDifficulty, busy, router]);
+
   const rules = useMemo(
     () => ({
       title: "How to Play Sudoku Duel",
@@ -163,15 +195,14 @@ export default function SudokuDuelLobbyPage() {
           ),
         },
         {
-          heading: "If the clock runs out, most progress wins",
+          heading: "No clock — but don't go idle",
           body: (
             <>
-              Each match has a maximum duration of <b>10 minutes</b>, started by
-              the server. If neither player finishes in time, the player with the{" "}
-              <b>most correctly filled cells wins</b>, with the fewest mistakes as
-              the tie-break and the earliest achievement of that progress after
-              it. An exact tie is a draw. The clock, the progress and the result
-              are all the server&apos;s.
+              A match has <b>no time limit</b>: it ends when someone completes
+              the puzzle, concedes, or disconnects. To keep a race from
+              stalling, a seat that makes no move for <b>15 minutes</b> is
+              warned, and one that stays idle for <b>20 minutes forfeits</b> —
+              the opponent takes the win. Every verdict is the server&apos;s.
             </>
           ),
         },
@@ -234,6 +265,28 @@ export default function SudokuDuelLobbyPage() {
       canPlay={Boolean(isSignedIn)}
       lobbies={lobbies}
       lobbyEmptyText="No open Sudoku Duel lobbies right now. Start a match and an opponent will be paired in."
+      children={
+        <AiDifficultyPicker
+          gameKey="sudoku-duel"
+          value={aiDifficulty}
+          onChange={setAiDifficulty}
+          hint={{
+            easy: "A slow solver — a careful player can finish first.",
+            normal: "A steady solver of the same puzzle. Beat it with a clean run.",
+            hard: "A fast, near-optimal solver of the shared puzzle.",
+          }}
+        />
+      }
+      extraActions={
+        <button
+          type="button"
+          onClick={playAi}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
+        >
+          Play Free vs AI
+        </button>
+      }
       lobbyKey={(row: LobbyRow) => row.matchId}
       lobbyTitle={(row: LobbyRow) => <>Table #{String(row.matchId).slice(0, 8)}</>}
       lobbyMeta={(row: LobbyRow) => (

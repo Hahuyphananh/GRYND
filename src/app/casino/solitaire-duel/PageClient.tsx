@@ -122,15 +122,14 @@ export default function SolitaireDuelLobbyPage() {
           ),
         },
         {
-          heading: "If the clock runs out, most progress wins",
+          heading: "No clock — but don't go idle",
           body: (
             <>
-              Each match has a maximum duration set by the server. If neither
-              player solves the puzzle in time, the player with the{" "}
-              <b>most cards on the foundations wins</b>, with the number of
-              cards revealed in the tableau as the tie-break. An exact tie on
-              both is a draw. The clock, the progress and the result are all the
-              server&apos;s.
+              A match has <b>no time limit</b>: it ends when someone solves the
+              deal, concedes, or disconnects. To keep a race from stalling, a
+              seat that makes no move for <b>15 minutes</b> is warned, and one
+              that stays idle for <b>20 minutes forfeits</b> — the opponent takes
+              the win. The clock and the result are the server&apos;s.
             </>
           ),
         },

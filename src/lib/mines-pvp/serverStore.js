@@ -67,6 +67,7 @@ import {
   ROUND_TIMER_SECONDS,
   WIN_REASON,
   activePickerForMatch,
+  chooseAiAction,
   chooseAiCell,
   flagsForSeat,
   generateBoard,
@@ -224,49 +225,40 @@ export async function createAiMatch({ userId, minesCount, difficulty }) {
   return { match, joined: true };
 }
 
-// Let the authenticated human request the bot's pick. The bot
-// submits through the same `pickTile` / `applyPick` pipeline so
-// it receives the same validation, row lock, and resolution as a
-// human player. A duplicate call is idempotent: if the bot already
-// picked (or the match finished), it returns the current state.
+// Let the authenticated human request the bot's move. The bot acts through the
+// SAME action pipeline a human uses (`applyPick` / `applyFlag`) under the same
+// row lock, validation and resolution, so a flag and a reveal are decided by
+// server rules and nothing else. It flags a mine when the public clues prove
+// one (see `chooseAiAction`) and otherwise reveals the safest live cell.
+//
+// A duplicate call is idempotent: if it is not the bot's turn (or the match is
+// already over/not started), it returns the current state.
 export async function playAiTurn({ userId, matchId }) {
-  const match = await fetchMatch(matchId);
-  if (!match) return { error: "Match not found", status: 404 };
-  if (!isFreeAiMatch(match) || match.player1Id !== userId) {
-    return { error: "Forbidden", status: 403 };
-  }
-  if (match.status === MATCH_STATUS.FINISHED || match.status === MATCH_STATUS.CANCELLED) {
-    return { match, justResolved: false, alreadyPlayed: true };
-  }
-  if (match.status === MATCH_STATUS.WAITING || match.status === MATCH_STATUS.READY) {
-    return { error: "Match has not started yet", status: 400 };
-  }
+  return await db.transaction(async (tx) => {
+    const match = await fetchMatchForUpdate(tx, matchId);
+    if (!match) return { error: "Match not found", status: 404 };
+    if (!isFreeAiMatch(match) || match.player1Id !== userId) {
+      return { error: "Forbidden", status: 403 };
+    }
+    if (TERMINAL_STATES.has(match.status)) {
+      return { match, justResolved: false, alreadyPlayed: true };
+    }
+    if (match.status === MATCH_STATUS.WAITING || match.status === MATCH_STATUS.READY) {
+      return { error: "Match has not started yet", status: 400 };
+    }
 
-  // Check if the AI is actually the active picker
-  const expectedPicker = activePickerForMatch(match);
-  if (!expectedPicker || expectedPicker !== match.player2Id) {
-    // Not the AI's turn yet
-    return { match, justResolved: false, alreadyPlayed: true };
-  }
+    // Only act when the closed-form turn order actually puts the bot up.
+    const expectedPicker = activePickerForMatch(match);
+    if (!expectedPicker || expectedPicker !== match.player2Id) {
+      return { match, justResolved: false, alreadyPlayed: true };
+    }
 
-  // Check if the AI already picked (idempotency)
-  const historyCells = pickHistoryCells(match);
-  if (historyCells.includes(match.p2Pick) && match.status !== MATCH_STATUS.P2_TURN) {
-    return { match, justResolved: false, alreadyPlayed: true };
-  }
-
-  // Choose a cell for the bot (deduction-driven; never flags).
-  const { cellIndex } = chooseAiCell(match);
-
-  // Submit through pickTile using the bot's identity. The bot IS
-  // player2, so this passes the participant check.
-  const result = await pickTile({
-    userId: MINES_AI_PLAYER_ID,
-    matchId,
-    cellIndex,
+    const beforeStatus = match.status;
+    const updated = await playAiTurnInTransaction(tx, match);
+    const justResolved =
+      !TERMINAL_STATES.has(beforeStatus) && TERMINAL_STATES.has(updated.status);
+    return { match: updated, justResolved, alreadyPlayed: false };
   });
-
-  return { match: result.match, justResolved: Boolean(result.justResolved), alreadyPlayed: false };
 }
 
 // ── Create / Join matchmaking ─────────────────────────────────────────
@@ -1020,87 +1012,183 @@ export async function flagTile({ userId, matchId, cellIndex }) {
       return { error: "Cell already flagged", status: 409 };
     }
 
-    // The verdict is computed server-side. It is stored on the entry so the
-    // CLAIMANT can render the confirmed mine, but matchView scrubs an
-    // opponent's flag cell to null — the opponent only ever sees the count.
-    const flagIsMine = isMine(match.board, idx);
-
-    const flagEntry = {
-      userId,
-      seat,
-      cell: idx,
-      isMine: flagIsMine,
-      hint: null,
-      // Discriminators: this entry is a CLAIM, not a reveal.
-      flag: true,
-      kind: "flag",
-      mercy: false,
-      autoPicked: false,
-      pickedAt: new Date().toISOString(),
-    };
-
-    const allPicks = Array.isArray(match.picks)
-      ? [...match.picks, flagEntry]
-      : [flagEntry];
-
-    // Only a CORRECT flag is kept in this seat's own set. `withFlagForSeat`
-    // returns a single-column patch, so the two players' sets can never
-    // overwrite one another.
-    const flagsPatch = flagIsMine ? withFlagForSeat(match, seat, idx) : {};
-    const claimedFlags = flagIsMine
-      ? seat === "player1"
-        ? flagsPatch.p1Flags
-        : flagsPatch.p2Flags
-      : flagsForSeat(match, seat);
-
-    // THE WIN CONDITION: this player's confirmed mines now cover every mine
-    // on the server-only board.
-    const wonByFlags =
-      flagIsMine && hasFlaggedAllMines(claimedFlags, match.board);
-
-    const [updated] = await tx
-      .update(minesPvpMatches)
-      .set({
-        picks: allPicks,
-        ...flagsPatch,
-        // Legacy scalar mirrors deliberately skip flag entries (see
-        // `mirrorPickSetValues`).
-        ...mirrorPickSetValues(allPicks),
-      })
-      .where(
-        and(
-          eq(minesPvpMatches.id, match.id),
-          eq(minesPvpMatches.status, match.status),
-        ),
-      )
-      .returning();
-
-    if (!updated) {
+    // Applied by the shared `applyFlag` below — the same path the AI's flag
+    // uses, so the human and the bot obey identical rules and resolution.
+    const applied = await applyFlag(tx, match, { userId, seat, idx });
+    if (!applied) {
       // Lost the race to a concurrent action on the same turn: the flag was
       // NEVER applied, so reject rather than replaying it.
       return { error: "Match state changed, please retry", status: 409 };
     }
-
-    if (wonByFlags) {
-      // The flagger wins immediately: every mine is confirmed. Resolved from
-      // the WINNER's id, so the sides cannot be swapped.
-      const final = await resolveMatch(tx, updated, {
-        winnerId: userId,
-        reason: WIN_REASON.ALL_MINES_FLAGGED,
-      });
-      return { match: final, justResolved: true, flagRevealed: true };
-    }
-
-    // Either way the flag consumed this turn — a correct flag confirmed a
-    // mine, a wrong one just cost a read — so hand the turn to the opponent.
-    const next = await advanceTurn(tx, updated);
-    return {
-      match: next,
-      justResolved: false,
-      flagRevealed: flagIsMine,
-      wrongFlag: !flagIsMine,
-    };
+    return applied;
   });
+}
+
+// ── applyFlag (shared by a human flag and the AI's flag) ──────────────
+//
+// The flag half of the action pipeline, extracted from `flagTile` so the AI
+// turn path (which runs inside an already-open transaction) can flag through
+// exactly the same code. Callers are responsible for the participant / turn /
+// deadline / duplicate validation; this only records the claim, checks the
+// all-mines win, and advances the turn.
+//
+// Returns `{ match, justResolved, flagRevealed, wrongFlag }`, or `null` when a
+// concurrent action won the turn (the caller turns that into a 409).
+async function applyFlag(tx, match, { userId, seat, idx }) {
+  // The verdict is computed server-side. It is stored on the entry so the
+  // CLAIMANT can render the confirmed mine, but matchView scrubs an
+  // opponent's flag cell to null — the opponent only ever sees the count.
+  const flagIsMine = isMine(match.board, idx);
+
+  const flagEntry = {
+    userId,
+    seat,
+    cell: idx,
+    isMine: flagIsMine,
+    hint: null,
+    // Discriminators: this entry is a CLAIM, not a reveal.
+    flag: true,
+    kind: "flag",
+    mercy: false,
+    autoPicked: false,
+    pickedAt: new Date().toISOString(),
+  };
+
+  const allPicks = Array.isArray(match.picks)
+    ? [...match.picks, flagEntry]
+    : [flagEntry];
+
+  // Only a CORRECT flag is kept in this seat's own set. `withFlagForSeat`
+  // returns a single-column patch, so the two players' sets can never
+  // overwrite one another.
+  const flagsPatch = flagIsMine ? withFlagForSeat(match, seat, idx) : {};
+  const claimedFlags = flagIsMine
+    ? seat === "player1"
+      ? flagsPatch.p1Flags
+      : flagsPatch.p2Flags
+    : flagsForSeat(match, seat);
+
+  // THE WIN CONDITION: this player's confirmed mines now cover every mine
+  // on the server-only board.
+  const wonByFlags = flagIsMine && hasFlaggedAllMines(claimedFlags, match.board);
+
+  const [updated] = await tx
+    .update(minesPvpMatches)
+    .set({
+      picks: allPicks,
+      ...flagsPatch,
+      // Legacy scalar mirrors deliberately skip flag entries (see
+      // `mirrorPickSetValues`).
+      ...mirrorPickSetValues(allPicks),
+    })
+    .where(
+      and(
+        eq(minesPvpMatches.id, match.id),
+        eq(minesPvpMatches.status, match.status),
+      ),
+    )
+    .returning();
+
+  if (!updated) return null;
+
+  if (wonByFlags) {
+    // The flagger wins immediately: every mine is confirmed. Resolved from
+    // the WINNER's id, so the sides cannot be swapped.
+    const final = await resolveMatch(tx, updated, {
+      winnerId: userId,
+      reason: WIN_REASON.ALL_MINES_FLAGGED,
+    });
+    return { match: final, justResolved: true, flagRevealed: true };
+  }
+
+  // Either way the flag consumed this turn — a correct flag confirmed a
+  // mine, a wrong one just cost a read — so hand the turn to the opponent.
+  const next = await advanceTurn(tx, updated);
+  return {
+    match: next,
+    justResolved: false,
+    flagRevealed: flagIsMine,
+    wrongFlag: !flagIsMine,
+  };
+}
+
+// ── The bot's turn (shared by the endpoint and the status auto-advance) ──
+//
+// Decides ONE action for the bot — flagging a mine the public clues prove, or
+// revealing the least risky live cell — and applies it through the SAME
+// pipeline a human uses (`applyFlag` / `applyPick`). The caller must already
+// hold the row lock and have confirmed the closed-form turn order puts the bot
+// up. Idempotent: a no-op when it is not the bot's turn or the board is terminal.
+async function playAiTurnInTransaction(tx, match) {
+  if (!PICKABLE_STATES.has(match.status)) return match;
+  const expectedPicker = activePickerForMatch(match);
+  if (!expectedPicker || expectedPicker !== match.player2Id) return match;
+
+  const action = chooseAiAction(match);
+  if (!action) return match;
+
+  if (action.kind === "flag") {
+    const idx = Number(action.cellIndex);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) return match;
+    // A cell the bot already owns would be rejected as a duplicate claim, so
+    // fall back to a reveal rather than burning the turn.
+    if (flagsForSeat(match, "player2").includes(idx)) {
+      const fallback = chooseAiCell(match, undefined, flagsForSeat(match, "player2"));
+      return await aiReveal(tx, match, fallback.cellIndex);
+    }
+    const applied = await applyFlag(tx, match, {
+      userId: MINES_AI_PLAYER_ID,
+      seat: "player2",
+      idx,
+    });
+    return applied?.match ?? match;
+  }
+
+  return await aiReveal(tx, match, action.cellIndex);
+}
+
+// Apply one bot reveal through the shared `applyPick` path. First-pick mercy
+// applies to the bot exactly as it does to a human's opening reveal.
+async function aiReveal(tx, match, cellIndex) {
+  let idx = Number(cellIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= GRID_CELLS) return match;
+  // Defensive: a bot reveal of a cell it has already CONFIRMED as a mine would
+  // be a guaranteed self-destruct. `pickTile` refuses this for a human; the AI
+  // path runs through `applyPick` directly, so guard it here and switch cells.
+  const myFlags = flagsForSeat(match, "player2");
+  if (myFlags.includes(idx)) {
+    const alt = Number(chooseAiCell(match, undefined, myFlags).cellIndex);
+    if (!Number.isInteger(alt) || alt < 0 || alt >= GRID_CELLS || myFlags.includes(alt)) {
+      return match;
+    }
+    idx = alt;
+  }
+
+  let board = match.board;
+  let mercyUsed = false;
+  if (match.picks.length === 0 && isMine(board, idx)) {
+    board = relocateMine(board, idx);
+    mercyUsed = true;
+    await tx
+      .update(minesPvpMatches)
+      .set({ board })
+      .where(eq(minesPvpMatches.id, match.id));
+  }
+
+  const pickIsMine = isMine(board, idx);
+  const newPick = {
+    userId: MINES_AI_PLAYER_ID,
+    seat: "player2",
+    cell: idx,
+    isMine: pickIsMine,
+    hint: pickIsMine ? null : nearestMineDistance(board, idx),
+    mercy: mercyUsed,
+    autoPicked: false,
+    pickedAt: new Date().toISOString(),
+  };
+
+  const result = await applyPick(tx, { ...match, board }, newPick);
+  return result?.match ?? match;
 }
 
 // Advance the turn for a match whose `picks` array already contains the
@@ -1374,58 +1462,12 @@ export async function fetchMatchWithAutoResolve(userId, matchId) {
     }
 
     // 3) Server-side AI turn: if this is a free AI match and it's
-    //    the bot's turn, play the bot's pick immediately so the
-    //    human doesn't have to wait for the full deadline. This is
-    //    done inside the same transaction to avoid race conditions.
-    if (
-      PICKABLE_STATES.has(match.status) &&
-      isFreeAiMatch(match)
-    ) {
-      const expectedPicker = activePickerForMatch(match);
-      if (expectedPicker && expectedPicker === match.player2Id) {
-        // It's the bot's turn. Make its pick inline.
-        const { cellIndex } = chooseAiCell(match);
-        const idx = Number(cellIndex);
-        if (
-          Number.isInteger(idx) && idx >= 0 && idx < GRID_CELLS
-        ) {
-          let board = match.board;
-          let mercyUsed = false;
-          // First-pick mercy still applies to the bot
-          if (match.picks.length === 0 && isMine(board, idx)) {
-            board = relocateMine(board, idx);
-            mercyUsed = true;
-            await tx
-              .update(minesPvpMatches)
-              .set({ board })
-              .where(eq(minesPvpMatches.id, match.id));
-          }
-          const pickIsMine = isMine(board, idx);
-          const newPick = {
-            userId: MINES_AI_PLAYER_ID,
-            seat: "player2",
-            cell: idx,
-            isMine: pickIsMine,
-            hint: pickIsMine
-              ? null
-              : nearestMineDistance(board, idx),
-            mercy: mercyUsed,
-            autoPicked: false,
-            pickedAt: new Date().toISOString(),
-          };
-          const pickResult = await applyPick(
-            tx,
-            { ...match, board },
-            newPick,
-          );
-          if (pickResult?.match) {
-            match = pickResult.match;
-          } else if (pickResult) {
-            // applyPick may return the match directly on resolve
-            match = pickResult;
-          }
-        }
-      }
+    //    the bot's turn, play the bot's action (a flag of a provable
+    //    mine, or a safe reveal) immediately so the human doesn't have
+    //    to wait for the full deadline. Done inside the same
+    //    transaction to avoid race conditions.
+    if (PICKABLE_STATES.has(match.status) && isFreeAiMatch(match)) {
+      match = await playAiTurnInTransaction(tx, match);
     }
 
     return { match, advanced: phaseSignature(match) !== before };

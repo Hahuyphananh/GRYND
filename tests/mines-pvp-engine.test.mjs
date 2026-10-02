@@ -64,6 +64,8 @@ import {
   activePickerForMatch,
   // AI cell-selection policy
   chooseAiCell,
+  chooseAiAction,
+  deduceKnownMines,
   aiCellRisk,
   // AI pick pacing (legacy surface)
   AI_PICK_DELAY_MS,
@@ -540,6 +542,51 @@ test("chooseAiCell never touches the flag sets", () => {
     () => 0,
   );
   assert.ok(Number.isInteger(cellIndex));
+});
+
+test("deduceKnownMines: the sole unrevealed cell on a clue's ring is a mine", () => {
+  // Clue of 1 at corner cell 0: its 1-ring is {1, 10, 11}. With 1 and 10
+  // revealed, 11 is the only candidate left, so it must be the mine.
+  const revealed = [{ cell: 0, hint: 1 }];
+  const unknown = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (i !== 0 && i !== 1 && i !== 10) unknown.push(i);
+  }
+  assert.deepEqual(deduceKnownMines(revealed, unknown), [11]);
+  // Nothing is proven while more than one ring cell is unknown.
+  const wide = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) if (i !== 0) wide.push(i);
+  assert.deepEqual(deduceKnownMines(revealed, wide), []);
+});
+
+test("chooseAiAction: hard flags a proven mine instead of revealing", () => {
+  const picks = [
+    { cell: 0, hint: 1, flag: false },
+    { cell: 1, hint: 1, flag: false },
+    { cell: 10, hint: 1, flag: false },
+  ];
+  const action = chooseAiAction({ aiDifficulty: "hard", picks, p2Flags: [] }, () => 0);
+  assert.equal(action.kind, "flag");
+  assert.equal(action.cellIndex, 11);
+});
+
+test("chooseAiAction: easy never flags and falls back to a safe reveal", () => {
+  const picks = [
+    { cell: 0, hint: 1, flag: false },
+    { cell: 1, hint: 1, flag: false },
+    { cell: 10, hint: 1, flag: false },
+  ];
+  const action = chooseAiAction({ aiDifficulty: "easy", picks, p2Flags: [] }, () => 0);
+  assert.equal(action.kind, "reveal");
+  assert.ok(Number.isInteger(action.cellIndex));
+  assert.notEqual(action.cellIndex, 0);
+  assert.notEqual(action.cellIndex, 11);
+});
+
+test("chooseAiAction: without a proof the bot reveals the safest cell", () => {
+  const action = chooseAiAction({ aiDifficulty: "hard", picks: [], p2Flags: [] }, () => 0);
+  assert.equal(action.kind, "reveal");
+  assert.ok(Number.isInteger(action.cellIndex));
 });
 
 // ════════════════════════════════════════════════════════════════════════

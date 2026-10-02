@@ -45,7 +45,7 @@ import {
 } from "../src/db/schema.ts";
 import {
   COMPLETION_DEAD_HEAT_MS,
-  MATCH_LIMIT_MS,
+  INACTIVITY_FORFEIT_MS,
   MATCH_STATUS,
   SUITS,
   VARIANT,
@@ -290,7 +290,6 @@ function seedMatch(fake, overrides = {}) {
     p1FinishedAt: null,
     p2FinishedAt: null,
     goAt: new Date(NOW - 5_000),
-    deadlineAt: new Date(NOW + MATCH_LIMIT_MS),
     startedAt: new Date(NOW - 5_000),
     endedAt: null,
     createdAt: new Date(NOW - 6_000),
@@ -400,7 +399,7 @@ test("authority: a move cannot smuggle a result, a score, a completion, an Elo o
   assert.equal(usersWrites(fake).length, 0);
 });
 
-test("authority: a move is refused before GO and after the limit, mutating nothing", { skip: SKIP_REASON }, async (t) => {
+test("authority: a move is refused before GO and after the inactivity threshold, mutating nothing", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
 
@@ -417,14 +416,16 @@ test("authority: a move is refused before GO and after the limit, mutating nothi
   assert.equal(rowOf(fake).p1State.ply, 0);
   assert.equal(fake.rowsOf(solitaireDuelMoves).length, 0);
 
-  // After the limit: refused, and the row resolves from its own boards.
+  // A seat past the inactivity threshold: refused, and the row resolves from
+  // its own boards (the idle seat forfeits).
   resetAll(fake);
   seedMatch(fake, {
     p1State: boardWithFoundationCards(20),
     p2State: boardWithFoundationCards(5),
     p1Ply: 40,
     p2Ply: 30,
-    deadlineAt: new Date(NOW - 1),
+    p1LastActionAt: new Date(NOW - INACTIVITY_FORFEIT_MS - 1),
+    p2LastActionAt: new Date(NOW),
   });
   const late = await store.submitMove({
     userId: ALICE,
@@ -434,11 +435,11 @@ test("authority: a move is refused before GO and after the limit, mutating nothi
     nowMs: NOW,
   });
   assert.equal(late.status, 409);
-  assert.match(late.error, /limit/i);
+  assert.match(late.error, /inactivity/i);
   const settled = rowOf(fake);
   assert.equal(settled.status, MATCH_STATUS.FINISHED);
-  assert.equal(settled.result, "player1", "the greater progress won");
-  assert.equal(settled.resolutionReason, "deadline");
+  assert.equal(settled.result, "player2", "the idle seat forfeited");
+  assert.equal(settled.resolutionReason, "forfeit");
   assert.equal(settled.p1State.ply, 40, "the refused move was never applied");
   assert.equal(fake.rowsOf(solitaireDuelMoves).length, 0);
   assert.equal(settlement.rating.length, 1);
@@ -578,38 +579,6 @@ test("race: a duplicate completion submit settles once and is refused the second
   assert.equal(rowOf(fake).result, "player1");
 });
 
-test("race: a completion at the deadline is a DEADLINE result, not a finish", { skip: SKIP_REASON }, async (t) => {
-  const fake = installMocks(t);
-  const store = await loadStore();
-
-  // Seat 1 is one move from solving AND the clock has already expired.
-  seedMatch(fake, {
-    p1State: boardOneMoveFromComplete(),
-    p2State: boardWithFoundationCards(4),
-    p1Ply: 100,
-    p2Ply: 10,
-    deadlineAt: new Date(NOW - 1),
-  });
-
-  const result = await store.submitMove({
-    userId: ALICE,
-    matchId: MATCH_ID,
-    move: FINAL_MOVE,
-    expectedPly: 100,
-    nowMs: NOW,
-  });
-  assert.equal(result.status, 409);
-
-  const row = rowOf(fake);
-  assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.result, "player1", "the leader still wins at the deadline");
-  assert.equal(row.resolutionReason, "deadline", "a post-deadline solve is not a finish");
-  // The move was NOT applied: the King is still on the tableau.
-  assert.equal(row.p1State.tableau[0].length, 1);
-  assert.equal(progressOf(row.p1State).foundationCards, 51);
-  assert.equal(settlement.rating.length, 1);
-});
-
 test("race: a dead heat on the completion instant is a draw — the tie-break ladder is pure", () => {
   const seat = (completedAtMs, foundationCards) => ({
     userId: null,
@@ -689,7 +658,7 @@ test("disconnect: both seats leaving, an empty lobby and a settled match each se
 
   // An open lobby: released, never settled.
   resetAll(fake);
-  seedMatch(fake, { status: MATCH_STATUS.WAITING, player2Id: null, goAt: null, deadlineAt: null });
+  seedMatch(fake, { status: MATCH_STATUS.WAITING, player2Id: null, goAt: null });
   const lobby = await store.forfeitMatchOnDisconnect({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
   assert.equal(lobby.cancelled, true);
   assert.equal(lobby.forfeited, false);
@@ -765,9 +734,9 @@ test("rematch: a settled match is never settled a second time by a re-read", { s
   await store.submitMove({ userId: ALICE, matchId: MATCH_ID, move: FINAL_MOVE, expectedPly: 100, nowMs: NOW });
   assert.equal(settlement.rating.length, 1);
 
-  // Reads, a due-resolution sweep and a disconnect all see a terminal row.
+  // Reads, an inactivity sweep and a disconnect all see a terminal row.
   await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW + 1 });
-  await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW + MATCH_LIMIT_MS + 1 });
+  await store.resolveInactivityDue({ matchId: MATCH_ID, nowMs: NOW + 60_000 });
   await store.forfeitMatchOnDisconnect({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW + 2 });
 
   assert.equal(settlement.rating.length, 1, "exactly one settlement, ever");

@@ -40,8 +40,6 @@ export function resolutionLabel(reason: unknown): string | null {
   switch (reason) {
     case RESOLUTION.FINISH:
       return "Puzzle solved";
-    case RESOLUTION.DEADLINE:
-      return "Time up — most progress wins";
     case RESOLUTION.FORFEIT:
       return "Won by forfeit";
     case RESOLUTION.DRAW:
@@ -113,11 +111,10 @@ export function penaltyLabel(penaltyMs: unknown): string {
 }
 
 /**
- * Remaining time as MM:SS, clamped at zero.
+ * A duration as MM:SS, clamped at zero.
  *
- * The match limit is ten minutes, so the zero-padded minutes read as a clock
- * ("09:58") rather than a stopwatch. Anchored to the server's deadline instant
- * by the caller — this only formats.
+ * The caller anchors it to the server's clock; this only formats. It is used for
+ * both the elapsed stopwatch and the inactivity-forfeit countdown.
  */
 export function clockLabel(remainingMs: unknown): string {
   const total = Math.max(0, Math.ceil((Number(remainingMs) || 0) / 1000));
@@ -177,8 +174,6 @@ export function tiebreakLabel(reason: unknown): string {
   switch (reason) {
     case RESOLUTION.FINISH:
       return "Fastest adjusted completion";
-    case RESOLUTION.DEADLINE:
-      return "Most cells at the final whistle";
     case RESOLUTION.FORFEIT:
       return "Opponent left the match";
     case RESOLUTION.DRAW:

@@ -251,15 +251,22 @@ test("flagTile keeps only CORRECT flags and reports the outcome to the caller", 
     /winnerId: userId,[\s\S]{0,40}?reason: WIN_REASON\.ALL_MINES_FLAGGED/,
   );
   // The verdict is computed server-side and only a CORRECT flag is kept in
-  // the seat's own set; a wrong flag still consumes the turn.
+  // the seat's own set; a wrong flag still consumes the turn. Both the human
+  // flag room and the AI flag share this one `applyFlag` body.
   const flagBody = SERVER_STORE.slice(
-    SERVER_STORE.indexOf("export async function flagTile"),
-    SERVER_STORE.indexOf("async function advanceTurn"),
+    SERVER_STORE.indexOf("async function applyFlag"),
+    SERVER_STORE.indexOf("async function playAiTurnInTransaction"),
   );
   assert.match(flagBody, /const flagIsMine = isMine\(match\.board, idx\);/);
   assert.match(flagBody, /flagIsMine \? withFlagForSeat\(match, seat, idx\) : \{\}/);
   assert.match(flagBody, /wrongFlag: !flagIsMine/);
   assert.doesNotMatch(flagBody, /loserId/);
+  // `flagTile` delegates to the shared body rather than duplicating it.
+  const flagTileBody = SERVER_STORE.slice(
+    SERVER_STORE.indexOf("export async function flagTile"),
+    SERVER_STORE.indexOf("async function applyFlag"),
+  );
+  assert.match(flagTileBody, /await applyFlag\(tx, match, \{ userId, seat, idx \}\)/);
 });
 
 test("reveal blocking ignores flag claims, and legacy mirrors skip flags", () => {
@@ -280,12 +287,12 @@ test("the flag route reports the caller's own set, the counters and the verdict"
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// AI — reveal-only bot that obeys the SAME server authority + shared clues
+// AI — a deducting bot that FLAGS provable mines and reveals safely
 // ════════════════════════════════════════════════════════════════════════
 
 test("AI turn: the bot follows the server turn rules and stamps the SAME public clue", () => {
   // Turn ownership: the bot only acts when the closed-form formula puts it up.
-  assert.match(STORE, /expectedPicker === match\.player2Id/);
+  assert.match(STORE, /expectedPicker !== match\.player2Id/);
   // Its reveal is stamped exactly like a human's — hint null on a mine, and
   // the server-computed PUBLIC clue on a safe cell.
   assert.match(
@@ -294,22 +301,38 @@ test("AI turn: the bot follows the server turn rules and stamps the SAME public 
   );
 });
 
-test("AI play is REVEAL-ONLY: the bot never writes a flag claim", () => {
-  // "All mines flagged" is a HUMAN claim strategy; the bot has none, so no AI
-  // path may touch the flag sets (adding that would be an unrequested feature).
+test("AI play decides between a flag and a reveal and applies the SAME pipeline", () => {
+  // One shared turn routine drives both the explicit endpoint and the status
+  // auto-advance, so the bot can never diverge between the two paths.
   const aiTurnBody = STORE.slice(
+    STORE.indexOf("async function playAiTurnInTransaction"),
+    STORE.indexOf("async function aiReveal"),
+  );
+  assert.ok(aiTurnBody.length > 0, "playAiTurnInTransaction body located");
+  assert.match(aiTurnBody, /chooseAiAction\(match\)/);
+  assert.match(aiTurnBody, /action\.kind === "flag"/);
+  // A flag goes through `applyFlag` (the human path), a reveal through the
+  // shared `aiReveal` / `applyPick` path.
+  assert.match(aiTurnBody, /await applyFlag\(tx, match, \{/);
+  assert.match(aiTurnBody, /aiReveal\(tx, match/);
+  // The exported endpoint delegates to that routine inside its own tx.
+  const playBody = STORE.slice(
     STORE.indexOf("export async function playAiTurn"),
     STORE.indexOf("// ── Create / Join matchmaking"),
   );
-  assert.ok(aiTurnBody.length > 0, "playAiTurn body located");
-  assert.doesNotMatch(aiTurnBody, /flagTile|withFlagForSeat|hasFlaggedAllMines/);
-  assert.doesNotMatch(aiTurnBody, /p1Flags|p2Flags/);
-  // The cell-selection policy returns only a cell index — it has no flag path.
-  const chooseBody = CONSTANTS.slice(
-    CONSTANTS.indexOf("export function chooseAiCell"),
-    CONSTANTS.indexOf("// ── Re-exports"),
+  assert.match(playBody, /await playAiTurnInTransaction\(tx, match\)/);
+});
+
+test("the AI policy proves mines from the clues and can flag them", () => {
+  assert.match(CONSTANTS, /export function deduceKnownMines\(/);
+  assert.match(CONSTANTS, /export function chooseAiAction\(/);
+  const actionBody = CONSTANTS.slice(
+    CONSTANTS.indexOf("export function chooseAiAction"),
+    CONSTANTS.indexOf("// ── Per-player mine counters"),
   );
-  assert.ok(chooseBody.length > 0, "chooseAiCell body located");
-  assert.doesNotMatch(chooseBody, /withFlagForSeat|hasFlaggedAllMines|flagTile/);
-  assert.match(chooseBody, /return \{\s*cellIndex:/);
+  assert.ok(actionBody.length > 0, "chooseAiAction body located");
+  assert.match(actionBody, /kind: "flag"/);
+  assert.match(actionBody, /kind: "reveal"/);
+  // Easy keeps its no-deduction reveal policy.
+  assert.match(actionBody, /tier !== "easy"/);
 });

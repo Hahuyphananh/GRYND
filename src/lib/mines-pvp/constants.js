@@ -676,11 +676,11 @@ export function aiPickDelayElapsed(match, now = Date.now()) {
   return now - ts >= AI_PICK_DELAY_MS;
 }
 
-// ── AI cell-selection strategy (reveal-only, deduction-driven) ────────
-// The bot reveals one tile per turn and never flags (flags are a human
-// strategy; the bot has no claim path). It reads exactly the SAME public
-// information a human sees — every revealed cell and its server-stamped
-// distance clue — and never peeks at the hidden board.
+// ── AI cell-selection strategy (deduction-driven reveal + flag) ───────
+// The bot reads exactly the SAME public information a human sees — every
+// revealed cell and its server-stamped distance clue — and never peeks at the
+// hidden board. On its turn it either REVEALS the safest cell or FLAGS a mine
+// it can prove from the clues (see `chooseAiAction`).
 //
 // For each unknown cell we estimate a RISK from the clues:
 //   • a clue of `h` on cell r proves NO mine sits within Chebyshev
@@ -715,7 +715,7 @@ function secureRandom() {
   return randomInt(0x100000000) / 0x100000000;
 }
 
-export function chooseAiCell(match, random = secureRandom) {
+export function chooseAiCell(match, random = secureRandom, extraExclude = []) {
   const picks = Array.isArray(match?.picks) ? match.picks : [];
   const exclude = new Set();
   const revealed = [];
@@ -727,6 +727,13 @@ export function chooseAiCell(match, random = secureRandom) {
     if (p?.flag) continue;
     exclude.add(cell);
     revealed.push({ cell, hint: Number(p?.hint) });
+  }
+  // Caller-supplied exclusions — used by `chooseAiAction` to keep the bot from
+  // ever REVEALING a cell it has already confirmed as a mine (which the server
+  // would treat as a guaranteed self-destruct).
+  for (const cell of extraExclude || []) {
+    const idx = Number(cell);
+    if (Number.isInteger(idx) && idx >= 0 && idx < GRID_CELLS) exclude.add(idx);
   }
 
   const available = [];
@@ -765,6 +772,117 @@ export function chooseAiCell(match, random = secureRandom) {
     random,
   );
   return { cellIndex: chosen ?? 0 };
+}
+
+// ── AI mine deduction (the flag half of the policy) ───────────────────
+// A safe reveal's clue of `h` at cell r proves two things: NO mine sits within
+// Chebyshev distance h-1 of r, and at least one mine sits EXACTLY on the
+// h-radius ring around r (the nearest mine). So if every still-unknown cell on
+// that ring but one is accounted for, the remaining cell must be a mine.
+//
+// The deduction is deliberately conservative — it only claims a mine when a
+// single candidate remains — so the bot never flags a safe tile from a guess.
+// `unknown` is the set of cells neither revealed nor already claimed; `flagged`
+// lets a mine already in the bot's own claim set stop being re-deduced without
+// blocking the inference for other clues. `revealed` is the public clue list.
+export function deduceKnownMines(revealed, unknown, flagged = []) {
+  const flaggedSet = flagged instanceof Set ? flagged : new Set(flagged || []);
+  const unknownCells = Array.isArray(unknown) ? unknown : [...unknown];
+  const mines = new Set();
+  for (const entry of revealed) {
+    const r = Number(entry?.cell);
+    const hint = Number(entry?.hint);
+    if (!Number.isInteger(r) || !Number.isInteger(hint) || hint < 1) continue;
+    let candidate = null;
+    let count = 0;
+    for (const cell of unknownCells) {
+      if (flaggedSet.has(cell)) continue;
+      if (chebyshevDistance(cell, r) !== hint) continue;
+      candidate = cell;
+      count += 1;
+      if (count > 1) break;
+    }
+    if (count !== 1 || candidate === null) continue;
+    // Never claim a cell another clue proves safe (defends against a malformed
+    // clue history rather than trusting one inference in isolation).
+    if (!isFrontierMine(candidate, revealed)) continue;
+    mines.add(candidate);
+  }
+  return [...mines].sort((a, b) => a - b);
+}
+
+/**
+ * True when `cell` sits exactly on the mine frontier of some clue — i.e. at
+ * distance exactly `hint` — which is the only place a mine can be relative to
+ * that clue. Used to keep `deduceKnownMines` from claiming a cell that another
+ * clue has already proven safe.
+ */
+function isFrontierMine(cell, revealed) {
+  for (const entry of revealed) {
+    const r = Number(entry?.cell);
+    const hint = Number(entry?.hint);
+    if (!Number.isInteger(r) || !Number.isInteger(hint) || hint < 1) continue;
+    const d = chebyshevDistance(cell, r);
+    if (d !== null && d < hint) return false; // provably safe
+  }
+  // Not provably safe from any clue. Require it to sit on at least one ring.
+  for (const entry of revealed) {
+    const r = Number(entry?.cell);
+    const hint = Number(entry?.hint);
+    if (!Number.isInteger(r) || !Number.isInteger(hint) || hint < 1) continue;
+    if (chebyshevDistance(cell, r) === hint) return true;
+  }
+  return false;
+}
+
+// ── AI action selection ───────────────────────────────────────────────
+// One action per turn, exactly like a human: either a REVEAL of the least
+// risky live cell or a FLAG of a mine the clues prove. `easy` never flags (it
+// ignores the clues entirely, mirroring its reveal policy); `normal` and `hard`
+// flag every provable mine, which both banks safe progress and drives toward
+// the "flag every mine" win condition. When no mine can be proven, the bot
+// falls back to its reveal policy, so it is never left without a move.
+//
+// Returns `{ kind: "flag" | "reveal", cellIndex }` — always a valid, legal
+// choice for the current board.
+export function chooseAiAction(match, random = secureRandom) {
+  const tier = coerceAiDifficulty(match?.aiDifficulty);
+  const picks = Array.isArray(match?.picks) ? match.picks : [];
+
+  const revealedSet = new Set();
+  const revealed = [];
+  for (const p of picks) {
+    const cell = Number(p?.cell);
+    if (!Number.isInteger(cell) || cell < 0 || cell >= GRID_CELLS) continue;
+    if (isFlagEntry(p)) continue;
+    revealedSet.add(cell);
+    revealed.push({ cell, hint: Number(p?.hint) });
+  }
+
+  const unknown = [];
+  for (let i = 0; i < GRID_CELLS; i += 1) {
+    if (!revealedSet.has(i)) unknown.push(i);
+  }
+
+  const flagged = new Set(normalizeFlags(match?.p2Flags));
+  for (const p of picks) {
+    if (!isFlagEntry(p)) continue;
+    if (p.userId !== MINES_AI_PLAYER_ID && p.seat !== "player2") continue;
+    const cell = Number(p?.cell);
+    if (Number.isInteger(cell) && cell >= 0 && cell < GRID_CELLS) flagged.add(cell);
+  }
+
+  if (tier !== "easy" && revealed.length > 0) {
+    const mines = deduceKnownMines(revealed, unknown, flagged);
+    if (mines.length > 0) {
+      const cellIndex = mines[Math.floor(random() * mines.length) % mines.length];
+      return { kind: "flag", cellIndex };
+    }
+  }
+
+  // Never reveal a cell the bot has already proven (and flagged) as a mine.
+  const { cellIndex } = chooseAiCell(match, random, [...flagged]);
+  return { kind: "reveal", cellIndex };
 }
 
 // ── Per-player mine counters ──────────────────────────────────────────

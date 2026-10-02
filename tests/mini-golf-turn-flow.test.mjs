@@ -256,3 +256,38 @@ test("a hand-off is not announced mid-rollout (it would eat the key)", () => {
   assert.match(announce, /if \(holeOverlay\) return;/);
   assert.match(announce, /if \(anim\) return;/);
 });
+
+// ── 6. The AI's turn is followed by a settle beat before any popup ───────
+//
+// The bot resolves its WHOLE run inside one poll, so its hole-result
+// interstitial — and the final result screen — used to appear the instant its
+// shot landed. Each now holds the finished board on screen, popup-free, for a
+// readable beat first.
+
+test("the bot's finished turn is held for a beat before the hole popup", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /const AI_TURN_BEAT_MS = \d+;/);
+  // The overlay is gated on a `presenting` flag so the board can be claimed
+  // (overlayRef) during the beat while the popup itself is still hidden.
+  assert.match(src, /presenting: delayMs <= 0/);
+  assert.match(src, /\{holeOverlay\?\.presenting && \(/);
+  // A bot completion passes the beat; a human completion still shows at once.
+  assert.match(src, /botFinish \? AI_TURN_BEAT_MS : 0/);
+  assert.match(src, /Boolean\(latest\?\.isAi\)/);
+});
+
+test("the final result screen waits for the board to settle, then a beat", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /const FINAL_RESULT_BEAT_MS = \d+;/);
+  assert.match(src, /const \[resultReady, setResultReady\] = useState\(false\);/);
+  const effect = src.slice(
+    src.indexOf("─ Result reveal"),
+    src.indexOf("const { incomingEmote, myEmote, sendEmote }"),
+  );
+  assert.ok(effect.length > 0, "the result-reveal effect must exist");
+  // It never reveals while a rollout or the hole interstitial owns the board.
+  assert.match(effect, /if \(anim \|\| holeOverlay\) return undefined;/);
+  assert.match(effect, /botFinish \? AI_TURN_BEAT_MS : FINAL_RESULT_BEAT_MS/);
+  // The screen renders only once that latch flips.
+  assert.match(src, /\{finished && resultReady && \(/);
+});

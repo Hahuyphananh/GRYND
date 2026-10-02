@@ -3,8 +3,9 @@
 // and as a recovery fallback from the client.
 //
 // AUTHORITY: the bot is not a client. It plays through the SAME
-// `playAiTurn` → `pickTile` → `applyPick` pipeline a human uses, so it gets
-// the same turn enforcement, row lock, first-pick mercy, sudden-death mine
+// `playAiTurn` → `applyPick` / `applyFlag` pipeline a human uses (a reveal of
+// the safest live cell, or a flag of a mine it can prove from the clues), so it
+// gets the same turn enforcement, row lock, first-pick mercy, sudden-death mine
 // handling and `winReason` stamping. There is deliberately no separate rules
 // engine for the AI.
 //

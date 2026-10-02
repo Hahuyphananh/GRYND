@@ -165,11 +165,22 @@ test("client: the outcome, the progress and the clock are the server's", () => {
   assert.match(src, /match\?\.progress/);
   assert.match(src, /match\?\.opponent/);
   assert.match(src, /progressLabel\(/);
-  // ...and the clock by the server's GO/deadline instants, anchored to the
-  // server's clock rather than the browser's.
+  // ...and the clock by the server's GO instant and the viewer's OWN
+  // inactivity clock, anchored to the server's clock rather than the browser's.
   assert.match(src, /skewRef\.current = serverNow - Date\.now\(\)/);
   assert.match(src, /goAtOverride \?\? match\?\.goAtMs/);
-  assert.match(src, /deadlineAtMs/);
+  assert.match(src, /match\?\.inactivityForfeitAtMs/);
+  assert.match(src, /match\?\.inactivityAlarmAtMs/);
+  // The 15-minute alarm is raised from the server's alarm instant.
+  assert.match(src, /solitaire-inactivity-alarm/);
+  // The clock is a stopwatch until the last five minutes, then the forfeit
+  // countdown — the switch point is driven by the 5-minute threshold.
+  assert.match(src, /data-mode=\{countdownActive \? "countdown" : "stopwatch"\}/);
+  assert.match(src, /INACTIVITY_COUNTDOWN_MS/);
+  assert.match(src, /IconStopwatch/);
+  // The opponent's own idle clock is surfaced to the active seat.
+  assert.match(src, /match\?\.opponentInactivityAlarmAtMs/);
+  assert.match(src, /solitaire-opponent-idle-alarm/);
   // No local winner arithmetic anywhere.
   assert.doesNotMatch(src, /winnerId\s*===.*user\?\.id\s*\?/, "no local winner compare");
 });

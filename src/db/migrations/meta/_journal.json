@@ -1247,6 +1247,27 @@
       "when": 1800000040000,
       "tag": "0196_sudoku_duel",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1800000041000,
+      "tag": "0197_duel_inactivity",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1800000042000,
+      "tag": "0198_drop_duel_deadlines",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1800000043000,
+      "tag": "0199_sudoku_duel_ai",
+      "breakpoints": true
     }
   ]
 }

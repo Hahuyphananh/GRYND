@@ -117,6 +117,33 @@ function userIdentityField(columns, columnName, defaultValue = "NULL") {
   return defaultValue;
 }
 
+/**
+ * Excludes rows whose recorded W/L record is larger than the number of games
+ * the account has actually recorded.
+ *
+ * Every legitimate result is written by applyLeaderboardCounters
+ * (src/lib/leaderboardCounters.js), which increments `total_bets` in the SAME
+ * statement as the win/loss it records — so `wins + losses <= total_bets`
+ * holds for every row the app ever produced. A row that violates it was
+ * written straight into the database (hand-seeded), and ranking it puts a
+ * fabricated record at the top of a board.
+ *
+ * The boards SKIP such rows rather than rewriting anyone's data: the account
+ * itself is left untouched, it simply doesn't rank. Returns "" when the
+ * columns needed to prove a violation aren't present (fail open — a schema
+ * without these columns can't be checked, and guessing would hide real
+ * players).
+ */
+export function recordSanityClause(columns) {
+  const required = ["wins", "losses", "total_bets"];
+  if (!required.every((name) => hasColumn(columns, "user_stats", name))) return "";
+
+  const wins = `COALESCE(s.wins, 0)`;
+  const losses = `COALESCE(s.losses, 0)`;
+  const games = `COALESCE(s.total_bets, 0)`;
+  return `(${wins} >= 0 AND ${losses} >= 0 AND (${wins} + ${losses}) <= ${games})`;
+}
+
 function winRateExpression({ wins, losses }) {
   return `
     CASE
@@ -397,6 +424,8 @@ async function fetchRankedRows({
   const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
   const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
+  // Drop hand-seeded, impossible records from every board (see the helper).
+  const conditions = [whereClause, recordSanityClause(columns)].filter(Boolean);
   const meClause =
     clerkId && hasColumn(columns, "users", "clerk_id")
       ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
@@ -422,7 +451,7 @@ async function fetchRankedRows({
         FROM user_stats s
         INNER JOIN users u ON u.id = s.user_id
         ${OVERALL_ELO_JOIN}
-        ${whereClause ? `WHERE ${whereClause}` : ""}
+        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
       ),
       paged AS (
         SELECT *

@@ -3529,9 +3529,13 @@ export const solitaireDuelMatches = pgTable(
     p2Revealed: integer("p2_revealed").notNull().default(0),
     p1FinishedAt: timestamp("p1_finished_at"),
     p2FinishedAt: timestamp("p2_finished_at"),
-    // Absolute server instants — never a per-client delay.
+    // The last accepted move per seat, for the inactivity rule. Null until the
+    // seat plays its first move, in which case GO is the baseline.
+    p1LastActionAt: timestamp("p1_last_action_at"),
+    p2LastActionAt: timestamp("p2_last_action_at"),
+    // Absolute server instants — never a per-client delay. The match is
+    // untimed, so there is no deadline column.
     goAt: timestamp("go_at"),
-    deadlineAt: timestamp("deadline_at"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3541,7 +3545,6 @@ export const solitaireDuelMatches = pgTable(
     statusIdx: index("solitaire_duel_matches_status_idx").on(table.status, table.createdAt),
     player1Idx: index("solitaire_duel_matches_player1_idx").on(table.player1Id, table.createdAt),
     player2Idx: index("solitaire_duel_matches_player2_idx").on(table.player2Id, table.createdAt),
-    dueIdx: index("solitaire_duel_matches_due_idx").on(table.status, table.deadlineAt),
   })
 );
 
@@ -3611,9 +3614,13 @@ export const sudokuDuelMatches = pgTable(
      *  vocabulary. `ready` is never entered: joining takes the match straight to
      *  `playing`, with a 3 → 2 → 1 → GO countdown before the first legal action. */
     status: varchar("status", { length: 20 }).notNull().default("waiting"),
-    // Reserved for a future practice bot so settlement can skip ratings; false
-    // for every human match.
+    // Marks a free practice match against the built-in bot so settlement skips
+    // ratings, trophies, win counters and the queue mirror; false for every
+    // human match.
     isAi: boolean("is_ai").notNull().default(false),
+    // The practice-bot tier ('easy' | 'normal' | 'hard'); NULL falls back to the
+    // documented default at read time. Mirrors solitaire_duel_matches.
+    aiDifficulty: varchar("ai_difficulty", { length: 16 }),
     // 'player1' | 'player2' | 'draw'. Null until the match settles.
     result: varchar("result", { length: 20 }),
     // finish | deadline | forfeit | draw — how the server ended it.
@@ -3644,9 +3651,13 @@ export const sudokuDuelMatches = pgTable(
     p2PenaltyMs: integer("p2_penalty_ms").notNull().default(0),
     p1FinishedAt: timestamp("p1_finished_at"),
     p2FinishedAt: timestamp("p2_finished_at"),
-    // Absolute server instants — never a per-client delay.
+    // The last accepted action per seat, for the inactivity rule. Null until the
+    // seat acts, in which case GO is the baseline.
+    p1LastActionAt: timestamp("p1_last_action_at"),
+    p2LastActionAt: timestamp("p2_last_action_at"),
+    // Absolute server instants — never a per-client delay. The match is
+    // untimed, so there is no deadline column.
     goAt: timestamp("go_at"),
-    deadlineAt: timestamp("deadline_at"),
     startedAt: timestamp("started_at"),
     endedAt: timestamp("ended_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3656,7 +3667,6 @@ export const sudokuDuelMatches = pgTable(
     statusIdx: index("sudoku_duel_matches_status_idx").on(table.status, table.createdAt),
     player1Idx: index("sudoku_duel_matches_player1_idx").on(table.player1Id, table.createdAt),
     player2Idx: index("sudoku_duel_matches_player2_idx").on(table.player2Id, table.createdAt),
-    dueIdx: index("sudoku_duel_matches_due_idx").on(table.status, table.deadlineAt),
   })
 );
 

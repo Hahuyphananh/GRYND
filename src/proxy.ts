@@ -196,6 +196,13 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+// RFC 8058 one-click unsubscribe is a cross-origin POST from a mail client and
+// is authorised by its HMAC-signed token (never a cookie), so the CSRF and
+// application/json content-type guards deliberately don't apply to it.
+const skipsCsrfGuards = (pathname: string) =>
+  pathname.startsWith("/api/webhooks/") ||
+  pathname === "/api/emails/unsubscribe";
+
 /**
  * User-level MFA gate (Settings → Account Security). When a signed-in user
  * has the self-hosted email-OTP second factor enabled, every app page (public
@@ -474,7 +481,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       }
     }
 
-    if (MUTATION_METHODS.has(req.method) && !pathname.startsWith("/api/webhooks/")) {
+    if (MUTATION_METHODS.has(req.method) && !skipsCsrfGuards(pathname)) {
       if (!isSameOriginMutation(req)) {
         auditLog("csrf_blocked", { ip, path: pathname, method: req.method });
         return applySecurityHeaders(
@@ -485,7 +492,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
       const contentType = req.headers.get("content-type") || "";
-      if (!contentType.includes("application/json") && !pathname.startsWith("/api/webhooks/")) {
+      if (!contentType.includes("application/json") && !skipsCsrfGuards(pathname)) {
         return applySecurityHeaders(
           NextResponse.json(
             {

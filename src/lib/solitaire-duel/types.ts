@@ -194,6 +194,6 @@ export type SeatRace = {
 
 export type RaceResult = "player1" | "player2" | "draw";
 
-export type RaceResolution = "finish" | "deadline" | "forfeit" | "draw";
+export type RaceResolution = "finish" | "forfeit" | "draw";
 
 export type RaceOutcome = { result: RaceResult; resolution: RaceResolution };

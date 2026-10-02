@@ -18,7 +18,7 @@
 // opponent — the same mapping Solitaire Duel uses.
 
 import type { ReactNode } from "react";
-import { IconClock } from "@tabler/icons-react";
+import { IconClock, IconStopwatch } from "@tabler/icons-react";
 
 import FrameAvatar from "../FrameAvatar";
 import { clockLabel, mistakeLabel } from "../../lib/sudoku-duel/ui";
@@ -108,8 +108,12 @@ export type CompetitiveHudProps = {
   opponentCompleted?: boolean;
   opponentName: string;
   opponentIdentity?: SeatIdentity;
-  /** Server-anchored remaining ms, or null before the clock exists. */
+  /** Server-anchored remaining ms until the FORFEIT, or null when untimed. */
   remainingMs: number | null;
+  /** Server-anchored elapsed ms since GO, for the stopwatch. */
+  elapsedMs?: number | null;
+  /** True in the last five minutes before the viewer's forfeit, so the clock counts down. */
+  countdownActive?: boolean;
   expired?: boolean;
   phaseLabel: string;
   phaseTone: "live" | "waiting" | "muted";
@@ -126,6 +130,8 @@ export default function CompetitiveHud({
   opponentName,
   opponentIdentity = null,
   remainingMs,
+  elapsedMs = null,
+  countdownActive = false,
   expired = false,
   phaseLabel,
   phaseTone,
@@ -134,7 +140,7 @@ export default function CompetitiveHud({
 
   const timerTone = expired
     ? "text-red-300 border-red-400/50 bg-red-500/10"
-    : remainingMs != null && remainingMs < 60_000
+    : countdownActive
       ? "text-amber-200 border-amber-400/50 bg-amber-500/10"
       : "text-white/85 border-white/15 bg-black/40";
 
@@ -159,11 +165,23 @@ export default function CompetitiveHud({
 
         <span
           data-testid="sudoku-timer"
+          data-mode={countdownActive ? "countdown" : "stopwatch"}
           data-remaining-ms={remainingMs ?? -1}
+          title={
+            countdownActive ? "Time until you forfeit for inactivity" : "Elapsed match time"
+          }
           className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 font-mono text-lg font-black tabular-nums ${timerTone}`}
         >
-          <IconClock size={16} aria-hidden="true" />
-          {remainingMs == null ? "--:--" : clockLabel(remainingMs)}
+          {countdownActive ? (
+            <IconClock size={16} aria-hidden="true" />
+          ) : (
+            <IconStopwatch size={16} aria-hidden="true" />
+          )}
+          {countdownActive
+            ? clockLabel(remainingMs ?? 0)
+            : elapsedMs == null
+              ? "--:--"
+              : clockLabel(elapsedMs)}
         </span>
       </div>
 

@@ -40,7 +40,7 @@ import type { Card, SolitaireMove, SolitaireState, Suit } from "./types";
  *
  * Measured from GO: the bot is allowed `floor(elapsed / delay)` moves, so a
  * slower tier simply solves the same deal later. Chosen against a typical
- * ~150-250 move solve so `hard` finishes well inside the 300 s limit, `normal`
+ * ~150-250 move solve so `hard` finishes well inside the 600 s limit, `normal`
  * usually does, and `easy` often does not (leaving it to the progress
  * tiebreak) — which is exactly the spread a difficulty picker promises.
  */

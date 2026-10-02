@@ -562,7 +562,7 @@ test("race: a live race resolves to nothing", () => {
   assert.equal(resolveRace({ player1: seat(), player2: seat() }), null);
 });
 
-test("race: a completion wins immediately, before any deadline", () => {
+test("race: a completion wins immediately", () => {
   const outcome = resolveRace({
     player1: seat({ completedAtMs: 1_000 }),
     player2: seat({ progress: { foundationCards: 40, revealedTableau: 28, progressPercent: 77 } }),
@@ -575,14 +575,12 @@ test("race: the earlier of two completions wins, unless they are a dead heat", (
   const early = resolveRace({
     player1: seat({ completedAtMs: 5_000 }),
     player2: seat({ completedAtMs: 5_400 }),
-    deadlineReached: true,
   });
   assert.deepEqual(early, { result: "player1", resolution: "finish" });
 
   const reversed = resolveRace({
     player1: seat({ completedAtMs: 5_400 }),
     player2: seat({ completedAtMs: 5_000 }),
-    deadlineReached: true,
   });
   assert.deepEqual(reversed, { result: "player2", resolution: "finish" });
 
@@ -590,7 +588,6 @@ test("race: the earlier of two completions wins, unless they are a dead heat", (
   const deadHeat = resolveRace({
     player1: seat({ completedAtMs: 5_000 }),
     player2: seat({ completedAtMs: 5_150 }),
-    deadlineReached: true,
   });
   assert.deepEqual(deadHeat, { result: "draw", resolution: "draw" });
 });
@@ -599,40 +596,24 @@ test("race: a forfeit decides for the opponent, whatever the boards say", () => 
   const outcome = resolveRace({
     player1: seat({ forfeited: true, ply: 30, progress: { foundationCards: 51, revealedTableau: 28, progressPercent: 98 } }),
     player2: seat({ ply: 1 }),
-    deadlineReached: true,
   });
   assert.deepEqual(outcome, { result: "player2", resolution: "forfeit" });
 });
 
-test("race: at the deadline the greater progress wins", () => {
+test("race: two forfeits are a draw", () => {
   const outcome = resolveRace({
-    player1: seat({ ply: 40, progress: { foundationCards: 12, revealedTableau: 20, progressPercent: 23 } }),
-    player2: seat({ ply: 40, progress: { foundationCards: 13, revealedTableau: 20, progressPercent: 25 } }),
-    deadlineReached: true,
-  });
-  assert.deepEqual(outcome, { result: "player2", resolution: "deadline" });
-});
-
-test("race: an exact tie at the deadline is a draw", () => {
-  const level = { foundationCards: 8, revealedTableau: 15, progressPercent: 15 };
-  const outcome = resolveRace({
-    player1: seat({ ply: 20, progress: { ...level } }),
-    player2: seat({ ply: 31, progress: { ...level } }),
-    deadlineReached: true,
+    player1: seat({ forfeited: true, ply: 4 }),
+    player2: seat({ forfeited: true, ply: 9 }),
   });
   assert.deepEqual(outcome, { result: "draw", resolution: "draw" });
 });
 
-test("race: a seat that never moved loses to one that did", () => {
-  const idle = resolveRace({
-    player1: seat({ ply: 0 }),
-    player2: seat({ ply: 3 }),
-    deadlineReached: true,
+test("race: an untimed live race resolves to nothing however far apart the boards are", () => {
+  const outcome = resolveRace({
+    player1: seat({ ply: 40, progress: { foundationCards: 12, revealedTableau: 20, progressPercent: 23 } }),
+    player2: seat({ ply: 40, progress: { foundationCards: 13, revealedTableau: 20, progressPercent: 25 } }),
   });
-  assert.deepEqual(idle, { result: "player2", resolution: "forfeit" });
-
-  const both = resolveRace({ player1: seat({ ply: 0 }), player2: seat({ ply: 0 }), deadlineReached: true });
-  assert.deepEqual(both, { result: "draw", resolution: "draw" });
+  assert.equal(outcome, null);
 });
 
 // ── 10. Replay and the viewer outcome ─────────────────────────────────────

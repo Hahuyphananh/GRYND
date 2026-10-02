@@ -329,6 +329,36 @@ export default function SettingsPageClient() {
     }
   };
 
+  // One-tap opt-out from every marketing email. Mirrors the unsubscribe link
+  // on the emails themselves: it turns all four preferences off at once (the
+  // server records the event for compliance). Security and payment mail is
+  // never affected.
+  const unsubscribeAll = async () => {
+    setPrefsSaving(true);
+    setPrefsMsg(null);
+    try {
+      const res = await fetch("/api/user/notification-preferences", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prefs: { promotions: false, daily: false, summary: false, progress: false },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPrefs({ ...data.prefs });
+        showToast("Unsubscribed from all marketing emails.", "success");
+      } else {
+        setPrefsMsg({ ok: false, text: data.error || "Failed to unsubscribe." });
+      }
+    } catch {
+      setPrefsMsg({ ok: false, text: "Failed to unsubscribe — try again." });
+    } finally {
+      setPrefsSaving(false);
+    }
+  };
+
   // The player's answers as displayable rows: the catalog's own question
   // order, labelled through the same keys the questionnaire renders. Only
   // questions with a valid saved answer are listed, so a partial profile can
@@ -631,6 +661,14 @@ export default function SettingsPageClient() {
                   className="rounded-xl border-b-4 border-[#0087a8] bg-[#00e5ff] px-5 py-2 text-sm font-extrabold text-[#001a2e] transition hover:brightness-110 disabled:opacity-60"
                 >
                   {prefsSaving ? "Saving…" : "Save preferences"}
+                </button>
+                <button
+                  type="button"
+                  onClick={unsubscribeAll}
+                  disabled={prefsSaving}
+                  className="rounded-xl border border-[#00e5ff]/40 bg-transparent px-5 py-2 text-sm font-semibold text-[#c9f7ff] transition hover:bg-[#00e5ff]/10 disabled:opacity-60"
+                >
+                  Unsubscribe from all emails
                 </button>
                 {prefsMsg && (
                   <span className={`text-sm ${prefsMsg.ok ? "text-emerald-300" : "text-red-300"}`}>

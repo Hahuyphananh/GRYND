@@ -144,8 +144,8 @@ export type Seats = { player1Id: string; player2Id: string | null };
  *
  * The time facts are all SERVER instants, written by the store, never by a
  * client: `completedAtMs` decides a photo finish, and `progressAtMs` is the
- * instant the competitive metric last increased — the deterministic tiebreak at
- * the deadline.
+ * instant the competitive metric last increased — the deterministic tiebreak
+ * between two otherwise level boards.
  */
 export type SudokuSeatState = {
   /** Givens + correctly placed values; `EMPTY` everywhere else. */
@@ -213,7 +213,7 @@ export type SudokuSeatRace = {
 
 export type SudokuRaceResult = "player1" | "player2" | "draw";
 
-export type SudokuRaceResolution = "finish" | "deadline" | "forfeit" | "draw";
+export type SudokuRaceResolution = "finish" | "forfeit" | "draw";
 
 export type SudokuRaceOutcome = {
   result: SudokuRaceResult;

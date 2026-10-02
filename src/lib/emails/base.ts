@@ -7,6 +7,7 @@ import {
   type NotificationPrefs,
 } from "../../db/schema";
 import { and, eq, gte } from "drizzle-orm";
+import { buildUnsubscribeUrl, withUnsubscribeFooter } from "./unsubscribe";
 
 /** Maximum time (ms) to wait for a DB query before skipping it */
 const DB_TIMEOUT_MS = 5_000;
@@ -150,6 +151,22 @@ export async function sendEmailSafely({
     }
   }
 
+  // ── One-click unsubscribe (marketing only) ────────────────────
+  // Marketing mail carries a signed unsubscribe footer + RFC 8058 headers so
+  // recipients can opt out from the email itself, without logging in. Security
+  // and transactional mail (OTPs, receipts, alerts) is never made unsubscribable.
+  const isMarketing = category === "marketing";
+  const canUnsubscribe = isMarketing && Boolean(user.clerkId);
+  const finalHtml = canUnsubscribe
+    ? withUnsubscribeFooter(html, user.clerkId as string)
+    : html;
+  const headers = canUnsubscribe
+    ? {
+        "List-Unsubscribe": `<${buildUnsubscribeUrl(user.clerkId as string)}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      }
+    : undefined;
+
   // ── Send email (always, regardless of DB state) ───────────────
   let error: { message?: string; name?: string } | null = null;
   try {
@@ -157,7 +174,8 @@ export async function sendEmailSafely({
       from: from ?? getFromAddress(),
       to: user.email,
       subject,
-      html,
+      html: finalHtml,
+      ...(headers ? { headers } : {}),
     });
     error = result.error;
     if (error) {

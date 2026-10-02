@@ -101,6 +101,20 @@ const HOLE_RESULT_MS = 2600;
  * turn at all.
  */
 const TURN_CALL_MS = 1500;
+/**
+ * The settle beat after the AI's turn before a popup may cover the board.
+ *
+ * The bot resolves its whole run inside ONE poll, so without this the hole-result
+ * interstitial (or the final result screen) appeared the instant its shot
+ * landed — the player never got to watch the ball rest. This holds the finished
+ * board on screen, popup-free, for one readable beat first.
+ */
+const AI_TURN_BEAT_MS = 1100;
+/**
+ * A short beat after ANY finishing shot before the final result screen takes
+ * over, so the last rollout is always seen rather than covered mid-flight.
+ */
+const FINAL_RESULT_BEAT_MS = 600;
 
 const cloneBalls = (balls: any): Record<Seat, BallView> | null => {
   if (!balls) return null;
@@ -139,7 +153,12 @@ export default function MiniGolfMatchPage() {
     player1: number;
     player2: number;
     winner: HoleWinner | null;
+    /** False while the board is held after the shot, before the popup shows. */
+    presenting: boolean;
   } | null>(null);
+  // Latches true once the finished match's board has settled and its beat has
+  // elapsed, so the result screen never covers the final shot. Reset per match.
+  const [resultReady, setResultReady] = useState(false);
   // The "whose turn" announcement. Keyed, so a poll returning the same state
   // never re-announces a turn it already announced.
   const [turnCall, setTurnCall] = useState<{
@@ -170,6 +189,8 @@ export default function MiniGolfMatchPage() {
   const hydratedRef = useRef(false);
   const lastAnimatedSeqRef = useRef(-1);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Delays a hole-result popup behind its settle beat (see `showHoleResult`). */
+  const holeDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What owns the board right now. `animRef`/`overlayRef` are read inside the
   // RAF loop and the timers so they never see a stale closure; `queuedAnimRef`
   // holds the NEXT authoritative shot so a newer snapshot can never abort a
@@ -216,12 +237,17 @@ export default function MiniGolfMatchPage() {
     setRenderBalls(null);
     setAnim(null);
     setHoleOverlay(null);
+    setResultReady(false);
     setAim({ angle: 270, power: 50 });
     setAimLocked(false);
     setLoadError(null);
     if (overlayTimerRef.current) {
       clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = null;
+    }
+    if (holeDelayTimerRef.current) {
+      clearTimeout(holeDelayTimerRef.current);
+      holeDelayTimerRef.current = null;
     }
     if (turnCallTimerRef.current) {
       clearTimeout(turnCallTimerRef.current);
@@ -353,8 +379,11 @@ export default function MiniGolfMatchPage() {
       hole: number,
       score: { player1: number; player2: number } | null | undefined,
       winner: HoleWinner | null,
+      /** Settle beat before the popup appears (0 = show it at once). */
+      delayMs = 0,
     ) => {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      if (holeDelayTimerRef.current) clearTimeout(holeDelayTimerRef.current);
       // Idempotent per hole: the shooter's shot and the opponent's completing
       // shot can both resolve to the SAME hole, and it must read once.
       shownHolesRef.current.add(hole);
@@ -364,22 +393,38 @@ export default function MiniGolfMatchPage() {
         player2: Number(score?.player2) || 0,
         winner,
       };
+      // The board is claimed IMMEDIATELY (overlayRef), even during the settle
+      // beat, so no poll or queued rollout can run the next turn behind it. The
+      // popup itself stays hidden until `presenting` flips true.
       overlayRef.current = overlay;
-      setHoleOverlay(overlay);
-      overlayTimerRef.current = setTimeout(() => {
-        overlayTimerRef.current = null;
-        overlayRef.current = null;
-        // Dropping the overlay is what moves the view on when nothing else is
-        // queued: the rendered hole is derived from the snapshot, so it
-        // advances by itself the moment the interstitial goes away. Anything
-        // that arrived while it was up then plays.
-        setHoleOverlay(null);
-        setRenderBalls(cloneBalls(matchRef.current?.balls));
-        playQueuedRollout();
-        // The interstitial is gone — if the opponent/AI moved (or was queued)
-        // while it was up, fetch now so their turn gets its own visible beat.
-        flushPendingRefresh();
-      }, HOLE_RESULT_MS);
+      setHoleOverlay({ ...overlay, presenting: delayMs <= 0 });
+
+      const present = () => {
+        holeDelayTimerRef.current = null;
+        setHoleOverlay((prev) =>
+          prev && prev.hole === hole ? { ...prev, presenting: true } : prev,
+        );
+        overlayTimerRef.current = setTimeout(() => {
+          overlayTimerRef.current = null;
+          overlayRef.current = null;
+          // Dropping the overlay is what moves the view on when nothing else is
+          // queued: the rendered hole is derived from the snapshot, so it
+          // advances by itself the moment the interstitial goes away. Anything
+          // that arrived while it was up then plays.
+          setHoleOverlay(null);
+          setRenderBalls(cloneBalls(matchRef.current?.balls));
+          playQueuedRollout();
+          // The interstitial is gone — if the opponent/AI moved (or was queued)
+          // while it was up, fetch now so their turn gets its own visible beat.
+          flushPendingRefresh();
+        }, HOLE_RESULT_MS);
+      };
+
+      if (delayMs > 0) {
+        holeDelayTimerRef.current = setTimeout(present, delayMs);
+      } else {
+        present();
+      }
     },
     [playQueuedRollout, flushPendingRefresh],
   );
@@ -407,10 +452,17 @@ export default function MiniGolfMatchPage() {
               ? { ...prev, [finished.seat]: { x: end.x, y: end.y, holedOut: finished.pocketed } }
               : prev,
           );
+          // Hold the AI's finished turn for a beat before its popup: the bot
+          // resolves its whole run inside one poll, so without this the
+          // hole-result interstitial appeared the instant its shot landed.
+          const botFinish =
+            Boolean(latest?.isAi) &&
+            finished.seat !== (latest?.viewerSeat as Seat | null);
           showHoleResult(
             finished.hole,
             latest.holeScores?.[finished.hole - 1],
             latest.holeWinners?.[finished.hole - 1] ?? null,
+            botFinish ? AI_TURN_BEAT_MS : 0,
           );
           return;
         }
@@ -483,6 +535,7 @@ export default function MiniGolfMatchPage() {
   useEffect(
     () => () => {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      if (holeDelayTimerRef.current) clearTimeout(holeDelayTimerRef.current);
       if (turnCallTimerRef.current) clearTimeout(turnCallTimerRef.current);
     },
     [],
@@ -751,6 +804,26 @@ export default function MiniGolfMatchPage() {
       setTurnCall(null);
     }, TURN_CALL_MS);
   }, [match, finished, cancelled, holeOverlay, anim, viewerSeat, opponentSeat, seats.opponent?.name]);
+
+  // ── Result reveal ─────────────────────────────────────────────────────
+  // The final screen must never cover the final shot. Once the match is
+  // finished, wait until the board is free (no rollout, no hole-result
+  // interstitial), then hold a short beat — longer when the finishing shot was
+  // the AI's — before handing over to the result screen.
+  useEffect(() => {
+    if (!finished) {
+      setResultReady(false);
+      return undefined;
+    }
+    if (anim || holeOverlay) return undefined;
+    const botFinish =
+      Boolean(match?.isAi) && match?.lastShot?.seat !== viewerSeat;
+    const timer = setTimeout(
+      () => setResultReady(true),
+      botFinish ? AI_TURN_BEAT_MS : FINAL_RESULT_BEAT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [finished, anim, holeOverlay, match?.isAi, match?.lastShot?.seat, viewerSeat]);
 
   const { incomingEmote, myEmote, sendEmote } = useGameEmotes({
     socket,
@@ -1288,7 +1361,7 @@ export default function MiniGolfMatchPage() {
 
           {/* ── Hole result interstitial ───────────────────────────── */}
           <AnimatePresence>
-            {holeOverlay && (
+            {holeOverlay?.presenting && (
               <motion.div
                 key={`hole-result-${holeOverlay.hole}`}
                 initial={{ opacity: 0 }}
@@ -1374,7 +1447,7 @@ export default function MiniGolfMatchPage() {
           </AnimatePresence>
 
           {/* ── Result ─────────────────────────────────────────────── */}
-          {finished && (
+          {finished && resultReady && (
             <PvpResultScreen
               open
               outcome={outcome}

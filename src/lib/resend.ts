@@ -54,6 +54,10 @@ export const resend = {
             to: opts.to,
             subject: opts.subject,
             html: opts.html,
+            // Propagate custom headers (List-Unsubscribe / -Post, etc.) so the
+            // SMTP fallback keeps the same one-click unsubscribe affordance
+            // mail clients get from the Resend API path.
+            headers: opts.headers,
           });
           return { data: { id: info.messageId }, error: null } as any;
         } catch (err) {

@@ -41,18 +41,22 @@ import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLife
 import {
   ACTION_CODES,
   DEFAULT_DIFFICULTY,
-  MATCH_LIMIT_MS,
+  INACTIVITY_ALARM_MS,
+  INACTIVITY_FORFEIT_MS,
   MATCH_STATUS,
   MAX_MOVES_PER_SEAT,
   READY_COUNTDOWN_MS,
   RESOLUTION,
   RESULT,
   SEAT,
+  SUDOKU_DUEL_AI_PLAYER_ID,
   SUDOKU_DUEL_LOCK_NAMESPACE,
   TERMINAL_STATUSES,
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
+import { coerceAiDifficulty } from "../aiDifficulty";
+import { aiMoveDelayMs, planAiMoves } from "./ai";
 import { coerceSudokuDifficulty, generatePuzzle } from "./generator";
 import {
   cloneSeatState,
@@ -65,6 +69,7 @@ import {
   normalizeAction,
   opponentProgressFor,
   otherSeat,
+  progressOf,
   raceFactsFor,
   resolveSudokuRace,
   seatForUser,
@@ -195,6 +200,72 @@ function raceFor(match: MatchRow, seat: Seat, forfeited = false): SudokuSeatRace
   });
 }
 
+// ── Inactivity (the untimed match's one rule) ─────────────────────────────
+
+/** A seat's own last accepted action instant, or null before its first action. */
+function lastActionMsForSeat(match: MatchRow, seat: Seat): number | null {
+  const raw = seat === SEAT.PLAYER1 ? match.p1LastActionAt : match.p2LastActionAt;
+  return instantMs(raw);
+}
+
+/** What a seat's inactivity is measured from: its last action, else GO. */
+function inactivityBaselineMs(match: MatchRow, seat: Seat): number | null {
+  const goAtMs = instantMs(match.goAt) ?? instantMs(match.startedAt);
+  return lastActionMsForSeat(match, seat) ?? goAtMs;
+}
+
+/** The instant a threshold fires for `seat`, or null before the clock starts. */
+function inactivityAtMs(
+  match: MatchRow,
+  seat: Seat | null,
+  thresholdMs: number,
+): number | null {
+  // A practice match is fully untimed: the human may think as long as they like,
+  // so no inactivity clock is even projected for it.
+  if (!seat || match.isAi) return null;
+  const base = inactivityBaselineMs(match, seat);
+  return base == null ? null : base + thresholdMs;
+}
+
+function inactivityMsForSeat(match: MatchRow, seat: Seat, nowMs: number): number | null {
+  const base = inactivityBaselineMs(match, seat);
+  return base == null ? null : Math.max(0, nowMs - base);
+}
+
+/**
+ * The seat that has gone inactive past the forfeit threshold, or null.
+ *
+ * Per seat and measured from that seat's own last action, so one player's
+ * activity can never keep the other's clock alive. A seat that already completed
+ * is never forfeited. When BOTH seats are past the threshold the more idle one
+ * loses, and an exact tie (two seats that never acted, checked at the same
+ * instant) is a draw rather than an arbitrary winner.
+ */
+function inactivityForfeitSeat(match: MatchRow, nowMs: number): Seat | "both" | null {
+  // A practice match is never forfeited for inactivity — it has no clock at all.
+  if (match.isAi) return null;
+  if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return null;
+  const idle1 = inactivityMsForSeat(match, SEAT.PLAYER1, nowMs);
+  const idle2 = inactivityMsForSeat(match, SEAT.PLAYER2, nowMs);
+  const done1 = Boolean(stateForSeat(match, SEAT.PLAYER1)?.completed);
+  const done2 = Boolean(stateForSeat(match, SEAT.PLAYER2)?.completed);
+  const due1 = !done1 && idle1 != null && idle1 >= INACTIVITY_FORFEIT_MS;
+  const due2 = !done2 && idle2 != null && idle2 >= INACTIVITY_FORFEIT_MS;
+  if (!due1 && !due2) return null;
+  if (due1 && due2) {
+    if (idle1 === idle2) return "both";
+    return (idle1 as number) > (idle2 as number) ? SEAT.PLAYER1 : SEAT.PLAYER2;
+  }
+  return due1 ? SEAT.PLAYER1 : SEAT.PLAYER2;
+}
+
+/** The per-seat column write that resets a seat's inactivity clock. */
+function seatLastActionPatchFor(seat: Seat, nowMs: number) {
+  return seat === SEAT.PLAYER1
+    ? { p1LastActionAt: new Date(nowMs) }
+    : { p2LastActionAt: new Date(nowMs) };
+}
+
 /**
  * The per-seat column write for one accepted action.
  *
@@ -248,7 +319,8 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
   const terminal = TERMINAL_STATUSES.includes(match.status);
   const revealed = match.status === MATCH_STATUS.PLAYING || terminal;
   const ownState = seat ? stateForSeat(match, seat) : null;
-  const otherState = seat ? stateForSeat(match, otherSeat(seat)) : null;
+  const opponentSeat = seat ? otherSeat(seat) : null;
+  const otherState = opponentSeat ? stateForSeat(match, opponentSeat) : null;
   const puzzle = puzzleForMatch(match);
 
   return {
@@ -263,6 +335,10 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     winnerId: match.winnerId ?? null,
     seat,
     isParticipant: Boolean(seat),
+    // A free practice match against the bot. The opponent panel uses it to
+    // label the seat "GRYND AI" and the result screen to skip the rated copy.
+    isAi: Boolean(match.isAi),
+    aiDifficulty: match.isAi ? coerceAiDifficulty(match.aiDifficulty) : null,
     // The commitment is public from creation; the seed itself is only revealed
     // once the match is terminal, so the puzzle can be verified after the fact.
     seedHash: match.serverSeedHash,
@@ -274,7 +350,15 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     // affected by it.
     puzzleSeed: terminal ? Number(match.puzzleSeed) >>> 0 : null,
     goAtMs: instantMs(match.goAt),
-    deadlineAtMs: instantMs(match.deadlineAt),
+    // The viewer's OWN inactivity clock: last action (or GO) plus each threshold.
+    // Derived per viewer, so a client can raise its own alarm, and a read can
+    // resolve the forfeit server-side.
+    inactivityAlarmAtMs: inactivityAtMs(match, seat, INACTIVITY_ALARM_MS),
+    inactivityForfeitAtMs: inactivityAtMs(match, seat, INACTIVITY_FORFEIT_MS),
+    // The OPPONENT's inactivity clock, so the active seat can be told the other
+    // side is about to forfeit. Null in a waiting lobby and in practice.
+    opponentInactivityAlarmAtMs: inactivityAtMs(match, opponentSeat, INACTIVITY_ALARM_MS),
+    opponentInactivityForfeitAtMs: inactivityAtMs(match, opponentSeat, INACTIVITY_FORFEIT_MS),
     startedAtMs: instantMs(match.startedAt),
     endedAtMs: instantMs(match.endedAt),
     createdAtMs: instantMs(match.createdAt),
@@ -293,8 +377,8 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     mistakeCount: ownState?.mistakes ?? 0,
     penaltyMs: ownState?.penaltyMs ?? 0,
     opponent:
-      revealed && otherState && seat
-        ? opponentProgressFor(otherSeat(seat), puzzle.puzzle, puzzle.solution, otherState)
+      revealed && otherState && opponentSeat
+        ? opponentProgressFor(opponentSeat, puzzle.puzzle, puzzle.solution, otherState)
         : null,
   };
 }
@@ -462,9 +546,9 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
  *
  * NOTHING about the puzzle is touched here: seat 2's board already holds its copy
  * of the shared clues, so joining cannot introduce a second puzzle. The only work
- * is the synchronized clock — an absolute GO instant plus a deadline, both on the
- * server's clock. Actions before `go_at` are refused, so the countdown is a shared
- * planning window rather than dead time.
+ * is the synchronized clock — an absolute GO instant on the server's clock, from
+ * which both seats' inactivity clocks start. Actions before `go_at` are refused,
+ * so the countdown is a shared planning window rather than dead time.
  */
 async function joinExistingMatch(tx: any, candidateId: string, userId: string, nowMs: number) {
   const [match] = await tx
@@ -485,7 +569,11 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string, n
       player2Id: userId,
       status: MATCH_STATUS.PLAYING,
       goAt: new Date(goAtMs),
-      deadlineAt: new Date(goAtMs + MATCH_LIMIT_MS),
+      // Both seats' inactivity clocks start at GO. No deadline is armed: the
+      // match is untimed and only ends by completion, forfeit, disconnect or
+      // the inactivity rule in `resolveInactivityDue`.
+      p1LastActionAt: new Date(goAtMs),
+      p2LastActionAt: new Date(goAtMs),
       startedAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })
@@ -513,15 +601,225 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string, n
   return { match: updated, joined: true } as const;
 }
 
+// ── Practice bot ──────────────────────────────────────────────────────────
+
+/**
+ * Start a free practice match against the built-in bot.
+ *
+ * Practice is UNRATED: the row is `isAi`, so finalization skips ratings,
+ * trophies, win counters and the queue mirror entirely, and it never enters the
+ * open lobby pool (the bot occupies player2 immediately). The bot is also
+ * untimed: `inactivityAtMs` / `inactivityForfeitSeat` both short-circuit on
+ * `isAi`, so the human may think as long as they like and only the bot's
+ * completion can end the match from its side.
+ *
+ * NOTHING about the puzzle is special-cased: the same server seed → puzzle seed
+ * → generator path as a real lobby runs here, and the bot races the SAME puzzle
+ * from player2. The only additions are the `playing` status, the chosen tier and
+ * the synchronized GO clock, so the human gets the identical countdown a joined
+ * lobby would have.
+ */
+export async function createAiMatch({
+  userId,
+  difficulty,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  difficulty?: unknown;
+  nowMs?: number;
+}) {
+  const tier = coerceAiDifficulty(difficulty);
+
+  const serverSeed = randomHex(32);
+  const serverSeedHash = getServerSeedHash(serverSeed);
+  const puzzleSeed = derivePuzzleSeed({ serverSeed, variantVersion: VARIANT_VERSION });
+  const generated = generatePuzzle({
+    seed: puzzleSeed,
+    difficulty: DEFAULT_DIFFICULTY,
+    variantVersion: VARIANT_VERSION,
+  });
+
+  const opening = initialStateFromPuzzle(generated.puzzle);
+  const goAtMs = nowMs + READY_COUNTDOWN_MS;
+
+  const [match] = await db
+    .insert(sudokuDuelMatches)
+    .values({
+      variant: VARIANT,
+      variantVersion: VARIANT_VERSION,
+      difficulty: generated.difficulty,
+      player1Id: userId,
+      player2Id: SUDOKU_DUEL_AI_PLAYER_ID,
+      status: MATCH_STATUS.PLAYING,
+      isAi: true,
+      aiDifficulty: tier,
+      serverSeed,
+      serverSeedHash,
+      puzzleSeed,
+      puzzle: generated.puzzle,
+      solution: generated.solution,
+      givens: generated.givens,
+      p1State: opening,
+      p2State: cloneSeatState(opening),
+      p1Ply: 0,
+      p2Ply: 0,
+      p1Correct: 0,
+      p2Correct: 0,
+      p1Mistakes: 0,
+      p2Mistakes: 0,
+      p1PenaltyMs: 0,
+      p2PenaltyMs: 0,
+      goAt: new Date(goAtMs),
+      // Both seats' inactivity clocks start at GO (the bot's is never read).
+      p1LastActionAt: new Date(goAtMs),
+      p2LastActionAt: new Date(goAtMs),
+      startedAt: new Date(nowMs),
+    })
+    .returning();
+
+  return { match } as const;
+}
+
+/**
+ * Advance the practice bot's board to the server's current instant.
+ *
+ * THE BOT'S TURN. Sudoku Duel is simultaneous, so the bot is paced by the clock
+ * rather than by a turn hand-off: at `nowMs` it is allowed
+ * `floor((nowMs - goAt) / delay)` actions, and this plays that many derived
+ * placements in one pass (or until the puzzle is solved). Calling it on every
+ * read is what guarantees the bot genuinely plays and can never be skipped —
+ * its progress does not depend on a client calling an endpoint.
+ *
+ * Each action is judged by the SAME `judgeAction` a human's action goes through,
+ * at the SIMULATED instant the move was "due" (`goAt + ply × delay`), so the
+ * bot's completion instant is the instant it actually solved the shared puzzle
+ * rather than the instant a read happened to run — which is what lets a photo
+ * finish be decided fairly.
+ *
+ * Idempotent and monotonic: a no-op for a non-AI row, an unstarted row, or a
+ * call that lands between two of the bot's moves. A write happens only when at
+ * least one action was played, and the completion is finalized inside the same
+ * transaction.
+ */
+export async function advanceAiMatch({
+  matchId,
+  nowMs = Date.now(),
+}: {
+  matchId: string;
+  nowMs?: number;
+}) {
+  return await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(sudokuDuelMatches)
+      .where(eq(sudokuDuelMatches.id, matchId))
+      .for("update");
+
+    if (!match) return err("Match not found", 404);
+    if (!match.isAi || match.status !== MATCH_STATUS.PLAYING || !match.player2Id) {
+      return { match, advanced: false } as const;
+    }
+
+    const goAtMs = instantMs(match.goAt);
+    if (goAtMs == null || nowMs < goAtMs) return { match, advanced: false } as const;
+
+    const seat = SEAT.PLAYER2;
+    const state = stateForSeat(match, seat);
+    if (!state || !isWellFormedSeatState(state) || state.completed) {
+      return { match, advanced: false } as const;
+    }
+
+    const delayMs = aiMoveDelayMs(match.aiDifficulty);
+    const allowedPly = Math.floor((nowMs - goAtMs) / delayMs);
+    const maxMoves = Math.max(
+      0,
+      Math.min(allowedPly - state.ply, MAX_MOVES_PER_SEAT - state.ply),
+    );
+    if (maxMoves <= 0) return { match, advanced: false } as const;
+
+    const puzzle = puzzleForMatch(match);
+    const startPly = state.ply;
+    let current = cloneSeatState(state);
+    const played: SudokuAction[] = [];
+
+    for (let n = 0; n < maxMoves; n += 1) {
+      const plan = planAiMoves({ grid: current.grid, maxMoves: 1 });
+      const action = plan.actions[0];
+      if (!action) break;
+      const judged = judgeAction({
+        puzzle: puzzle.puzzle,
+        solution: puzzle.solution,
+        state: current,
+        action,
+        nowMs: goAtMs + (startPly + n + 1) * delayMs,
+      });
+      const rejection = failureOf(judged);
+      if (rejection) break;
+      const ok = judged as {
+        ok: true;
+        state: SudokuSeatState;
+        progress: SudokuProgress;
+      };
+      current = ok.state;
+      played.push(action);
+      if (current.completed) break;
+    }
+
+    if (played.length === 0) return { match, advanced: false } as const;
+
+    for (let n = 0; n < played.length; n += 1) {
+      await tx.insert(sudokuDuelMoves).values({
+        matchId: match.id,
+        seat,
+        ply: startPly + n,
+        kind: played[n].kind,
+        action: played[n],
+      });
+    }
+
+    const progress = progressOf(puzzle.puzzle, current.grid, puzzle.solution);
+    const [updated] = await tx
+      .update(sudokuDuelMatches)
+      .set({
+        ...seatPatchFor(seat, current, progress.correctEntries),
+        // Every bot action resets the bot's own inactivity clock.
+        p2LastActionAt: new Date(nowMs),
+        ...(current.completed && !state.completed
+          ? { p2FinishedAt: new Date(current.completedAtMs ?? nowMs) }
+          : {}),
+        updatedAt: new Date(nowMs),
+      })
+      .where(eq(sudokuDuelMatches.id, match.id))
+      .returning();
+
+    const changed = updated ?? match;
+    let finalRow = changed;
+    const outcome = resolveSudokuRace({
+      player1: raceFor(changed, SEAT.PLAYER1),
+      player2: raceFor(changed, SEAT.PLAYER2),
+    });
+    if (outcome) finalRow = await finalizeMatch(tx, changed, outcome, nowMs);
+
+    return { match: finalRow, advanced: true } as const;
+  });
+}
+
+/** Advance the bot (when the row is a practice match) and return the row. */
+async function advanceAiIfPractice(match: MatchRow, nowMs: number): Promise<MatchRow> {
+  if (!match.isAi || match.status !== MATCH_STATUS.PLAYING) return match;
+  const advanced = await advanceAiMatch({ matchId: match.id, nowMs });
+  return "error" in advanced ? match : advanced.match;
+}
+
 // ── Reads ─────────────────────────────────────────────────────────────────
 
 /**
  * The authoritative snapshot for the calling participant.
  *
- * A match past its deadline is resolved ON READ, so a match can never be left
- * live just because nobody happened to move — the same lazy-resolution pattern
- * Solitaire Duel and Speed Typing use. Non-participants get a 403; there is no
- * spectator mode.
+ * A match in which a seat has gone inactive is resolved ON READ, so a match can
+ * never be left live just because nobody happened to move — the same
+ * lazy-resolution pattern Solitaire Duel and Speed Typing use. Non-participants
+ * get a 403; there is no spectator mode.
  */
 export async function fetchMatch({
   userId,
@@ -544,8 +842,15 @@ export async function fetchMatch({
     return err("Not a participant of this match", 403);
   }
 
-  if (isDeadlineDue(match, nowMs)) {
-    await resolveDueMatch({ matchId, nowMs });
+  // For a practice match the bot is advanced to NOW first, so every poll shows
+  // its live board progress (and finalizes the match the instant it solves the
+  // puzzle). A human row is untouched by this step.
+  match = await advanceAiIfPractice(match, nowMs);
+
+  // An untimed match is resolved on READ when a seat has gone inactive, so a
+  // match can never be left live just because the idle seat stopped polling.
+  if (isInactivityDue(match, nowMs)) {
+    await resolveInactivityDue({ matchId, nowMs });
     [match] = await db
       .select()
       .from(sudokuDuelMatches)
@@ -666,11 +971,9 @@ export async function settlementForMatch({
   return { outcome, elo: movement(rating), trophies: movement(trophy) };
 }
 
-/** True when a live match has passed its limit and must be resolved. */
-function isDeadlineDue(match: MatchRow, nowMs: number): boolean {
-  if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return false;
-  const deadlineAtMs = instantMs(match.deadlineAt);
-  return deadlineAtMs != null && nowMs >= deadlineAtMs;
+/** True when a live match has a seat past the inactivity forfeit threshold. */
+function isInactivityDue(match: MatchRow, nowMs: number): boolean {
+  return inactivityForfeitSeat(match, nowMs) != null;
 }
 
 // ── Action (the only player-authored mutation) ────────────────────────────
@@ -710,7 +1013,7 @@ export type MoveResult =
  *   409 waiting for an opponent
  *   409 match is no longer active
  *   409 the race has not started yet      (before `go_at`)
- *   409 the match limit has passed        (and the match resolves)
+ *   409 a seat forfeited for inactivity   (and the match resolves)
  *   409 the seat has already finished
  *   400 malformed `expectedPly`
  *   409 stale `expectedPly` — refetch
@@ -765,9 +1068,11 @@ export async function submitMove({
       if (goAtMs == null || nowMs < goAtMs) {
         return err("The match has not started", 409);
       }
-      if (isDeadlineDue(match, nowMs)) {
-        await resolveDueMatchInTx(tx, match, nowMs);
-        return err("The match limit has passed", 409);
+      // An untimed match: an action that arrives after a seat has already gone
+      // inactive resolves that forfeit first.
+      if (isInactivityDue(match, nowMs)) {
+        await resolveInactivityDueInTx(tx, match, nowMs);
+        return err("A seat forfeited for inactivity", 409);
       }
 
       const state = stateForSeat(match, seat);
@@ -841,6 +1146,8 @@ export async function submitMove({
         .update(sudokuDuelMatches)
         .set({
           ...seatPatchFor(seat, nextState, correctCells),
+          // The accepted action resets this seat's own inactivity clock.
+          ...seatLastActionPatchFor(seat, nowMs),
           ...(completedNow ? seatFinishedPatchFor(seat, nowMs) : {}),
           updatedAt: new Date(nowMs),
         })
@@ -880,19 +1187,23 @@ export async function submitMove({
   }
 }
 
-// ── Deadline resolution ───────────────────────────────────────────────────
+// ── Resolution ───────────────────────────────────────────────────────────
 
 export type DueResolution =
   | { match: MatchRow; resolved: boolean }
   | StoreError;
 
+// ── Inactivity resolution ─────────────────────────────────────────────────
+
 /**
- * Resolve a live match whose limit has passed.
+ * Resolve a live match in which a seat has gone inactive past the forfeit
+ * threshold, awarding the opponent the win.
  *
  * Safe to call at any time and from any path: it re-checks the status under the
- * row lock and does nothing unless the match is genuinely live and genuinely due.
+ * row lock and does nothing unless a seat is genuinely, still, idle. This is the
+ * only path that can end a match nobody is playing.
  */
-export async function resolveDueMatch({
+export async function resolveInactivityDue({
   matchId,
   nowMs = Date.now(),
 }: {
@@ -907,22 +1218,31 @@ export async function resolveDueMatch({
       .for("update");
 
     if (!match) return err("Match not found", 404);
-    return await resolveDueMatchInTx(tx, match, nowMs);
+    return await resolveInactivityDueInTx(tx, match, nowMs);
   });
 }
 
-async function resolveDueMatchInTx(
+async function resolveInactivityDueInTx(
   tx: any,
   match: MatchRow,
   nowMs: number,
 ): Promise<{ match: MatchRow; resolved: boolean }> {
-  if (!isDeadlineDue(match, nowMs)) return { match, resolved: false };
+  const forfeitSeat = inactivityForfeitSeat(match, nowMs);
+  if (!forfeitSeat) return { match, resolved: false };
 
-  const outcome = resolveSudokuRace({
-    player1: raceFor(match, SEAT.PLAYER1),
-    player2: raceFor(match, SEAT.PLAYER2),
-    deadlineReached: true,
-  });
+  // The idle seat forfeits; `resolveSudokuRace` awards the win to the other
+  // seat. The result is derived here from the row, never from the request.
+  const outcome = resolveSudokuRace(
+    forfeitSeat === "both"
+      ? {
+          player1: raceFor(match, SEAT.PLAYER1, true),
+          player2: raceFor(match, SEAT.PLAYER2, true),
+        }
+      : {
+          player1: raceFor(match, SEAT.PLAYER1, forfeitSeat === SEAT.PLAYER1),
+          player2: raceFor(match, SEAT.PLAYER2, forfeitSeat === SEAT.PLAYER2),
+        },
+  );
   if (!outcome) return { match, resolved: false };
 
   const finalRow = await finalizeMatch(tx, match, outcome, nowMs);
@@ -965,7 +1285,6 @@ export async function forfeitMatch({
     const outcome = resolveSudokuRace({
       player1: raceFor(match, SEAT.PLAYER1, seat === SEAT.PLAYER1),
       player2: raceFor(match, SEAT.PLAYER2, seat === SEAT.PLAYER2),
-      deadlineReached: true,
     });
 
     const finalRow = await finalizeMatch(
@@ -1093,7 +1412,6 @@ export async function forfeitMatchOnDisconnect({
     const outcome = resolveSudokuRace({
       player1: raceFor(match, SEAT.PLAYER1, seat === SEAT.PLAYER1),
       player2: raceFor(match, SEAT.PLAYER2, seat === SEAT.PLAYER2),
-      deadlineReached: true,
     });
 
     const finalRow = await finalizeMatch(
@@ -1113,8 +1431,8 @@ export async function forfeitMatchOnDisconnect({
  * Flip a match terminal, exactly once, and settle it.
  *
  * The single write path for `status`, `result`, `winner_id`, `resolution_reason`
- * and `ended_at` — reached by completion, by the deadline, and by a forfeit, so
- * there is one place a result can ever come from. The `TERMINAL_STATUSES` guard
+ * and `ended_at` — reached by a completion and by a forfeit, so there is one
+ * place a result can ever come from. The `TERMINAL_STATUSES` guard
  * plus the caller's `FOR UPDATE` read is what makes a second attempt a no-op
  * rather than a second settlement.
  */

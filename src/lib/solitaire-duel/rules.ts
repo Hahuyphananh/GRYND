@@ -769,25 +769,22 @@ export function raceFromState({
 /**
  * Decide the match from the two seats' race facts.
  *
- * Returns null while the match is still live (nobody has completed, nobody has
- * forfeited, and the limit has not been reached), so the store can call it on
- * every transition and only act when there is a verdict.
+ * Returns null while the match is still live (nobody has completed and nobody
+ * has forfeited), so the store can call it on every transition and only act
+ * when there is a verdict. There is no match clock: a match ends on a
+ * completion or a forfeit (a concession, a disconnect, or the inactivity rule).
  *
  * Order:
- *   1. a forfeit decides the match for the opponent
+ *   1. a forfeit decides the match for the opponent; two forfeits are a draw
  *   2. a completed seat wins — immediately, which satisfies "first to solve it
  *      wins"; two completions inside `COMPLETION_DEAD_HEAT_MS` are a draw
- *   3. at the deadline: a seat that never moved at all loses to one that did
- *   4. at the deadline: greater progress wins, an exact tie is a draw
  */
 export function resolveRace({
   player1,
   player2,
-  deadlineReached = false,
 }: {
   player1: SeatRace;
   player2: SeatRace;
-  deadlineReached?: boolean;
 }): RaceOutcome | null {
   if (player1.forfeited && player2.forfeited) {
     return { result: "draw", resolution: RESOLUTION.DRAW };
@@ -808,22 +805,7 @@ export function resolveRace({
   if (done1 != null) return { result: SEAT.PLAYER1, resolution: RESOLUTION.FINISH };
   if (done2 != null) return { result: SEAT.PLAYER2, resolution: RESOLUTION.FINISH };
 
-  if (!deadlineReached) return null;
-
-  // A seat that never made a single legal move has not played. Without this, an
-  // idle seat would be guaranteed a neutral draw instead of the loss it was
-  // heading for, which is a (small) competitive hole rather than a tiebreak.
-  if (player1.ply === 0 && player2.ply > 0) {
-    return { result: SEAT.PLAYER2, resolution: RESOLUTION.FORFEIT };
-  }
-  if (player2.ply === 0 && player1.ply > 0) {
-    return { result: SEAT.PLAYER1, resolution: RESOLUTION.FORFEIT };
-  }
-
-  const comparison = compareProgress(player1.progress, player2.progress);
-  if (comparison > 0) return { result: SEAT.PLAYER1, resolution: RESOLUTION.DEADLINE };
-  if (comparison < 0) return { result: SEAT.PLAYER2, resolution: RESOLUTION.DEADLINE };
-  return { result: "draw", resolution: RESOLUTION.DRAW };
+  return null;
 }
 
 /** The settlement token the shared rating/trophy writers accept. */

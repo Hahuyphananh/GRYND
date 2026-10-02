@@ -330,54 +330,24 @@ test("race: a forfeit decides for the opponent whatever the boards say", () => {
   const outcome = resolveSudokuRace({
     player1: race({ forfeited: true, correctCells: 80, completedAtMs: 1_000 }),
     player2: race({ correctCells: 1, ply: 1 }),
-    deadlineReached: true,
   });
   assert.deepEqual(outcome, { result: "player2", resolution: RESOLUTION.FORFEIT });
 });
 
-test("race: at the deadline the most correct cells wins", () => {
+test("race: two forfeits are a draw", () => {
   const outcome = resolveSudokuRace({
-    player1: race({ correctCells: 40, ply: 50 }),
-    player2: race({ correctCells: 41, ply: 50 }),
-    deadlineReached: true,
-  });
-  assert.deepEqual(outcome, { result: "player2", resolution: RESOLUTION.DEADLINE });
-});
-
-test("race: ties on cells are broken by fewest mistakes", () => {
-  const outcome = resolveSudokuRace({
-    player1: race({ correctCells: 40, mistakes: 1, ply: 50 }),
-    player2: race({ correctCells: 40, mistakes: 4, ply: 50 }),
-    deadlineReached: true,
-  });
-  assert.deepEqual(outcome, { result: "player1", resolution: RESOLUTION.DEADLINE });
-});
-
-test("race: ties on cells and mistakes are broken by the earliest achievement", () => {
-  const outcome = resolveSudokuRace({
-    player1: race({ correctCells: 40, mistakes: 2, progressAtMs: 9_000, ply: 50 }),
-    player2: race({ correctCells: 40, mistakes: 2, progressAtMs: 8_000, ply: 50 }),
-    deadlineReached: true,
-  });
-  assert.deepEqual(outcome, { result: "player2", resolution: RESOLUTION.DEADLINE });
-});
-
-test("race: an exact tie at the deadline is a draw", () => {
-  const outcome = resolveSudokuRace({
-    player1: race({ correctCells: 7, mistakes: 2, progressAtMs: 5_000, ply: 9 }),
-    player2: race({ correctCells: 7, mistakes: 2, progressAtMs: 5_000, ply: 11 }),
-    deadlineReached: true,
+    player1: race({ forfeited: true, correctCells: 5 }),
+    player2: race({ forfeited: true, correctCells: 40 }),
   });
   assert.deepEqual(outcome, { result: "draw", resolution: RESOLUTION.DRAW });
 });
 
-test("race: a seat that never acted loses to one that did", () => {
+test("race: an untimed live race resolves to nothing however far apart the boards are", () => {
   const outcome = resolveSudokuRace({
-    player1: race({ ply: 0 }),
-    player2: race({ ply: 3, correctCells: 3, progressAtMs: 4_000 }),
-    deadlineReached: true,
+    player1: race({ correctCells: 40, mistakes: 1, ply: 50 }),
+    player2: race({ correctCells: 41, mistakes: 0, ply: 50 }),
   });
-  assert.deepEqual(outcome, { result: "player2", resolution: RESOLUTION.FORFEIT });
+  assert.equal(outcome, null);
 });
 
 // ── 7. Derivations ────────────────────────────────────────────────────────

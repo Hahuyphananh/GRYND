@@ -9,7 +9,7 @@
 // Every competitive value on this page is the SERVER's: the board (a projection
 // that carries only clues and the viewer's already-verified entries, never the
 // solution), the progress figures, the mistake count, the penalty, the
-// completion, the GO instant, the deadline, the result and the winner.
+// completion, the GO instant, the inactivity clock, the result and the winner.
 //
 // The only thing this page ever SENDS is an action — a cell and a value, or a
 // cell to clear, plus the per-seat ply cursor. It never sends a board, a
@@ -30,14 +30,14 @@
 //   socket `sudoku-duel:countdown`/`match-started` → the server's GO instant
 //   socket `sudoku-duel:match-finished`        → refetch the settled row
 //   select a cell, tap a number → POST /move → adopt the returned snapshot
-//   the clock reaches the deadline → STOP; the server resolves and this page
-//   renders the result it is handed (fetchMatch resolves a due match on read)
+//   the inactivity clock runs out → STOP; the server resolves and this page
+//   renders the result it is handed (fetchMatch resolves an idle match on read)
 //
 // The timer ticks locally at 200 ms but is anchored to the server's clock
 // (`serverNow` in every snapshot), so a client with a wrong clock or a slow
-// connection still counts down to the server's GO and deadline. There is no
-// server tick per frame and no server call per tick, and nothing the client does
-// can move the official clock.
+// connection still counts to the server's GO instant and its inactivity clock.
+// There is no server tick per frame and no server call per tick, and nothing the
+// client does can move the official clock.
 
 import {
   useCallback,
@@ -72,7 +72,12 @@ import {
   sudokuDuelMatchRoom,
   type OpponentProgressEvent,
 } from "../../../../lib/sudoku-duel/rooms";
-import { CELL_COUNT, EMPTY, SIZE } from "../../../../lib/sudoku-duel/constants";
+import {
+  CELL_COUNT,
+  EMPTY,
+  INACTIVITY_COUNTDOWN_MS,
+  SIZE,
+} from "../../../../lib/sudoku-duel/constants";
 import {
   adjustedFinishMs,
   clockLabel,
@@ -136,11 +141,21 @@ type MatchDto = {
   winnerId: string | null;
   seat: Seat | null;
   isParticipant: boolean;
+  /** True for a free practice match against the built-in bot. */
+  isAi?: boolean;
+  aiDifficulty?: string | null;
   seedHash: string | null;
   serverSeed: string | null;
   puzzleSeed: number | null;
   goAtMs: number | null;
-  deadlineAtMs: number | null;
+  /** The viewer's own inactivity alarm instant (15 min without an action). */
+  inactivityAlarmAtMs: number | null;
+  /** The viewer's own inactivity-forfeit instant (20 min without an action). */
+  inactivityForfeitAtMs: number | null;
+  /** The opponent's inactivity alarm instant, so a waiting seat can be told. */
+  opponentInactivityAlarmAtMs: number | null;
+  /** The opponent's inactivity-forfeit instant. */
+  opponentInactivityForfeitAtMs: number | null;
   startedAtMs: number | null;
   endedAtMs: number | null;
   createdAtMs: number | null;
@@ -304,13 +319,16 @@ export default function SudokuDuelMatchPage() {
   const view = match?.view ?? null;
   const serverNowMs = now + skewRef.current;
   const goAtMs = goAtOverride ?? match?.goAtMs ?? null;
-  const deadlineAtMs = match?.deadlineAtMs ?? null;
+  // The match is untimed, so the clock is the VIEWER'S OWN inactivity clock:
+  // time until the seat forfeits for not acting, derived per viewer by the
+  // server. `clockAnchorMs` is anchored to GO, so it reads the full window
+  // through the countdown instead of counting the pre-GO window as race time.
+  const inactivityForfeitAtMs = match?.inactivityForfeitAtMs ?? null;
+  const inactivityAlarmAtMs = match?.inactivityAlarmAtMs ?? null;
   const countdownMs = goAtMs == null ? null : Math.max(0, goAtMs - serverNowMs);
-  // The clock is anchored to GO, so it reads the full 10:00 through the
-  // countdown instead of 10:03 (the deadline is GO + the limit, and a raw
-  // subtraction before GO would count the pre-GO window as match time).
   const clockAnchorMs = goAtMs == null ? serverNowMs : Math.max(serverNowMs, goAtMs);
-  const remainingMs = deadlineAtMs == null ? null : Math.max(0, deadlineAtMs - clockAnchorMs);
+  const remainingMs =
+    inactivityForfeitAtMs == null ? null : Math.max(0, inactivityForfeitAtMs - clockAnchorMs);
   const expired = remainingMs != null && remainingMs <= 0;
   const myCompleted = Boolean(match?.completed);
 
@@ -321,6 +339,35 @@ export default function SudokuDuelMatchPage() {
     if (countdownMs == null || countdownMs > 0) return "countdown" as const;
     return "racing" as const;
   }, [match, loadError, terminal, status, countdownMs]);
+
+  const alarmActive =
+    phase === "racing" &&
+    !terminal &&
+    inactivityAlarmAtMs != null &&
+    serverNowMs >= inactivityAlarmAtMs;
+  // The clock counts UP as a stopwatch for almost the whole untimed match, and
+  // only flips to the forfeit countdown in the last five minutes before the
+  // viewer's OWN inactivity forfeit. That instant is `INACTIVITY_COUNTDOWN_MS`
+  // away from the server's forfeit instant, which is where the alarm goes live.
+  const countdownActive =
+    phase === "racing" &&
+    !terminal &&
+    remainingMs != null &&
+    remainingMs <= INACTIVITY_COUNTDOWN_MS;
+  // The stopwatch the clock shows until the forfeit countdown begins.
+  const elapsedMs = goAtMs == null ? null : Math.max(0, serverNowMs - goAtMs);
+  // The OPPONENT's idle state, so a waiting seat is told the other side may soon
+  // forfeit. Never raised for a completed opponent or in untimed practice.
+  const opponentAlarmAtMs = match?.opponentInactivityAlarmAtMs ?? null;
+  const opponentForfeitAtMs = match?.opponentInactivityForfeitAtMs ?? null;
+  const opponentRemainingMs =
+    opponentForfeitAtMs == null ? null : Math.max(0, opponentForfeitAtMs - serverNowMs);
+  const opponentAlarmActive =
+    phase === "racing" &&
+    !terminal &&
+    opponentAlarmAtMs != null &&
+    serverNowMs >= opponentAlarmAtMs &&
+    !match?.opponent?.completed;
 
   // ── Clock (only while a clock is on screen) ────────────────────────────
   useEffect(() => {
@@ -360,8 +407,8 @@ export default function SudokuDuelMatchPage() {
     return () => window.clearInterval(id);
   }, [matchId, match, terminal, load]);
 
-  // When the local clock says the deadline has passed, the server still owns
-  // the verdict — ask it, and let it resolve. Nothing is decided here.
+  // When the local inactivity clock says the forfeit is due, the server still
+  // owns the verdict — ask it, and let it resolve. Nothing is decided here.
   useEffect(() => {
     if (!expired || terminal) return;
     void load();
@@ -621,7 +668,7 @@ export default function SudokuDuelMatchPage() {
   const opponentProgress: OpponentProgress | null = liveOpponent ?? match?.opponent ?? null;
   const opponentSeat: Seat = mySeatKey === "player1" ? "player2" : "player1";
   const opponentIdentity: SeatIdentity = match?.players?.[opponentSeat] ?? null;
-  const opponentName = opponentIdentity?.name || "Opponent";
+  const opponentName = match?.isAi ? "GRYND AI" : opponentIdentity?.name || "Opponent";
 
   const givens = Math.max(0, Math.trunc(Number(match?.givens) || 0));
   const totalEntries = Math.max(0, CELL_COUNT - givens);
@@ -660,7 +707,7 @@ export default function SudokuDuelMatchPage() {
       : terminal
         ? "The match is over."
         : expired
-          ? "The clock has run out — the server decides."
+          ? "You've been idle too long — the server is resolving your forfeit."
           : selectedIndex == null
             ? "Select a cell first."
             : selectedGiven
@@ -720,7 +767,7 @@ export default function SudokuDuelMatchPage() {
   const signed = (value: number) => `${value > 0 ? "+" : ""}${value}`;
 
   const phaseLabel = expired && !terminal
-    ? "Time up"
+    ? "Inactive"
     : phase === "countdown"
       ? "Get ready"
       : phase === "racing"
@@ -741,7 +788,7 @@ export default function SudokuDuelMatchPage() {
   const statusLine = terminal
     ? "Match over"
     : expired
-      ? "The clock has run out — waiting for the server's verdict."
+      ? "You've been idle too long — the server is resolving your forfeit."
       : pending
         ? "Verifying your move…"
         : myCompleted
@@ -805,6 +852,46 @@ export default function SudokuDuelMatchPage() {
 
           {match && (
             <div data-testid="sudoku-match" data-status={match.status}>
+              {/* The inactivity alarm: raised once the viewer's OWN seat has been
+                  idle for 15 minutes, with the 20-minute forfeit counting down. */}
+              {alarmActive && (
+                <div
+                  role="alert"
+                  data-testid="sudoku-inactivity-alarm"
+                  className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-2.5 text-xs font-semibold text-amber-100"
+                >
+                  <IconAlertTriangle
+                    size={16}
+                    className="mt-0.5 shrink-0 text-amber-300"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    You&apos;ve been idle too long. Make a move now or you&apos;ll
+                    forfeit the match in {clockLabel(remainingMs ?? 0)}.
+                  </span>
+                </div>
+              )}
+
+              {/* The opponent's inactivity alarm: raised for the seat still
+                  playing when the other side has been idle for 15 minutes. */}
+              {opponentAlarmActive && (
+                <div
+                  role="status"
+                  data-testid="sudoku-opponent-idle-alarm"
+                  className="mt-3 flex items-start gap-2 rounded-xl border border-sky-400/40 bg-sky-500/10 px-3 py-2.5 text-xs font-semibold text-sky-100"
+                >
+                  <IconAlertTriangle
+                    size={16}
+                    className="mt-0.5 shrink-0 text-sky-300"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Your opponent has gone idle. Unless they move within{" "}
+                    {clockLabel(opponentRemainingMs ?? 0)}, you win by forfeit.
+                  </span>
+                </div>
+              )}
+
               {/* A dropped connection never tears the race down: the row is held
                   for this seat and the next poll restores everything. */}
               {loadError && (
@@ -858,6 +945,8 @@ export default function SudokuDuelMatchPage() {
                     opponentName={opponentName}
                     opponentIdentity={opponentIdentity}
                     remainingMs={remainingMs}
+                    elapsedMs={elapsedMs}
+                    countdownActive={countdownActive}
                     expired={expired}
                     phaseLabel={phaseLabel}
                     phaseTone={phaseTone}

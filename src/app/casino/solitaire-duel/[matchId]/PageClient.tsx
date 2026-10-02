@@ -8,8 +8,8 @@
 //
 // Every competitive value on this page is the SERVER's: the board (a
 // projection that carries no face-down identities and no stock order), the
-// progress figures, the completion, the GO instant, the deadline, the result
-// and the winner. The only thing this page ever SENDS is a move — which cards,
+// progress figures, the completion, the GO instant, the inactivity clock, the
+// result and the winner. The only thing this page ever SENDS is a move — which cards,
 // from where, to where, plus the per-seat ply cursor. It never sends a board, a
 // progress value, a completion, a completion time, a score, a winner, a result,
 // an Elo value or a trophy.
@@ -29,13 +29,13 @@
 //   socket `solitaire-duel:countdown`/`match-started` → the server's GO instant
 //   socket `solitaire-duel:match-finished`      → refetch the settled row
 //   click a card, click a target → POST /move → adopt the returned snapshot
-//   the clock reaches the deadline → STOP; the server resolves and this page
-//   renders the result it is handed (fetchMatch resolves a due match on read)
+//   the inactivity clock runs out → STOP; the server resolves and this page
+//   renders the result it is handed (fetchMatch resolves an idle match on read)
 //
 // The timer ticks locally at 200 ms but is anchored to the server's clock
 // (`serverNow` in every snapshot), so a client with a wrong clock or a slow
-// connection still counts down to the server's GO and deadline. There is no
-// server tick per frame and no server call per tick.
+// connection still counts to the server's GO instant and its inactivity clock.
+// There is no server tick per frame and no server call per tick.
 
 import {
   useCallback,
@@ -52,6 +52,7 @@ import {
   IconAlertTriangle,
   IconCards,
   IconClock,
+  IconStopwatch,
   IconDoorExit,
   IconFlag,
   IconHourglassHigh,
@@ -69,6 +70,7 @@ import {
   SOLITAIRE_DUEL_EVENTS,
   solitaireDuelMatchRoom,
 } from "../../../../lib/solitaire-duel/rooms";
+import { INACTIVITY_COUNTDOWN_MS } from "../../../../lib/solitaire-duel/constants";
 import {
   clockLabel,
   durationSeconds,
@@ -104,7 +106,14 @@ type MatchDto = {
   seat: Seat | null;
   isParticipant: boolean;
   goAtMs: number | null;
-  deadlineAtMs: number | null;
+  /** The viewer's own inactivity alarm instant (15 min without a move). */
+  inactivityAlarmAtMs: number | null;
+  /** The viewer's own inactivity-forfeit instant (20 min without a move). */
+  inactivityForfeitAtMs: number | null;
+  /** The opponent's inactivity alarm instant, so a waiting seat can be told. */
+  opponentInactivityAlarmAtMs: number | null;
+  /** The opponent's inactivity-forfeit instant. */
+  opponentInactivityForfeitAtMs: number | null;
   startedAtMs: number | null;
   endedAtMs: number | null;
   createdAtMs: number | null;
@@ -323,11 +332,36 @@ export default function SolitaireDuelMatchPage() {
   const view = match?.view ?? null;
   const serverNowMs = now + skewRef.current;
   const goAtMs = goAtOverride ?? match?.goAtMs ?? null;
-  const deadlineAtMs = match?.deadlineAtMs ?? null;
+  // The match is untimed, so the clock is the VIEWER'S OWN inactivity clock:
+  // time until the seat forfeits for not moving, derived per viewer by the server.
+  const inactivityForfeitAtMs = match?.inactivityForfeitAtMs ?? null;
+  const inactivityAlarmAtMs = match?.inactivityAlarmAtMs ?? null;
   const countdownMs = goAtMs == null ? null : Math.max(0, goAtMs - serverNowMs);
-  const remainingMs = deadlineAtMs == null ? null : Math.max(0, deadlineAtMs - serverNowMs);
+  const remainingMs =
+    inactivityForfeitAtMs == null ? null : Math.max(0, inactivityForfeitAtMs - serverNowMs);
+  // The stopwatch the clock shows until the forfeit countdown begins.
+  const elapsedMs = goAtMs == null ? null : Math.max(0, serverNowMs - goAtMs);
   const racing = Boolean(match) && !terminal && countdownMs === 0;
   const expired = remainingMs != null && remainingMs <= 0;
+  const alarmActive =
+    racing && inactivityAlarmAtMs != null && serverNowMs >= inactivityAlarmAtMs;
+  // The clock counts UP as a stopwatch for almost the whole untimed match, and
+  // only flips to the forfeit countdown in the last five minutes before the
+  // viewer's OWN inactivity forfeit. That instant is `INACTIVITY_COUNTDOWN_MS`
+  // away from the server's forfeit instant, which is where the alarm goes live.
+  const countdownActive =
+    racing && remainingMs != null && remainingMs <= INACTIVITY_COUNTDOWN_MS;
+  // The OPPONENT's idle state, so a waiting seat is told the other side may soon
+  // forfeit. Never raised for a completed opponent or in untimed practice.
+  const opponentAlarmAtMs = match?.opponentInactivityAlarmAtMs ?? null;
+  const opponentForfeitAtMs = match?.opponentInactivityForfeitAtMs ?? null;
+  const opponentRemainingMs =
+    opponentForfeitAtMs == null ? null : Math.max(0, opponentForfeitAtMs - serverNowMs);
+  const opponentAlarmActive =
+    racing &&
+    opponentAlarmAtMs != null &&
+    serverNowMs >= opponentAlarmAtMs &&
+    !match?.opponent?.completed;
 
   const phase = useMemo(() => {
     if (!match) return loadError && !loadedRef.current ? ("error" as const) : ("loading" as const);
@@ -368,8 +402,8 @@ export default function SolitaireDuelMatchPage() {
     return () => window.clearInterval(id);
   }, [matchId, match, terminal, load]);
 
-  // When the local clock says the deadline has passed, the server still owns
-  // the verdict — ask it, and let it resolve. Nothing is decided here.
+  // When the local inactivity clock says the forfeit is due, the server still
+  // owns the verdict — ask it, and let it resolve. Nothing is decided here.
   useEffect(() => {
     if (!expired || terminal) return;
     void load();
@@ -589,7 +623,7 @@ export default function SolitaireDuelMatchPage() {
 
   const timerTone = expired
     ? "text-red-300 border-red-400/50 bg-red-500/10"
-    : remainingMs != null && remainingMs < 30_000
+    : countdownActive
       ? "text-amber-200 border-amber-400/50 bg-amber-500/10"
       : "text-white/85 border-white/15 bg-black/35";
 
@@ -631,7 +665,7 @@ export default function SolitaireDuelMatchPage() {
                 }`}
               >
                 {expired && !terminal
-                  ? "Time up"
+                  ? "Inactive"
                   : phase === "countdown"
                     ? "Get ready"
                     : phase === "racing"
@@ -647,11 +681,25 @@ export default function SolitaireDuelMatchPage() {
 
               <span
                 data-testid="solitaire-timer"
+                data-mode={countdownActive ? "countdown" : "stopwatch"}
                 data-remaining-ms={remainingMs ?? -1}
+                title={
+                  countdownActive
+                    ? "Time until you forfeit for inactivity"
+                    : "Elapsed match time"
+                }
                 className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 font-mono text-lg font-black tabular-nums ${timerTone}`}
               >
-                <IconClock size={16} aria-hidden="true" />
-                {remainingMs == null ? "--:--" : clockLabel(remainingMs)}
+                {countdownActive ? (
+                  <IconClock size={16} aria-hidden="true" />
+                ) : (
+                  <IconStopwatch size={16} aria-hidden="true" />
+                )}
+                {countdownActive
+                  ? clockLabel(remainingMs ?? 0)
+                  : elapsedMs == null
+                    ? "--:--"
+                    : clockLabel(elapsedMs)}
               </span>
             </div>
           </div>
@@ -673,6 +721,46 @@ export default function SolitaireDuelMatchPage() {
 
           {match && (
             <div data-testid="solitaire-match" data-status={match.status}>
+              {/* The inactivity alarm: raised once the viewer's OWN seat has been
+                  idle for 15 minutes, with the 20-minute forfeit counting down. */}
+              {alarmActive && (
+                <div
+                  role="alert"
+                  data-testid="solitaire-inactivity-alarm"
+                  className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/50 bg-amber-500/15 px-3 py-2.5 text-xs font-semibold text-amber-100"
+                >
+                  <IconAlertTriangle
+                    size={16}
+                    className="mt-0.5 shrink-0 text-amber-300"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    You&apos;ve been idle too long. Make a move now or you&apos;ll
+                    forfeit the match in {clockLabel(remainingMs ?? 0)}.
+                  </span>
+                </div>
+              )}
+
+              {/* The opponent's inactivity alarm: raised for the seat still
+                  playing when the other side has been idle for 15 minutes. */}
+              {opponentAlarmActive && (
+                <div
+                  role="status"
+                  data-testid="solitaire-opponent-idle-alarm"
+                  className="mt-3 flex items-start gap-2 rounded-xl border border-sky-400/40 bg-sky-500/10 px-3 py-2.5 text-xs font-semibold text-sky-100"
+                >
+                  <IconClock
+                    size={16}
+                    className="mt-0.5 shrink-0 text-sky-300"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Your opponent has gone idle. Unless they move within{" "}
+                    {clockLabel(opponentRemainingMs ?? 0)}, you win by forfeit.
+                  </span>
+                </div>
+              )}
+
               {/* A dropped connection never tears the race down: the row is
                   held for this seat and the next poll restores everything. */}
               {loadError && (

@@ -199,7 +199,7 @@ test("trust: hits and results are only ever derived, never accepted", () => {
   assert.equal((store.match(/await settleSolitaireDuelMatch\(/g) ?? []).length, 1);
   assert.ok(
     (store.match(/await finalizeMatch\(/g) ?? []).length >= 3,
-    "completion, the deadline and a forfeit must all settle through the seam",
+    "completion, inactivity and a forfeit must all settle through the seam",
   );
 
   // The shared writers are called with the canonical key, and NO other key
@@ -214,12 +214,29 @@ test("trust: hits and results are only ever derived, never accepted", () => {
   assert.doesNotMatch(store, /calculateElo|computeElo|ratingDelta|newRating/);
 });
 
-test("trust: the client cannot move before GO or after the limit", () => {
+test("trust: the client cannot move before GO or after going idle", () => {
   const store = code(files.store);
   assert.match(store, /nowMs < goAtMs/, "the GO instant must be enforced server-side");
-  assert.match(store, /if \(isDeadlineDue\(match, nowMs\)\)/, "the deadline must be enforced server-side");
+  assert.match(store, /if \(isInactivityDue\(match, nowMs\)\)/, "inactivity must be enforced server-side");
   assert.match(store, /err\("The race has not started", 409\)/);
-  assert.match(store, /err\("The match limit has passed", 409\)/);
+  assert.match(store, /err\("A seat forfeited for inactivity", 409\)/);
+});
+
+test("trust: inactivity is enforced server-side, per seat, with fixed thresholds", () => {
+  const constants = code(files.constants);
+  const store = code(files.store);
+  // The two thresholds live in the one source of truth.
+  assert.match(constants, /INACTIVITY_ALARM_MS = 900_000/);
+  assert.match(constants, /INACTIVITY_FORFEIT_MS = 1_200_000/);
+  // The match is untimed: no live match gets a deadline written.
+  assert.doesNotMatch(store, /deadlineAt: new Date/, "no deadline may be armed");
+  // The forfeit is resolved from the row, on read and on the move path.
+  assert.match(store, /export async function resolveInactivityDue/);
+  assert.match(store, /if \(isInactivityDue\(match, nowMs\)\)/);
+  // Per-seat clocks, so one player's activity cannot keep the other's alive.
+  assert.match(store, /inactivityForfeitSeat\(match, nowMs\)/);
+  assert.match(store, /p1LastActionAt/);
+  assert.match(store, /p2LastActionAt/);
 });
 
 test("trust: the completion instant is stamped from the server clock", () => {
@@ -265,7 +282,7 @@ test("secrecy: a client DTO is projected field by field, never spread", () => {
   assert.doesNotMatch(dto, /\.\.\.match/, "the DTO must not spread the match row");
   assert.doesNotMatch(dto, /p1State|p2State|stock:/, "the DTO must not carry raw boards");
   // The opponent's board is replaced by the closed progress shape.
-  assert.match(dto, /opponentProgressFor\(otherSeat\(seat\), otherState\)/);
+  assert.match(dto, /opponentProgressFor\(opponentSeat, otherState\)/);
 });
 
 test("secrecy: the view strips face-down identities and the stock order", () => {
@@ -321,7 +338,8 @@ test("storage: the schema mirrors the migration", () => {
   assert.match(schema, /"solitaire_duel_matches"/);
   assert.match(schema, /"solitaire_duel_moves"/);
   assert.match(schema, /unique\("solitaire_duel_moves_ply_unique"\)\.on\(table\.matchId, table\.seat, table\.ply\)/);
-  assert.match(schema, /dueIdx: index\("solitaire_duel_matches_due_idx"\)\.on\(table\.status, table\.deadlineAt\)/);
+  // The retired deadline column and its index must be gone.
+  assert.doesNotMatch(schema, /solitaire_duel_matches_due_idx/);
 });
 
 test("storage: the retention sweep knows the new table", () => {

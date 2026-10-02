@@ -45,9 +45,6 @@ export async function POST() {
 
     const matchId = result.match.id;
     const goAtMs = result.match.goAt ? new Date(result.match.goAt).getTime() : null;
-    const deadlineAtMs = result.match.deadlineAt
-      ? new Date(result.match.deadlineAt).getTime()
-      : null;
 
     // Best-effort pushes. Both are notifications, never state transfers: the
     // match view joins `solitaire-duel:match:<id>` on mount and re-fetches the
@@ -60,12 +57,10 @@ export async function POST() {
     if (goAtMs != null && Number.isFinite(goAtMs)) {
       broadcastMatchEvent(matchId, SOLITAIRE_DUEL_EVENTS.COUNTDOWN, {
         goAtMs,
-        deadlineAtMs,
         countdownMs: READY_COUNTDOWN_MS,
       });
       broadcastMatchEvent(matchId, SOLITAIRE_DUEL_EVENTS.MATCH_STARTED, {
         goAtMs,
-        deadlineAtMs,
       });
     }
 
@@ -76,7 +71,6 @@ export async function POST() {
         status: result.match.status,
         joined: result.joined,
         goAtMs,
-        deadlineAtMs,
       },
     });
   } catch (error) {

@@ -11,6 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users, DEFAULT_NOTIFICATION_PREFS, type NotificationPrefs } from "../../../../db/schema";
+import { recordUnsubscribeEvent } from "../../../../lib/emails/unsubscribe";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -70,10 +71,30 @@ export async function PUT(req: Request) {
     );
   }
 
+  // Read the current row so we can tell a real "unsubscribe from everything"
+  // transition (all marketing prefs just turned off) from an ordinary save of
+  // an already-off state — only the transition is a compliance audit event.
+  const [current] = await db
+    .select({ email: users.email, notificationPrefs: users.notificationPrefs })
+    .from(users)
+    .where(eq(users.clerkId, userId))
+    .limit(1);
+  const before = { ...DEFAULT_NOTIFICATION_PREFS, ...(current?.notificationPrefs ?? {}) };
+
   await db
     .update(users)
     .set({ notificationPrefs: merged })
     .where(eq(users.clerkId, userId));
+
+  const allOff = (prefs: NotificationPrefs) =>
+    PREF_KEYS.every((key) => prefs[key] === false);
+  if (current?.email && allOff(merged) && !allOff(before)) {
+    await recordUnsubscribeEvent({
+      clerkId: userId,
+      email: current.email,
+      source: "settings",
+    });
+  }
 
   return NextResponse.json({ success: true, prefs: merged });
 }

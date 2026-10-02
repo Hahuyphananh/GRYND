@@ -54,8 +54,8 @@ export const SEAT_COUNT = 2;
  * choice is deliberate: the primary win condition is "first to solve the whole
  * puzzle wins immediately", and single-card draw has by far the highest
  * completion rate, so the completion path is the normal ending rather than the
- * exception. A three-card draw would push most matches onto the deadline
- * comparison instead.
+ * exception. A three-card draw would make solving far rarer and leave most
+ * matches unfinished.
  */
 export const VARIANT = "klondike-1" as const;
 
@@ -156,18 +156,15 @@ export const SOLITAIRE_DUEL_AI_PLAYER_ID = "solitaire_duel_ai_bot";
 export const RESOLUTION = Object.freeze({
   /** A seat put all 52 cards on the foundations. */
   FINISH: "finish",
-  /** The match limit expired; the greater progress won. */
-  DEADLINE: "deadline",
-  /** A seat left, conceded, or never played at all. */
+  /** A seat left, conceded, disconnected or went inactive. */
   FORFEIT: "forfeit",
   /** The race ended level. */
   DRAW: "draw",
 });
 
-/** The reason tokens allowed in the `resolution_reason` column. */
+/** The reason tokens the server writes to `resolution_reason`. */
 export const RESOLUTION_REASONS: readonly string[] = Object.freeze([
   RESOLUTION.FINISH,
-  RESOLUTION.DEADLINE,
   RESOLUTION.FORFEIT,
   RESOLUTION.DRAW,
 ]);
@@ -192,13 +189,33 @@ export const RESOLUTION_REASONS: readonly string[] = Object.freeze([
 export const READY_COUNTDOWN_MS = 3_000;
 
 /**
- * The hard limit, measured from GO.
+ * Inactivity alarm: with no accepted move from a seat for this long, that
+ * seat's match view raises the "play now or you forfeit" alarm.
  *
- * A match that reaches it without a verified completion is resolved by the
- * server from its OWN board state (greater progress wins; an exact tie is a
- * draw), never left hanging — see `resolveRace` in ./rules.ts.
+ * Measured against the seat's OWN last accepted move (or GO when it has not
+ * moved yet), so one player cannot alarm the other. Fifteen minutes.
  */
-export const MATCH_LIMIT_MS = 300_000;
+export const INACTIVITY_ALARM_MS = 900_000;
+
+/**
+ * Inactivity forfeit: with no accepted move for this long, the seat forfeits
+ * and the opponent wins, with the standard settlement.
+ *
+ * The match is UNTIMED apart from this — there is no match clock, so a match
+ * only ends by a completion, a concession, a long disconnect, or this
+ * inactivity rule. Twenty minutes.
+ */
+export const INACTIVITY_FORFEIT_MS = 1_200_000;
+
+/**
+ * When the match clock switches from the UP-counting stopwatch to the forfeit
+ * countdown: the last five minutes before the inactivity forfeit.
+ *
+ * The match is untimed, so the honest readout for almost all of it is elapsed
+ * time counting UP; only in the final stretch does the time LEFT matter enough
+ * to count down. This equals `INACTIVITY_FORFEIT_MS - INACTIVITY_ALARM_MS`.
+ */
+export const INACTIVITY_COUNTDOWN_MS = 300_000;
 
 /**
  * Two completions closer together than this are a dead heat.

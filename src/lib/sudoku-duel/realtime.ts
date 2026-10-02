@@ -107,9 +107,9 @@ export function broadcastOpponentProgress({
 /**
  * Push the authoritative RESULT to the match room.
  *
- * Sent once, when the store settles a match (a completion, the deadline, or a
- * forfeit). The payload is read off the settled row: it can never carry a
- * client-supplied winner, result or rating.
+ * Sent once, when the store settles a match (a completion or a forfeit). The
+ * payload is read off the settled row: it can never carry a client-supplied
+ * winner, result or rating.
  */
 export function broadcastMatchFinished({
   matchId,

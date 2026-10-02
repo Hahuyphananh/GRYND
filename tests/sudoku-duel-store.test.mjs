@@ -55,7 +55,8 @@ import {
 } from "../src/lib/sudoku-duel/ui.ts";
 import {
   DEFAULT_DIFFICULTY,
-  MATCH_LIMIT_MS,
+  INACTIVITY_ALARM_MS,
+  INACTIVITY_FORFEIT_MS,
   MATCH_STATUS,
   MAX_MOVES_PER_SEAT,
   READY_COUNTDOWN_MS,
@@ -337,7 +338,6 @@ function seedMatch(fake, overrides = {}) {
     p1FinishedAt: null,
     p2FinishedAt: null,
     goAt: new Date(NOW - 5_000),
-    deadlineAt: new Date(NOW + MATCH_LIMIT_MS),
     startedAt: new Date(NOW - 5_000),
     endedAt: null,
     createdAt: new Date(NOW - 6_000),
@@ -392,7 +392,6 @@ test("create-or-join: opens a lobby with ONE seed, ONE puzzle and two identical 
 
   // Nothing has started: no clock yet.
   assert.ok(!match.goAt, "a waiting lobby has no GO instant");
-  assert.ok(!match.deadlineAt, "a waiting lobby has no deadline");
   assert.equal(fake.rowsOf(sudokuDuelMatches).length, 1);
 });
 
@@ -418,10 +417,12 @@ test("create-or-join: a second caller joins WITHOUT touching the puzzle", { skip
   assert.deepEqual(second.match.p1State, board, "seat 1's board must be untouched");
   assert.deepEqual(second.match.p2State, board, "seat 2 starts from the same board");
 
-  // The clock: one absolute GO instant, one absolute deadline.
+  // The clock: one absolute GO instant, no match deadline. The match is
+  // untimed; both seats' inactivity clocks start at GO instead.
   const goAt = second.match.goAt.getTime();
   assert.equal(goAt, NOW + 1_000 + READY_COUNTDOWN_MS);
-  assert.equal(second.match.deadlineAt.getTime() - goAt, MATCH_LIMIT_MS);
+  assert.equal(second.match.p1LastActionAt.getTime(), goAt);
+  assert.equal(second.match.p2LastActionAt.getTime(), goAt);
 
   // Re-asking as the host returns the SAME row rather than opening a second.
   const again = await store.createOrJoin({ userId: ALICE, nowMs: NOW + 2_000 });
@@ -879,7 +880,7 @@ test("completion: an already-finished match never settles twice", { skip: SKIP_R
   });
   assert.equal(settlement.rating.length, 1);
 
-  const again = await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW + MATCH_LIMIT_MS });
+  const again = await store.resolveInactivityDue({ matchId: MATCH_ID, nowMs: NOW + 60_000 });
   assert.equal(again.resolved, false);
   assert.equal(again.match.status, MATCH_STATUS.FINISHED);
   assert.equal(settlement.rating.length, 1);
@@ -937,161 +938,80 @@ test("completion/adjusted time: the lower ADJUSTED time wins a photo finish", { 
   assert.equal(settlement.rating[0].winnerClerkId, BOB);
 });
 
-// ── 6. The deadline ───────────────────────────────────────────────────────
+// ── 6. Inactivity (the untimed match) ────────────────────────────────────
 
-test("deadline: the greater correct count wins, and the result is settled", { skip: SKIP_REASON }, async (t) => {
+test("inactivity: the idle seat forfeits past the threshold and the opponent wins", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1State: stateAt(10, { progressAtMs: NOW - 30_000 }),
-    p1Ply: 30,
-    p1Correct: 10,
-    p2State: stateAt(4, { progressAtMs: NOW - 20_000 }),
-    p2Ply: 20,
-    p2Correct: 4,
+    // ALICE has not acted for longer than the forfeit threshold; BOB acted a
+    // moment ago, so only ALICE is idle.
+    p1LastActionAt: new Date(NOW - INACTIVITY_FORFEIT_MS - 1),
+    p2LastActionAt: new Date(NOW),
+    p1State: stateAt(5, { progressAtMs: NOW - 60_000 }),
+    p1Correct: 5,
+    p1Ply: 5,
+    p2State: stateAt(30, { progressAtMs: NOW - 30_000 }),
+    p2Correct: 30,
+    p2Ply: 30,
   });
 
-  const result = await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW });
+  const result = await store.resolveInactivityDue({ matchId: MATCH_ID, nowMs: NOW });
 
   assert.equal(result.resolved, true);
   assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.result, "player1");
-  assert.equal(row.resolutionReason, "deadline");
-  assert.equal(row.winnerId, ALICE);
-  assert.equal(settlement.rating.length, 1);
-  assert.equal(settlement.rating[0].winnerClerkId, ALICE);
-});
-
-test("deadline: a seat that never acted loses to one that did", { skip: SKIP_REASON }, async (t) => {
-  const fake = installMocks(t);
-  const store = await loadStore();
-  const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1Ply: 0,
-    p2State: stateAt(3, { progressAtMs: NOW - 20_000 }),
-    p2Ply: 5,
-    p2Correct: 3,
-  });
-
-  await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW });
-
-  assert.equal(row.result, "player2");
-  assert.equal(row.resolutionReason, "forfeit");
+  assert.equal(row.result, "player2", "the active seat wins");
   assert.equal(row.winnerId, BOB);
-});
-
-test("deadline: a tie on cells is broken by fewest mistakes", { skip: SKIP_REASON }, async (t) => {
-  const fake = installMocks(t);
-  const store = await loadStore();
-  const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1State: stateAt(8, { mistakes: 3, penaltyMs: 3_000, progressAtMs: NOW - 40_000 }),
-    p1Ply: 20,
-    p1Correct: 8,
-    p2State: stateAt(8, { mistakes: 1, penaltyMs: 1_000, progressAtMs: NOW - 10_000 }),
-    p2Ply: 20,
-    p2Correct: 8,
-  });
-
-  await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW });
-
-  assert.equal(row.result, "player2", "fewer mistakes wins the cell tie");
-  assert.equal(row.resolutionReason, "deadline");
-});
-
-test("deadline: equal cells and mistakes are broken by the earliest achievement", { skip: SKIP_REASON }, async (t) => {
-  const fake = installMocks(t);
-  const store = await loadStore();
-  const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1State: stateAt(6, { progressAtMs: NOW - 50_000 }),
-    p1Ply: 18,
-    p1Correct: 6,
-    p2State: stateAt(6, { progressAtMs: NOW - 10_000 }),
-    p2Ply: 18,
-    p2Correct: 6,
-  });
-
-  await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW });
-
-  assert.equal(row.result, "player1", "the earlier achievement wins");
-  assert.equal(row.resolutionReason, "deadline");
-});
-
-test("deadline: an exact tie is a draw, with no win counters touched", { skip: SKIP_REASON }, async (t) => {
-  const fake = installMocks(t);
-  const store = await loadStore();
-  const board = stateAt(6, { progressAtMs: NOW - 20_000 });
-  const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1State: board,
-    p1Ply: 9,
-    p1Correct: 6,
-    p2State: structuredClone(board),
-    p2Ply: 12,
-    p2Correct: 6,
-  });
-
-  await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW });
-
-  assert.equal(row.result, "draw");
-  assert.equal(row.resolutionReason, "draw");
-  assert.equal(row.winnerId, null);
+  assert.equal(row.resolutionReason, "forfeit");
   assert.equal(settlement.rating.length, 1);
-  assert.equal(settlement.rating[0].result, "draw");
-  assert.equal(settlement.trophy.length, 1);
-  assert.equal(settlement.trophy[0].result, "draw");
-  assert.equal(
-    fake.state.writes.some((write) => write.table === users),
-    false,
-    "a draw changes neither win counter",
-  );
+  assert.equal(settlement.rating[0].winnerClerkId, BOB);
 });
 
-test("deadline: an action past the limit is refused, and resolves the match", { skip: SKIP_REASON }, async (t) => {
+test("inactivity: nothing resolves while every seat is still active", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1State: stateAt(8, { progressAtMs: NOW - 30_000 }),
-    p1Ply: 12,
-    p1Correct: 8,
-    p2Ply: 3,
+    p1LastActionAt: new Date(NOW - 1_000),
+    p2LastActionAt: new Date(NOW - 2_000),
   });
 
-  const result = await store.submitMove({
-    userId: ALICE,
-    matchId: MATCH_ID,
-    action: { kind: "place", index: EMPTIES[8], value: SOLUTION[EMPTIES[8]] },
-    nowMs: NOW,
-  });
+  const result = await store.resolveInactivityDue({ matchId: MATCH_ID, nowMs: NOW });
 
-  assert.equal(result.status, 409);
-  assert.match(result.error, /limit/i);
-  assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.p1Ply, 12, "the late action must not have applied");
-  assert.equal(row.result, "player1");
-  assert.equal(row.resolutionReason, "deadline");
+  assert.equal(result.resolved, false);
+  assert.equal(row.status, MATCH_STATUS.PLAYING);
+  assert.equal(settlement.rating.length, 0);
 });
 
-test("deadline: a read resolves a due match without waiting for a sweeper", { skip: SKIP_REASON }, async (t) => {
+test("inactivity: a read resolves the forfeit without a sweeper", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
-    p1State: stateAt(5, { progressAtMs: NOW - 30_000 }),
-    p1Ply: 4,
-    p1Correct: 5,
-    p2Ply: 6,
+    p1LastActionAt: new Date(NOW - INACTIVITY_FORFEIT_MS - 1),
+    p2LastActionAt: new Date(NOW),
+  });
+
+  const result = await store.fetchMatch({ userId: BOB, matchId: MATCH_ID, nowMs: NOW });
+
+  assert.equal(result.dto.status, MATCH_STATUS.FINISHED);
+  assert.equal(result.dto.result, "player2");
+  assert.equal(result.dto.resolutionReason, "forfeit");
+});
+
+test("inactivity: each viewer is served their OWN alarm and forfeit instants", { skip: SKIP_REASON }, async (t) => {
+  const fake = installMocks(t);
+  const store = await loadStore();
+  seedMatch(fake, {
+    p1LastActionAt: new Date(NOW - 1_000),
+    p2LastActionAt: new Date(NOW - 2_000),
   });
 
   const result = await store.fetchMatch({ userId: ALICE, matchId: MATCH_ID, nowMs: NOW });
 
-  assert.equal(result.dto.status, MATCH_STATUS.FINISHED);
-  assert.equal(result.dto.result, "player1");
-  assert.equal(result.dto.resolutionReason, "deadline");
-  assert.equal(settlement.rating.length, 1);
+  assert.equal(result.dto.inactivityAlarmAtMs, NOW - 1_000 + INACTIVITY_ALARM_MS);
+  assert.equal(result.dto.inactivityForfeitAtMs, NOW - 1_000 + INACTIVITY_FORFEIT_MS);
+  // The opponent's own clock is projected too, so the active seat can be warned.
+  assert.equal(result.dto.opponentInactivityAlarmAtMs, NOW - 2_000 + INACTIVITY_ALARM_MS);
+  assert.equal(result.dto.opponentInactivityForfeitAtMs, NOW - 2_000 + INACTIVITY_FORFEIT_MS);
 });
 
 // ── 7. Forfeit, cancel and disconnect ─────────────────────────────────────
@@ -1353,11 +1273,12 @@ test("result/loss: a conceding seat loses whoever was ahead, and the stayer take
   assert.equal(tiebreakLabel(loserDto.resolutionReason), "Opponent left the match");
 });
 
-test("result/timeout: no completion, the verified progress is preserved on both sides", { skip: SKIP_REASON }, async (t) => {
+test("result/inactivity: an idle seat forfeits, and the verified progress is preserved on both sides", { skip: SKIP_REASON }, async (t) => {
   const fake = installMocks(t);
   const store = await loadStore();
   const row = seedMatch(fake, {
-    deadlineAt: new Date(NOW - 1),
+    p1LastActionAt: new Date(NOW),
+    p2LastActionAt: new Date(NOW - INACTIVITY_FORFEIT_MS - 1),
     p1State: stateAt(10, { mistakes: 2, penaltyMs: 2_000, progressAtMs: NOW - 40_000 }),
     p1Ply: 30,
     p1Correct: 10,
@@ -1366,16 +1287,16 @@ test("result/timeout: no completion, the verified progress is preserved on both 
     p2Correct: 4,
   });
 
-  await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW });
+  await store.resolveInactivityDue({ matchId: MATCH_ID, nowMs: NOW });
 
   assert.equal(row.status, MATCH_STATUS.FINISHED);
-  assert.equal(row.result, "player1", "the greater verified cell count wins");
-  assert.equal(row.resolutionReason, "deadline");
+  assert.equal(row.result, "player1", "the idle seat forfeits");
+  assert.equal(row.resolutionReason, "forfeit");
   assert.equal(row.winnerId, ALICE);
   assert.equal(settlement.rating.length, 1);
 
   // Neither seat completed, so there is no completion fact to report — but the
-  // numbers the settlement COMPARED are all still in the snapshot.
+  // numbers the settlement compared are all still in the snapshot.
   const winnerDto = store.matchToDto(row, ALICE, NOW);
   const loserDto = store.matchToDto(row, BOB, NOW);
   assert.equal(winnerDto.completedAtMs, null);
@@ -1387,7 +1308,7 @@ test("result/timeout: no completion, the verified progress is preserved on both 
   assert.equal(loserDto.progress.correctCells, 4);
   assert.equal(loserDto.mistakeCount, 5);
   assert.equal(viewerOutcome(loserDto.seat, loserDto.result), "loss");
-  assert.equal(tiebreakLabel(loserDto.resolutionReason), "Most cells at the final whistle");
+  assert.equal(tiebreakLabel(loserDto.resolutionReason), "Opponent left the match");
   // The loser sees the OPPONENT only as counts — never a board.
   assert.equal(loserDto.opponent.correctCells, 10);
   assert.equal("grid" in loserDto.opponent, false);
@@ -1438,8 +1359,8 @@ test("result/duplicate: every later settlement path is a no-op after the first",
   const replay = await completeAs(store, BOB, NOW + 1);
   assert.equal(replay.status, 409);
 
-  // 2. The deadline sweeper running long after the match finished.
-  const sweep = await store.resolveDueMatch({ matchId: MATCH_ID, nowMs: NOW + MATCH_LIMIT_MS });
+  // 2. An inactivity sweep running long after the match finished.
+  const sweep = await store.resolveInactivityDue({ matchId: MATCH_ID, nowMs: NOW + 60_000 });
   assert.equal(sweep.resolved, false);
 
   // 3. A forfeit arriving after the result is already final.
@@ -1594,7 +1515,7 @@ test("history: the settlement read is scoped to the game, the match and the call
   assert.ok(start > 0, "settlementForMatch must exist");
   const block = source.slice(
     start,
-    source.indexOf("/** True when a live match has passed its limit"),
+    source.indexOf("/** True when a live match has a seat past the inactivity"),
   );
   // The reader can only ever look at the caller's OWN account, this game and
   // this match — an id from the request can never widen it.

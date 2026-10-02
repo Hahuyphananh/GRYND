@@ -32,8 +32,6 @@ export function resolutionLabel(reason: unknown): string | null {
   switch (reason) {
     case RESOLUTION.FINISH:
       return "Puzzle solved";
-    case RESOLUTION.DEADLINE:
-      return "Time up — most progress wins";
     case RESOLUTION.FORFEIT:
       return "Won by forfeit";
     case RESOLUTION.DRAW:

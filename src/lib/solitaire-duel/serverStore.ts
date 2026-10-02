@@ -35,10 +35,11 @@ import { applyTrophyResult } from "../trophyStore";
 import { mirrorQueueCreated, mirrorQueueTransition } from "../canonicalQueueLifecycle";
 import { coerceAiDifficulty } from "../aiDifficulty";
 import {
+  INACTIVITY_ALARM_MS,
+  INACTIVITY_FORFEIT_MS,
   MATCH_STATUS,
   MAX_MOVES_PER_SEAT,
   READY_COUNTDOWN_MS,
-  MATCH_LIMIT_MS,
   RESOLUTION,
   RESULT,
   SEAT,
@@ -177,6 +178,72 @@ function raceFor(match: MatchRow, seat: Seat, forfeited = false): SeatRace {
   });
 }
 
+// ── Inactivity (the untimed match's one rule) ─────────────────────────────
+
+/** A seat's own last accepted move instant, or null before its first move. */
+function lastActionMsForSeat(match: MatchRow, seat: Seat): number | null {
+  const raw = seat === SEAT.PLAYER1 ? match.p1LastActionAt : match.p2LastActionAt;
+  return instantMs(raw);
+}
+
+/** What a seat's inactivity is measured from: its last move, else GO. */
+function inactivityBaselineMs(match: MatchRow, seat: Seat): number | null {
+  const goAtMs = instantMs(match.goAt) ?? instantMs(match.startedAt);
+  return lastActionMsForSeat(match, seat) ?? goAtMs;
+}
+
+/** The instant a threshold fires for `seat`, or null before the clock starts. */
+function inactivityAtMs(
+  match: MatchRow,
+  seat: Seat | null,
+  thresholdMs: number,
+): number | null {
+  // A practice match is fully untimed: the human may think as long as they like,
+  // so no inactivity clock is even projected for it.
+  if (!seat || match.isAi) return null;
+  const base = inactivityBaselineMs(match, seat);
+  return base == null ? null : base + thresholdMs;
+}
+
+function inactivityMsForSeat(match: MatchRow, seat: Seat, nowMs: number): number | null {
+  const base = inactivityBaselineMs(match, seat);
+  return base == null ? null : Math.max(0, nowMs - base);
+}
+
+/**
+ * The seat that has gone inactive past the forfeit threshold, or null.
+ *
+ * Per seat and measured from that seat's own last move, so one player's activity
+ * can never keep the other's clock alive. A seat that already completed is
+ * never forfeited. When BOTH seats are past the threshold the more idle one
+ * loses, and an exact tie (two seats that never moved, checked at the same
+ * instant) is a draw rather than an arbitrary winner.
+ */
+function inactivityForfeitSeat(match: MatchRow, nowMs: number): Seat | "both" | null {
+  // A practice match is never forfeited for inactivity — it has no clock at all.
+  if (match.isAi) return null;
+  if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return null;
+  const idle1 = inactivityMsForSeat(match, SEAT.PLAYER1, nowMs);
+  const idle2 = inactivityMsForSeat(match, SEAT.PLAYER2, nowMs);
+  const done1 = Boolean(stateForSeat(match, SEAT.PLAYER1)?.completed);
+  const done2 = Boolean(stateForSeat(match, SEAT.PLAYER2)?.completed);
+  const due1 = !done1 && idle1 != null && idle1 >= INACTIVITY_FORFEIT_MS;
+  const due2 = !done2 && idle2 != null && idle2 >= INACTIVITY_FORFEIT_MS;
+  if (!due1 && !due2) return null;
+  if (due1 && due2) {
+    if (idle1 === idle2) return "both";
+    return (idle1 as number) > (idle2 as number) ? SEAT.PLAYER1 : SEAT.PLAYER2;
+  }
+  return due1 ? SEAT.PLAYER1 : SEAT.PLAYER2;
+}
+
+/** The per-seat column write that resets a seat's inactivity clock. */
+function seatLastActionPatchFor(seat: Seat, nowMs: number) {
+  return seat === SEAT.PLAYER1
+    ? { p1LastActionAt: new Date(nowMs) }
+    : { p2LastActionAt: new Date(nowMs) };
+}
+
 /**
  * The per-seat column write for one move.
  *
@@ -228,7 +295,8 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
   const terminal = TERMINAL_STATUSES.includes(match.status);
   const revealed = match.status === MATCH_STATUS.PLAYING || terminal;
   const ownState = seat ? stateForSeat(match, seat) : null;
-  const otherState = seat ? stateForSeat(match, otherSeat(seat)) : null;
+  const opponentSeat = seat ? otherSeat(seat) : null;
+  const otherState = opponentSeat ? stateForSeat(match, opponentSeat) : null;
 
   return {
     matchId: String(match.id),
@@ -245,7 +313,15 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     seedHash: match.serverSeedHash,
     serverSeed: terminal ? match.serverSeed : null,
     goAtMs: instantMs(match.goAt),
-    deadlineAtMs: instantMs(match.deadlineAt),
+    // The viewer's OWN inactivity clock: last action (or GO) plus each threshold.
+    // Derived per viewer, so a client can raise its own alarm, and a read can
+    // resolve the forfeit server-side.
+    inactivityAlarmAtMs: inactivityAtMs(match, seat, INACTIVITY_ALARM_MS),
+    inactivityForfeitAtMs: inactivityAtMs(match, seat, INACTIVITY_FORFEIT_MS),
+    // The OPPONENT's inactivity clock, so the active seat can be told the other
+    // side is about to forfeit. Null in a waiting lobby and in practice.
+    opponentInactivityAlarmAtMs: inactivityAtMs(match, opponentSeat, INACTIVITY_ALARM_MS),
+    opponentInactivityForfeitAtMs: inactivityAtMs(match, opponentSeat, INACTIVITY_FORFEIT_MS),
     startedAtMs: instantMs(match.startedAt),
     endedAtMs: instantMs(match.endedAt),
     createdAtMs: instantMs(match.createdAt),
@@ -254,8 +330,8 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     view: revealed && ownState ? viewForState(ownState) : null,
     progress: ownState ? progressOf(ownState) : null,
     opponent:
-      revealed && otherState && seat
-        ? opponentProgressFor(otherSeat(seat), otherState)
+      revealed && otherState && opponentSeat
+        ? opponentProgressFor(opponentSeat, otherState)
         : null,
   };
 }
@@ -414,8 +490,8 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
  *
  * NOTHING about the puzzle is touched here: seat 2's board already holds its
  * copy of the shared deal, so joining cannot introduce a second deal. The only
- * work is the synchronized clock — an absolute GO instant plus a deadline, both
- * on the server's clock.
+ * work is the synchronized clock — an absolute GO instant on the server's
+ * clock, from which both seats' inactivity clocks start.
  *
  * The match goes straight to `playing` (there is no ready banner), but moves
  * before `go_at` are refused, so the countdown is a shared planning window
@@ -440,7 +516,11 @@ async function joinExistingMatch(tx: any, candidateId: string, userId: string, n
       player2Id: userId,
       status: MATCH_STATUS.PLAYING,
       goAt: new Date(goAtMs),
-      deadlineAt: new Date(goAtMs + MATCH_LIMIT_MS),
+      // Both seats' inactivity clocks start at GO. No deadline is armed: the
+      // match is untimed and only ends by completion, forfeit, disconnect or
+      // the inactivity rule in `resolveInactivityDue`.
+      p1LastActionAt: new Date(goAtMs),
+      p2LastActionAt: new Date(goAtMs),
       startedAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })
@@ -523,7 +603,9 @@ export async function createAiMatch({
       p1Revealed: openingProgress.revealedTableau,
       p2Revealed: openingProgress.revealedTableau,
       goAt: new Date(goAtMs),
-      deadlineAt: new Date(goAtMs + MATCH_LIMIT_MS),
+      // The human and the bot both start their inactivity clocks at GO.
+      p1LastActionAt: new Date(goAtMs),
+      p2LastActionAt: new Date(goAtMs),
       startedAt: new Date(nowMs),
     })
     .returning();
@@ -545,8 +627,7 @@ export async function createAiMatch({
  * (`goAt + ply × delay`), not the instant the read happened to run, so a photo
  * finish is decided by who actually solved the shared deal first.
  *
- * Idempotent and monotonic: a no-op for a non-AI row, an unstarted row, a row
- * whose deadline has passed (the deadline resolution owns that verdict), or a
+ * Idempotent and monotonic: a no-op for a non-AI row, an unstarted row, or a
  * call that lands between two of the bot's moves. A write happens only when at
  * least one move was played, and the completion is finalized inside the same
  * transaction.
@@ -572,10 +653,6 @@ export async function advanceAiMatch({
 
     const goAtMs = instantMs(match.goAt);
     if (goAtMs == null || nowMs < goAtMs) return { match, advanced: false } as const;
-    // Past the limit, the deadline resolution decides the match from the
-    // authoritative progress (and the bot's board must not move after it).
-    if (isDeadlineDue(match, nowMs)) return { match, advanced: false } as const;
-
     const seat = SEAT.PLAYER2;
     let state = stateForSeat(match, seat);
     if (!state || !isWellFormedState(state) || state.completed) {
@@ -626,6 +703,8 @@ export async function advanceAiMatch({
       .update(solitaireDuelMatches)
       .set({
         ...seatPatchFor(seat, state, progress),
+        // Every bot move resets the bot's own inactivity clock.
+        p2LastActionAt: new Date(nowMs),
         ...(completedNow
           ? { p2FinishedAt: new Date(state.completedAtMs ?? nowMs) }
           : {}),
@@ -658,9 +737,10 @@ async function advanceAiIfPractice(match: MatchRow, nowMs: number): Promise<Matc
 /**
  * The authoritative snapshot for the calling participant.
  *
- * A match past its deadline is resolved on READ, so a match can never be left
- * live just because nobody happened to move — the same lazy-resolution pattern
- * Speed Typing uses. Non-participants get a 403; there is no spectator mode.
+ * A match in which a seat has gone inactive is resolved on READ, so a match can
+ * never be left live just because nobody happened to move — the same
+ * lazy-resolution pattern Speed Typing uses. Non-participants get a 403; there
+ * is no spectator mode.
  */
 export async function fetchMatch({
   userId,
@@ -688,8 +768,10 @@ export async function fetchMatch({
   // deal). A human row is untouched by this step.
   match = await advanceAiIfPractice(match, nowMs);
 
-  if (isDeadlineDue(match, nowMs)) {
-    await resolveDueMatch({ matchId, nowMs });
+  // An untimed match is resolved on READ when a seat has gone inactive, so a
+  // match can never be left live just because the idle seat stopped polling.
+  if (isInactivityDue(match, nowMs)) {
+    await resolveInactivityDue({ matchId, nowMs });
     [match] = await db
       .select()
       .from(solitaireDuelMatches)
@@ -718,11 +800,9 @@ export async function fetchSeatMoves(matchId: string, seat: Seat) {
     .orderBy(sql`${solitaireDuelMoves.ply} ASC`);
 }
 
-/** True when a live match has passed its limit and must be resolved. */
-function isDeadlineDue(match: MatchRow, nowMs: number): boolean {
-  if (match.status !== MATCH_STATUS.PLAYING || !match.player2Id) return false;
-  const deadlineAtMs = instantMs(match.deadlineAt);
-  return deadlineAtMs != null && nowMs >= deadlineAtMs;
+/** True when a live match has a seat past the inactivity forfeit threshold. */
+function isInactivityDue(match: MatchRow, nowMs: number): boolean {
+  return inactivityForfeitSeat(match, nowMs) != null;
 }
 
 // ── Move (the only player-authored mutation) ──────────────────────────────
@@ -762,7 +842,7 @@ export type MoveResult =
  *   409 waiting for an opponent
  *   409 match is no longer active
  *   409 the race has not started yet      (before `go_at`)
- *   409 the match limit has passed        (and the match resolves)
+ *   409 a seat forfeited for inactivity   (and the match resolves)
  *   409 the seat has already finished
  *   400 malformed `expectedPly`
  *   409 stale `expectedPly` — refetch
@@ -821,9 +901,11 @@ export async function submitMove({
       if (goAtMs == null || nowMs < goAtMs) {
         return err("The race has not started", 409);
       }
-      if (isDeadlineDue(match, nowMs)) {
-        await resolveDueMatchInTx(tx, match, nowMs);
-        return err("The match limit has passed", 409);
+      // An untimed match: a move that arrives after a seat has already gone
+      // inactive resolves that forfeit first.
+      if (isInactivityDue(match, nowMs)) {
+        await resolveInactivityDueInTx(tx, match, nowMs);
+        return err("A seat forfeited for inactivity", 409);
       }
 
       const state = stateForSeat(match, seat);
@@ -883,6 +965,8 @@ export async function submitMove({
         .update(solitaireDuelMatches)
         .set({
           ...seatPatchFor(seat, nextState, progress),
+          // The accepted move resets this seat's own inactivity clock.
+          ...seatLastActionPatchFor(seat, nowMs),
           ...(completedNow ? seatFinishedPatchFor(seat, nowMs) : {}),
           updatedAt: new Date(nowMs),
         })
@@ -921,32 +1005,29 @@ export async function submitMove({
   }
 }
 
-// ── Deadline resolution ───────────────────────────────────────────────────
+// ── Resolution ───────────────────────────────────────────────────────────
 
 export type DueResolution =
   | { match: MatchRow; resolved: boolean }
   | StoreError;
 
+// ── Inactivity resolution ─────────────────────────────────────────────────
+
 /**
- * Resolve a live match whose limit has passed.
+ * Resolve a live match in which a seat has gone inactive past the forfeit
+ * threshold, awarding the opponent the win.
  *
  * Safe to call at any time and from any path: it re-checks the status under the
- * row lock and does nothing unless the match is genuinely live and genuinely
- * due. That is what lets every caller below be a plain "just in case" call with
- * no coordination.
+ * row lock and does nothing unless a seat is genuinely, still, idle. This is the
+ * only path that can end a match nobody is playing.
  */
-export async function resolveDueMatch({
+export async function resolveInactivityDue({
   matchId,
   nowMs = Date.now(),
 }: {
   matchId: string;
   nowMs?: number;
 }): Promise<DueResolution> {
-  // A practice bot's board must be current BEFORE the deadline verdict is
-  // computed, so the progress tiebreak compares its real progress. No-op for a
-  // human match, and idempotent either way.
-  await advanceAiMatch({ matchId, nowMs });
-
   return await db.transaction(async (tx) => {
     const [match] = await tx
       .select()
@@ -955,22 +1036,31 @@ export async function resolveDueMatch({
       .for("update");
 
     if (!match) return err("Match not found", 404);
-    return await resolveDueMatchInTx(tx, match, nowMs);
+    return await resolveInactivityDueInTx(tx, match, nowMs);
   });
 }
 
-async function resolveDueMatchInTx(
+async function resolveInactivityDueInTx(
   tx: any,
   match: MatchRow,
   nowMs: number,
 ): Promise<{ match: MatchRow; resolved: boolean }> {
-  if (!isDeadlineDue(match, nowMs)) return { match, resolved: false };
+  const forfeitSeat = inactivityForfeitSeat(match, nowMs);
+  if (!forfeitSeat) return { match, resolved: false };
 
-  const outcome = resolveRace({
-    player1: raceFor(match, SEAT.PLAYER1),
-    player2: raceFor(match, SEAT.PLAYER2),
-    deadlineReached: true,
-  });
+  // The idle seat forfeits; `resolveRace` awards the win to the other seat. The
+  // result is derived here from the row, never from the request.
+  const outcome = resolveRace(
+    forfeitSeat === "both"
+      ? {
+          player1: raceFor(match, SEAT.PLAYER1, true),
+          player2: raceFor(match, SEAT.PLAYER2, true),
+        }
+      : {
+          player1: raceFor(match, SEAT.PLAYER1, forfeitSeat === SEAT.PLAYER1),
+          player2: raceFor(match, SEAT.PLAYER2, forfeitSeat === SEAT.PLAYER2),
+        },
+  );
   if (!outcome) return { match, resolved: false };
 
   const finalRow = await finalizeMatch(tx, match, outcome, nowMs);
@@ -1013,8 +1103,6 @@ export async function forfeitMatch({
     const outcome = resolveRace({
       player1: raceFor(match, SEAT.PLAYER1, seat === SEAT.PLAYER1),
       player2: raceFor(match, SEAT.PLAYER2, seat === SEAT.PLAYER2),
-      // A concession is a loss regardless of the clock.
-      deadlineReached: true,
     });
 
     const finalRow = await finalizeMatch(
@@ -1142,7 +1230,6 @@ export async function forfeitMatchOnDisconnect({
     const outcome = resolveRace({
       player1: raceFor(match, SEAT.PLAYER1, seat === SEAT.PLAYER1),
       player2: raceFor(match, SEAT.PLAYER2, seat === SEAT.PLAYER2),
-      deadlineReached: true,
     });
 
     const finalRow = await finalizeMatch(
@@ -1162,8 +1249,8 @@ export async function forfeitMatchOnDisconnect({
  * Flip a match terminal, exactly once, and settle it.
  *
  * The single write path for `status`, `result`, `winnerId`, `resolution_reason`
- * and `ended_at` — reached by completion, by the deadline, and by a forfeit, so
- * there is one place a result can ever come from. The `TERMINAL_STATUSES` guard
+ * and `ended_at` — reached by a completion and by a forfeit, so there is one
+ * place a result can ever come from. The `TERMINAL_STATUSES` guard
  * plus the caller's `FOR UPDATE` read is what makes a second attempt a no-op
  * rather than a second settlement.
  */

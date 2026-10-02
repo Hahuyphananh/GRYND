@@ -834,32 +834,23 @@ export function adjustedFinishAtMs(
 /**
  * Decide the match from the two seats' race facts.
  *
- * Returns null while the match is still live (nobody has completed, nobody has
- * forfeited, and the limit has not been reached), so the store can call it on
- * every transition and only act when there is a verdict.
+ * Returns null while the match is still live (nobody has completed and nobody
+ * has forfeited), so the store can call it on every transition and only act
+ * when there is a verdict. There is no match clock: a match ends on a
+ * completion or a forfeit (a concession, a disconnect, or the inactivity rule).
  *
  * Order:
- *   1. a forfeit decides the match for the opponent
+ *   1. a forfeit decides the match for the opponent; two forfeits are a draw
  *   2. a completion decides it: the LOWER ADJUSTED completion instant wins, an
  *      exact tie falls back to the earliest server completion instant, and a
  *      full tie is a draw. With one completion this is just "the finisher wins"
- *   3. at the deadline: most correctly completed cells
- *   4. then fewest mistakes
- *   5. then the earliest achievement of that progress
- *   6. an exact tie is a draw
- *
- * A seat that never made a single accepted action loses at the deadline, so an
- * idle seat cannot be handed a neutral draw instead of the loss it was heading
- * for — the same guard Solitaire Duel and Speed Typing use.
  */
 export function resolveSudokuRace({
   player1,
   player2,
-  deadlineReached = false,
 }: {
   player1: SudokuSeatRace;
   player2: SudokuSeatRace;
-  deadlineReached?: boolean;
 }): SudokuRaceOutcome | null {
   if (player1.forfeited && player2.forfeited) {
     return { result: "draw", resolution: RESOLUTION.DRAW };
@@ -888,33 +879,7 @@ export function resolveSudokuRace({
   if (finish1 != null) return { result: SEAT.PLAYER1, resolution: RESOLUTION.FINISH };
   if (finish2 != null) return { result: SEAT.PLAYER2, resolution: RESOLUTION.FINISH };
 
-  if (!deadlineReached) return null;
-
-  if (player1.ply === 0 && player2.ply > 0) {
-    return { result: SEAT.PLAYER2, resolution: RESOLUTION.FORFEIT };
-  }
-  if (player2.ply === 0 && player1.ply > 0) {
-    return { result: SEAT.PLAYER1, resolution: RESOLUTION.FORFEIT };
-  }
-
-  if (player1.correctCells !== player2.correctCells) {
-    return player1.correctCells > player2.correctCells
-      ? { result: SEAT.PLAYER1, resolution: RESOLUTION.DEADLINE }
-      : { result: SEAT.PLAYER2, resolution: RESOLUTION.DEADLINE };
-  }
-  if (player1.mistakes !== player2.mistakes) {
-    return player1.mistakes < player2.mistakes
-      ? { result: SEAT.PLAYER1, resolution: RESOLUTION.DEADLINE }
-      : { result: SEAT.PLAYER2, resolution: RESOLUTION.DEADLINE };
-  }
-  const reached1 = player1.progressAtMs ?? Infinity;
-  const reached2 = player2.progressAtMs ?? Infinity;
-  if (reached1 !== reached2) {
-    return reached1 < reached2
-      ? { result: SEAT.PLAYER1, resolution: RESOLUTION.DEADLINE }
-      : { result: SEAT.PLAYER2, resolution: RESOLUTION.DEADLINE };
-  }
-  return { result: "draw", resolution: RESOLUTION.DRAW };
+  return null;
 }
 
 /** The viewer's own outcome, for the result screen. */

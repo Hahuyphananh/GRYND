@@ -41,7 +41,8 @@ test("constants: the game key, route, lock namespace and modes are declared once
   assert.match(source, /GAME_ROUTE = "\/casino\/sudoku-duel"/);
   assert.match(source, /SUDOKU_DUEL_LOCK_NAMESPACE/);
   assert.match(source, /READY_COUNTDOWN_MS = 3_000/);
-  assert.match(source, /MATCH_LIMIT_MS = 600_000/);
+  assert.match(source, /INACTIVITY_ALARM_MS = 900_000/);
+  assert.match(source, /INACTIVITY_FORFEIT_MS = 1_200_000/);
   assert.match(source, /MISTAKE_PENALTY_MS = 1_000/);
   assert.match(source, /MATCH_STATUS/);
   assert.match(source, /RESOLUTION/);
@@ -185,7 +186,7 @@ test("create route: it starts the synchronized countdown from server instants", 
   assert.match(source, /createOrJoin/);
   assert.match(source, /SUDOKU_DUEL_EVENTS\.COUNTDOWN/);
   assert.match(source, /goAtMs/);
-  assert.match(source, /deadlineAtMs/);
+  assert.match(source, /countdownMs/);
 });
 
 test("disconnect route: it re-verifies the token before resolving anything", () => {
@@ -244,7 +245,8 @@ test("storage: the schema mirrors the migration and the anti-replay index", () =
     schema,
     /unique\("sudoku_duel_moves_ply_unique"\)\.on\(table\.matchId, table\.seat, table\.ply\)/,
   );
-  assert.match(schema, /dueIdx: index\("sudoku_duel_matches_due_idx"\)\.on\(table\.status, table\.deadlineAt\)/);
+  // The retired deadline column and its index must be gone.
+  assert.doesNotMatch(schema, /sudoku_duel_matches_due_idx/);
   // The solution column exists (server-only) and is NOT NULL.
   assert.match(schema, /solution: jsonb\("solution"\)\.notNull\(\)/);
 
@@ -325,39 +327,41 @@ test("client: the race view sends only an action and its own ply cursor", () => 
 test("client: matchmaking carries no payload, so difficulty cannot be chosen", () => {
   const source = read(LOBBY_PAGE);
   assert.match(source, /fetch\("\/api\/sudoku-duel\/create-or-join"/);
-  // A bodyless POST — the server's own DEFAULT_DIFFICULTY decides the puzzle.
-  assert.equal(
-    source.includes("JSON.stringify"),
-    false,
-    "the lobby must not send a body",
-  );
-  // The fetch options block itself carries no body (the `body:` keys below it
-  // belong to the static rules modal, not to a request).
+  // The RANKED create-or-join POST is bodyless — the server's own
+  // DEFAULT_DIFFICULTY decides the puzzle, so a client cannot choose it.
   const post = sliceBetween(source, '"/api/sudoku-duel/create-or-join"', "});");
   assert.ok(post.length > 0, "the create-or-join call must exist");
-  assert.equal(post.includes("body:"), false, "the lobby must not send a body");
+  assert.equal(post.includes("body:"), false, "create-or-join must not send a body");
   assert.match(post, /method: "POST"/);
+  // The ONLY body the lobby composes is the practice-bot difficulty, and it can
+  // carry nothing but that one tier.
+  const aiPost = sliceBetween(source, '"/api/sudoku-duel/create-ai"', "});");
+  assert.ok(aiPost.length > 0, "the create-ai call must exist");
+  assert.match(aiPost, /body: JSON\.stringify\(\{ difficulty: aiDifficulty \}\)/);
 });
 
-test("store: a non-participant is refused before the deadline can be resolved", () => {
+test("store: a non-participant is refused before inactivity can be resolved", () => {
   const source = read(STORE);
   const fetchMatch = sliceBetween(source, "export async function fetchMatch", "export async function fetchSeatMoves");
   const refuseAt = fetchMatch.indexOf('Not a participant of this match');
-  const resolveAt = fetchMatch.indexOf("isDeadlineDue");
+  const resolveAt = fetchMatch.indexOf("isInactivityDue");
   assert.ok(refuseAt > 0, "fetchMatch must refuse a non-participant");
-  assert.ok(resolveAt > 0, "fetchMatch must resolve a due match on read");
-  assert.ok(refuseAt < resolveAt, "the 403 must precede the deadline resolution");
+  assert.ok(resolveAt > 0, "fetchMatch must resolve an idle match on read");
+  assert.ok(refuseAt < resolveAt, "the 403 must precede the inactivity resolution");
 });
 
-test("store: the puzzle is minted exactly once, and a join never regenerates it", () => {
+test("store: the puzzle is minted once per match, and a join never regenerates it", () => {
   const source = read(STORE);
-  // One call site for the generator — inside createWaitingMatch.
+  // Exactly two mint sites: the ranked lobby (`createWaitingMatch`) and the
+  // practice row (`createAiMatch`). A join path has NONE — it only starts the
+  // clock and claims the seat, which is what guarantees both seats share the
+  // puzzle the row was created with.
   assert.equal(
     (source.match(/generatePuzzle\(/g) || []).length,
-    1,
-    "the puzzle must be minted in exactly one place",
+    2,
+    "the puzzle must be minted only at match creation",
   );
-  const join = sliceBetween(source, "async function joinExistingMatch", "export async function fetchMatch");
+  const join = sliceBetween(source, "async function joinExistingMatch", "export async function createAiMatch");
   for (const forbidden of ["generatePuzzle", "derivePuzzleSeed", "randomHex", "puzzle:", "solution:", "puzzleSeed:"]) {
     assert.equal(join.includes(forbidden), false, `joinExistingMatch must not touch ${forbidden}`);
   }
@@ -367,15 +371,45 @@ test("store: the puzzle is minted exactly once, and a join never regenerates it"
 
 test("store: timing is the server's, on every mutation entry point", () => {
   const source = read(STORE);
-  const submit = sliceBetween(source, "export async function submitMove", "export async function resolveDueMatch");
-  // Acting before GO and acting past the limit are both refused server-side.
+  const submit = sliceBetween(source, "export async function submitMove", "export async function resolveInactivityDue");
+  // Acting before GO and acting after going idle are both refused server-side.
   assert.match(submit, /nowMs < goAtMs/);
-  assert.match(submit, /isDeadlineDue\(match, nowMs\)/);
+  assert.match(submit, /isInactivityDue\(match, nowMs\)/);
   // `nowMs` is a parameter with a server default, never read from a request.
   assert.match(submit, /nowMs = Date.now\(\)/);
   for (const forbidden of ["action.now", "action.nowMs", "action.timestamp", "action.completedAtMs", "action.winner", "action.result"]) {
     assert.equal(source.includes(forbidden), false, `the store must never read ${forbidden}`);
   }
+});
+
+test("client: the clock is a stopwatch until the alarm, and the opponent's idle is surfaced", () => {
+  const hud = read("src/components/sudoku-duel/CompetitiveHud.tsx");
+  const page = read("src/app/casino/sudoku-duel/[matchId]/PageClient.tsx");
+  // The clock is a stopwatch until the last five minutes, then the countdown.
+  assert.match(hud, /IconStopwatch/);
+  assert.match(hud, /data-mode=\{countdownActive \? "countdown" : "stopwatch"\}/);
+  // The opponent's own idle clock is surfaced to the active seat.
+  assert.match(page, /opponentInactivityAlarmAtMs/);
+  assert.match(page, /sudoku-opponent-idle-alarm/);
+});
+
+test("store: inactivity is enforced server-side, per seat, with fixed thresholds", () => {
+  const constants = read(CONSTANTS);
+  const store = read(STORE);
+  // The two thresholds live in the one source of truth.
+  assert.match(constants, /INACTIVITY_ALARM_MS = 900_000/);
+  assert.match(constants, /INACTIVITY_FORFEIT_MS = 1_200_000/);
+  // The countdown appears only for the last five minutes before the forfeit.
+  assert.match(constants, /INACTIVITY_COUNTDOWN_MS = 300_000/);
+  // The match is untimed: no live match gets a deadline written.
+  assert.doesNotMatch(store, /deadlineAt: new Date/, "no deadline may be armed");
+  // The forfeit is resolved from the row, on read and on the action path.
+  assert.match(store, /export async function resolveInactivityDue/);
+  assert.match(store, /if \(isInactivityDue\(match, nowMs\)\)/);
+  // Per-seat clocks, so one player's activity cannot keep the other's alive.
+  assert.match(store, /inactivityForfeitSeat\(match, nowMs\)/);
+  assert.match(store, /p1LastActionAt/);
+  assert.match(store, /p2LastActionAt/);
 });
 
 test("client: the lobby lists open lobbies from its own route and the shared lobby room", () => {
