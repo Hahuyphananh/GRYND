@@ -9,6 +9,7 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRobot, IconGridDots } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -55,10 +56,8 @@ export default function FourInARowLobbyPage() {
 
   useEffect(() => {
     fetchGames();
-    const id = setInterval(() => {
-      fetchGames();
-    }, 3000);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(fetchGames, 3000);
   }, [isSignedIn, user]);
 
   useEffect(() => {

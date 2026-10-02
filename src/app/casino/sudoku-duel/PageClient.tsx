@@ -46,6 +46,7 @@ import {
   SUDOKU_DUEL_LOBBY_ROOM,
 } from "../../../lib/sudoku-duel/rooms";
 import { difficultyLabel, givensLabel } from "../../../lib/sudoku-duel/ui";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 /** How often the open-lobby list is refreshed. The socket relay is the fast path. */
 const POLL_MS = 3000;
@@ -90,8 +91,9 @@ export default function SudokuDuelLobbyPage() {
   useEffect(() => {
     if (!isSignedIn) return undefined;
     void fetchLobbies();
-    const id = setInterval(() => void fetchLobbies(), POLL_MS);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres, and coming
+    // back to it refreshes immediately instead of waiting out the interval.
+    return startVisibleInterval(() => void fetchLobbies(), POLL_MS);
   }, [fetchLobbies, isSignedIn]);
 
   // Near-instant lobby refresh: the shared `lobby:sudoku-duel` room carries the

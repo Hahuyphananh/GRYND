@@ -36,6 +36,7 @@ import {
 } from "../../../lib/keno-pvp/rooms";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 
 // ── Small inline SVG icons (mirror the slots-pvp lobby) ──────────────
@@ -82,10 +83,8 @@ export default function KenoLobbyPage() {
 
   useEffect(() => {
     fetchAvailable();
-    const interval = setInterval(() => {
-      fetchAvailable();
-    }, 3000);
-    return () => clearInterval(interval);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(fetchAvailable, 3000);
   }, [fetchAvailable]);
 
   const myOpenMatch = useMemo(

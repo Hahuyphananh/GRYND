@@ -7,6 +7,7 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconBuildingSkyscraper } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -65,10 +66,8 @@ export default function TowerArenaLobbyPage() {
   useEffect(() => {
     load();
     loadPreview();
-    const id = setInterval(() => {
-      load();
-    }, 3000);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(load, 3000);
   }, []);
 
   // Listen on the shared lobby grid room so open-lobby rows refresh the

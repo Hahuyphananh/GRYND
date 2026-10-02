@@ -32,6 +32,7 @@ import {
   memoryGridMatchRoom,
 } from "../../../lib/memory-grid/rooms";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -120,10 +121,8 @@ export default function MemoryGridLobbyPage() {
 
   useEffect(() => {
     fetchAvailable();
-    const interval = setInterval(() => {
-      fetchAvailable();
-    }, 3000);
-    return () => clearInterval(interval);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(fetchAvailable, 3000);
   }, [fetchAvailable]);
 
   // Derive any lobby the current user owns FROM the availableMatches

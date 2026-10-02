@@ -33,6 +33,7 @@ import {
   type AiDifficulty,
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import {
   TOTAL_ROUNDS,
   type InteractiveOddsState as InteractiveOddsStateType,
@@ -1054,13 +1055,14 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
     socket.on("odds:game_update", handleGameUpdate);
     socket.on("odds:state_changed", handler);
     
-    // Polling fallback to handle missed socket events
-    const pollInterval = setInterval(handler, 3000);
+    // Polling fallback to handle missed socket events. Visibility-gated: a
+    // hidden tab cannot be watching a live hand.
+    const stopPoll = startVisibleInterval(handler, 3000);
 
     return () => {
       socket.off("odds:game_update", handleGameUpdate);
       socket.off("odds:state_changed", handler);
-      clearInterval(pollInterval);
+      stopPoll();
     };
   }, [socket, myGameId, applyStateFromServer]);
 
@@ -1126,7 +1128,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   // Poll for opponent joining (when player1 is waiting)
   useEffect(() => {
     if (!myGameId || interactiveState || !isPlayer1) return;
-    const interval = setInterval(async () => {
+    // Visibility-gated: nobody is waiting on an opponent from a hidden tab.
+    return startVisibleInterval(async () => {
       try {
         const res = await fetch(`/api/odds/status?gameId=${myGameId}`);
         const data = await res.json();
@@ -1136,7 +1139,6 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
         }
       } catch {}
     }, 1500);
-    return () => clearInterval(interval);
   }, [myGameId, interactiveState, isPlayer1, applyStateFromServer]);
 
   // ── Forfeit ──

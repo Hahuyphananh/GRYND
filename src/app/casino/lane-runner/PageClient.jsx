@@ -32,6 +32,7 @@ import {
   laneRushDuelMatchRoom,
 } from "../../../lib/lane-rush-duel/rooms";
 import { DIFFICULTIES } from "../../../lib/lane-rush-duel/constants";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import { IconShieldCheck } from "@tabler/icons-react";
 
 function TowerIcon({ className = "" }) {
@@ -92,10 +93,8 @@ export default function LaneRushDuelLobbyPage() {
 
   useEffect(() => {
     fetchAvailable();
-    const interval = setInterval(() => {
-      fetchAvailable();
-    }, 3000);
-    return () => clearInterval(interval);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(fetchAvailable, 3000);
   }, [fetchAvailable]);
 
   // Any lobby the current user owns, derived from the polled list.

@@ -27,6 +27,7 @@ import {
   readStoredAiDifficulty,
 } from "../../../lib/aiDifficulty";
 import { useSocket } from "../../../context/SocketProvider";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import {
   TIC_TAC_TOE_LOBBY_ROOM,
   TIC_TAC_TOE_MATCH_UPDATED,
@@ -68,8 +69,9 @@ export default function TicTacToeLobbyPage() {
 
   useEffect(() => {
     fetchLobbies();
-    const id = setInterval(fetchLobbies, POLL_MS);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres, and coming
+    // back to it refreshes immediately instead of waiting out the interval.
+    return startVisibleInterval(fetchLobbies, POLL_MS);
   }, [fetchLobbies, isSignedIn, user?.id]);
 
   // Near-instant lobby refresh: the shared `lobby:tic-tac-toe` room carries the

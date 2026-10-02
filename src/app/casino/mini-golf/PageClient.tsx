@@ -24,6 +24,7 @@ import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { useSocket } from "../../../context/SocketProvider";
 import { MINI_GOLF_LOBBY_ROOM, MINI_GOLF_MATCH_UPDATED } from "../../../lib/mini-golf/rooms";
 import { readStoredAiDifficulty, type AiDifficulty } from "../../../lib/aiDifficulty";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 const POLL_MS = 3000;
 
@@ -64,8 +65,9 @@ export default function MiniGolfLobbyPage() {
 
   useEffect(() => {
     fetchLobbies();
-    const id = setInterval(fetchLobbies, POLL_MS);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres, and coming
+    // back to it refreshes immediately instead of waiting out the interval.
+    return startVisibleInterval(fetchLobbies, POLL_MS);
   }, [fetchLobbies, isSignedIn, user?.id]);
 
   // Near-instant lobby refresh: the shared `lobby:mini-golf` room carries the

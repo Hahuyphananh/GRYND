@@ -9,6 +9,7 @@ import { CoinIcon } from "../../../components/lobby/PvpLobby";
 import { IconRobot } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { readStoredAiDifficulty } from "../../../lib/aiDifficulty";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 
 export default function UnoLobbyPage() {
@@ -47,10 +48,8 @@ export default function UnoLobbyPage() {
 
   useEffect(() => {
     load();
-    const id = setInterval(() => {
-      load();
-    }, 3000);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(load, 3000);
   }, []);
 
   useEffect(() => {

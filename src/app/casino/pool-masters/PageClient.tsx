@@ -5,6 +5,7 @@ import PvpLobbyPage from "../../../components/lobby/PvpLobby";
 import { IconTarget } from "@tabler/icons-react";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
 import { type AiDifficulty, readStoredAiDifficulty } from "../../../lib/aiDifficulty";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 
 export default function PoolLobbyPage() {
@@ -32,12 +33,13 @@ export default function PoolLobbyPage() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 3000);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(load, 3000);
   }, []);
   useEffect(() => {
     if (!createdLobbyId) return;
-    const id = setInterval(async () => {
+    // Visibility-gated: nobody is waiting on a match from a background tab.
+    return startVisibleInterval(async () => {
       const res = await fetch(`/api/pool/get-match?matchId=${createdLobbyId}`, {
         cache: "no-store",
       });
@@ -47,8 +49,6 @@ export default function PoolLobbyPage() {
         router.push(`/casino/pool-masters/game/${match.id}`);
       }
     }, 1200);
-
-    return () => clearInterval(id);
   }, [createdLobbyId, router]);
 
   const createLobby = async () => {

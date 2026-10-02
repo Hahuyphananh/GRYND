@@ -32,6 +32,7 @@ import { useSocket } from "../../../context/SocketProvider";
 import { LOBBY_LIST_POLL_INTERVAL_MS } from "../../../lib/precision/constants";
 import type { PrecisionLobby } from "../../../lib/precision/types";
 import AiDifficultyPicker from "../../../components/lobby/AiDifficultyPicker";
+import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 import {
   type AiDifficulty,
   readStoredAiDifficulty,
@@ -111,10 +112,8 @@ export default function PrecisionLobbyPage() {
   // realtime nudge.
   useEffect(() => {
     void reload();
-    const id = setInterval(() => {
-      void reload();
-    }, LOBBY_LIST_POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+    // Visibility-gated: a hidden lobby tab stops polling Postgres.
+    return startVisibleInterval(() => void reload(), LOBBY_LIST_POLL_INTERVAL_MS);
   }, []);
 
   const handleCreatePvP = async () => {
