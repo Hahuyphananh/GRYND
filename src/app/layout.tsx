@@ -34,7 +34,9 @@ export const metadata = {
     apple: "/icon-192.png",
   },
   // Rich preview cards for social platforms / chat apps (Discord, WhatsApp,
-  // Slack, Facebook, LinkedIn...). The default banner applies to every page;
+  // Slack, Facebook, LinkedIn, X...). The default image is the 1200×630 brand
+  // banner built from our logo (see scripts/generate-og-banner.mjs) so every
+  // shared link shows a filled, on-brand card instead of a blank one;
   // individual game pages override the image with their own screenshot art.
   // og:url must be the canonical PAGE url — not the image URL — or social
   // crawlers record the image path as the shared link.
@@ -51,7 +53,7 @@ export const metadata = {
     type: "website",
     images: [
       {
-        url: ogImageUrl("/og-image.png"),
+        url: ogImageUrl("/images/og-banner.png"),
         width: 1200,
         height: 630,
         alt: "GRYND — Competitive PvP Skill Gaming",
@@ -63,7 +65,7 @@ export const metadata = {
     title: "GRYND — Competitive PvP Skill Gaming",
     description:
       "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
-    images: [ogImageUrl("/og-image.png")],
+    images: [ogImageUrl("/images/og-banner.png")],
   },
 };
 // Minimal, factual Organization structured data — name + URL only. No

@@ -20,9 +20,11 @@ export const metadata = {
     siteName: "GRYND",
     locale: "en_US",
     type: "website",
+    // The 1200×630 brand banner (scripts/generate-og-banner.mjs), so a shared
+    // grynd link always renders a filled card with our mark.
     images: [
       {
-        url: ogImageUrl("/og-image.png"),
+        url: ogImageUrl("/images/og-banner.png"),
         width: 1200,
         height: 630,
         alt: "GRYND — Competitive PvP Skill Gaming",
@@ -34,7 +36,7 @@ export const metadata = {
     title: "GRYND — Competitive PvP Skill Gaming",
     description:
       "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
-    images: [ogImageUrl("/og-image.png")],
+    images: [ogImageUrl("/images/og-banner.png")],
   },
 };
 

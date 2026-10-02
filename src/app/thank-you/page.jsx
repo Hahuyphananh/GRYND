@@ -10,8 +10,17 @@ export const metadata = {
     description: "Your GRYND account is ready and your free tokens are waiting.",
     url: ogImageUrl("/thank-you"),
     siteName: "GRYND",
-    images: [{ url: ogImageUrl("/og-image.png"), width: 1200, height: 630, alt: "GRYND" }],
+    locale: "en_US",
+    images: [{ url: ogImageUrl("/images/og-banner.png"), width: 1200, height: 630, alt: "GRYND" }],
     type: "website",
+  },
+  // Next.js replaces the layout's twitter block wholesale, so it is restated
+  // here rather than inherited (see scripts/audit-social-metadata.mjs).
+  twitter: {
+    card: "summary_large_image",
+    title: "Welcome to GRYND!",
+    description: "Your GRYND account is ready and your free tokens are waiting.",
+    images: [ogImageUrl("/images/og-banner.png")],
   },
 };
 
