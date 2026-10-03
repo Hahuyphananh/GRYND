@@ -6,10 +6,13 @@
 // Test vs Bot practice), viewer-perspective, paginated. Mirrors the
 // hex-duel history page layout.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../../components/navigation-bar";
+import AsyncState from "../../../../components/states/AsyncState";
+import { SkeletonRows } from "../../../../components/skeletons/Skeleton";
+import { useApiResource } from "../../../../hooks/useApiResource";
 import {
   IconNotebook,
   IconTrophy,
@@ -44,45 +47,25 @@ export default function LaneRushDuelHistoryPage() {
   const { isSignedIn, isLoaded } = useUser();
   const router = useRouter();
 
-  const [games, setGames] = useState([]);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const fetchHistory = useCallback(async (p) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/lane-rush-duel/history?page=${p}&limit=${PAGE_SIZE}`,
-        { credentials: "include" },
-      );
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.error || "Failed to load history");
-        setGames([]);
-        return;
-      }
-      setGames(data.data.games || []);
-      setTotalPages(data.data.pagination.totalPages);
-      setTotal(data.data.pagination.total);
-    } catch {
-      setError("Network error. Please try again");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Cache-first fetch with background revalidation, and a null key while Clerk
+  // is still resolving (or the visitor is signed out). AsyncState turns the
+  // resource into skeleton / offline / error / stale / empty states like every
+  // other data screen.
+  const history = useApiResource(
+    isLoaded && isSignedIn
+      ? `/api/lane-rush-duel/history?page=${page}&limit=${PAGE_SIZE}`
+      : null,
+  );
+
+  const games = history.data?.data?.games ?? [];
+  const total = history.data?.data?.pagination.total ?? 0;
+  const totalPages = history.data?.data?.pagination.totalPages ?? 1;
 
   useEffect(() => {
-    if (!isLoaded) return;
-    if (!isSignedIn) {
-      router.push("/casino/lane-runner");
-      return;
-    }
-    fetchHistory(page);
-  }, [isLoaded, isSignedIn, page, fetchHistory, router]);
+    if (isLoaded && !isSignedIn) router.push("/casino/lane-runner");
+  }, [isLoaded, isSignedIn, router]);
 
   if (!isLoaded) {
     return (
@@ -119,29 +102,18 @@ export default function LaneRushDuelHistoryPage() {
           </button>
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-center">
-            <p className="text-sm text-red-400">{error}</p>
-            <button
-              onClick={() => fetchHistory(page)}
-              className="mt-2 text-xs text-red-300 underline hover:text-red-200"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Loading */}
-        {loading && games.length === 0 && (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!loading && games.length === 0 && !error && (
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] py-16 text-center backdrop-blur-sm">
+        {/* Skeleton / offline / error / stale / empty are owned by the shared
+            AsyncState, so this screen behaves like every other data screen. */}
+        <AsyncState
+          isLoading={history.isLoading}
+          error={history.error}
+          hasData={history.hasData}
+          isEmpty={games.length === 0}
+          onRetry={history.refresh}
+          cachedAt={history.cachedAt}
+          skeleton={<SkeletonRows rows={6} label="Loading match history" />}
+          empty={
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] py-16 text-center backdrop-blur-sm">
             <p className="mb-3 flex justify-center">
               <IconNotebook size={48} className="text-cyan-400/60" />
             </p>
@@ -155,15 +127,12 @@ export default function LaneRushDuelHistoryPage() {
             <button
               onClick={() => router.push("/casino/lane-runner")}
               className="mt-4 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-all duration-200 hover:shadow-[0_0_20px_rgba(34,211,238,0.4)]"
-            >
-              Play Now
+            >              Play Now
             </button>
-          </div>
-        )}
+            </div>
+          }
+        >
 
-        {/* Games table */}
-        {games.length > 0 && (
-          <>
             <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -322,7 +291,7 @@ export default function LaneRushDuelHistoryPage() {
               <div className="mt-4 flex items-center justify-center gap-3">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
+                  disabled={page <= 1 || history.isValidating}
                   className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-bold text-slate-400 transition-all hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   ← Prev
@@ -332,15 +301,14 @@ export default function LaneRushDuelHistoryPage() {
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loading}
+                  disabled={page >= totalPages || history.isValidating}
                   className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-bold text-slate-400 transition-all hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   Next →
                 </button>
               </div>
             )}
-          </>
-        )}
+        </AsyncState>
       </div>
     </main>
   );

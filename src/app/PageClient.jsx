@@ -30,6 +30,9 @@ import { useTranslation } from "../hooks/useTranslation";
 import StickyMobileCta from "../components/StickyMobileCta";
 import UpgradeProButton from "../components/UpgradeProButton";
 import GryndProWidget from "../components/GryndProWidget";
+import AsyncState from "../components/states/AsyncState";
+import { SkeletonRows } from "../components/skeletons/Skeleton";
+import { useApiResource } from "../hooks/useApiResource";
 
 // `adSlot` is a server-rendered <AdSlot /> handed down by app/page.jsx. It is
 // rendered above the footer and carries its OWN server-side entitlement check —
@@ -46,14 +49,12 @@ function MainComponent({ adSlot = null }) {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsLoading, setTermsLoading] = useState(true);
   const [liveStats, setLiveStats] = useState({ playersOnline: 0, gamesPlayedToday: 0 });
-  // Weekly leaderboard (top 5) — REAL data from /api/leaderboard/weekly.
-  // The section renders nothing but a link if the fetch fails: we never
-  // fabricate ranks, wins, or player counts.
-  const [leaderboard, setLeaderboard] = useState({
-    items: [],
-    loading: true,
-    error: null,
-  });
+  // Weekly leaderboard (top 5) — REAL data from /api/leaderboard/weekly,
+  // cache-first with background revalidation. We never fabricate ranks, wins
+  // or player counts, and the shared AsyncState owns the skeleton / offline /
+  // error / stale states.
+  const leaderboard = useApiResource("/api/leaderboard/weekly?limit=5&category=wins");
+  const leaderboardItems = Array.isArray(leaderboard.data?.items) ? leaderboard.data.items : [];
   // First-match recovery nudge — shown to signed-in accounts that never
   // finished onboarding (abandoned the /welcome flow mid-way). Real signal
   // from /api/onboarding/status; dismissible per session.
@@ -227,33 +228,6 @@ function MainComponent({ adSlot = null }) {
       // ignore
     }
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch(
-          "/api/leaderboard/weekly?limit=5&category=wins",
-          { cache: "no-store" },
-        );
-        const data = await res.json();
-        if (cancelled) return;
-        if (res.ok && Array.isArray(data.items)) {
-          setLeaderboard({ items: data.items, loading: false, error: null });
-        } else {
-          setLeaderboard({ items: [], loading: false, error: "load_failed" });
-        }
-      } catch {
-        if (!cancelled) {
-          setLeaderboard({ items: [], loading: false, error: "load_failed" });
-        }
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -661,34 +635,32 @@ function MainComponent({ adSlot = null }) {
           </div>
 
           <div className="overflow-hidden rounded-xl border border-[#00e5ff]/25 bg-[#040d24]/60 backdrop-blur-sm">
-            {leaderboard.loading ? (
-              <div className="space-y-3 p-6">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="flex animate-pulse items-center gap-4"
+            <AsyncState
+              isLoading={leaderboard.isLoading}
+              error={leaderboard.error}
+              hasData={leaderboard.hasData}
+              isEmpty={leaderboardItems.length === 0}
+              onRetry={async () => {
+                await leaderboard.refresh();
+              }}
+              cachedAt={leaderboard.cachedAt}
+              skeleton={<SkeletonRows rows={5} className="p-4" label="Loading leaderboard" />}
+              empty={
+                <div className="flex flex-col items-center gap-3 p-8 text-center">
+                  <p className="text-sm text-[#7dd3fc]/70">
+                    {t("home.best_of.error")}
+                  </p>
+                  <Link
+                    href="/classement"
+                    className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10"
                   >
-                    <div className="h-8 w-8 rounded-full bg-white/10" />
-                    <div className="h-4 flex-1 rounded bg-white/10" />
-                    <div className="h-4 w-16 rounded bg-white/10" />
-                  </div>
-                ))}
-              </div>
-            ) : leaderboard.error || leaderboard.items.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 p-8 text-center">
-                <p className="text-sm text-[#7dd3fc]/70">
-                  {t("home.best_of.error")}
-                </p>
-                <Link
-                  href="/classement"
-                  className="rounded-lg border border-[#00e5ff]/40 px-4 py-2 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#00e5ff]/10"
-                >
-                  {t("home.best_of.view_all")}
-                </Link>
-              </div>
-            ) : (
+                    {t("home.best_of.view_all")}
+                  </Link>
+                </div>
+              }
+            >
               <ul className="divide-y divide-[#00e5ff]/10">
-                {leaderboard.items.map((item, i) => (
+                {leaderboardItems.map((item, i) => (
                   <li
                     key={item.clerk_id || `${item.rank}-${i}`}
                     className="flex items-center gap-1 pr-3 transition-colors hover:bg-[#00e5ff]/5 sm:pr-4"
@@ -739,7 +711,7 @@ function MainComponent({ adSlot = null }) {
                   </li>
                 ))}
               </ul>
-            )}
+            </AsyncState>
           </div>
 
           <div className="mt-4 flex justify-center sm:hidden">

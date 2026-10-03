@@ -71,6 +71,9 @@ export default function LaneRushDuelLobbyPage() {
 
   // ── Lobby state ───────────────────────────────────────────────────
   const [availableMatches, setAvailableMatches] = useState([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
@@ -88,6 +91,8 @@ export default function LaneRushDuelLobbyPage() {
       }
     } catch {
       // Silent — polling retries on the next tick.
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -390,6 +395,7 @@ export default function LaneRushDuelLobbyPage() {
       }}
       error={error}
       lobbies={availableMatches}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."
       lobbyTitle={(m) => (
         <>

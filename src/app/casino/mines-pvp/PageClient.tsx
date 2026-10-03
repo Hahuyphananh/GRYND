@@ -112,6 +112,9 @@ export default function MinesPvpLobbyPage() {
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
     [],
   );
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   // The AI tier the bot picks at, chosen in this lobby and remembered per
   // game by the picker; sent with the create-ai request.
@@ -134,6 +137,8 @@ export default function MinesPvpLobbyPage() {
       }
     } catch {
       // Silent — polling retries on the next tick.
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -458,6 +463,7 @@ export default function MinesPvpLobbyPage() {
       }}
       error={error}
       lobbies={availableMatches}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."
       lobbyTitle={(m) => (
         <>

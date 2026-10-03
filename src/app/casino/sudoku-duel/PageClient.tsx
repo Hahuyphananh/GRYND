@@ -74,6 +74,9 @@ export default function SudokuDuelLobbyPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("sudoku-duel"),
   );
@@ -85,6 +88,8 @@ export default function SudokuDuelLobbyPage() {
       if (data?.success) setLobbies(Array.isArray(data.data) ? data.data : []);
     } catch {
       // silent — the poll retries
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -266,6 +271,7 @@ export default function SudokuDuelLobbyPage() {
       playBusyLabel="Searching…"
       canPlay={Boolean(isSignedIn)}
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open Sudoku Duel lobbies right now. Start a match and an opponent will be paired in."
       children={
         <AiDifficultyPicker

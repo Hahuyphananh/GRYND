@@ -60,6 +60,9 @@ export default function KenoLobbyPage() {
   // so there is no stake to pick and no token balance to load.
   const stake = 0;
   const [availableMatches, setAvailableMatches] = useState([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
@@ -78,6 +81,8 @@ export default function KenoLobbyPage() {
       if (data?.success) setAvailableMatches(data.data.matches || []);
     } catch {
       // Silent — polling retries on the next tick.
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -336,6 +341,7 @@ export default function KenoLobbyPage() {
       }
       error={error}
       lobbies={availableMatches}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open lobbies yet. Be the first to make one. Pick a stake and hit Play."
       lobbyTitle={(m) => (
         <>

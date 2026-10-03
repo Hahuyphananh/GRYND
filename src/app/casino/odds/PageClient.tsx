@@ -14,6 +14,7 @@ import EmotePicker from "../../../components/game/EmotePicker";
 import useGameEmotes from "../../../hooks/useGameEmotes";
 import { useSocket } from "../../../context/SocketProvider";
 import { useOddsAudio } from "../../../lib/oddsAudio";
+import { SkeletonRows } from "../../../components/skeletons/Skeleton";
 import {
   IconDice,
   IconCoins,
@@ -494,7 +495,8 @@ function AIOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   return (
     <div>
       {resuming && (
-        <p className="text-center text-white/40 py-8">Loading...</p>
+        // Branded skeleton instead of a bare "Loading..." line.
+        <SkeletonRows rows={3} className="mx-auto max-w-md py-4" label="Loading game" />
       )}
 
       {!resuming && !gameId && (
@@ -1434,7 +1436,8 @@ function PvPOddsGame({ audio }: { audio: ReturnType<typeof useOddsAudio> }) {
   return (
     <div>
       {resuming && (
-        <p className="text-center text-white/40 py-8">Loading...</p>
+        // Branded skeleton instead of a bare "Loading..." line.
+        <SkeletonRows rows={3} className="mx-auto max-w-md py-4" label="Loading game" />
       )}
 
       {/* LOBBY: no game yet */}

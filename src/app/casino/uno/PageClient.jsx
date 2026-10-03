@@ -14,6 +14,9 @@ import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 
 export default function UnoLobbyPage() {
   const [lobbies, setLobbies] = useState([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
   // so there is no wager to pick and no token balance to load.
   const wager = 0;
@@ -43,6 +46,8 @@ export default function UnoLobbyPage() {
       }
     } catch {
       // silent
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -224,6 +229,7 @@ export default function UnoLobbyPage() {
         onClick: playAI,
       }}
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open Neon Flush games yet. Be the first to start one."
       lobbyKey={(l) => l.id}
       lobbyTitle={(l) => (

@@ -12,6 +12,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { useTranslation } from "../../hooks/useTranslation";
 import { QUESTIONNAIRE_QUESTIONS } from "../../lib/onboardingQuestionnaire";
 import { runOptimistically } from "../../lib/optimistic";
+import PageSkeleton from "../../components/skeletons/PageSkeleton";
 
 /**
  * Settings hub. Hosts the preferences that used to live directly in the nav
@@ -386,11 +387,10 @@ export default function SettingsPageClient() {
   }).filter((row) => row.labels.length > 0);
 
   if (!isLoaded) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#003366]">
-        <div className="text-2xl text-[#00e5ff]">Loading...</div>
-      </div>
-    );
+    // Branded page skeleton instead of the raw blue "Loading..." flash — the
+    // same per-route skeleton the splash screen and app/loading.tsx use, so
+    // the first paint already looks like the product.
+    return <PageSkeleton />;
   }
 
   return (

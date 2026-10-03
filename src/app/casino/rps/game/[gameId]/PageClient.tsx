@@ -12,6 +12,7 @@ import { playVictory, playDefeat, playTick, playGoodReveal, playBuzz } from "../
 import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import NavigationBar from "../../../../../components/navigation-bar";
+import MatchLoading from "../../../../../components/game/MatchLoading";
 // Page-level session host: records "recently played" and beats
 // active-player presence, driven by the game's REAL lifecycle
 // (autoStart/autoStop) — never by page load.
@@ -94,6 +95,9 @@ export default function RPSPvpGamePage() {
   const [forfeiting, setForfeiting] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // False until the first status payload lands. Match state is fetched raw
+  // (never cached to disk), so without this the arena paints empty first.
+  const [loaded, setLoaded] = useState(false);
 
   const viewerIsPlayer1 =
     player1Id !== null && player1Id === user?.id;
@@ -143,6 +147,7 @@ export default function RPSPvpGamePage() {
       }
 
       const game = data.data;
+      setLoaded(true);
       setStatus(game.status);
       setPlayer1Id(game.player1Id || null);
       setPlayer2Id(game.player2Id || null);
@@ -431,6 +436,8 @@ export default function RPSPvpGamePage() {
       </div>
     );
   }
+
+  if (!loaded) return <MatchLoading />;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-[#0a0118] to-[#061b3d] pb-28 pt-16 text-white md:pb-8">

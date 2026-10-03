@@ -34,6 +34,9 @@ export default function FourInARowLobbyPage() {
   const [timerSeconds, setTimerSeconds] = useState(60);
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The AI tier the bot plays at, chosen here and remembered per game by the
@@ -51,6 +54,8 @@ export default function FourInARowLobbyPage() {
       if (data.success) setAvailableGames(data.games || []);
     } catch {
       // silent
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -233,6 +238,7 @@ export default function FourInARowLobbyPage() {
           </div>
         }
         lobbies={availableGames}
+        lobbiesLoading={lobbiesLoading}
         lobbyEmptyText="No open games right now."
         lobbyKey={(l) => l.id}
         lobbyTitle={(l) => <>Game #{l.id}</>}

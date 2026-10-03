@@ -103,7 +103,7 @@ export const RECOMMENDATION_WEIGHTS = {
 };
 
 /** How many games count as the "primary" suggestions. */
-export const PRIMARY_GAME_COUNT = 3;
+export const PRIMARY_GAME_COUNT = 4;
 
 /** Q2 answer → game tag. Every option in the questionnaire catalog appears
  *  here (a test enforces it), so no option is silently ignored. */

@@ -45,6 +45,9 @@ export default function PrecisionLobbyPage() {
   const { t } = useTranslation();
   const { isSignedIn, user } = useUser();
   const [lobbies, setLobbies] = useState<PrecisionLobby[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
   // so there is no wager to pick and no token balance to load.
   const wager = 0;
@@ -79,6 +82,8 @@ export default function PrecisionLobbyPage() {
       setLobbies(list);
     } catch {
       // ignore — list will be retried on the next interval
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -298,6 +303,7 @@ export default function PrecisionLobbyPage() {
         </div>
       }
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText={t("games.precision.no_open_lobbies")}
       lobbyKey={(l) => l.id}
       lobbyTitle={(l) => (

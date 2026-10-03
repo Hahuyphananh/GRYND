@@ -10,6 +10,7 @@ import GameSessionHost from "../../../../../components/GameSessionHost";
 
 import { useSocket } from "../../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../../components/game/EmotePicker";
+import MatchLoading from "../../../../../components/game/MatchLoading";
 import useGameEmotes from "../../../../../hooks/useGameEmotes";
 import useGamePresence from "../../../../../hooks/useGamePresence";
 import DotsAndBoxesBoard from "../../../../../components/DotsAndBoxesBoard";
@@ -60,6 +61,9 @@ export default function DotsAndBoxesGamePage() {
   const { t } = useTranslation();
 
   const [game, setGame] = useState<any>(null);
+  // False until the first game-state payload lands, so the board never paints
+  // empty before the (raw-fetched, never disk-cached) match state arrives.
+  const [loaded, setLoaded] = useState(false);
   const [statusText, setStatusText] = useState(t("games.dots_and_boxes.loading_game"));
   const [drawing, setDrawing] = useState(false);
   const drawingRef = useRef(false);
@@ -123,6 +127,7 @@ const prefersReducedMotion = useReducedMotion();
         setGame((prev) => (gameStateUnchanged(prev, gameData) ? prev : gameData));
 
         setStatusText(computeStatusText(gameData, t));
+        setLoaded(true);
       } catch (err) {
         if (err?.name === "AbortError") return;
         console.error("dots-and-boxes fetch failed", err);
@@ -689,6 +694,8 @@ const prefersReducedMotion = useReducedMotion();
       {boardLegend}
     </motion.div>
   );
+  if (!loaded) return <MatchLoading />;
+
   return (
     <>
       {/* Unified full-screen takeover — matchmaking, then the brief

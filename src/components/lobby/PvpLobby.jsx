@@ -259,6 +259,10 @@ export function PvpLobby({
   error = null,
   // open lobbies
   lobbies = [],
+  // True until the first list response lands. While loading we show a skeleton
+  // instead of the empty-state text, so a new visitor never sees "no open
+  // lobbies" flash before the request resolves.
+  lobbiesLoading = false,
   lobbyEmptyText = "No open lobbies yet. Be the first to make one.",
   lobbyKey = (l) => l?.id,
   lobbyTitle = (l) => <>Lobby #{l?.id}</>,
@@ -541,7 +545,23 @@ export function PvpLobby({
             )}
           </div>
         </div>
-        {filteredLobbies.length === 0 ? (
+        {lobbiesLoading && filteredLobbies.length === 0 ? (
+          <div className="space-y-2.5" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className={`flex items-center justify-between rounded-xl border p-3 ${PALETTE.row}`}
+              >
+                <div className="space-y-2">
+                  <div className="h-3.5 w-32 animate-pulse rounded bg-white/10" />
+                  <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
+                </div>
+                <div className="h-7 w-16 animate-pulse rounded-lg bg-white/10" />
+              </div>
+            ))}
+            <span className="sr-only">Loading open lobbies…</span>
+          </div>
+        ) : filteredLobbies.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-white/60">
             <IconDeviceGamepad2 className="h-4 w-4 text-white/40" />
             <span>{lobbyEmptyText}</span>

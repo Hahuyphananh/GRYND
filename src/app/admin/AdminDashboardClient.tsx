@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import AdminBadge from "../../components/AdminBadge";
+import AsyncState from "../../components/states/AsyncState";
+import { SkeletonRows } from "../../components/skeletons/Skeleton";
 import {
   IconChartBar,
   IconUsers,
@@ -17,6 +19,21 @@ import {
   IconStar,
 } from "@tabler/icons-react";
 import { useSocket } from "../../context/SocketProvider";
+
+/**
+ * Inline button spinner — the app's standard ring, sized to sit inside a
+ * button label. Replaces the raw "Loading..."/"Refreshing..." text the UX
+ * plan flagged, and carries `role="status"` so the state is announced.
+ */
+function ButtonSpinner() {
+  return (
+    <span
+      role="status"
+      aria-label="Loading"
+      className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent align-middle"
+    />
+  );
+}
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -858,7 +875,7 @@ export default function AdminDashboardClient({
           disabled={loading}
           className="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg text-sm transition-colors disabled:opacity-50"
         >
-          {loading ? "Refreshing..." : "Refresh"}
+          {loading ? <ButtonSpinner /> : "Refresh"}
         </button>
       </div>
 
@@ -1008,9 +1025,7 @@ export default function AdminDashboardClient({
 
       {/* Loading state */}
       {loading && !stats && (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-400 border-t-transparent" />
-        </div>
+        <SkeletonRows rows={4} className="mx-auto max-w-3xl py-6" label="Loading admin dashboard" />
       )}
 
       {/* Tab bar */}
@@ -1159,11 +1174,23 @@ export default function AdminDashboardClient({
                 disabled={userSearchLoading}
                 className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
-                {userSearchLoading ? "Searching..." : "Search"}
+                {userSearchLoading ? <ButtonSpinner /> : "Search"}
               </button>
             </div>
 
-            {/* Results */}
+            {/* Results — skeleton / offline / stale / empty via AsyncState. */}
+            <AsyncState
+              isLoading={userSearchLoading && searchedUsers.length === 0}
+              hasData={searchedUsers.length > 0 || !userSearchLoading}
+              isEmpty={Boolean(userSearch) && searchedUsers.length === 0}
+              onRetry={handleUserSearch}
+              skeleton={<SkeletonRows rows={4} className="mt-4" label="Searching users" />}
+              empty={
+                <p className="mt-4 text-sm text-gray-500 text-center">
+                  No users found matching &quot;{userSearch}&quot;.
+                </p>
+              }
+            >
             {searchedUsers.length > 0 && (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1237,6 +1264,7 @@ export default function AdminDashboardClient({
                 </table>
               </div>
             )}
+            </AsyncState>
 
             {/* ── Token Reset Panel ── */}
             {tokenResetTarget && (
@@ -1278,23 +1306,12 @@ export default function AdminDashboardClient({
                     disabled={tokenResetLoading || !tokenResetAmount.trim()}
                     className="px-5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                   >
-                    {tokenResetLoading ? "Setting..." : "Set Balance"}
+                    {tokenResetLoading ? <ButtonSpinner /> : "Set Balance"}
                   </button>
                 </div>
               </div>
             )}
 
-            {searchedUsers.length === 0 && userSearch && !userSearchLoading && (
-              <p className="mt-4 text-sm text-gray-500 text-center">
-                No users found matching &quot;{userSearch}&quot;.
-              </p>
-            )}
-
-            {userSearchLoading && (
-              <div className="mt-4 flex justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-400 border-t-transparent" />
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1311,23 +1328,23 @@ export default function AdminDashboardClient({
               disabled={reportsLoading}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
             >
-              {reportsLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
+              {reportsLoading ? <ButtonSpinner /> : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
             </button>
           </div>
 
-          {reportsLoading && reports.length === 0 && (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
-            </div>
-          )}
-
-          {!reportsLoading && reports.length === 0 && (
-            <div className="py-16 text-center text-gray-500 text-sm">
-              No pending reports. All clear!
-            </div>
-          )}
-
-          {reports.length > 0 && (
+          {/* Skeleton / offline / stale / empty owned by the shared AsyncState. */}
+          <AsyncState
+            isLoading={reportsLoading && reports.length === 0}
+            hasData={reports.length > 0 || !reportsLoading}
+            isEmpty={reports.length === 0}
+            onRetry={fetchReports}
+            skeleton={<SkeletonRows rows={5} className="py-2" label="Loading reports" />}
+            empty={
+              <div className="py-16 text-center text-gray-500 text-sm">
+                No pending reports. All clear!
+              </div>
+            }
+          >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1450,7 +1467,7 @@ export default function AdminDashboardClient({
                 </tbody>
               </table>
             </div>
-          )}
+          </AsyncState>
         </div>
       )}
 
@@ -1466,23 +1483,24 @@ export default function AdminDashboardClient({
               disabled={messagesLoading}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
             >
-              {messagesLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
+              {messagesLoading ? <ButtonSpinner /> : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
             </button>
           </div>
 
-          {messagesLoading && messages.length === 0 && (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
-            </div>
-          )}
-
-          {!messagesLoading && messages.length === 0 && (
-            <div className="py-16 text-center text-gray-500 text-sm">
-              No contact messages yet. Messages from the contact form will
-              appear here.
-            </div>
-          )}
-
+          {/* Skeleton / offline / stale / empty owned by the shared AsyncState. */}
+          <AsyncState
+            isLoading={messagesLoading && messages.length === 0}
+            hasData={messages.length > 0 || !messagesLoading}
+            isEmpty={messages.length === 0}
+            onRetry={fetchMessages}
+            skeleton={<SkeletonRows rows={5} className="py-2" label="Loading messages" />}
+            empty={
+              <div className="py-16 text-center text-gray-500 text-sm">
+                No contact messages yet. Messages from the contact form will
+                appear here.
+              </div>
+            }
+          >
           {messages.map((m) => (
             <div
               key={m.id}
@@ -1596,6 +1614,7 @@ export default function AdminDashboardClient({
               </div>
             </div>
           ))}
+          </AsyncState>
         </div>
       )}
 
@@ -1668,7 +1687,7 @@ export default function AdminDashboardClient({
                   disabled={replySending || !replyText.trim()}
                   className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#f5ff3b] text-[#0a0f1e] hover:bg-[#f5ff3b]/90 transition-colors disabled:opacity-50"
                 >
-                  {replySending ? "Sending..." : "Send Reply"}
+                  {replySending ? <ButtonSpinner /> : "Send Reply"}
                 </button>
               </div>
             </div>
@@ -1705,23 +1724,24 @@ export default function AdminDashboardClient({
                 disabled={reviewsLoading}
                 className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
               >
-                {reviewsLoading ? "Loading..." : "Refresh"}
+                {reviewsLoading ? <ButtonSpinner /> : "Refresh"}
               </button>
             </div>
           </div>
 
-          {reviewsLoading && reviews.length === 0 && (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
-            </div>
-          )}
-
-          {!reviewsLoading && reviews.length === 0 && (
-            <div className="py-16 text-center text-gray-500 text-sm">
-              No {reviewFilter} reviews.
-            </div>
-          )}
-
+          {/* Skeleton / offline / stale / empty owned by the shared AsyncState. */}
+          <AsyncState
+            isLoading={reviewsLoading && reviews.length === 0}
+            hasData={reviews.length > 0 || !reviewsLoading}
+            isEmpty={reviews.length === 0}
+            onRetry={fetchReviews}
+            skeleton={<SkeletonRows rows={4} className="py-2" label="Loading reviews" />}
+            empty={
+              <div className="py-16 text-center text-gray-500 text-sm">
+                No {reviewFilter} reviews.
+              </div>
+            }
+          >
           {reviews.map((r) => (
             <div key={r.id} className="border-b border-white/5 hover:bg-white/5 transition-colors p-5">
               <div className="flex items-start justify-between gap-4 mb-2">
@@ -1775,6 +1795,7 @@ export default function AdminDashboardClient({
               )}
             </div>
           ))}
+          </AsyncState>
         </div>
       )}
 
@@ -1790,23 +1811,23 @@ export default function AdminDashboardClient({
               disabled={auditLogLoading}
               className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
             >
-              {auditLogLoading ? "Loading..." : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
+              {auditLogLoading ? <ButtonSpinner /> : <span className="inline-flex items-center gap-1.5"><IconRefresh size={14} /> Refresh</span>}
             </button>
           </div>
 
-          {auditLogLoading && auditLogs.length === 0 && (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-400 border-t-transparent" />
-            </div>
-          )}
-
-          {!auditLogLoading && auditLogs.length === 0 && (
-            <div className="py-16 text-center text-gray-500 text-sm">
-              No audit log entries yet. Admin actions will appear here as they happen.
-            </div>
-          )}
-
-          {auditLogs.length > 0 && (
+          {/* Skeleton / offline / stale / empty owned by the shared AsyncState. */}
+          <AsyncState
+            isLoading={auditLogLoading && auditLogs.length === 0}
+            hasData={auditLogs.length > 0 || !auditLogLoading}
+            isEmpty={auditLogs.length === 0}
+            onRetry={() => fetchAuditLogs(50)}
+            skeleton={<SkeletonRows rows={6} className="py-2" label="Loading audit logs" />}
+            empty={
+              <div className="py-16 text-center text-gray-500 text-sm">
+                No audit log entries yet. Admin actions will appear here as they happen.
+              </div>
+            }
+          >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1846,7 +1867,7 @@ export default function AdminDashboardClient({
                 </tbody>
               </table>
             </div>
-          )}
+          </AsyncState>
         </div>
       )}
     </main>

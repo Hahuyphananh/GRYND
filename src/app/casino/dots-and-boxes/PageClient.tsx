@@ -29,6 +29,9 @@ export default function DotsAndBoxesLobbyPage() {
   const betAmount = 0;
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The AI tier the bot plays at, chosen in this lobby and remembered per
@@ -46,6 +49,8 @@ export default function DotsAndBoxesLobbyPage() {
       if (data.success) setAvailableGames(data.games || []);
     } catch {
       // silent
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -230,6 +235,7 @@ export default function DotsAndBoxesLobbyPage() {
         </div>
       }
       lobbies={availableGames}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText={t("games.dots_and_boxes.no_open_games")}
       lobbyKey={(l) => l.id}
       lobbyTitle={(l) => t("games.dots_and_boxes.game_row_label", { gameId: l.id })}

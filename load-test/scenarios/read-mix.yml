@@ -87,13 +87,3 @@ scenarios:
             - get:
                 url: "/api/user-stats"
             - think: 1
-
-  - name: "recent games feed"
-    weight: 10
-    flow:
-      - loop:
-          count: 40
-          over:
-            - get:
-                url: "/api/get-recent-games"
-            - think: 1

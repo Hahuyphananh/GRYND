@@ -99,6 +99,32 @@ test("persists public keys but keeps user-scoped keys in memory only", () => {
   restore();
 });
 
+test("allow-list keeps unknown/user-scoped keys off disk by default", () => {
+  const storage = makeStorage();
+  const restore = withWindow(storage);
+  const cache = createPersistentSwrCache();
+
+  // A route that was never opted into persistence stays memory-only even if a
+  // future screen starts caching it.
+  cache.set("/api/user/security", { twoFactor: true });
+  cache.set("/api/user/daily-loss-limit", { limit: 100 });
+  cache.set("/api/user/notification-preferences", { email: true });
+  cache.set("/api/user/is-admin", { admin: false });
+  cache.set("/api/user/public-bet-history?clerkId=x", { bets: [] });
+  cache.set("/api/stripe/session-status", { paid: true });
+  cache.set("/api/onboarding/status", { complete: true });
+  cache.set("/api/mines-pvp/match/abc", { board: "hidden" });
+
+  assert.equal(storage.length, 0, "nothing user-scoped should reach localStorage");
+
+  // The explicit public allow-list still persists.
+  assert.equal(isPersistableKey("/api/leaderboard/weekly-best?limit=50"), true);
+  assert.equal(isPersistableKey("/api/user/public-profile?clerkId=x"), true);
+  assert.equal(isPersistableKey("/api/reviews?limit=20&mine=1"), true);
+  assert.equal(isPersistableKey("/api/user/security"), false);
+  restore();
+});
+
 test("clearPersistentCache wipes only app-owned keys", () => {
   const storage = makeStorage();
   const restore = withWindow(storage);
@@ -119,10 +145,10 @@ test("survives a quota error without throwing", () => {
   const cache = createPersistentSwrCache();
 
   for (let i = 0; i < 30; i++) {
-    assert.doesNotThrow(() => cache.set(`/api/thing/${i}`, { i }));
+    assert.doesNotThrow(() => cache.set(`/api/leaderboard/page-${i}`, { i }));
   }
   // Value is always available from memory even when it can't be persisted.
-  assert.deepEqual(cache.get("/api/thing/29"), { i: 29 });
+  assert.deepEqual(cache.get("/api/leaderboard/page-29"), { i: 29 });
   restore();
 });
 

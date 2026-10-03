@@ -11,6 +11,9 @@ import { startVisibleInterval } from "../../../hooks/useVisiblePoll";
 export default function PoolLobbyPage() {
   const router = useRouter();
   const [lobbies, setLobbies] = useState<any[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open.
   const wager = 0;
   const [loading, setLoading] = useState(false);
@@ -28,6 +31,8 @@ export default function PoolLobbyPage() {
       setLobbies(data.lobbies || []);
     } catch {
       // silent — poll retries next tick
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -176,6 +181,7 @@ export default function PoolLobbyPage() {
         />
       }
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."
       lobbyKey={(l) => l.id}
       lobbyTitle={(l) => (

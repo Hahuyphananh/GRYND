@@ -44,6 +44,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import TicTacToeBoard from "../../../../components/tic-tac-toe/TicTacToeBoard";
+import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import ReportModal from "../../../../components/ReportModal";
@@ -364,11 +365,8 @@ export default function TicTacToeMatchPage() {
 
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#0d1226] to-[#04060f] text-white/70">
-        Loading Tic-Tac-Toe…
-      </div>
-    );
+    // Branded shell WITH the nav bar (this gate used to drop it entirely).
+    return <MatchLoading label="Loading Tic-Tac-Toe…" currentPath="/casino/tic-tac-toe" />;
   }
 
   if (!match && loadError) {

@@ -4,6 +4,8 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NavigationBar from "../../../../components/navigation-bar";
+import AsyncState from "../../../../components/states/AsyncState";
+import { SkeletonRows } from "../../../../components/skeletons/Skeleton";
 import { useHexAudio } from "../../../../lib/hexAudio";
 import { IconEye } from "@tabler/icons-react";
 
@@ -16,6 +18,10 @@ export default function HexDuelMultiplayerPage() {
   // and join, so there is no stake or balance to track on this lobby.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kept separate from `error`: `error` reports a failed create/join action,
+  // `loadError` reports a failed LIST fetch (and drives AsyncState's error
+  // state) — an action failure must never blank the list.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const router = useRouter();
   // Audio matches the main Hex Duel game page (same `useHexAudio` lib).
@@ -23,7 +29,7 @@ export default function HexDuelMultiplayerPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const res = await fetch("/api/hex-duel/multiplayer/available", { credentials: "include" });
       const data = await res.json();
@@ -44,7 +50,7 @@ export default function HexDuelMultiplayerPage() {
         setSpectatorCounts(counts);
       }
     } catch {
-      setError("Failed to load games. Please try again.");
+      setLoadError("Failed to load games. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -183,13 +189,21 @@ export default function HexDuelMultiplayerPage() {
         </div>
 
         <h2 className="mb-2 text-xs uppercase text-slate-500 tracking-widest">Available Games</h2>
-        <div className="space-y-1.5">
-          {loading && games.length === 0 && (
-            <p className="text-[11px] text-slate-500 py-4 text-center">Loading games…</p>
-          )}
-          {!loading && games.length === 0 && (
+        {/* The shared AsyncState owns skeleton / offline / error / stale / empty. */}
+        <AsyncState
+          isLoading={loading && games.length === 0 && liveGames.length === 0}
+          error={loadError}
+          hasData={games.length > 0 || liveGames.length > 0 || (!loading && !loadError)}
+          isEmpty={games.length === 0}
+          onRetry={async () => {
+            await load();
+          }}
+          skeleton={<SkeletonRows rows={4} label="Loading games" />}
+          empty={
             <p className="text-[11px] text-slate-600 py-4 text-center">No open games. Create one to start!</p>
-          )}
+          }
+        >
+        <div className="space-y-1.5">
           {games.map((g) => (
             <div key={g.id} className="rounded-lg border border-white/10 p-2.5 flex justify-between items-center">
               <span className="text-[12px] text-slate-300">
@@ -205,6 +219,7 @@ export default function HexDuelMultiplayerPage() {
             </div>
           ))}
         </div>
+        </AsyncState>
 
         <h2 className="mt-8 mb-2 text-xs uppercase text-slate-500 tracking-widest">Live Games (Spectate)</h2>
         <div className="space-y-1.5">

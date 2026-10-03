@@ -52,7 +52,9 @@ const { APP_TEXT_TRANSLATIONS } = await import("../src/lib/appTextTranslations.j
 // ════════════════════════════════════════════════════════════════════════
 
 test("ui: every required match state is rendered", () => {
-  assert.match(page, /Loading Tic-Tac-Toe/, "loading state");
+  // The first-load gate is the shared branded shell (nav + MatchLoading),
+  // not a bare centered string on an otherwise empty page.
+  assert.match(page, /<MatchLoading label="Loading Tic-Tac-Toe…"/, "loading state");
   assert.match(page, /Unable to load this match/, "error state");
   assert.match(page, /<MatchWaiting/, "waiting / opponent state");
   assert.match(page, /data-testid="tic-tac-toe-match"/, "the live match");

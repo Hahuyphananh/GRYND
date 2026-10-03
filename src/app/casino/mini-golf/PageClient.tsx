@@ -46,6 +46,9 @@ export default function MiniGolfLobbyPage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   // Mini Golf shipped ONE strong bot before tiers existed, so its default pick
   // is `hard` — picking Easy/Normal is what weakens it. The choice is
   // remembered per game, so a returning player keeps their tier.
@@ -60,6 +63,8 @@ export default function MiniGolfLobbyPage() {
       if (data?.success) setLobbies(Array.isArray(data.data) ? data.data : []);
     } catch {
       // silent — the poll retries
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -264,6 +269,7 @@ export default function MiniGolfLobbyPage() {
       onCancel={cancelLobby}
       cancelling={cancelling}
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open Mini Golf lobbies right now. Create one and an opponent will be matched in."
       lobbyKey={(row: LobbyRow) => row.matchId}
       lobbyTitle={(row: LobbyRow) => <>Hole #{String(row.matchId).slice(0, 8)}</>}

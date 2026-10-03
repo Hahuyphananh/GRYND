@@ -14,6 +14,7 @@ import { usePostHog } from "posthog-js/react";
 import GameSessionHost from "../../../../../components/GameSessionHost";
 
 import NavigationBar from "../../../../../components/navigation-bar";
+import MatchLoading from "../../../../../components/game/MatchLoading";
 import Footer from "../../../../../components/Footer";
 import FrameAvatar from "../../../../../components/FrameAvatar";
 import { useSocket } from "../../../../../context/SocketProvider";
@@ -942,6 +943,9 @@ export default function TowerArenaMatchPage() {
   const posthog = usePostHog();
 
   const [match, setMatch] = useState<Match | null>(null);
+  // False until the first get-match response lands, so the arena never paints
+  // empty before the (raw-fetched, never disk-cached) match state arrives.
+  const [loaded, setLoaded] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [me, setMe] = useState<any>(null);
   const [leaving, setLeaving] = useState(false);
@@ -1074,6 +1078,7 @@ export default function TowerArenaMatchPage() {
         return;
       }
       setMatch(data.match);
+      setLoaded(true);
       setPlayers(data.players || []);
       // The viewer's private projection supplies seat, ready, and status for
       // turn authorization and the ready gate.
@@ -1734,6 +1739,8 @@ export default function TowerArenaMatchPage() {
       </div>
     );
   }
+
+  if (!loaded) return <MatchLoading />;
 
   // ── Waiting room / ready gate ─────────────────────────────────────
   // The match does NOT auto-start when the lobby fills. Every player must

@@ -52,6 +52,9 @@ export default function TicTacToeLobbyPage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lobbies, setLobbies] = useState<LobbyRow[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   // The tier the practice bot plays at, remembered per game by the picker.
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>(() =>
     readStoredAiDifficulty("tic-tac-toe"),
@@ -64,6 +67,8 @@ export default function TicTacToeLobbyPage() {
       if (data?.success) setLobbies(Array.isArray(data.data) ? data.data : []);
     } catch {
       // silent — the poll retries
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -265,6 +270,7 @@ export default function TicTacToeLobbyPage() {
       onCancel={cancelLobby}
       cancelling={cancelling}
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open Tic-Tac-Toe lobbies right now. Create one and an opponent will be matched in."
       lobbyKey={(row: LobbyRow) => row.matchId}
       lobbyTitle={(row: LobbyRow) => <>Table #{String(row.matchId).slice(0, 8)}</>}

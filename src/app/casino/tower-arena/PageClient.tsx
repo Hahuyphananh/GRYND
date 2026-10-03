@@ -15,6 +15,9 @@ import {
 
 export default function TowerArenaLobbyPage() {
   const [lobbies, setLobbies] = useState<any[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   // STAKES ARE RETIRED (src/lib/games/stakes.js): a lobby is free to open,
   // so there is no wager to pick and no token balance to load.
   const wager = 0;
@@ -38,6 +41,8 @@ export default function TowerArenaLobbyPage() {
       setLobbies(data.lobbies || []);
     } catch {
       // silent
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -238,6 +243,7 @@ export default function TowerArenaLobbyPage() {
         onClick: playAI,
       }}
       lobbies={lobbies}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open Tower Arenas yet. Be the first to start one."
       lobbyKey={(l) => l.id}
       lobbyTitle={(l) => (

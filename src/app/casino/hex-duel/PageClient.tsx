@@ -19,6 +19,8 @@ import HexActionLog from "../../../components/HexActionLog";
 import HexTroopPopup from "../../../components/HexTroopPopup";
 import { clampSendCount, sendableTroops } from "../../../lib/hexTroopCount";
 import NavigationBar from "../../../components/navigation-bar";
+import AsyncState from "../../../components/states/AsyncState";
+import { SkeletonLines } from "../../../components/skeletons/Skeleton";
 import { useRecordPlayedGame } from "../../../hooks/useRecordPlayedGame";
 import useActiveGamePresence from "../../../hooks/useActiveGamePresence";
 
@@ -184,7 +186,7 @@ function APPips({ current, max, color, bonusCount }: { current: number; max: num
 
 function WagerModal({
   onStartFun, onStartReal, loading, error, isSignedIn, onCreateMultiplayer, onJoinMultiplayer,
-  onQuickJoinMultiplayer, onRefreshGames, multiplayerGames, multiplayerLoading,
+  onQuickJoinMultiplayer, onRefreshGames, multiplayerGames, multiplayerLoading, multiplayerError,
   aiDifficulty, onAiDifficultyChange,
 }: {
   onStartFun: () => void; onStartReal: (w: number) => void;
@@ -193,6 +195,7 @@ function WagerModal({
   onQuickJoinMultiplayer: () => void; onRefreshGames: () => void;
   multiplayerGames: Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>;
   multiplayerLoading: boolean;
+  multiplayerError: string | null;
   aiDifficulty: AIDifficulty;
   onAiDifficultyChange: (d: AIDifficulty) => void;
 }) {
@@ -286,11 +289,17 @@ function WagerModal({
             </div>
           </div>
           <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
-            {multiplayerLoading ? (
-              <p className="text-[11px] text-slate-400">Loading games…</p>
-            ) : multiplayerGames.length === 0 ? (
-              <p className="text-[11px] text-slate-500">No open games yet.</p>
-            ) : multiplayerGames.map((game) => (
+            {/* Shared AsyncState owns skeleton / offline / error / stale / empty. */}
+            <AsyncState
+              isLoading={multiplayerLoading && multiplayerGames.length === 0}
+              error={multiplayerError}
+              hasData={multiplayerGames.length > 0 || !multiplayerLoading}
+              isEmpty={multiplayerGames.length === 0}
+              onRetry={onRefreshGames}
+              skeleton={<SkeletonLines count={2} widths={["w-3/4", "w-1/2"]} />}
+              empty={<p className="text-[11px] text-slate-500">No open games yet.</p>}
+            >
+              {multiplayerGames.map((game) => (
               <div key={game.id} className="flex items-center justify-between rounded-md border border-white/10 px-2 py-1.5">
                 <span className="text-[11px] text-slate-300">#{game.id} · {game.hostName || "Player"} · Free play</span>
                 <button onClick={() => onJoinMultiplayer(game.id)} className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-500/20">
@@ -298,6 +307,7 @@ function WagerModal({
                 </button>
               </div>
             ))}
+            </AsyncState>
           </div>
         </div>
 
@@ -876,6 +886,9 @@ export default function HexDuelPage() {
   const [wagerLoading, setWagerLoading] = useState(false);
   const [wagerError, setWagerError] = useState<string | null>(null);
   const [multiplayerLoading, setMultiplayerLoading] = useState(false);
+  // Only the LOBBY list fetch: a failed list read gets AsyncState's error state
+  // with a retry, never a silent "no open games".
+  const [multiplayerError, setMultiplayerError] = useState<string | null>(null);
   const [multiplayerGames, setMultiplayerGames] = useState<Array<{ id: number; wagerAmount: string | number; hostName?: string | null }>>([]);
   const payoutProcessedRef = useRef(false);
   const startedAtRef = useRef<string | null>(null);
@@ -1062,12 +1075,15 @@ export default function HexDuelPage() {
 
   const fetchMultiplayerGames = useCallback(async () => {
     setMultiplayerLoading(true);
+    setMultiplayerError(null);
     try {
       const res = await fetch("/api/hex-duel/multiplayer/available", { credentials: "include" });
       const data = await res.json();
       if (data?.success) setMultiplayerGames(data.games ?? []);
+      else setMultiplayerError("Failed to load games. Please try again.");
     } catch {
       setMultiplayerGames([]);
+      setMultiplayerError("Failed to load games. Please try again.");
     } finally {
       setMultiplayerLoading(false);
     }
@@ -3206,6 +3222,7 @@ export default function HexDuelPage() {
             onRefreshGames={fetchMultiplayerGames}
             multiplayerGames={multiplayerGames}
             multiplayerLoading={multiplayerLoading}
+            multiplayerError={multiplayerError}
             aiDifficulty={aiDifficulty}
             onAiDifficultyChange={handleDifficultyChange}
           />

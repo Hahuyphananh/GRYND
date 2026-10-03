@@ -60,6 +60,7 @@ import { useUser } from "@clerk/nextjs";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import NavigationBar from "../../../../components/navigation-bar";
+import MatchLoading from "../../../../components/game/MatchLoading";
 // Page-level session host: records "recently played" and beats
 // active-player presence, driven by the game's REAL lifecycle
 // (autoStart/autoStop) — never by page load.
@@ -981,14 +982,8 @@ export default function MemoryGridMatchPage({
 
 
   if (loading && !match) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#030817] text-white">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-          <p className="text-sm text-white/60">Loading match…</p>
-        </div>
-      </div>
-    );
+    // Branded shell WITH the nav bar (this gate used to drop it entirely).
+    return <MatchLoading currentPath="/casino/memory-grid" />;
   }
 
   if (error && !match) {

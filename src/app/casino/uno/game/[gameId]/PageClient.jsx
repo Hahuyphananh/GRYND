@@ -7,6 +7,7 @@ import { usePostHog } from "posthog-js/react";
 import UnoCard, { UNO_PALETTE } from "../../../../../components/UnoCard";
 import UnoBack from "../../../../../components/UnoBack";
 import NavigationBar from "../../../../../components/navigation-bar";
+import MatchLoading from "../../../../../components/game/MatchLoading";
 import Footer from "../../../../../components/Footer";
 import { useFirstVisitRules, RulesModal } from "../../../../../components/lobby/PvpLobby";
 import MatchWaiting from "../../../../../components/lobby/MatchWaiting";
@@ -53,6 +54,9 @@ export default function UnoGamePage() {
   const [topCard, setTopCard] = useState(null);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [loading, setLoading] = useState(false);
+  // False until the initial hydrate resolves, so the table never paints empty
+  // before the (raw-fetched, never disk-cached) game state arrives.
+  const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState("");
   // STAKES ARE RETIRED (src/lib/games/stakes.js): nothing is staked and no
   // token balance is shown.
@@ -563,7 +567,10 @@ export default function UnoGamePage() {
       } catch (err) {
         console.error("Erreur chargement de la partie Neon Flush:", err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLoaded(true);
+        }
       }
     };
     hydrate();
@@ -1242,6 +1249,8 @@ export default function UnoGamePage() {
       )}
     </>
   );
+  if (!loaded) return <MatchLoading />;
+
   return (
     <div className="page-enter mt-0 flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0118] to-[#061b3d] px-3 pb-24 pt-20 text-white sm:px-4 md:pb-8">
       <NavigationBar currentPath="/casino" />

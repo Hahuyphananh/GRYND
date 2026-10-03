@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import NavigationBar from "../../../../components/navigation-bar";
+import AsyncState from "../../../../components/states/AsyncState";
+import { SkeletonRows } from "../../../../components/skeletons/Skeleton";
+import { useApiResource } from "../../../../hooks/useApiResource";
 import {
   IconNotebook,
   IconDeviceGamepad2,
@@ -67,44 +70,31 @@ export default function HexDuelHistoryPage() {
   const { isSignedIn, isLoaded } = useUser();
   const router = useRouter();
 
-  const [games, setGames] = useState<HexDuelGameRecord[]>([]);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchHistory = useCallback(async (p: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/hex-duel/history?page=${p}&limit=${PAGE_SIZE}`, {
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.error || "Failed to load history");
-        setGames([]);
-        return;
-      }
-      setGames(data.data.games);
-      setTotalPages(data.data.pagination.totalPages);
-      setTotal(data.data.pagination.total);
-    } catch {
-      setError("Network error. Please try again");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Cache-first fetch with background revalidation, and a null key while Clerk
+  // is still resolving (or the visitor is signed out) so nothing is requested
+  // early. AsyncState turns the resource into skeleton / offline / error /
+  // stale / empty states like every other data screen.
+  const history = useApiResource<{
+    success: boolean;
+    data: {
+      games: HexDuelGameRecord[];
+      pagination: { totalPages: number; total: number };
+    };
+  }>(
+    isLoaded && isSignedIn
+      ? `/api/hex-duel/history?page=${page}&limit=${PAGE_SIZE}`
+      : null,
+  );
+
+  const games = history.data?.data?.games ?? [];
+  const total = history.data?.data?.pagination.total ?? 0;
+  const totalPages = history.data?.data?.pagination.totalPages ?? 1;
 
   useEffect(() => {
-    if (!isLoaded) return;
-    if (!isSignedIn) {
-      router.push("/casino/hex-duel");
-      return;
-    }
-    fetchHistory(page);
-  }, [isLoaded, isSignedIn, page, fetchHistory, router]);
+    if (isLoaded && !isSignedIn) router.push("/casino/hex-duel");
+  }, [isLoaded, isSignedIn, router]);
 
   if (!isLoaded) {
     return (
@@ -139,26 +129,20 @@ export default function HexDuelHistoryPage() {
           </button>
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="mb-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-center">
-            <p className="text-sm text-red-400">{error}</p>
-            <button onClick={() => fetchHistory(page)} className="mt-2 text-xs text-red-300 underline hover:text-red-200">
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Loading */}
-        {loading && games.length === 0 && (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!loading && games.length === 0 && !error && (
-          <div className="text-center py-16 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
+        {/* Skeleton / offline / error / stale / empty are owned by the shared
+            AsyncState, so this screen behaves like every other data screen. */}
+        <AsyncState
+          isLoading={history.isLoading}
+          error={history.error}
+          hasData={history.hasData}
+          isEmpty={games.length === 0}
+          onRetry={async () => {
+            await history.refresh();
+          }}
+          cachedAt={history.cachedAt}
+          skeleton={<SkeletonRows rows={6} label="Loading match history" />}
+          empty={
+            <div className="text-center py-16 rounded-xl border border-white/5 bg-white/[0.02] backdrop-blur-sm">
             <p className="mb-3 flex justify-center"><IconNotebook size={48} className="text-cyan-400/60" /></p>
             <p className="text-lg font-bold text-slate-300">No games played yet</p>
             <p className="text-sm text-slate-500 mt-1">Play a game of Hex Duel and your history will appear here</p>
@@ -168,12 +152,9 @@ export default function HexDuelHistoryPage() {
             >
               Play Now
             </button>
-          </div>
-        )}
-
-        {/* Games table */}
-        {games.length > 0 && (
-          <>
+            </div>
+          }
+        >
             <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden backdrop-blur-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -268,7 +249,7 @@ export default function HexDuelHistoryPage() {
               <div className="mt-4 flex items-center justify-center gap-3">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
+                  disabled={page <= 1 || history.isValidating}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 text-slate-400 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
                   ← Prev
@@ -278,15 +259,14 @@ export default function HexDuelHistoryPage() {
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loading}
+                  disabled={page >= totalPages || history.isValidating}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 text-slate-400 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
                   Next →
                 </button>
               </div>
             )}
-          </>
-        )}
+        </AsyncState>
       </div>
     </main>
   );

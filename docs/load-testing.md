@@ -65,7 +65,6 @@ Auth: every route below uses Clerk; send the session cookie header
 | Leaderboard | `/api/leaderboard/all-time` etc. | GET `?category=&limit=&offset=` | Redis-cached; recompute on miss |
 | Per-game board | `/api/leaderboard/game?game=` | GET | cache; miss = full scan+group of that game table |
 | My stats | `/api/user-stats` | GET | cached 3 min |
-| Recent games | `/api/get-recent-games` | GET | cached 60 s |
 
 Other games follow the same shape (each PvP game has `create-or-join` /
 `join` / turn-action / settle routes, e.g. `mines-pvp`, `keno-pvp`,

@@ -35,6 +35,9 @@ export default function RPSLobbyPage() {
   const betAmount = 0;
   const [loading, setLoading] = useState(false);
   const [availableGames, setAvailableGames] = useState<any[]>([]);
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The AI tier the bot plays at, chosen here and remembered per game by the
@@ -52,6 +55,8 @@ export default function RPSLobbyPage() {
       if (data.success) setAvailableGames(data.data.games || []);
     } catch {
       // silent
+    } finally {
+      setLobbiesLoading(false);
     }
   };
 
@@ -231,6 +236,7 @@ export default function RPSLobbyPage() {
         </button>
       }
       lobbies={availableGames}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open games right now. Be the first to create one."
       lobbyKey={(l) => l.id}
       lobbyTitle={(l) => <>Game #{l.id}</>}

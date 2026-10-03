@@ -5,7 +5,8 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter, usePathname } from "next/navigation";
 import ReviewModal from "./ReviewModal";
 import IconAvatar from "../IconAvatar";
-import ErrorState from "../states/ErrorState";
+import AsyncState from "../states/AsyncState";
+import { SkeletonCards } from "../skeletons/Skeleton";
 import { useApiResource } from "../../hooks/useApiResource";
 import ReportEntryButton from "../reports/ReportEntryButton";
 
@@ -97,7 +98,11 @@ export default function ReviewWall({
     mine: { submitted: boolean; status: string | null; rating: number | null };
   }>(`/api/reviews?limit=${limit}&mine=1`);
 
-  const loading = initialReviews === null && resource.isLoading;
+  // `hasData` is true the moment ANY payload is available — including the
+  // server-rendered reviews — so a slow or failed refresh can never blank a
+  // wall that is already on screen.
+  const hasData = initialReviews !== null || resource.hasData;
+  const cardsLoading = !hasData && resource.isLoading;
 
   const openReviewFlow = () => {
     // Signed-out visitors get sent to sign-in first and return to the
@@ -116,26 +121,6 @@ export default function ReviewWall({
     if (data.stats) setStats(data.stats);
     setMine(data.mine ?? null);
   }, [resource.data]);
-
-  // The server already rendered the wall's content (see initialReviews), so
-  // never replace it with a loading placeholder.
-
-  if (loading) {
-    return <div className="py-10 text-center text-[#c9f7ff]/50">Loading reviews…</div>;
-  }
-
-  // The wall has nothing to show and the request failed — offer a retry
-  // instead of silently rendering the empty state (which would read as
-  // "nobody has reviewed us yet").
-  if (resource.error && reviews.length === 0) {
-    return (
-      <ErrorState
-        title="Reviews couldn't load"
-        description="We couldn't fetch the reviews just now. Give it another try."
-        onRetry={resource.refresh}
-      />
-    );
-  }
 
   return (
     <div>
@@ -179,12 +164,25 @@ export default function ReviewWall({
         </button>
       </div>
 
-      {/* Review cards */}
-      {reviews.length === 0 ? (
-        <p className="py-8 text-center text-[#c9f7ff]/50">
-          No reviews yet — be the first to share your experience.
-        </p>
-      ) : (
+      {/* Review cards — the shared AsyncState owns skeleton / offline / error /
+          empty, so this wall behaves exactly like every other data screen
+          (and never renders data-bound children without a payload). */}
+      <AsyncState
+        isLoading={cardsLoading}
+        error={resource.error}
+        hasData={hasData}
+        isEmpty={reviews.length === 0}
+        onRetry={async () => {
+          await resource.refresh();
+        }}
+        cachedAt={resource.cachedAt}
+        skeleton={<SkeletonCards cards={6} label="Loading reviews" />}
+        empty={
+          <p className="py-8 text-center text-[#c9f7ff]/50">
+            No reviews yet — be the first to share your experience.
+          </p>
+        }
+      >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {reviews.map((r) => (
             <div
@@ -231,7 +229,7 @@ export default function ReviewWall({
             </div>
           ))}
         </div>
-      )}
+      </AsyncState>
 
       <ReviewModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>

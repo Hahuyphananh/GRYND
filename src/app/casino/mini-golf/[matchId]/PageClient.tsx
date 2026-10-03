@@ -44,6 +44,7 @@ import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import ReportModal from "../../../../components/ReportModal";
 import NavigationBar from "../../../../components/navigation-bar";
+import MatchLoading from "../../../../components/game/MatchLoading";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import {
   MINI_GOLF_MATCH_UPDATED,
@@ -848,11 +849,8 @@ export default function MiniGolfMatchPage() {
 
   // ── Render ────────────────────────────────────────────────────────────
   if (!match && !loadError) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#04170e] to-[#03150c] text-white/70">
-        Loading Mini Golf…
-      </div>
-    );
+    // Branded shell WITH the nav bar (this gate used to drop it entirely).
+    return <MatchLoading label="Loading Mini Golf…" currentPath="/casino/mini-golf" />;
   }
 
   if (!match && loadError) {

@@ -17,10 +17,14 @@
  *   - The store is pruned to MAX_ENTRIES (oldest first) to bound localStorage
  *     usage; a write that blows the quota drops the oldest half and retries
  *     once instead of throwing.
- *   - User-scoped endpoints (balance, stats, friends, history, purchases…)
- *     are kept in memory only. They still get instant within-session caching
- *     and background refresh, but are never written to disk — so a shared
- *     device can't surface one player's balance (or history) to the next.
+ *   - Only endpoints on the ALLOW-list below are written to disk. Everything
+ *     else — balances, stats, friends, history, purchases, match state… — is
+ *     kept in memory only. It still gets instant within-session caching and
+ *     background refresh, but is never persisted, so a shared device can't
+ *     surface one player's data to the next.
+ *   - The list is an allow-list, not a deny-list, on purpose: a brand-new
+ *     endpoint is non-persistable by default. Adding a user-scoped route can
+ *     never silently start writing to disk; it has to be opted in here.
  *   - SSR-safe: with no `window`, the provider is a plain in-memory Map.
  */
 
@@ -29,14 +33,21 @@ export const CACHE_PREFIX = "grynd:swr:";
 const MAX_ENTRIES = 200;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 
-// Anything user-scoped: cached in memory, never persisted to disk.
-const SENSITIVE_PATTERN =
-  /(get-user-tokens|user\/stats|user-stats|user\/glows|membership\/status|\/friends|friend|invites|get-bet-history|get-purchase-history|\/titles|cosmetics|referral|chat-color|profile-customization)/i;
+/**
+ * Public, non-user-scoped GETs that are safe to keep on disk. These are the
+ * only keys SWR will persist; every other key stays memory-only.
+ *
+ *   - /api/leaderboard/*           public rankings
+ *   - /api/user/public-profile     public profile (server strips email)
+ *   - /api/reviews                 public review wall
+ */
+const PERSISTABLE_PATTERN =
+  /^\/api\/(leaderboard\/|user\/public-profile\b|reviews\b)/i;
 
 /** True when a SWR key may be written to localStorage. */
 export function isPersistableKey(key) {
   if (typeof key !== "string" || !key) return false;
-  return !SENSITIVE_PATTERN.test(key);
+  return PERSISTABLE_PATTERN.test(key);
 }
 
 function getStorage() {

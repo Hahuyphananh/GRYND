@@ -550,14 +550,19 @@ test("E. changing preferences changes the recommendations", () => {
   );
   assert.equal(chance.recommendations[0].id, "mines-pvp");
 
-  // With the rest of the profile filled in, both the full order and the three
+  // With the rest of the profile filled in, both the full order and the four
   // primary picks still differ — the change reaches the lobby section.
   const fullStrategy = recommendGames({ ...FULL_ANSWERS, game_types: ["strategy"] });
   const fullChance = recommendGames({ ...FULL_ANSWERS, game_types: ["luck_chance"] });
   // Poker, roulette, plinko, blackjack and crash arena were removed from the
   // games catalog, so the strategy picks now come from the remaining strategy
-  // games (chess → tower-arena → hex-duel).
-  assert.deepEqual(fullStrategy.primaryGameIds, ["chess", "tower-arena", "hex-duel"]);
+  // games (chess → tower-arena → hex-duel → tic-tac-toe).
+  assert.deepEqual(fullStrategy.primaryGameIds, [
+    "chess",
+    "tower-arena",
+    "hex-duel",
+    "tic-tac-toe",
+  ]);
   // The chance answer floats a different game to the top and reorders the
   // whole list — the change reaches the lobby section even if a shared
   // favourite (chess) still appears in both pick sets.

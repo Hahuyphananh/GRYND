@@ -148,7 +148,7 @@ Nothing in the fallback path throws, and no fallback is ever "no games".
   recommendations: [                  // ALL games, ranked
     { id, href, tags, score, reasons: ["game_type:strategy", …] }
   ],
-  primaryGameIds: ["chess", "hex-duel", "…"],   // first 3 = "primary suggestions"
+  primaryGameIds: ["chess", "hex-duel", "…"],   // first 4 = "primary suggestions"
   messageKey: "onboarding.personalization.goals.ranking_up",          // or null
   experienceMessageKey: "onboarding.personalization.experience.new",  // or null
 }
@@ -193,15 +193,16 @@ the follow-up message, and it never affects availability.
 
 `src/app/casino/PageClient.jsx` renders a **FOR YOU** section between the
 search/filter controls and the existing **All Games** grid (above "Recently
-played"). It shows the engine's `primaryGameIds` — the top 3 — using the
+played"). It shows the engine's `primaryGameIds` — the top 4, shuffled per
+visit — using the
 *lobby's own* `GameCard`, with an extra "Recommended" pill on the card image.
 
 | Concern | Behaviour |
 |---|---|
 | Who sees it | signed-in players whose answers are `personalized && complete` |
 | Requests | **zero** extra for anyone who never answered the questionnaire (the existing `/api/onboarding/status` snapshot gates it), otherwise **one** `GET /api/onboarding/recommendations` per mount — the payload is the whole ranking, so no per-card requests |
-| Ordering | score-based, top 3; it never touches the All Games ordering |
-| All Games | unchanged, below the section, with every filter + sort |
+| Ordering | score-based, top 4, then shuffled client-side once per visit (when the ranking lands); it never touches the All Games ordering |
+| All Games | below the section, with every filter + sort; its default (now labelled "Random") order is reshuffled once per visit, as is the "Recently played" strip |
 | Filters/search | the section hides as soon as the player searches or picks a filter — the same rule the "Recently played" strip uses, so the grid is never competing with a personal pick |
 | Fallbacks | logged out, no questionnaire, partial answers, API error, `personalized: false`, or an id that doesn't resolve to a lobby game → the section simply doesn't render, and the lobby is exactly what it was before |
 | Copy | `FOR_YOU_MESSAGE_KEY` ("For you"), the player's goal message (`messageKey`), else `FOR_YOU_HINT_MESSAGE_KEY`, plus `home.casino_lobby.recommended_badge` — all localized (en/fr/es) |

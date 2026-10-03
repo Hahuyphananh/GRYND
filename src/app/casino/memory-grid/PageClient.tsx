@@ -93,6 +93,9 @@ export default function MemoryGridLobbyPage() {
   const [availableMatches, setAvailableMatches] = useState<AvailableMatch[]>(
     [],
   );
+  // False once the first list response lands, so the empty state never
+  // flashes before the request resolves.
+  const [lobbiesLoading, setLobbiesLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [joiningId, setJoiningId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -116,6 +119,8 @@ export default function MemoryGridLobbyPage() {
       }
     } catch {
       // Silent — polling retries on the next tick.
+    } finally {
+      setLobbiesLoading(false);
     }
   }, []);
 
@@ -406,6 +411,7 @@ export default function MemoryGridLobbyPage() {
       }
       error={error}
       lobbies={availableMatches}
+      lobbiesLoading={lobbiesLoading}
       lobbyEmptyText="No open lobbies yet. Be the first to make one."
       lobbyTitle={(m) => (
         <>

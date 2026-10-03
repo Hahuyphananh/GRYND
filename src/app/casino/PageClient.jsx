@@ -78,6 +78,18 @@ function readStored(key, fallback) {
 // `adSlot` is the server-rendered <AdSlot placement="hub" /> from
 // app/casino/page.jsx. This is the games HUB, not a game — the slot carries its
 // own server-side entitlement check and sits above the footer.
+// Fisher–Yates shuffle over a copy, so the caller's array is never mutated.
+// Powers the lobby's per-visit random orders (All Games, For You, Recently
+// played) — each one is shuffled exactly once, when its data lands.
+function shuffledCopy(items, random = Math.random) {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function MainComponent({ adSlot = null }) {
   const { user } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
@@ -137,6 +149,12 @@ function MainComponent({ adSlot = null }) {
   // aggregate only, keyed by the canonical game id (leaderboardKey) the lobby
   // already carries — nothing is hardcoded and no card fetches on its own.
   const [activePlayers, setActivePlayers] = useState({ status: "loading", counts: {} });
+  // Random "Featured" order for the All Games grid (see the shuffle effect
+  // below). `null` until the client-side shuffle lands, so the server HTML and
+  // the first client render are byte-identical — the random order is applied
+  // after hydration, never during render. "For You" and "Recently played"
+  // shuffle their own orders the same way (once when their data lands).
+  const [featuredOrder, setFeaturedOrder] = useState(null);
   const { t, language } = useTranslation();
 
   // Persist search + filter for the session (UX plan P1-1). Written on
@@ -162,9 +180,10 @@ function MainComponent({ adSlot = null }) {
 
   // Recently played (UX plan P1-1): read once on mount. Games record a
   // play when a real session starts, so returning to the lobby shows a
-  // "Play again" strip of the last sessions.
+  // "Play again" strip of the last sessions. The strip is shuffled per visit
+  // (in this client-only effect, so hydration is unaffected).
   useEffect(() => {
-    setRecentGames(getPlayedGames());
+    setRecentGames(shuffledCopy(getPlayedGames()));
   }, []);
 
   // First-time guidance: both lobby onboarding cards are decided from the SAME
@@ -271,7 +290,11 @@ function MainComponent({ adSlot = null }) {
           return;
         }
         setForYou({
-          ids: data.primaryGameIds,
+          // Shuffled once per visit, here in the client-only effect that
+          // receives the ranking — never during render (the section is not
+          // server-rendered, but a render-time shuffle would still re-roll on
+          // every re-render instead of once per visit).
+          ids: shuffledCopy(data.primaryGameIds),
           messageKey: typeof data.messageKey === "string" ? data.messageKey : null,
         });
       })
@@ -550,6 +573,16 @@ function MainComponent({ adSlot = null }) {
   const showForYou =
     forYouGames.length > 0 && search.trim().length === 0 && activeFilter === "all";
 
+  // Random "Featured" order: the catalog is reshuffled once per visit. The
+  // shuffle runs in an effect — never during render — so it can't cause a
+  // hydration mismatch; explicit sorts (A–Z, Most played, Newest) stay
+  // deterministic because the player asked for them.
+  useEffect(() => {
+    setFeaturedOrder(shuffledCopy(games).map((game) => game.leaderboardKey));
+    // `games` is a stable catalog literal; the shuffle must run once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const filteredGames = games.filter((game) =>
     (game.nameKey ? t(game.nameKey) : game.name).toLowerCase().includes(search.toLowerCase())
   );
@@ -591,11 +624,18 @@ function MainComponent({ adSlot = null }) {
   const NEW_BADGE_COUNT = 4;
   const newestKeys = newestOrder.slice(0, NEW_BADGE_COUNT);
 
-  // Real sort orders. "Featured" is the hand-ordered default; "Newest" is
+  // Real sort orders. "Featured" is the random per-visit default; "Newest" is
   // the recency list; "A–Z" is the localized display name; "Most Played"
   // uses REAL play counts from /api/game-plays (games with no recorded
   // count yet sort to the bottom, never invented).
-  if (sortOrder === "az") {
+  if (sortOrder === "featured" && featuredOrder) {
+    // Random per-visit order (see the shuffle effect above). Ranks missing from
+    // the map (shouldn't happen) fall back to the top rather than throwing.
+    const rank = new Map(featuredOrder.map((key, index) => [key, index]));
+    displayedGames.sort(
+      (a, b) => (rank.get(a.leaderboardKey) ?? 0) - (rank.get(b.leaderboardKey) ?? 0),
+    );
+  } else if (sortOrder === "az") {
     displayedGames.sort((a, b) =>
       (a.nameKey ? t(a.nameKey) : a.name).localeCompare(
         b.nameKey ? t(b.nameKey) : b.name,

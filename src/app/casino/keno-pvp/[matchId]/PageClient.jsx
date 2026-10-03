@@ -24,6 +24,7 @@ import { usePostHog } from "posthog-js/react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import confetti from "canvas-confetti";
 import NavigationBar from "../../../../components/navigation-bar";
+import MatchLoading from "../../../../components/game/MatchLoading";
 import Footer from "../../../../components/Footer";
 import KenoWaitingPanel from "../../../../components/keno-pvp/KenoWaitingPanel";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -843,11 +844,8 @@ export default function KenoPvpMatchPage({ params }) {
   });
 
   if (loading && !match) {
-    return (
-      <div className="min-h-screen bg-[#001933] text-white flex items-center justify-center">
-        <p className="animate-pulse">Loading match…</p>
-      </div>
-    );
+    // Branded shell WITH the nav bar (this gate used to drop it entirely).
+    return <MatchLoading currentPath="/casino/keno" />;
   }
 
   if (!match) {
