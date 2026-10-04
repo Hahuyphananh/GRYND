@@ -35,7 +35,11 @@ dashboard actions) or are **should-fix** polish.
    The full per-side matrix is in `docs/PROD_REALTIME_AND_NEON_TASKS.md`;
    value-free templates are `.env.example` and `realtime-server/.env.example`.
    The four that break things SILENTLY when missed:
-   - Vercel: `NEXT_PUBLIC_BASE_URL=https://www.grynd.dedyn.io`,
+   - Vercel: `NEXT_PUBLIC_BASE_URL=https://www.grynd.dedyn.io` (a retired
+     host here — e.g. `grynd.mywire.org` — is now ignored by
+     `src/lib/siteUrl.ts` rather than silently breaking every `og:image`, but
+     set it correctly anyway; it is inlined at build time, so it needs a
+     redeploy to change),
      `NEXT_PUBLIC_SOCKET_URL=https://casino-app-2wnk.onrender.com`,
      `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`,
      `REALTIME_INTERNAL_URL`, `REALTIME_INTERNAL_SECRET`.

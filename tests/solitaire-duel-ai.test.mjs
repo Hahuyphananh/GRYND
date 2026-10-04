@@ -134,7 +134,7 @@ test("it prefers a reveal move over a draw", () => {
   assert.deepEqual(chosen.card, card("hearts", 5));
 });
 
-test("easy can slip to a worse legal move, hard never does", () => {
+test("easy can slip to a worse legal move; hard slips far less often", () => {
   const state = emptyState({
     tableau: [
       [{ card: card("spades", 3), faceUp: false }, { card: card("hearts", 5), faceUp: true }],
@@ -147,13 +147,38 @@ test("easy can slip to a worse legal move, hard never does", () => {
     ],
     stock: [card("diamonds", 9)],
   });
-  const hard = chooseAiMove({ state, difficulty: "hard", random: () => 0 });
-  const easy = chooseAiMove({ state, difficulty: "easy", random: () => 0 });
-  // Hard always plays the best move (the reveal); easy slips on a 0 roll.
+  // A clean roll: every tier takes the best move (the reveal).
+  const hard = chooseAiMove({ state, difficulty: "hard", random: () => 0.99 });
   assert.equal(hard.kind, "tableau-to-tableau");
+
+  // A forced slip: easy plays a worse legal move. Hard also slips sometimes now
+  // (it is the strongest tier, not a perfect one), so the rate is what is
+  // compared rather than "hard never slips".
+  const easy = chooseAiMove({ state, difficulty: "easy", random: () => 0 });
   assert.ok(easy, "a slip is still a move");
   assert.equal(legalMoves(state).some((move) => sameMove(move, easy)), true);
   assert.notEqual(JSON.stringify(easy), JSON.stringify(hard));
+
+  // A deterministic roll sequence, so the empirical slip counts differ only
+  // because the tiers' mistake rates differ. (A pinned roll would make every
+  // tier slip, since even `hard`'s small rate is above 0.)
+  const slipRate = (tier) => {
+    let slips = 0;
+    let seed = 12345;
+    const roll = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    for (let i = 0; i < 400; i += 1) {
+      const move = chooseAiMove({ state, difficulty: tier, random: roll });
+      if (move && move.kind !== "tableau-to-tableau") slips += 1;
+    }
+    return slips;
+  };
+  assert.ok(
+    slipRate("easy") > slipRate("hard"),
+    "easy must slip onto a worse move more often than hard",
+  );
 });
 
 test("the tier only changes the pace, ordered easy → normal → hard", () => {

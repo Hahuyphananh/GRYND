@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 import { logError } from "../../../../../lib/logError";
+import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import { fetchMatch, isMatchId } from "../../../../../lib/speed-typing/serverStore";
 
 export const dynamic = "force-dynamic";
@@ -53,9 +54,34 @@ export async function GET(
       );
     }
 
+    // Seat identity is an ADORNMENT for the two racers' name plates (username,
+    // official icon, equipped frame/name colour). It is read through the
+    // platform's SHARED resolver — the same one every other 1v1 board uses — and
+    // a failure here must never fail the match payload: the race is what
+    // matters, and the client falls back to its own labels.
+    //
+    // The bot seat (a sentinel id with no `users` row) resolves to null, which
+    // is what lets the client render the GRYND mark for it.
+    let seatIdentities = null;
+    try {
+      seatIdentities = await getSeatIdentity(
+        result.match.player1Id,
+        result.match.player2Id ?? null,
+      );
+    } catch {
+      seatIdentities = null;
+    }
+
     return NextResponse.json({
       success: true,
-      data: { match: result.dto },
+      data: {
+        match: result.dto,
+        // Cosmetic only: it carries no rules, no passage and no outcome, and
+        // `matchViewFor` itself stays exactly as the store defines it. It is
+        // NOT part of `match` — the race DTO's own `players` array (seat ids) is
+        // a different, authoritative shape that tests pin.
+        seatIdentities,
+      },
     });
   } catch (error) {
     await logError({

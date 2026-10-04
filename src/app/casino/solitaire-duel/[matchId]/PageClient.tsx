@@ -56,6 +56,7 @@ import {
   IconDoorExit,
   IconFlag,
   IconHourglassHigh,
+  IconRefresh,
   IconSwords,
 } from "@tabler/icons-react";
 
@@ -63,7 +64,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
-import FrameAvatar from "../../../../components/FrameAvatar";
+import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
@@ -111,6 +112,10 @@ type MatchDto = {
   winnerId: string | null;
   seat: Seat | null;
   isParticipant: boolean;
+  /** True for a free practice match against the bot (never rated). */
+  isAi: boolean;
+  /** The bot's tier on a practice match, or null on a human duel. */
+  aiDifficulty: string | null;
   goAtMs: number | null;
   /** The viewer's own inactivity alarm instant (15 min without a move). */
   inactivityAlarmAtMs: number | null;
@@ -161,6 +166,7 @@ function Meter({
   tone,
   completed,
   identity,
+  isAi = false,
 }: {
   label: string;
   percent: number;
@@ -168,8 +174,14 @@ function Meter({
   tone: "mine" | "theirs";
   completed?: boolean;
   identity?: SeatIdentity;
+  /** Bot seat: the GRYND mark stands in for a pfp it cannot have. */
+  isAi?: boolean;
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+  // BOTH seats are identified the same way: a face and a name. A seat whose
+  // identity has not resolved yet (or a bot seat) still gets its duotone dot,
+  // so the meter never renders an empty gap while the snapshot is loading.
+  const hasAvatar = isAi || Boolean(identity?.iconKey);
   return (
     <div
       data-testid={`solitaire-meter-${tone}`}
@@ -179,11 +191,12 @@ function Meter({
     >
       <div className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
-          {tone === "theirs" && identity?.iconKey ? (
-            <FrameAvatar
-              frame={identity.profileFrame}
-              iconKey={identity.iconKey}
-              name={identity.name || "Opponent"}
+          {hasAvatar ? (
+            <SeatAvatar
+              iconKey={identity?.iconKey ?? null}
+              profileFrame={identity?.profileFrame ?? null}
+              name={label}
+              isAi={isAi}
               size="h-6 w-6"
             />
           ) : (
@@ -243,6 +256,7 @@ export default function SolitaireDuelMatchPage() {
   const [resigning, setResigning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [requeueing, setRequeueing] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
   const loadedRef = useRef(false);
@@ -274,6 +288,7 @@ export default function SolitaireDuelMatchPage() {
     setShowResign(false);
     setResigning(false);
     setCancelling(false);
+    setRestarting(false);
     setLeaving(false);
     loadedRef.current = false;
     skewRef.current = 0;
@@ -589,14 +604,24 @@ export default function SolitaireDuelMatchPage() {
 
   // A rematch is a NEW match: the server mints a new seed and derives a new
   // deal, and this page's per-match state is reset by the `matchId` effect.
+  //
+  // A practice match rematches INTO practice — same rules, same bot tier, a
+  // fresh deal — rather than dropping an unrated player into the rated queue.
+  // A rated duel rematches through the ordinary lobby path.
   const requeue = useCallback(async () => {
     if (requeueing) return;
     setRequeueing(true);
     try {
-      const res = await fetch("/api/solitaire-duel/create-or-join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await fetch(
+        matchRef.current?.isAi ? "/api/solitaire-duel/create-ai" : "/api/solitaire-duel/create-or-join",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          ...(matchRef.current?.isAi
+            ? { body: JSON.stringify({ difficulty: matchRef.current?.aiDifficulty }) }
+            : {}),
+        },
+      );
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
         router.push(`/casino/solitaire-duel/${data.data.matchId}`);
@@ -608,13 +633,56 @@ export default function SolitaireDuelMatchPage() {
     }
   }, [requeueing, router]);
 
+  // ── Restart (practice only) ─────────────────────────────────────────────
+  //
+  // "Start over with a different deal." The server abandons the current
+  // practice match and mints a brand new one from a FRESH seed, so the new
+  // puzzle is a genuinely different deal. Nothing competitive moves: a practice
+  // match is unrated and never settles. The new match id resets every per-match
+  // value on this page.
+  const restart = useCallback(async () => {
+    if (restarting || !matchId) return;
+    setRestarting(true);
+    try {
+      const res = await fetch(`${apiMatch}/restart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ difficulty: matchRef.current?.aiDifficulty }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        router.push(`/casino/solitaire-duel/${data.data.matchId}`);
+        return;
+      }
+      setNotice(data?.error || "Could not start a new deal");
+    } catch {
+      setNotice("Could not start a new deal");
+    } finally {
+      setRestarting(false);
+    }
+  }, [apiMatch, matchId, restarting, router]);
+
   // ── View model ─────────────────────────────────────────────────────────
   const myProgress = match?.progress ?? null;
   const opponentProgress = liveOpponent ?? match?.opponent ?? null;
   const seatKeyForIdentity: Seat = mySeatKey === "player1" ? "player2" : "player1";
   const opponentIdentity: SeatIdentity = match?.players?.[seatKeyForIdentity] ?? null;
-  const opponentName = opponentIdentity?.name || "Opponent";
+  const opponentName = match?.isAi
+    ? "GRYND AI"
+    : opponentIdentity?.name || "Opponent";
+  // The viewer's OWN seat, resolved the same way, so both sides of the race are
+  // introduced by the same face and the same username rather than "You" vs a
+  // name. The viewer is never the bot seat (the bot is always player2).
+  const viewerIdentity: SeatIdentity = mySeatKey
+    ? (match?.players?.[mySeatKey] ?? null)
+    : null;
+  const viewerName = viewerIdentity?.name || "You";
   const canCancelLobby = status === "waiting" && seat === "player1";
+  const isPractice = Boolean(match?.isAi);
+  // A practice match is untimed and unrated, so it can always be restarted —
+  // even after the bot has finished, which is exactly when a player wants a
+  // fresh deal. A rated duel only offers a rematch from its result screen.
+  const canRestart = isPractice && !restarting && !leaving;
   const myFoundation = Math.max(0, myProgress?.foundationCards ?? 0);
   const opponentFoundation = Math.max(0, opponentProgress?.foundationCards ?? 0);
   const myPercent = myProgress?.progressPercent ?? 0;
@@ -656,7 +724,7 @@ export default function SolitaireDuelMatchPage() {
                 Solitaire Duel
               </h1>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-200/60">
-                <span>Rated 1v1</span>
+                <span>{isPractice ? "Practice vs AI" : "Rated 1v1"}</span>
                 <span aria-hidden="true">·</span>
                 <span>Same deal for both seats</span>
                 <span aria-hidden="true">·</span>
@@ -808,11 +876,12 @@ export default function SolitaireDuelMatchPage() {
                   {/* ── Competitive information ────────────────────── */}
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Meter
-                      label="You"
+                      label={viewerName}
                       percent={myPercent}
                       detail={progressLabel(myProgress)}
                       tone="mine"
                       completed={Boolean(match.view?.completed)}
+                      identity={viewerIdentity}
                     />
                     <Meter
                       label={opponentName}
@@ -825,6 +894,7 @@ export default function SolitaireDuelMatchPage() {
                       tone="theirs"
                       completed={Boolean(opponentProgress?.completed)}
                       identity={opponentIdentity}
+                      isAi={isPractice}
                     />
                   </div>
 
@@ -885,6 +955,19 @@ export default function SolitaireDuelMatchPage() {
                     </span>
 
                     <span className="flex items-center gap-2">
+                      {canRestart && (
+                        <button
+                          type="button"
+                          data-testid="solitaire-restart"
+                          onClick={() => void restart()}
+                          disabled={restarting}
+                          title="Abandon this practice match and deal a new puzzle"
+                          className="inline-flex items-center gap-1 rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-200 transition hover:bg-cyan-400/20 active:translate-y-px disabled:opacity-50"
+                        >
+                          <IconRefresh size={13} aria-hidden="true" />
+                          {restarting ? "Dealing…" : "New deal"}
+                        </button>
+                      )}
                       {!terminal && status === "playing" && !expired && (
                         <button
                           type="button"
@@ -1049,7 +1132,7 @@ export default function SolitaireDuelMatchPage() {
             value: outcome === "draw" ? "Draw" : outcome === "win" ? "You" : opponentName,
           },
         ]}
-        playAgain={{ label: "REMATCH", onClick: requeue }}
+        playAgain={{ label: isPractice ? "NEW DEAL" : "REMATCH", onClick: requeue }}
         secondaryAction={{ label: "Back to games", href: "/casino" }}
         onReturnToLobby={() => router.push("/casino/solitaire-duel")}
       />

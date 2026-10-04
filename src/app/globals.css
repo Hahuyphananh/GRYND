@@ -1969,3 +1969,190 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     0 0 0 3px #f97316,
     0 0 22px rgba(249, 115, 22, 0.65);
 }
+
+/* ── Odds: cyberpunk HUD ───────────────────────────────────────────────
+   Odds is a number-reading duel, so the board is drawn as a HUD readout
+   rather than a card stack: chamfered neon panels, mono micro-labels, and a
+   round log that scrolls inside its own bounded box instead of growing the
+   page (the log used to be one full-height card per round, forever).
+
+   The accent tokens are the repo's flat-neon ones — #f5ff3b is already the
+   casino's primary (see the global blue→yellow button palette above), with
+   #00e5ff on the second channel and #ff3bd4 on predictions — so the game
+   reads as part of the same casino while the readouts say "machine". */
+
+/* A chamfered corner instead of a radius: the HUD's signature shape. */
+.odds-chamfer {
+  clip-path: polygon(
+    13px 0,
+    100% 0,
+    100% calc(100% - 13px),
+    calc(100% - 13px) 100%,
+    0 100%,
+    0 13px
+  );
+}
+
+.odds-hud {
+  position: relative;
+  background: linear-gradient(180deg, rgba(4, 20, 44, 0.92), rgba(1, 6, 16, 0.96));
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    0 0 26px rgba(0, 229, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.odds-hud--amber {
+  border-color: rgba(245, 255, 59, 0.3);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    0 0 28px rgba(245, 255, 59, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.odds-hud--magenta {
+  border-color: rgba(255, 59, 212, 0.32);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    0 0 28px rgba(255, 59, 212, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* A labelled corner bracket — the "instrument" detail on every panel. */
+.odds-hud::before,
+.odds-hud::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
+.odds-hud::before {
+  top: 7px;
+  left: 7px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.odds-hud::after {
+  right: 7px;
+  bottom: 7px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
+.odds-hud--amber::before,
+.odds-hud--amber::after {
+  border-color: rgba(245, 255, 59, 0.6);
+}
+
+.odds-hud--magenta::before,
+.odds-hud--magenta::after {
+  border-color: rgba(255, 59, 212, 0.6);
+}
+
+/* Mono micro-label: the HUD's voice. */
+.odds-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* The digital readout. Tabular figures so a changing number cannot jitter. */
+.odds-readout {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* The board's own ground: a faint grid plus a slow scanline sweep, so the
+   panel behind the numbers reads as a screen rather than a sheet. */
+.odds-board-bg {
+  position: relative;
+  background-image:
+    linear-gradient(rgba(0, 229, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.odds-board-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 229, 255, 0.07) 45%,
+    rgba(245, 255, 59, 0.05) 55%,
+    transparent 100%
+  );
+  background-size: 100% 240px;
+  animation: odds-scan 6.5s linear infinite;
+}
+
+@keyframes odds-scan {
+  0% { background-position: 0 -240px; }
+  100% { background-position: 0 100%; }
+}
+
+/* Bounded round log: the fix for "the board is too long". Six rounds scroll
+   inside a fixed-height instrument window instead of stacking. */
+.odds-log {
+  max-height: 15rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.45) transparent;
+}
+
+.odds-log::-webkit-scrollbar {
+  width: 6px;
+}
+
+.odds-log::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.4);
+}
+
+/* The range bar: shows how far the 1..N window has collapsed each round. */
+.odds-range-bar {
+  height: 4px;
+  background: linear-gradient(90deg, rgba(245, 255, 59, 0.9), rgba(0, 229, 255, 0.35));
+  box-shadow: 0 0 12px rgba(245, 255, 59, 0.35);
+}
+
+/* Neon keypad-style input: the number the whole board exists to capture. */
+.odds-input {
+  background: rgba(1, 9, 24, 0.9);
+  border: 1px solid rgba(245, 255, 59, 0.35);
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.14em;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.odds-input:focus {
+  outline: none;
+  border-color: rgba(245, 255, 59, 0.85);
+  box-shadow: 0 0 0 1px rgba(245, 255, 59, 0.35), 0 0 22px rgba(245, 255, 59, 0.25);
+}
+
+.odds-input:disabled {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .odds-board-bg::after {
+    animation: none;
+  }
+}

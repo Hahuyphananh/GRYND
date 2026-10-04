@@ -123,9 +123,11 @@ test("the tiers are ordered — hard beats normal beats easy, and all of them fi
   assert.ok(totals.normal < totals.easy, `normal (${totals.normal}) must beat easy (${totals.easy})`);
 
   // A weaker tier is still a golf bot: it must never need an absurd number of
-  // strokes, or the match would feel broken rather than merely easy.
+  // strokes, or the match would feel broken rather than merely easy. The budget
+  // is generous because the tiers are deliberately far apart now — a weak tier
+  // is meant to be a real handicap, not a slightly sloppier version of `hard`.
   for (const tier of TIERS) {
-    assert.ok(worst[tier] <= 20, `${tier} must never need more than 20 strokes on a hole (worst ${worst[tier]})`);
+    assert.ok(worst[tier] <= 35, `${tier} must never need more than 35 strokes on a hole (worst ${worst[tier]})`);
   }
 });
 
@@ -135,8 +137,14 @@ test("the tier table itself is ordered, so a pick is never a no-op", () => {
   assert.ok(MINI_GOLF_AI_TIERS.normal.powerCount <= MINI_GOLF_AI_TIERS.hard.powerCount);
   assert.ok(MINI_GOLF_AI_TIERS.easy.aimErrorDeg > MINI_GOLF_AI_TIERS.normal.aimErrorDeg);
   assert.ok(MINI_GOLF_AI_TIERS.normal.aimErrorDeg > MINI_GOLF_AI_TIERS.hard.aimErrorDeg);
-  assert.equal(MINI_GOLF_AI_TIERS.hard.aimErrorDeg, 0);
-  assert.equal(MINI_GOLF_AI_TIERS.hard.powerError, 0);
+  // `hard` is the strongest tier but NO LONGER perfect — it carries a small
+  // execution error, so a strong player can beat it.
+  assert.ok(MINI_GOLF_AI_TIERS.hard.aimErrorDeg > 0, "hard must not strike perfectly");
+  assert.ok(MINI_GOLF_AI_TIERS.hard.powerError > 0, "hard must not strike perfectly");
+  assert.ok(
+    MINI_GOLF_AI_TIERS.hard.aimErrorDeg < MINI_GOLF_AI_TIERS.normal.aimErrorDeg / 2,
+    "hard must still be clearly the most accurate tier",
+  );
 });
 
 // ── persistence + wiring ──────────────────────────────────────────────────

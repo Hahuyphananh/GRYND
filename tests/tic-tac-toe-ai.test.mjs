@@ -103,11 +103,21 @@ test("hard prefers its own win over blocking the opponent's", () => {
   assert.equal(chooseAiCell({ board, seat: "player2", difficulty: "hard" }), 2);
 });
 
-test("hard never loses against an exhaustive/greedy opponent", () => {
-  // Seat the bot as BOTH players across many games: a perfect player must never
-  // lose from either seat — it wins as X and draws (at worst) as O.
+test("hard is very strong — it almost never loses, but is no longer unbeatable", () => {
+  // `hard` keeps a small slip (an 8% chance per move of taking the 2nd or 3rd
+  // best cell), so it can be beaten by a lucky opponent. The claim under test is
+  // that it remains the strongest tier by a wide margin: a random opponent must
+  // still lose to it in the large majority of games.
+  //
+  // The bound is empirical, from this seeded run against a uniformly random
+  // opponent: hard loses ~7% of games, most of them when a slip lands on the one
+  // move that had to block a threat. 10% is the documented ceiling — anything
+  // above it means a tier change made `hard` meaningfully weaker, not just
+  // beatable.
   const random = lcg(20260401);
-  for (let game = 0; game < 16; game += 1) {
+  let losses = 0;
+  const games = 60;
+  for (let game = 0; game < games; game += 1) {
     let state = createInitialState();
     const botSeat = game % 2 === 0 ? "player1" : "player2";
     while (state.phase === "playing") {
@@ -121,10 +131,41 @@ test("hard never loses against an exhaustive/greedy opponent", () => {
       }
       state = applyMove({ state, seat: state.currentTurn, cellIndex: cell }).state;
     }
-    if (state.winner && state.winner !== botSeat) {
-      assert.fail(`hard lost as ${botSeat} in game ${game}`);
-    }
+    if (state.winner && state.winner !== botSeat) losses += 1;
   }
+  assert.ok(losses <= games * 0.1, `hard must rarely lose (lost ${losses}/${games})`);
+});
+
+test("the tiers are ordered by strength: hard beats normal beats easy", () => {
+  // Every tier plays the SAME random opponent across the same games, so the
+  // only difference is the tier itself.
+  const winsAgainstRandom = (difficulty) => {
+    const random = lcg(99887766);
+    let wins = 0;
+    const games = 60;
+    for (let game = 0; game < games; game += 1) {
+      let state = createInitialState();
+      const botSeat = game % 2 === 0 ? "player1" : "player2";
+      while (state.phase === "playing") {
+        let cell;
+        if (state.currentTurn === botSeat) {
+          cell = chooseAiCell({ board: state.board, seat: state.currentTurn, difficulty });
+        } else {
+          const emptyCells = state.board.flatMap((c, i) => (c === null ? [i] : []));
+          cell = emptyCells[Math.floor(random() * emptyCells.length)];
+        }
+        state = applyMove({ state, seat: state.currentTurn, cellIndex: cell }).state;
+      }
+      if (state.winner === botSeat) wins += 1;
+    }
+    return wins;
+  };
+
+  const easy = winsAgainstRandom("easy");
+  const normal = winsAgainstRandom("normal");
+  const hard = winsAgainstRandom("hard");
+  assert.ok(hard > normal, `hard (${hard}) must beat normal (${normal})`);
+  assert.ok(normal > easy, `normal (${normal}) must beat easy (${easy})`);
 });
 
 // ── easy ──────────────────────────────────────────────────────────────────
@@ -190,12 +231,18 @@ test("normal usually finds the winning move but can slip", () => {
 
 test("difficulty is coerced onto the shared scale (unknown → normal)", () => {
   const { board } = boardFrom([3, 0, 4, 1]);
-  // `hard` never slips, `nonsense` is normal and can — with a pinned roll that
-  // forces the slip, the two must be allowed to differ.
-  const hard = chooseAiCell({ board, seat: "player2", difficulty: "hard", random: () => 0 });
-  assert.equal(hard, 2);
-  assert.ok(
-    Number.isInteger(chooseAiCell({ board, seat: "player2", difficulty: "nonsense", random: () => 0.99 })),
+  // An unrecognised tier must play exactly as `normal` does, for both a slip
+  // roll and a clean roll.
+  for (const roll of [0, 0.5, 0.99]) {
+    assert.equal(
+      chooseAiCell({ board, seat: "player2", difficulty: "nonsense", random: () => roll }),
+      chooseAiCell({ board, seat: "player2", difficulty: "normal", random: () => roll }),
+    );
+  }
+  // And a clean roll still finds the winning cell.
+  assert.equal(
+    chooseAiCell({ board, seat: "player2", difficulty: "hard", random: () => 0.99 }),
+    2,
   );
 });
 

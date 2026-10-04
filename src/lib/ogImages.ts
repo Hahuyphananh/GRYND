@@ -1,14 +1,15 @@
+import { getSiteUrl } from "./siteUrl";
+
 // Open Graph image URLs must be absolute — social crawlers fetch the image
 // directly, so a relative path like "/images/smalllogo1.png" would 404 for
 // them.
-// Trailing slashes from env vars are stripped so a value like
-// "https://www.grynd.dedyn.io/" never produces "//images/smalllogo1.png"
-// URLs.
-export const OG_BASE_URL = (
-  process.env.NEXT_PUBLIC_BASE_URL ??
-  process.env.NEXT_PUBLIC_APP_URL ??
-  "https://www.grynd.dedyn.io"
-).replace(/\/+$/, "");
+//
+// The origin comes from lib/siteUrl.ts, which ignores a retired host in the
+// configured env var. That matters here more than anywhere: og:image is the
+// field a social platform fetches to draw the card, so a stale origin makes it
+// request the image from a host that no longer exists and show a blank image —
+// while the tag itself still looks correct in the page source.
+export const OG_BASE_URL = getSiteUrl();
 
 /**
  * Absolute base URL for the production site — same value as metadataBase in

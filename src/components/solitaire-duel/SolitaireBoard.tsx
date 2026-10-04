@@ -42,6 +42,44 @@ const CARD_H = "calc(var(--cw) * 1.42)";
 const FACE_UP_OVERLAP = "calc(var(--cw) * -0.72)";
 const FACE_DOWN_OVERLAP = "calc(var(--cw) * -0.86)";
 
+// ── Height budget, so the tableau fits without scrolling ──────────────────
+//
+// `--cw` used to be `clamp(34px, 10.4vw, 92px)`, i.e. sized by the WIDTH only.
+// Seven columns always fit the width, so at desktop widths the clamp pinned
+// every card at its 92px maximum and the board became a fixed 648px tall —
+// taller than the space left under the page chrome on a typical laptop
+// viewport (528px at 1280x800), so the bottom of the tableau sat below the fold
+// and the player had to scroll mid-game. Sizing by the height as well is what
+// fixes it.
+
+/** A card's height as a fraction of its width (matches CARD_H above). */
+const CARD_RATIO = 1.42;
+/**
+ * The visible vertical ADVANCE of a fanned card, in card widths: the card's
+ * height minus the overlap above it. Note the overlap is a card-WIDTH value
+ * while the height is CARD_RATIO widths, so the advance is `CARD_RATIO - overlap`
+ * (0.70 face-up, 0.56 face-down) — not `1 - overlap`.
+ */
+const FACE_UP_ADVANCE = CARD_RATIO - 0.72; // 0.70
+const FACE_DOWN_ADVANCE = CARD_RATIO - 0.86; // 0.56
+
+/**
+ * Board height in card-widths, worst case. The tallest Klondike column is the
+ * seventh one fully face-up (its six face-down cards flipped as play
+ * progressed): one full card plus six face-up advances. The board is that
+ * column plus the stock/waste/foundations row sitting above it.
+ */
+const BOARD_CW = (CARD_RATIO + (CARD_RATIO + 6 * FACE_UP_ADVANCE)).toFixed(2); // "7.04"
+
+/**
+ * Everything stacked ABOVE the tableau, in rem: the page's top padding, the
+ * navigation bar, the header block, the two progress meters and the board's own
+ * bordered frame. This is what the height term has to leave room for — the
+ * status line, race facts and legend below the tableau are allowed to sit under
+ * the fold, because the ask is that the CARDS are visible without scrolling.
+ */
+const CHROME_REM = "17rem";
+
 export type SolitaireBoardProps = {
   view: SolitaireView | null;
   /** False before GO, once the clock expires, and once a result has landed. */
@@ -184,9 +222,28 @@ export default function SolitaireBoard({
       data-stock={stockCount}
       data-selected={selection ? selection.kind : "none"}
       // One variable sizes every card and every fan, so the whole board scales
-      // from a single clamp: 34px cards on a phone, 82px on a desktop. Seven
-      // columns therefore always fit the width, and nothing overlaps the HUD.
-      style={{ "--cw": "clamp(34px, 10.4vw, 92px)" } as CSSProperties}
+      // from a single clamp: 34px cards on a phone, up to 92px on a tall
+      // desktop. Seven columns always fit the WIDTH, so it is the board's
+      // HEIGHT that decides whether the tableau is visible without scrolling.
+      //
+      // The second term therefore also caps the card by the viewport height.
+      // The board is BOARD_CW card-widths tall (see the derivation above), so
+      // dividing the height left over after the page chrome by BOARD_CW gives
+      // the largest card whose bottom card still clears the fold. `CHROME_REM`
+      // is everything above the tableau — page padding, the title, the two
+      // progress meters, the board's own frame, the top row, the inter-row gap
+      // and the legend below it.
+      //
+      // On a tall screen `min()` picks the width term and nothing changes; on a
+      // short laptop viewport (~768-800px tall, where the width term wanted the
+      // full 92px) the cards shrink just enough to stop the tableau scrolling.
+      // The 34px floor still governs phones, where the width term is smaller
+      // than this one and mobile sizing is untouched.
+      style={
+        {
+          "--cw": `clamp(34px, min(10.4vw, calc((100vh - ${CHROME_REM}) / ${BOARD_CW})), 92px)`,
+        } as CSSProperties
+      }
       className="w-full touch-manipulation select-none"
     >
       {/* ── Top row: stock · waste · the four foundations ──────────────── */}

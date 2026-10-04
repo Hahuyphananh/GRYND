@@ -1,4 +1,5 @@
 import { renderTemplate, sendEmailSafely } from "./base";
+import { getSiteUrl } from "../siteUrl";
 export async function sendInactivityEmail(user: {
   clerkId: string;
   email: string;
@@ -12,7 +13,7 @@ export async function sendInactivityEmail(user: {
       "We miss you",
       `<p>Come back and pick up where you left off — your ladder position is waiting.</p>`,
       "Return to Games",
-      `${process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://www.grynd.dedyn.io"}`,
+      getSiteUrl(),
     ),
   });
 }

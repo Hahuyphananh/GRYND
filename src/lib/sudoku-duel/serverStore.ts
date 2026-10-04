@@ -743,7 +743,11 @@ export async function advanceAiMatch({
     const played: SudokuAction[] = [];
 
     for (let n = 0; n < maxMoves; n += 1) {
-      const plan = planAiMoves({ grid: current.grid, maxMoves: 1 });
+      const plan = planAiMoves({
+        grid: current.grid,
+        maxMoves: 1,
+        difficulty: match.aiDifficulty,
+      });
       const action = plan.actions[0];
       if (!action) break;
       const judged = judgeAction({

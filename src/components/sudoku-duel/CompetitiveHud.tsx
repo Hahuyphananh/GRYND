@@ -20,7 +20,7 @@
 import type { ReactNode } from "react";
 import { IconClock, IconStopwatch } from "@tabler/icons-react";
 
-import FrameAvatar from "../FrameAvatar";
+import SeatAvatar from "../game/SeatAvatar";
 import { clockLabel, mistakeLabel } from "../../lib/sudoku-duel/ui";
 
 export type SeatIdentity = {
@@ -37,6 +37,7 @@ function Meter({
   tone,
   completed,
   identity,
+  isAi = false,
   accent,
   testId,
 }: {
@@ -46,19 +47,26 @@ function Meter({
   tone: "mine" | "theirs";
   completed?: boolean;
   identity?: SeatIdentity;
+  /** Bot seat: the GRYND mark stands in for a pfp it cannot have. */
+  isAi?: boolean;
   accent?: ReactNode;
   testId: string;
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  // BOTH seats are identified the same way: a face and a name. A seat whose
+  // identity has not resolved yet still gets its duotone dot, so the meter never
+  // renders an empty gap while the snapshot is loading.
+  const hasAvatar = isAi || Boolean(identity?.iconKey);
   return (
     <div data-testid={testId} data-percent={clamped} data-completed={completed ? "true" : "false"}>
       <div className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
-          {tone === "theirs" && identity?.iconKey ? (
-            <FrameAvatar
-              frame={identity.profileFrame}
-              iconKey={identity.iconKey}
-              name={identity.name || "Opponent"}
+          {hasAvatar ? (
+            <SeatAvatar
+              iconKey={identity?.iconKey ?? null}
+              profileFrame={identity?.profileFrame ?? null}
+              name={label}
+              isAi={isAi}
               size="h-6 w-6"
             />
           ) : (
@@ -108,6 +116,10 @@ export type CompetitiveHudProps = {
   opponentCompleted?: boolean;
   opponentName: string;
   opponentIdentity?: SeatIdentity;
+  /** The viewer's own identity, so BOTH meters carry a face and a username. */
+  myIdentity?: SeatIdentity;
+  /** True for a free practice match against the built-in bot. */
+  isAi?: boolean;
   /** Server-anchored remaining ms until the FORFEIT, or null when untimed. */
   remainingMs: number | null;
   /** Server-anchored elapsed ms since GO, for the stopwatch. */
@@ -129,6 +141,8 @@ export default function CompetitiveHud({
   opponentCompleted = false,
   opponentName,
   opponentIdentity = null,
+  myIdentity = null,
+  isAi = false,
   remainingMs,
   elapsedMs = null,
   countdownActive = false,
@@ -188,11 +202,12 @@ export default function CompetitiveHud({
       <div className="space-y-3">
         <Meter
           testId="sudoku-meter-mine"
-          label="You"
+          label={myIdentity?.name || "You"}
           percent={myPercent}
           detail={myDetail}
           tone="mine"
           completed={myCompleted}
+          identity={myIdentity}
           accent={
             mistakes > 0 ? (
               <span
@@ -213,6 +228,7 @@ export default function CompetitiveHud({
           tone="theirs"
           completed={opponentCompleted}
           identity={opponentIdentity}
+          isAi={isAi}
         />
       </div>
     </div>

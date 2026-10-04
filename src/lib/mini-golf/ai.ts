@@ -14,13 +14,14 @@
 //   can find a bounce into the cup, not just a straight putt.
 //
 // DIFFICULTY
-//   `hard` is the original, untiered bot: the full candidate set and a perfect
-//   strike. Weaker tiers search a coarser set of angles with fewer power
-//   options and then mis-execute the chosen shot a little; the aim error is
-//   scaled DOWN as the ball nears the cup, so a weaker tier still finishes the
-//   hole (it just takes more strokes) instead of orbiting the cup forever.
-//   Everything is a pure function of the ball position, so the tier changes
-//   only how well the bot plays — never the match's determinism.
+//   `hard` searches the full candidate set with a small execution error, so it
+//   is clearly the strongest tier but no longer perfect. Weaker tiers search a
+//   coarser set of angles with fewer power options and mis-execute the chosen
+//   shot far more. The execution error is scaled DOWN as the ball nears the cup
+//   — but never to zero — so a weaker tier still finishes the hole (it just
+//   takes more strokes) instead of orbiting the cup forever. Everything is a
+//   pure function of the ball position, so the tier changes only how well the
+//   bot plays — never the match's determinism.
 //
 // WHY THE SERVER RUNS IT
 //   The bot never authors a ball position, a stroke count or a winner; it only
@@ -62,22 +63,45 @@ type MiniGolfAiTier = {
   offsets: number[];
   /** How many of the derived power options the search evaluates. */
   powerCount: number;
-  /** Peak aim error (degrees), scaled down as the ball nears the cup. */
+  /**
+   * Peak aim error (degrees), scaled by distance but NEVER to zero.
+   *
+   * This used to taper to 0 within 120px of the cup, which meant every tier
+   * struck perfectly exactly where the shot is decided — the last tap-in. The
+   * error now keeps a floor (see `MIN_EXECUTION_ERROR`), so a weak tier still
+   * misses short putts and needs more strokes.
+   */
   aimErrorDeg: number;
   /** Peak power error, as a fraction of the chosen power. */
   powerError: number;
 };
 
 /**
- * The tier table. `hard` — the full candidate set and a perfect strike — is
- * exactly the bot that shipped before tiers existed, so selecting it (or an
- * unchosen match) plays identically to the original.
+ * The tier table.
+ *
+ * `hard` keeps the full candidate set, but its strike is NO LONGER perfect: it
+ * carries a small execution error, so a strong player can beat it instead of it
+ * playing the hole flawlessly every time. `normal` and `easy` are visibly worse
+ * — a coarser aim grid, fewer power options, and much larger execution errors.
  */
 export const MINI_GOLF_AI_TIERS: Record<MiniGolfAiDifficulty, MiniGolfAiTier> = {
-  easy: { offsets: EASY_ANGLE_OFFSETS, powerCount: 3, aimErrorDeg: 11, powerError: 0.16 },
-  normal: { offsets: NORMAL_ANGLE_OFFSETS, powerCount: 3, aimErrorDeg: 5, powerError: 0.09 },
-  hard: { offsets: ANGLE_OFFSETS, powerCount: 4, aimErrorDeg: 0, powerError: 0 },
+  easy: { offsets: EASY_ANGLE_OFFSETS, powerCount: 3, aimErrorDeg: 22, powerError: 0.28 },
+  normal: { offsets: NORMAL_ANGLE_OFFSETS, powerCount: 3, aimErrorDeg: 10, powerError: 0.14 },
+  hard: { offsets: ANGLE_OFFSETS, powerCount: 4, aimErrorDeg: 4, powerError: 0.06 },
 };
+
+/**
+ * The radius (px) inside which the strike is clean again.
+ *
+ * The execution error scales with distance, so a tier is far less accurate
+ * across the green than it is on a tap-in. This is what guarantees every tier
+ * still FINISHES the hole: without it a weak tier orbits the cup forever, which
+ * reads as broken rather than easy. It used to be 120px, which made every tier
+ * play the decisive final putt perfectly — the radius is now much tighter, so a
+ * weak tier spends far more strokes getting into tap-in range in the first
+ * place while still being able to close the hole out.
+ */
+const CLEAN_STRIKE_RADIUS_PX = 130;
 
 /**
  * What the bot plays at when nothing was chosen (a legacy row, or a caller that
@@ -158,9 +182,9 @@ function applyExecutionError(
   distanceToCup: number,
 ): ShotInput {
   if (tier.aimErrorDeg === 0 && tier.powerError === 0) return shot;
-  // Within 120px the strike is clean again, so a messy tier still taps out
-  // instead of orbiting the cup.
-  const closeness = Math.min(1, distanceToCup / 120);
+  // Full error at range, tapering to a clean strike inside the tap-in radius so
+  // the hole can always be closed out.
+  const closeness = Math.min(1, distanceToCup / CLEAN_STRIKE_RADIUS_PX);
   const angleWobble = Math.sin(from.x * 0.091 + from.y * 0.057 + 1.3);
   const powerWobble = Math.cos(from.x * 0.043 + from.y * 0.069);
   return {

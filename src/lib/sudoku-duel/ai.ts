@@ -13,12 +13,17 @@
 // action it returns is one the server's `judgeAction` accepts as CORRECT (the
 // bot never wastes a turn on a mistake).
 //
-// The tier does NOT change accuracy — it changes PACE. Sudoku Duel is
-// simultaneous, so the store advances the bot from the server clock: at
-// difficulty `d` the bot has earned `floor((now - goAt) / aiMoveDelayMs(d))`
-// moves. `hard` solves the shared puzzle quickly, `normal` is a fair race, and
-// `easy` is slow enough for a careful human to beat — the same "pace the bot
-// from the clock" shape Solitaire Duel uses.
+// The tier changes BOTH pace and accuracy, because pace alone was invisible:
+// a bot that is always 100% correct but merely slower still wins every race it
+// is given enough time for, so `easy` and `hard` felt identical.
+//
+//   * PACE — the store advances the bot from the server clock: at difficulty
+//     `d` the bot has earned `floor((now - goAt) / aiMoveDelayMs(d))` actions.
+//   * ACCURACY — a weaker tier now and then plays a WRONG value. The server
+//     already rejects an incorrect entry (it costs a mistake and a time
+//     penalty), so a mistake is a real, visible turn wasted — exactly the
+//     handicap a weaker opponent should have. `hard` still errs occasionally,
+//     so it is beatable rather than unbeatable.
 
 import { coerceAiDifficulty, type AiDifficulty } from "../aiDifficulty";
 import { CELL_COUNT, EMPTY, MAX_VALUE, MIN_VALUE, SIZE } from "./constants";
@@ -34,9 +39,22 @@ import type { Grid, SudokuAction } from "./types";
  * couple of minutes while `easy` gives a careful player a real window to win.
  */
 export const AI_MOVE_DELAY_MS: Record<AiDifficulty, number> = {
-  easy: 4_000,
-  normal: 2_200,
-  hard: 1_200,
+  easy: 5_200,
+  normal: 2_900,
+  hard: 1_600,
+};
+
+/**
+ * How often a tier plays a deliberately WRONG value instead of the right one.
+ *
+ * The server refuses an incorrect entry and charges a mistake plus a time
+ * penalty, so this is a direct handicap. `hard` is not zero: it stays the
+ * strongest tier but can now be beaten.
+ */
+export const AI_MISTAKE_RATE: Record<AiDifficulty, number> = {
+  easy: 0.35,
+  normal: 0.15,
+  hard: 0.03,
 };
 
 /** The delay for a tier, defaulting to the shared `normal` tier. */
@@ -109,18 +127,58 @@ export function solveGrid(grid: Grid): Grid | null {
  * yields no actions rather than an illegal one, so the bot can never write a
  * value that would be refused.
  */
+/**
+ * A deliberately wrong action for the first empty cell, or null when there is
+ * none. The value is a legal digit that is simply not the answer — the server
+ * rejects it and charges a mistake, which is the point.
+ */
+function mistakenAction(
+  grid: Grid,
+  solved: Grid,
+  random: () => number,
+): SudokuAction | null {
+  for (let index = 0; index < CELL_COUNT; index += 1) {
+    if (grid[index] !== EMPTY) continue;
+    const answer = solved[index];
+    if (!Number.isInteger(answer) || answer === EMPTY) continue;
+    // Any digit in range other than the answer. (`grid[index]` is EMPTY, so
+    // there is no already-placed value to avoid.) Drawn from [1, 8]; when that
+    // happens to be the answer, `MAX_VALUE` (9) is always a valid substitute.
+    const wrong = MIN_VALUE + Math.floor(random() * (MAX_VALUE - MIN_VALUE));
+    const value = wrong === answer ? MAX_VALUE : wrong;
+    return { kind: "place", index, value };
+  }
+  return null;
+}
+
 export function planAiMoves({
   grid,
   maxMoves = 1,
+  difficulty,
+  random = Math.random,
 }: {
   grid: Grid;
   maxMoves?: number;
+  /** easy | normal | hard; anything unrecognised plays the default. */
+  difficulty?: unknown;
+  random?: () => number;
 }): { actions: SudokuAction[]; grid: Grid; completed: boolean } {
   const start = isGrid(grid) ? grid.slice() : emptyGrid();
   const cap = Math.max(0, Math.floor(Number(maxMoves) || 0));
   const solved = cap > 0 ? solveGrid(start) : null;
   if (!solved) {
     return { actions: [], grid: start, completed: start.every((c) => c !== EMPTY) };
+  }
+
+  // A weaker tier wastes this turn on a wrong value. Only the FIRST action is
+  // ever replaced: the store drives the bot one action at a time, so a mistake
+  // is one wasted turn rather than a whole run of them.
+  const tier = coerceAiDifficulty(difficulty);
+  if (cap > 0 && random() < AI_MISTAKE_RATE[tier]) {
+    const wrong = mistakenAction(start, solved, random);
+    if (wrong) {
+      return { actions: [wrong], grid: start, completed: false };
+    }
   }
 
   const actions: SudokuAction[] = [];
@@ -140,11 +198,20 @@ export function planAiMoves({
  * The bot's single next action from `grid`, or null when the board is already
  * solved. Exposed for tests and any caller that wants one move at a time.
  *
- * The action is always CORRECT (it comes from the derived solution), so the bot
- * never spends a turn on a mistake; the tier only decides HOW OFTEN it moves
- * (see `aiMoveDelayMs`), which is what makes `easy` beatable.
+ * The action comes from the derived solution, except when the tier slips (see
+ * `AI_MISTAKE_RATE`) — in which case it is a deliberate wrong value the server
+ * refuses. Together with the pace (`aiMoveDelayMs`) that is what makes a weaker
+ * tier genuinely beatable.
  */
-export function chooseAiMove({ grid }: { grid: Grid }): SudokuAction | null {
-  const plan = planAiMoves({ grid, maxMoves: 1 });
+export function chooseAiMove({
+  grid,
+  difficulty,
+  random = Math.random,
+}: {
+  grid: Grid;
+  difficulty?: unknown;
+  random?: () => number;
+}): SudokuAction | null {
+  const plan = planAiMoves({ grid, maxMoves: 1, difficulty, random });
   return plan.actions[0] ?? null;
 }

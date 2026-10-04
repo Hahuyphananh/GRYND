@@ -504,3 +504,31 @@ test("no shot can get inside a wall's collision band", () => {
     }
   }
 });
+
+test("physics: consecutive strokes share an endpoint, so a turn is one path", () => {
+  // The match view replays a whole turn as one trajectory by concatenating
+  // each stroke's `path`. That is only sound if every stroke STARTS where the
+  // previous one came to rest — otherwise the ball would jump between strokes,
+  // straight across any obstacle in between.
+  const hole = makeHole({ bumpers: [{ x: 200, y: 300, r: 30 }] });
+  const shots = [
+    { angle: 270, power: 70 },
+    { angle: 250, power: 55 },
+    { angle: 292, power: 40 },
+  ];
+  const results = [];
+  let from = { x: hole.geometry.tee.x, y: hole.geometry.tee.y };
+  for (const shot of shots) {
+    const result = simulateShot({ hole, from, shot });
+    results.push(result);
+    from = { x: result.restPosition.x, y: result.restPosition.y };
+  }
+  for (let i = 1; i < results.length; i += 1) {
+    const rest = results[i - 1].restPosition;
+    const start = results[i].path[0];
+    assert.ok(
+      Math.abs(start.x - rest.x) < 1e-9 && Math.abs(start.y - rest.y) < 1e-9,
+      `stroke ${i} must begin where stroke ${i - 1} rested`,
+    );
+  }
+});

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { max } from "drizzle-orm";
+import { getSiteUrl } from "../lib/siteUrl";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { db } from "../db";
 import {
@@ -24,14 +25,10 @@ import {
   userStats,
 } from "../db/schema";
 
-// Same base-URL convention used by src/lib/emails/*.ts. Trailing slashes
-// from env vars are stripped so a value like "https://www.grynd.dedyn.io/"
-// never produces "//games/..." URLs.
-const BASE_URL = (
-  process.env.NEXT_PUBLIC_BASE_URL ??
-  process.env.NEXT_PUBLIC_APP_URL ??
-  "https://www.grynd.dedyn.io"
-).replace(/\/+$/, "");
+// Same base-URL convention used by src/lib/emails/*.ts. The shared resolver
+// strips trailing slashes and refuses a retired host, so a stale env var can
+// never list sitemap URLs on a domain that no longer serves the site.
+const BASE_URL = getSiteUrl();
 
 // ISR: the XML is prerendered at build time and served instantly from cache,
 // then regenerated in the background at most once per hour so the DB-backed

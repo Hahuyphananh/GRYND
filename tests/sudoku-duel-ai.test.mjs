@@ -2,9 +2,12 @@
  * sudoku-duel-ai.test.mjs
  *
  * The Sudoku Duel practice bot: it must DERIVE the shared puzzle's completion
- * from the clues (never read a solution) and play only legal, correct actions,
- * so it genuinely races the human instead of guessing. Plus static checks that
- * the practice match is actually wired (route + store + schema + migration).
+ * from the clues (never read a solution) and play legal actions, so it
+ * genuinely races the human instead of guessing. A weaker tier deliberately
+ * plays WRONG values sometimes — a real handicap, since the server refuses them
+ * and charges a mistake — so the pure solve is exercised with a roll that never
+ * slips. Plus static checks that the practice match is actually wired
+ * (route + store + schema + migration).
  *
  * Run:  npm run test:sudoku-duel
  */
@@ -15,6 +18,7 @@ import { readFileSync, existsSync } from "node:fs";
 
 import { generatePuzzle } from "../src/lib/sudoku-duel/generator.ts";
 import {
+  AI_MISTAKE_RATE,
   AI_MOVE_DELAY_MS,
   aiMoveDelayMs,
   chooseAiMove,
@@ -25,7 +29,7 @@ import {
   hasNoConflicts,
   isCompleteSolution,
 } from "../src/lib/sudoku-duel/rules.ts";
-import { CELL_COUNT, EMPTY } from "../src/lib/sudoku-duel/constants.ts";
+import { CELL_COUNT, EMPTY, MAX_VALUE, MIN_VALUE } from "../src/lib/sudoku-duel/constants.ts";
 
 const read = (path) => readFileSync(path, "utf8");
 
@@ -44,7 +48,9 @@ test("solveGrid derives a legal completion that matches the generator solution",
 });
 
 test("planAiMoves fills every empty cell with its correct value and completes", () => {
-  const plan = planAiMoves({ grid: puzzle.puzzle, maxMoves: CELL_COUNT });
+  // `hard` still slips occasionally (see AI_MISTAKE_RATE), so a pinned roll
+  // that never slips is used to test the pure solve.
+  const plan = planAiMoves({ grid: puzzle.puzzle, maxMoves: CELL_COUNT, difficulty: "hard", random: () => 0.99 });
   const empties = puzzle.puzzle.filter((cell) => cell === EMPTY).length;
   assert.equal(plan.actions.length, empties);
   assert.equal(plan.completed, true);
@@ -64,7 +70,7 @@ test("planAiMoves fills every empty cell with its correct value and completes", 
 
 test("planAiMoves respects the move cap and never mutates its input", () => {
   const before = puzzle.puzzle.slice();
-  const plan = planAiMoves({ grid: puzzle.puzzle, maxMoves: 3 });
+  const plan = planAiMoves({ grid: puzzle.puzzle, maxMoves: 3, random: () => 0.99 });
   assert.equal(plan.actions.length, 3);
   assert.equal(plan.completed, false);
   assert.deepEqual(puzzle.puzzle, before, "the clue grid must not be mutated");
@@ -75,7 +81,8 @@ test("the bot solves the puzzle step by step without a single wrong entry", () =
   let guard = 0;
   while (grid.includes(EMPTY) && guard < CELL_COUNT) {
     guard += 1;
-    const move = chooseAiMove({ grid });
+    // A roll above every tier's mistake rate: the pure solve.
+    const move = chooseAiMove({ grid, random: () => 0.99 });
     assert.ok(move, "a move must exist while cells are empty");
     assert.equal(puzzle.puzzle[move.index], EMPTY);
     assert.equal(move.value, puzzle.solution[move.index]);
@@ -83,6 +90,47 @@ test("the bot solves the puzzle step by step without a single wrong entry", () =
     grid[move.index] = move.value;
   }
   assert.deepEqual(grid, puzzle.solution);
+});
+
+test("a weaker tier really does play wrong values, and hard does so least often", () => {
+  const attempts = 400;
+  const countMistakes = (difficulty) => {
+    let wrong = 0;
+    for (let i = 0; i < attempts; i += 1) {
+      // A roll of 0 always slips; the pick roll then chooses the wrong digit.
+      let call = 0;
+      const move = chooseAiMove({
+        grid: puzzle.puzzle,
+        difficulty,
+        random: () => (call++ === 0 ? 0 : 0),
+      });
+      if (!move) continue;
+      if (move.value !== puzzle.solution[move.index]) wrong += 1;
+    }
+    return wrong;
+  };
+  // With a forced slip every tier plays a wrong value — the point is that the
+  // handicap EXISTS and that its rate is ordered.
+  const easy = countMistakes("easy");
+  const hard = countMistakes("hard");
+  assert.ok(easy > 0, "easy must be able to play a wrong value");
+  assert.ok(hard > 0, "hard must be able to play a wrong value");
+
+  // And the RATE is ordered, which is what the picker promises.
+  assert.ok(AI_MISTAKE_RATE.easy > AI_MISTAKE_RATE.normal);
+  assert.ok(AI_MISTAKE_RATE.normal > AI_MISTAKE_RATE.hard);
+  assert.ok(AI_MISTAKE_RATE.hard > 0, "hard must not be a perfect solver");
+
+  // The wrong value is always a legal digit, so the server accepts the action
+  // and simply marks it incorrect rather than refusing it outright.
+  let call = 0;
+  const wrongMove = chooseAiMove({
+    grid: puzzle.puzzle,
+    difficulty: "easy",
+    random: () => (call++ === 0 ? 0 : 0.4),
+  });
+  assert.ok(wrongMove.value >= MIN_VALUE && wrongMove.value <= MAX_VALUE);
+  assert.notEqual(wrongMove.value, puzzle.solution[wrongMove.index]);
 });
 
 test("a solved board has no move left", () => {

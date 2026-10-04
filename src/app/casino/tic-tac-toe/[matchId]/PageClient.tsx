@@ -44,6 +44,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import TicTacToeBoard from "../../../../components/tic-tac-toe/TicTacToeBoard";
+import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchLoading from "../../../../components/game/MatchLoading";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
@@ -488,16 +489,24 @@ export default function TicTacToeMatchPage() {
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span
-                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border text-xs font-black"
-                            style={{
-                              borderColor: seatColor(seat),
-                              color: seatColor(seat),
-                              background: "rgba(0,0,0,0.35)",
-                            }}
-                            aria-hidden="true"
-                          >
-                            {mark}
+                          <span className="relative inline-flex shrink-0">
+                            <SeatAvatar
+                              iconKey={identity?.iconKey ?? null}
+                              profileFrame={identity?.profileFrame ?? null}
+                              name={name}
+                              isAi={Boolean(match.isAi) && !isViewer}
+                              size="h-7 w-7"
+                            />
+                            {/* The seat's mark rides the avatar's corner: the
+                                face says WHO, the badge says which mark they
+                                hold — one chip, no extra column. */}
+                            <span
+                              aria-hidden="true"
+                              className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border bg-[#0b0f1c] text-[9px] font-black leading-none"
+                              style={{ borderColor: seatColor(seat), color: seatColor(seat) }}
+                            >
+                              {mark}
+                            </span>
                           </span>
                           <div className="min-w-0">
                             <p className="truncate text-xs font-bold">

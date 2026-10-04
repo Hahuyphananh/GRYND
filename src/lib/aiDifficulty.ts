@@ -56,12 +56,20 @@ export const AI_SKILL: Record<
   AiDifficulty,
   { mistakeRate: number; lookahead: number; slipPool: number }
 > = {
-  easy: { mistakeRate: 0.45, lookahead: 1, slipPool: 4 },
-  // `normal` reproduces the fudge the games shipped before this scale existed
-  // (a ~15% chance to take one of the top three options), so enabling the tier
-  // for an existing game does not silently change how it plays by default.
-  normal: { mistakeRate: 0.12, lookahead: 2, slipPool: 3 },
-  hard: { mistakeRate: 0, lookahead: 3, slipPool: 1 },
+  // These numbers were raised deliberately. The tiers used to be so close (and
+  // so mild) that changing the picker barely changed the game: `normal` slipped
+  // 12% of the time onto one of the top three options — usually a move that was
+  // just as good — and `hard` never slipped at all. Every tier is now clearly
+  // worse and clearly separated:
+  //
+  //   * `easy`   — slips over half the time, and can fall a long way down the
+  //                ranking, so it is genuinely beatable by a beginner.
+  //   * `normal` — slips about a quarter of the time over a wide pool.
+  //   * `hard`   — still the strongest tier, but NO LONGER PERFECT: a small
+  //                mistake rate keeps it beatable instead of unbeatable.
+  easy: { mistakeRate: 0.55, lookahead: 1, slipPool: 6 },
+  normal: { mistakeRate: 0.25, lookahead: 2, slipPool: 5 },
+  hard: { mistakeRate: 0.08, lookahead: 3, slipPool: 3 },
 };
 
 /** True for a canonical tier. */
@@ -145,12 +153,17 @@ export function aiLookahead(difficulty: AiDifficulty): number {
  * The shared tier policy: pick one of `options`, where `scoreOf` says how good
  * an option is (higher = better).
  *
- * `hard` always takes the best option found. Weaker tiers roll against
- * `mistakeRate` and, when they slip, take a worse one — so an easy opponent
- * loses games it could have saved, which is what makes it beatable, rather than
- * just searching less and still playing perfectly. A slip is drawn from the top
- * `slipPool` options only, so a blunder is a WEAKER move and never an absurd
- * one.
+ * Every tier rolls against `mistakeRate` and, when it slips, takes a worse one
+ * — so a weaker opponent loses games it could have saved, which is what makes
+ * it beatable, rather than just searching less and still playing perfectly. A
+ * slip is drawn from the top `slipPool` options only, so a blunder is a WEAKER
+ * move and never an absurd one.
+ *
+ * `slipFloor` caps how bad a slip may be as a fraction of the best option's
+ * score: a slip never falls below `best · slipFloor`, so an easy agent plays a
+ * mediocre move rather than a self-destructive one. Callers whose scores are not
+ * comparable on a ratio scale (a constant like `Infinity`, or negatives) should
+ * pass `slipFloor: 0` to opt out of the cap.
  *
  * `random` is injectable so the AI stays deterministic under test.
  */
@@ -158,7 +171,8 @@ export function chooseAiOption<T>(
   difficulty: AiDifficulty,
   options: readonly T[],
   scoreOf: (option: T) => number,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  slipFloor = 0.5
 ): T | null {
   if (options.length === 0) return null;
   const ranked = [...options].sort((a, b) => scoreOf(b) - scoreOf(a));
@@ -166,9 +180,18 @@ export function chooseAiOption<T>(
   const tier = coerceAiDifficulty(difficulty);
   const { slipPool } = AI_SKILL[tier];
   if (random() >= aiMistakeRate(tier)) return best;
-  // Slipped: take a worse option from the top `slipPool` — never the best one,
-  // since taking the best is not a mistake.
-  const worse = ranked.slice(1, Math.max(2, slipPool));
+  // Slipped: take a worse option — never the best one, since taking the best is
+  // not a mistake.
+  let worse = ranked.slice(1, Math.max(2, slipPool));
+  // Cap how bad the slip may be, so an easy agent plays a weak move rather than
+  // a ruinous one. Skipped when the caller opts out or the scores do not form a
+  // usable ratio (a non-positive or non-finite best).
+  const bestScore = scoreOf(best);
+  if (slipFloor > 0 && Number.isFinite(bestScore) && bestScore > 0) {
+    const floor = bestScore * slipFloor;
+    const capped = worse.filter((option) => scoreOf(option) >= floor);
+    if (capped.length > 0) worse = capped;
+  }
   if (worse.length === 0) return best;
   return worse[Math.floor(random() * worse.length) % worse.length];
 }

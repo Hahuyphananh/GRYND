@@ -95,17 +95,20 @@ test("every vocabulary this repo shipped coerces onto the canonical scale", () =
   }
 });
 
-test("hard always takes the best option", () => {
+test("hard is the strongest tier but no longer perfect", () => {
   const options = [{ v: 10 }, { v: 30 }, { v: 20 }];
   const score = (o) => o.v;
-  // A random that always "slips" must still not move `hard` off the best.
-  for (let i = 0; i < 50; i++) {
-    assert.equal(chooseAiOption("hard", options, score, () => 0)?.v, 30);
-  }
-  assert.equal(AI_SKILL.hard.mistakeRate, 0);
+  // Above the (small) mistake rate, `hard` takes the best option.
+  assert.equal(chooseAiOption("hard", options, score, () => 0.99)?.v, 30);
+  // It still errs sometimes — that is what keeps it beatable.
+  assert.ok(AI_SKILL.hard.mistakeRate > 0, "hard must not be perfect");
+  assert.ok(
+    AI_SKILL.hard.mistakeRate < AI_SKILL.normal.mistakeRate,
+    "hard must still slip less than normal"
+  );
 });
 
-test("normal keeps the ~12% slip the games shipped with, and never picks the best on a slip", () => {
+test("normal slips often enough to be clearly beatable, and never picks the best on a slip", () => {
   // `random()` is consulted twice per decision on a slip (roll, then pick), so
   // drive it deterministically: 0.0 < mistakeRate → slip.
   const options = [{ v: 30 }, { v: 20 }, { v: 10 }, { v: 5 }];
@@ -126,7 +129,7 @@ test("normal keeps the ~12% slip the games shipped with, and never picks the bes
   );
   assert.equal(stayed.v, 30);
 
-  assert.ok(AI_SKILL.normal.mistakeRate > 0 && AI_SKILL.normal.mistakeRate < 0.2);
+  assert.ok(AI_SKILL.normal.mistakeRate >= 0.2, "normal must be a visible handicap");
 });
 
 test("easy slips far more often than normal, so the tiers are actually different", () => {
@@ -152,9 +155,9 @@ test("easy slips far more often than normal, so the tiers are actually different
 });
 
 test("a slip is a WEAKER move, never an absurd one — bounded by the tier's slip pool", () => {
-  // 12 options; easy's pool is the top 4, so the worst an easy agent can pick
-  // is the 4th best — not the 1.0 at the bottom. (Taking "best" is not a
-  // mistake, which is why the pool starts at index 1.)
+  // 12 options; easy's pool is the top 6, so the worst an easy agent can pick
+  // is the 6th best — not the 1 at the bottom. (Taking "best" is not a mistake,
+  // which is why the pool starts at index 1.)
   const options = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((v) => ({ v }));
   const pool = AI_SKILL.easy.slipPool;
   const worstAllowed = options[pool - 1].v;
@@ -170,6 +173,24 @@ test("a slip is a WEAKER move, never an absurd one — bounded by the tier's sli
     );
     assert.ok(picked.v < 12, "a slip still must not be the best option");
   }
+});
+
+test("the ratio floor keeps a slip from being ruinous, and can be opted out of", () => {
+  // Easy's pool is the top 6, so this list exposes a 20 that is inside the pool
+  // but far below half the best score.
+  const options = [100, 95, 90, 85, 80, 20, 1].map((v) => ({ v }));
+  for (let step = 0; step < 200; step++) {
+    let call = 0;
+    const random = () => (call++ === 0 ? 0 : (step % 40) / 40);
+    const picked = chooseAiOption("easy", options, (o) => o.v, random);
+    assert.ok(picked.v >= 50, `a slip must respect the ratio floor (picked ${picked.v})`);
+  }
+  // With the floor disabled the pool is the only bound (tic-tac-toe uses this,
+  // because its scores are small integers rather than ratios).
+  let call = 0;
+  const random = () => (call++ === 0 ? 0 : 0.99);
+  const optedOut = chooseAiOption("easy", options, (o) => o.v, random, 0);
+  assert.equal(optedOut.v, 20, "opting out must reach options the floor excludes");
 });
 
 test("an empty option list yields null rather than crashing the AI's turn", () => {

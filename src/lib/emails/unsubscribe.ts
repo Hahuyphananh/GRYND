@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { db } from "../../db";
+import { getSiteUrl } from "../siteUrl";
 import {
   emailEvents,
   DEFAULT_NOTIFICATION_PREFS,
@@ -163,9 +164,7 @@ export function resolveUnsubscribeLanguage(
 
 /** Public app URL used to build links for mail clients. */
 export function getAppBaseUrl(): string {
-  const configured =
-    process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
-  return (configured?.trim() || "https://www.grynd.dedyn.io").replace(/\/+$/, "");
+  return getSiteUrl();
 }
 
 /** Absolute, signed unsubscribe URL for a recipient. */

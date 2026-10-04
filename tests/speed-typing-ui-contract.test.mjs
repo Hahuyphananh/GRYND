@@ -45,8 +45,13 @@ test("ui: every required state is rendered", () => {
   assert.match(page, /<PvpResultScreen/, "winner/loser result screen");
   // Opponent + local progress bars, and the WPM/accuracy readout.
   assert.match(page, /<ProgressBar/);
-  assert.match(page, /label="You"/);
-  assert.match(page, /label="Opponent"/);
+  assert.match(page, /fallbackLabel="You"/);
+  assert.match(page, /fallbackLabel="Opponent"/);
+  // Both seats are headed by their own avatar + username, not a bare label.
+  assert.match(page, /import SeatAvatar from/);
+  assert.match(page, /<SeatAvatar/);
+  assert.match(page, /setSeatIdentities\(\(data\.data\.seatIdentities as SeatIdentities\) \?\? null\)/);
+  assert.match(page, /const viewerName = viewerIdentity\?\.name \|\| "You"/);
   assert.match(page, /"Your WPM"/);
   assert.match(page, /"Accuracy"/);
   assert.match(page, /data-testid="speed-typing-timer"/);
@@ -228,7 +233,7 @@ test("ui: waiting uses the shared takeover, and can release the open lobby", () 
   // The platform's own waiting takeover, with the house seat shape.
   const waiting = page.slice(page.indexOf("<MatchWaiting"), page.indexOf("phase === \"countdown\""));
   assert.match(waiting, /gameName="Speed Typing"/);
-  assert.match(waiting, /\{ label: "You", name: "You", occupied: true \}/);
+  assert.match(waiting, /\{ label: "You", name: viewerName, occupied: true \}/);
   assert.match(waiting, /\{ label: "Opponent", occupied: false \}/);
   // A waiting row IS the open lobby, so abandoning it must release it rather
   // than leave a ghost a future opponent could be paired into. The creator

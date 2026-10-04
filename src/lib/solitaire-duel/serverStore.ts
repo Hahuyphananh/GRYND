@@ -50,7 +50,7 @@ import {
   VARIANT_VERSION,
 } from "./constants";
 import { aiMoveDelayMs, planAiMoves } from "./ai";
-import { dealFromSeed } from "./deck";
+import { solvableDealFromSeed } from "./solvable";
 import {
   cloneState,
   failureOf,
@@ -289,6 +289,20 @@ function seatFinishedPatchFor(seat: Seat, nowMs: number) {
  * can study the deal while waiting for an opponent — the deal is revealed to
  * both from the same server state, at the same moment.
  */
+/**
+ * The practice bot's tier for a row, or null on a human duel.
+ *
+ * `NULL` on an AI row (a legacy practice match) reads back as the documented
+ * default, exactly as `createAiMatch` writes it. A human duel carries no tier.
+ */
+export function aiDifficultyForMatch(match: {
+  aiDifficulty?: unknown;
+  isAi?: boolean | null;
+}) {
+  if (!match?.isAi) return null;
+  return coerceAiDifficulty(match.aiDifficulty);
+}
+
 export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Date.now()) {
   const seats = seatsFromRow(match);
   const seat = seatForUser(seats, viewerId);
@@ -308,6 +322,11 @@ export function matchToDto(match: MatchRow, viewerId: string | null, nowMs = Dat
     winnerId: match.winnerId ?? null,
     seat,
     isParticipant: Boolean(seat),
+    // A free practice match against the bot. The match view uses it to label the
+    // seat "GRYND AI", to offer a restart, and to send the next practice match
+    // back through the practice path rather than the rated queue.
+    isAi: Boolean(match.isAi),
+    aiDifficulty: aiDifficultyForMatch(match),
     // The commitment is public from creation; the seed itself is only revealed
     // once the match is terminal, so the deal can be verified after the fact.
     seedHash: match.serverSeedHash,
@@ -444,7 +463,10 @@ async function createWaitingMatch(tx: any, userId: string, nowMs: number) {
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
   const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
-  const deal: SolitaireDeal = dealFromSeed(dealSeed);
+  // VARIANT_VERSION 2: the deal is CONSTRUCTED to be solvable, not shuffled and
+  // hoped for. It is still a pure function of the derived seed, and still the
+  // one deal both seats receive.
+  const deal: SolitaireDeal = solvableDealFromSeed(dealSeed);
 
   // The SAME deal initialises both seats — two independent copies of one
   // opening position, so neither seat's board can ever alias the other's (or
@@ -574,7 +596,9 @@ export async function createAiMatch({
   const serverSeed = randomHex(32);
   const serverSeedHash = getServerSeedHash(serverSeed);
   const dealSeed = deriveDealSeed({ serverSeed, variantVersion: VARIANT_VERSION });
-  const deal: SolitaireDeal = dealFromSeed(dealSeed);
+  // Practice deals are guaranteed solvable too: a bot match that can never be
+  // finished is just as bad an experience as an unrated duel that stalls.
+  const deal: SolitaireDeal = solvableDealFromSeed(dealSeed);
 
   const opening = initialStateFromDeal(deal);
   const openingProgress = progressOf(opening);
@@ -610,6 +634,67 @@ export async function createAiMatch({
     })
     .returning();
 
+  return { match } as const;
+}
+
+/**
+ * Abandon a practice match and deal a fresh one.
+ *
+ * "Start over with a different deal." The old row is marked `cancelled` (it
+ * settles NOTHING — no rating, no trophy, no win counter, no queue transition),
+ * and a brand new practice match is minted from a FRESH server seed, so the new
+ * puzzle is genuinely a different deal rather than a replayed one.
+ *
+ * Only the human's own practice match can be restarted: the row must be `isAi`
+ * AND the caller must hold player1. A rated duel has no restart — a player who
+ * wants out of one resigns, and a player who wants another deal finishes it and
+ * rematches. `difficulty` reuses the old tier when omitted.
+ */
+export async function restartAiMatch({
+  userId,
+  matchId,
+  difficulty,
+  nowMs = Date.now(),
+}: {
+  userId: string;
+  matchId: string;
+  difficulty?: unknown;
+  nowMs?: number;
+}) {
+  const tier = coerceAiDifficulty(difficulty);
+
+  const abandoned = await db.transaction(async (tx) => {
+    const [match] = await tx
+      .select()
+      .from(solitaireDuelMatches)
+      .where(eq(solitaireDuelMatches.id, matchId))
+      .for("update");
+
+    if (!match) return err("Match not found", 404);
+    if (match.player1Id !== userId) return err("Not your match", 403);
+    // A rated duel can never be restarted — that would let a losing player
+    // discard a bad board at will.
+    if (!match.isAi) return err("Only a practice match can be restarted", 409);
+    if (TERMINAL_STATUSES.includes(match.status)) return { cancelled: false } as const;
+
+    await tx
+      .update(solitaireDuelMatches)
+      .set({
+        status: MATCH_STATUS.CANCELLED,
+        endedAt: new Date(nowMs),
+        updatedAt: new Date(nowMs),
+      })
+      .where(eq(solitaireDuelMatches.id, match.id));
+
+    // Deliberately NOT mirrored into the canonical queue and deliberately not
+    // settled: a practice match never touched competitive progression.
+    return { cancelled: true } as const;
+  });
+
+  if ("error" in abandoned) return abandoned;
+
+  // A brand new seed → a brand new deal.
+  const { match } = await createAiMatch({ userId, difficulty: tier, nowMs });
   return { match } as const;
 }
 

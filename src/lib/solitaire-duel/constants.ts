@@ -65,8 +65,18 @@ export const VARIANT = "klondike-1" as const;
  * Bumping it changes every deal derived from the same server seed, so old
  * matches stay reproducible and interpretable, and a ruleset change can never
  * silently reinterpret an existing match's stored deal.
+ *
+ * v1 — a plain Fisher–Yates shuffle of the seed (`dealFromSeed`). About a fifth
+ *      of those boards are unsolvable, so a v1 match could only ever end on the
+ *      inactivity forfeit.
+ * v2 — a GUARANTEED-SOLVABLE construction (`solvableDealFromSeed`), still a
+ *      pure function of the same derived deal seed. The opening SHAPE is
+ *      unchanged (column `i` gets `i + 1` cards, only the last face-up, 24 in
+ *      the stock), so every shape rule and every client projection still holds.
+ *
+ * `dealFromSeed` is retained for v1 rows and for tests that pin the shuffle.
  */
-export const VARIANT_VERSION = 1;
+export const VARIANT_VERSION = 2;
 
 /** Seven tableau columns; column `i` is dealt `i + 1` cards. */
 export const TABLEAU_COLUMNS = 7;

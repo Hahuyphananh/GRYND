@@ -40,6 +40,7 @@ import { useSocket } from "../../../../context/SocketProvider";
 import EmotePicker, { EmoteBubble } from "../../../../components/game/EmotePicker";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import MiniGolfCourse from "../../../../components/mini-golf/MiniGolfCourse";
+import SeatAvatar from "../../../../components/game/SeatAvatar";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
 import ReportModal from "../../../../components/ReportModal";
@@ -492,23 +493,92 @@ export default function MiniGolfMatchPage() {
       setRenderBalls(cloneBalls(match.balls));
       return;
     }
-    if (!last || !Array.isArray(last.result?.path) || last.result.path.length === 0) return;
-    if (lastAnimatedSeqRef.current === seq) return;
+    // Build the rollout from the shot LOG when the snapshot carries one.
+    //
+    // The practice bot resolves its WHOLE turn — every stroke it takes on the
+    // hole — inside a single poll, and the snapshot only names the LAST shot.
+    // Playing back just that one stroke teleported the bot's ball from where it
+    // was standing straight to the start of its final stroke, crossing whatever
+    // obstacle lay between them: the ball appeared to pass through walls and
+    // bumpers. The shot log has every stroke, each with its own `path`, and
+    // consecutive strokes start exactly where the previous one came to rest —
+    // so the whole run is played as ONE continuous trajectory and the ball
+    // rolls through every stroke instead of jumping across the course.
+    const seatForPlayer = (playerId: unknown): Seat =>
+      playerId != null && playerId === match.player2Id ? "player2" : "player1";
+    const logged: {
+      seq: number;
+      hole: number;
+      seat: Seat;
+      path: Vec2[];
+      pocketed: boolean;
+      frames: number;
+    }[] = [];
+    if (Array.isArray(match.shots)) {
+      for (const shot of match.shots) {
+        const shotSeq = Number(shot?.shotSeq) || 0;
+        if (shotSeq <= lastAnimatedSeqRef.current) continue;
+        const shotPath = shot?.result?.path;
+        if (!Array.isArray(shotPath) || shotPath.length === 0) continue;
+        logged.push({
+          seq: shotSeq,
+          hole: Number(shot?.holeNumber) || Number(match.currentHole) || 1,
+          seat: seatForPlayer(shot?.playerId),
+          path: shotPath,
+          pocketed: Boolean(shot?.result?.pocketed),
+          frames: Number(shot?.result?.frames) || 0,
+        });
+      }
+      logged.sort((a, b) => a.seq - b.seq);
+    }
 
-    lastAnimatedSeqRef.current = seq;
-    const path: Vec2[] = last.result.path;
-    const frames = Number(last.result?.frames) || 0;
-    const rollout: Rollout = {
-      seq,
-      seat: last.seat,
-      hole: Number(last.hole) || Number(match.currentHole) || 1,
-      path,
-      pocketed: Boolean(last.result?.pocketed),
-      frames,
-      duration: animationDurationMs(path, { frames }),
-      startedAt:
-        typeof performance !== "undefined" ? performance.now() : Date.now(),
-    };
+    let rollout: Rollout | null = null;
+    if (logged.length > 0) {
+      // Only ONE seat's strokes on ONE hole form a single continuous path;
+      // anything else (which the whole-turn model does not produce) falls back
+      // to the last shot alone rather than drawing two balls' paths as one.
+      const runSeat = logged[logged.length - 1].seat;
+      const runHole = logged[logged.length - 1].hole;
+      if (logged.every((s) => s.seat === runSeat && s.hole === runHole)) {
+        const path: Vec2[] = [];
+        for (const s of logged) for (const point of s.path) path.push(point);
+        const frames = logged.reduce((total, s) => total + s.frames, 0);
+        rollout = {
+          seq: logged[logged.length - 1].seq,
+          seat: runSeat,
+          hole: runHole,
+          path,
+          pocketed: logged[logged.length - 1].pocketed,
+          frames,
+          duration: animationDurationMs(path, { frames }),
+          startedAt:
+            typeof performance !== "undefined" ? performance.now() : Date.now(),
+        };
+      }
+    }
+
+    if (rollout) {
+      if (lastAnimatedSeqRef.current >= rollout.seq) return;
+    } else {
+      if (!last || !Array.isArray(last.result?.path) || last.result.path.length === 0) return;
+      if (lastAnimatedSeqRef.current >= seq) return;
+      const path: Vec2[] = last.result.path;
+      const frames = Number(last.result?.frames) || 0;
+      rollout = {
+        seq,
+        seat: last.seat,
+        hole: Number(last.hole) || Number(match.currentHole) || 1,
+        path,
+        pocketed: Boolean(last.result?.pocketed),
+        frames,
+        duration: animationDurationMs(path, { frames }),
+        startedAt:
+          typeof performance !== "undefined" ? performance.now() : Date.now(),
+      };
+    }
+    if (!rollout) return;
+
+    lastAnimatedSeqRef.current = rollout.seq;
 
     // Something is already on screen (a rollout, or a hole-result interstitial):
     // hold this shot back rather than aborting the one playing. Only the newest
@@ -967,11 +1037,12 @@ export default function MiniGolfMatchPage() {
                 </span>
                 {match.status === "playing" && (
                   <button
+                    data-testid="resign-button"
                     onClick={() => setShowForfeitConfirm(true)}
                     className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-bold text-red-300 transition hover:bg-red-500/20"
                   >
                     <IconDoorExit size={13} />
-                    <span className="hidden sm:inline">Forfeit</span>
+                    <span>Resign</span>
                   </button>
                 )}
                 <button
@@ -1019,7 +1090,13 @@ export default function MiniGolfMatchPage() {
                               background: "rgba(0,0,0,0.35)",
                             }}
                           >
-                            {name.charAt(0).toUpperCase()}
+                            <SeatAvatar
+                              iconKey={identity?.iconKey ?? null}
+                              profileFrame={identity?.profileFrame ?? null}
+                              name={name}
+                              isAi={Boolean(match.isAi) && seat === opponentSeat}
+                              size="h-7 w-7"
+                            />
                           </span>
                           <div className="min-w-0">
                             <p className="truncate text-xs font-bold">
@@ -1399,7 +1476,7 @@ export default function MiniGolfMatchPage() {
             )}
           </AnimatePresence>
 
-          {/* ── Forfeit confirmation ───────────────────────────────── */}
+          {/* ── Resign confirmation ────────────────────────────────── */}
           <AnimatePresence>
             {showForfeitConfirm && (
               <motion.div
@@ -1419,9 +1496,10 @@ export default function MiniGolfMatchPage() {
                   aria-modal="true"
                   className="w-full max-w-sm rounded-2xl border border-red-500/40 bg-[#0b1f16] p-6 text-center"
                 >
-                  <h3 className="text-lg font-extrabold text-red-300">Forfeit this match?</h3>
+                  <h3 className="text-lg font-extrabold text-red-300">Resign this match?</h3>
                   <p className="mt-2 text-sm text-white/70">
-                    Your opponent is awarded the win and the match settles immediately.
+                    You concede — your opponent is awarded the win and the match settles
+                    immediately.
                   </p>
                   <div className="mt-5 flex gap-2">
                     <button
@@ -1436,7 +1514,7 @@ export default function MiniGolfMatchPage() {
                       disabled={forfeiting}
                       className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-bold text-black disabled:opacity-60"
                     >
-                      {forfeiting ? "Forfeiting…" : "Forfeit"}
+                      {forfeiting ? "Resigning…" : "Resign"}
                     </button>
                   </div>
                 </motion.div>

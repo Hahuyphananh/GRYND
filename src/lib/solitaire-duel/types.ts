@@ -74,9 +74,9 @@ export type SolitaireState = {
  * The ONE deal shared by both seats for a match.
  *
  * Derived deterministically from the match seed (`deriveDealSeed` →
- * `dealFromSeed`), stored once on the match row, and NEVER regenerated when the
- * second player joins. There is deliberately no per-seat deal anywhere in this
- * game.
+ * `solvableDealFromSeed`, the version-2 construction), stored once on the match
+ * row, and NEVER regenerated when the second player joins. There is
+ * deliberately no per-seat deal anywhere in this game.
  */
 export type SolitaireDeal = {
   variant: string;

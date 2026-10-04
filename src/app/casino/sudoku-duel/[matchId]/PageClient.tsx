@@ -680,6 +680,12 @@ export default function SudokuDuelMatchPage() {
   const opponentSeat: Seat = mySeatKey === "player1" ? "player2" : "player1";
   const opponentIdentity: SeatIdentity = match?.players?.[opponentSeat] ?? null;
   const opponentName = match?.isAi ? "GRYND AI" : opponentIdentity?.name || "Opponent";
+  // The viewer's OWN seat, resolved the same way, so both meters are introduced
+  // by the same face and the same username rather than "You" vs a name. The
+  // viewer is never the bot seat (the bot is always player2).
+  const viewerIdentity: SeatIdentity = mySeatKey
+    ? (match?.players?.[mySeatKey] ?? null)
+    : null;
 
   const givens = Math.max(0, Math.trunc(Number(match?.givens) || 0));
   const totalEntries = Math.max(0, CELL_COUNT - givens);
@@ -955,6 +961,8 @@ export default function SudokuDuelMatchPage() {
                     opponentCompleted={Boolean(opponentProgress?.completed)}
                     opponentName={opponentName}
                     opponentIdentity={opponentIdentity}
+                    myIdentity={viewerIdentity}
+                    isAi={Boolean(match?.isAi)}
                     remainingMs={remainingMs}
                     elapsedMs={elapsedMs}
                     countdownActive={countdownActive}

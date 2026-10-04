@@ -60,6 +60,10 @@ import {
   VARIANT_VERSION,
 } from "../src/lib/solitaire-duel/constants.ts";
 import { dealFromSeed } from "../src/lib/solitaire-duel/deck.ts";
+import {
+  isDealSolvable,
+  solvableDealFromSeed,
+} from "../src/lib/solitaire-duel/solvable.ts";
 import { initialStateFromDeal } from "../src/lib/solitaire-duel/rules.ts";
 import { deriveDealSeed, getServerSeedHash } from "../src/lib/solitaire-duel/seeds.js";
 
@@ -357,7 +361,10 @@ test("create-or-join: opens a lobby with ONE seed, ONE deal and two identical bo
     match.dealSeed,
     deriveDealSeed({ serverSeed: match.serverSeed, variantVersion: VARIANT_VERSION }),
   );
-  assert.deepEqual(match.deal, dealFromSeed(match.dealSeed));
+  // ...and it is the GUARANTEED-SOLVABLE construction of that seed
+  // (`VARIANT_VERSION` 2), not a plain shuffle.
+  assert.deepEqual(match.deal, solvableDealFromSeed(match.dealSeed));
+  assert.ok(isDealSolvable(match.deal), "a stored deal must be solvable");
 
   // A real Klondike opening: 28 in the tableau (1..7 per column), 24 in stock.
   assert.equal(match.deal.tableau.length, 7);

@@ -280,3 +280,33 @@ test("ball art: the golf ball uses the Pool Masters rendering language", () => {
 test("physics: the simulator runs the pass-through guard every substep", () => {
   assert.match(strip(read(PHYSICS)), /preventSegmentTunneling\(ball, prevPoint/);
 });
+
+test("rendering: a multi-stroke turn replays as ONE continuous trajectory", () => {
+  // The bot resolves its whole turn in a single poll and the snapshot only
+  // names its LAST shot; animating just that one teleported the ball across
+  // whatever obstacle sat between its old position and the final stroke's
+  // start. The page must build the rollout from the shot LOG so every stroke
+  // is rolled through in order.
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /Array\.isArray\(match\.shots\)/, "the shot log is the source");
+  assert.match(
+    src,
+    /for \(const s of logged\) for \(const point of s\.path\) path\.push\(point\)/,
+    "every unplayed stroke's path is concatenated",
+  );
+  assert.match(
+    src,
+    /logged\.every\(\(s\) => s\.seat === runSeat && s\.hole === runHole\)/,
+    "only one seat's strokes on one hole form one path",
+  );
+  assert.match(src, /lastAnimatedSeqRef\.current = rollout\.seq/);
+});
+
+test("ui: an active match offers a Resign control that concedes via the forfeit route", () => {
+  const src = strip(read(MATCH_PAGE));
+  assert.match(src, /data-testid="resign-button"/, "the header exposes a Resign button");
+  assert.match(src, /Resign this match\?/, "resigning is confirmed before it fires");
+  // The action is the existing server-authoritative forfeit endpoint — the
+  // client never picks the winner.
+  assert.match(src, /`\$\{apiMatch\}\/forfeit`/);
+});

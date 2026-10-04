@@ -209,16 +209,34 @@ test("client: a rejected move resyncs rather than keeping a local guess", () => 
 
 test("client: a rematch asks the server for a brand new match", () => {
   const src = code(MATCH_PAGE);
-  assert.match(src, /fetch\("\/api\/solitaire-duel\/create-or-join"/);
+  // A rated duel rematches through the lobby queue...
+  assert.match(src, /"\/api\/solitaire-duel\/create-or-join"/);
+  // ...while a practice match rematches INTO practice, with the same bot tier,
+  // rather than dropping an unrated player into the rated queue.
+  assert.match(src, /"\/api\/solitaire-duel\/create-ai"/);
+  assert.match(src, /matchRef\.current\?\.isAi/);
   // A new match id resets every per-match value, so nothing is inherited.
   assert.match(src, /loadedRef\.current = false;/);
   assert.match(src, /skewRef\.current = 0;/);
   assert.match(src, /queuedDrawsRef\.current = 0;/);
-  assert.match(src, /playAgain=\{\{ label: "REMATCH", onClick: requeue \}\}/);
+  assert.match(src, /playAgain=\{\{ label: isPractice \? "NEW DEAL" : "REMATCH", onClick: requeue \}\}/);
   // The shared result screen, and the platform's own exit actions.
   assert.match(src, /PvpResultScreen/);
   assert.match(src, /href: "\/casino"/);
   assert.match(src, /router\.push\("\/casino\/solitaire-duel"\)/);
+});
+
+test("client: practice offers a restart that asks the server for a new deal", () => {
+  const src = code(MATCH_PAGE);
+  // The restart is a server call, never a local re-deal: the client cannot
+  // produce a solvable deal on its own.
+  assert.match(src, /fetch\(`\$\{apiMatch\}\/restart`/);
+  assert.match(src, /data-testid="solitaire-restart"/);
+  // Practice only — a rated duel must never abandon a live match and re-deal.
+  assert.match(src, /const isPractice = Boolean\(match\?\.isAi\)/);
+  assert.match(src, /const canRestart = isPractice && !restarting && !leaving/);
+  // The new match id arrives from the server's response, not from local state.
+  assert.match(src, /router\.push\(`\/casino\/solitaire-duel\/\$\{data\.data\.matchId\}`\)/);
 });
 
 // ── 3. The board renders the projection ──────────────────────────────────

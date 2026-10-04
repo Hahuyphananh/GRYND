@@ -41,6 +41,7 @@ import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import SeatAvatar from "../../../../components/game/SeatAvatar";
 import { useSocket } from "../../../../context/SocketProvider";
 import {
   SOCKET_DOWN_POLL_MS,
@@ -107,6 +108,22 @@ type OpponentProgressPayload = {
   wpm: number;
   accuracy: number;
 };
+
+/**
+ * A seat's display identity, resolved by the platform's shared seat resolver.
+ * Cosmetic only — never a rule, a passage or an outcome.
+ */
+type SeatIdentity = {
+  name: string | null;
+  iconKey: string | null;
+  nameColor?: string | null;
+  profileFrame?: unknown;
+};
+
+type SeatIdentities = {
+  player1: SeatIdentity | null;
+  player2: SeatIdentity | null;
+} | null;
 
 const TERMINAL = new Set(["finished", "cancelled"]);
 const PUSH_DEBOUNCE_MS = 120;
@@ -201,24 +218,46 @@ const PassageTrack = memo(function PassageTrack({
   );
 });
 
-/** One player's progress bar. */
+/**
+ * One player's progress bar, headed by that seat's avatar and username.
+ *
+ * The AI seat has no identity of its own, so `isAi` selects the GRYND mark and
+ * name; a human seat shows their real pfp and username, falling back to the
+ * localized label only while the identity is still resolving.
+ */
 function ProgressBar({
-  label,
+  identity,
+  isAi = false,
+  fallbackLabel,
   percent,
   detail,
   tone,
 }: {
-  label: string;
+  identity: SeatIdentity | null;
+  isAi?: boolean;
+  fallbackLabel: string;
   percent: number;
   detail: string;
   tone: "mine" | "theirs";
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+  const name = isAi ? "GRYND AI" : identity?.name || fallbackLabel;
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3 text-xs">
-        <span className="font-bold uppercase tracking-wider text-white/70">{label}</span>
-        <span className="font-mono text-white/50">{detail}</span>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="flex min-w-0 items-center gap-2">
+          <SeatAvatar
+            iconKey={identity?.iconKey ?? null}
+            profileFrame={identity?.profileFrame ?? null}
+            name={name}
+            isAi={isAi}
+            size="h-6 w-6"
+          />
+          <span className="truncate font-bold uppercase tracking-wider text-white/70">
+            {name}
+          </span>
+        </span>
+        <span className="shrink-0 font-mono text-white/50">{detail}</span>
       </div>
       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
         <div
@@ -243,6 +282,7 @@ export default function SpeedTypingMatchPage() {
   const snapshotUrl = `/api/speed-typing/match/${matchId}`;
 
   const [match, setMatch] = useState<MatchDto | null>(null);
+  const [seatIdentities, setSeatIdentities] = useState<SeatIdentities>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
@@ -275,6 +315,10 @@ export default function SpeedTypingMatchPage() {
         loadedRef.current = true;
         setLoadError(null);
         setMatch(data.data.match as MatchDto);
+        // Seat identity is an adornment the snapshot carries alongside the
+        // match; it may be absent (a resolver hiccup) — the bars fall back to
+        // their labels rather than blanking out.
+        setSeatIdentities((data.data.seatIdentities as SeatIdentities) ?? null);
         // The snapshot carries the server's GO instant; the socket's copy was
         // only ever a head start.
         setGoAtOverride(null);
@@ -323,7 +367,16 @@ export default function SpeedTypingMatchPage() {
   const goAtMs = goAtOverride ?? serverGoAt;
   const resolved = race?.resolvedAtMs != null;
   const iFinished = race?.you?.finished === true;
-  const mySeatKey = race?.seatKey ?? "player1";
+  const mySeatKey =
+    race?.seatKey ?? (match?.viewerSeat === 2 ? "player2" : "player1");
+  const opponentSeatKey = mySeatKey === "player1" ? "player2" : "player1";
+  const viewerIdentity = seatIdentities?.[mySeatKey] ?? null;
+  const opponentIdentity = seatIdentities?.[opponentSeatKey] ?? null;
+  // The viewer of an AI match is always the human seat, so the AI flag marks
+  // the OPPONENT — the one seat that must wear the GRYND mark.
+  const opponentIsAi = Boolean(match?.isAi);
+  const viewerName = viewerIdentity?.name || "You";
+  const opponentName = opponentIsAi ? "GRYND AI" : opponentIdentity?.name || "Opponent";
   // Only the creator owns the open lobby row, so only they may cancel it.
   const canCancelLobby = status === "waiting" && match?.viewerSeat === 1;
 
@@ -630,7 +683,7 @@ export default function SpeedTypingMatchPage() {
                   title="Waiting for an opponent"
                   subtitle="Pairing you with another Speed Typing player…"
                   seats={[
-                    { label: "You", name: "You", occupied: true },
+                    { label: "You", name: viewerName, occupied: true },
                     { label: "Opponent", occupied: false },
                   ]}
                   // The creator owns the open lobby, so only they can cancel it;
@@ -681,13 +734,16 @@ export default function SpeedTypingMatchPage() {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <ProgressBar
-                      label="You"
+                      identity={viewerIdentity}
+                      fallbackLabel="You"
                       percent={myPercent}
                       detail={`${myWpm} wpm · ${myAccuracy}%`}
                       tone="mine"
                     />
                     <ProgressBar
-                      label="Opponent"
+                      identity={opponentIdentity}
+                      isAi={opponentIsAi}
+                      fallbackLabel="Opponent"
                       percent={opponentPercent}
                       detail={
                         opponent?.completed
@@ -815,13 +871,18 @@ export default function SpeedTypingMatchPage() {
             ? "Both seats finished inside the dead-heat window."
             : `${myWpm} wpm at ${myAccuracy}% accuracy.`
         }
-        opponent={{ name: "Opponent" }}
+        opponent={{
+          name: opponentName,
+          iconKey: opponentIdentity?.iconKey ?? null,
+          profileFrame: opponentIdentity?.profileFrame ?? null,
+          isAi: opponentIsAi,
+        }}
         gameName="Speed Typing"
         gameKey="speed-typing"
         durationSeconds={durationSeconds}
         sides={[
-          { name: "You", score: myWpm, highlight: outcome === "win" },
-          { name: "Opponent", score: opponentWpm, highlight: outcome === "loss" },
+          { name: viewerName, score: myWpm, highlight: outcome === "win" },
+          { name: opponentName, score: opponentWpm, highlight: outcome === "loss" },
         ]}
         summary={[
           { label: "Accuracy", value: `${myAccuracy}% – ${opponentAccuracy}%` },

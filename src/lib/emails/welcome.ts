@@ -1,4 +1,5 @@
 import { escapeHtml, renderTemplate, sendEmailSafely } from "./base";
+import { getSiteUrl } from "../siteUrl";
 
 // Tabler-style slot machine icon, inlined as SVG since email clients
 // don't run the app's icon components.
@@ -18,7 +19,7 @@ export async function sendWelcomeEmail(user: {
       "Welcome to GRYND",
       `${SLOT_MACHINE_ICON}<p>Hey ${escapeHtml(user.username ?? "Player")}, your account is live and your gaming wallet is ready.</p>`,
       "Start Playing",
-      `${process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://www.grynd.dedyn.io"}`,
+      getSiteUrl(),
     ),
   });
 }
