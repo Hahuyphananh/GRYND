@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";

@@ -6,8 +6,12 @@ import {
   type LimitConfig,
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
-import { isAdmin } from "./lib/auth/isAdmin";
-import { isMaintenanceMode } from "./lib/security/maintenance";
+import {
+  edgeIsAdmin,
+  edgeIsMaintenanceMode,
+  edgeUserAge,
+  edgeUserMfaEnabled,
+} from "./lib/security/edgeFlags";
 import { withTimeout } from "./lib/security/withTimeout";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
 import {
@@ -16,9 +20,6 @@ import {
   verifyAdminMfaToken,
   verifyUserMfaToken,
 } from "./lib/auth/adminMfa";
-import { db } from "./db";
-import { users } from "./db/schema";
-import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 
@@ -251,17 +252,7 @@ async function userMfaGate(
   try {
     const cached = await cacheGet<boolean>(CacheKeys.userMfa(userId));
     if (cached === null || cached === undefined) {
-      const user = await withTimeout(
-        db.query.users
-          .findFirst({
-            where: eq(users.clerkId, userId),
-            columns: { mfaEnabled: true },
-          })
-          .then((row) => row ?? null),
-        1500,
-        null,
-      );
-      enabled = Boolean(user?.mfaEnabled);
+      enabled = await withTimeout(edgeUserMfaEnabled(userId), 1500, false);
       await cacheSet(CacheKeys.userMfa(userId), enabled, CacheTTL.userMfa).catch(() => {});
     } else {
       enabled = cached === true;
@@ -406,7 +397,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // entirely when the flag is off (cached, one flag lookup per ~10s).
   if (
     pathname !== "/maintenance" &&
-    (await withTimeout(isMaintenanceMode(), 1500, false))
+    (await withTimeout(edgeIsMaintenanceMode(), 1500, false))
   ) {
     const isAdminPath =
       pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
@@ -421,7 +412,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
             .map((id) => id.trim())
             .filter(Boolean);
           allowed =
-            adminIds.length > 0 ? adminIds.includes(userId) : await isAdmin(userId);
+            adminIds.length > 0 ? adminIds.includes(userId) : await edgeIsAdmin(userId);
         }
       } catch {
         allowed = false;
@@ -531,7 +522,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       .map((id) => id.trim())
       .filter(Boolean);
     const isAdminUser =
-      (adminIds.length > 0 && adminIds.includes(userId)) || (await isAdmin(userId));
+      (adminIds.length > 0 && adminIds.includes(userId)) || (await edgeIsAdmin(userId));
 
     if (!isAdminUser) {
       auditLog("admin_api_access_blocked", { userId, ip, path: pathname });
@@ -587,7 +578,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
         );
       }
-      if (!(await isAdmin(userId))) {
+      if (!(await edgeIsAdmin(userId))) {
         return applySecurityHeaders(
           NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 })
         );
@@ -644,17 +635,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       // /complete-profile rather than hanging the browser).
       age = await cacheGet<number | null>(CacheKeys.userAge(userId));
       if (age === null || age === undefined) {
-        const user = await withTimeout(
-          db.query.users
-            .findFirst({
-              where: eq(users.clerkId, userId),
-              columns: { age: true },
-            })
-            .then((row) => row ?? null),
-          1500,
-          null,
-        );
-        age = user?.age ?? null;
+        age = await withTimeout(edgeUserAge(userId), 1500, null);
         if (age !== null && age !== undefined) {
           await cacheSet(CacheKeys.userAge(userId), age, CacheTTL.userAge).catch(() => {});
         }
@@ -694,7 +675,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       // Fast path: user is in env var allowlist — let through immediately.
     } else {
       // DB-backed check — the source of truth for admin badges.
-      const admin = await isAdmin(userId);
+      const admin = await edgeIsAdmin(userId);
       if (!admin) {
         auditLog("admin_access_blocked", {
           userId,
@@ -751,13 +732,21 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);
 const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 
-// Next.js 16: the `middleware` file convention was renamed to `proxy`.
-// Unlike `middleware.ts` (which runs on the Edge runtime by default),
-// `proxy.ts` runs on the Node.js runtime, which is required here: this
-// module imports `db` (via maintenance/isAdmin/age-gate lookups) and the
-// `pg` driver cannot load on the Edge runtime — it crashed every request
-// with MIDDLEWARE_INVOCATION_FAILED after the Neon → Supabase migration.
-export default async function proxy(req: NextRequest, event: NextFetchEvent) {
+// Next.js 16 renamed the `middleware` convention to `proxy`, and the two are
+// NOT equivalent — see `build/entries.js`:
+//   - `proxy.ts`      is dispatched to the Node.js server UNCONDITIONALLY
+//   - `middleware.ts` runs on the EDGE server, unless it declares
+//                     `runtime = "nodejs"`
+// Cloudflare's OpenNext adapter does not support Node.js middleware, so this
+// file deliberately keeps the `middleware` (Edge) convention.
+//
+// It therefore MUST NOT import `pg`/`db`. The four DB-backed gates — the
+// maintenance flag, the admin badge, `age`, and `mfa_enabled` — read through
+// src/lib/security/edgeFlags.ts, which uses PostgREST over `fetch`
+// (Edge-safe). Every other dependency here was already Edge-safe: the MFA
+// cookies are Web Crypto (src/lib/auth/adminMfa.ts), rate limiting is
+// fetch/in-memory, and the cache is Upstash over HTTP.
+async function middleware(req: NextRequest, event: NextFetchEvent) {
   if (!hasClerkSecretKey) {
     return applySecurityHeaders(NextResponse.next());
   }
@@ -772,6 +761,11 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     return applySecurityHeaders(NextResponse.next());
   }
 }
+
+// Next resolves the `middleware` entrypoint from the named export or the
+// default export; provide both so the convention is unambiguous.
+export default middleware;
+export { middleware };
 
 export const config = {
   matcher: ["/((?!_next|.*\\..*).*)", "/(api|trpc)(.*)"],

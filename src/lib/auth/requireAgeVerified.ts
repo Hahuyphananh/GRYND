@@ -2,7 +2,7 @@
 //
 // Server-side 18+ gate for game / wagering API routes.
 //
-// WHY THIS EXISTS: the page middleware (src/proxy.ts) only guards page
+// WHY THIS EXISTS: the page middleware (src/middleware.ts) only guards page
 // NAVIGATIONS. Every /api/* path is listed as public there, so an API request
 // never reaches the middleware age gate. Any route that starts a game, takes a
 // wager, submits a move, or moves the economy must therefore verify the caller

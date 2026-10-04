@@ -3,7 +3,7 @@
 // POST — admin: ensure every enabled token package has a real Stripe Product +
 // one-time Price, and persist the ids. Idempotent (already-synced rows reused).
 //
-// Gated twice, like the other admin mutations: proxy.ts enforces isAdmin + MFA
+// Gated twice, like the other admin mutations: middleware.ts enforces isAdmin + MFA
 // for any /api/admin/* path, and this handler re-checks isAdmin + persists to
 // the admin audit log.
 

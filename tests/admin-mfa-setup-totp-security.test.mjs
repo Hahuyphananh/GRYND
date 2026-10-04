@@ -18,7 +18,7 @@ function read(path) {
 }
 
 test("proxy middleware enforces MFA for /api/admin/mfa/setup-totp", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   // The proxy must check the specific setup-totp path
   assert.match(
@@ -37,7 +37,9 @@ test("proxy middleware enforces MFA for /api/admin/mfa/setup-totp", () => {
   // The proxy must verify admin role
   assert.match(
     proxy,
-    /isAdmin\(userId\)/,
+    // Phase 3: the Edge middleware calls the Edge-safe helper (PostgREST over
+    // fetch) instead of the pg-backed isAdmin() — the gate itself is unchanged.
+    /edgeIsAdmin\(userId\)/,
     "proxy should verify admin role for setup-totp"
   );
 
@@ -83,7 +85,7 @@ test("proxy middleware enforces MFA for /api/admin/mfa/setup-totp", () => {
 });
 
 test("proxy middleware checks MFA before allowing setup-totp in public route branch", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   // The setup-totp check must be in the public route branch (after isPublicRoute check)
   // because /api/* routes are public routes
@@ -204,7 +206,7 @@ test("verify route does not independently require MFA (allows initial enrollment
 });
 
 test("proxy middleware uses correct logical operators for MFA checks", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   // The MFA check should use AND (&&) to require ALL checks to fail before rejecting
   // This means if ANY check passes (recent MFA OR admin token OR user token), access is granted
@@ -229,7 +231,7 @@ test("proxy middleware uses correct logical operators for MFA checks", () => {
 });
 
 test("proxy middleware returns proper error response for missing MFA", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   const setupTotpSection = proxy.match(
     /pathname\s*===\s*["']\/api\/admin\/mfa\/setup-totp["']([\s\S]*?)(?=\n\s*return applySecurityHeaders\(NextResponse\.next)/
@@ -275,7 +277,7 @@ test("proxy middleware returns proper error response for missing MFA", () => {
 });
 
 test("proxy middleware checks admin role before MFA for setup-totp", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   const setupTotpSection = proxy.match(
     /pathname\s*===\s*["']\/api\/admin\/mfa\/setup-totp["']([\s\S]{0,1500})/
@@ -301,7 +303,7 @@ test("proxy middleware checks admin role before MFA for setup-totp", () => {
   // Should check admin role
   assert.match(
     setupTotpCode,
-    /if\s*\(\s*!\s*.*await\s+isAdmin\(userId\)/,
+    /if\s*\(\s*!\s*.*await\s+edgeIsAdmin\(userId\)/,
     "should check admin role"
   );
 
@@ -314,7 +316,7 @@ test("proxy middleware checks admin role before MFA for setup-totp", () => {
 });
 
 test("exploit scenario: admin without MFA cannot access setup-totp", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   // Simulate the exploit scenario from the pentest:
   // 1. Attacker has valid Clerk session (userId exists)
@@ -365,7 +367,7 @@ test("exploit scenario: admin without MFA cannot access setup-totp", () => {
 });
 
 test("mitigation completeness: setup-totp is protected in public route branch", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   // The vulnerability existed because /api/* routes are public routes,
   // and the setup-totp endpoint was reached before the admin MFA enforcement
@@ -410,7 +412,7 @@ test("mitigation completeness: setup-totp is protected in public route branch", 
 });
 
 test("defense in depth: admin MFA enforcement still exists for /api/admin routes", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   // The general /api/admin/* enforcement should still exist as defense in depth
   assert.match(
@@ -441,7 +443,7 @@ test("defense in depth: admin MFA enforcement still exists for /api/admin routes
 });
 
 test("audit logging: MFA requirement is logged for setup-totp", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
 
   const setupTotpSection = proxy.match(
     /pathname\s*===\s*["']\/api\/admin\/mfa\/setup-totp["']([\s\S]*?)(?=\n\s*return applySecurityHeaders\(NextResponse\.next)/

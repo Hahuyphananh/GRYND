@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Webhook } from "svix";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { users, userAutomationState } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";

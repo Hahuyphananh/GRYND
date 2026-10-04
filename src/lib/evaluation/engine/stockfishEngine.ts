@@ -53,6 +53,39 @@
 
 import path from "node:path";
 
+/**
+ * Symbol under which `@opennextjs/cloudflare` publishes the Cloudflare context
+ * on `globalThis` in a deployed Worker — the same slot src/db/pool.ts reads for
+ * Hyperdrive and src/lib/resend.ts reads for the email transport. Its presence
+ * means "running on Cloudflare Workers".
+ */
+const CLOUDFLARE_CONTEXT_SYMBOL = Symbol.for("__cloudflare-context__");
+
+/**
+ * True when running inside a Cloudflare Worker.
+ *
+ * Stockfish CANNOT run there, and the failure is structural rather than
+ * cosmetic: the Emscripten loader reads its `.wasm` with
+ * `fs.readFileSync(path.join(__dirname, ...))`, the package is listed in
+ * `serverExternalPackages` so it is never bundled, and a Worker has neither
+ * `fs` nor a dynamic `require`. Left alone, that surfaces as an opaque
+ * "require is not defined" (or a load attempt that can only fail).
+ *
+ * So `bootEngine()` refuses up front and the caller falls back to the existing
+ * `engine_unavailable` path — the same outcome Vercel already produces when the
+ * engine is missing. On Vercel/Node this returns false and nothing changes.
+ */
+export function isCloudflareWorkers(): boolean {
+  try {
+    return Boolean(
+      (globalThis as Record<symbol, unknown>)[CLOUDFLARE_CONTEXT_SYMBOL],
+    );
+  } catch {
+    // A malformed/partial global must never break evaluation.
+    return false;
+  }
+}
+
 /** The only working entry point of the `stockfish` package (see header). */
 const STOCKFISH_MODULE_ID = "stockfish/src/stockfish-nnue-16-single.js";
 const STOCKFISH_WASM_FILE = "stockfish-nnue-16-single.wasm";
@@ -246,6 +279,15 @@ function clampInt(value: number | undefined, min: number, max: number, fallback:
  * itself — all coordination happens through listeners).
  */
 async function bootEngine(): Promise<StockfishEngine> {
+  // Cloudflare Workers first: refuse BEFORE touching require/path/fs so the
+  // engine is never loaded there. The evaluator turns this into the same
+  // `engine_unavailable` result Vercel returns when the engine cannot boot.
+  if (isCloudflareWorkers()) {
+    throw new ChessEngineError(
+      "Stockfish is unavailable on Cloudflare Workers (the WASM engine needs " +
+        "Node's fs and a dynamic require); the evaluation reports engine_unavailable.",
+    );
+  }
   const factory = loadStockfishFactory();
   const createModule = factory(quietConsole, resolveWasmPath());
 

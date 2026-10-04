@@ -1,0 +1,89 @@
+{
+  // Cloudflare Workers configuration for the OpenNext build output.
+  //
+  // Phase 1 of the Vercel → Cloudflare migration: this file is ADDITIVE. It is
+  // only read by `wrangler` / `opennextjs-cloudflare`, so the existing Vercel
+  // deployment (which still runs `next build` / `next start`) is untouched.
+  //
+  // The `name` must match the Worker you created in the Cloudflare dashboard
+  // (GitHub repo connected + env vars + custom domain already configured).
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // OpenNext emits a single Worker entrypoint plus a static-assets directory.
+  // We point at our own entrypoint instead of `.open-next/worker.js` so we can
+  // attach a `scheduled` handler for Cron Triggers; it re-uses the generated
+  // `fetch` handler. See cloudflare-worker.ts.
+  "main": "./cloudflare-worker.ts",
+  "name": "grynd",
+
+  // Any date >= 2024-09-23 is required for the assets binding to work.
+  "compatibility_date": "2026-09-23",
+
+  // `nodejs_compat` is mandatory: the app uses node:crypto, Buffer, and
+  // process.env throughout (see src/lib/security/*, src/lib/auth/*).
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Static assets (including the Next.js client bundles) are served by the
+  // assets binding rather than the Worker itself.
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // ── Hyperdrive (database) ─────────────────────────────────────────────
+  //
+  // The app talks to Supabase Postgres through Cloudflare Hyperdrive, using
+  // node-postgres (`pg`) — Cloudflare's recommended driver for Workers. See
+  // https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-database-providers/supabase/
+  //
+  // `src/db/pool.ts` prefers the HYPERDRIVE connection string when it is bound,
+  // and falls back to the DATABASE_URL environment variable otherwise (that is
+  // the path Vercel and local dev still use). So this binding is OPTIONAL until
+  // you are ready to route the Worker's queries through Hyperdrive.
+  //
+  // To enable it:
+  //   1. Create the configuration using Supabase's **DIRECT** connection
+  //      string (Settings → Database → Connection string → Direct). Do NOT use
+  //      the pooled/transaction string — Hyperdrive does the pooling itself:
+  //
+  //        npx wrangler hyperdrive create grynd-supabase \
+  //          --connection-string="postgres://postgres.<ref>:<password>@db.<ref>.supabase.co:5432/postgres"
+  //
+  //   2. The command prints a binding with the config `id`. Paste it below,
+  //      uncommenting the "hyperdrive" block:
+  //
+  //      "hyperdrive": [
+  //        { "binding": "HYPERDRIVE", "id": "<id from the command above>" }
+  //      ]
+  //
+  // Leave this block commented out until the config exists — a missing or
+  // invalid Hyperdrive id fails `wrangler dev` / `wrangler deploy`.
+
+  // Stream Worker logs to the Cloudflare dashboard for debugging.
+  "observability": {
+    "enabled": true
+  },
+
+  // ── Cron Triggers (Phase 6) ───────────────────────────────────────────
+  //
+  // These replace the three Vercel Cron Jobs in vercel.json (which is left
+  // untouched so the Vercel deploy keeps working during the migration). The
+  // schedules are identical, and all times are UTC — same as Vercel Cron:
+  //
+  //   "0 0 * * 1"  weekly-reset   (Mondays 00:00)
+  //   "0 4 * * *"  retention      (daily 04:00)
+  //   "0 0 * * *"  daily-reset    (daily 00:00)
+  //
+  // Each trigger invokes cloudflare-worker.ts's `scheduled` handler, which
+  // calls the matching /api/jobs/* route with the CRON_SECRET bearer token.
+  //
+  // IMPORTANT: put the secret in the Worker as a secret before relying on
+  // these — `npx wrangler secret put CRON_SECRET`. The job routes fail-secure
+  // (401) without it, so a missing secret means the jobs silently no-op.
+  //
+  // Order mirrors vercel.json exactly so the two lists can't drift; the
+  // cron↔route mapping lives in cloudflare-worker.ts.
+  "triggers": {
+    "crons": ["0 0 * * 1", "0 4 * * *", "0 0 * * *"]
+  }
+}

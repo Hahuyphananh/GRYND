@@ -1,0 +1,38 @@
+name: Cloudflare Workers build (OpenNext)
+
+# Phase 1 of the Vercel → Cloudflare migration.
+#
+# OpenNext's build is NOT reliable on Windows: its middleware/asset bundling
+# step creates symlinks (node_modules/@opennextjs/aws/dist/build/copyTracedFiles.js),
+# and Windows denies symlink creation unless Developer Mode is on or the shell is
+# elevated (`EPERM: operation not permitted, symlink`). This workflow exists so the
+# `opennextjs-cloudflare build` exit check runs on Linux, which is the supported
+# platform for the OpenNext Cloudflare adapter.
+#
+# This job is additive and independent of the Vercel deploy: it does not touch
+# vercel.json, does not deploy, and does not change production behavior.
+
+on:
+  # Manual trigger — use this to run the Phase 1 exit check on demand.
+  workflow_dispatch:
+  push:
+    branches:
+      - "migrate/**"
+
+jobs:
+  opennext-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for Cloudflare Workers (OpenNext)
+        run: npx opennextjs-cloudflare build

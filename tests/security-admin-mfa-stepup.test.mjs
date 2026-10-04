@@ -23,7 +23,7 @@ function read(path) {
 }
 
 test("proxy: admin API routes are handled BEFORE public route branch", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   // Find the admin API handler block
   const adminApiMatch = proxy.match(
@@ -47,7 +47,7 @@ test("proxy: admin API routes are handled BEFORE public route branch", () => {
 });
 
 test("proxy: admin API handler enforces authentication", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   // Extract the admin API handler block
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
@@ -95,7 +95,7 @@ test("proxy: admin API handler enforces authentication", () => {
 });
 
 test("proxy: admin API handler enforces admin role authorization", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
   const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
@@ -104,8 +104,10 @@ test("proxy: admin API handler enforces admin role authorization", () => {
   // Must check admin status via isAdmin() or env var allowlist
   assert.match(
     adminApiBlock,
-    /isAdmin\s*\(\s*userId\s*\)/,
-    "Admin API handler must call isAdmin(userId)"
+    // Phase 3: Edge middleware uses the Edge-safe helper (PostgREST over
+    // fetch); the admin-role gate itself is unchanged.
+    /edgeIsAdmin\s*\(\s*userId\s*\)/,
+    "Admin API handler must call edgeIsAdmin(userId)"
   );
   
   // Must check CHAT_ADMIN_CLERK_IDS env var
@@ -144,7 +146,7 @@ test("proxy: admin API handler enforces admin role authorization", () => {
 });
 
 test("proxy: admin API handler enforces MFA step-up", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
   const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
@@ -215,7 +217,7 @@ test("proxy: admin API handler enforces MFA step-up", () => {
 });
 
 test("proxy: userMfaGate explicitly skips all API paths", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   // Find the userMfaGate function
   const userMfaGateStart = proxy.indexOf("async function userMfaGate(");
@@ -240,7 +242,7 @@ test("proxy: userMfaGate explicitly skips all API paths", () => {
 });
 
 test("proxy: public route matcher includes broad API pattern", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   // Find the isPublicRoute matcher definition
   const publicRouteStart = proxy.indexOf("const isPublicRoute = createRouteMatcher([");
@@ -261,7 +263,7 @@ test("proxy: public route matcher includes broad API pattern", () => {
 });
 
 test("proxy: admin UI routes still have separate MFA check", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   // Find the admin UI MFA check (after the public route branch)
   const adminUiMatch = proxy.match(
@@ -382,7 +384,7 @@ test("admin toggle-admin endpoint: has auth and admin checks (defense in depth)"
 });
 
 test("proxy: admin API handler returns early with proper response", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
   const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
@@ -411,7 +413,7 @@ test("proxy: admin API handler returns early with proper response", () => {
 });
 
 test("proxy: comment explains the fix and vulnerability context", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
   // Look for comment in the 300 characters before the admin API check
@@ -438,7 +440,7 @@ test("proxy: comment explains the fix and vulnerability context", () => {
 });
 
 test("proxy: admin API check is comprehensive and fail-closed", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
   const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
@@ -473,7 +475,7 @@ test("proxy: admin API check is comprehensive and fail-closed", () => {
 });
 
 test("security: admin API routes are protected at proxy level (not just handler level)", () => {
-  const proxy = read("src/proxy.ts");
+  const proxy = read("src/middleware.ts");
   
   // The key security property: admin API protection happens in the proxy/middleware,
   // which runs BEFORE any route handler. This means even if a handler has a bug,

@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "../../../db/client";
