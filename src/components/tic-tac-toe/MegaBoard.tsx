@@ -238,6 +238,10 @@ function MegaBoard({
   // than shrinking nine boards into unusable cells. A 2x2/3x3 that fits its
   // container is unaffected (the floor only bites when the container is narrow).
   const minWidth = cols === 1 ? undefined : `${cols * 10.5}rem`;
+  // Round 1's lone board would otherwise stretch to the full width of its
+  // column, so it gets a ceiling: a 3x3 that stays comfortably playable and is
+  // close to the size each board shrinks to once the lattice expands.
+  const maxWidth = cols === 1 ? "20rem" : undefined;
 
   // The Mega win overlay: a single line between the first and last winning
   // board's centres, drawn in the winner's colour. Only a genuine three-slot
@@ -391,7 +395,7 @@ function MegaBoard({
 
       {/* ── The lattice ────────────────────────────────────────────────── */}
       <div className="overflow-x-auto pb-1">
-        <div className="relative mx-auto w-full" style={{ minWidth }}>
+        <div className="relative mx-auto w-full" style={{ minWidth, maxWidth }}>
           <div
             className="grid gap-2 sm:gap-3"
             style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
